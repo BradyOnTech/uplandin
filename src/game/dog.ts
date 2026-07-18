@@ -67,6 +67,10 @@ export class Dog {
         // Bird flushed or collected — cast off and hunt again.
         this.state = 'quartering';
         this.pointedBirdId = null;
+      } else if (dist(this.pos, pointed.pos) > POINT_RANGE * 2) {
+        // A running bird broke the point — road it.
+        this.state = 'tracking';
+        this.pointedBirdId = null;
       }
       return; // holding the point: don't move
     }

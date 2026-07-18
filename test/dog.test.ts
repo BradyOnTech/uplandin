@@ -5,8 +5,8 @@ import { FIELD_BOUNDS } from '../src/game/field';
 
 const rng = () => 0.5;
 
-function birdAt(x: number, y: number): Bird {
-  return { id: 1, coveyId: 1, pos: { x, y }, state: 'hidden' };
+function birdAt(x: number, y: number, over: Partial<Bird> = {}): Bird {
+  return { id: 1, coveyId: 1, pos: { x, y }, state: 'hidden', runs: false, runEnergy: 0, restingMs: 0, ...over };
 }
 
 function run(dog: Dog, birds: Bird[], steps: number, env: DogEnv = {}, dtMs = 50): void {
@@ -55,7 +55,7 @@ describe('Dog', () => {
 
   it('retrieves a downed bird, then casts off', () => {
     const dog = new Dog({ x: 100, y: 100 }, rng);
-    const bird: Bird = { id: 7, coveyId: 0, pos: { x: 160, y: 100 }, state: 'downed' };
+    const bird = birdAt(160, 100, { id: 7, coveyId: 0, state: 'downed' });
     run(dog, [bird], 400);
     expect(bird.state).toBe('retrieved');
     expect(dog.state).toBe('quartering');
@@ -63,11 +63,21 @@ describe('Dog', () => {
 
   it('fetches a downed bird before working fresh scent', () => {
     const dog = new Dog({ x: 100, y: 100 }, rng);
-    const downedBird: Bird = { id: 7, coveyId: 0, pos: { x: 160, y: 100 }, state: 'downed' };
-    const hiddenBird: Bird = { id: 8, coveyId: 1, pos: { x: 120, y: 100 }, state: 'hidden' };
+    const downedBird = birdAt(160, 100, { id: 7, coveyId: 0, state: 'downed' });
+    const hiddenBird = birdAt(120, 100, { id: 8, coveyId: 1 });
     run(dog, [downedBird, hiddenBird], 40); // reach + fetch the downed bird
     expect(downedBird.state).toBe('retrieved');
     expect(hiddenBird.state).toBe('hidden'); // untouched while retrieving
+  });
+
+  it('roads a pointed bird that bolts: breaks back to tracking', () => {
+    const dog = new Dog({ x: 100, y: 100 }, rng);
+    const bird = birdAt(108, 100);
+    run(dog, [bird], 400);
+    expect(dog.state).toBe('pointing');
+    bird.pos = { x: 140, y: 100 }; // bird makes a run for it
+    run(dog, [bird], 1);
+    expect(dog.state).toBe('tracking');
   });
 
   it('won’t point a bird sitting right on the hunter', () => {

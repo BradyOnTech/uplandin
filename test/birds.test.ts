@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { flushCovey, spawnBirds, type Bird } from '../src/game/birds';
+import {
+  flushCovey,
+  RUNNER_MAX_ENERGY,
+  spawnBirds,
+  updateBirds,
+  type Bird,
+} from '../src/game/birds';
 import { dist } from '../src/game/math';
 
 /** Deterministic LCG so spawn patterns are reproducible. */
@@ -40,12 +46,25 @@ describe('spawnBirds', () => {
   });
 });
 
+function bird(over: Partial<Bird>): Bird {
+  return {
+    id: 1,
+    coveyId: 0,
+    pos: { x: 0, y: 0 },
+    state: 'hidden',
+    runs: false,
+    runEnergy: 0,
+    restingMs: 0,
+    ...over,
+  };
+}
+
 describe('flushCovey', () => {
   it('flushes the whole covey and nothing else', () => {
     const birds: Bird[] = [
-      { id: 1, coveyId: 0, pos: { x: 0, y: 0 }, state: 'hidden' },
-      { id: 2, coveyId: 0, pos: { x: 5, y: 5 }, state: 'hidden' },
-      { id: 3, coveyId: 1, pos: { x: 50, y: 50 }, state: 'hidden' },
+      bird({ id: 1, coveyId: 0, pos: { x: 0, y: 0 } }),
+      bird({ id: 2, coveyId: 0, pos: { x: 5, y: 5 } }),
+      bird({ id: 3, coveyId: 1, pos: { x: 50, y: 50 } }),
     ];
     const flushed = flushCovey(birds, 1);
     expect(flushed.map((b) => b.id).sort()).toEqual([1, 2]);
@@ -54,8 +73,8 @@ describe('flushCovey', () => {
 
   it('does not re-flush resolved birds', () => {
     const birds: Bird[] = [
-      { id: 1, coveyId: 0, pos: { x: 0, y: 0 }, state: 'downed' },
-      { id: 2, coveyId: 0, pos: { x: 5, y: 5 }, state: 'hidden' },
+      bird({ id: 1, coveyId: 0, pos: { x: 0, y: 0 }, state: 'downed' }),
+      bird({ id: 2, coveyId: 0, pos: { x: 5, y: 5 } }),
     ];
     const flushed = flushCovey(birds, 2);
     expect(flushed.map((b) => b.id)).toEqual([2]);
@@ -64,5 +83,42 @@ describe('flushCovey', () => {
 
   it('returns empty for an unknown id', () => {
     expect(flushCovey([], 99)).toEqual([]);
+  });
+});
+
+describe('updateBirds (runners)', () => {
+  it('flees the dog when it gets close', () => {
+    const b = bird({ pos: { x: 100, y: 100 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
+    for (let i = 0; i < 20; i++) updateBirds(50, [b], { x: 130, y: 100 });
+    expect(b.pos.x).toBeLessThan(100); // ran away from the dog
+    expect(b.pos.y).toBeCloseTo(100, 5);
+  });
+
+  it('holds its ground while the dog is far off', () => {
+    const b = bird({ pos: { x: 100, y: 100 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
+    updateBirds(50, [b], { x: 400, y: 100 });
+    expect(b.pos).toEqual({ x: 100, y: 100 });
+  });
+
+  it('never moves a non-runner', () => {
+    const b = bird({ pos: { x: 100, y: 100 }, runs: false });
+    for (let i = 0; i < 20; i++) updateBirds(50, [b], { x: 105, y: 100 });
+    expect(b.pos).toEqual({ x: 100, y: 100 });
+  });
+
+  it('stops to rest when winded, then holds still', () => {
+    const b = bird({ pos: { x: 100, y: 100 }, runs: true, runEnergy: 40 });
+    updateBirds(50, [b], { x: 110, y: 100 }); // burns the last of its energy
+    updateBirds(50, [b], { x: 110, y: 100 }); // winded → starts resting
+    expect(b.restingMs).toBeGreaterThan(0);
+    const at = { ...b.pos };
+    for (let i = 0; i < 10; i++) updateBirds(50, [b], { x: 105, y: 100 });
+    expect(b.pos).toEqual(at); // frozen while resting
+  });
+
+  it('stays inside the field while fleeing', () => {
+    const b = bird({ pos: { x: 8, y: 135 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
+    for (let i = 0; i < 40; i++) updateBirds(50, [b], { x: 30, y: 135 });
+    expect(b.pos.x).toBeGreaterThanOrEqual(4);
   });
 });

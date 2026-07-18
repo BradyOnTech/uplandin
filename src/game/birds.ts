@@ -1,5 +1,5 @@
 import { COVER_PATCHES, FIELD_BOUNDS, randomPointIn } from './field';
-import { clamp } from './math';
+import { clamp, dist } from './math';
 import type { RNG, Vec2 } from './types';
 
 export type BirdState = 'hidden' | 'flushed' | 'downed' | 'escaped' | 'retrieved';
@@ -9,10 +9,22 @@ export interface Bird {
   coveyId: number;
   pos: Vec2;
   state: BirdState;
+  /** Runners (pheasant-types) flee the dog on foot instead of holding tight. */
+  runs: boolean;
+  /** ms of running left before the bird is winded and must hold. */
+  runEnergy: number;
+  /** ms left holding still to recover. */
+  restingMs: number;
 }
 
 const COVEY_MAX_SIZE = 3;
 const COVEY_JITTER = 10; // birds sit within this of their covey anchor
+
+export const RUNNER_CHANCE = 0.4; // share of birds that are runners
+export const RUNNER_FLEE_RADIUS = 35; // dog this close spooks a runner into running
+export const RUNNER_SPEED = 42; // px/s — slower than the dog, but it gets a head start
+export const RUNNER_MAX_ENERGY = 2500; // ms of running before the bird is winded
+export const RUNNER_REST_MS = 2600; // how long a winded bird holds — the hunter's window
 
 let nextBirdId = 1;
 
@@ -34,6 +46,9 @@ export function spawnBirds(count: number, rng: RNG = Math.random): Bird[] {
           y: clamp(anchor.y + (rng() * 2 - 1) * COVEY_JITTER, 4, FIELD_BOUNDS.h - 4),
         },
         state: 'hidden',
+        runs: rng() < RUNNER_CHANCE,
+        runEnergy: RUNNER_MAX_ENERGY,
+        restingMs: 0,
       });
     }
     coveyId++;
@@ -57,4 +72,32 @@ export function flushCovey(birds: Bird[], birdId: number): Bird[] {
     }
   }
   return flushed;
+}
+
+/**
+ * Move runner birds. A hidden runner flees the dog while it has energy,
+ * then holds still to recover — that's the dog's (and hunter's) window.
+ * Only the dog spooks them; the hunter walking up doesn't.
+ */
+export function updateBirds(dtMs: number, birds: Bird[], dogPos: Vec2): void {
+  const dt = dtMs / 1000;
+  for (const b of birds) {
+    if (b.state !== 'hidden' || !b.runs) continue;
+    if (b.restingMs > 0) {
+      b.restingMs = Math.max(0, b.restingMs - dtMs);
+      continue;
+    }
+    if (dist(b.pos, dogPos) > RUNNER_FLEE_RADIUS) continue;
+    if (b.runEnergy <= 0) {
+      b.restingMs = RUNNER_REST_MS;
+      b.runEnergy = RUNNER_MAX_ENERGY;
+      continue;
+    }
+    b.runEnergy -= dtMs;
+    const away = Math.atan2(b.pos.y - dogPos.y, b.pos.x - dogPos.x);
+    b.pos = {
+      x: clamp(b.pos.x + Math.cos(away) * RUNNER_SPEED * dt, 4, FIELD_BOUNDS.w - 4),
+      y: clamp(b.pos.y + Math.sin(away) * RUNNER_SPEED * dt, 4, FIELD_BOUNDS.h - 4),
+    };
+  }
 }

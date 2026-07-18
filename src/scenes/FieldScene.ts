@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { playBlip, playFlush, playPoint, unlockAudio } from '../audio';
-import { flushCovey, type Bird } from '../game/birds';
+import { flushCovey, updateBirds, type Bird } from '../game/birds';
 import { Dog, type DogState } from '../game/dog';
 import { COVER_PATCHES, FIELD_BOUNDS } from '../game/field';
 import { dist, moveToward, windArrow } from '../game/math';
@@ -91,6 +91,7 @@ export class FieldScene extends Phaser.Scene {
     const dt = delta / 1000;
 
     const retrievedBefore = this.hunt.birds.filter((b) => b.state === 'retrieved').length;
+    updateBirds(delta, this.hunt.birds, this.dog.pos);
     this.dog.update(delta, this.hunt.birds, {
       hunterPos: this.hunt.hunterPos,
       windAngle: this.hunt.wind,
@@ -109,6 +110,9 @@ export class FieldScene extends Phaser.Scene {
     this.dogSprite.setPosition(this.dog.pos.x, this.dog.pos.y);
     this.dogSprite.setFlipX(Math.cos(this.dog.heading) < 0);
     this.hunterSprite.setPosition(this.hunt.hunterPos.x, this.hunt.hunterPos.y);
+
+    // Debug markers track the birds (runners move).
+    this.birdMarkers.forEach((m, i) => m.setPosition(this.hunt.birds[i].pos.x, this.hunt.birds[i].pos.y));
 
     const pointing = this.dog.state === 'pointing';
     if (pointing) {
