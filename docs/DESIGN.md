@@ -1,0 +1,184 @@
+# Uplandin — Design Plan
+
+A retro upland bird-hunting game: you and your bird dog work real coverts across
+the country. Top-down field view while the dog hunts; Duck Hunt-style shooting
+view when a bird flushes in range. TypeScript + Phaser 3 + Vite, PWA-bound.
+
+This is the living spec. Sections are marked **[built]** or **[planned]**.
+Check items off (and adjust them) as tranches ship.
+
+## Design pillars
+
+- **The dog is the game.** Finding, pointing, holding, retrieving — your job is
+  to read the dog, the wind, and the clock.
+- **Hunting realism over arcade realism.** Wind, nerve, wild flushes, protected
+  birds, puppy mistakes. Target discrimination makes it a hunting game.
+- **Progression you feel.** A level-1 dog is bad in specific, visible ways;
+  a level-10 dog is a partner. Gear changes what questions you can answer.
+- **Everything important is data.** Species, breeds, areas, and gear are
+  configs, not code. Sim logic is pure TypeScript, engine-free, unit-tested.
+
+## Core loop **[built]**
+
+1. Field view (top-down): dog quarters, scents, points. Tap to walk the hunter.
+2. Dog on point → bird nerve drains → walk in before the bird flushes wild.
+3. Bird flushes with hunter in range → shooting view: 2 shells, lead the bird.
+4. Dog retrieves downed birds. Hunt ends → summary → career records.
+
+## Field layer
+
+- World per area is larger than the 480×270 viewport (~1400×800, tuned per
+  area) with a camera following the **hunter** — never the dog. **[planned]**
+- The dog quarters **anchored to the hunter's position** out to its Range
+  radius; big-running breeds work off-screen. **[planned]**
+- **Sprint**: ~2× hunter speed, but loud — birds flush at a larger radius and
+  pointed birds' nerve drains faster while running. **[planned]**
+- Whistle recall **[built]**; whistle only carries ~250px **[planned]** —
+  big-ranging dogs can be out of earshot.
+- Bird stocking is density-per-area so bigger worlds don't feel empty. **[planned]**
+
+## The dog
+
+### Breeds **[planned]** — stats are 1–5 multipliers on `Dog` constants
+
+| Breed | Nose | Speed | Range | Steady | Stamina | Notes |
+|---|---|---|---|---|---|---|
+| German Shorthaired Pointer | 4 | 4 | 3 | 4 | 4 | All-rounder |
+| English Pointer | 4 | 5 | 5 | 4 | 3 | Big-running specialist |
+| English Setter | 4 | 3 | 5 | 5 | 3 | Rock-steady, methodical |
+| German Wirehaired Pointer | 5 | 3 | 3 | 4 | 5 | Rugged, great nose |
+| Vizsla | 3 | 4 | 2 | 3 | 3 | Close-working, fast XP |
+| Pudelpointer | 5 | 3 | 3 | 4 | 4 | Nose + retrieve drive |
+| American Brittany | 3 | 4 | 3 | 3 | 4 | Snappy, closer range |
+| French Brittany | 4 | 3 | 2 | 4 | 4 | Steadier than American |
+| Deutsch-Drahthaar | 5 | 3 | 3 | 4 | 4 | Premium nose, slow XP |
+| Wirehaired Pointing Griffon | 5 | 2 | 2 | 5 | 4 | Deliberate, stays close |
+| Irish Setter | 4 | 5 | 4 | 2 | 2 | Flashy, peaks early, fast XP |
+
+Stat mapping: Nose→scent radius, Speed→ground speed, Range→quarter width,
+Steadiness→mistake resistance, Stamina→hunt-day endurance.
+
+### Leveling & the puppy arc **[planned]**
+
+- Dog XP: held point that produces a flush **+2**, retrieve **+1**, bird downed
+  over their point **+3**. Cap level 10, thresholds ~`20 × level^1.5`.
+- Growth: +5%/level on the breed's two strongest axes, +3% on the rest,
+  hard cap +40% (breeds keep identity).
+- **Nose maturity**: effective scent = breed nose × (0.7 + 0.03 × level).
+- **Creep & bump** (puppy mistakes): on point, a young dog may creep forward;
+  inside bump distance the bird flushes wild, no shot. ~25%/point at level 1
+  for soft breeds → ~2% at level 10.
+- **Point pressure**: bird nerve drains faster under a crowding puppy (~1.4×)
+  and slower under a veteran who gives the bird room (~0.6×). Experienced
+  dogs also point from slightly farther out.
+- **Wind craft**: levels 1–3 the dog gets no upwind scent bonus AND birds
+  within ~30px downwind of it catch its scent and flush wild. 4–7: full
+  upwind bonus, dog-scent radius ~15px. 8+: birds effectively never scent a
+  quartering dog.
+- **Steady to wing & shot**: finished dogs stand through flush + shot and mark
+  the fall; puppies **break chase** and can bump birds they run past while
+  you're in the shooting view.
+- **Fatigue**: work drains stamina; tired dogs are slower *and sloppier*
+  (nose drops a tier, creep chance up). Whistle-to-heel rest recovers some.
+- **Marking**: instant retrieve if the dog watched the fall; otherwise it
+  hunts for the dead bird (short search spiral first).
+
+## The birds **[partially built — species pack planned]**
+
+Species are configs: covey size, runner chance, nerve range, escape-flight
+style, region, protected flag.
+
+Archetypes:
+
+- **Holders**: woodcock, bobwhite + quail species, blue grouse — high nerve,
+  sit tight, explode late. Woodcock: solitary, famously confiding.
+- **Runners**: ringneck, chukar — flee the dog on foot; chukar runs uphill and
+  flushes *downhill*, fast (escape-direction bias).
+- **Wild-flushers**: Hungarian partridge, sharptail, prairie chicken, ruffed
+  grouse — short nerve, flush far out; often no shot offered.
+
+Full list (14): ringneck pheasant, sharptailed grouse, greater prairie
+chicken, woodcock, ruffed grouse, blue grouse, Hungarian partridge, chukar,
+northern bobwhite, and California, Gambel's, scaled, Montezuma (Mearns), and
+mountain quail.
+
+Special rules:
+
+- **Hen/rooster pheasant** **[planned]**: hens flush too but are protected —
+  shooting a hen carries a penalty (XP fine). Visually distinct (tan/short
+  tail vs iridescent/long tail). Roosters cackle on the flush.
+- **Scattered singles** **[planned]**: covey survivors of a shooting
+  opportunity relight in nearby cover and hold very tight ("hunt the
+  singles"). Wild-flushed-too-far birds are gone for good.
+
+## Wind **[built — extensions planned]**
+
+- Fixed direction per hunt, HUD arrow; upwind scent ~1.9×, downwind ~0.35×. **[built]**
+- Per-hunt strength (calm/breezy/strong): strong wind carries scent farther
+  but shortens bird nerve ~20% and widens flush distance. **[planned]**
+- Birds scent the dog downwind (see wind craft). **[planned]**
+
+## Meta layer **[partially built]**
+
+- Title screen, area select, career totals **[built]**.
+- Continental-US travel map, 7 regions **[planned]**:
+  North Woods (ruffed, woodcock) · Prairie Pothole (ringneck, sharptail, Huns,
+  prairie chicken) · Southern Plains (bobwhite — starting region) · Sonoran
+  Desert (Gambel's, scaled, Mearns) · Great Basin rimrock (chukar, Huns) ·
+  High Rockies/Cascades (blue grouse, mountain quail) · Pacific Valleys
+  (California quail).
+- Career save: v1 localStorage totals **[built]**; v2 adds `version`,
+  `kennel: [{id, name, breedId, level, xp}]`, `activeDogId`,
+  `hunter: {level, xp, gear}`, `regionsUnlocked`; tested migration. **[planned]**
+
+## Progression & gear **[planned]**
+
+- Hunter XP: bird downed +1, double on one flush +1 bonus, hunt completed +2.
+- Shotguns (capacity vs swing time):
+
+  | Gun | Shells | Cooldown | Spread | Unlock |
+  |---|---|---|---|---|
+  | Remington 870 pump (start) | 3 | 500ms | 14 | — |
+  | Semi-auto | 3 | 250ms | 14 | hunter lvl 3 |
+  | Over/under | 2 | none | 16 | hunter lvl 5 |
+  | Handmade side-by-side | 2 | none | 18 | hunter lvl 8 |
+
+- **Truck**: unlocks travel beyond the home region. **Dog box**: kennel
+  slots 1→3→5; two-dog hunting needs box tier 2 + hunter level.
+- Dog tracking gear:
+  - Tier 0 **bell**: tinkles while the dog moves, *goes silent on point* —
+    tells you that, not where.
+  - Tier 1 **beeper collar**: beeps on point + rough direction arrow.
+  - Tier 2 **GPS handheld**: edge arrow + live distance.
+  - Tier 3 **GPS + map**: minimap with dog position/status + remote recall at
+    any range.
+- Two-dog hunting: second `Dog` instance; **honoring** — when one dog points,
+  the other stops and backs. **[planned]**
+
+## Tranche sequence
+
+- **T0 — core loop [shipped]**: field + flush scenes, dog AI, coveys, retrieve,
+  audio, wind direction, runners/roading, whistle, bird nerve + wild flushes +
+  range gate, areas as data, title/area select, career v1.
+- **T1 — dogs**: breed configs, puppy selection + naming, dog XP/levels, puppy
+  mistakes (creep/bump, pressure, wind craft, breaking/steady-to-wing),
+  fatigue, marking, save v2 + kennel.
+- **T1.5 — moving world**: bigger per-area worlds, hunter-follow camera,
+  hunter-anchored quartering, sprint, whistle range, bell + basic edge arrow.
+- **T2 — map & species pack 1**: US travel map + 4 starter regions; bobwhite,
+  ringneck w/ hen-rooster rule, ruffed, woodcock, sharptail, Huns; scattered
+  singles; wind strength; escape-flight styles.
+- **T3 — hunter progression**: hunter XP, shotguns, truck/region gating, dog
+  box, GPS tiers.
+- **T4 — species pack 2**: chukar, prairie chicken, blue grouse, the 5 quail
+  species + remaining regions.
+- **T5 — two dogs**: second instance, honoring, shared retrieves.
+- **Anytime**: PWA packaging; art pass (after species settle); distance-scaled
+  shot views (`flushDistance` already plumbed).
+
+## Engineering rules
+
+- `src/game/` stays pure TypeScript — no Phaser imports; unit-tested with
+  Vitest. Scenes are thin rendering/input shells.
+- New mechanics ship with tests and a playable build every commit.
+- Tuning lives in named constants at the top of the relevant module.
