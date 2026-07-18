@@ -3,7 +3,7 @@ import { FIELD_BOUNDS } from './field';
 import { clamp, dist, turnToward } from './math';
 import type { RNG, Vec2 } from './types';
 
-export type DogState = 'quartering' | 'tracking' | 'pointing' | 'retrieving';
+export type DogState = 'quartering' | 'tracking' | 'pointing' | 'retrieving' | 'recalled';
 
 export const DOG_SPEED = 75; // px/s while quartering
 export const TRACKING_SPEED = 90; // px/s once it has the scent
@@ -17,12 +17,16 @@ const EDGE_TURN_RATE = 2.4; // rad/s pulled back toward the middle of the field
 const AVOID_HUNTER_RADIUS = 28; // won't point a bird sitting right on the hunter
 const RETRIEVE_RANGE = 6; // close enough to pick a downed bird up
 const RETRIEVE_HOLD_MS = 700; // mouthing the bird takes a moment
+const RECALL_SPEED = 115; // px/s coming back to the whistle
+const RECALL_ARRIVE = 10; // close enough to the hunter to count as arrived
 
 /** Environment the dog is hunting in for this tick. */
 export interface DogEnv {
   hunterPos?: Vec2;
   /** Direction the wind blows TOWARD (radians, screen coords). Undefined = calm. */
   windAngle?: number;
+  /** A whistle blast this tick. Never breaks a point or a retrieve. */
+  recall?: boolean;
 }
 
 /**
@@ -60,6 +64,20 @@ export class Dog {
 
   update(dtMs: number, birds: Bird[], env: DogEnv = {}): void {
     const dt = dtMs / 1000;
+
+    if (env.recall && (this.state === 'quartering' || this.state === 'tracking')) {
+      this.state = 'recalled';
+    }
+
+    if (this.state === 'recalled') {
+      if (!env.hunterPos || dist(this.pos, env.hunterPos) <= RECALL_ARRIVE) {
+        this.state = 'quartering';
+        return;
+      }
+      this.heading = Math.atan2(env.hunterPos.y - this.pos.y, env.hunterPos.x - this.pos.x);
+      this.advance(this.heading, RECALL_SPEED * dt);
+      return;
+    }
 
     if (this.state === 'pointing') {
       const pointed = birds.find((b) => b.id === this.pointedBirdId);

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Bird } from '../src/game/birds';
 import { Dog, SCENT_RADIUS, scentRange, type DogEnv } from '../src/game/dog';
 import { FIELD_BOUNDS } from '../src/game/field';
+import { dist } from '../src/game/math';
 
 const rng = () => 0.5;
 
@@ -89,6 +90,50 @@ describe('Dog', () => {
     // and points it once the hunter moves away
     for (let i = 0; i < 400 && dog.state !== 'pointing'; i++) dog.update(50, [bird]);
     expect(dog.state).toBe('pointing');
+  });
+
+  describe('whistle recall', () => {
+    it('comes back to the hunter and resumes hunting', () => {
+      const dog = new Dog({ x: 60, y: 60 }, rng);
+      const hunter = { x: 300, y: 60 };
+      dog.update(50, [], { hunterPos: hunter, recall: true });
+      expect(dog.state).toBe('recalled');
+      for (let i = 0; i < 300 && dog.state === 'recalled'; i++) dog.update(50, [], { hunterPos: hunter });
+      expect(dog.state).toBe('quartering');
+      expect(dist(dog.pos, hunter)).toBeLessThanOrEqual(12);
+    });
+
+    it('ignores birds on the way back', () => {
+      const dog = new Dog({ x: 60, y: 60 }, rng);
+      const hunter = { x: 300, y: 60 };
+      const bird = birdAt(150, 60); // right on the path home
+      dog.update(50, [bird], { hunterPos: hunter, recall: true });
+      const seen = new Set<string>();
+      for (let i = 0; i < 300 && dog.state === 'recalled'; i++) {
+        dog.update(50, [bird], { hunterPos: hunter });
+        seen.add(dog.state);
+      }
+      expect(seen.has('tracking')).toBe(false);
+      expect(seen.has('pointing')).toBe(false);
+    });
+
+    it('never breaks a point', () => {
+      const dog = new Dog({ x: 100, y: 100 }, rng);
+      const bird = birdAt(108, 100);
+      run(dog, [bird], 400);
+      expect(dog.state).toBe('pointing');
+      dog.update(50, [bird], { hunterPos: { x: 300, y: 300 }, recall: true });
+      expect(dog.state).toBe('pointing');
+    });
+
+    it('never interrupts a retrieve', () => {
+      const dog = new Dog({ x: 100, y: 100 }, rng);
+      const bird = birdAt(160, 100, { id: 7, coveyId: 0, state: 'downed' });
+      run(dog, [bird], 5);
+      expect(dog.state).toBe('retrieving');
+      dog.update(50, [bird], { hunterPos: { x: 300, y: 300 }, recall: true });
+      expect(dog.state).toBe('retrieving');
+    });
   });
 
   describe('wind and scent', () => {

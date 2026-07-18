@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { playBlip, playFlush, playPoint, unlockAudio } from '../audio';
+import { playBlip, playFlush, playPoint, playWhistle, unlockAudio } from '../audio';
 import { flushCovey, updateBirds, type Bird } from '../game/birds';
 import { Dog, type DogState } from '../game/dog';
 import { COVER_PATCHES, FIELD_BOUNDS } from '../game/field';
@@ -15,6 +15,9 @@ const COLOR_COVER = 0x2f6b28;
 const COLOR_DOG = 0xf2e3c6;
 const COLOR_HUNTER = 0xd6402c;
 
+// Whistle button zone (bottom-right corner). Taps here don't move the hunter.
+const WHISTLE_BTN = { x: 452, y: 246, w: 48, h: 20 };
+
 /**
  * Top-down view of the field. The dog quarters on its own; tap to walk your
  * hunter. Get close to a bird the dog is pointing and it flushes.
@@ -27,6 +30,7 @@ export class FieldScene extends Phaser.Scene {
   private flushing = false;
   private summaryShown = false;
   private prevDogState: DogState = 'quartering';
+  private recallPending = false;
 
   private dogSprite!: Phaser.GameObjects.Sprite;
   private hunterSprite!: Phaser.GameObjects.Sprite;
@@ -45,6 +49,7 @@ export class FieldScene extends Phaser.Scene {
     this.hunterTarget = null;
     this.summaryShown = false;
     this.prevDogState = this.dog.state;
+    this.recallPending = false;
 
     this.makeTextures();
     this.drawField();
@@ -75,6 +80,23 @@ export class FieldScene extends Phaser.Scene {
       });
     });
 
+    // Whistle button + keyboard shortcut call the dog back to the hunter.
+    const btn = this.add
+      .rectangle(WHISTLE_BTN.x, WHISTLE_BTN.y, WHISTLE_BTN.w, WHISTLE_BTN.h, 0x101410, 0.65)
+      .setDepth(15)
+      .setInteractive();
+    this.add
+      .text(WHISTLE_BTN.x, WHISTLE_BTN.y, 'whistle', {
+        fontFamily: 'monospace',
+        fontSize: '8px',
+        color: '#dfe9d8',
+      })
+      .setOrigin(0.5)
+      .setDepth(16);
+    btn.on('pointerdown', () => this.whistle());
+    this.input.keyboard?.on('keydown-W', () => this.whistle());
+    this.input.keyboard?.on('keydown-SPACE', () => this.whistle());
+
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       unlockAudio();
       if (this.summaryShown) {
@@ -82,8 +104,24 @@ export class FieldScene extends Phaser.Scene {
         return;
       }
       if (this.flushing) return;
+      // Taps on the whistle button are commands, not walk orders.
+      if (
+        p.worldX > WHISTLE_BTN.x - WHISTLE_BTN.w / 2 &&
+        p.worldX < WHISTLE_BTN.x + WHISTLE_BTN.w / 2 &&
+        p.worldY > WHISTLE_BTN.y - WHISTLE_BTN.h / 2 &&
+        p.worldY < WHISTLE_BTN.y + WHISTLE_BTN.h / 2
+      ) {
+        return;
+      }
       this.hunterTarget = { x: p.worldX, y: p.worldY };
     });
+  }
+
+  private whistle(): void {
+    unlockAudio();
+    if (this.summaryShown || this.flushing) return;
+    playWhistle();
+    this.recallPending = true;
   }
 
   update(_time: number, delta: number): void {
@@ -92,9 +130,12 @@ export class FieldScene extends Phaser.Scene {
 
     const retrievedBefore = this.hunt.birds.filter((b) => b.state === 'retrieved').length;
     updateBirds(delta, this.hunt.birds, this.dog.pos);
+    const recall = this.recallPending;
+    this.recallPending = false;
     this.dog.update(delta, this.hunt.birds, {
       hunterPos: this.hunt.hunterPos,
       windAngle: this.hunt.wind,
+      recall,
     });
     this.hunt.dogPos = { ...this.dog.pos };
 

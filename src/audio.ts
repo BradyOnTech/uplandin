@@ -101,3 +101,9 @@ export function playBlip(): void {
   tone(660, 0, 0.07, { type: 'square', volume: 0.08 });
   tone(990, 0.08, 0.09, { type: 'square', volume: 0.08 });
 }
+
+/** Handler's whistle: two sliding notes. */
+export function playWhistle(): void {
+  tone(700, 0, 0.16, { volume: 0.22, slideTo: 1250 });
+  tone(1250, 0.18, 0.22, { volume: 0.22, slideTo: 850 });
+}
