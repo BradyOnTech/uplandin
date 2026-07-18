@@ -3,7 +3,7 @@ import { FIELD_BOUNDS } from './field';
 import { clamp, dist, turnToward } from './math';
 import type { RNG, Vec2 } from './types';
 
-export type DogState = 'quartering' | 'tracking' | 'pointing';
+export type DogState = 'quartering' | 'tracking' | 'pointing' | 'retrieving';
 
 export const DOG_SPEED = 75; // px/s while quartering
 export const TRACKING_SPEED = 90; // px/s once it has the scent
@@ -15,6 +15,8 @@ const WEAVE_RATE = 2.2; // how fast the weave swings
 const EDGE_MARGIN = 14;
 const EDGE_TURN_RATE = 2.4; // rad/s pulled back toward the middle of the field
 const AVOID_HUNTER_RADIUS = 28; // won't point a bird sitting right on the hunter
+const RETRIEVE_RANGE = 6; // close enough to pick a downed bird up
+const RETRIEVE_HOLD_MS = 700; // mouthing the bird takes a moment
 
 /**
  * Pure bird-dog AI. No Phaser in here — feed it birds and a timestep,
@@ -27,6 +29,8 @@ export class Dog {
   /** Base travel direction; the quartering weave oscillates around this. */
   heading: number;
   private weavePhase = 0;
+  private retrieveTargetId: number | null = null;
+  private retrieveHoldMs = 0;
 
   constructor(public pos: Vec2, rng: RNG = Math.random) {
     this.heading = rng() * Math.PI * 2;
@@ -43,6 +47,39 @@ export class Dog {
         this.pointedBirdId = null;
       }
       return; // holding the point: don't move
+    }
+
+    if (this.state === 'retrieving') {
+      const target = birds.find((b) => b.id === this.retrieveTargetId);
+      if (!target || target.state !== 'downed') {
+        this.state = 'quartering';
+        this.retrieveTargetId = null;
+        this.retrieveHoldMs = 0;
+        return;
+      }
+      if (dist(this.pos, target.pos) > RETRIEVE_RANGE) {
+        this.retrieveHoldMs = 0;
+        this.heading = Math.atan2(target.pos.y - this.pos.y, target.pos.x - this.pos.x);
+        this.advance(this.heading, TRACKING_SPEED * dt);
+      } else {
+        this.retrieveHoldMs += dtMs;
+        if (this.retrieveHoldMs >= RETRIEVE_HOLD_MS) {
+          target.state = 'retrieved';
+          this.state = 'quartering';
+          this.retrieveTargetId = null;
+          this.retrieveHoldMs = 0;
+        }
+      }
+      return;
+    }
+
+    // A bird on the ground outranks fresh scent: fetch it first.
+    const downed = this.nearestBird(birds, 'downed');
+    if (downed) {
+      this.state = 'retrieving';
+      this.retrieveTargetId = downed.id;
+      this.retrieveHoldMs = 0;
+      return;
     }
 
     const bird = this.nearestHiddenBird(birds, hunterPos);
@@ -63,6 +100,20 @@ export class Dog {
     this.steerOffEdges(dt);
     const weave = Math.sin(this.weavePhase) * WEAVE_AMPLITUDE;
     this.advance(this.heading + weave, DOG_SPEED * dt);
+  }
+
+  private nearestBird(birds: Bird[], state: Bird['state']): Bird | null {
+    let best: Bird | null = null;
+    let bestDist = Infinity;
+    for (const b of birds) {
+      if (b.state !== state) continue;
+      const d = dist(this.pos, b.pos);
+      if (d < bestDist) {
+        best = b;
+        bestDist = d;
+      }
+    }
+    return best;
   }
 
   private nearestHiddenBird(birds: Bird[], hunterPos?: Vec2): Bird | null {

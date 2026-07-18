@@ -2,7 +2,7 @@ import { COVER_PATCHES, FIELD_BOUNDS, randomPointIn } from './field';
 import { clamp } from './math';
 import type { RNG, Vec2 } from './types';
 
-export type BirdState = 'hidden' | 'flushed' | 'downed' | 'escaped';
+export type BirdState = 'hidden' | 'flushed' | 'downed' | 'escaped' | 'retrieved';
 
 export interface Bird {
   id: number;

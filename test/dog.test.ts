@@ -53,6 +53,23 @@ describe('Dog', () => {
     expect(dog.state).toBe('quartering');
   });
 
+  it('retrieves a downed bird, then casts off', () => {
+    const dog = new Dog({ x: 100, y: 100 }, rng);
+    const bird: Bird = { id: 7, coveyId: 0, pos: { x: 160, y: 100 }, state: 'downed' };
+    run(dog, [bird], 400);
+    expect(bird.state).toBe('retrieved');
+    expect(dog.state).toBe('quartering');
+  });
+
+  it('fetches a downed bird before working fresh scent', () => {
+    const dog = new Dog({ x: 100, y: 100 }, rng);
+    const downedBird: Bird = { id: 7, coveyId: 0, pos: { x: 160, y: 100 }, state: 'downed' };
+    const hiddenBird: Bird = { id: 8, coveyId: 1, pos: { x: 120, y: 100 }, state: 'hidden' };
+    run(dog, [downedBird, hiddenBird], 40); // reach + fetch the downed bird
+    expect(downedBird.state).toBe('retrieved');
+    expect(hiddenBird.state).toBe('hidden'); // untouched while retrieving
+  });
+
   it('won’t point a bird sitting right on the hunter', () => {
     const dog = new Dog({ x: 100, y: 100 }, rng);
     const bird = birdAt(120, 100); // within the dog’s scent range

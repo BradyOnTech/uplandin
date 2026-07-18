@@ -24,5 +24,6 @@ describe('hunt bookkeeping', () => {
 
   it('is complete when every bird is resolved', () => {
     expect(huntComplete(huntWith(['downed', 'escaped']))).toBe(true);
+    expect(huntComplete(huntWith(['retrieved', 'escaped']))).toBe(true);
   });
 });
