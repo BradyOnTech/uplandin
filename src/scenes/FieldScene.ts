@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import { playBlip, playFlush, playPoint, playWhistle, unlockAudio } from '../audio';
 import { AREAS, getArea, type AreaConfig } from '../game/areas';
 import { flushCovey, updateBirdNerve, updateBirds, type Bird } from '../game/birds';
-import { loadCareer, recordHunt, saveCareer } from '../game/career';
+import { getBreed } from '../game/breeds';
+import { activeDog, loadCareer, recordHunt, saveCareer } from '../game/career';
 import { Dog, type DogState } from '../game/dog';
 import { FIELD_BOUNDS } from '../game/field';
 import { dist, moveToward, windArrow } from '../game/math';
@@ -47,7 +48,12 @@ export class FieldScene extends Phaser.Scene {
   create(data: { hunt?: HuntState; areaId?: string }): void {
     this.area = data.hunt ? getArea(data.hunt.areaId) : data.areaId ? getArea(data.areaId) : AREAS[0];
     this.hunt = data.hunt ?? createHunt(this.area);
-    this.dog = new Dog({ ...this.hunt.dogPos });
+    const kennelDog = activeDog(loadCareer());
+    this.dog = new Dog(
+      { ...this.hunt.dogPos },
+      { breed: kennelDog ? getBreed(kennelDog.breedId) : getBreed('gsp'), level: kennelDog?.level ?? 1 },
+      Math.random,
+    );
     this.flushing = false;
     this.hunterTarget = null;
     this.summaryShown = false;
