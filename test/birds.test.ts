@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   flushCovey,
+  NERVE_MAX_MS,
+  NERVE_MIN_MS,
   RUNNER_MAX_ENERGY,
+  RUNNER_NERVE_FACTOR,
   spawnBirds,
+  updateBirdNerve,
   updateBirds,
   type Bird,
 } from '../src/game/birds';
@@ -55,6 +59,7 @@ function bird(over: Partial<Bird>): Bird {
     runs: false,
     runEnergy: 0,
     restingMs: 0,
+    nerveMs: 5000,
     ...over,
   };
 }
@@ -120,5 +125,40 @@ describe('updateBirds (runners)', () => {
     const b = bird({ pos: { x: 8, y: 135 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
     for (let i = 0; i < 40; i++) updateBirds(50, [b], { x: 30, y: 135 });
     expect(b.pos.x).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('bird nerve', () => {
+  it('assigns every bird nerve at spawn, runners less than holders', () => {
+    const birds = spawnBirds(20, lcg(7));
+    expect(birds.some((b) => b.runs)).toBe(true); // sample actually has runners
+    for (const b of birds) {
+      if (b.runs) {
+        expect(b.nerveMs).toBeLessThanOrEqual(NERVE_MAX_MS * RUNNER_NERVE_FACTOR + 1e-9);
+      } else {
+        expect(b.nerveMs).toBeGreaterThanOrEqual(NERVE_MIN_MS);
+        expect(b.nerveMs).toBeLessThanOrEqual(NERVE_MAX_MS);
+      }
+    }
+  });
+
+  it('drains only the pointed bird and reports it when nerve runs out', () => {
+    const a = bird({ id: 1, nerveMs: 300 });
+    const b = bird({ id: 2, nerveMs: 300 });
+    expect(updateBirdNerve(100, [a, b], 1)).toBeNull();
+    expect(a.nerveMs).toBe(200);
+    expect(b.nerveMs).toBe(300); // unpointed bird is unbothered
+    expect(updateBirdNerve(250, [a, b], 1)).toBe(a);
+  });
+
+  it('does nothing when nothing is pointed', () => {
+    const a = bird({ id: 1, nerveMs: 100 });
+    expect(updateBirdNerve(200, [a], null)).toBeNull();
+    expect(a.nerveMs).toBe(100);
+  });
+
+  it('ignores a pointed bird that is no longer hidden', () => {
+    const a = bird({ id: 1, nerveMs: 100, state: 'flushed' });
+    expect(updateBirdNerve(200, [a], 1)).toBeNull();
   });
 });

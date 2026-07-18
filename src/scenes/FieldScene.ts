@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { playBlip, playFlush, playPoint, playWhistle, unlockAudio } from '../audio';
-import { flushCovey, updateBirds, type Bird } from '../game/birds';
+import { flushCovey, NERVE_MAX_MS, updateBirdNerve, updateBirds, type Bird } from '../game/birds';
 import { Dog, type DogState } from '../game/dog';
 import { COVER_PATCHES, FIELD_BOUNDS } from '../game/field';
 import { dist, moveToward, windArrow } from '../game/math';
@@ -9,6 +9,7 @@ import type { Vec2 } from '../game/types';
 
 const HUNTER_SPEED = 55; // px/s
 const FLUSH_RADIUS = 22; // hunter this close to a pointed bird flushes it
+const SHOT_RANGE = 40; // max hunter distance for a shooting chance on a wild flush
 
 const COLOR_GRASS = 0x4a8c3f;
 const COLOR_COVER = 0x2f6b28;
@@ -124,7 +125,7 @@ export class FieldScene extends Phaser.Scene {
     this.recallPending = true;
   }
 
-  update(_time: number, delta: number): void {
+  update(time: number, delta: number): void {
     if (this.flushing) return;
     const dt = delta / 1000;
 
@@ -143,6 +144,13 @@ export class FieldScene extends Phaser.Scene {
     this.prevDogState = this.dog.state;
     if (this.hunt.birds.filter((b) => b.state === 'retrieved').length > retrievedBefore) playBlip();
 
+    // A pointed bird's nerve is running out the whole time.
+    const wild = updateBirdNerve(delta, this.hunt.birds, this.dog.pointedBirdId);
+    if (wild) {
+      this.flush(wild, true);
+      return;
+    }
+
     if (this.hunterTarget) {
       this.hunt.hunterPos = moveToward(this.hunt.hunterPos, this.hunterTarget, HUNTER_SPEED * dt);
       if (dist(this.hunt.hunterPos, this.hunterTarget) < 1.5) this.hunterTarget = null;
@@ -158,11 +166,17 @@ export class FieldScene extends Phaser.Scene {
     const pointing = this.dog.state === 'pointing';
     if (pointing) {
       this.dogSprite.setTint(0xffd23f);
+      // The point marker shows the bird's nerve: gold → orange → blinking red.
+      const pointed = this.hunt.birds.find((b) => b.id === this.dog.pointedBirdId);
+      const nerveFrac = pointed ? Math.max(0, pointed.nerveMs / NERVE_MAX_MS) : 1;
+      this.pointMarker.setColor(nerveFrac > 0.6 ? '#ffd23f' : nerveFrac > 0.3 ? '#ff8c3f' : '#ff4040');
+      const visible = nerveFrac >= 0.3 || Math.floor(time / 120) % 2 === 0;
+      this.pointMarker.setVisible(visible);
       this.pointMarker.setPosition(this.dog.pos.x, this.dog.pos.y - 8);
     } else {
       this.dogSprite.clearTint();
+      this.pointMarker.setVisible(false);
     }
-    this.pointMarker.setVisible(pointing);
 
     this.hud.setText(
       `wind ${windArrow(this.hunt.wind)}   dog: ${this.dog.state}   birds: ${birdsRemaining(this.hunt)}   downed: ${this.hunt.downed}   lost: ${this.hunt.escaped}`,
@@ -204,24 +218,51 @@ export class FieldScene extends Phaser.Scene {
     const bird = this.hunt.birds.find((b) => b.id === this.dog.pointedBirdId);
     if (!bird || bird.state !== 'hidden') return;
     if (dist(this.hunt.hunterPos, bird.pos) <= FLUSH_RADIUS) {
-      this.flush(bird);
+      this.flush(bird, false);
     }
   }
 
-  private flush(bird: Bird): void {
+  private flush(bird: Bird, wild: boolean): void {
     this.flushing = true;
     const flushed = flushCovey(this.hunt.birds, bird.id);
     playFlush();
     this.cameras.main.flash(180, 255, 244, 214);
+
+    const hunterDist = dist(this.hunt.hunterPos, bird.pos);
+    const label = wild ? 'FLUSHED WILD!' : flushed.length > 1 ? 'COVEY FLUSH!' : 'FLUSH!';
     this.add
-      .text(bird.pos.x, bird.pos.y - 10, flushed.length > 1 ? 'COVEY FLUSH!' : 'FLUSH!', {
+      .text(bird.pos.x, bird.pos.y - 10, label, {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#ffffff',
+        color: wild ? '#ff8c3f' : '#ffffff',
       })
       .setOrigin(0.5);
-    this.time.delayedCall(450, () => {
-      this.scene.start('FlushScene', { hunt: this.hunt, birdIds: flushed.map((b) => b.id) });
+
+    if (hunterDist <= SHOT_RANGE) {
+      this.time.delayedCall(450, () => {
+        this.scene.start('FlushScene', {
+          hunt: this.hunt,
+          birdIds: flushed.map((b) => b.id),
+          flushDistance: hunterDist, // groundwork for distance-scaled shot views
+        });
+      });
+      return;
+    }
+
+    // Too far off: the birds are gone before the hunter can mount the gun.
+    for (const b of flushed) {
+      b.state = 'escaped';
+      this.hunt.escaped++;
+    }
+    this.add
+      .text(bird.pos.x, bird.pos.y + 2, 'too far off for a shot', {
+        fontFamily: 'monospace',
+        fontSize: '8px',
+        color: '#ffb0a0',
+      })
+      .setOrigin(0.5);
+    this.time.delayedCall(900, () => {
+      this.flushing = false;
     });
   }
 

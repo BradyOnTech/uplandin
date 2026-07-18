@@ -7,7 +7,17 @@ import { dist } from '../src/game/math';
 const rng = () => 0.5;
 
 function birdAt(x: number, y: number, over: Partial<Bird> = {}): Bird {
-  return { id: 1, coveyId: 1, pos: { x, y }, state: 'hidden', runs: false, runEnergy: 0, restingMs: 0, ...over };
+  return {
+    id: 1,
+    coveyId: 1,
+    pos: { x, y },
+    state: 'hidden',
+    runs: false,
+    runEnergy: 0,
+    restingMs: 0,
+    nerveMs: 5000,
+    ...over,
+  };
 }
 
 function run(dog: Dog, birds: Bird[], steps: number, env: DogEnv = {}, dtMs = 50): void {

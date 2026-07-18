@@ -12,6 +12,7 @@ function huntWith(states: Bird['state'][]): HuntState {
       runs: false,
       runEnergy: 0,
       restingMs: 0,
+      nerveMs: 5000,
     })),
     dogPos: { x: 0, y: 0 },
     hunterPos: { x: 0, y: 0 },

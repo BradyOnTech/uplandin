@@ -38,7 +38,7 @@ export class FlushScene extends Phaser.Scene {
     super('FlushScene');
   }
 
-  create(data: { hunt: HuntState; birdIds: number[] }): void {
+  create(data: { hunt: HuntState; birdIds: number[]; flushDistance?: number }): void {
     this.hunt = data.hunt;
     this.shells = SHELLS;
     this.resolved = false;
