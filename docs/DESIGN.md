@@ -39,7 +39,7 @@ Check items off (and adjust them) as tranches ship.
 
 ## The dog
 
-### Breeds **[planned]** — stats are 1–5 multipliers on `Dog` constants
+### Breeds **[built]** — stats are 1–5 multipliers on `Dog` constants
 
 | Breed | Nose | Speed | Range | Steady | Stamina | Notes |
 |---|---|---|---|---|---|---|
@@ -58,7 +58,7 @@ Check items off (and adjust them) as tranches ship.
 Stat mapping: Nose→scent radius, Speed→ground speed, Range→quarter width,
 Steadiness→mistake resistance, Stamina→hunt-day endurance.
 
-### Leveling & the puppy arc **[planned]**
+### Leveling & the puppy arc **[built]**
 
 - Dog XP: held point that produces a flush **+2**, retrieve **+1**, bird downed
   over their point **+3**. Cap level 10, thresholds ~`20 × level^1.5`.
@@ -79,9 +79,10 @@ Steadiness→mistake resistance, Stamina→hunt-day endurance.
   the fall; puppies **break chase** and can bump birds they run past while
   you're in the shooting view.
 - **Fatigue**: work drains stamina; tired dogs are slower *and sloppier*
-  (nose drops a tier, creep chance up). Whistle-to-heel rest recovers some.
-- **Marking**: instant retrieve if the dog watched the fall; otherwise it
-  hunts for the dead bird (short search spiral first).
+  (nose drops a tier, creep chance up). Recall ends at heel; the dog recovers
+  there until a second whistle casts it off again.
+- **Marking**: instant retrieve if the dog watched the fall; breaking chase
+  means the next retrieve needs a search first.
 
 ## The birds **[partially built — species pack planned]**
 
@@ -127,9 +128,10 @@ Special rules:
   Desert (Gambel's, scaled, Mearns) · Great Basin rimrock (chukar, Huns) ·
   High Rockies/Cascades (blue grouse, mountain quail) · Pacific Valleys
   (California quail).
-- Career save: v1 localStorage totals **[built]**; v2 adds `version`,
-  `kennel: [{id, name, breedId, level, xp}]`, `activeDogId`,
-  `hunter: {level, xp, gear}`, `regionsUnlocked`; tested migration. **[planned]**
+- Career save: v2 localStorage with `version`, kennel, active dog, hunter
+  profile, and unlocked regions; v1 saves migrate. **[built]**
+- First-run flow: breed select (stat bars) + puppy naming, then the kennel
+  drives every hunt. **[built]**
 
 ## Progression & gear **[planned]**
 
@@ -160,9 +162,9 @@ Special rules:
 - **T0 — core loop [shipped]**: field + flush scenes, dog AI, coveys, retrieve,
   audio, wind direction, runners/roading, whistle, bird nerve + wild flushes +
   range gate, areas as data, title/area select, career v1.
-- **T1 — dogs**: breed configs, puppy selection + naming, dog XP/levels, puppy
-  mistakes (creep/bump, pressure, wind craft, breaking/steady-to-wing),
-  fatigue, marking, save v2 + kennel.
+- **T1 — dogs [shipped]**: breed configs, puppy selection + naming, dog
+  XP/levels, puppy mistakes (creep/bump, pressure, wind craft,
+  breaking/steady-to-wing), fatigue/heel, marking, save v2 + kennel.
 - **T1.5 — moving world**: bigger per-area worlds, hunter-follow camera,
   hunter-anchored quartering, sprint, whistle range, bell + basic edge arrow.
 - **T2 — map & species pack 1**: US travel map + 4 starter regions; bobwhite,
