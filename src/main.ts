@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
+import { AreaScene } from './scenes/AreaScene';
 import { FieldScene } from './scenes/FieldScene';
 import { FlushScene } from './scenes/FlushScene';
+import { TitleScene } from './scenes/TitleScene';
 
 /** Internal resolution — deliberately tiny, scaled up with nearest-neighbor for the retro look. */
 export const GAME_WIDTH = 480;
@@ -17,7 +19,7 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [FieldScene, FlushScene],
+  scene: [TitleScene, AreaScene, FieldScene, FlushScene],
 };
 
 const game = new Phaser.Game(config);

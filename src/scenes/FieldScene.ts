@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { playBlip, playFlush, playPoint, playWhistle, unlockAudio } from '../audio';
 import { AREAS, getArea, type AreaConfig } from '../game/areas';
 import { flushCovey, updateBirdNerve, updateBirds, type Bird } from '../game/birds';
+import { loadCareer, recordHunt, saveCareer } from '../game/career';
 import { Dog, type DogState } from '../game/dog';
 import { FIELD_BOUNDS } from '../game/field';
 import { dist, moveToward, windArrow } from '../game/math';
@@ -101,10 +102,8 @@ export class FieldScene extends Phaser.Scene {
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       unlockAudio();
-      if (this.summaryShown) {
-        this.scene.restart({ areaId: this.area.id });
-        return;
-      }
+      // Summary buttons handle their own taps.
+      if (this.summaryShown) return;
       if (this.flushing) return;
       // Taps on the whistle button are commands, not walk orders.
       if (
@@ -192,26 +191,42 @@ export class FieldScene extends Phaser.Scene {
 
   private showSummary(): void {
     this.summaryShown = true;
+    saveCareer(recordHunt(loadCareer(), this.hunt.areaId, this.hunt.downed, this.hunt.escaped));
+
     const cx = FIELD_BOUNDS.w / 2;
     const cy = FIELD_BOUNDS.h / 2;
     this.add.rectangle(cx, cy, FIELD_BOUNDS.w, FIELD_BOUNDS.h, 0x000000, 0.65).setDepth(20);
     const total = this.hunt.birds.length;
     this.add
-      .text(cx, cy - 24, 'HUNT OVER', { fontFamily: 'monospace', fontSize: '16px', color: '#ffd23f' })
+      .text(cx, cy - 36, 'HUNT OVER', { fontFamily: 'monospace', fontSize: '16px', color: '#ffd23f' })
       .setOrigin(0.5)
       .setDepth(21);
     this.add
-      .text(cx, cy + 2, `birds downed: ${this.hunt.downed} / ${total}   lost: ${this.hunt.escaped}`, {
+      .text(cx, cy - 10, `${this.area.name} — downed: ${this.hunt.downed} / ${total}   lost: ${this.hunt.escaped}`, {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#ffffff',
       })
       .setOrigin(0.5)
       .setDepth(21);
+    this.summaryButton(cx - 62, cy + 30, 'hunt again', () => this.scene.restart({ areaId: this.area.id }));
+    this.summaryButton(cx + 62, cy + 30, 'menu', () => this.scene.start('TitleScene'));
+  }
+
+  private summaryButton(x: number, y: number, label: string, onTap: () => void): void {
     this.add
-      .text(cx, cy + 26, 'tap to hunt again', { fontFamily: 'monospace', fontSize: '8px', color: '#dfe9d8' })
+      .rectangle(x, y, 104, 20, 0x101410, 0.85)
+      .setDepth(21)
+      .setInteractive()
+      .on('pointerdown', () => {
+        unlockAudio();
+        playBlip();
+        onTap();
+      });
+    this.add
+      .text(x, y, label, { fontFamily: 'monospace', fontSize: '8px', color: '#dfe9d8' })
       .setOrigin(0.5)
-      .setDepth(21);
+      .setDepth(22);
   }
 
   private checkFlush(): void {
