@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
+import { playBlip, playFlush, playPoint, unlockAudio } from '../audio';
 import { flushCovey, type Bird } from '../game/birds';
-import { Dog } from '../game/dog';
+import { Dog, type DogState } from '../game/dog';
 import { COVER_PATCHES, FIELD_BOUNDS } from '../game/field';
 import { dist, moveToward } from '../game/math';
 import { birdsRemaining, createHunt, huntComplete, type HuntState } from '../game/state';
@@ -25,6 +26,7 @@ export class FieldScene extends Phaser.Scene {
   private hunterTarget: Vec2 | null = null;
   private flushing = false;
   private summaryShown = false;
+  private prevDogState: DogState = 'quartering';
 
   private dogSprite!: Phaser.GameObjects.Sprite;
   private hunterSprite!: Phaser.GameObjects.Sprite;
@@ -42,6 +44,7 @@ export class FieldScene extends Phaser.Scene {
     this.flushing = false;
     this.hunterTarget = null;
     this.summaryShown = false;
+    this.prevDogState = this.dog.state;
 
     this.makeTextures();
     this.drawField();
@@ -73,6 +76,7 @@ export class FieldScene extends Phaser.Scene {
     });
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      unlockAudio();
       if (this.summaryShown) {
         this.scene.restart({ hunt: createHunt() });
         return;
@@ -86,8 +90,13 @@ export class FieldScene extends Phaser.Scene {
     if (this.flushing) return;
     const dt = delta / 1000;
 
+    const retrievedBefore = this.hunt.birds.filter((b) => b.state === 'retrieved').length;
     this.dog.update(delta, this.hunt.birds, this.hunt.hunterPos);
     this.hunt.dogPos = { ...this.dog.pos };
+
+    if (this.dog.state === 'pointing' && this.prevDogState !== 'pointing') playPoint();
+    this.prevDogState = this.dog.state;
+    if (this.hunt.birds.filter((b) => b.state === 'retrieved').length > retrievedBefore) playBlip();
 
     if (this.hunterTarget) {
       this.hunt.hunterPos = moveToward(this.hunt.hunterPos, this.hunterTarget, HUNTER_SPEED * dt);
@@ -154,6 +163,7 @@ export class FieldScene extends Phaser.Scene {
   private flush(bird: Bird): void {
     this.flushing = true;
     const flushed = flushCovey(this.hunt.birds, bird.id);
+    playFlush();
     this.cameras.main.flash(180, 255, 244, 214);
     this.add
       .text(bird.pos.x, bird.pos.y - 10, flushed.length > 1 ? 'COVEY FLUSH!' : 'FLUSH!', {

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { playShot, playThud, unlockAudio } from '../audio';
 import { dist } from '../game/math';
 import { escapeVelocity, hitTest } from '../game/shot';
 import type { HuntState } from '../game/state';
@@ -80,7 +81,10 @@ export class FlushScene extends Phaser.Scene {
       { fontFamily: 'monospace', fontSize: '8px', color: '#ffffff' },
     );
 
-    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => this.shoot(p));
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      unlockAudio();
+      this.shoot(p);
+    });
   }
 
   update(_time: number, delta: number): void {
@@ -104,6 +108,7 @@ export class FlushScene extends Phaser.Scene {
         if (b.sprite.y >= GROUND_Y) {
           b.sprite.y = GROUND_Y;
           b.status = 'done';
+          playThud();
         }
       }
     }
@@ -118,6 +123,7 @@ export class FlushScene extends Phaser.Scene {
     if (this.resolved || this.shells <= 0) return;
     this.shells--;
     this.shellPips[this.shells].setFillStyle(0x333333);
+    playShot();
 
     const aim = { x: p.worldX, y: p.worldY - (p.wasTouch ? TOUCH_AIM_OFFSET : 0) };
     this.cameras.main.shake(70, 0.004);
