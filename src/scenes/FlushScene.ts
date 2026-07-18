@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { dist } from '../game/math';
 import { escapeVelocity, hitTest } from '../game/shot';
 import type { HuntState } from '../game/state';
 import type { Vec2 } from '../game/types';
@@ -7,19 +8,24 @@ const GROUND_Y = 205;
 const SPREAD_RADIUS = 14; // how forgiving the shot pattern is
 const SHELLS = 2;
 const TOUCH_AIM_OFFSET = 56; // crosshair rides above your finger on touch
+const LAUNCH_STAGGER_MS = 130; // covey birds get airborne one after another
+
+interface FlyingBird {
+  id: number;
+  sprite: Phaser.GameObjects.Sprite;
+  vel: Vec2;
+  wobble: number;
+  status: 'waiting' | 'flying' | 'falling' | 'done';
+}
 
 /**
- * Duck Hunt-style shooting view. Two shells, one bird, lead the shot.
- * Returns to FieldScene with the outcome folded into the shared HuntState.
+ * Duck Hunt-style shooting view. A whole covey can rise at once; two shells,
+ * one bird per shell. Returns to FieldScene with outcomes folded into the
+ * shared HuntState.
  */
 export class FlushScene extends Phaser.Scene {
   private hunt!: HuntState;
-  private birdId!: number;
-
-  private bird!: Phaser.GameObjects.Sprite;
-  private vel!: Vec2;
-  private wobble = 0;
-  private falling = false;
+  private birds: FlyingBird[] = [];
   private resolved = false;
 
   private crosshair!: Phaser.GameObjects.Sprite;
@@ -31,24 +37,34 @@ export class FlushScene extends Phaser.Scene {
     super('FlushScene');
   }
 
-  create(data: { hunt: HuntState; birdId: number }): void {
+  create(data: { hunt: HuntState; birdIds: number[] }): void {
     this.hunt = data.hunt;
-    this.birdId = data.birdId;
     this.shells = SHELLS;
     this.resolved = false;
-    this.falling = false;
+    this.birds = [];
 
     this.drawSky();
     this.makeTextures();
 
-    const fieldBird = this.hunt.birds.find((b) => b.id === this.birdId)!;
-    this.vel = escapeVelocity();
-    // Steer back toward the middle of the screen so edge flushes stay shootable.
-    if ((fieldBird.pos.x < 240 && this.vel.x < 0) || (fieldBird.pos.x > 240 && this.vel.x > 0)) {
-      this.vel.x *= -1;
-    }
-    this.bird = this.add.sprite(fieldBird.pos.x, GROUND_Y - 6, 'bird');
-    this.bird.setFlipX(this.vel.x < 0);
+    data.birdIds.forEach((id, i) => {
+      const fieldBird = this.hunt.birds.find((b) => b.id === id)!;
+      const vel = escapeVelocity();
+      // Steer back toward the middle of the screen so edge flushes stay shootable.
+      if ((fieldBird.pos.x < 240 && vel.x < 0) || (fieldBird.pos.x > 240 && vel.x > 0)) {
+        vel.x *= -1;
+      }
+      const sprite = this.add.sprite(fieldBird.pos.x, GROUND_Y - 6, 'bird');
+      sprite.setFlipX(vel.x < 0);
+      sprite.setVisible(i === 0);
+      const bird: FlyingBird = { id, sprite, vel, wobble: i * 2.1, status: 'waiting' };
+      this.birds.push(bird);
+      this.time.delayedCall(i * LAUNCH_STAGGER_MS, () => {
+        if (bird.status === 'waiting') {
+          bird.status = 'flying';
+          sprite.setVisible(true);
+        }
+      });
+    });
 
     this.crosshair = this.add.sprite(240, 120, 'crosshair').setDepth(10);
     this.input.setDefaultCursor('none');
@@ -57,11 +73,12 @@ export class FlushScene extends Phaser.Scene {
     for (let i = 0; i < SHELLS; i++) {
       this.shellPips.push(this.add.rectangle(6 + i * 8, 252, 5, 10, 0xd6402c).setOrigin(0, 0.5));
     }
-    this.hud = this.add.text(4, 4, 'lead the bird!', {
-      fontFamily: 'monospace',
-      fontSize: '8px',
-      color: '#ffffff',
-    });
+    this.hud = this.add.text(
+      4,
+      4,
+      data.birdIds.length > 1 ? `covey rise! ${data.birdIds.length} birds` : 'lead the bird!',
+      { fontFamily: 'monospace', fontSize: '8px', color: '#ffffff' },
+    );
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => this.shoot(p));
   }
@@ -73,23 +90,27 @@ export class FlushScene extends Phaser.Scene {
     const yOff = p.wasTouch ? TOUCH_AIM_OFFSET : 0;
     this.crosshair.setPosition(p.worldX, p.worldY - yOff);
 
-    if (this.falling) {
-      this.bird.y += 170 * dt;
-      this.bird.angle += 540 * dt;
-      if (this.bird.y >= GROUND_Y) {
-        this.bird.y = GROUND_Y;
-        this.falling = false;
+    for (const b of this.birds) {
+      if (b.status === 'flying') {
+        b.wobble += dt * 9;
+        b.sprite.x += b.vel.x * dt + Math.sin(b.wobble) * 24 * dt;
+        b.sprite.y += b.vel.y * dt;
+        if (b.sprite.y < -16 || b.sprite.x < -16 || b.sprite.x > 496) {
+          this.escapeBird(b);
+        }
+      } else if (b.status === 'falling') {
+        b.sprite.y += 170 * dt;
+        b.sprite.angle += 540 * dt;
+        if (b.sprite.y >= GROUND_Y) {
+          b.sprite.y = GROUND_Y;
+          b.status = 'done';
+        }
       }
-      return;
     }
 
-    if (this.bird.visible) {
-      this.wobble += dt * 9;
-      this.bird.x += this.vel.x * dt + Math.sin(this.wobble) * 24 * dt;
-      this.bird.y += this.vel.y * dt;
-      if (this.bird.y < -16 || this.bird.x < -16 || this.bird.x > 496) {
-        this.finish(false);
-      }
+    // Once nothing is left in the air, call it.
+    if (!this.resolved && this.birds.every((b) => b.status === 'falling' || b.status === 'done')) {
+      this.finish();
     }
   }
 
@@ -109,34 +130,51 @@ export class FlushScene extends Phaser.Scene {
       onComplete: () => flash.destroy(),
     });
 
-    if (this.bird.visible && hitTest(aim, { x: this.bird.x, y: this.bird.y }, SPREAD_RADIUS)) {
-      this.finish(true);
-    } else if (this.shells === 0) {
-      // Out of shells — a beat to watch it go, then call it.
-      this.time.delayedCall(1300, () => {
-        if (!this.resolved) this.finish(false);
-      });
+    // One shell, one bird: the nearest flying bird inside the pattern.
+    let best: FlyingBird | null = null;
+    let bestDist = SPREAD_RADIUS;
+    for (const b of this.birds) {
+      if (b.status !== 'flying') continue;
+      const d = dist(aim, b.sprite);
+      if (d <= bestDist) {
+        best = b;
+        bestDist = d;
+      }
+    }
+    if (best) {
+      best.status = 'falling';
+      const fieldBird = this.hunt.birds.find((x) => x.id === best!.id)!;
+      fieldBird.state = 'downed';
+      this.hunt.downed++;
     }
   }
 
-  private finish(hit: boolean): void {
+  private escapeBird(b: FlyingBird): void {
+    b.status = 'done';
+    b.sprite.setVisible(false);
+    const fieldBird = this.hunt.birds.find((x) => x.id === b.id)!;
+    fieldBird.state = 'escaped';
+    this.hunt.escaped++;
+  }
+
+  private finish(): void {
     if (this.resolved) return;
     this.resolved = true;
 
-    const fieldBird = this.hunt.birds.find((b) => b.id === this.birdId)!;
-    if (hit) {
-      fieldBird.state = 'downed';
-      this.hunt.downed++;
-      this.falling = true;
-      this.hud.setText('nice shot!');
+    const total = this.birds.length;
+    const downedHere = this.birds.filter(
+      (b) => this.hunt.birds.find((x) => x.id === b.id)!.state === 'downed',
+    ).length;
+
+    if (downedHere === 0) {
+      this.hud.setText(total > 1 ? 'they all got away...' : 'it got away...');
+    } else if (total > 1) {
+      this.hud.setText(`${downedHere} of ${total} down!`);
     } else {
-      fieldBird.state = 'escaped';
-      this.hunt.escaped++;
-      this.bird.setVisible(false);
-      this.hud.setText('it got away...');
+      this.hud.setText('nice shot!');
     }
 
-    this.time.delayedCall(hit ? 1500 : 1200, () => {
+    this.time.delayedCall(1500, () => {
       this.input.setDefaultCursor('default');
       this.scene.start('FieldScene', { hunt: this.hunt });
     });

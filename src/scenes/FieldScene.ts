@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { Bird } from '../game/birds';
+import { flushCovey, type Bird } from '../game/birds';
 import { Dog } from '../game/dog';
 import { COVER_PATCHES, FIELD_BOUNDS } from '../game/field';
 import { dist, moveToward } from '../game/math';
@@ -153,17 +153,17 @@ export class FieldScene extends Phaser.Scene {
 
   private flush(bird: Bird): void {
     this.flushing = true;
-    bird.state = 'flushed';
+    const flushed = flushCovey(this.hunt.birds, bird.id);
     this.cameras.main.flash(180, 255, 244, 214);
     this.add
-      .text(bird.pos.x, bird.pos.y - 10, 'FLUSH!', {
+      .text(bird.pos.x, bird.pos.y - 10, flushed.length > 1 ? 'COVEY FLUSH!' : 'FLUSH!', {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#ffffff',
       })
       .setOrigin(0.5);
     this.time.delayedCall(450, () => {
-      this.scene.start('FlushScene', { hunt: this.hunt, birdId: bird.id });
+      this.scene.start('FlushScene', { hunt: this.hunt, birdIds: flushed.map((b) => b.id) });
     });
   }
 

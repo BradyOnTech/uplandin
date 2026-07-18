@@ -4,7 +4,7 @@ import { birdsRemaining, huntComplete, type HuntState } from '../src/game/state'
 
 function huntWith(states: Bird['state'][]): HuntState {
   return {
-    birds: states.map((state, i) => ({ id: i + 1, pos: { x: 0, y: 0 }, state })),
+    birds: states.map((state, i) => ({ id: i + 1, coveyId: 0, pos: { x: 0, y: 0 }, state })),
     dogPos: { x: 0, y: 0 },
     hunterPos: { x: 0, y: 0 },
     downed: 0,

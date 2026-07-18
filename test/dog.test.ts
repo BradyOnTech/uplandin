@@ -6,7 +6,7 @@ import { FIELD_BOUNDS } from '../src/game/field';
 const rng = () => 0.5;
 
 function birdAt(x: number, y: number): Bird {
-  return { id: 1, pos: { x, y }, state: 'hidden' };
+  return { id: 1, coveyId: 1, pos: { x, y }, state: 'hidden' };
 }
 
 function run(dog: Dog, birds: Bird[], steps: number, dtMs = 50): void {
