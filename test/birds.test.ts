@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  birdsScentingDog,
   flushCovey,
   RUNNER_MAX_ENERGY,
   RUNNER_NERVE_FACTOR,
@@ -173,5 +174,46 @@ describe('bird nerve', () => {
   it('ignores a pointed bird that is no longer hidden', () => {
     const a = bird({ id: 1, nerveMs: 100, state: 'flushed' });
     expect(updateBirdNerve(200, [a], 1)).toBeNull();
+  });
+
+  it('drains faster under pressure and slower under a steady dog', () => {
+    const pressured = bird({ id: 1, nerveMs: 1000 });
+    const relaxed = bird({ id: 1, nerveMs: 1000 });
+    updateBirdNerve(100, [pressured], 1, 1.4);
+    updateBirdNerve(100, [relaxed], 1, 0.6);
+    expect(pressured.nerveMs).toBeCloseTo(860);
+    expect(relaxed.nerveMs).toBeCloseTo(940);
+  });
+});
+
+describe('birds scenting the dog', () => {
+  const windEast = 0; // wind blows toward +x
+
+  it('flushes hidden birds downwind of the dog', () => {
+    const dog = { x: 100, y: 100 };
+    const downwindBird = bird({ id: 1, pos: { x: 125, y: 100 } }); // dog's scent blows right to it
+    const upwindBird = bird({ id: 2, pos: { x: 75, y: 100 } });
+    const scented = birdsScentingDog([downwindBird, upwindBird], dog, windEast, 30);
+    expect(scented.map((b) => b.id)).toEqual([1]);
+  });
+
+  it('respects the detection radius', () => {
+    const dog = { x: 100, y: 100 };
+    const b = bird({ id: 1, pos: { x: 125, y: 100 } });
+    expect(birdsScentingDog([b], dog, windEast, 20)).toEqual([]);
+    expect(birdsScentingDog([b], dog, windEast, 30)).toEqual([b]);
+  });
+
+  it('does nothing when calm or disabled', () => {
+    const dog = { x: 100, y: 100 };
+    const b = bird({ id: 1, pos: { x: 110, y: 100 } });
+    expect(birdsScentingDog([b], dog, undefined, 30)).toEqual([]);
+    expect(birdsScentingDog([b], dog, windEast, 0)).toEqual([]);
+  });
+
+  it('ignores resolved birds', () => {
+    const dog = { x: 100, y: 100 };
+    const b = bird({ id: 1, pos: { x: 110, y: 100 }, state: 'escaped' });
+    expect(birdsScentingDog([b], dog, windEast, 30)).toEqual([]);
   });
 });

@@ -94,13 +94,47 @@ export function flushCovey(birds: Bird[], birdId: number): Bird[] {
  * A pointed bird gets nervous. When its nerve runs out it flushes wild —
  * returns the trigger bird if one broke this tick, else null. Only the
  * pointed bird's nerve drains; a covey rises when any member breaks.
+ * pressureMult scales the drain: crowding puppies > 1, steady veterans < 1.
  */
-export function updateBirdNerve(dtMs: number, birds: Bird[], pointedBirdId: number | null): Bird | null {
+export function updateBirdNerve(
+  dtMs: number,
+  birds: Bird[],
+  pointedBirdId: number | null,
+  pressureMult = 1,
+): Bird | null {
   if (pointedBirdId === null) return null;
   const b = birds.find((x) => x.id === pointedBirdId);
   if (!b || b.state !== 'hidden') return null;
-  b.nerveMs -= dtMs;
+  b.nerveMs -= dtMs * pressureMult;
   return b.nerveMs <= 0 ? b : null;
+}
+
+/**
+ * Birds have noses too. A hidden bird downwind of the dog — the wind carries
+ * the dog's scent straight to it — flushes the moment the dog gets within
+ * `radius`. Returns the trigger birds (scene flushes their coveys). Radius
+ * comes from the dog's wind-craft tier; 0 disables this entirely.
+ */
+export function birdsScentingDog(
+  birds: Bird[],
+  dogPos: Vec2,
+  windAngle: number | undefined,
+  radius: number,
+): Bird[] {
+  if (windAngle === undefined || radius <= 0) return [];
+  const wx = Math.cos(windAngle);
+  const wy = Math.sin(windAngle);
+  const scented: Bird[] = [];
+  for (const b of birds) {
+    if (b.state !== 'hidden') continue;
+    const dx = b.pos.x - dogPos.x;
+    const dy = b.pos.y - dogPos.y;
+    const d = Math.hypot(dx, dy);
+    if (d === 0 || d > radius) continue;
+    // >0.6: the bird sits mostly downwind of the dog
+    if ((dx * wx + dy * wy) / d > 0.6) scented.push(b);
+  }
+  return scented;
 }
 
 /**
