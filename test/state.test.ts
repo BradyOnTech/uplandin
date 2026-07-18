@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { AREAS } from '../src/game/areas';
 import type { Bird } from '../src/game/birds';
-import { birdsRemaining, huntComplete, type HuntState } from '../src/game/state';
+import { birdsRemaining, createHunt, huntComplete, type HuntState } from '../src/game/state';
 
 function huntWith(states: Bird['state'][]): HuntState {
   return {
+    areaId: 'test-area',
     birds: states.map((state, i) => ({
       id: i + 1,
       coveyId: 0,
@@ -35,5 +37,13 @@ describe('hunt bookkeeping', () => {
   it('is complete when every bird is resolved', () => {
     expect(huntComplete(huntWith(['downed', 'escaped']))).toBe(true);
     expect(huntComplete(huntWith(['retrieved', 'escaped']))).toBe(true);
+  });
+
+  it('createHunt builds a hunt from the area config', () => {
+    const hunt = createHunt(AREAS[0]);
+    expect(hunt.areaId).toBe(AREAS[0].id);
+    expect(hunt.birds).toHaveLength(AREAS[0].birdCount);
+    expect(hunt.downed).toBe(0);
+    expect(hunt.escaped).toBe(0);
   });
 });

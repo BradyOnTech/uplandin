@@ -1,16 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import {
   flushCovey,
-  NERVE_MAX_MS,
-  NERVE_MIN_MS,
   RUNNER_MAX_ENERGY,
   RUNNER_NERVE_FACTOR,
   spawnBirds,
   updateBirdNerve,
   updateBirds,
   type Bird,
+  type SpawnConfig,
 } from '../src/game/birds';
 import { dist } from '../src/game/math';
+
+const CFG: SpawnConfig = {
+  patches: [{ x: 20, y: 20, w: 200, h: 150 }],
+  birdCount: 6,
+  coveyMaxSize: 3,
+  runnerChance: 0.4,
+  nerveMinMs: 5000,
+  nerveMaxMs: 9000,
+};
 
 /** Deterministic LCG so spawn patterns are reproducible. */
 function lcg(seed: number) {
@@ -30,23 +38,28 @@ function byCovey(birds: Bird[]): Map<number, Bird[]> {
 }
 
 describe('spawnBirds', () => {
-  it('spawns exactly the requested number of birds', () => {
-    expect(spawnBirds(6, lcg(1))).toHaveLength(6);
-    expect(spawnBirds(7, lcg(2))).toHaveLength(7);
-    expect(spawnBirds(1, lcg(3))).toHaveLength(1);
+  it('spawns exactly the configured number of birds', () => {
+    expect(spawnBirds({ ...CFG, birdCount: 6 }, lcg(1))).toHaveLength(6);
+    expect(spawnBirds({ ...CFG, birdCount: 7 }, lcg(2))).toHaveLength(7);
+    expect(spawnBirds({ ...CFG, birdCount: 1 }, lcg(3))).toHaveLength(1);
   });
 
-  it('groups birds into coveys of at most 3, clustered together', () => {
-    const birds = spawnBirds(9, lcg(4));
+  it('groups birds into coveys bounded by config, clustered together', () => {
+    const birds = spawnBirds({ ...CFG, birdCount: 9 }, lcg(4));
     const coveys = byCovey(birds);
     expect(coveys.size).toBeGreaterThan(1); // 9 birds can't fit in one covey of 3
     for (const members of coveys.values()) {
-      expect(members.length).toBeLessThanOrEqual(3);
+      expect(members.length).toBeLessThanOrEqual(CFG.coveyMaxSize);
       for (let i = 1; i < members.length; i++) {
         // jitter is ±10px per axis, so covey mates stay within ~29px
         expect(dist(members[0].pos, members[i].pos)).toBeLessThanOrEqual(30);
       }
     }
+  });
+
+  it('runnerChance 0 spawns no runners, 1 spawns all runners', () => {
+    expect(spawnBirds({ ...CFG, birdCount: 10, runnerChance: 0 }, lcg(5)).every((b) => !b.runs)).toBe(true);
+    expect(spawnBirds({ ...CFG, birdCount: 10, runnerChance: 1 }, lcg(5)).every((b) => b.runs)).toBe(true);
   });
 });
 
@@ -129,15 +142,15 @@ describe('updateBirds (runners)', () => {
 });
 
 describe('bird nerve', () => {
-  it('assigns every bird nerve at spawn, runners less than holders', () => {
-    const birds = spawnBirds(20, lcg(7));
+  it('assigns nerve from the configured range, runners discounted', () => {
+    const birds = spawnBirds({ ...CFG, birdCount: 20 }, lcg(7));
     expect(birds.some((b) => b.runs)).toBe(true); // sample actually has runners
     for (const b of birds) {
       if (b.runs) {
-        expect(b.nerveMs).toBeLessThanOrEqual(NERVE_MAX_MS * RUNNER_NERVE_FACTOR + 1e-9);
+        expect(b.nerveMs).toBeLessThanOrEqual(CFG.nerveMaxMs * RUNNER_NERVE_FACTOR + 1e-9);
       } else {
-        expect(b.nerveMs).toBeGreaterThanOrEqual(NERVE_MIN_MS);
-        expect(b.nerveMs).toBeLessThanOrEqual(NERVE_MAX_MS);
+        expect(b.nerveMs).toBeGreaterThanOrEqual(CFG.nerveMinMs);
+        expect(b.nerveMs).toBeLessThanOrEqual(CFG.nerveMaxMs);
       }
     }
   });

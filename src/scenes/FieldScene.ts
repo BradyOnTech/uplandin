@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import { playBlip, playFlush, playPoint, playWhistle, unlockAudio } from '../audio';
-import { flushCovey, NERVE_MAX_MS, updateBirdNerve, updateBirds, type Bird } from '../game/birds';
+import { AREAS, getArea, type AreaConfig } from '../game/areas';
+import { flushCovey, updateBirdNerve, updateBirds, type Bird } from '../game/birds';
 import { Dog, type DogState } from '../game/dog';
-import { COVER_PATCHES, FIELD_BOUNDS } from '../game/field';
+import { FIELD_BOUNDS } from '../game/field';
 import { dist, moveToward, windArrow } from '../game/math';
 import { birdsRemaining, createHunt, huntComplete, type HuntState } from '../game/state';
 import type { Vec2 } from '../game/types';
@@ -11,8 +12,6 @@ const HUNTER_SPEED = 55; // px/s
 const FLUSH_RADIUS = 22; // hunter this close to a pointed bird flushes it
 const SHOT_RANGE = 40; // max hunter distance for a shooting chance on a wild flush
 
-const COLOR_GRASS = 0x4a8c3f;
-const COLOR_COVER = 0x2f6b28;
 const COLOR_DOG = 0xf2e3c6;
 const COLOR_HUNTER = 0xd6402c;
 
@@ -26,6 +25,7 @@ const WHISTLE_BTN = { x: 452, y: 246, w: 48, h: 20 };
 export class FieldScene extends Phaser.Scene {
   hunt!: HuntState;
   dog!: Dog;
+  private area!: AreaConfig;
 
   private hunterTarget: Vec2 | null = null;
   private flushing = false;
@@ -43,8 +43,9 @@ export class FieldScene extends Phaser.Scene {
     super('FieldScene');
   }
 
-  create(data: { hunt?: HuntState }): void {
-    this.hunt = data.hunt ?? createHunt();
+  create(data: { hunt?: HuntState; areaId?: string }): void {
+    this.area = data.hunt ? getArea(data.hunt.areaId) : data.areaId ? getArea(data.areaId) : AREAS[0];
+    this.hunt = data.hunt ?? createHunt(this.area);
     this.dog = new Dog({ ...this.hunt.dogPos });
     this.flushing = false;
     this.hunterTarget = null;
@@ -101,7 +102,7 @@ export class FieldScene extends Phaser.Scene {
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       unlockAudio();
       if (this.summaryShown) {
-        this.scene.restart({ hunt: createHunt() });
+        this.scene.restart({ areaId: this.area.id });
         return;
       }
       if (this.flushing) return;
@@ -168,7 +169,7 @@ export class FieldScene extends Phaser.Scene {
       this.dogSprite.setTint(0xffd23f);
       // The point marker shows the bird's nerve: gold → orange → blinking red.
       const pointed = this.hunt.birds.find((b) => b.id === this.dog.pointedBirdId);
-      const nerveFrac = pointed ? Math.max(0, pointed.nerveMs / NERVE_MAX_MS) : 1;
+      const nerveFrac = pointed ? Math.max(0, pointed.nerveMs / this.area.nerveMaxMs) : 1;
       this.pointMarker.setColor(nerveFrac > 0.6 ? '#ffd23f' : nerveFrac > 0.3 ? '#ff8c3f' : '#ff4040');
       const visible = nerveFrac >= 0.3 || Math.floor(time / 120) % 2 === 0;
       this.pointMarker.setVisible(visible);
@@ -281,9 +282,9 @@ export class FieldScene extends Phaser.Scene {
 
   private drawField(): void {
     const g = this.add.graphics();
-    g.fillStyle(COLOR_GRASS).fillRect(0, 0, FIELD_BOUNDS.w, FIELD_BOUNDS.h);
-    g.fillStyle(COLOR_COVER);
-    for (const patch of COVER_PATCHES) {
+    g.fillStyle(this.area.grass).fillRect(0, 0, FIELD_BOUNDS.w, FIELD_BOUNDS.h);
+    g.fillStyle(this.area.cover);
+    for (const patch of this.area.patches) {
       g.fillRect(patch.x, patch.y, patch.w, patch.h);
     }
     g.fillStyle(0x6b4a2a); // a few trees for landmarks

@@ -1,4 +1,4 @@
-import { COVER_PATCHES, FIELD_BOUNDS, randomPointIn } from './field';
+import { FIELD_BOUNDS, randomPointIn, type Rect } from './field';
 import { clamp, dist } from './math';
 import type { RNG, Vec2 } from './types';
 
@@ -19,32 +19,37 @@ export interface Bird {
   nerveMs: number;
 }
 
-const COVEY_MAX_SIZE = 3;
 const COVEY_JITTER = 10; // birds sit within this of their covey anchor
 
-export const RUNNER_CHANCE = 0.4; // share of birds that are runners
 export const RUNNER_FLEE_RADIUS = 35; // dog this close spooks a runner into running
 export const RUNNER_SPEED = 42; // px/s — slower than the dog, but it gets a head start
 export const RUNNER_MAX_ENERGY = 2500; // ms of running before the bird is winded
 export const RUNNER_REST_MS = 2600; // how long a winded bird holds — the hunter's window
-
-export const NERVE_MIN_MS = 5000; // the calmest bird holds this long on point
-export const NERVE_MAX_MS = 9000; // the steadiest
 export const RUNNER_NERVE_FACTOR = 0.7; // runners are nervous
+
+/** What an area's bird population looks like. AreaConfig satisfies this. */
+export interface SpawnConfig {
+  patches: Rect[];
+  birdCount: number;
+  coveyMaxSize: number;
+  runnerChance: number;
+  nerveMinMs: number;
+  nerveMaxMs: number;
+}
 
 let nextBirdId = 1;
 
-/** Scatter birds through the cover patches in coveys of 1–3. */
-export function spawnBirds(count: number, rng: RNG = Math.random): Bird[] {
+/** Scatter birds through the area's cover patches in coveys. */
+export function spawnBirds(cfg: SpawnConfig, rng: RNG = Math.random): Bird[] {
   const birds: Bird[] = [];
   let coveyId = 0;
-  let remaining = count;
+  let remaining = cfg.birdCount;
   while (remaining > 0) {
-    const size = Math.min(remaining, 1 + Math.floor(rng() * COVEY_MAX_SIZE));
-    const patch = COVER_PATCHES[Math.floor(rng() * COVER_PATCHES.length)];
+    const size = Math.min(remaining, 1 + Math.floor(rng() * cfg.coveyMaxSize));
+    const patch = cfg.patches[Math.floor(rng() * cfg.patches.length)];
     const anchor = randomPointIn(patch, rng);
     for (let i = 0; i < size; i++) {
-      const runs = rng() < RUNNER_CHANCE;
+      const runs = rng() < cfg.runnerChance;
       const nerveRoll = rng();
       birds.push({
         id: nextBirdId++,
@@ -58,7 +63,8 @@ export function spawnBirds(count: number, rng: RNG = Math.random): Bird[] {
         runEnergy: RUNNER_MAX_ENERGY,
         restingMs: 0,
         nerveMs:
-          (NERVE_MIN_MS + nerveRoll * (NERVE_MAX_MS - NERVE_MIN_MS)) * (runs ? RUNNER_NERVE_FACTOR : 1),
+          (cfg.nerveMinMs + nerveRoll * (cfg.nerveMaxMs - cfg.nerveMinMs)) *
+          (runs ? RUNNER_NERVE_FACTOR : 1),
       });
     }
     coveyId++;

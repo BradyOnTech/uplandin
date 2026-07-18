@@ -1,3 +1,4 @@
+import type { AreaConfig } from './areas';
 import { spawnBirds, type Bird } from './birds';
 import { FIELD_BOUNDS } from './field';
 import type { RNG, Vec2 } from './types';
@@ -7,6 +8,7 @@ import type { RNG, Vec2 } from './types';
  * from FieldScene to FlushScene and back via Phaser's scene-start payload.
  */
 export interface HuntState {
+  areaId: string;
   birds: Bird[];
   dogPos: Vec2;
   hunterPos: Vec2;
@@ -16,9 +18,10 @@ export interface HuntState {
   escaped: number;
 }
 
-export function createHunt(birdCount = 6, rng: RNG = Math.random): HuntState {
+export function createHunt(area: AreaConfig, rng: RNG = Math.random): HuntState {
   return {
-    birds: spawnBirds(birdCount, rng),
+    areaId: area.id,
+    birds: spawnBirds(area, rng),
     dogPos: { x: FIELD_BOUNDS.w / 2 - 30, y: FIELD_BOUNDS.h - 30 },
     hunterPos: { x: FIELD_BOUNDS.w / 2, y: FIELD_BOUNDS.h - 20 },
     wind: rng() * Math.PI * 2,
