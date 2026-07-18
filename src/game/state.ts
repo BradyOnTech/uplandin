@@ -27,3 +27,8 @@ export function createHunt(birdCount = 6, rng: RNG = Math.random): HuntState {
 export function birdsRemaining(hunt: HuntState): number {
   return hunt.birds.filter((b) => b.state === 'hidden').length;
 }
+
+/** A hunt is over once no bird is still hidden or mid-flush. */
+export function huntComplete(hunt: HuntState): boolean {
+  return hunt.birds.every((b) => b.state !== 'hidden' && b.state !== 'flushed');
+}

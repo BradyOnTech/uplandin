@@ -3,7 +3,7 @@ import type { Bird } from '../game/birds';
 import { Dog } from '../game/dog';
 import { COVER_PATCHES, FIELD_BOUNDS } from '../game/field';
 import { dist, moveToward } from '../game/math';
-import { birdsRemaining, createHunt, type HuntState } from '../game/state';
+import { birdsRemaining, createHunt, huntComplete, type HuntState } from '../game/state';
 import type { Vec2 } from '../game/types';
 
 const HUNTER_SPEED = 55; // px/s
@@ -24,6 +24,7 @@ export class FieldScene extends Phaser.Scene {
 
   private hunterTarget: Vec2 | null = null;
   private flushing = false;
+  private summaryShown = false;
 
   private dogSprite!: Phaser.GameObjects.Sprite;
   private hunterSprite!: Phaser.GameObjects.Sprite;
@@ -40,6 +41,7 @@ export class FieldScene extends Phaser.Scene {
     this.dog = new Dog({ ...this.hunt.dogPos });
     this.flushing = false;
     this.hunterTarget = null;
+    this.summaryShown = false;
 
     this.makeTextures();
     this.drawField();
@@ -71,6 +73,10 @@ export class FieldScene extends Phaser.Scene {
     });
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (this.summaryShown) {
+        this.scene.restart({ hunt: createHunt() });
+        return;
+      }
       if (this.flushing) return;
       this.hunterTarget = { x: p.worldX, y: p.worldY };
     });
@@ -106,6 +112,34 @@ export class FieldScene extends Phaser.Scene {
     );
 
     this.checkFlush();
+
+    if (!this.flushing && !this.summaryShown && huntComplete(this.hunt)) {
+      this.showSummary();
+    }
+  }
+
+  private showSummary(): void {
+    this.summaryShown = true;
+    const cx = FIELD_BOUNDS.w / 2;
+    const cy = FIELD_BOUNDS.h / 2;
+    this.add.rectangle(cx, cy, FIELD_BOUNDS.w, FIELD_BOUNDS.h, 0x000000, 0.65).setDepth(20);
+    const total = this.hunt.birds.length;
+    this.add
+      .text(cx, cy - 24, 'HUNT OVER', { fontFamily: 'monospace', fontSize: '16px', color: '#ffd23f' })
+      .setOrigin(0.5)
+      .setDepth(21);
+    this.add
+      .text(cx, cy + 2, `birds downed: ${this.hunt.downed} / ${total}   lost: ${this.hunt.escaped}`, {
+        fontFamily: 'monospace',
+        fontSize: '10px',
+        color: '#ffffff',
+      })
+      .setOrigin(0.5)
+      .setDepth(21);
+    this.add
+      .text(cx, cy + 26, 'tap to hunt again', { fontFamily: 'monospace', fontSize: '8px', color: '#dfe9d8' })
+      .setOrigin(0.5)
+      .setDepth(21);
   }
 
   private checkFlush(): void {
