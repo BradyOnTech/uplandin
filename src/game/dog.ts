@@ -1,0 +1,102 @@
+import type { Bird } from './birds';
+import { FIELD_BOUNDS } from './field';
+import { clamp, dist, turnToward } from './math';
+import type { RNG, Vec2 } from './types';
+
+export type DogState = 'quartering' | 'tracking' | 'pointing';
+
+export const DOG_SPEED = 75; // px/s while quartering
+export const TRACKING_SPEED = 90; // px/s once it has the scent
+export const SCENT_RADIUS = 45; // smells a hidden bird this far away
+export const POINT_RANGE = 12; // freezes into a point this close
+
+const WEAVE_AMPLITUDE = 0.7; // radians of serpentine swing while quartering
+const WEAVE_RATE = 2.2; // how fast the weave swings
+const EDGE_MARGIN = 14;
+const EDGE_TURN_RATE = 2.4; // rad/s pulled back toward the middle of the field
+const AVOID_HUNTER_RADIUS = 28; // won't point a bird sitting right on the hunter
+
+/**
+ * Pure bird-dog AI. No Phaser in here — feed it birds and a timestep,
+ * read back its position and state. Tuning these constants is where the
+ * "feel" of the hunt lives.
+ */
+export class Dog {
+  state: DogState = 'quartering';
+  pointedBirdId: number | null = null;
+  /** Base travel direction; the quartering weave oscillates around this. */
+  heading: number;
+  private weavePhase = 0;
+
+  constructor(public pos: Vec2, rng: RNG = Math.random) {
+    this.heading = rng() * Math.PI * 2;
+  }
+
+  update(dtMs: number, birds: Bird[], hunterPos?: Vec2): void {
+    const dt = dtMs / 1000;
+
+    if (this.state === 'pointing') {
+      const pointed = birds.find((b) => b.id === this.pointedBirdId);
+      if (!pointed || pointed.state !== 'hidden') {
+        // Bird flushed or collected — cast off and hunt again.
+        this.state = 'quartering';
+        this.pointedBirdId = null;
+      }
+      return; // holding the point: don't move
+    }
+
+    const bird = this.nearestHiddenBird(birds, hunterPos);
+    if (bird) {
+      this.state = 'tracking';
+      this.heading = Math.atan2(bird.pos.y - this.pos.y, bird.pos.x - this.pos.x);
+      this.advance(this.heading, TRACKING_SPEED * dt);
+      if (dist(this.pos, bird.pos) <= POINT_RANGE) {
+        this.state = 'pointing';
+        this.pointedBirdId = bird.id;
+      }
+      return;
+    }
+
+    // Quartering: serpentine sweep back and forth across the field.
+    this.state = 'quartering';
+    this.weavePhase += dt * WEAVE_RATE;
+    this.steerOffEdges(dt);
+    const weave = Math.sin(this.weavePhase) * WEAVE_AMPLITUDE;
+    this.advance(this.heading + weave, DOG_SPEED * dt);
+  }
+
+  private nearestHiddenBird(birds: Bird[], hunterPos?: Vec2): Bird | null {
+    let best: Bird | null = null;
+    let bestDist = SCENT_RADIUS;
+    for (const b of birds) {
+      if (b.state !== 'hidden') continue;
+      if (hunterPos && dist(b.pos, hunterPos) <= AVOID_HUNTER_RADIUS) continue;
+      const d = dist(this.pos, b.pos);
+      if (d <= bestDist) {
+        best = b;
+        bestDist = d;
+      }
+    }
+    return best;
+  }
+
+  private steerOffEdges(dt: number): void {
+    const { x, y } = this.pos;
+    let dx = 0;
+    let dy = 0;
+    if (x < EDGE_MARGIN) dx += 1;
+    if (x > FIELD_BOUNDS.w - EDGE_MARGIN) dx -= 1;
+    if (y < EDGE_MARGIN) dy += 1;
+    if (y > FIELD_BOUNDS.h - EDGE_MARGIN) dy -= 1;
+    if (dx !== 0 || dy !== 0) {
+      this.heading = turnToward(this.heading, Math.atan2(dy, dx), EDGE_TURN_RATE * dt);
+    }
+  }
+
+  private advance(heading: number, distance: number): void {
+    this.pos = {
+      x: clamp(this.pos.x + Math.cos(heading) * distance, 4, FIELD_BOUNDS.w - 4),
+      y: clamp(this.pos.y + Math.sin(heading) * distance, 4, FIELD_BOUNDS.h - 4),
+    };
+  }
+}
