@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
 import { playBlip, playFlush, playPoint, playWhistle, unlockAudio } from '../audio';
 import { AREAS, getArea, type AreaConfig } from '../game/areas';
-import { flushCovey, updateBirdNerve, updateBirds, type Bird } from '../game/birds';
-import { getBreed } from '../game/breeds';
-import { activeDog, loadCareer, recordHunt, saveCareer } from '../game/career';
+import { birdsScentingDog, flushCovey, updateBirdNerve, updateBirds, type Bird } from '../game/birds';
+import { dogScentRadius, getBreed, type BreedConfig } from '../game/breeds';
+import { activeDog, awardDogXp, loadCareer, recordHunt, saveCareer, type KennelDog } from '../game/career';
 import { Dog, type DogState } from '../game/dog';
 import { FIELD_BOUNDS } from '../game/field';
 import { dist, moveToward, windArrow } from '../game/math';
@@ -28,6 +28,8 @@ export class FieldScene extends Phaser.Scene {
   hunt!: HuntState;
   dog!: Dog;
   private area!: AreaConfig;
+  private kennelDog: KennelDog | null = null;
+  private breed: BreedConfig = getBreed('gsp');
 
   private hunterTarget: Vec2 | null = null;
   private flushing = false;
@@ -39,21 +41,23 @@ export class FieldScene extends Phaser.Scene {
   private hunterSprite!: Phaser.GameObjects.Sprite;
   private pointMarker!: Phaser.GameObjects.Text;
   private hud!: Phaser.GameObjects.Text;
+  private whistleLabel!: Phaser.GameObjects.Text;
   private birdMarkers: Phaser.GameObjects.Rectangle[] = [];
 
   constructor() {
     super('FieldScene');
   }
 
-  create(data: { hunt?: HuntState; areaId?: string }): void {
+  create(data: { hunt?: HuntState; areaId?: string; dog?: Dog }): void {
     this.area = data.hunt ? getArea(data.hunt.areaId) : data.areaId ? getArea(data.areaId) : AREAS[0];
     this.hunt = data.hunt ?? createHunt(this.area);
-    const kennelDog = activeDog(loadCareer());
-    this.dog = new Dog(
-      { ...this.hunt.dogPos },
-      { breed: kennelDog ? getBreed(kennelDog.breedId) : getBreed('gsp'), level: kennelDog?.level ?? 1 },
-      Math.random,
-    );
+    this.kennelDog = activeDog(loadCareer());
+    this.breed = this.kennelDog ? getBreed(this.kennelDog.breedId) : getBreed('gsp');
+    const level = this.kennelDog?.level ?? 1;
+    // The Dog instance rides through FlushScene and back so breaking chase,
+    // creep state, and heading survive the transition.
+    this.dog = data.dog ?? new Dog({ ...this.hunt.dogPos }, { breed: this.breed, level }, Math.random);
+    this.dog.profile = { breed: this.breed, level };
     this.flushing = false;
     this.hunterTarget = null;
     this.summaryShown = false;
@@ -94,7 +98,7 @@ export class FieldScene extends Phaser.Scene {
       .rectangle(WHISTLE_BTN.x, WHISTLE_BTN.y, WHISTLE_BTN.w, WHISTLE_BTN.h, 0x101410, 0.65)
       .setDepth(15)
       .setInteractive();
-    this.add
+    this.whistleLabel = this.add
       .text(WHISTLE_BTN.x, WHISTLE_BTN.y, 'whistle', {
         fontFamily: 'monospace',
         fontSize: '8px',
@@ -128,7 +132,8 @@ export class FieldScene extends Phaser.Scene {
     unlockAudio();
     if (this.summaryShown || this.flushing) return;
     playWhistle();
-    this.recallPending = true;
+    if (this.dog.state === 'heel') this.dog.castOff();
+    else this.recallPending = true;
   }
 
   update(time: number, delta: number): void {
@@ -148,12 +153,40 @@ export class FieldScene extends Phaser.Scene {
 
     if (this.dog.state === 'pointing' && this.prevDogState !== 'pointing') playPoint();
     this.prevDogState = this.dog.state;
-    if (this.hunt.birds.filter((b) => b.state === 'retrieved').length > retrievedBefore) playBlip();
+    const retrievedNow = this.hunt.birds.filter((b) => b.state === 'retrieved').length;
+    if (retrievedNow > retrievedBefore) {
+      playBlip();
+      this.hunt.xpEvents.retrieves += retrievedNow - retrievedBefore;
+    }
+
+    // The dog may bump birds itself — creeping on point or breaking chase.
+    if (this.dog.bumpedBirdId !== null) {
+      const bumped = this.hunt.birds.find((b) => b.id === this.dog.bumpedBirdId);
+      this.dog.bumpedBirdId = null;
+      if (bumped && !this.flushing) {
+        this.flush(bumped, 'bump');
+        return;
+      }
+    }
+
+    // Downwind birds can scent an inexperienced dog — and flush on their own.
+    if (this.dog.state === 'quartering' || this.dog.state === 'tracking') {
+      const scented = birdsScentingDog(
+        this.hunt.birds,
+        this.dog.pos,
+        this.hunt.wind,
+        dogScentRadius(this.dog.level),
+      );
+      if (scented.length > 0 && !this.flushing) {
+        this.flush(scented[0], 'scent');
+        return;
+      }
+    }
 
     // A pointed bird's nerve is running out the whole time.
-    const wild = updateBirdNerve(delta, this.hunt.birds, this.dog.pointedBirdId);
+    const wild = updateBirdNerve(delta, this.hunt.birds, this.dog.pointedBirdId, this.dog.pressure);
     if (wild) {
-      this.flush(wild, true);
+      this.flush(wild, 'nerve');
       return;
     }
 
@@ -184,9 +217,14 @@ export class FieldScene extends Phaser.Scene {
       this.pointMarker.setVisible(false);
     }
 
+    const staminaFilled = Math.ceil((this.dog.staminaMs / this.dog.maxStaminaMs) * 5);
+    const staminaPips = `[${'#'.repeat(staminaFilled)}${'-'.repeat(5 - staminaFilled)}]`;
+    const dogName = this.kennelDog?.name ?? 'dog';
     this.hud.setText(
-      `wind ${windArrow(this.hunt.wind)}   dog: ${this.dog.state}   birds: ${birdsRemaining(this.hunt)}   downed: ${this.hunt.downed}   lost: ${this.hunt.escaped}`,
+      `wind ${windArrow(this.hunt.wind)}   birds: ${birdsRemaining(this.hunt)}   downed: ${this.hunt.downed}   lost: ${this.hunt.escaped}\n` +
+        `${dogName} lv${this.dog.level} ${this.dog.state}${this.dog.winded ? ' winded' : ''} ${staminaPips}`,
     );
+    this.whistleLabel.setText(this.dog.state === 'heel' ? 'cast off' : 'whistle');
 
     this.checkFlush();
 
@@ -197,26 +235,55 @@ export class FieldScene extends Phaser.Scene {
 
   private showSummary(): void {
     this.summaryShown = true;
-    saveCareer(recordHunt(loadCareer(), this.hunt.areaId, this.hunt.downed, this.hunt.escaped));
+
+    // Convert the dog's work into XP (breed XP rate applies).
+    const ev = this.hunt.xpEvents;
+    const base = 2 * ev.pointFlushes + ev.retrieves + 3 * ev.downedOverPoint;
+    const gained = Math.round(base * this.breed.xpRate);
+    let career = recordHunt(loadCareer(), this.hunt.areaId, this.hunt.downed, this.hunt.escaped);
+    let levelMsg: string | null = null;
+    if (this.kennelDog && gained > 0) {
+      const res = awardDogXp(career, this.kennelDog.id, gained);
+      career = res.career;
+      this.kennelDog = career.kennel.find((d) => d.id === this.kennelDog!.id) ?? this.kennelDog;
+      if (res.levelsGained > 0) levelMsg = `LEVEL UP! ${this.kennelDog.name} is level ${res.newLevel}!`;
+    }
+    saveCareer(career);
 
     const cx = FIELD_BOUNDS.w / 2;
     const cy = FIELD_BOUNDS.h / 2;
     this.add.rectangle(cx, cy, FIELD_BOUNDS.w, FIELD_BOUNDS.h, 0x000000, 0.65).setDepth(20);
     const total = this.hunt.birds.length;
     this.add
-      .text(cx, cy - 36, 'HUNT OVER', { fontFamily: 'monospace', fontSize: '16px', color: '#ffd23f' })
+      .text(cx, cy - 42, 'HUNT OVER', { fontFamily: 'monospace', fontSize: '16px', color: '#ffd23f' })
       .setOrigin(0.5)
       .setDepth(21);
     this.add
-      .text(cx, cy - 10, `${this.area.name} — downed: ${this.hunt.downed} / ${total}   lost: ${this.hunt.escaped}`, {
+      .text(cx, cy - 18, `${this.area.name} — downed: ${this.hunt.downed} / ${total}   lost: ${this.hunt.escaped}`, {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#ffffff',
       })
       .setOrigin(0.5)
       .setDepth(21);
-    this.summaryButton(cx - 62, cy + 30, 'hunt again', () => this.scene.restart({ areaId: this.area.id }));
-    this.summaryButton(cx + 62, cy + 30, 'menu', () => this.scene.start('TitleScene'));
+    if (this.kennelDog) {
+      this.add
+        .text(cx, cy + 0, `${this.kennelDog.name} +${gained} xp`, {
+          fontFamily: 'monospace',
+          fontSize: '8px',
+          color: '#9fd88f',
+        })
+        .setOrigin(0.5)
+        .setDepth(21);
+    }
+    if (levelMsg) {
+      this.add
+        .text(cx, cy + 14, levelMsg, { fontFamily: 'monospace', fontSize: '9px', color: '#ffd23f' })
+        .setOrigin(0.5)
+        .setDepth(21);
+    }
+    this.summaryButton(cx - 62, cy + 36, 'hunt again', () => this.scene.restart({ areaId: this.area.id }));
+    this.summaryButton(cx + 62, cy + 36, 'menu', () => this.scene.start('TitleScene'));
   }
 
   private summaryButton(x: number, y: number, label: string, onTap: () => void): void {
@@ -240,23 +307,40 @@ export class FieldScene extends Phaser.Scene {
     const bird = this.hunt.birds.find((b) => b.id === this.dog.pointedBirdId);
     if (!bird || bird.state !== 'hidden') return;
     if (dist(this.hunt.hunterPos, bird.pos) <= FLUSH_RADIUS) {
-      this.flush(bird, false);
+      this.flush(bird, 'proximity');
     }
   }
 
-  private flush(bird: Bird, wild: boolean): void {
+  private flush(bird: Bird, cause: 'proximity' | 'nerve' | 'bump' | 'scent'): void {
     this.flushing = true;
     const flushed = flushCovey(this.hunt.birds, bird.id);
     playFlush();
     this.cameras.main.flash(180, 255, 244, 214);
 
+    // Held points that produce a flush earn the dog XP; bumps don't count.
+    const pointedCredit =
+      (cause === 'proximity' || cause === 'nerve') && this.dog.pointedBirdId === bird.id;
+    if (pointedCredit) this.hunt.xpEvents.pointFlushes++;
+
+    // Steady dogs stand through the rise; soft ones break chase.
+    this.dog.onFlush(Math.random, bird.pos);
+
     const hunterDist = dist(this.hunt.hunterPos, bird.pos);
-    const label = wild ? 'FLUSHED WILD!' : flushed.length > 1 ? 'COVEY FLUSH!' : 'FLUSH!';
+    const label =
+      cause === 'proximity'
+        ? flushed.length > 1
+          ? 'COVEY FLUSH!'
+          : 'FLUSH!'
+        : cause === 'nerve'
+          ? 'FLUSHED WILD!'
+          : cause === 'bump'
+            ? 'BUMPED!'
+            : 'WINDED!';
     this.add
       .text(bird.pos.x, bird.pos.y - 10, label, {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: wild ? '#ff8c3f' : '#ffffff',
+        color: cause === 'proximity' ? '#ffffff' : '#ff8c3f',
       })
       .setOrigin(0.5);
 
@@ -265,7 +349,9 @@ export class FieldScene extends Phaser.Scene {
         this.scene.start('FlushScene', {
           hunt: this.hunt,
           birdIds: flushed.map((b) => b.id),
-          flushDistance: hunterDist, // groundwork for distance-scaled shot views
+          flushDistance: hunterDist,
+          dog: this.dog,
+          dogPointed: pointedCredit,
         });
       });
       return;

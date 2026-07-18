@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { AreaScene } from './scenes/AreaScene';
+import { BreedScene } from './scenes/BreedScene';
 import { FieldScene } from './scenes/FieldScene';
 import { FlushScene } from './scenes/FlushScene';
 import { TitleScene } from './scenes/TitleScene';
@@ -19,7 +20,7 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [TitleScene, AreaScene, FieldScene, FlushScene],
+  scene: [TitleScene, BreedScene, AreaScene, FieldScene, FlushScene],
 };
 
 const game = new Phaser.Game(config);

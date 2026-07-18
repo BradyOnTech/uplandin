@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { playBlip, unlockAudio } from '../audio';
 import { AREAS } from '../game/areas';
-import { loadCareer } from '../game/career';
+import { getBreed } from '../game/breeds';
+import { activeDog, loadCareer } from '../game/career';
 
 export class AreaScene extends Phaser.Scene {
   constructor() {
@@ -17,6 +18,17 @@ export class AreaScene extends Phaser.Scene {
     this.add
       .text(240, 24, 'choose your coverts', { fontFamily: 'monospace', fontSize: '12px', color: '#ffd23f' })
       .setOrigin(0.5);
+
+    const dog = activeDog(career);
+    if (dog) {
+      this.add
+        .text(240, 44, `hunting with ${dog.name} · ${getBreed(dog.breedId).name} · lv ${dog.level}`, {
+          fontFamily: 'monospace',
+          fontSize: '8px',
+          color: '#dfe9d8',
+        })
+        .setOrigin(0.5);
+    }
 
     AREAS.forEach((area, i) => {
       const y = 76 + i * 62;

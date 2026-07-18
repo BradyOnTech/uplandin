@@ -21,6 +21,7 @@ function huntWith(states: Bird['state'][]): HuntState {
     wind: 0,
     downed: 0,
     escaped: 0,
+    xpEvents: { pointFlushes: 0, retrieves: 0, downedOverPoint: 0 },
   };
 }
 

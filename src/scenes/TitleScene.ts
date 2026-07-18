@@ -37,7 +37,8 @@ export class TitleScene extends Phaser.Scene {
     this.input.once('pointerdown', () => {
       unlockAudio();
       playBlip();
-      this.scene.start('AreaScene');
+      // First run: pick and name a puppy before anything else.
+      this.scene.start(career.kennel.length === 0 ? 'BreedScene' : 'AreaScene');
     });
   }
 }

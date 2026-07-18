@@ -7,6 +7,13 @@ import type { RNG, Vec2 } from './types';
  * Everything that needs to survive a scene transition. Plain data, passed
  * from FieldScene to FlushScene and back via Phaser's scene-start payload.
  */
+/** Dog-work tallies for the hunt, converted to XP at the summary. */
+export interface XpEvents {
+  pointFlushes: number;
+  retrieves: number;
+  downedOverPoint: number;
+}
+
 export interface HuntState {
   areaId: string;
   birds: Bird[];
@@ -16,6 +23,7 @@ export interface HuntState {
   wind: number;
   downed: number;
   escaped: number;
+  xpEvents: XpEvents;
 }
 
 export function createHunt(area: AreaConfig, rng: RNG = Math.random): HuntState {
@@ -27,6 +35,7 @@ export function createHunt(area: AreaConfig, rng: RNG = Math.random): HuntState 
     wind: rng() * Math.PI * 2,
     downed: 0,
     escaped: 0,
+    xpEvents: { pointFlushes: 0, retrieves: 0, downedOverPoint: 0 },
   };
 }
 

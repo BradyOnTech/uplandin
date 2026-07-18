@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { playShot, playThud, unlockAudio } from '../audio';
+import type { Dog } from '../game/dog';
 import { dist } from '../game/math';
 import { escapeVelocity, hitTest } from '../game/shot';
 import type { HuntState } from '../game/state';
@@ -28,6 +29,8 @@ export class FlushScene extends Phaser.Scene {
   private hunt!: HuntState;
   private birds: FlyingBird[] = [];
   private resolved = false;
+  private dog?: Dog;
+  private dogPointed = false;
 
   private crosshair!: Phaser.GameObjects.Sprite;
   private shells = SHELLS;
@@ -38,8 +41,10 @@ export class FlushScene extends Phaser.Scene {
     super('FlushScene');
   }
 
-  create(data: { hunt: HuntState; birdIds: number[]; flushDistance?: number }): void {
+  create(data: { hunt: HuntState; birdIds: number[]; flushDistance?: number; dog?: Dog; dogPointed?: boolean }): void {
     this.hunt = data.hunt;
+    this.dog = data.dog;
+    this.dogPointed = data.dogPointed ?? false;
     this.shells = SHELLS;
     this.resolved = false;
     this.birds = [];
@@ -171,6 +176,8 @@ export class FlushScene extends Phaser.Scene {
     const downedHere = this.birds.filter(
       (b) => this.hunt.birds.find((x) => x.id === b.id)!.state === 'downed',
     ).length;
+    // Birds downed over the dog's point earn it XP at the summary.
+    if (this.dogPointed) this.hunt.xpEvents.downedOverPoint += downedHere;
 
     if (downedHere === 0) {
       this.hud.setText(total > 1 ? 'they all got away...' : 'it got away...');
@@ -182,7 +189,7 @@ export class FlushScene extends Phaser.Scene {
 
     this.time.delayedCall(1500, () => {
       this.input.setDefaultCursor('default');
-      this.scene.start('FieldScene', { hunt: this.hunt });
+      this.scene.start('FieldScene', { hunt: this.hunt, dog: this.dog });
     });
   }
 
