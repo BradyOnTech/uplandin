@@ -3,7 +3,7 @@ import { playBlip, playFlush, playPoint, unlockAudio } from '../audio';
 import { flushCovey, type Bird } from '../game/birds';
 import { Dog, type DogState } from '../game/dog';
 import { COVER_PATCHES, FIELD_BOUNDS } from '../game/field';
-import { dist, moveToward } from '../game/math';
+import { dist, moveToward, windArrow } from '../game/math';
 import { birdsRemaining, createHunt, huntComplete, type HuntState } from '../game/state';
 import type { Vec2 } from '../game/types';
 
@@ -91,7 +91,10 @@ export class FieldScene extends Phaser.Scene {
     const dt = delta / 1000;
 
     const retrievedBefore = this.hunt.birds.filter((b) => b.state === 'retrieved').length;
-    this.dog.update(delta, this.hunt.birds, this.hunt.hunterPos);
+    this.dog.update(delta, this.hunt.birds, {
+      hunterPos: this.hunt.hunterPos,
+      windAngle: this.hunt.wind,
+    });
     this.hunt.dogPos = { ...this.dog.pos };
 
     if (this.dog.state === 'pointing' && this.prevDogState !== 'pointing') playPoint();
@@ -117,7 +120,7 @@ export class FieldScene extends Phaser.Scene {
     this.pointMarker.setVisible(pointing);
 
     this.hud.setText(
-      `dog: ${this.dog.state}   birds: ${birdsRemaining(this.hunt)}   downed: ${this.hunt.downed}   lost: ${this.hunt.escaped}`,
+      `wind ${windArrow(this.hunt.wind)}   dog: ${this.dog.state}   birds: ${birdsRemaining(this.hunt)}   downed: ${this.hunt.downed}   lost: ${this.hunt.escaped}`,
     );
 
     this.checkFlush();

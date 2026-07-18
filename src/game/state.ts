@@ -10,6 +10,8 @@ export interface HuntState {
   birds: Bird[];
   dogPos: Vec2;
   hunterPos: Vec2;
+  /** Direction the wind blows toward (radians, screen coords) — constant for a hunt. */
+  wind: number;
   downed: number;
   escaped: number;
 }
@@ -19,6 +21,7 @@ export function createHunt(birdCount = 6, rng: RNG = Math.random): HuntState {
     birds: spawnBirds(birdCount, rng),
     dogPos: { x: FIELD_BOUNDS.w / 2 - 30, y: FIELD_BOUNDS.h - 30 },
     hunterPos: { x: FIELD_BOUNDS.w / 2, y: FIELD_BOUNDS.h - 20 },
+    wind: rng() * Math.PI * 2,
     downed: 0,
     escaped: 0,
   };

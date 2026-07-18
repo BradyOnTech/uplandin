@@ -26,3 +26,11 @@ export function moveToward(pos: Vec2, target: Vec2, maxDist: number): Vec2 {
     y: pos.y + (target.y - pos.y) * t,
   };
 }
+
+const ARROWS = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗']; // screen coords: y points down
+
+/** Compass arrow glyph for an angle in screen coordinates. */
+export function windArrow(angle: number): string {
+  const i = (((Math.round(angle / (Math.PI / 4)) % 8) + 8) % 8);
+  return ARROWS[i];
+}

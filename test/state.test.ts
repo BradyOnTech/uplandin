@@ -7,6 +7,7 @@ function huntWith(states: Bird['state'][]): HuntState {
     birds: states.map((state, i) => ({ id: i + 1, coveyId: 0, pos: { x: 0, y: 0 }, state })),
     dogPos: { x: 0, y: 0 },
     hunterPos: { x: 0, y: 0 },
+    wind: 0,
     downed: 0,
     escaped: 0,
   };

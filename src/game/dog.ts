@@ -18,6 +18,28 @@ const AVOID_HUNTER_RADIUS = 28; // won't point a bird sitting right on the hunte
 const RETRIEVE_RANGE = 6; // close enough to pick a downed bird up
 const RETRIEVE_HOLD_MS = 700; // mouthing the bird takes a moment
 
+/** Environment the dog is hunting in for this tick. */
+export interface DogEnv {
+  hunterPos?: Vec2;
+  /** Direction the wind blows TOWARD (radians, screen coords). Undefined = calm. */
+  windAngle?: number;
+}
+
+/**
+ * How far the dog can smell a bird that sits `dx, dy` away from it,
+ * accounting for wind. Scent travels with the wind, so a bird upwind of the
+ * dog can be smelled from far off; a bird downwind is nearly invisible.
+ */
+export function scentRange(windAngle: number | undefined, dx: number, dy: number): number {
+  if (windAngle === undefined) return SCENT_RADIUS;
+  const d = Math.hypot(dx, dy);
+  if (d === 0) return SCENT_RADIUS;
+  // +1 = bird dead downwind of the dog (worst); -1 = dead upwind (best)
+  const windDot = (dx * Math.cos(windAngle) + dy * Math.sin(windAngle)) / d;
+  const mult = 1.125 - 0.775 * windDot; // 1.9x upwind .. 1.125x crosswind .. 0.35x downwind
+  return SCENT_RADIUS * mult;
+}
+
 /**
  * Pure bird-dog AI. No Phaser in here — feed it birds and a timestep,
  * read back its position and state. Tuning these constants is where the
@@ -36,7 +58,7 @@ export class Dog {
     this.heading = rng() * Math.PI * 2;
   }
 
-  update(dtMs: number, birds: Bird[], hunterPos?: Vec2): void {
+  update(dtMs: number, birds: Bird[], env: DogEnv = {}): void {
     const dt = dtMs / 1000;
 
     if (this.state === 'pointing') {
@@ -82,7 +104,7 @@ export class Dog {
       return;
     }
 
-    const bird = this.nearestHiddenBird(birds, hunterPos);
+    const bird = this.nearestHiddenBird(birds, env);
     if (bird) {
       this.state = 'tracking';
       this.heading = Math.atan2(bird.pos.y - this.pos.y, bird.pos.x - this.pos.x);
@@ -116,16 +138,17 @@ export class Dog {
     return best;
   }
 
-  private nearestHiddenBird(birds: Bird[], hunterPos?: Vec2): Bird | null {
+  private nearestHiddenBird(birds: Bird[], env: DogEnv): Bird | null {
     let best: Bird | null = null;
-    let bestDist = SCENT_RADIUS;
+    let bestRange = Infinity;
     for (const b of birds) {
       if (b.state !== 'hidden') continue;
-      if (hunterPos && dist(b.pos, hunterPos) <= AVOID_HUNTER_RADIUS) continue;
+      if (env.hunterPos && dist(b.pos, env.hunterPos) <= AVOID_HUNTER_RADIUS) continue;
       const d = dist(this.pos, b.pos);
-      if (d <= bestDist) {
+      const range = scentRange(env.windAngle, b.pos.x - this.pos.x, b.pos.y - this.pos.y);
+      if (d <= range && d < bestRange) {
         best = b;
-        bestDist = d;
+        bestRange = d;
       }
     }
     return best;
