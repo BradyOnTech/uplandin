@@ -33,8 +33,8 @@ Check items off (and adjust them) as tranches ship.
   to a covert finds the same ground. **[built]**
 - The dog quarters **anchored to the hunter's position** out to its Range
   radius (130px × Range multiplier); big-running breeds work off-screen.
-  A basic edge arrow points at the dog when it's off-screen (gold on point);
-  GPS tiers refine this later. **[built]**
+  What the edge arrow shows is gear-gated (see Progression & gear): nothing
+  on the bell, point-only on the beeper, always + distance on GPS. **[built]**
 - **Sprint** (double-tap or hold shift): 2× hunter speed, but loud — hidden
   birds within ~30px flush underfoot and pointed birds' nerve drains ~1.6×
   faster while running. **[built]**
@@ -159,10 +159,15 @@ Special rules:
 - First-run flow: breed select (stat bars) + puppy naming, then the kennel
   drives every hunt. **[built]**
 
-## Progression & gear **[planned]**
+## Progression & gear **[built — two-dog hunting remains]**
 
-- Hunter XP: bird downed +1, double on one flush +1 bonus, hunt completed +2.
-- Shotguns (capacity vs swing time):
+Everything derives from hunter level; no purchase economy (yet). Level-ups
+announce their unlocks at the hunt summary.
+
+- Hunter XP **[built]**: bird downed +1, double on one flush +1 bonus, hunt
+  completed +2. Thresholds ~`10 × level^1.5`, cap 10.
+- Shotguns **[built]** — swap at the gun rack on the travel map; Quick Hunt
+  has them all:
 
   | Gun | Shells | Cooldown | Spread | Unlock |
   |---|---|---|---|---|
@@ -171,17 +176,22 @@ Special rules:
   | Over/under | 2 | none | 16 | hunter lvl 5 |
   | Handmade side-by-side | 2 | none | 18 | hunter lvl 8 |
 
-- **Truck**: unlocks travel beyond the home region. **Dog box**: kennel
-  slots 1→3→5; two-dog hunting needs box tier 2 + hunter level.
-- Dog tracking gear:
-  - Tier 0 **bell**: tinkles while the dog moves, *goes silent on point* —
-    tells you that, not where. **[built — everyone starts with it]**
-  - Tier 1 **beeper collar**: beeps on point + rough direction arrow.
-  - Tier 2 **GPS handheld**: edge arrow + live distance.
-  - Tier 3 **GPS + map**: minimap with dog position/status + remote recall at
-    any range.
+- **Truck** **[built]**: hunter lvl 2 opens travel beyond the home region.
+- **Dog box / kennel** **[built]**: slots 1→3 (lvl 4)→5 (lvl 7); the kennel
+  screen switches the active dog and raises new puppies (a fresh pup always
+  rides along next). Two-dog hunting still needs T5.
+- Dog tracking gear **[built]** — best earned tier auto-equips; Quick Hunt
+  picks any:
+  - Tier 0 **bell** (start): tinkles while the dog moves, fades with
+    distance, *goes silent on point* — tells you that, not where.
+  - Tier 1 **beeper collar** (lvl 3): locate beeps on point + edge arrow
+    while pointing.
+  - Tier 2 **GPS handheld** (lvl 6): edge arrow whenever off-screen + live
+    distance.
+  - Tier 3 **GPS + map** (lvl 9): corner minimap with hunter/dog (gold on
+    point) + remote recall at any range.
 - Two-dog hunting: second `Dog` instance; **honoring** — when one dog points,
-  the other stops and backs. **[planned]**
+  the other stops and backs. **[planned — T5]**
 
 ## Tranche sequence
 
@@ -202,9 +212,11 @@ Special rules:
 - **T2.5 — game modes [shipped]**: Career vs Quick Hunt split; quick setup
   screen (breed/level/covert/wind pickers), career isolation, remembered
   setup.
-- **T3 — hunter progression**: hunter XP, shotguns, truck/region gating, dog
-  box, GPS tiers. Quick Hunt should expose new unlockables too (shotgun
-  picker, two-dog once T5 lands).
+- **T3 — hunter progression [shipped]**: hunter XP/levels with summary
+  unlock callouts, the four shotguns (shells/cooldown/spread in the shot
+  view, gun rack on the map), truck region gating, kennel screen + dog box
+  slots, tracking-gear tiers (beeper/GPS/GPS+map, minimap, remote recall);
+  gun + gear rows in Quick Hunt.
 - **T4 — species pack 2**: chukar, prairie chicken, blue grouse, the 5 quail
   species + remaining regions.
 - **T5 — two dogs**: second instance, honoring, shared retrieves.
