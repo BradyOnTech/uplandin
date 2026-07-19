@@ -13,6 +13,7 @@ import { dogScentRadius, getBreed, type BreedConfig } from '../game/breeds';
 import { activeDog, awardDogXp, loadCareer, recordHunt, saveCareer, type KennelDog } from '../game/career';
 import { devDogLevel } from '../game/dev';
 import { Dog, WHISTLE_RANGE, type DogState } from '../game/dog';
+import type { QuickConfig } from '../game/quick';
 import { VIEWPORT } from '../game/field';
 import { dist, moveToward, mulberry32, windArrow } from '../game/math';
 import { getSpecies } from '../game/species';
@@ -55,6 +56,7 @@ export class FieldScene extends Phaser.Scene {
   private kennelDog: KennelDog | null = null;
   private breed: BreedConfig = getBreed('gsp');
   private devLevel: number | null = null;
+  private quick: QuickConfig | null = null;
 
   private hunterTarget: Vec2 | null = null;
   private sprinting = false;
@@ -80,13 +82,25 @@ export class FieldScene extends Phaser.Scene {
     super('FieldScene');
   }
 
-  create(data: { hunt?: HuntState; areaId?: string; dog?: Dog }): void {
-    this.area = data.hunt ? getArea(data.hunt.areaId) : data.areaId ? getArea(data.areaId) : AREAS[0];
-    this.hunt = data.hunt ?? createHunt(this.area);
-    this.kennelDog = activeDog(loadCareer());
-    this.breed = this.kennelDog ? getBreed(this.kennelDog.breedId) : getBreed('gsp');
-    this.devLevel = devDogLevel(window.location.search);
-    const level = this.devLevel ?? this.kennelDog?.level ?? 1;
+  create(data: { hunt?: HuntState; areaId?: string; dog?: Dog; quick?: QuickConfig }): void {
+    // Quick Hunt: the picked setup rides inside HuntState so it survives the
+    // trip through FlushScene. Career mode reads the kennel as usual.
+    this.quick = data.quick ?? data.hunt?.quick ?? null;
+    this.area = data.hunt
+      ? getArea(data.hunt.areaId)
+      : getArea(data.areaId ?? this.quick?.areaId ?? AREAS[0].id);
+    this.hunt =
+      data.hunt ??
+      createHunt(this.area, Math.random, this.quick && this.quick.wind !== 'random' ? this.quick.wind : undefined);
+    if (this.quick) this.hunt.quick = this.quick;
+    this.kennelDog = this.quick ? null : activeDog(loadCareer());
+    this.breed = this.quick
+      ? getBreed(this.quick.breedId)
+      : this.kennelDog
+        ? getBreed(this.kennelDog.breedId)
+        : getBreed('gsp');
+    this.devLevel = this.quick ? null : devDogLevel(window.location.search);
+    const level = this.quick?.level ?? this.devLevel ?? this.kennelDog?.level ?? 1;
     // The Dog instance rides through FlushScene and back so breaking chase,
     // creep state, and heading survive the transition.
     this.dog =
@@ -323,7 +337,7 @@ export class FieldScene extends Phaser.Scene {
 
     const staminaFilled = Math.ceil((this.dog.staminaMs / this.dog.maxStaminaMs) * 5);
     const staminaPips = `[${'#'.repeat(staminaFilled)}${'-'.repeat(5 - staminaFilled)}]`;
-    const dogName = this.kennelDog?.name ?? 'dog';
+    const dogName = this.quick ? this.breed.name : this.kennelDog?.name ?? 'dog';
     this.hud.setText(
       `wind ${windArrow(this.hunt.wind)} ${this.hunt.windStrength}   birds: ${birdsRemaining(this.hunt)}   downed: ${this.hunt.downed}   lost: ${this.hunt.escaped}${running ? '   RUNNING' : ''}\n` +
         `${dogName} lv${this.dog.level}${this.devLevel !== null ? ' (dev)' : ''} ${this.dog.state}${this.dog.winded ? ' winded' : ''} ${staminaPips}`,
@@ -368,20 +382,23 @@ export class FieldScene extends Phaser.Scene {
   private showSummary(): void {
     this.summaryShown = true;
 
-    // Convert the dog's work into XP (breed XP rate applies; hen fines come off the top).
+    // Convert the dog's work into XP (breed XP rate applies; hen fines come
+    // off the top). Quick Hunts record nothing — the career stays untouched.
     const ev = this.hunt.xpEvents;
     const base = 2 * ev.pointFlushes + ev.retrieves + 3 * ev.downedOverPoint;
     const fine = HEN_FINE_XP * ev.henDowns;
     const gained = Math.max(0, Math.round(base * this.breed.xpRate) - fine);
-    let career = recordHunt(loadCareer(), this.hunt.areaId, this.hunt.downed, this.hunt.escaped);
     let levelMsg: string | null = null;
-    if (this.kennelDog && gained > 0) {
-      const res = awardDogXp(career, this.kennelDog.id, gained);
-      career = res.career;
-      this.kennelDog = career.kennel.find((d) => d.id === this.kennelDog!.id) ?? this.kennelDog;
-      if (res.levelsGained > 0) levelMsg = `LEVEL UP! ${this.kennelDog.name} is level ${res.newLevel}!`;
+    if (!this.quick) {
+      let career = recordHunt(loadCareer(), this.hunt.areaId, this.hunt.downed, this.hunt.escaped);
+      if (this.kennelDog && gained > 0) {
+        const res = awardDogXp(career, this.kennelDog.id, gained);
+        career = res.career;
+        this.kennelDog = career.kennel.find((d) => d.id === this.kennelDog!.id) ?? this.kennelDog;
+        if (res.levelsGained > 0) levelMsg = `LEVEL UP! ${this.kennelDog.name} is level ${res.newLevel}!`;
+      }
+      saveCareer(career);
     }
-    saveCareer(career);
 
     const cx = VIEWPORT.w / 2;
     const cy = VIEWPORT.h / 2;
@@ -401,7 +418,17 @@ export class FieldScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(21);
-    if (this.kennelDog) {
+    if (this.quick) {
+      this.add
+        .text(cx, cy + 0, 'quick hunt — career untouched', {
+          fontFamily: 'monospace',
+          fontSize: '8px',
+          color: '#9fb896',
+        })
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(21);
+    } else if (this.kennelDog) {
       this.add
         .text(cx, cy + 0, `${this.kennelDog.name} +${gained} xp`, {
           fontFamily: 'monospace',
@@ -412,7 +439,7 @@ export class FieldScene extends Phaser.Scene {
         .setScrollFactor(0)
         .setDepth(21);
     }
-    if (ev.henDowns > 0) {
+    if (!this.quick && ev.henDowns > 0) {
       this.add
         .text(cx, cy + 12, `${ev.henDowns} hen${ev.henDowns > 1 ? 's' : ''} down — game warden fines you ${fine} xp`, {
           fontFamily: 'monospace',
@@ -430,8 +457,13 @@ export class FieldScene extends Phaser.Scene {
         .setScrollFactor(0)
         .setDepth(21);
     }
-    this.summaryButton(cx - 62, cy + 44, 'hunt again', () => this.scene.restart({ areaId: this.area.id }));
-    this.summaryButton(cx + 62, cy + 44, 'menu', () => this.scene.start('TitleScene'));
+    if (this.quick) {
+      this.summaryButton(cx - 62, cy + 44, 'hunt again', () => this.scene.restart({ quick: this.quick }));
+      this.summaryButton(cx + 62, cy + 44, 'setup', () => this.scene.start('QuickScene'));
+    } else {
+      this.summaryButton(cx - 62, cy + 44, 'hunt again', () => this.scene.restart({ areaId: this.area.id }));
+      this.summaryButton(cx + 62, cy + 44, 'menu', () => this.scene.start('TitleScene'));
+    }
   }
 
   private summaryButton(x: number, y: number, label: string, onTap: () => void): void {

@@ -1,0 +1,66 @@
+import { describe, expect, it } from 'vitest';
+import { AREAS } from '../src/game/areas';
+import { BREEDS } from '../src/game/breeds';
+import type { StorageLike } from '../src/game/career';
+import {
+  cycleId,
+  defaultQuickConfig,
+  loadQuickConfig,
+  normalizeQuickConfig,
+  QUICK_KEY,
+  saveQuickConfig,
+  WIND_CHOICES,
+} from '../src/game/quick';
+
+function memoryStorage(): StorageLike & { data: Record<string, string> } {
+  const data: Record<string, string> = {};
+  return {
+    data,
+    getItem: (k) => data[k] ?? null,
+    setItem: (k, v) => {
+      data[k] = v;
+    },
+  };
+}
+
+describe('quick hunt config', () => {
+  it('defaults are legal values', () => {
+    const cfg = defaultQuickConfig();
+    expect(BREEDS.some((b) => b.id === cfg.breedId)).toBe(true);
+    expect(AREAS.some((a) => a.id === cfg.areaId)).toBe(true);
+    expect(WIND_CHOICES).toContain(cfg.wind);
+    expect(cfg.level).toBeGreaterThanOrEqual(1);
+    expect(cfg.level).toBeLessThanOrEqual(10);
+  });
+
+  it('cycleId wraps both directions', () => {
+    const ids = ['a', 'b', 'c'];
+    expect(cycleId(ids, 'a', 1)).toBe('b');
+    expect(cycleId(ids, 'c', 1)).toBe('a');
+    expect(cycleId(ids, 'a', -1)).toBe('c');
+  });
+
+  it('normalize repairs junk values', () => {
+    const cfg = normalizeQuickConfig({ breedId: 'nope', level: 99, areaId: 'gone', wind: 'hurricane' as never });
+    expect(cfg.breedId).toBe(defaultQuickConfig().breedId);
+    expect(cfg.areaId).toBe(defaultQuickConfig().areaId);
+    expect(cfg.wind).toBe('random');
+    expect(cfg.level).toBe(10); // clamped, not reset
+    expect(normalizeQuickConfig({ level: -3 }).level).toBe(1);
+    expect(normalizeQuickConfig({ level: 7.6 }).level).toBe(8);
+  });
+
+  it('persists and reloads the last setup', () => {
+    const storage = memoryStorage();
+    const cfg = { breedId: 'irish-setter', level: 3, areaId: 'grouse-woods', wind: 'strong' as const };
+    saveQuickConfig(cfg, storage);
+    expect(loadQuickConfig(storage)).toEqual(cfg);
+  });
+
+  it('falls back to defaults on missing or corrupt storage', () => {
+    expect(loadQuickConfig(null)).toEqual(defaultQuickConfig());
+    const storage = memoryStorage();
+    storage.data[QUICK_KEY] = '{not json';
+    expect(loadQuickConfig(storage)).toEqual(defaultQuickConfig());
+  });
+});

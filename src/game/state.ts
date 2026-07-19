@@ -1,5 +1,6 @@
 import { areaBirdCount, type AreaConfig } from './areas';
 import { spawnBirds, type Bird } from './birds';
+import type { QuickConfig } from './quick';
 import type { RNG, Vec2 } from './types';
 import { rollWindStrength, windMults, type WindStrength } from './wind';
 
@@ -27,11 +28,17 @@ export interface HuntState {
   downed: number;
   escaped: number;
   xpEvents: XpEvents;
+  /** Set on Quick Hunt runs: the picked setup. Career is never touched. */
+  quick?: QuickConfig;
 }
 
-export function createHunt(area: AreaConfig, rng: RNG = Math.random): HuntState {
+export function createHunt(
+  area: AreaConfig,
+  rng: RNG = Math.random,
+  windOverride?: WindStrength,
+): HuntState {
   const w = area.world;
-  const windStrength = rollWindStrength(rng);
+  const windStrength = windOverride ?? rollWindStrength(rng);
   return {
     areaId: area.id,
     birds: spawnBirds(

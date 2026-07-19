@@ -140,6 +140,10 @@ Special rules:
 
 ## Meta layer **[partially built]**
 
+- **Game modes** **[built]**: the title offers **Career** (raise your dog,
+  work the map, everything below) and **Quick Hunt** — pick any breed, level
+  1–10, covert, and wind; everything unlocked, nothing saved to the career.
+  Last quick setup is remembered. Doubles as the permanent testing surface.
 - Title screen, area select, career totals **[built]**.
 - Continental-US travel map (`MapScene` → region area select) **[built]**:
   4 regions open (Southern Plains · Prairie Pothole · North Woods · Great
@@ -195,8 +199,12 @@ Special rules:
   (6 areas); bobwhite, ringneck w/ hen-rooster rule, ruffed, woodcock,
   sharptail, Huns; scattered singles; wind strength; escape-flight styles +
   flush sounds; `?doglevel=N` dev override.
+- **T2.5 — game modes [shipped]**: Career vs Quick Hunt split; quick setup
+  screen (breed/level/covert/wind pickers), career isolation, remembered
+  setup.
 - **T3 — hunter progression**: hunter XP, shotguns, truck/region gating, dog
-  box, GPS tiers.
+  box, GPS tiers. Quick Hunt should expose new unlockables too (shotgun
+  picker, two-dog once T5 lands).
 - **T4 — species pack 2**: chukar, prairie chicken, blue grouse, the 5 quail
   species + remaining regions.
 - **T5 — two dogs**: second instance, honoring, shared retrieves.

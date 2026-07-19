@@ -4,6 +4,7 @@ import { BreedScene } from './scenes/BreedScene';
 import { FieldScene } from './scenes/FieldScene';
 import { FlushScene } from './scenes/FlushScene';
 import { MapScene } from './scenes/MapScene';
+import { QuickScene } from './scenes/QuickScene';
 import { TitleScene } from './scenes/TitleScene';
 
 /** Internal resolution — deliberately tiny, scaled up with nearest-neighbor for the retro look. */
@@ -21,7 +22,7 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [TitleScene, BreedScene, MapScene, AreaScene, FieldScene, FlushScene],
+  scene: [TitleScene, BreedScene, MapScene, QuickScene, AreaScene, FieldScene, FlushScene],
 };
 
 const game = new Phaser.Game(config);

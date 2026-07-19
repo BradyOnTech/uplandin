@@ -29,16 +29,28 @@ export class TitleScene extends Phaser.Scene {
       .text(240, 158, stats, { fontFamily: 'monospace', fontSize: '8px', color: '#dfe9d8' })
       .setOrigin(0.5);
 
-    const prompt = this.add
-      .text(240, 206, 'tap to hunt', { fontFamily: 'monospace', fontSize: '10px', color: '#ffffff' })
-      .setOrigin(0.5);
-    this.tweens.add({ targets: prompt, alpha: 0.25, duration: 550, yoyo: true, repeat: -1 });
+    const button = (y: number, label: string, sub: string, onTap: () => void) => {
+      this.add
+        .rectangle(240, y, 190, 26, 0x101410, 0.7)
+        .setStrokeStyle(1, 0x9fb896)
+        .setInteractive()
+        .on('pointerdown', () => {
+          unlockAudio();
+          playBlip();
+          onTap();
+        });
+      this.add
+        .text(240, y - 4, label, { fontFamily: 'monospace', fontSize: '10px', color: '#ffffff' })
+        .setOrigin(0.5);
+      this.add
+        .text(240, y + 8, sub, { fontFamily: 'monospace', fontSize: '8px', color: '#9fb896' })
+        .setOrigin(0.5);
+    };
 
-    this.input.once('pointerdown', () => {
-      unlockAudio();
-      playBlip();
-      // First run: pick and name a puppy before anything else.
-      this.scene.start(career.kennel.length === 0 ? 'BreedScene' : 'MapScene');
-    });
+    // First run: pick and name a puppy before anything else.
+    button(196, 'career', 'raise your dog, work the map', () =>
+      this.scene.start(career.kennel.length === 0 ? 'BreedScene' : 'MapScene'),
+    );
+    button(232, 'quick hunt', 'everything unlocked, nothing saved', () => this.scene.start('QuickScene'));
   }
 }
