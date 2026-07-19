@@ -11,6 +11,7 @@ import {
 } from '../game/birds';
 import { dogScentRadius, getBreed, type BreedConfig } from '../game/breeds';
 import { activeDog, awardDogXp, loadCareer, recordHunt, saveCareer, type KennelDog } from '../game/career';
+import { devDogLevel } from '../game/dev';
 import { Dog, WHISTLE_RANGE, type DogState } from '../game/dog';
 import { VIEWPORT } from '../game/field';
 import { dist, moveToward, mulberry32, windArrow } from '../game/math';
@@ -49,6 +50,7 @@ export class FieldScene extends Phaser.Scene {
   private area!: AreaConfig;
   private kennelDog: KennelDog | null = null;
   private breed: BreedConfig = getBreed('gsp');
+  private devLevel: number | null = null;
 
   private hunterTarget: Vec2 | null = null;
   private sprinting = false;
@@ -79,7 +81,8 @@ export class FieldScene extends Phaser.Scene {
     this.hunt = data.hunt ?? createHunt(this.area);
     this.kennelDog = activeDog(loadCareer());
     this.breed = this.kennelDog ? getBreed(this.kennelDog.breedId) : getBreed('gsp');
-    const level = this.kennelDog?.level ?? 1;
+    this.devLevel = devDogLevel(window.location.search);
+    const level = this.devLevel ?? this.kennelDog?.level ?? 1;
     // The Dog instance rides through FlushScene and back so breaking chase,
     // creep state, and heading survive the transition.
     this.dog =
@@ -315,7 +318,7 @@ export class FieldScene extends Phaser.Scene {
     const dogName = this.kennelDog?.name ?? 'dog';
     this.hud.setText(
       `wind ${windArrow(this.hunt.wind)}   birds: ${birdsRemaining(this.hunt)}   downed: ${this.hunt.downed}   lost: ${this.hunt.escaped}${running ? '   RUNNING' : ''}\n` +
-        `${dogName} lv${this.dog.level} ${this.dog.state}${this.dog.winded ? ' winded' : ''} ${staminaPips}`,
+        `${dogName} lv${this.dog.level}${this.devLevel !== null ? ' (dev)' : ''} ${this.dog.state}${this.dog.winded ? ' winded' : ''} ${staminaPips}`,
     );
     this.whistleLabel.setText(this.dog.state === 'heel' ? 'cast off' : 'whistle');
 
