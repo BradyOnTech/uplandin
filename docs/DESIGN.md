@@ -150,7 +150,11 @@ Special rules:
   wave (the straggler at your feet), and **skill-linked difficulty**: how
   close you walked in sets the whole rise's size/distance — point-blank
   over a solid point is a big easy chance, a scramble at the edge of
-  range is small birds already going away (`flushBias`).
+  range is small birds already going away (`flushBias`). **Skill loads
+  the dice, it never replaces them**: ~18% of rises are WILD regardless
+  ("they're wild!" — small, hot, going away despite your perfect
+  walk-in) and ~8% are gifts (they sat like stones despite your
+  scramble). Even a perfect hunter gets surprised.
 
 ## Wind **[built]**
 

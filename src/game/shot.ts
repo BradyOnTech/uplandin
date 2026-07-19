@@ -69,15 +69,36 @@ export const GLIDE_MAX = 150; // glide exit speed cap
 export const LEVEL_ACCEL = 150; // the rooster pours it on harder
 export const LEVEL_MAX = 210;
 
+export const WILD_RISE_CHANCE = 0.18; // birds do wild bird things
+export const GIFT_RISE_CHANCE = 0.08; // ...and sometimes they sit like stones
+
+export interface FlushBias {
+  min: number;
+  max: number;
+  /** earned: your walk-in decided it. wild: they blew out anyway. gift: they sat tight anyway. */
+  kind: 'earned' | 'wild' | 'gift';
+}
+
 /**
- * Skill-linked difficulty: how well you walked in decides the rise you get.
- * Point-blank over a solid point → big close birds, an easy chance. A
- * scramble at the edge of shot range → the covey is already small, far,
- * and going away. Returns the per-bird size/depth roll range.
+ * Skill-linked difficulty — but skill loads the dice, it never replaces
+ * them. Usually, how well you walked in decides the rise: point-blank over
+ * a solid point → big close birds; a scramble at the edge of range → small
+ * birds already going away. But some rises are WILD no matter how well you
+ * did (they behave like an edge-of-range scramble), and a few are gifts no
+ * matter how badly you did. Even a perfect hunter gets surprised.
  */
-export function flushBias(flushDistance: number): { min: number; max: number } {
-  const t = Math.max(0, Math.min(1, (flushDistance - 8) / 32)); // 8px point-blank .. 40px max range
-  return { min: 0.9 - 0.3 * t, max: 1.15 - 0.35 * t };
+export function flushBias(flushDistance: number, rng: RNG = Math.random): FlushBias {
+  const roll = rng();
+  let t = Math.max(0, Math.min(1, (flushDistance - 8) / 32)); // 8px point-blank .. 40px max range
+  let kind: FlushBias['kind'] = 'earned';
+  if (roll < WILD_RISE_CHANCE) {
+    kind = 'wild';
+    t = Math.max(t, 0.72 + rng() * 0.28);
+  } else if (roll < WILD_RISE_CHANCE + GIFT_RISE_CHANCE) {
+    kind = 'gift';
+    t = Math.min(t, rng() * 0.2);
+  }
+  return { min: 0.9 - 0.3 * t, max: 1.15 - 0.35 * t, kind };
 }
 
 /** Which side a bird should leave by: with its momentum, else the nearer edge. */

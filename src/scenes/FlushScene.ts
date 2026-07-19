@@ -145,8 +145,9 @@ export class FlushScene extends Phaser.Scene {
       }
       const lane = lanePerm[i % MAX_AIRBORNE];
       const vel = escapeVelocityFan(species.flight, lane, MAX_AIRBORNE);
-      // Hot rolls and lazy rolls: some birds are screamers, some loaf.
-      const speedRoll = 0.85 + Math.random() * 0.45;
+      // Hot rolls and lazy rolls: some birds are screamers, some loaf —
+      // and a wild rise comes out hotter across the board.
+      const speedRoll = (bias.kind === 'wild' ? 0.95 : 0.85) + Math.random() * 0.45;
       vel.x *= speedRoll;
       vel.y *= speedRoll;
       vel.x += flushDrift;
@@ -203,12 +204,14 @@ export class FlushScene extends Phaser.Scene {
     const henWarning = this.birds.some((b) => b.fieldBird.sex === 'hen') ? '  —  watch for hens!' : '';
     const slopeNote =
       slope === 'above' ? '  —  shooting down the hill' : slope === 'below' ? '  —  rocketing overhead!' : '';
+    const wildNote = bias.kind === 'wild' ? "  —  they're wild!" : '';
     this.hud = this.add.text(
       4,
       4,
       (data.birdIds.length > 1 ? `covey rise! ${data.birdIds.length} ${lead.species.name}s` : `${lead.species.name}!`) +
         henWarning +
-        slopeNote,
+        slopeNote +
+        wildNote,
       { fontFamily: 'monospace', fontSize: '8px', color: '#ffffff' },
     ).setDepth(DEPTH_UI);
 

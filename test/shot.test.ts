@@ -75,15 +75,34 @@ describe('escapeVelocity', () => {
     expect(Math.abs(rv.y)).toBeLessThan(5); // climb is gone — pure crossing shot
   });
 
-  it('skill-linked difficulty: a tight walk-in buys big close birds', () => {
-    const pointBlank = flushBias(10);
-    const edgeOfRange = flushBias(38);
+  it('skill-linked difficulty: a tight walk-in usually buys big close birds', () => {
+    const earned = () => 0.99; // rolls past the wild/gift band
+    const pointBlank = flushBias(10, earned);
+    const edgeOfRange = flushBias(38, earned);
+    expect(pointBlank.kind).toBe('earned');
     // Ranges are sane and ordered...
     expect(pointBlank.min).toBeLessThan(pointBlank.max);
     expect(edgeOfRange.min).toBeLessThan(edgeOfRange.max);
     // ...and they don't even overlap: the worst point-blank bird is still
     // bigger than the best edge-of-range bird.
     expect(pointBlank.min).toBeGreaterThan(edgeOfRange.max);
+  });
+
+  it('...but birds do wild bird things: skill loads the dice, never replaces them', () => {
+    const seq = (vals: number[]) => {
+      let i = 0;
+      return () => vals[Math.min(i++, vals.length - 1)];
+    };
+    const earned = () => 0.99;
+    // A perfect point-blank walk-in can still blow out wild — the rise
+    // behaves like an edge-of-range scramble despite your good work.
+    const wild = flushBias(10, seq([0.05, 0.5]));
+    expect(wild.kind).toBe('wild');
+    expect(wild.max).toBeLessThan(flushBias(10, earned).min);
+    // And a bad scramble can still find birds that sat like stones.
+    const gift = flushBias(38, seq([0.2, 0.5]));
+    expect(gift.kind).toBe('gift');
+    expect(gift.min).toBeGreaterThan(flushBias(38, earned).max);
   });
 
   it('exitDirFor leaves with momentum, or by the nearer edge from a hover', () => {
