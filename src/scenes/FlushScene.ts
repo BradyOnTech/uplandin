@@ -3,6 +3,7 @@ import { playCackle, playShot, playThud, playThunder, playTwitter, unlockAudio }
 import { getArea } from '../game/areas';
 import { relightSurvivors, type Bird } from '../game/birds';
 import type { Dog } from '../game/dog';
+import { slopeFlightMult, type SlopeApproach } from '../game/fieldcraft';
 import { getGun, type GunConfig } from '../game/guns';
 import { clamp, dist } from '../game/math';
 import { escapeVelocity, hitTest } from '../game/shot';
@@ -43,6 +44,8 @@ export class FlushScene extends Phaser.Scene {
   private lastShotAt = -Infinity;
   private shellPips: Phaser.GameObjects.Rectangle[] = [];
   private hud!: Phaser.GameObjects.Text;
+  /** Timber the pattern can't punch through (grouse cover). */
+  private trees: { x: number; y: number; w: number; h: number }[] = [];
 
   constructor() {
     super('FlushScene');
@@ -54,6 +57,7 @@ export class FlushScene extends Phaser.Scene {
     flushDistance?: number;
     dogs?: Dog[];
     pointingSlot?: number | null;
+    slopeApproach?: SlopeApproach | null;
   }): void {
     this.hunt = data.hunt;
     this.dogs = data.dogs ?? [];
@@ -66,12 +70,19 @@ export class FlushScene extends Phaser.Scene {
 
     this.drawSky();
     this.makeCrosshair();
+    // The slope shot: from above they drop away slow and open; from below
+    // they rocket over your head.
+    const slope = data.slopeApproach ?? null;
+    const slopeMult = slopeFlightMult(slope);
+    this.makeTimber(data.birdIds);
 
     const flushSounds = new Set<string>();
     data.birdIds.forEach((id, i) => {
       const fieldBird = this.hunt.birds.find((b) => b.id === id)!;
       const species = getSpecies(fieldBird.speciesId);
       const vel = escapeVelocity(species.flight);
+      vel.x *= slopeMult;
+      vel.y *= slopeMult * (slope === 'above' ? 0.85 : 1); // dropping away below you
       // World coords → screen: the bird rises where it sat relative to the hunter.
       const launchX = clamp(240 + (fieldBird.pos.x - this.hunt.hunterPos.x), 48, 432);
       // Steer back toward the middle of the screen so edge flushes stay shootable.
@@ -107,11 +118,14 @@ export class FlushScene extends Phaser.Scene {
     }
     const lead = this.birds[0];
     const henWarning = this.birds.some((b) => b.fieldBird.sex === 'hen') ? '  —  watch for hens!' : '';
+    const slopeNote =
+      slope === 'above' ? '  —  shooting down the hill' : slope === 'below' ? '  —  rocketing overhead!' : '';
     this.hud = this.add.text(
       4,
       4,
       (data.birdIds.length > 1 ? `covey rise! ${data.birdIds.length} ${lead.species.name}s` : `${lead.species.name}!`) +
-        henWarning,
+        henWarning +
+        slopeNote,
       { fontFamily: 'monospace', fontSize: '8px', color: '#ffffff' },
     );
 
@@ -172,6 +186,15 @@ export class FlushScene extends Phaser.Scene {
       duration: 160,
       onComplete: () => flash.destroy(),
     });
+
+    // Grouse cover: the pattern can't punch through timber.
+    if (this.trees.some((t) => aim.x >= t.x && aim.x <= t.x + t.w && aim.y >= t.y && aim.y <= t.y + t.h)) {
+      this.add
+        .text(aim.x, aim.y - 10, 'thwack — timber!', { fontFamily: 'monospace', fontSize: '9px', color: '#c9dcc0' })
+        .setOrigin(0.5)
+        .setDepth(11);
+      return;
+    }
 
     // One shell, one bird: the nearest flying bird inside the pattern.
     let best: FlyingBird | null = null;
@@ -250,6 +273,27 @@ export class FlushScene extends Phaser.Scene {
       this.input.setDefaultCursor('default');
       this.scene.start('FieldScene', { hunt: this.hunt, dogs: this.dogs });
     });
+  }
+
+  /** Grouse put a tree between themselves and the gun. */
+  private makeTimber(birdIds: number[]): void {
+    this.trees = [];
+    const timberBirds = birdIds.some((id) => {
+      const b = this.hunt.birds.find((x) => x.id === id);
+      return b && getSpecies(b.speciesId).timber;
+    });
+    if (!timberBirds) return;
+    const count = 1 + (Math.random() < 0.4 ? 1 : 0);
+    for (let i = 0; i < count; i++) {
+      const x = 90 + Math.random() * 300;
+      const trunk = { x: x - 3, y: GROUND_Y - 46, w: 6, h: 46 };
+      const canopy = { x: x - 16, y: GROUND_Y - 96, w: 32, h: 56 };
+      const g = this.add.graphics().setDepth(5);
+      g.fillStyle(0x4a3626).fillRect(trunk.x, trunk.y, trunk.w, trunk.h);
+      g.fillStyle(0x2c4a30).fillRect(canopy.x, canopy.y, canopy.w, canopy.h);
+      g.fillStyle(0x35573a).fillRect(canopy.x + 4, canopy.y + 6, canopy.w - 8, canopy.h - 12);
+      this.trees.push(trunk, canopy);
+    }
   }
 
   private drawSky(): void {

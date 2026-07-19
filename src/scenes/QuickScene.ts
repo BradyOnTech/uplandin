@@ -8,6 +8,7 @@ import {
   cycleId,
   loadQuickConfig,
   saveQuickConfig,
+  WEATHER_CHOICES,
   WIND_CHOICES,
   type QuickConfig,
 } from '../game/quick';
@@ -99,6 +100,13 @@ export class QuickScene extends Phaser.Scene {
         },
       },
       {
+        label: 'weather',
+        value: () => this.cfg.weather,
+        step: (dir) => {
+          this.cfg.weather = cycleId(WEATHER_CHOICES, this.cfg.weather, dir);
+        },
+      },
+      {
         label: 'gun',
         value: () => getGun(this.cfg.gunId).name,
         hint: () => getGun(this.cfg.gunId).blurb,
@@ -116,11 +124,11 @@ export class QuickScene extends Phaser.Scene {
     ];
 
     this.rows.forEach((row, i) => {
-      const y = 50 + i * 24;
+      const y = 44 + i * 22;
       this.add.text(70, y - 5, row.label, { fontFamily: 'monospace', fontSize: '9px', color: '#9fb896' });
       const arrow = (x: number, glyph: string, dir: 1 | -1) => {
         this.add
-          .rectangle(x, y, 26, 20, 0x101410, 0.85)
+          .rectangle(x, y, 26, 18, 0x101410, 0.85)
           .setInteractive()
           .on('pointerdown', () => {
             unlockAudio();
