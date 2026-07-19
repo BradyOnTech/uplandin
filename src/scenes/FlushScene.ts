@@ -6,6 +6,7 @@ import type { Dog } from '../game/dog';
 import { slopeFlightMult, type SlopeApproach } from '../game/fieldcraft';
 import { getGun, type GunConfig } from '../game/guns';
 import { clamp, dist } from '../game/math';
+import { regionOfArea } from '../game/regions';
 import { escapeVelocity, hitTest } from '../game/shot';
 import { getSpecies, type SpeciesConfig } from '../game/species';
 import type { HuntState } from '../game/state';
@@ -15,6 +16,16 @@ import { windMults } from '../game/wind';
 const GROUND_Y = 205;
 const TOUCH_AIM_OFFSET = 56; // crosshair rides above your finger on touch
 const LAUNCH_STAGGER_MS = 130; // covey birds get airborne one after another
+
+/** Painted backdrop plates per region (docs/art pipeline); regions without one get the drawn sky. */
+const FLUSH_BACKDROPS: Record<string, string> = {
+  'southern-plains': 'flush-bg-southern-plains',
+};
+
+/** Species with real sprite sheets (3 frames: wings up, wings down, folded). */
+const BIRD_SHEETS: Record<string, string> = {
+  bobwhite: 'bobwhite-flush',
+};
 
 interface FlyingBird {
   id: number;
@@ -49,6 +60,15 @@ export class FlushScene extends Phaser.Scene {
 
   constructor() {
     super('FlushScene');
+  }
+
+  preload(): void {
+    // Already-cached keys are skipped, so this is a no-op after the first visit.
+    this.load.image('flush-bg-southern-plains', 'art/flush-backdrop-southern-plains.png');
+    this.load.spritesheet('bobwhite-flush', 'art/bobwhite-flush-sheet-alpha.png', {
+      frameWidth: 44,
+      frameHeight: 28,
+    });
   }
 
   create(data: {
@@ -93,7 +113,7 @@ export class FlushScene extends Phaser.Scene {
       if ((launchX < 240 && vel.x < 0) || (launchX > 240 && vel.x > 0)) {
         vel.x *= -1;
       }
-      const sprite = this.add.sprite(launchX, GROUND_Y - 6, this.birdTexture(fieldBird, species));
+      const sprite = this.makeBirdSprite(fieldBird, species, launchX);
       sprite.setFlipX(vel.x < 0);
       sprite.setVisible(i === 0);
       const bird: FlyingBird = { id, fieldBird, species, sprite, vel, wobble: i * 2.1, status: 'waiting' };
@@ -214,6 +234,11 @@ export class FlushScene extends Phaser.Scene {
     if (best) {
       best.status = 'falling';
       best.fieldBird.state = 'downed';
+      // Sheet birds fold up on the shot.
+      if (best.sprite.texture.key === BIRD_SHEETS[best.species.id]) {
+        best.sprite.stop();
+        best.sprite.setFrame(2);
+      }
       this.hunt.downed++;
       if (best.fieldBird.sex === 'hen') {
         this.hunt.henDowns++;
@@ -301,6 +326,12 @@ export class FlushScene extends Phaser.Scene {
   }
 
   private drawSky(): void {
+    // A painted plate where the art pipeline has one; drawn sky otherwise.
+    const key = FLUSH_BACKDROPS[regionOfArea(this.hunt.areaId).id];
+    if (key && this.textures.exists(key)) {
+      this.add.image(240, 135, key);
+      return;
+    }
     const g = this.add.graphics();
     g.fillStyle(0x63a4ff).fillRect(0, 0, 480, GROUND_Y);
     g.fillStyle(0x3e8e2f).fillRect(0, GROUND_Y, 480, 270 - GROUND_Y);
@@ -309,6 +340,30 @@ export class FlushScene extends Phaser.Scene {
     g.fillRect(70, 32, 18, 8);
     g.fillRect(300, 70, 40, 8);
     g.fillRect(314, 62, 20, 8);
+  }
+
+  /**
+   * Real sprite-sheet birds where the art pipeline has delivered one
+   * (wing-whir animation, folded frame on the fall); generated
+   * palette-rectangle sprites for everyone else until their sheets land.
+   */
+  private makeBirdSprite(bird: Bird, species: SpeciesConfig, x: number): Phaser.GameObjects.Sprite {
+    const sheet = BIRD_SHEETS[species.id];
+    if (sheet && this.textures.exists(sheet)) {
+      const animKey = `${sheet}-flap`;
+      if (!this.anims.exists(animKey)) {
+        this.anims.create({
+          key: animKey,
+          frames: this.anims.generateFrameNumbers(sheet, { start: 0, end: 1 }),
+          frameRate: 14, // the quail whir
+          repeat: -1,
+        });
+      }
+      const sprite = this.add.sprite(x, GROUND_Y - 6, sheet, 0);
+      sprite.play(animKey);
+      return sprite;
+    }
+    return this.add.sprite(x, GROUND_Y - 6, this.birdTexture(bird, species));
   }
 
   /** Species-colored bird sprites; ringnecks split into hen and rooster looks. */

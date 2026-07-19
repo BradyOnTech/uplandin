@@ -100,7 +100,9 @@ Dev helpers: `?doglevel=N` on the URL runs career hunts at that dog level
 
 - **PWA packaging** (manifest + service worker) — the original
   play-on-your-phone goal.
-- **Art pass** — everything is deliberate programmer-pixel placeholders.
+- **Art pass** — underway: style locked (docs/ART.md), Southern Plains
+  flush backdrop and animated bobwhite sprites are in-engine; remaining
+  species, tiles, and scenes still placeholder.
 - Time-of-day fieldcraft (low sun, glare) and distance-scaled shot views.
 - Open design decision: how (or whether) old dogs retire.
 

@@ -46,8 +46,16 @@ backdrop. The birds have the wrong jizz (slim, long-winged, songbird-ish;
 a flushing quail is a chunky round body on short rounded whirring wings)
 and mockup covey composition is moot anyway — the engine launches and
 scatters bird sprites at runtime. All bird art comes from the
-sprite-sheet prompts below, never from scene mockups. Next: bird-free
-backdrop plate, first bird sheet (bobwhite), title screen.
+sprite-sheet prompts below, never from scene mockups.
+
+**First shipping assets are in-engine**: `flush-backdrop-southern-plains`
+(the bird-free plate) draws behind every Southern Plains flush, and the
+bobwhite three-frame sheet flies with a 14fps wing-whir and folds on the
+shot. Shipping copies live in `public/art/`; sources and previews stay
+here in `docs/art/`. The pattern to extend: add a plate per region to
+`FLUSH_BACKDROPS` and a sheet per species to `BIRD_SHEETS` in
+FlushScene — regions and species without art fall back to the drawn
+placeholders. Next: remaining bird sheets, title screen, field tiles.
 
 ## The master style block
 
