@@ -94,7 +94,9 @@ Dev helpers: `?doglevel=N` on the URL runs career hunts at that dog level
 - `src/game/` — the entire simulation as pure, engine-free TypeScript
   (dog AI, birds, species, breeds, wind, conditions, fieldcraft, seasons,
   guns, progression, career). Everything important is data; tuning lives
-  in named constants. Covered by the Vitest suite in `test/`.
+  in named constants — **[docs/TUNING.md](docs/TUNING.md) maps every knob**,
+  including the full flush-pipeline walkthrough. Covered by the Vitest
+  suite in `test/`.
 - `src/scenes/` — thin Phaser scenes (title, breed, map, kennel, quick
   setup, field, flush) that render and route input.
 - 480×270 internal resolution, pixel-scaled; procedural WebAudio sound —

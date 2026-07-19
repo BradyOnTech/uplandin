@@ -66,9 +66,21 @@ interface FlyingBird {
 }
 
 /**
- * Duck Hunt-style shooting view. A whole covey can rise at once; two shells,
- * one bird per shell. Watch the tail: hens are protected, and dropping one
- * is a fine. Survivors of the rise relight nearby as tight-holding singles.
+ * Duck Hunt-style shooting view — the arcade heart of the game.
+ *
+ * How a rise is computed (knobs for every stage in docs/TUNING.md):
+ *   1. flushBias(walk-in distance) sets the rise's size/difficulty,
+ *      with wild/gift overrides — skill loads the dice, never replaces them
+ *   2. waves: up to MAX_AIRBORNE burst together across shuffled lanes;
+ *      next wave when the sky clears; ~18% sleepers rise late
+ *   3. per-bird velocity: species fan slice + lateral push + speed roll
+ *      + per-flush break direction + slope/young multipliers
+ *   4. flight phases: quail glide / rooster level-off, both driving for a
+ *      screen exit (the tilted playfield — birds NEVER float mid-sky)
+ *   5. presentation: species size × altitude shrink × per-bird depth,
+ *      ground shadows, wobble, flap rate; depth ladder above
+ *   6. resolution: hens fine the hunter; escapees may relight as singles
+ *      (birds.relightSurvivors) or hun-circle-back if wild-flushed
  */
 export class FlushScene extends Phaser.Scene {
   private hunt!: HuntState;

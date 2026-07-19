@@ -2,6 +2,13 @@ import { dist } from './math';
 import type { FlightStyle } from './species';
 import type { RNG, Vec2 } from './types';
 
+/*
+ * Pure shot-view math: hit testing, the covey fan, walk-in difficulty
+ * (flushBias + wild/gift), and the exit-drive flight phases. Every
+ * constant here is a gameplay knob — see docs/TUNING.md for the map and
+ * the two laws (Duck Hunt rules the sky; skill loads the dice).
+ */
+
 /** True if a shot aimed at `aim` connects with a bird at `birdPos`. */
 export function hitTest(aim: Vec2, birdPos: Vec2, spreadRadius: number): boolean {
   return dist(aim, birdPos) <= spreadRadius;
@@ -32,11 +39,13 @@ export const FAN_SPREAD_PUSH = 24;
 
 /**
  * A covey rise fans out: each bird gets its own slice of the species'
- * escape arc (slot 0 leftmost), a guaranteed lateral push away from the
- * covey's center, and a golden-ratio speed scatter — so covey mates
- * diverge in bearing, spacing, AND depth instead of flying formation.
+ * escape arc (slot 0 leftmost), full-slice bearing jitter, a random speed
+ * within the species range, and a guaranteed lateral push away from the
+ * covey's center — so covey mates diverge instead of flying formation.
  * A steep climber like a bobwhite has a narrow arc; the push is what
- * keeps six of them from riding the same elevator.
+ * keeps six of them from riding the same elevator. (The caller layers on
+ * per-flush drift, speed rolls, and slope/young multipliers — see the
+ * FlushScene pipeline docblock.)
  */
 export function escapeVelocityFan(
   flight: FlightStyle,
