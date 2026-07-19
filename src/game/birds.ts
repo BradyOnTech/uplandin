@@ -229,10 +229,11 @@ export function updateBirds(dtMs: number, birds: Bird[], dogPos: Vec2, bounds: R
       continue;
     }
     b.runEnergy -= dtMs;
+    const speed = RUNNER_SPEED * (getSpecies(b.speciesId).runSpeedMult ?? 1);
     const away = Math.atan2(b.pos.y - dogPos.y, b.pos.x - dogPos.x);
     b.pos = {
-      x: clamp(b.pos.x + Math.cos(away) * RUNNER_SPEED * dt, bounds.x + 4, bounds.x + bounds.w - 4),
-      y: clamp(b.pos.y + Math.sin(away) * RUNNER_SPEED * dt, bounds.y + 4, bounds.y + bounds.h - 4),
+      x: clamp(b.pos.x + Math.cos(away) * speed * dt, bounds.x + 4, bounds.x + bounds.w - 4),
+      y: clamp(b.pos.y + Math.sin(away) * speed * dt, bounds.y + 4, bounds.y + bounds.h - 4),
     };
   }
 }

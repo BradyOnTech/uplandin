@@ -251,6 +251,20 @@ describe('updateBirds (runners)', () => {
     expect(b.pos.x).toBeGreaterThanOrEqual(4);
   });
 
+  it('fast-running species cover more ground (runSpeedMult)', () => {
+    const bob = bird({ pos: { x: 300, y: 100 }, runs: true, runEnergy: RUNNER_MAX_ENERGY, speciesId: 'bobwhite' });
+    const chukar = bird({ pos: { x: 300, y: 200 }, runs: true, runEnergy: RUNNER_MAX_ENERGY, speciesId: 'chukar' });
+    // The dog stays on their tails so both run the whole second.
+    for (let i = 0; i < 20; i++) {
+      updateBirds(50, [bob], { x: bob.pos.x + 20, y: 100 });
+      updateBirds(50, [chukar], { x: chukar.pos.x + 20, y: 200 });
+    }
+    const bobRan = 300 - bob.pos.x;
+    const chukarRan = 300 - chukar.pos.x;
+    expect(bobRan).toBeGreaterThan(30); // actually ran
+    expect(chukarRan).toBeCloseTo(bobRan * 1.3, 3);
+  });
+
   it('respects custom world bounds while fleeing', () => {
     const bounds = { x: 0, y: 0, w: 1400, h: 800 };
     const b = bird({ pos: { x: 1390, y: 400 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });

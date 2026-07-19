@@ -16,12 +16,32 @@ describe('species', () => {
     }
   });
 
+  it('ships the full 14-species design list', () => {
+    const ids = SPECIES.map((s) => s.id).sort();
+    expect(ids).toEqual(
+      [
+        'ringneck', 'sharptail', 'prairie-chicken', 'woodcock', 'ruffed-grouse', 'blue-grouse',
+        'hun', 'chukar', 'bobwhite', 'california-quail', 'gambels-quail', 'scaled-quail',
+        'mearns-quail', 'mountain-quail',
+      ].sort(),
+    );
+  });
+
   it('archetypes hold: holders sit, wild-flushers do not', () => {
     // Woodcock famously confiding; sharptail and Huns flush wild early.
     expect(getSpecies('woodcock').nerveMinMs).toBeGreaterThan(getSpecies('sharptail').nerveMaxMs);
     expect(getSpecies('bobwhite').nerveMinMs).toBeGreaterThan(getSpecies('hun').nerveMaxMs);
-    // Ringneck is the runner.
+    // Montezuma quail sit tightest of all — and never run.
+    expect(getSpecies('mearns-quail').nerveMaxMs).toBe(Math.max(...SPECIES.map((s) => s.nerveMaxMs)));
+    expect(getSpecies('mearns-quail').runnerChance).toBe(0);
+    // Ringneck, chukar, and scalies are the runners; the desert track stars get extra legs.
     expect(getSpecies('ringneck').runnerChance).toBeGreaterThan(0.5);
+    expect(getSpecies('chukar').runnerChance).toBeGreaterThan(0.5);
+    expect(getSpecies('chukar').runSpeedMult).toBeGreaterThan(1);
+    expect(getSpecies('scaled-quail').runSpeedMult).toBeGreaterThan(1);
+    // The chukar's downhill flush is the flattest, fastest arc in the game.
+    expect(getSpecies('chukar').flight.climb).toBe(Math.min(...SPECIES.map((s) => s.flight.climb)));
+    expect(getSpecies('chukar').flight.speedMax).toBe(Math.max(...SPECIES.map((s) => s.flight.speedMax)));
     // Only the ringneck carries the hen rule.
     expect(SPECIES.filter((s) => s.henRule).map((s) => s.id)).toEqual(['ringneck']);
   });
