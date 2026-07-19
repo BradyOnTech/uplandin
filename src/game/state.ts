@@ -1,6 +1,5 @@
-import type { AreaConfig } from './areas';
+import { areaBirdCount, type AreaConfig } from './areas';
 import { spawnBirds, type Bird } from './birds';
-import { FIELD_BOUNDS } from './field';
 import type { RNG, Vec2 } from './types';
 
 /**
@@ -27,11 +26,12 @@ export interface HuntState {
 }
 
 export function createHunt(area: AreaConfig, rng: RNG = Math.random): HuntState {
+  const w = area.world;
   return {
     areaId: area.id,
-    birds: spawnBirds(area, rng),
-    dogPos: { x: FIELD_BOUNDS.w / 2 - 30, y: FIELD_BOUNDS.h - 30 },
-    hunterPos: { x: FIELD_BOUNDS.w / 2, y: FIELD_BOUNDS.h - 20 },
+    birds: spawnBirds({ ...area, birdCount: areaBirdCount(area), bounds: w }, rng),
+    dogPos: { x: w.x + w.w / 2 - 30, y: w.y + w.h - 30 },
+    hunterPos: { x: w.x + w.w / 2, y: w.y + w.h - 20 },
     wind: rng() * Math.PI * 2,
     downed: 0,
     escaped: 0,

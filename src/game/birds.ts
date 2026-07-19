@@ -27,7 +27,7 @@ export const RUNNER_MAX_ENERGY = 2500; // ms of running before the bird is winde
 export const RUNNER_REST_MS = 2600; // how long a winded bird holds — the hunter's window
 export const RUNNER_NERVE_FACTOR = 0.7; // runners are nervous
 
-/** What an area's bird population looks like. AreaConfig satisfies this. */
+/** What an area's bird population looks like. */
 export interface SpawnConfig {
   patches: Rect[];
   birdCount: number;
@@ -35,12 +35,15 @@ export interface SpawnConfig {
   runnerChance: number;
   nerveMinMs: number;
   nerveMaxMs: number;
+  /** World the birds live in; defaults to FIELD_BOUNDS. */
+  bounds?: Rect;
 }
 
 let nextBirdId = 1;
 
 /** Scatter birds through the area's cover patches in coveys. */
 export function spawnBirds(cfg: SpawnConfig, rng: RNG = Math.random): Bird[] {
+  const bounds = cfg.bounds ?? FIELD_BOUNDS;
   const birds: Bird[] = [];
   let coveyId = 0;
   let remaining = cfg.birdCount;
@@ -55,8 +58,8 @@ export function spawnBirds(cfg: SpawnConfig, rng: RNG = Math.random): Bird[] {
         id: nextBirdId++,
         coveyId,
         pos: {
-          x: clamp(anchor.x + (rng() * 2 - 1) * COVEY_JITTER, 4, FIELD_BOUNDS.w - 4),
-          y: clamp(anchor.y + (rng() * 2 - 1) * COVEY_JITTER, 4, FIELD_BOUNDS.h - 4),
+          x: clamp(anchor.x + (rng() * 2 - 1) * COVEY_JITTER, bounds.x + 4, bounds.x + bounds.w - 4),
+          y: clamp(anchor.y + (rng() * 2 - 1) * COVEY_JITTER, bounds.y + 4, bounds.y + bounds.h - 4),
         },
         state: 'hidden',
         runs,
@@ -138,11 +141,19 @@ export function birdsScentingDog(
 }
 
 /**
+ * A sprinting hunter is loud: hidden birds this close flush wild underfoot.
+ * Returns the trigger birds (scene flushes their coveys).
+ */
+export function birdsSpookedBy(birds: Bird[], pos: Vec2, radius: number): Bird[] {
+  return birds.filter((b) => b.state === 'hidden' && dist(b.pos, pos) <= radius);
+}
+
+/**
  * Move runner birds. A hidden runner flees the dog while it has energy,
  * then holds still to recover — that's the dog's (and hunter's) window.
  * Only the dog spooks them; the hunter walking up doesn't.
  */
-export function updateBirds(dtMs: number, birds: Bird[], dogPos: Vec2): void {
+export function updateBirds(dtMs: number, birds: Bird[], dogPos: Vec2, bounds: Rect = FIELD_BOUNDS): void {
   const dt = dtMs / 1000;
   for (const b of birds) {
     if (b.state !== 'hidden' || !b.runs) continue;
@@ -159,8 +170,8 @@ export function updateBirds(dtMs: number, birds: Bird[], dogPos: Vec2): void {
     b.runEnergy -= dtMs;
     const away = Math.atan2(b.pos.y - dogPos.y, b.pos.x - dogPos.x);
     b.pos = {
-      x: clamp(b.pos.x + Math.cos(away) * RUNNER_SPEED * dt, 4, FIELD_BOUNDS.w - 4),
-      y: clamp(b.pos.y + Math.sin(away) * RUNNER_SPEED * dt, 4, FIELD_BOUNDS.h - 4),
+      x: clamp(b.pos.x + Math.cos(away) * RUNNER_SPEED * dt, bounds.x + 4, bounds.x + bounds.w - 4),
+      y: clamp(b.pos.y + Math.sin(away) * RUNNER_SPEED * dt, bounds.y + 4, bounds.y + bounds.h - 4),
     };
   }
 }

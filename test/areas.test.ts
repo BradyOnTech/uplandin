@@ -1,26 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import { AREAS, getArea } from '../src/game/areas';
-import { FIELD_BOUNDS } from '../src/game/field';
+import { AREAS, areaBirdCount, getArea } from '../src/game/areas';
+import { VIEWPORT } from '../src/game/field';
 
 describe('areas', () => {
   it('have unique ids', () => {
     expect(new Set(AREAS.map((a) => a.id)).size).toBe(AREAS.length);
   });
 
-  it('keep all cover inside the field', () => {
+  it('worlds are bigger than the viewport', () => {
+    for (const a of AREAS) {
+      expect(a.world.w).toBeGreaterThan(VIEWPORT.w);
+      expect(a.world.h).toBeGreaterThan(VIEWPORT.h);
+    }
+  });
+
+  it('keep all cover inside the world', () => {
     for (const a of AREAS) {
       for (const p of a.patches) {
-        expect(p.x).toBeGreaterThanOrEqual(0);
-        expect(p.y).toBeGreaterThanOrEqual(0);
-        expect(p.x + p.w).toBeLessThanOrEqual(FIELD_BOUNDS.w);
-        expect(p.y + p.h).toBeLessThanOrEqual(FIELD_BOUNDS.h);
+        expect(p.x).toBeGreaterThanOrEqual(a.world.x);
+        expect(p.y).toBeGreaterThanOrEqual(a.world.y);
+        expect(p.x + p.w).toBeLessThanOrEqual(a.world.x + a.world.w);
+        expect(p.y + p.h).toBeLessThanOrEqual(a.world.y + a.world.h);
       }
     }
   });
 
-  it('have sane bird configs', () => {
+  it('have sane bird configs, with stocking scaled to world size', () => {
     for (const a of AREAS) {
-      expect(a.birdCount).toBeGreaterThan(0);
+      const count = areaBirdCount(a);
+      expect(count).toBeGreaterThanOrEqual(5);
+      expect(count).toBeLessThanOrEqual(20);
       expect(a.coveyMaxSize).toBeGreaterThanOrEqual(1);
       expect(a.runnerChance).toBeGreaterThanOrEqual(0);
       expect(a.runnerChance).toBeLessThanOrEqual(1);

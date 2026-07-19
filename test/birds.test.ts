@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   birdsScentingDog,
+  birdsSpookedBy,
   flushCovey,
   RUNNER_MAX_ENERGY,
   RUNNER_NERVE_FACTOR,
@@ -139,6 +140,24 @@ describe('updateBirds (runners)', () => {
     const b = bird({ pos: { x: 8, y: 135 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
     for (let i = 0; i < 40; i++) updateBirds(50, [b], { x: 30, y: 135 });
     expect(b.pos.x).toBeGreaterThanOrEqual(4);
+  });
+
+  it('respects custom world bounds while fleeing', () => {
+    const bounds = { x: 0, y: 0, w: 1400, h: 800 };
+    const b = bird({ pos: { x: 1390, y: 400 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
+    for (let i = 0; i < 40; i++) updateBirds(50, [b], { x: 1370, y: 400 }, bounds);
+    expect(b.pos.x).toBeLessThanOrEqual(1396); // clamped by the bigger world, not FIELD_BOUNDS
+    expect(b.pos.x).toBeGreaterThan(480); // and definitely not the old field edge
+  });
+});
+
+describe('birdsSpookedBy (sprinting hunter)', () => {
+  it('flushes only hidden birds inside the radius', () => {
+    const near = bird({ id: 1, pos: { x: 100, y: 100 } });
+    const far = bird({ id: 2, pos: { x: 200, y: 100 } });
+    const resolved = bird({ id: 3, pos: { x: 105, y: 100 }, state: 'downed' });
+    const spooked = birdsSpookedBy([near, far, resolved], { x: 110, y: 100 }, 30);
+    expect(spooked.map((b) => b.id)).toEqual([1]);
   });
 });
 

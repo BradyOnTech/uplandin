@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AREAS } from '../src/game/areas';
+import { AREAS, areaBirdCount } from '../src/game/areas';
 import type { Bird } from '../src/game/birds';
 import { birdsRemaining, createHunt, huntComplete, type HuntState } from '../src/game/state';
 
@@ -43,8 +43,22 @@ describe('hunt bookkeeping', () => {
   it('createHunt builds a hunt from the area config', () => {
     const hunt = createHunt(AREAS[0]);
     expect(hunt.areaId).toBe(AREAS[0].id);
-    expect(hunt.birds).toHaveLength(AREAS[0].birdCount);
+    expect(hunt.birds).toHaveLength(areaBirdCount(AREAS[0]));
     expect(hunt.downed).toBe(0);
     expect(hunt.escaped).toBe(0);
+  });
+
+  it('starts hunter and dog inside the area world, birds too', () => {
+    for (const area of AREAS) {
+      const hunt = createHunt(area);
+      const inWorld = (p: { x: number; y: number }) =>
+        p.x >= area.world.x &&
+        p.x <= area.world.x + area.world.w &&
+        p.y >= area.world.y &&
+        p.y <= area.world.y + area.world.h;
+      expect(inWorld(hunt.hunterPos)).toBe(true);
+      expect(inWorld(hunt.dogPos)).toBe(true);
+      for (const b of hunt.birds) expect(inWorld(b.pos)).toBe(true);
+    }
   });
 });
