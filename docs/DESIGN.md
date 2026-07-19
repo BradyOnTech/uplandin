@@ -142,6 +142,41 @@ Special rules:
   dog's own scent ~1.3× farther to downwind birds. **[built]**
 - Birds scent the dog downwind (see wind craft). **[built]**
 
+## Fieldcraft **[planned — T6]**
+
+Situational hunting knowledge as mechanics: small, true-to-life edges that
+reward playing like a hunter. Wind is the prototype — each of these is a
+per-area or per-hunt condition plus a few multipliers, not a new engine.
+
+- **Slope** (per-area uphill direction with a HUD cue, like wind): chukar
+  run uphill and flush downhill — the real birds and the real tactic.
+  Approach a pointed covey from *above* and they hold longer (their uphill
+  escape is cut off) and the flush drops away below you: a slower, more
+  open shot (gentler escape arc, longer window). From below, nerve drains
+  faster and the flush rockets overhead at full speed. Runners bias their
+  flee direction uphill. Applies on Chukar Ridge, Timberline Parks, and
+  mountain-quail ground; mountain quail run uphill too.
+- **Conditions** (per hunt, rolled like wind strength): frost morning
+  (birds sit tight, scent carries), hot & dry (scent poor, dog stamina
+  drains ~1.5× — the Sonoran default), rain (scent knocked down, birds
+  hold), fresh snow (tight holds, downed birds easy to mark).
+- **Time of day** (pick at area select): evening hunts drop the sun low —
+  westward flushes glare in the shot view; morning birds sit tighter near
+  roost cover.
+- **Hun circle-back**: a wild-flushed hun covey flies a wide loop and
+  relands in the same field (once per hunt) — mark them down and follow.
+- **Grouse timber screens**: ruffed and blue grouse put a tree between
+  themselves and the gun — an occasional tree sprite in the shot view that
+  the pattern can't punch through.
+- **Blocking runners**: a runner that reaches the end of its cover holds
+  rather than crossing open ground — pinch roosters at the end of a slough.
+- **Walk-in craft**: flanking a point (coming in from the side/front
+  instead of over the dog's back) presents a cleaner flush — small nerve
+  bonus and a beat more shot time.
+
+Build order when this tranche goes: slope + conditions first (both reuse
+the wind pattern end to end), then the shot-view items.
+
 ## Meta layer **[partially built]**
 
 - **Game modes** **[built]**: the title offers **Career** (raise your dog,
@@ -226,6 +261,9 @@ announce their unlocks at the hunt summary.
   run speed; Sonoran Desert, High Rockies, and Pacific Valleys open
   (5 new areas, 11 total).
 - **T5 — two dogs**: second instance, honoring, shared retrieves.
+- **T6 — fieldcraft**: slope (chukar/mountain-quail uphill rule), per-hunt
+  conditions (frost/heat/rain/snow), time of day, hun circle-back, grouse
+  timber screens, blocking runners, walk-in craft. See Fieldcraft section.
 - **Anytime**: PWA packaging; art pass (after species settle); distance-scaled
   shot views (`flushDistance` already plumbed).
 
