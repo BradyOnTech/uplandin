@@ -13,6 +13,7 @@ import {
   type QuickConfig,
 } from '../game/quick';
 import { getSpecies } from '../game/species';
+import { pixelText, type PixelText } from './pixelFont';
 
 interface PickerRow {
   label: string;
@@ -28,8 +29,8 @@ interface PickerRow {
  */
 export class QuickScene extends Phaser.Scene {
   private cfg!: QuickConfig;
-  private valueTexts: Phaser.GameObjects.Text[] = [];
-  private hintTexts: Phaser.GameObjects.Text[] = [];
+  private valueTexts: PixelText[] = [];
+  private hintTexts: PixelText[] = [];
   private rows: PickerRow[] = [];
 
   constructor() {
@@ -42,15 +43,9 @@ export class QuickScene extends Phaser.Scene {
     this.hintTexts = [];
 
     this.add.rectangle(240, 135, 480, 270, 0x14201c);
-    this.add
-      .text(240, 14, 'quick hunt', { fontFamily: 'monospace', fontSize: '12px', color: '#ffd23f' })
+    pixelText(this, 240, 14, 'quick hunt', 2, '#ffd23f')
       .setOrigin(0.5);
-    this.add
-      .text(240, 29, 'everything unlocked · nothing saved to your career', {
-        fontFamily: 'monospace',
-        fontSize: '8px',
-        color: '#9fb896',
-      })
+    pixelText(this, 240, 29, 'everything unlocked · nothing saved to your career', 1, '#9fb896')
       .setOrigin(0.5);
 
     this.rows = [
@@ -125,7 +120,7 @@ export class QuickScene extends Phaser.Scene {
 
     this.rows.forEach((row, i) => {
       const y = 44 + i * 22;
-      this.add.text(70, y - 5, row.label, { fontFamily: 'monospace', fontSize: '9px', color: '#9fb896' });
+      pixelText(this, 70, y - 5, row.label, 1, '#9fb896');
       const arrow = (x: number, glyph: string, dir: 1 | -1) => {
         this.add
           .rectangle(x, y, 26, 18, 0x101410, 0.85)
@@ -136,16 +131,13 @@ export class QuickScene extends Phaser.Scene {
             row.step(dir);
             this.refresh();
           });
-        this.add
-          .text(x, y, glyph, { fontFamily: 'monospace', fontSize: '11px', color: '#dfe9d8' })
+        pixelText(this, x, y, glyph, 1, '#dfe9d8')
           .setOrigin(0.5);
       };
       arrow(160, '<', -1);
-      const value = this.add
-        .text(280, y - 6, '', { fontFamily: 'monospace', fontSize: '9px', color: '#ffffff' })
+      const value = pixelText(this, 280, y - 6, '', 1, '#ffffff')
         .setOrigin(0.5, 0);
-      const hint = this.add
-        .text(280, y + 5, '', { fontFamily: 'monospace', fontSize: '7px', color: '#c9dcc0' })
+      const hint = pixelText(this, 280, y + 5, '', 1, '#c9dcc0')
         .setOrigin(0.5, 0);
       this.valueTexts.push(value);
       this.hintTexts.push(hint);
@@ -162,12 +154,10 @@ export class QuickScene extends Phaser.Scene {
         this.scene.start('FieldScene', { quick: { ...this.cfg } });
       });
     go.setStrokeStyle(1, 0x9fd88f);
-    this.add
-      .text(240, 250, 'hunt', { fontFamily: 'monospace', fontSize: '10px', color: '#ffffff' })
+    pixelText(this, 240, 250, 'hunt', 1, '#ffffff')
       .setOrigin(0.5);
 
-    const back = this.add
-      .text(10, 252, '< title', { fontFamily: 'monospace', fontSize: '8px', color: '#9fb896' })
+    const back = pixelText(this, 10, 252, '< title', 1, '#9fb896')
       .setInteractive();
     back.on('pointerdown', () => {
       unlockAudio();

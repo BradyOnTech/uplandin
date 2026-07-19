@@ -38,6 +38,7 @@ import { birdsRemaining, createHunt, huntComplete, type HuntState } from '../gam
 import type { Vec2 } from '../game/types';
 import { windMults } from '../game/wind';
 import { addWeatherFx } from './weatherFx';
+import { pixelText, type PixelText } from './pixelFont';
 
 const HUNTER_SPEED = 55; // px/s walking
 const SPRINT_MULT = 2; // sprint speed multiplier
@@ -111,15 +112,15 @@ export class FieldScene extends Phaser.Scene {
 
   private dogSprites: Phaser.GameObjects.Sprite[] = [];
   private hunterSprite!: Phaser.GameObjects.Sprite;
-  private pointMarkers: Phaser.GameObjects.Text[] = [];
-  private dogArrows: Phaser.GameObjects.Text[] = [];
-  private dogDistLabels: Phaser.GameObjects.Text[] = [];
+  private pointMarkers: PixelText[] = [];
+  private dogArrows: PixelText[] = [];
+  private dogDistLabels: PixelText[] = [];
   private miniMap: { x: number; y: number; sx: number; sy: number } | null = null;
   private miniHunter!: Phaser.GameObjects.Rectangle;
   private miniDogs: Phaser.GameObjects.Rectangle[] = [];
-  private hud!: Phaser.GameObjects.Text;
-  private whistleLabel!: Phaser.GameObjects.Text;
-  private toastText: Phaser.GameObjects.Text | null = null;
+  private hud!: PixelText;
+  private whistleLabel!: PixelText;
+  private toastText: PixelText | null = null;
   private birdMarkers: Phaser.GameObjects.Rectangle[] = [];
 
   constructor() {
@@ -241,8 +242,7 @@ export class FieldScene extends Phaser.Scene {
       return sprite;
     });
     this.pointMarkers = this.dogs.map(() =>
-      this.add
-        .text(0, 0, '!', { fontFamily: 'monospace', fontSize: '10px', color: '#ffd23f' })
+      pixelText(this, 0, 0, '!', 1, '#ffd23f')
         .setOrigin(0.5)
         .setVisible(false),
     );
@@ -256,16 +256,14 @@ export class FieldScene extends Phaser.Scene {
     // show depends on tracking gear: bell (nothing), beeper (only on
     // point), GPS (always, plus live distance), GPS+map (minimap too).
     this.dogArrows = this.dogs.map(() =>
-      this.add
-        .text(0, 0, '▲', { fontFamily: 'monospace', fontSize: '10px', color: '#f2e3c6' })
+      pixelText(this, 0, 0, '▲', 1, '#f2e3c6')
         .setOrigin(0.5)
         .setScrollFactor(0)
         .setDepth(15)
         .setVisible(false),
     );
     this.dogDistLabels = this.dogs.map(() =>
-      this.add
-        .text(0, 0, '', { fontFamily: 'monospace', fontSize: '8px', color: '#f2e3c6' })
+      pixelText(this, 0, 0, '', 1, '#f2e3c6')
         .setOrigin(0.5)
         .setScrollFactor(0)
         .setDepth(15)
@@ -286,16 +284,10 @@ export class FieldScene extends Phaser.Scene {
       this.miniMap = null;
     }
 
-    this.hud = this.add
-      .text(4, 4, '', { fontFamily: 'monospace', fontSize: '8px', color: '#ffffff' })
+    this.hud = pixelText(this, 4, 4, '', 1, '#ffffff')
       .setScrollFactor(0)
       .setDepth(15);
-    this.add
-      .text(VIEWPORT.w / 2, VIEWPORT.h - 8, 'tap to walk · double-tap to run', {
-        fontFamily: 'monospace',
-        fontSize: '8px',
-        color: '#dfe9d8',
-      })
+    pixelText(this, VIEWPORT.w / 2, VIEWPORT.h - 8, 'tap to walk · double-tap to run', 1, '#dfe9d8')
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(15);
@@ -316,12 +308,7 @@ export class FieldScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(15)
       .setInteractive();
-    this.whistleLabel = this.add
-      .text(WHISTLE_BTN.x, WHISTLE_BTN.y, 'whistle', {
-        fontFamily: 'monospace',
-        fontSize: '8px',
-        color: '#dfe9d8',
-      })
+    this.whistleLabel = pixelText(this, WHISTLE_BTN.x, WHISTLE_BTN.y, 'whistle', 1, '#dfe9d8')
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(16);
@@ -376,8 +363,7 @@ export class FieldScene extends Phaser.Scene {
 
   private toast(msg: string): void {
     this.toastText?.destroy();
-    this.toastText = this.add
-      .text(VIEWPORT.w / 2, 24, msg, { fontFamily: 'monospace', fontSize: '8px', color: '#ffb0a0' })
+    this.toastText = pixelText(this, VIEWPORT.w / 2, 24, msg, 1, '#ffb0a0')
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(16);
@@ -698,23 +684,16 @@ export class FieldScene extends Phaser.Scene {
     const cy = VIEWPORT.h / 2;
     this.add.rectangle(cx, cy, VIEWPORT.w, VIEWPORT.h, 0x000000, 0.65).setScrollFactor(0).setDepth(20);
     const total = this.hunt.birds.length;
-    this.add
-      .text(cx, cy - 42, 'HUNT OVER', { fontFamily: 'monospace', fontSize: '16px', color: '#ffd23f' })
+    pixelText(this, cx, cy - 42, 'HUNT OVER', 2, '#ffd23f')
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(21);
-    this.add
-      .text(cx, cy - 18, `${this.area.name} — downed: ${this.hunt.downed} / ${total}   lost: ${this.hunt.escaped}`, {
-        fontFamily: 'monospace',
-        fontSize: '10px',
-        color: '#ffffff',
-      })
+    pixelText(this, cx, cy - 18, `${this.area.name} — downed: ${this.hunt.downed} / ${total}   lost: ${this.hunt.escaped}`, 1, '#ffffff')
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(21);
     lines.forEach((line, i) => {
-      this.add
-        .text(cx, cy - 2 + i * 11, line.text, { fontFamily: 'monospace', fontSize: '8px', color: line.color })
+      pixelText(this, cx, cy - 2 + i * 11, line.text, 1, '#ffffff')
         .setOrigin(0.5)
         .setScrollFactor(0)
         .setDepth(21);
@@ -742,8 +721,7 @@ export class FieldScene extends Phaser.Scene {
         playBlip();
         onTap();
       });
-    this.add
-      .text(x, y, label, { fontFamily: 'monospace', fontSize: '8px', color: '#dfe9d8' })
+    pixelText(this, x, y, label, 1, '#dfe9d8')
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(22);
@@ -795,12 +773,7 @@ export class FieldScene extends Phaser.Scene {
             : cause === 'spook'
               ? 'SPOOKED!'
               : 'WINDED!';
-    this.add
-      .text(bird.pos.x, bird.pos.y - 10, label, {
-        fontFamily: 'monospace',
-        fontSize: '10px',
-        color: cause === 'proximity' ? '#ffffff' : '#ff8c3f',
-      })
+    pixelText(this, bird.pos.x, bird.pos.y - 10, label, 1, '#ffffff')
       .setOrigin(0.5);
 
     if (hunterDist <= SHOT_RANGE) {
@@ -827,12 +800,7 @@ export class FieldScene extends Phaser.Scene {
       windMults(this.hunt.windStrength).nerve * conditionMults(this.hunt.condition).nerve,
     );
     if (relanded.length > 0) {
-      this.add
-        .text(bird.pos.x, bird.pos.y + 2, 'the covey swings wide and relands — mark them!', {
-          fontFamily: 'monospace',
-          fontSize: '8px',
-          color: '#c9dcc0',
-        })
+      pixelText(this, bird.pos.x, bird.pos.y + 2, 'the covey swings wide and relands — mark them!', 1, '#c9dcc0')
         .setOrigin(0.5);
       this.time.delayedCall(900, () => {
         this.flushing = false;
@@ -843,12 +811,7 @@ export class FieldScene extends Phaser.Scene {
       b.state = 'escaped';
       this.hunt.escaped++;
     }
-    this.add
-      .text(bird.pos.x, bird.pos.y + 2, 'too far off for a shot', {
-        fontFamily: 'monospace',
-        fontSize: '8px',
-        color: '#ffb0a0',
-      })
+    pixelText(this, bird.pos.x, bird.pos.y + 2, 'too far off for a shot', 1, '#ffb0a0')
       .setOrigin(0.5);
     this.time.delayedCall(900, () => {
       this.flushing = false;

@@ -4,6 +4,7 @@ import { getBreed } from '../game/breeds';
 import { dogAge, loadCareer, saveCareer, setActiveDog, setBraceDog } from '../game/career';
 import { kennelSlots, TWO_DOG_LEVEL, twoDogUnlocked } from '../game/progression';
 import { ageLabel } from '../game/season';
+import { pixelText } from './pixelFont';
 
 /**
  * The kennel: every dog you've raised. Tap one to bring it on the next
@@ -20,18 +21,12 @@ export class KennelScene extends Phaser.Scene {
     const slots = kennelSlots(career.hunter.level);
 
     this.add.rectangle(240, 135, 480, 270, 0x14201c);
-    this.add
-      .text(240, 20, 'the kennel', { fontFamily: 'monospace', fontSize: '12px', color: '#ffd23f' })
+    pixelText(this, 240, 20, 'the kennel', 2, '#ffd23f')
       .setOrigin(0.5);
     const braceNote = twoDogUnlocked(career.hunter.level)
       ? ' · brace unlocked'
       : ` · brace at hunter lv ${TWO_DOG_LEVEL}`;
-    this.add
-      .text(240, 36, `dog box: ${career.kennel.length}/${slots} slots · hunter lv ${career.hunter.level}${braceNote}`, {
-        fontFamily: 'monospace',
-        fontSize: '8px',
-        color: '#9fb896',
-      })
+    pixelText(this, 240, 36, `dog box: ${career.kennel.length}/${slots} slots · hunter lv ${career.hunter.level}${braceNote}`, 1, '#9fb896')
       .setOrigin(0.5);
 
     const canBrace = twoDogUnlocked(career.hunter.level) && career.kennel.length >= 2;
@@ -45,17 +40,9 @@ export class KennelScene extends Phaser.Scene {
         .setStrokeStyle(1, active ? 0xffd23f : braced ? 0xa8d4e8 : 0x3a4a3a)
         .setInteractive();
       const tag = active ? '  ★ riding along' : braced ? '  ☆ bracemate' : '';
-      this.add.text(52, y - 11, `${dog.name}${tag}`, {
-        fontFamily: 'monospace',
-        fontSize: '9px',
-        color: active ? '#ffd23f' : braced ? '#a8d4e8' : '#ffffff',
-      });
+      pixelText(this, 52, y - 11, `${dog.name}${tag}`, 1, active ? '#ffd23f' : braced ? '#a8d4e8' : '#ffffff');
       const toNext = dog.level >= 10 ? 'maxed' : `${dog.xp} xp`;
-      this.add.text(52, y + 1, `${getBreed(dog.breedId).name} · lv ${dog.level} · ${toNext} · ${ageLabel(dogAge(career, dog))}`, {
-        fontFamily: 'monospace',
-        fontSize: '8px',
-        color: '#dfe9d8',
-      });
+      pixelText(this, 52, y + 1, `${getBreed(dog.breedId).name} · lv ${dog.level} · ${toNext} · ${ageLabel(dogAge(career, dog))}`, 1, '#dfe9d8');
       card.on('pointerdown', () => {
         unlockAudio();
         playBlip();
@@ -74,12 +61,7 @@ export class KennelScene extends Phaser.Scene {
             saveCareer(setBraceDog(career, braced ? null : dog.id));
             this.scene.restart();
           });
-        this.add
-          .text(410, y, braced ? 'unbrace' : 'brace', {
-            fontFamily: 'monospace',
-            fontSize: '8px',
-            color: braced ? '#a8d4e8' : '#9fb896',
-          })
+        pixelText(this, 410, y, braced ? 'unbrace' : 'brace', 1, '#ffffff')
           .setOrigin(0.5);
       }
     });
@@ -95,21 +77,14 @@ export class KennelScene extends Phaser.Scene {
           playBlip();
           this.scene.start('BreedScene', { fromKennel: true });
         });
-      this.add
-        .text(240, y, '+ raise a new puppy', { fontFamily: 'monospace', fontSize: '9px', color: '#9fd88f' })
+      pixelText(this, 240, y, '+ raise a new puppy', 1, '#9fd88f')
         .setOrigin(0.5);
     } else if (career.kennel.length >= slots && slots < 5) {
-      this.add
-        .text(240, 62 + career.kennel.length * 36, 'a bigger dog box comes with hunter levels', {
-          fontFamily: 'monospace',
-          fontSize: '8px',
-          color: '#5a6a78',
-        })
+      pixelText(this, 240, 62 + career.kennel.length * 36, 'a bigger dog box comes with hunter levels', 1, '#5a6a78')
         .setOrigin(0.5);
     }
 
-    const back = this.add
-      .text(10, 252, '< map', { fontFamily: 'monospace', fontSize: '8px', color: '#9fb896' })
+    const back = pixelText(this, 10, 252, '< map', 1, '#9fb896')
       .setInteractive();
     back.on('pointerdown', () => {
       unlockAudio();

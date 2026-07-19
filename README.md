@@ -99,14 +99,17 @@ Dev helpers: `?doglevel=N` on the URL runs career hunts at that dog level
   suite in `test/`.
 - `src/scenes/` — thin Phaser scenes (title, breed, map, kennel, quick
   setup, field, flush) that render and route input.
-- 480×270 internal resolution, pixel-scaled; procedural WebAudio sound —
-  no asset files anywhere.
+- 480×270 internal resolution, pixel-scaled; procedural WebAudio sound.
+  Art arrives incrementally (`public/art/` + fallback maps in the scenes);
+  the UI font is generated at boot from glyph data in `scenes/pixelFont.ts`.
 
 ## What's left
 
-- **Art pass** — underway: style locked (docs/ART.md), Southern Plains
-  flush backdrop and animated bobwhite sprites are in-engine; remaining
-  species, tiles, and scenes still placeholder.
+- **Art pass** — underway: style locked (docs/ART.md). In-engine so far:
+  Southern Plains flush backdrop, animated bobwhite, the English Setter in
+  the field (gait + point pose), Southern Plains ground tiles, and a
+  hand-authored 5×7 pixel font on every screen. Remaining species, dogs,
+  regions, and scenes still placeholder.
 - Time-of-day fieldcraft (low sun, glare) and distance-scaled shot views.
 - Open design decision: how (or whether) old dogs retire.
 

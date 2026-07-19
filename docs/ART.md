@@ -250,11 +250,12 @@ drive, **bird ground shadows** (shrink/fade with altitude),
 **feather-puff bursts** on hits, **weather dressing** (condition tint +
 falling snow/rain particles in both views, `scenes/weatherFx.ts`), and a
 proper depth ladder in the shot view (birds fly behind timber, under the
-weather, beneath the HUD). Next, in impact order: a real **pixel bitmap
-font** for all UI (the single biggest production-feel upgrade left);
-shell-eject flick; backdrop **parallax** (split plates into
-sky/hills/foreground); quick fade/iris scene transitions; field-view
-walk cycles once dog sheets land.
+weather, beneath the HUD). Done: the **pixel bitmap font** — a hand-authored
+5×7 uppercase face (`scenes/pixelFont.ts`, glyphs generated into a RetroFont
+at boot; every scene renders text through `pixelText()`, arrows and stars
+included). Next, in impact order: shell-eject flick; backdrop **parallax**
+(split plates into sky/hills/foreground); quick fade/iris scene transitions;
+more field-view gait frames as dog sheets land.
 
 **Phase 4 — cohesion audit**: screenshot matrix of every region ×
 weather × a flush; fix outliers; final palette-enforcement pass

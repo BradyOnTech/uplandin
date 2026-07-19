@@ -13,6 +13,7 @@ import type { HuntState } from '../game/state';
 import type { Vec2 } from '../game/types';
 import { windMults } from '../game/wind';
 import { addWeatherFx } from './weatherFx';
+import { pixelText, type PixelText } from './pixelFont';
 
 const GROUND_Y = 205;
 const TOUCH_AIM_OFFSET = 56; // crosshair rides above your finger on touch
@@ -94,7 +95,7 @@ export class FlushScene extends Phaser.Scene {
   private shells = 2;
   private lastShotAt = -Infinity;
   private shellPips: Phaser.GameObjects.Rectangle[] = [];
-  private hud!: Phaser.GameObjects.Text;
+  private hud!: PixelText;
   /** Timber the pattern can't punch through (grouse cover). */
   private trees: { x: number; y: number; w: number; h: number }[] = [];
   private lastLaunchAt = -Infinity;
@@ -217,15 +218,12 @@ export class FlushScene extends Phaser.Scene {
     const slopeNote =
       slope === 'above' ? '  —  shooting down the hill' : slope === 'below' ? '  —  rocketing overhead!' : '';
     const wildNote = bias.kind === 'wild' ? "  —  they're wild!" : '';
-    this.hud = this.add.text(
-      4,
+    this.hud = pixelText(this, 4,
       4,
       (data.birdIds.length > 1 ? `covey rise! ${data.birdIds.length} ${lead.species.name}s` : `${lead.species.name}!`) +
         henWarning +
         slopeNote +
-        wildNote,
-      { fontFamily: 'monospace', fontSize: '8px', color: '#ffffff' },
-    ).setDepth(DEPTH_UI);
+        wildNote, 1, '#ffffff').setDepth(DEPTH_UI);
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       unlockAudio();
@@ -362,8 +360,7 @@ export class FlushScene extends Phaser.Scene {
 
     // Grouse cover: the pattern can't punch through timber.
     if (this.trees.some((t) => aim.x >= t.x && aim.x <= t.x + t.w && aim.y >= t.y && aim.y <= t.y + t.h)) {
-      this.add
-        .text(aim.x, aim.y - 10, 'thwack — timber!', { fontFamily: 'monospace', fontSize: '9px', color: '#c9dcc0' })
+      pixelText(this, aim.x, aim.y - 10, 'thwack — timber!', 1, '#c9dcc0')
         .setOrigin(0.5)
         .setDepth(DEPTH_UI);
       return;
@@ -392,12 +389,7 @@ export class FlushScene extends Phaser.Scene {
       this.hunt.downed++;
       if (best.fieldBird.sex === 'hen') {
         this.hunt.henDowns++;
-        this.add
-          .text(best.sprite.x, best.sprite.y - 12, "HEN! that's a fine", {
-            fontFamily: 'monospace',
-            fontSize: '9px',
-            color: '#ff6a5a',
-          })
+        pixelText(this, best.sprite.x, best.sprite.y - 12, "HEN! that's a fine", 1, '#ff6a5a')
           .setOrigin(0.5)
           .setDepth(DEPTH_UI);
       }
@@ -443,12 +435,7 @@ export class FlushScene extends Phaser.Scene {
       this.hud.setText('nice shot!');
     }
     if (relit.length > 0) {
-      this.add
-        .text(4, 16, `${relit.length} single${relit.length > 1 ? 's' : ''} put down in the grass — hunt 'em up`, {
-          fontFamily: 'monospace',
-          fontSize: '8px',
-          color: '#c9dcc0',
-        })
+      pixelText(this, 4, 16, `${relit.length} single${relit.length > 1 ? 's' : ''} put down in the grass — hunt 'em up`, 1, '#c9dcc0')
         .setDepth(DEPTH_UI);
     }
 

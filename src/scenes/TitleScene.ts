@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { playBlip, unlockAudio } from '../audio';
 import { loadCareer } from '../game/career';
+import { pixelText } from './pixelFont';
 
 export class TitleScene extends Phaser.Scene {
   constructor() {
@@ -14,24 +15,21 @@ export class TitleScene extends Phaser.Scene {
     g.fillStyle(0x63a4ff).fillRect(0, 0, 480, 100);
     g.fillStyle(0x2f5d23).fillRect(0, 100, 480, 170);
 
-    this.add
-      .text(240, 66, 'UPLANDIN', { fontFamily: 'monospace', fontSize: '28px', color: '#ffd23f' })
+    pixelText(this, 240, 66, 'UPLANDIN', 4, '#ffd23f')
       .setOrigin(0.5);
-    this.add
-      .text(240, 96, 'a retro bird hunt', { fontFamily: 'monospace', fontSize: '8px', color: '#ffffff' })
+    pixelText(this, 240, 96, 'a retro bird hunt', 1, '#ffffff')
       .setOrigin(0.5);
 
     const stats =
       career.hunts > 0
         ? `career — hunts ${career.hunts}   downed ${career.downed}   lost ${career.escaped}`
         : 'no hunts yet — your dog is waiting';
-    this.add
-      .text(240, 158, stats, { fontFamily: 'monospace', fontSize: '8px', color: '#dfe9d8' })
+    pixelText(this, 240, 158, stats, 1, '#dfe9d8')
       .setOrigin(0.5);
 
     const button = (y: number, label: string, sub: string, onTap: () => void) => {
       this.add
-        .rectangle(240, y, 190, 26, 0x101410, 0.7)
+        .rectangle(240, y, 226, 26, 0x101410, 0.7)
         .setStrokeStyle(1, 0x9fb896)
         .setInteractive()
         .on('pointerdown', () => {
@@ -39,11 +37,9 @@ export class TitleScene extends Phaser.Scene {
           playBlip();
           onTap();
         });
-      this.add
-        .text(240, y - 4, label, { fontFamily: 'monospace', fontSize: '10px', color: '#ffffff' })
+      pixelText(this, 240, y - 4, label, 1, '#ffffff')
         .setOrigin(0.5);
-      this.add
-        .text(240, y + 8, sub, { fontFamily: 'monospace', fontSize: '8px', color: '#9fb896' })
+      pixelText(this, 240, y + 8, sub, 1, '#9fb896')
         .setOrigin(0.5);
     };
 

@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { playBlip, unlockAudio } from '../audio';
 import { BREEDS, DOG_NAMES, type BreedConfig } from '../game/breeds';
 import { addDogToKennel, loadCareer, saveCareer, setActiveDog } from '../game/career';
+import { pixelText, type PixelText } from './pixelFont';
 
 const pips = (v: number) => '#'.repeat(v) + '-'.repeat(5 - v);
 
@@ -13,9 +14,9 @@ export class BreedScene extends Phaser.Scene {
   private fromKennel = false;
   private selected: BreedConfig | null = null;
   private selectedCell: Phaser.GameObjects.Rectangle | null = null;
-  private confirmText!: Phaser.GameObjects.Text;
+  private confirmText!: PixelText;
   private chooseBtn!: Phaser.GameObjects.Rectangle;
-  private chooseLabel!: Phaser.GameObjects.Text;
+  private chooseLabel!: PixelText;
   private gridObjects: Phaser.GameObjects.GameObject[] = [];
   private panelObjects: Phaser.GameObjects.GameObject[] = [];
   private puppyName = '';
@@ -33,12 +34,7 @@ export class BreedScene extends Phaser.Scene {
 
     const g = this.add.graphics();
     g.fillStyle(0x1c2b18).fillRect(0, 0, 480, 270);
-    const header = this.add
-      .text(240, 14, this.fromKennel ? 'choose your next bird dog' : 'choose your first bird dog', {
-        fontFamily: 'monospace',
-        fontSize: '12px',
-        color: '#ffd23f',
-      })
+    const header = pixelText(this, 240, 14, this.fromKennel ? 'choose your next bird dog' : 'choose your first bird dog', 2, '#ffd23f')
       .setOrigin(0.5);
     this.gridObjects.push(header);
 
@@ -49,21 +45,9 @@ export class BreedScene extends Phaser.Scene {
       const y = 52 + row * 34;
       const cell = this.add.rectangle(x, y, 232, 30, 0x2a3d24).setInteractive();
       const s = breed.stats;
-      const name = this.add.text(x - 110, y - 13, breed.name, {
-        fontFamily: 'monospace',
-        fontSize: '8px',
-        color: '#ffffff',
-      });
-      const stats1 = this.add.text(x - 110, y - 2, `N${pips(s.nose)} Sp${pips(s.speed)} R${pips(s.range)}`, {
-        fontFamily: 'monospace',
-        fontSize: '7px',
-        color: '#9fb896',
-      });
-      const stats2 = this.add.text(x - 110, y + 8, `St${pips(s.steadiness)} Sa${pips(s.stamina)}`, {
-        fontFamily: 'monospace',
-        fontSize: '7px',
-        color: '#9fb896',
-      });
+      const name = pixelText(this, x - 110, y - 13, breed.name, 1, '#ffffff');
+      const stats1 = pixelText(this, x - 110, y - 2, `N${pips(s.nose)} Sp${pips(s.speed)} R${pips(s.range)}`, 1, '#9fb896');
+      const stats2 = pixelText(this, x - 110, y + 8, `St${pips(s.steadiness)} Sa${pips(s.stamina)}`, 1, '#9fb896');
       cell.on('pointerdown', () => {
         unlockAudio();
         playBlip();
@@ -72,12 +56,10 @@ export class BreedScene extends Phaser.Scene {
       this.gridObjects.push(cell, name, stats1, stats2);
     });
 
-    this.confirmText = this.add
-      .text(240, 246, 'tap a breed', { fontFamily: 'monospace', fontSize: '8px', color: '#dfe9d8' })
+    this.confirmText = pixelText(this, 240, 246, 'tap a breed', 1, '#dfe9d8')
       .setOrigin(0.5);
     this.chooseBtn = this.add.rectangle(420, 246, 104, 20, 0x101410, 0.85).setInteractive();
-    this.chooseLabel = this.add
-      .text(420, 246, 'choose', { fontFamily: 'monospace', fontSize: '8px', color: '#ffd23f' })
+    this.chooseLabel = pixelText(this, 420, 246, 'choose', 1, '#ffd23f')
       .setOrigin(0.5);
     this.chooseBtn.on('pointerdown', () => {
       if (!this.selected) return;
@@ -99,22 +81,18 @@ export class BreedScene extends Phaser.Scene {
   }
 
   private buildNamePanel(): void {
-    const title = this.add
-      .text(240, 84, 'name your puppy', { fontFamily: 'monospace', fontSize: '12px', color: '#ffd23f' })
+    const title = pixelText(this, 240, 84, 'name your puppy', 2, '#ffd23f')
       .setOrigin(0.5)
       .setVisible(false);
-    const nameText = this.add
-      .text(240, 122, '', { fontFamily: 'monospace', fontSize: '16px', color: '#ffffff' })
+    const nameText = pixelText(this, 240, 122, '', 2, '#ffffff')
       .setOrigin(0.5)
       .setVisible(false);
     const reroll = this.add.rectangle(178, 172, 110, 22, 0x101410, 0.85).setInteractive().setVisible(false);
-    const rerollLabel = this.add
-      .text(178, 172, 'new name', { fontFamily: 'monospace', fontSize: '8px', color: '#dfe9d8' })
+    const rerollLabel = pixelText(this, 178, 172, 'new name', 1, '#dfe9d8')
       .setOrigin(0.5)
       .setVisible(false);
     const start = this.add.rectangle(306, 172, 110, 22, 0x4a6b34, 1).setInteractive().setVisible(false);
-    const startLabel = this.add
-      .text(306, 172, 'start hunting', { fontFamily: 'monospace', fontSize: '8px', color: '#ffffff' })
+    const startLabel = pixelText(this, 306, 172, 'start hunting', 1, '#ffffff')
       .setOrigin(0.5)
       .setVisible(false);
 
@@ -153,7 +131,7 @@ export class BreedScene extends Phaser.Scene {
   private showNamePanel(): void {
     this.setGroupVisible(this.gridObjects, false);
     this.puppyName = DOG_NAMES[Math.floor(Math.random() * DOG_NAMES.length)];
-    (this.panelObjects[1] as Phaser.GameObjects.Text).setText(this.puppyName);
+    (this.panelObjects[1] as PixelText).setText(this.puppyName);
     this.setGroupVisible(this.panelObjects, true);
   }
 }

@@ -13,6 +13,7 @@ import { getGun, unlockedGuns } from '../game/guns';
 import { GEAR_NAMES, gearTierFor, TRUCK_LEVEL, truckUnlocked } from '../game/progression';
 import { regionAreas, REGIONS } from '../game/regions';
 import { areaOpenerWeek, dateLabel, seasonOver, weekLabel } from '../game/season';
+import { pixelText } from './pixelFont';
 
 /** Chunky pixel-style continental US, y-down screen coords on 480×270. */
 const US_OUTLINE: [number, number][] = [
@@ -47,50 +48,29 @@ export class MapScene extends Phaser.Scene {
     g.fillPoints(US_OUTLINE.map(([x, y]) => new Phaser.Geom.Point(x, y)), true);
     g.lineStyle(1, 0x3a4a5a).strokePoints(US_OUTLINE.map(([x, y]) => new Phaser.Geom.Point(x, y)), true);
 
-    this.add
-      .text(240, 14, choosingHome ? 'where do you live?' : 'where to, boss?', {
-        fontFamily: 'monospace',
-        fontSize: '12px',
-        color: '#ffd23f',
-      })
+    pixelText(this, 240, 14, choosingHome ? 'where do you live?' : 'where to, boss?', 2, '#ffd23f')
       .setOrigin(0.5);
     if (choosingHome) {
-      this.add
-        .text(240, 30, 'home hunts cost a weekend · everywhere else is a trip', {
-          fontFamily: 'monospace',
-          fontSize: '8px',
-          color: '#dfe9d8',
-        })
+      pixelText(this, 240, 30, 'home hunts cost a weekend · everywhere else is a trip', 1, '#dfe9d8')
         .setOrigin(0.5);
     } else {
       const dog = activeDog(career);
       const header = dog
         ? `${dog.name} the ${getBreed(dog.breedId).name} rides shotgun`
         : 'the kennel is empty';
-      this.add
-        .text(240, 30, `${header} · hunter lv ${career.hunter.level} · ${GEAR_NAMES[gearTierFor(career.hunter.level)]}`, {
-          fontFamily: 'monospace',
-          fontSize: '8px',
-          color: '#dfe9d8',
-        })
+      pixelText(this, 240, 30, `${header} · hunter lv ${career.hunter.level} · ${GEAR_NAMES[gearTierFor(career.hunter.level)]}`, 1, '#dfe9d8')
         .setOrigin(0.5);
       // The date line, with a way to let slow weeks pass. If home ground
       // hasn't opened yet (and there's no truck for trips), jump straight
       // to the opener instead of tapping through empty weeks.
-      this.add
-        .text(200, 44, dateLabel(career.date), { fontFamily: 'monospace', fontSize: '8px', color: '#8fc7ff' })
+      pixelText(this, 200, 44, dateLabel(career.date), 1, '#8fc7ff')
         .setOrigin(0.5);
       if (!over) {
         const home = REGIONS.find((r) => r.id === career.homeRegionId);
         const homeOpens = home ? Math.min(...regionAreas(home).map(areaOpenerWeek)) : 0;
         const stuck = !hasTruck && career.date.week < homeOpens;
         const skipTo = stuck ? homeOpens : career.date.week + 1;
-        this.add
-          .text(312, 44, stuck ? '[skip to the opener >]' : '[wait a week >]', {
-            fontFamily: 'monospace',
-            fontSize: '8px',
-            color: '#9fb896',
-          })
+        pixelText(this, 312, 44, stuck ? '[skip to the opener >]' : '[wait a week >]', 1, '#9fb896')
           .setOrigin(0.5)
           .setInteractive()
           .on('pointerdown', () => {
@@ -117,30 +97,21 @@ export class MapScene extends Phaser.Scene {
         const hunts = region.areaIds.reduce((a, id) => a + (career.areas[id]?.hunts ?? 0), 0);
         const dot = this.add.circle(x, y, 5, 0xffd23f).setInteractive({ useHandCursor: true });
         this.add.circle(x, y, 2, 0x101a26);
-        const label = this.add
-          .text(x, y + 10, `${region.name}${isHome && !choosingHome ? ' ★' : ''}`, {
-            fontFamily: 'monospace',
-            fontSize: '8px',
-            color: '#ffffff',
-          })
+        const label = pixelText(this, x, y + 10, `${region.name}${isHome && !choosingHome ? ' ★' : ''}`, 1, '#ffffff')
           .setOrigin(0.5, 0);
-        label.setShadow(1, 1, '#101a26', 0);
+        // Map pins sit close together: compress "mid September" to "mid Sep"
+        // so neighboring labels don't collide in the wide pixel face.
+        const shortWeek = (w: number) => weekLabel(w).replace(/ (\w{3})\w+/, ' $1');
         const sub = choosingHome
-          ? `opens ${opensAt === 0 ? 'Sept 1' : weekLabel(opensAt)}`
+          ? `opens ${opensAt === 0 ? 'Sept 1' : shortWeek(opensAt)}`
           : !openNow
-            ? `opens ${weekLabel(opensAt)}`
+            ? `opens ${shortWeek(opensAt)}`
             : hunts > 0
               ? `${hunts} hunts`
               : '';
         if (sub) {
-          this.add
-            .text(x, y + 20, sub, {
-              fontFamily: 'monospace',
-              fontSize: '8px',
-              color: !openNow && !choosingHome ? '#c9a15c' : '#9fb896',
-            })
-            .setOrigin(0.5, 0)
-            .setShadow(1, 1, '#101a26', 0);
+          pixelText(this, x, y + 20, sub, 1, '#ffffff')
+            .setOrigin(0.5, 0);
         }
         dot.on('pointerdown', () => {
           unlockAudio();
@@ -159,15 +130,11 @@ export class MapScene extends Phaser.Scene {
           : over
             ? ''
             : `needs the truck (hunter lv ${TRUCK_LEVEL})`;
-        this.add
-          .text(x, y + 8, region.name, { fontFamily: 'monospace', fontSize: '8px', color: '#8a97a4' })
-          .setOrigin(0.5, 0)
-          .setShadow(1, 1, '#101a26', 0);
+        pixelText(this, x, y + 8, region.name, 1, '#8a97a4')
+          .setOrigin(0.5, 0);
         if (note) {
-          this.add
-            .text(x, y + 18, note, { fontFamily: 'monospace', fontSize: '8px', color: '#5a6a78' })
-            .setOrigin(0.5, 0)
-            .setShadow(1, 1, '#101a26', 0);
+          pixelText(this, x, y + 18, note, 1, '#5a6a78')
+            .setOrigin(0.5, 0);
         }
       }
     }
@@ -184,23 +151,16 @@ export class MapScene extends Phaser.Scene {
           saveCareer(rollToNextSeason(career));
           this.scene.restart();
         });
-      this.add
-        .text(240, 128, `summer passes...`, { fontFamily: 'monospace', fontSize: '10px', color: '#ffd23f' })
+      pixelText(this, 240, 128, `summer passes...`, 1, '#ffd23f')
         .setOrigin(0.5);
-      this.add
-        .text(240, 143, `start season ${career.date.season + 1} — everyone a year older`, {
-          fontFamily: 'monospace',
-          fontSize: '8px',
-          color: '#dfe9d8',
-        })
+      pixelText(this, 240, 143, `start season ${career.date.season + 1} — everyone a year older`, 1, '#dfe9d8')
         .setOrigin(0.5);
     }
 
     if (!choosingHome) {
       // Gun rack: tap to cycle through what your hunter level has unlocked.
       const guns = unlockedGuns(career.hunter.level);
-      const gunLabel = this.add
-        .text(240, 246, '', { fontFamily: 'monospace', fontSize: '8px', color: '#dfe9d8' })
+      const gunLabel = pixelText(this, 240, 246, '', 1, '#dfe9d8')
         .setOrigin(0.5)
         .setInteractive({ useHandCursor: true });
       const setGunText = () =>
@@ -215,8 +175,7 @@ export class MapScene extends Phaser.Scene {
         setGunText();
       });
 
-      const kennel = this.add
-        .text(470, 252, 'kennel >', { fontFamily: 'monospace', fontSize: '8px', color: '#9fb896' })
+      const kennel = pixelText(this, 470, 252, 'kennel >', 1, '#9fb896')
         .setOrigin(1, 0)
         .setInteractive();
       kennel.on('pointerdown', () => {
@@ -225,8 +184,7 @@ export class MapScene extends Phaser.Scene {
         this.scene.start('KennelScene');
       });
 
-      const back = this.add
-        .text(10, 252, '< title', { fontFamily: 'monospace', fontSize: '8px', color: '#9fb896' })
+      const back = pixelText(this, 10, 252, '< title', 1, '#9fb896')
         .setInteractive();
       back.on('pointerdown', () => {
         unlockAudio();
