@@ -142,40 +142,38 @@ Special rules:
   dog's own scent ~1.3× farther to downwind birds. **[built]**
 - Birds scent the dog downwind (see wind craft). **[built]**
 
-## Fieldcraft **[planned — T6]**
+## Fieldcraft **[built — time of day remains]**
 
 Situational hunting knowledge as mechanics: small, true-to-life edges that
-reward playing like a hunter. Wind is the prototype — each of these is a
-per-area or per-hunt condition plus a few multipliers, not a new engine.
+reward playing like a hunter. Wind is the prototype — each is a per-area
+or per-hunt condition plus a few multipliers, not a new engine.
 
-- **Slope** (per-area uphill direction with a HUD cue, like wind): chukar
-  run uphill and flush downhill — the real birds and the real tactic.
-  Approach a pointed covey from *above* and they hold longer (their uphill
-  escape is cut off) and the flush drops away below you: a slower, more
-  open shot (gentler escape arc, longer window). From below, nerve drains
-  faster and the flush rockets overhead at full speed. Runners bias their
-  flee direction uphill. Applies on Chukar Ridge, Timberline Parks, and
-  mountain-quail ground; mountain quail run uphill too.
-- **Conditions** (per hunt, rolled like wind strength): frost morning
-  (birds sit tight, scent carries), hot & dry (scent poor, dog stamina
-  drains ~1.5× — the Sonoran default), rain (scent knocked down, birds
-  hold), fresh snow (tight holds, downed birds easy to mark).
-- **Time of day** (pick at area select): evening hunts drop the sun low —
-  westward flushes glare in the shot view; morning birds sit tighter near
-  roost cover.
-- **Hun circle-back**: a wild-flushed hun covey flies a wide loop and
-  relands in the same field (once per hunt) — mark them down and follow.
-- **Grouse timber screens**: ruffed and blue grouse put a tree between
-  themselves and the gun — an occasional tree sprite in the shot view that
-  the pattern can't punch through.
-- **Blocking runners**: a runner that reaches the end of its cover holds
-  rather than crossing open ground — pinch roosters at the end of a slough.
-- **Walk-in craft**: flanking a point (coming in from the side/front
-  instead of over the dog's back) presents a cleaner flush — small nerve
-  bonus and a beat more shot time.
-
-Build order when this tranche goes: slope + conditions first (both reuse
-the wind pattern end to end), then the shot-view items.
+- **Slope** **[built]** (per-area `slope` uphill direction, `uphill ↑` HUD
+  cue): chukar run uphill and flush downhill — the real birds and the real
+  tactic. Runners on sloped ground angle uphill as they flee. Approach a
+  pointed covey from *above* and it holds (nerve ×0.6, escape cut off) and
+  the flush drops away below you — slower, flatter, "shooting down the
+  hill". From below: nerve ×1.4 and the flush rockets overhead at 1.15×.
+  Live on Chukar Ridge (uphill north) and Timberline Parks (uphill east).
+- **Conditions** **[built]** (per hunt, rolled like wind, in the HUD; areas
+  carry a climate bias — Sonoran heat, high-country snow, North Woods
+  rain): frost (scent ×1.15, birds hold ×1.25 — the good days), hot & dry
+  (scent ×0.75, dog stamina drains ×1.5), rain (scent ×0.6, birds sit
+  ×1.3, unmarked falls take ×1.4 to find), snow (tight holds, searches
+  ×0.6 — easy marking in the white). Quick Hunt has a weather picker.
+- **Hun circle-back** **[built]**: a wild-flushed hun covey flies a wide
+  loop and relands together in the same field, once per hunt — "mark
+  them!" — then it's gone for good.
+- **Grouse timber screens** **[built]**: ruffed and blue grouse flush
+  behind timber — trees in the shot view that the pattern can't punch
+  through ("thwack — timber!", shell spent).
+- **Blocking runners** **[built]**: a runner that reaches the end of its
+  cover holds rather than crossing open ground — pinch roosters at the end
+  of a slough.
+- **Walk-in craft** **[built]**: flanking a point (the bird between you
+  and the dog) instead of walking up the dog's back — nerve ×0.75.
+- **Time of day** **[planned]**: evening hunts drop the sun low — westward
+  flushes glare in the shot view; morning birds sit tighter near roost.
 
 ## Meta layer **[partially built]**
 
@@ -271,9 +269,10 @@ announce their unlocks at the hunt summary.
   dog-2 row, honoring (with point-stealing by soft pups), per-dog XP
   credit, shared retrieves, per-dog arrows/minimap dots/HUD lines; hen
   fine moved to hunter XP.
-- **T6 — fieldcraft**: slope (chukar/mountain-quail uphill rule), per-hunt
-  conditions (frost/heat/rain/snow), time of day, hun circle-back, grouse
-  timber screens, blocking runners, walk-in craft. See Fieldcraft section.
+- **T6 — fieldcraft [shipped]**: slope (the chukar uphill rule), per-hunt
+  conditions with area climate bias + weather picker in Quick Hunt, hun
+  circle-back, grouse timber screens, blocking runners, walk-in craft.
+  Time of day stays planned. See Fieldcraft section.
 - **Anytime**: PWA packaging; art pass (after species settle); distance-scaled
   shot views (`flushDistance` already plumbed).
 
