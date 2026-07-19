@@ -15,6 +15,8 @@ export interface Bird {
   sex?: 'hen' | 'rooster';
   /** A relit covey survivor — holds tight, and next escape is for good. */
   single?: boolean;
+  /** Hun circle-back already used — the next wild flush is for good. */
+  circled?: boolean;
   /** Runners (pheasant-types) flee the dog on foot instead of holding tight. */
   runs: boolean;
   /** ms of running left before the bird is winded and must hold. */
@@ -209,12 +211,29 @@ export function birdsSpookedBy(birds: Bird[], pos: Vec2, radius: number): Bird[]
   return birds.filter((b) => b.state === 'hidden' && dist(b.pos, pos) <= radius);
 }
 
+export interface RunnerEnv {
+  bounds?: Rect;
+  /** Cover patches: a runner holds at the edge of its cover instead of crossing open ground. */
+  patches?: Rect[];
+  /** Uphill direction on sloped ground — runners angle uphill (the chukar move). */
+  slopeAngle?: number;
+}
+
+const SLOPE_RUN_BIAS = 0.55; // how strongly sloped-ground runners pull uphill
+
+function inAnyPatch(p: Vec2, patches: Rect[]): boolean {
+  return patches.some((r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h);
+}
+
 /**
  * Move runner birds. A hidden runner flees the dog while it has energy,
  * then holds still to recover — that's the dog's (and hunter's) window.
- * Only the dog spooks them; the hunter walking up doesn't.
+ * Only the dog spooks them; the hunter walking up doesn't. A runner that
+ * reaches the end of its cover pins there rather than crossing the open —
+ * that's how you block a rooster at the end of a slough.
  */
-export function updateBirds(dtMs: number, birds: Bird[], dogPos: Vec2, bounds: Rect = FIELD_BOUNDS): void {
+export function updateBirds(dtMs: number, birds: Bird[], dogPos: Vec2, env: RunnerEnv = {}): void {
+  const bounds = env.bounds ?? FIELD_BOUNDS;
   const dt = dtMs / 1000;
   for (const b of birds) {
     if (b.state !== 'hidden' || !b.runs) continue;
@@ -231,9 +250,64 @@ export function updateBirds(dtMs: number, birds: Bird[], dogPos: Vec2, bounds: R
     b.runEnergy -= dtMs;
     const speed = RUNNER_SPEED * (getSpecies(b.speciesId).runSpeedMult ?? 1);
     const away = Math.atan2(b.pos.y - dogPos.y, b.pos.x - dogPos.x);
-    b.pos = {
-      x: clamp(b.pos.x + Math.cos(away) * speed * dt, bounds.x + 4, bounds.x + bounds.w - 4),
-      y: clamp(b.pos.y + Math.sin(away) * speed * dt, bounds.y + 4, bounds.y + bounds.h - 4),
+    let dirX = Math.cos(away);
+    let dirY = Math.sin(away);
+    if (env.slopeAngle !== undefined) {
+      dirX = dirX * (1 - SLOPE_RUN_BIAS) + Math.cos(env.slopeAngle) * SLOPE_RUN_BIAS;
+      dirY = dirY * (1 - SLOPE_RUN_BIAS) + Math.sin(env.slopeAngle) * SLOPE_RUN_BIAS;
+      const len = Math.hypot(dirX, dirY) || 1;
+      dirX /= len;
+      dirY /= len;
+    }
+    const next = {
+      x: clamp(b.pos.x + dirX * speed * dt, bounds.x + 4, bounds.x + bounds.w - 4),
+      y: clamp(b.pos.y + dirY * speed * dt, bounds.y + 4, bounds.y + bounds.h - 4),
     };
+    // Blocked at the cover's end: hold rather than cross open ground.
+    if (env.patches && inAnyPatch(b.pos, env.patches) && !inAnyPatch(next, env.patches)) {
+      b.restingMs = RUNNER_REST_MS;
+      continue;
+    }
+    b.pos = next;
   }
+}
+
+/**
+ * The hun move: a covey wild-flushed out of range flies a wide loop and
+ * relands together in the same field — once per hunt. Returns the relanded
+ * birds (empty if this covey doesn't do that, or already has).
+ */
+export function circleBack(
+  birds: Bird[],
+  flushedIds: number[],
+  bounds: Rect,
+  rng: RNG = Math.random,
+  nerveMult = 1,
+): Bird[] {
+  const covey = flushedIds
+    .map((id) => birds.find((b) => b.id === id))
+    .filter((b): b is Bird => b !== undefined);
+  if (covey.length === 0) return [];
+  if (!covey.every((b) => b.speciesId === 'hun' && b.state === 'flushed' && !b.circled && !b.single)) {
+    return [];
+  }
+  const cx = covey.reduce((a, b) => a + b.pos.x, 0) / covey.length;
+  const cy = covey.reduce((a, b) => a + b.pos.y, 0) / covey.length;
+  const away = rng() * Math.PI * 2;
+  const distance = 150 + rng() * 150;
+  const anchor = {
+    x: clamp(cx + Math.cos(away) * distance, bounds.x + 12, bounds.x + bounds.w - 12),
+    y: clamp(cy + Math.sin(away) * distance, bounds.y + 12, bounds.y + bounds.h - 12),
+  };
+  const species = getSpecies('hun');
+  for (const b of covey) {
+    b.pos = {
+      x: clamp(anchor.x + (rng() * 2 - 1) * 12, bounds.x + 4, bounds.x + bounds.w - 4),
+      y: clamp(anchor.y + (rng() * 2 - 1) * 12, bounds.y + 4, bounds.y + bounds.h - 4),
+    };
+    b.state = 'hidden';
+    b.circled = true;
+    b.nerveMs = (species.nerveMinMs + rng() * (species.nerveMaxMs - species.nerveMinMs)) * nerveMult;
+  }
+  return covey;
 }

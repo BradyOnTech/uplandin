@@ -285,6 +285,28 @@ describe('Dog', () => {
     });
   });
 
+  describe('conditions', () => {
+    it('a hot day drains stamina faster (drainMult)', () => {
+      const cool = makeDog(240, 135, 1);
+      const hot = makeDog(240, 135, 1);
+      run(cool, [], 200); // 10s of quartering
+      run(hot, [], 200, { drainMult: 1.5 });
+      const coolSpent = cool.maxStaminaMs - cool.staminaMs;
+      const hotSpent = hot.maxStaminaMs - hot.staminaMs;
+      expect(hotSpent).toBeCloseTo(coolSpent * 1.5, 3);
+    });
+
+    it('snow makes the unmarked search quick (searchMult)', () => {
+      const dog = makeDog(100, 100);
+      dog.needsSearch = true;
+      const b = birdAt(120, 100, { state: 'downed' });
+      run(dog, [b], 8, { searchMult: 0.6 }); // travel to the fall
+      // 700ms hold + 2200 x 0.6 = 2020ms search → done within ~2.8s
+      run(dog, [b], 56, { searchMult: 0.6 });
+      expect(b.state).toBe('retrieved');
+    });
+  });
+
   describe('fatigue', () => {
     it('drains stamina while working and goes winded', () => {
       const dog = makeDog(240, 135, 1); // 90s pool at level 1

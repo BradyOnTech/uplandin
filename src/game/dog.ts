@@ -65,6 +65,10 @@ export interface DogEnv {
   whistleRange?: number;
   /** Where a packmate stands on point — a finished dog stops and backs. */
   honorPoint?: Vec2;
+  /** Conditions multiplier on stamina drain (hot dry days burn the dog). */
+  drainMult?: number;
+  /** Conditions multiplier on unmarked-fall search time (snow helps, rain hurts). */
+  searchMult?: number;
 }
 
 export interface DogProfile {
@@ -215,7 +219,7 @@ export class Dog {
     }
 
     if (this.state === 'breaking') {
-      this.work(dtMs);
+      this.work(dtMs * (env.drainMult ?? 1));
       this.breakMsLeft -= dtMs;
       if (this.breakMsLeft <= 0) {
         this.state = 'quartering';
@@ -261,7 +265,7 @@ export class Dog {
         this.advance(this.heading, this.trackSpeed * dt);
       } else {
         this.retrieveHoldMs += dtMs;
-        const holdNeeded = RETRIEVE_HOLD_MS + (this.needsSearch ? SEARCH_HOLD_MS : 0);
+        const holdNeeded = RETRIEVE_HOLD_MS + (this.needsSearch ? SEARCH_HOLD_MS * (env.searchMult ?? 1) : 0);
         if (this.retrieveHoldMs >= holdNeeded) {
           target.state = 'retrieved';
           this.needsSearch = false;
@@ -301,7 +305,7 @@ export class Dog {
     const bird = this.nearestHiddenBird(birds, env);
     if (bird) {
       this.state = 'tracking';
-      this.work(dtMs);
+      this.work(dtMs * (env.drainMult ?? 1));
       this.heading = Math.atan2(bird.pos.y - this.pos.y, bird.pos.x - this.pos.x);
       this.advance(this.heading, this.trackSpeed * dt);
       if (dist(this.pos, bird.pos) <= POINT_RANGE) {
@@ -313,7 +317,7 @@ export class Dog {
 
     // Quartering: serpentine sweep, anchored to the hunter out to Range.
     this.state = 'quartering';
-    this.work(dtMs);
+    this.work(dtMs * (env.drainMult ?? 1));
     this.weavePhase += dt * WEAVE_RATE;
     this.steerOffEdges(dt);
     this.steerToAnchor(dt, env.hunterPos);

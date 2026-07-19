@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   birdsScentingDog,
   birdsSpookedBy,
+  circleBack,
   flushCovey,
   relightSurvivors,
   RUNNER_MAX_ENERGY,
@@ -215,6 +216,45 @@ describe('relightSurvivors (hunt the singles)', () => {
   });
 });
 
+describe('circleBack (the hun move)', () => {
+  const bounds = { x: 0, y: 0, w: 1400, h: 800 };
+
+  function hunCovey(): Bird[] {
+    return [1, 2, 3].map((id) =>
+      bird({ id, coveyId: 5, speciesId: 'hun', state: 'flushed', pos: { x: 700 + id * 5, y: 400 } }),
+    );
+  }
+
+  it('a wild-flushed hun covey relands together, once', () => {
+    const covey = hunCovey();
+    const relanded = circleBack(covey, [1, 2, 3], bounds, () => 0.5);
+    expect(relanded).toHaveLength(3);
+    for (const b of covey) {
+      expect(b.state).toBe('hidden');
+      expect(b.circled).toBe(true);
+      expect(b.coveyId).toBe(5); // still a covey — they land together
+    }
+    // They moved as a group, well away from the old spot.
+    expect(dist(covey[0].pos, { x: 705, y: 400 })).toBeGreaterThan(100);
+    expect(dist(covey[0].pos, covey[2].pos)).toBeLessThanOrEqual(35);
+    // Second wild flush: gone for good.
+    covey.forEach((b) => (b.state = 'flushed'));
+    expect(circleBack(covey, [1, 2, 3], bounds, () => 0.5)).toEqual([]);
+  });
+
+  it('only huns do it', () => {
+    const sharpies = hunCovey().map((b) => ({ ...b, speciesId: 'sharptail' }));
+    expect(circleBack(sharpies, [1, 2, 3], bounds, () => 0.5)).toEqual([]);
+    expect(sharpies[0].state).toBe('flushed');
+  });
+
+  it('a relit single does not drag the covey back', () => {
+    const covey = hunCovey();
+    covey[1].single = true;
+    expect(circleBack(covey, [1, 2, 3], bounds, () => 0.5)).toEqual([]);
+  });
+});
+
 describe('updateBirds (runners)', () => {
   it('flees the dog when it gets close', () => {
     const b = bird({ pos: { x: 100, y: 100 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
@@ -268,9 +308,30 @@ describe('updateBirds (runners)', () => {
   it('respects custom world bounds while fleeing', () => {
     const bounds = { x: 0, y: 0, w: 1400, h: 800 };
     const b = bird({ pos: { x: 1390, y: 400 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
-    for (let i = 0; i < 40; i++) updateBirds(50, [b], { x: 1370, y: 400 }, bounds);
+    for (let i = 0; i < 40; i++) updateBirds(50, [b], { x: 1370, y: 400 }, { bounds });
     expect(b.pos.x).toBeLessThanOrEqual(1396); // clamped by the bigger world, not FIELD_BOUNDS
     expect(b.pos.x).toBeGreaterThan(480); // and definitely not the old field edge
+  });
+
+  it('slope bias: runners on a hillside angle uphill', () => {
+    // Uphill is north (-y). Dog approaches from the west; an unbiased bird
+    // would run due east — a hillside bird angles north as it goes.
+    const b = bird({ pos: { x: 300, y: 200 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
+    for (let i = 0; i < 20; i++) {
+      updateBirds(50, [b], { x: b.pos.x - 20, y: 200 }, { slopeAngle: -Math.PI / 2 });
+    }
+    expect(b.pos.x).toBeGreaterThan(300); // still fleeing east
+    expect(b.pos.y).toBeLessThan(180); // but climbing hard
+  });
+
+  it('blocking: a runner holds at the end of its cover instead of crossing open ground', () => {
+    const patches = [{ x: 280, y: 180, w: 60, h: 40 }];
+    const b = bird({ pos: { x: 330, y: 200 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
+    for (let i = 0; i < 30; i++) {
+      updateBirds(50, [b], { x: b.pos.x - 20, y: 200 }, { patches });
+    }
+    expect(b.pos.x).toBeLessThanOrEqual(340); // pinned at the patch edge
+    expect(b.restingMs).toBeGreaterThan(0); // holding — the hunter's window
   });
 });
 

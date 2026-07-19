@@ -37,6 +37,8 @@ export interface SpeciesConfig {
   henRule?: boolean;
   /** Signature flush sound on the rise. */
   sound?: 'cackle' | 'twitter' | 'thunder';
+  /** Timber birds put a tree between themselves and the gun in the shot view. */
+  timber?: boolean;
 }
 
 export const SPECIES: SpeciesConfig[] = [
@@ -75,6 +77,7 @@ export const SPECIES: SpeciesConfig[] = [
     flight: { speedMin: 155, speedMax: 195, climb: 0.55, wobble: 34 },
     palette: { body: 0x6e5138, head: 0x8a6a48, tail: 0x4a3626 },
     sound: 'thunder',
+    timber: true,
   },
   {
     id: 'woodcock',
@@ -145,6 +148,7 @@ export const SPECIES: SpeciesConfig[] = [
     flight: { speedMin: 150, speedMax: 185, climb: 0.55, wobble: 20 },
     palette: { body: 0x5a6270, head: 0x6e7684, tail: 0x3e4550 },
     sound: 'thunder',
+    timber: true,
   },
   {
     id: 'california-quail',

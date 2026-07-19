@@ -1,6 +1,7 @@
 import { AREAS } from './areas';
 import { BREEDS, LEVEL_CAP } from './breeds';
 import type { StorageLike } from './career';
+import { CONDITIONS, type Condition } from './conditions';
 import { GUNS } from './guns';
 import { clamp } from './math';
 import type { WindStrength } from './wind';
@@ -20,7 +21,11 @@ export interface QuickConfig {
   gearTier: number;
   /** Second dog's breed for a brace, or 'none' to hunt solo. */
   breed2Id: string;
+  /** The day's weather, or 'random' to roll it. */
+  weather: Condition | 'random';
 }
+
+export const WEATHER_CHOICES: (Condition | 'random')[] = ['random', ...CONDITIONS];
 
 export const WIND_CHOICES: (WindStrength | 'random')[] = ['random', 'calm', 'breezy', 'strong'];
 
@@ -33,6 +38,7 @@ export function defaultQuickConfig(): QuickConfig {
     gunId: GUNS[0].id,
     gearTier: 1,
     breed2Id: 'none',
+    weather: 'random',
   };
 }
 
@@ -53,6 +59,9 @@ export function normalizeQuickConfig(cfg: Partial<QuickConfig>): QuickConfig {
     gunId: GUNS.some((g) => g.id === cfg.gunId) ? cfg.gunId! : base.gunId,
     gearTier: clamp(Math.round(cfg.gearTier ?? base.gearTier), 0, 3),
     breed2Id: cfg.breed2Id === 'none' || BREEDS.some((b) => b.id === cfg.breed2Id) ? cfg.breed2Id! : 'none',
+    weather: WEATHER_CHOICES.includes(cfg.weather as Condition | 'random')
+      ? (cfg.weather as QuickConfig['weather'])
+      : 'random',
   };
 }
 

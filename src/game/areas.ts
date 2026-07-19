@@ -1,3 +1,4 @@
+import type { Condition } from './conditions';
 import { scatterRects, type Rect } from './field';
 import { mulberry32 } from './math';
 import type { SpeciesShare } from './species';
@@ -22,6 +23,10 @@ export interface AreaConfig {
   /** Birds per 100k px² of world — bigger worlds stock more birds. */
   stocking: number;
   speciesMix: SpeciesShare[];
+  /** Uphill direction (radians, screen coords) on sloped ground — the chukar rule. */
+  slope?: number;
+  /** Climate lean for the per-hunt condition roll (desert heat, high-country snow). */
+  conditionBias?: Condition;
 }
 
 function world(w: number, h: number): Rect {
@@ -99,6 +104,7 @@ export const AREAS: AreaConfig[] = [
       { speciesId: 'woodcock', weight: 0.7 },
       { speciesId: 'ruffed-grouse', weight: 0.3 },
     ],
+    conditionBias: 'rain',
   },
   // — Great Basin —
   {
@@ -125,6 +131,7 @@ export const AREAS: AreaConfig[] = [
       { speciesId: 'chukar', weight: 0.8 },
       { speciesId: 'hun', weight: 0.2 },
     ],
+    slope: -Math.PI / 2, // uphill is north — they run up-screen, fly down
   },
   // — Sonoran Desert —
   {
@@ -140,6 +147,7 @@ export const AREAS: AreaConfig[] = [
       { speciesId: 'gambels-quail', weight: 0.6 },
       { speciesId: 'scaled-quail', weight: 0.4 },
     ],
+    conditionBias: 'hot',
   },
   {
     id: 'mearns-canyons',
@@ -154,6 +162,7 @@ export const AREAS: AreaConfig[] = [
       { speciesId: 'mearns-quail', weight: 0.8 },
       { speciesId: 'gambels-quail', weight: 0.2 },
     ],
+    conditionBias: 'hot',
   },
   // — High Rockies —
   {
@@ -169,6 +178,8 @@ export const AREAS: AreaConfig[] = [
       { speciesId: 'blue-grouse', weight: 0.7 },
       { speciesId: 'mountain-quail', weight: 0.3 },
     ],
+    slope: 0, // uphill is east, toward the peaks
+    conditionBias: 'snow',
   },
   // — Pacific Valleys —
   {

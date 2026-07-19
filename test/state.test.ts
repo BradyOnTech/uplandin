@@ -24,6 +24,7 @@ function huntWith(states: Bird['state'][]): HuntState {
     hunterPos: { x: 0, y: 0 },
     wind: 0,
     windStrength: 'calm',
+    condition: 'mild',
     downed: 0,
     escaped: 0,
     doubles: 0,
@@ -57,6 +58,23 @@ describe('hunt bookkeeping', () => {
     expect(hunt.birds).toHaveLength(areaBirdCount(AREAS[0]));
     expect(hunt.downed).toBe(0);
     expect(hunt.escaped).toBe(0);
+  });
+
+  it('weather override sticks, and frost birds hold longer than mild ones', () => {
+    function rng(seed: number) {
+      let s = seed;
+      return () => {
+        s = (s * 16807) % 2147483647;
+        return s / 2147483647;
+      };
+    }
+    const mild = createHunt(AREAS[0], rng(9), 'calm', 'remington-870', 'mild');
+    const frost = createHunt(AREAS[0], rng(9), 'calm', 'remington-870', 'frost');
+    expect(mild.condition).toBe('mild');
+    expect(frost.condition).toBe('frost');
+    for (let i = 0; i < mild.birds.length; i++) {
+      expect(frost.birds[i].nerveMs).toBeCloseTo(mild.birds[i].nerveMs * 1.25, 5);
+    }
   });
 
   it('starts hunter and dog inside the area world, birds too', () => {

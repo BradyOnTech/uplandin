@@ -60,18 +60,20 @@ describe('quick hunt config', () => {
       gunId: 'over-under',
       gearTier: 3,
       breed2Id: 'gsp',
+      weather: 'frost' as const,
     };
     saveQuickConfig(cfg, storage);
     expect(loadQuickConfig(storage)).toEqual(cfg);
   });
 
-  it('older saved setups gain gun, gear, and second-dog defaults', () => {
+  it('older saved setups gain gun, gear, second-dog, and weather defaults', () => {
     const storage = memoryStorage();
     storage.data[QUICK_KEY] = JSON.stringify({ breedId: 'vizsla', level: 4, areaId: 'quail-fields', wind: 'calm' });
     const cfg = loadQuickConfig(storage);
     expect(cfg.gunId).toBe('remington-870');
     expect(cfg.gearTier).toBe(1);
     expect(cfg.breed2Id).toBe('none');
+    expect(cfg.weather).toBe('random');
   });
 
   it('falls back to defaults on missing or corrupt storage', () => {

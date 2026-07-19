@@ -1,5 +1,6 @@
 import { areaBirdCount, type AreaConfig } from './areas';
 import { spawnBirds, type Bird } from './birds';
+import { conditionMults, rollCondition, type Condition } from './conditions';
 import type { QuickConfig } from './quick';
 import type { RNG, Vec2 } from './types';
 import { rollWindStrength, windMults, type WindStrength } from './wind';
@@ -28,6 +29,8 @@ export interface HuntState {
   /** Direction the wind blows toward (radians, screen coords) — constant for a hunt. */
   wind: number;
   windStrength: WindStrength;
+  /** The day's weather — frost mornings are the good days. */
+  condition: Condition;
   downed: number;
   escaped: number;
   /** Flushes where two birds fell — the classic double, bonus hunter XP. */
@@ -47,9 +50,11 @@ export function createHunt(
   rng: RNG = Math.random,
   windOverride?: WindStrength,
   gunId = 'remington-870',
+  conditionOverride?: Condition,
 ): HuntState {
   const w = area.world;
   const windStrength = windOverride ?? rollWindStrength(rng);
+  const condition = conditionOverride ?? rollCondition(rng, area.conditionBias);
   return {
     areaId: area.id,
     birds: spawnBirds(
@@ -58,7 +63,7 @@ export function createHunt(
         birdCount: areaBirdCount(area),
         speciesMix: area.speciesMix,
         bounds: w,
-        nerveMult: windMults(windStrength).nerve,
+        nerveMult: windMults(windStrength).nerve * conditionMults(condition).nerve,
       },
       rng,
     ),
@@ -69,6 +74,7 @@ export function createHunt(
     hunterPos: { x: w.x + w.w / 2, y: w.y + w.h - 20 },
     wind: rng() * Math.PI * 2,
     windStrength,
+    condition,
     downed: 0,
     escaped: 0,
     doubles: 0,
