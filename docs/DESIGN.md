@@ -175,6 +175,44 @@ or per-hunt condition plus a few multipliers, not a new engine.
 - **Time of day** **[planned]**: evening hunts drop the sun low — westward
   flushes glare in the shot view; morning birds sit tighter near roost.
 
+## Seasons & time **[planned — T7]**
+
+Time is the career's scarce resource. A season is ~22 week-ticks, September
+through January; everything below hangs off the week counter. Quick Hunt
+stays timeless.
+
+- **The calendar**: a hunt near home costs 1 week (a weekend); a trip to
+  any other region costs 2 (travel). Skipping weeks is free (calendar
+  screen: "skip to November"). A first-season pup can therefore see at
+  most ~20 hunts — the dog ages on the calendar, not on a grind.
+- **Home region**: chosen at career start (replaces the fixed Southern
+  Plains home). The truck still gates travel at hunter lv 2 — it now reads
+  as "you can afford trips". Trips are how a dog meets other species.
+- **Species openers** (per region, true-ish to life): ruffed/woodcock/blue
+  grouse Sept 1 · sharptail/huns/prairie chicken mid-Sept · chukar Oct 1 ·
+  pheasant mid-Oct (the opener) · quail species Nov 1. All close end of
+  January. Areas with nothing open are closed on the map ("opens Oct 12")
+  — September means grouse trips, October the pheasant opener, December
+  desert quail. The travel map becomes a season plan.
+- **Young and educated birds**: early season a share of each covey is
+  young-of-year (hold ~1.3× longer, fly ~0.9× slower), decaying weekly;
+  from December the survivors are educated (nerve ~0.8×, wilder flushes).
+  Late-season roosters in the snow get exactly as hard as they should be.
+- **Conditions follow the month**: Sept leans hot, Oct frost, Nov
+  frost/rain, Dec–Jan snow — crossed with the region's climate (the
+  Sonoran stays mild in December). Replaces the flat per-area bias.
+- **Dog aging** (in seasons): season 1 growing (the XP arc carries it),
+  ~2–7 prime, 8+ decline — speed/stamina drop a few % per season while
+  the nose holds; an old dog gets slow, not dumb. Kennel shows it
+  ("Chief · 9 seasons · slowing down"). The brace is the payoff: the old
+  dog hunts alongside the pup coming up, honoring already models the
+  manners lesson. Off-season = one transition screen; dogs age +1.
+- **Open questions**: difficulty tiers (a "casual career" without the
+  calendar) — deferred; one well-tuned career first, Quick Hunt is
+  already the sandbox. Forced retirement vs indefinite decline — lean
+  soft decline, no forced goodbye. Summer training camps as a later
+  off-season activity.
+
 ## Meta layer **[partially built]**
 
 - **Game modes** **[built]**: the title offers **Career** (raise your dog,
@@ -273,6 +311,10 @@ announce their unlocks at the hunt summary.
   conditions with area climate bias + weather picker in Quick Hunt, hun
   circle-back, grouse timber screens, blocking runners, walk-in craft.
   Time of day stays planned. See Fieldcraft section.
+- **T7 — seasons & time**: the week-tick calendar (home hunts 1wk, trips
+  2wk), home region choice, species openers on the map, young/educated
+  birds across the season, month-driven conditions, dog aging with
+  decline, off-season rollover. See Seasons & time section.
 - **Anytime**: PWA packaging; art pass (after species settle); distance-scaled
   shot views (`flushDistance` already plumbed).
 
