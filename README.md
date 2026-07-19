@@ -3,7 +3,9 @@
 A retro upland bird-hunting game. You raise a bird dog and work real coverts
 across a pixel continental US: top-down field view while the dog quarters and
 points, a Duck Hunt-style shooting view when a bird flushes in range. Built
-with TypeScript, Phaser 3, and Vite; PWA packaging planned for mobile play.
+with TypeScript, Phaser 3, and Vite. Installable as a PWA: serve the
+production build over HTTPS, open it on your phone, and "Add to Home
+Screen" — it runs fullscreen landscape and boots from cache offline.
 
 **Status: the full design plan is shipped** — tranches T0 through T7, ~170
 unit tests green. The living spec is [docs/DESIGN.md](docs/DESIGN.md); this
@@ -98,8 +100,6 @@ Dev helpers: `?doglevel=N` on the URL runs career hunts at that dog level
 
 ## What's left
 
-- **PWA packaging** (manifest + service worker) — the original
-  play-on-your-phone goal.
 - **Art pass** — underway: style locked (docs/ART.md), Southern Plains
   flush backdrop and animated bobwhite sprites are in-engine; remaining
   species, tiles, and scenes still placeholder.

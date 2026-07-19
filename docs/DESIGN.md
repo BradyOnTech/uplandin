@@ -2,7 +2,7 @@
 
 A retro upland bird-hunting game: you and your bird dog work real coverts across
 the country. Top-down field view while the dog hunts; Duck Hunt-style shooting
-view when a bird flushes in range. TypeScript + Phaser 3 + Vite, PWA-bound.
+view when a bird flushes in range. TypeScript + Phaser 3 + Vite, installable PWA.
 
 This is the living spec. Sections are marked **[built]** or **[planned]**.
 Check items off (and adjust them) as tranches ship.
@@ -325,8 +325,10 @@ announce their unlocks at the hunt summary.
   career start, species openers closing areas on the map, young/educated
   birds across the season, month-driven conditions, dog aging (soft
   decline; retirement question deliberately open), off-season rollover.
-- **Anytime**: PWA packaging; art pass (after species settle); distance-scaled
-  shot views (`flushDistance` already plumbed).
+- **Anytime**: PWA packaging **[built]** — manifest, home-screen icons
+  (the bobwhite), and a stale-while-revalidate service worker (prod-only;
+  updates land next launch); art pass (underway, see docs/ART.md);
+  distance-scaled shot views (`flushDistance` already plumbed).
 
 ## Engineering rules
 

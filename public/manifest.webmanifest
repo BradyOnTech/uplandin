@@ -1,0 +1,16 @@
+{
+  "name": "Uplandin",
+  "short_name": "Uplandin",
+  "description": "A retro upland bird-hunting game: you, your dog, and the whole country.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#101410",
+  "theme_color": "#101410",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

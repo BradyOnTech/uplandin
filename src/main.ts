@@ -31,4 +31,15 @@ const game = new Phaser.Game(config);
 // Handle for poking at the running game from devtools / browser automation.
 (window as unknown as Record<string, unknown>).__uplandin = game;
 
+// PWA: register the service worker in production builds only, so dev never
+// fights a cache. Installed to a phone's home screen, the game runs
+// fullscreen and offline; updates land on the next launch.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {
+      // No SW support or a blocked context — the game still runs normally.
+    });
+  });
+}
+
 export default game;
