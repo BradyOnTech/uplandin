@@ -7,7 +7,7 @@ import { slopeFlightMult, type SlopeApproach } from '../game/fieldcraft';
 import { getGun, type GunConfig } from '../game/guns';
 import { clamp, dist } from '../game/math';
 import { regionOfArea } from '../game/regions';
-import { escapeVelocityFan, exitDirFor, glideStep, hitTest, levelStep } from '../game/shot';
+import { escapeVelocityFan, exitDirFor, flushBias, glideStep, hitTest, levelStep } from '../game/shot';
 import { getSpecies, type SpeciesConfig } from '../game/species';
 import type { HuntState } from '../game/state';
 import type { Vec2 } from '../game/types';
@@ -54,11 +54,15 @@ interface FlyingBird {
   depthBias: number;
   /** Ground shadow — shrinks and fades as the bird climbs. Sells the height. */
   shadow: Phaser.GameObjects.Ellipse;
+  /** Per-bird jink intensity — some birds fly straight, some corkscrew. */
+  wobbleMult: number;
   /** Time on the wing — drives the glide and level-off flight phases. */
   airMs: number;
   /** Locked once a flight phase begins: which screen edge this bird is leaving by. */
   exitDir?: 1 | -1;
-  status: 'waiting' | 'flying' | 'falling' | 'done';
+  /** Sleeper: rises a beat after its wave — the straggler at your feet. */
+  launchDelayMs: number;
+  status: 'waiting' | 'launching' | 'flying' | 'falling' | 'done';
 }
 
 /**
@@ -125,6 +129,9 @@ export class FlushScene extends Phaser.Scene {
 
     this.flushSounds.clear();
     this.lastLaunchAt = -Infinity;
+    // Skill-linked difficulty: a tight walk-in means big close birds; a
+    // scramble at the edge of range means the rise is already small and far.
+    const bias = flushBias(data.flushDistance ?? 25);
     // Every rise gets its own character: a break direction (coveys don't
     // scatter symmetrically — they break somewhere) and shuffled lanes per
     // wave, so a single bird can rise anywhere and no two flushes repeat.
@@ -138,6 +145,10 @@ export class FlushScene extends Phaser.Scene {
       }
       const lane = lanePerm[i % MAX_AIRBORNE];
       const vel = escapeVelocityFan(species.flight, lane, MAX_AIRBORNE);
+      // Hot rolls and lazy rolls: some birds are screamers, some loaf.
+      const speedRoll = 0.85 + Math.random() * 0.45;
+      vel.x *= speedRoll;
+      vel.y *= speedRoll;
       vel.x += flushDrift;
       vel.x *= slopeMult;
       vel.y *= slopeMult * (slope === 'above' ? 0.85 : 1); // dropping away below you
@@ -172,9 +183,11 @@ export class FlushScene extends Phaser.Scene {
         sprite,
         vel,
         wobble: i * 2.1,
-        depthBias: 0.72 + 0.28 * ((i * 0.61) % 1),
+        depthBias: bias.min + Math.random() * (bias.max - bias.min),
+        wobbleMult: 0.6 + Math.random(),
         shadow,
         airMs: 0,
+        launchDelayMs: Math.random() < 0.18 ? 350 + Math.random() * 550 : 0,
         status: 'waiting',
       });
     });
@@ -211,12 +224,22 @@ export class FlushScene extends Phaser.Scene {
    * shooting is readable and every rise actually looks like one.
    */
   private tryLaunch(time: number): void {
-    if (this.birds.some((b) => b.status === 'flying')) return;
+    if (this.birds.some((b) => b.status === 'flying' || b.status === 'launching')) return;
     if (time - this.lastLaunchAt < LAUNCH_GAP_MS) return;
     const wave = this.birds.filter((b) => b.status === 'waiting').slice(0, MAX_AIRBORNE);
     if (wave.length === 0) return;
     this.lastLaunchAt = time;
     for (const bird of wave) {
+      if (bird.launchDelayMs > 0) {
+        // The sleeper: everyone's swinging on the wave when this one pops.
+        bird.status = 'launching';
+        this.time.delayedCall(bird.launchDelayMs, () => {
+          if (bird.status !== 'launching') return;
+          bird.status = 'flying';
+          bird.sprite.setVisible(true);
+        });
+        continue;
+      }
       bird.status = 'flying';
       bird.sprite.setVisible(true);
       // Signature flush sounds, once per species per rise. Hens don't cackle.
@@ -261,7 +284,7 @@ export class FlushScene extends Phaser.Scene {
           b.sprite.setFlipX(b.vel.x < 0);
         }
         b.wobble += dt * 9;
-        b.sprite.x += b.vel.x * dt + Math.sin(b.wobble) * b.species.flight.wobble * dt;
+        b.sprite.x += b.vel.x * dt + Math.sin(b.wobble) * b.species.flight.wobble * b.wobbleMult * dt;
         b.sprite.y += b.vel.y * dt;
         if (b.sprite.y < -16 || b.sprite.x < -16 || b.sprite.x > 496 || b.sprite.y > GROUND_Y + 20) {
           this.escapeBird(b);
@@ -393,6 +416,7 @@ export class FlushScene extends Phaser.Scene {
       area.world,
       Math.random,
       windMults(this.hunt.windStrength).nerve,
+      area.patches,
     );
     this.hunt.escaped -= relit.length;
 

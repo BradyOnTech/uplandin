@@ -127,10 +127,12 @@ Special rules:
   a downed hen is a 4-xp game-warden fine at the summary. Visually distinct
   (tan/short tail vs white ring/green head/long tail). Roosters cackle on
   the flush; hens rise silent. The shot view warns "watch for hens!".
-- **Scattered singles** **[built]**: covey survivors of a shooting
-  opportunity relight 90–200px away in cover, hold ~1.7× tighter, and sit
-  alone (the covey bond breaks — one single flushing doesn't lift another).
-  A single only relights once; wild-flushed-too-far birds are gone for good.
+- **Scattered singles** **[built]**: ~65% of covey survivors of a shooting
+  opportunity relight — the rest are simply gone. The ones that stay make
+  for the next cover patch in range (sometimes surprisingly close, often a
+  real hike, 70–420px; open country gets a long random put-down), hold
+  ~1.7× tighter, and sit alone (the covey bond breaks). A single only
+  relights once; wild-flushed-too-far birds are gone for good.
 - **Flush sounds** **[built]**: rooster cackle, woodcock wing twitter,
   ruffed grouse thunder.
 - **Target personality** **[built]** — tributes to realism inside the
@@ -142,6 +144,13 @@ Special rules:
   into a fast crossing shot — faster than it looks, like the real bird).
   Chukar bomb flat, woodcock flutter and wobble, grouse jink through
   timber — those were already in the flight data.
+- **Flush variance** **[built]** — no two chances alike: per-bird speed
+  rolls (0.85–1.3×), jink intensity (0.6–1.6×), shuffled lanes, a
+  per-flush break direction, ~18% sleepers that rise a beat after their
+  wave (the straggler at your feet), and **skill-linked difficulty**: how
+  close you walked in sets the whole rise's size/distance — point-blank
+  over a solid point is a big easy chance, a scramble at the edge of
+  range is small birds already going away (`flushBias`).
 
 ## Wind **[built]**
 

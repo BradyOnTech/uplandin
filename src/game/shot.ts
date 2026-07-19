@@ -69,6 +69,17 @@ export const GLIDE_MAX = 150; // glide exit speed cap
 export const LEVEL_ACCEL = 150; // the rooster pours it on harder
 export const LEVEL_MAX = 210;
 
+/**
+ * Skill-linked difficulty: how well you walked in decides the rise you get.
+ * Point-blank over a solid point → big close birds, an easy chance. A
+ * scramble at the edge of shot range → the covey is already small, far,
+ * and going away. Returns the per-bird size/depth roll range.
+ */
+export function flushBias(flushDistance: number): { min: number; max: number } {
+  const t = Math.max(0, Math.min(1, (flushDistance - 8) / 32)); // 8px point-blank .. 40px max range
+  return { min: 0.9 - 0.3 * t, max: 1.15 - 0.35 * t };
+}
+
 /** Which side a bird should leave by: with its momentum, else the nearer edge. */
 export function exitDirFor(velX: number, x: number, screenW = 480): 1 | -1 {
   if (Math.abs(velX) > 20) return velX > 0 ? 1 : -1;

@@ -3,6 +3,7 @@ import {
   escapeVelocity,
   escapeVelocityFan,
   exitDirFor,
+  flushBias,
   glideStep,
   GLIDE_MAX,
   hitTest,
@@ -72,6 +73,17 @@ describe('escapeVelocity', () => {
     expect(rv.x).toBeGreaterThanOrEqual(180);
     expect(rv.x).toBeLessThanOrEqual(LEVEL_MAX);
     expect(Math.abs(rv.y)).toBeLessThan(5); // climb is gone — pure crossing shot
+  });
+
+  it('skill-linked difficulty: a tight walk-in buys big close birds', () => {
+    const pointBlank = flushBias(10);
+    const edgeOfRange = flushBias(38);
+    // Ranges are sane and ordered...
+    expect(pointBlank.min).toBeLessThan(pointBlank.max);
+    expect(edgeOfRange.min).toBeLessThan(edgeOfRange.max);
+    // ...and they don't even overlap: the worst point-blank bird is still
+    // bigger than the best edge-of-range bird.
+    expect(pointBlank.min).toBeGreaterThan(edgeOfRange.max);
   });
 
   it('exitDirFor leaves with momentum, or by the nearer edge from a hover', () => {

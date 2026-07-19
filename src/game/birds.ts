@@ -38,8 +38,10 @@ export const RUNNER_REST_MS = 2600; // how long a winded bird holds — the hunt
 export const RUNNER_NERVE_FACTOR = 0.7; // runners are nervous
 
 export const SINGLE_NERVE_MULT = 1.7; // relit singles hold very tight
-const SINGLE_SCATTER_MIN = 90; // relit singles put this much ground behind them
-const SINGLE_SCATTER_MAX = 200;
+export const RELIGHT_CHANCE = 0.65; // the rest are gone to the next county
+const SINGLE_SCATTER_MIN = 140; // survivors put real ground behind them...
+const SINGLE_SCATTER_MAX = 420;
+const SINGLE_NEAR_COVER = 70; // ...but sometimes drop into surprisingly close cover
 
 /** What an area's bird population looks like. */
 export interface SpawnConfig {
@@ -131,10 +133,11 @@ export function flushCovey(birds: Bird[], birdId: number): Bird[] {
 }
 
 /**
- * Hunt the singles: covey survivors that escaped a shooting opportunity
- * relight in nearby cover, holding very tight. A bird only relights once —
- * a flushed single (and any bird wild-flushed out of range) is gone for
- * good. Mutates the eligible birds back to hidden and returns them.
+ * Hunt the singles: SOME covey survivors of a shooting opportunity relight
+ * and hold tight — the rest are simply gone. The ones that stay mostly
+ * make for the next cover patch (occasionally surprisingly close, often a
+ * real hike away); in open country they put a long random put-down behind
+ * them. A bird only relights once. Mutates and returns the relit birds.
  */
 export function relightSurvivors(
   birds: Bird[],
@@ -142,18 +145,33 @@ export function relightSurvivors(
   bounds: Rect,
   rng: RNG = Math.random,
   nerveMult = 1,
+  patches: Rect[] = [],
 ): Bird[] {
   const relit: Bird[] = [];
   for (const id of escapedIds) {
     const b = birds.find((x) => x.id === id);
     if (!b || b.state !== 'escaped' || b.single) continue;
+    if (rng() > RELIGHT_CHANCE) continue; // sailed on — gone for good
     const species = getSpecies(b.speciesId);
-    const away = rng() * Math.PI * 2;
-    const distance = SINGLE_SCATTER_MIN + rng() * (SINGLE_SCATTER_MAX - SINGLE_SCATTER_MIN);
-    b.pos = {
-      x: clamp(b.pos.x + Math.cos(away) * distance, bounds.x + 8, bounds.x + bounds.w - 8),
-      y: clamp(b.pos.y + Math.sin(away) * distance, bounds.y + 8, bounds.y + bounds.h - 8),
-    };
+    // Prefer real cover at single-hunting distance: the next patch over.
+    const candidates = patches.filter((p) => {
+      const d = dist({ x: p.x + p.w / 2, y: p.y + p.h / 2 }, b.pos);
+      return d >= SINGLE_NEAR_COVER && d <= SINGLE_SCATTER_MAX;
+    });
+    if (candidates.length > 0) {
+      const p = candidates[Math.floor(rng() * candidates.length) % candidates.length];
+      b.pos = {
+        x: clamp(p.x + rng() * p.w, bounds.x + 8, bounds.x + bounds.w - 8),
+        y: clamp(p.y + rng() * p.h, bounds.y + 8, bounds.y + bounds.h - 8),
+      };
+    } else {
+      const away = rng() * Math.PI * 2;
+      const distance = SINGLE_SCATTER_MIN + rng() * (SINGLE_SCATTER_MAX - SINGLE_SCATTER_MIN);
+      b.pos = {
+        x: clamp(b.pos.x + Math.cos(away) * distance, bounds.x + 8, bounds.x + bounds.w - 8),
+        y: clamp(b.pos.y + Math.sin(away) * distance, bounds.y + 8, bounds.y + bounds.h - 8),
+      };
+    }
     b.state = 'hidden';
     b.single = true;
     b.coveyId = -b.id; // scattered singles sit alone — the old covey bond is broken

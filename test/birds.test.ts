@@ -196,7 +196,7 @@ describe('flushCovey', () => {
 describe('relightSurvivors (hunt the singles)', () => {
   const bounds = { x: 0, y: 0, w: 1200, h: 700 };
 
-  it('relights escaped birds nearby as tight-holding singles', () => {
+  it('relights survivors as tight-holding singles with real ground behind them', () => {
     const b = bird({ id: 1, pos: { x: 600, y: 350 }, state: 'escaped', runs: true });
     const mate = bird({ id: 2, pos: { x: 620, y: 350 }, state: 'escaped' });
     const relit = relightSurvivors([b, mate], [1, 2], bounds, () => 0.5);
@@ -208,9 +208,30 @@ describe('relightSurvivors (hunt the singles)', () => {
     expect(b.coveyId).not.toBe(mate.coveyId);
     const species = getSpecies('bobwhite');
     expect(b.nerveMs).toBeGreaterThanOrEqual(species.nerveMinMs * SINGLE_NERVE_MULT);
+    // Open country, no patches given: a long random put-down.
     const moved = dist(b.pos, { x: 600, y: 350 });
-    expect(moved).toBeGreaterThanOrEqual(90);
-    expect(moved).toBeLessThanOrEqual(200);
+    expect(moved).toBeGreaterThanOrEqual(140);
+    expect(moved).toBeLessThanOrEqual(420);
+  });
+
+  it('some survivors are simply gone — relighting is a chance, not a rule', () => {
+    const b = bird({ id: 1, pos: { x: 600, y: 350 }, state: 'escaped' });
+    expect(relightSurvivors([b], [1], bounds, () => 0.9)).toEqual([]); // 0.9 > RELIGHT_CHANCE
+    expect(b.state).toBe('escaped');
+    expect(b.single).toBeUndefined();
+  });
+
+  it('survivors make for the next cover patch when there is one in range', () => {
+    const b = bird({ id: 1, pos: { x: 600, y: 350 }, state: 'escaped' });
+    const patch = { x: 750, y: 300, w: 80, h: 60 }; // ~190px away — single-hunting distance
+    const tooFar = { x: 60, y: 60, w: 80, h: 60 }; // way out of range
+    const relit = relightSurvivors([b], [1], bounds, () => 0.5, 1, [patch, tooFar]);
+    expect(relit).toHaveLength(1);
+    // Landed inside the reachable patch — "they went to the next cover".
+    expect(b.pos.x).toBeGreaterThanOrEqual(patch.x);
+    expect(b.pos.x).toBeLessThanOrEqual(patch.x + patch.w);
+    expect(b.pos.y).toBeGreaterThanOrEqual(patch.y);
+    expect(b.pos.y).toBeLessThanOrEqual(patch.y + patch.h);
   });
 
   it('a single only relights once — the second escape is for good', () => {
