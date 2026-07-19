@@ -102,6 +102,16 @@ export function playBlip(): void {
   tone(990, 0.08, 0.09, { type: 'square', volume: 0.08 });
 }
 
+/**
+ * Dog bell: one small brass tink. Ring it on a timer while the dog moves;
+ * volume carries the distance cue, and silence means the dog is standing.
+ */
+export function playBell(volume: number): void {
+  if (volume <= 0.005) return;
+  tone(2350, 0, 0.09, { volume: volume * 0.7 });
+  tone(3520, 0, 0.05, { volume: volume * 0.35 });
+}
+
 /** Handler's whistle: two sliding notes. */
 export function playWhistle(): void {
   tone(700, 0, 0.16, { volume: 0.22, slideTo: 1250 });

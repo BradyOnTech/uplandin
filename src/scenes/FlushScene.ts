@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { playShot, playThud, unlockAudio } from '../audio';
 import type { Dog } from '../game/dog';
-import { dist } from '../game/math';
+import { clamp, dist } from '../game/math';
 import { escapeVelocity, hitTest } from '../game/shot';
 import type { HuntState } from '../game/state';
 import type { Vec2 } from '../game/types';
@@ -55,11 +55,13 @@ export class FlushScene extends Phaser.Scene {
     data.birdIds.forEach((id, i) => {
       const fieldBird = this.hunt.birds.find((b) => b.id === id)!;
       const vel = escapeVelocity();
+      // World coords → screen: the bird rises where it sat relative to the hunter.
+      const launchX = clamp(240 + (fieldBird.pos.x - this.hunt.hunterPos.x), 48, 432);
       // Steer back toward the middle of the screen so edge flushes stay shootable.
-      if ((fieldBird.pos.x < 240 && vel.x < 0) || (fieldBird.pos.x > 240 && vel.x > 0)) {
+      if ((launchX < 240 && vel.x < 0) || (launchX > 240 && vel.x > 0)) {
         vel.x *= -1;
       }
-      const sprite = this.add.sprite(fieldBird.pos.x, GROUND_Y - 6, 'bird');
+      const sprite = this.add.sprite(launchX, GROUND_Y - 6, 'bird');
       sprite.setFlipX(vel.x < 0);
       sprite.setVisible(i === 0);
       const bird: FlyingBird = { id, sprite, vel, wobble: i * 2.1, status: 'waiting' };
