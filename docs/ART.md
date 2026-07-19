@@ -36,8 +36,18 @@ every asset from here on. Caveats when using the mockup as an image
 reference: it is painterly 3/4 with continuous grass — for tiles, take
 its palette and mood but keep the prompts' flat/seamless/bounded-cover
 language; its sprites are ~4x final scale (fine — detail simplifies down);
-its setter spotting is bolder than belton (self-resolves at 24px). Next:
-lock the flush-view mockup against this palette, then sprite sheets.
+its setter spotting is bolder than belton (self-resolves at 24px).
+
+`docs/art/flush-view-mockup.png`: **background blessed, birds rejected.**
+The plate (straw ground, cattail wings, bare treeline, big overcast sky)
+is near-final flush-backdrop composition on the locked palette — re-run
+it with "empty sky, no birds" to produce the shippable Southern Plains
+backdrop. The birds have the wrong jizz (slim, long-winged, songbird-ish;
+a flushing quail is a chunky round body on short rounded whirring wings)
+and mockup covey composition is moot anyway — the engine launches and
+scatters bird sprites at runtime. All bird art comes from the
+sprite-sheet prompts below, never from scene mockups. Next: bird-free
+backdrop plate, first bird sheet (bobwhite), title screen.
 
 ## The master style block
 
@@ -116,7 +126,10 @@ Template (each species, two wingbeat frames + one falling frame):
 
 > Pixel art sprite sheet, plain white background: a {SPECIES} in flight,
 > side view, roughly 44×28 pixels, three frames in a row: wings up, wings
-> down, and shot-folded falling. Plumage: {PLUMAGE}. [style block]
+> down, and shot-folded falling. Gamebird silhouette: chunky round body,
+> proportionally small head, SHORT ROUNDED wings (never long or pointed —
+> quail and grouse are burst fliers), stubby tail unless noted. Plumage:
+> {PLUMAGE}. [style block]
 
 | Species | {PLUMAGE} |
 |---|---|
