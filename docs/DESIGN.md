@@ -92,16 +92,20 @@ Steadiness→mistake resistance, Stamina→hunt-day endurance.
 - **Marking**: instant retrieve if the dog watched the fall; breaking chase
   means the next retrieve needs a search first.
 
-## The birds **[species pack 1 built — 6 of 14 species]**
+## The birds **[built — all 14 species]**
 
-Species are configs (`species.ts`): covey size range, runner chance, nerve
-range, escape-flight style (speed/climb/wobble), palette, flush sound, and
-special rules. Areas carry a weighted `speciesMix`; weights mean share of
-*birds* (spawn normalizes by covey size so a 9-bird hun covey doesn't eat
-the stocking).
+Species are configs (`species.ts`): covey size range, runner chance (plus a
+run-speed multiplier — chukar and scaled quail outwalk you), nerve range,
+escape-flight style (speed/climb/wobble), palette, flush sound, and special
+rules. Areas carry a weighted `speciesMix`; weights mean share of *birds*
+(spawn normalizes by covey size so a 9-bird hun covey doesn't eat the
+stocking).
 
-Built: bobwhite, ringneck (hen/rooster rule), ruffed grouse, woodcock,
-sharptail, Hungarian partridge.
+All 14 built: bobwhite, ringneck (hen/rooster rule), ruffed grouse,
+woodcock, sharptail, Hungarian partridge, chukar (fast runner; the flattest,
+fastest flush in the game — the downhill escape), greater prairie chicken,
+blue grouse (holder), and California, Gambel's, scaled (runner), Montezuma
+(tightest sitter, never runs), and mountain quail.
 
 Archetypes:
 
@@ -146,8 +150,8 @@ Special rules:
   Last quick setup is remembered. Doubles as the permanent testing surface.
 - Title screen, area select, career totals **[built]**.
 - Continental-US travel map (`MapScene` → region area select) **[built]**:
-  4 regions open (Southern Plains · Prairie Pothole · North Woods · Great
-  Basin, 6 areas), 3 marked for later seasons; truck gating comes with T3.
+  all 7 regions open (11 areas); home ground is free, the rest need the
+  truck (hunter lv 2).
 - The 7 regions:
   North Woods (ruffed, woodcock) · Prairie Pothole (ringneck, sharptail, Huns,
   prairie chicken) · Southern Plains (bobwhite — starting region) · Sonoran
@@ -217,8 +221,10 @@ announce their unlocks at the hunt summary.
   view, gun rack on the map), truck region gating, kennel screen + dog box
   slots, tracking-gear tiers (beeper/GPS/GPS+map, minimap, remote recall);
   gun + gear rows in Quick Hunt.
-- **T4 — species pack 2**: chukar, prairie chicken, blue grouse, the 5 quail
-  species + remaining regions.
+- **T4 — species pack 2 [shipped]**: chukar (fast runner, flat downhill
+  flush), prairie chicken, blue grouse, the 5 quail species, per-species
+  run speed; Sonoran Desert, High Rockies, and Pacific Valleys open
+  (5 new areas, 11 total).
 - **T5 — two dogs**: second instance, honoring, shared retrieves.
 - **Anytime**: PWA packaging; art pass (after species settle); distance-scaled
   shot views (`flushDistance` already plumbed).
