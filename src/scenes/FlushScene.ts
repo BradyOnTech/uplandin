@@ -125,12 +125,20 @@ export class FlushScene extends Phaser.Scene {
 
     this.flushSounds.clear();
     this.lastLaunchAt = -Infinity;
+    // Every rise gets its own character: a break direction (coveys don't
+    // scatter symmetrically — they break somewhere) and shuffled lanes per
+    // wave, so a single bird can rise anywhere and no two flushes repeat.
+    const flushDrift = (Math.random() - 0.5) * 56;
+    let lanePerm: number[] = [];
     data.birdIds.forEach((id, i) => {
       const fieldBird = this.hunt.birds.find((b) => b.id === id)!;
       const species = getSpecies(fieldBird.speciesId);
-      // Three lanes across the screen; each airborne wave fans across them.
-      const lane = i % MAX_AIRBORNE;
+      if (i % MAX_AIRBORNE === 0) {
+        lanePerm = Phaser.Utils.Array.Shuffle([0, 1, 2]);
+      }
+      const lane = lanePerm[i % MAX_AIRBORNE];
       const vel = escapeVelocityFan(species.flight, lane, MAX_AIRBORNE);
+      vel.x += flushDrift;
       vel.x *= slopeMult;
       vel.y *= slopeMult * (slope === 'above' ? 0.85 : 1); // dropping away below you
       if (fieldBird.young) {
@@ -140,8 +148,12 @@ export class FlushScene extends Phaser.Scene {
       // Arcade placement: lanes stay central and readable; the field position
       // only nudges them (this view runs on Duck Hunt rules, not covey GPS).
       const worldNudge = clamp((fieldBird.pos.x - this.hunt.hunterPos.x) * 0.35, -55, 55);
-      const launchX = clamp(240 + (lane - 1) * WAVE_SLOT_SPREAD + worldNudge, 60, 420);
-      const launchY = GROUND_Y - 6 - (i % 3) * 9;
+      const launchX = clamp(
+        240 + (lane - 1) * WAVE_SLOT_SPREAD + worldNudge + (Math.random() * 2 - 1) * 16,
+        60,
+        420,
+      );
+      const launchY = GROUND_Y - 4 - Math.random() * 18;
       // Steer back toward the middle only on true edge launches.
       if ((launchX < 100 && vel.x < 0) || (launchX > 380 && vel.x > 0)) {
         vel.x *= -1;
@@ -193,23 +205,29 @@ export class FlushScene extends Phaser.Scene {
     });
   }
 
-  /** Launch the next queued bird whenever an airborne slot is free. */
+  /**
+   * Launch the next WAVE — up to three birds bursting together, the covey
+   * thunder. A new wave waits until the sky is clear, so every round of
+   * shooting is readable and every rise actually looks like one.
+   */
   private tryLaunch(time: number): void {
-    if (this.birds.filter((b) => b.status === 'flying').length >= MAX_AIRBORNE) return;
+    if (this.birds.some((b) => b.status === 'flying')) return;
     if (time - this.lastLaunchAt < LAUNCH_GAP_MS) return;
-    const next = this.birds.find((b) => b.status === 'waiting');
-    if (!next) return;
+    const wave = this.birds.filter((b) => b.status === 'waiting').slice(0, MAX_AIRBORNE);
+    if (wave.length === 0) return;
     this.lastLaunchAt = time;
-    next.status = 'flying';
-    next.sprite.setVisible(true);
-    // Signature flush sounds, once per species per rise. Hens don't cackle.
-    const sp = next.species;
-    const soundKey = sp.sound && !(sp.sound === 'cackle' && next.fieldBird.sex === 'hen') ? sp.id : null;
-    if (soundKey && sp.sound && !this.flushSounds.has(soundKey)) {
-      this.flushSounds.add(soundKey);
-      if (sp.sound === 'cackle') playCackle();
-      else if (sp.sound === 'twitter') playTwitter();
-      else playThunder();
+    for (const bird of wave) {
+      bird.status = 'flying';
+      bird.sprite.setVisible(true);
+      // Signature flush sounds, once per species per rise. Hens don't cackle.
+      const sp = bird.species;
+      const soundKey = sp.sound && !(sp.sound === 'cackle' && bird.fieldBird.sex === 'hen') ? sp.id : null;
+      if (soundKey && sp.sound && !this.flushSounds.has(soundKey)) {
+        this.flushSounds.add(soundKey);
+        if (sp.sound === 'cackle') playCackle();
+        else if (sp.sound === 'twitter') playTwitter();
+        else playThunder();
+      }
     }
   }
 

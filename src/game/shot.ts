@@ -44,13 +44,12 @@ export function escapeVelocityFan(
   count: number,
   rng: RNG = Math.random,
 ): Vec2 {
-  // Golden-ratio stepping scatters speeds across the covey instead of
-  // clustering them near the middle of the range.
-  const speedT = count <= 1 ? rng() : (((slot * 0.61) % 1) * 0.7 + rng() * 0.3);
-  const speed = flight.speedMin + speedT * (flight.speedMax - flight.speedMin);
+  const speed = flight.speedMin + rng() * (flight.speedMax - flight.speedMin);
   const halfArc = (Math.PI / 3) * Math.max(0.12, 1.15 - flight.climb);
   const t = count <= 1 ? rng() : (slot + 0.5) / count;
-  const jitter = count <= 1 ? 0 : (rng() * 2 - 1) * (halfArc / count) * 0.6;
+  // Full-slice jitter keeps consecutive flushes from flying carbon-copy
+  // bearings; the lateral push still guarantees separation.
+  const jitter = count <= 1 ? 0 : (rng() * 2 - 1) * (halfArc / count);
   // Screen coords: angles past PI/2 point left, so negate the slice offset
   // to keep slot 0 on the left.
   const angle = Math.PI / 2 - (2 * t - 1) * halfArc + jitter;
