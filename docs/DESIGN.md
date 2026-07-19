@@ -27,15 +27,23 @@ Check items off (and adjust them) as tranches ship.
 
 ## Field layer
 
-- World per area is larger than the 480×270 viewport (~1400×800, tuned per
-  area) with a camera following the **hunter** — never the dog. **[planned]**
+- World per area is larger than the 480×270 viewport (1000×640 to 1400×800,
+  tuned per area) with a camera following the **hunter** — never the dog.
+  Cover and landmark trees scatter from a fixed per-area seed, so every visit
+  to a covert finds the same ground. **[built]**
 - The dog quarters **anchored to the hunter's position** out to its Range
-  radius; big-running breeds work off-screen. **[planned]**
-- **Sprint**: ~2× hunter speed, but loud — birds flush at a larger radius and
-  pointed birds' nerve drains faster while running. **[planned]**
-- Whistle recall **[built]**; whistle only carries ~250px **[planned]** —
-  big-ranging dogs can be out of earshot.
-- Bird stocking is density-per-area so bigger worlds don't feel empty. **[planned]**
+  radius (130px × Range multiplier); big-running breeds work off-screen.
+  A basic edge arrow points at the dog when it's off-screen (gold on point);
+  GPS tiers refine this later. **[built]**
+- **Sprint** (double-tap or hold shift): 2× hunter speed, but loud — hidden
+  birds within ~30px flush underfoot and pointed birds' nerve drains ~1.6×
+  faster while running. **[built]**
+- Whistle recall **[built]**; whistle only carries ~250px — big-ranging dogs
+  can be out of earshot ("out of earshot..." toast). **[built]**
+- **Bell** (tier-0 tracking gear): tinkles while the dog moves, fades with
+  distance, silent on point. **[built]**
+- Bird stocking is density-per-area (`stocking` per 100k px²) so bigger
+  worlds don't feel empty. **[built]**
 
 ## The dog
 
@@ -117,7 +125,7 @@ Special rules:
 - Fixed direction per hunt, HUD arrow; upwind scent ~1.9×, downwind ~0.35×. **[built]**
 - Per-hunt strength (calm/breezy/strong): strong wind carries scent farther
   but shortens bird nerve ~20% and widens flush distance. **[planned]**
-- Birds scent the dog downwind (see wind craft). **[planned]**
+- Birds scent the dog downwind (see wind craft). **[built]**
 
 ## Meta layer **[partially built]**
 
@@ -149,7 +157,7 @@ Special rules:
   slots 1→3→5; two-dog hunting needs box tier 2 + hunter level.
 - Dog tracking gear:
   - Tier 0 **bell**: tinkles while the dog moves, *goes silent on point* —
-    tells you that, not where.
+    tells you that, not where. **[built — everyone starts with it]**
   - Tier 1 **beeper collar**: beeps on point + rough direction arrow.
   - Tier 2 **GPS handheld**: edge arrow + live distance.
   - Tier 3 **GPS + map**: minimap with dog position/status + remote recall at
@@ -165,8 +173,10 @@ Special rules:
 - **T1 — dogs [shipped]**: breed configs, puppy selection + naming, dog
   XP/levels, puppy mistakes (creep/bump, pressure, wind craft,
   breaking/steady-to-wing), fatigue/heel, marking, save v2 + kennel.
-- **T1.5 — moving world**: bigger per-area worlds, hunter-follow camera,
-  hunter-anchored quartering, sprint, whistle range, bell + basic edge arrow.
+- **T1.5 — moving world [shipped]**: bigger per-area worlds (seeded cover,
+  density stocking), hunter-follow camera, hunter-anchored quartering, sprint
+  (+underfoot flushes), whistle range, bell + basic edge arrow, stamina pool
+  resized for the bigger ground (90s base).
 - **T2 — map & species pack 1**: US travel map + 4 starter regions; bobwhite,
   ringneck w/ hen-rooster rule, ruffed, woodcock, sharptail, Huns; scattered
   singles; wind strength; escape-flight styles.
