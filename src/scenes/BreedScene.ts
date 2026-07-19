@@ -128,7 +128,7 @@ export class BreedScene extends Phaser.Scene {
       playBlip();
       const { career } = addDogToKennel(loadCareer(), this.puppyName, this.selected.id);
       saveCareer(career);
-      this.scene.start('AreaScene');
+      this.scene.start('MapScene');
     });
 
     this.panelObjects.push(title, nameText, reroll, rerollLabel, start, startLabel);
