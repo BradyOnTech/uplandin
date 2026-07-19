@@ -116,11 +116,6 @@ Archetypes:
 - **Wild-flushers**: Hungarian partridge, sharptail, prairie chicken, ruffed
   grouse — short nerve, flush far out; often no shot offered.
 
-Full list (14): ringneck pheasant, sharptailed grouse, greater prairie
-chicken, woodcock, ruffed grouse, blue grouse, Hungarian partridge, chukar,
-northern bobwhite, and California, Gambel's, scaled, Montezuma (Mearns), and
-mountain quail.
-
 Special rules:
 
 - **Hen/rooster pheasant** **[built]**: hens flush too but are protected —
@@ -134,7 +129,7 @@ Special rules:
 - **Flush sounds** **[built]**: rooster cackle, woodcock wing twitter,
   ruffed grouse thunder.
 
-## Wind **[built — extensions planned]**
+## Wind **[built]**
 
 - Fixed direction per hunt, HUD arrow; upwind scent ~1.9×, downwind ~0.35×. **[built]**
 - Per-hunt strength (calm/breezy/strong, shown in the HUD): strong wind
@@ -213,7 +208,7 @@ stays timeless.
   soft decline, no forced goodbye. Summer training camps as a later
   off-season activity.
 
-## Meta layer **[partially built]**
+## Meta layer **[built]**
 
 - **Game modes** **[built]**: the title offers **Career** (raise your dog,
   work the map, everything below) and **Quick Hunt** — pick any breed, level
@@ -222,19 +217,20 @@ stays timeless.
 - Title screen, area select, career totals **[built]**.
 - Continental-US travel map (`MapScene` → region area select) **[built]**:
   all 7 regions open (11 areas); home ground is free, the rest need the
-  truck (hunter lv 2).
+  truck (hunter lv 2) — and the calendar decides what's in season.
 - The 7 regions:
   North Woods (ruffed, woodcock) · Prairie Pothole (ringneck, sharptail, Huns,
-  prairie chicken) · Southern Plains (bobwhite — starting region) · Sonoran
+  prairie chicken) · Southern Plains (bobwhite) · Sonoran
   Desert (Gambel's, scaled, Mearns) · Great Basin rimrock (chukar, Huns) ·
   High Rockies/Cascades (blue grouse, mountain quail) · Pacific Valleys
   (California quail).
-- Career save: v2 localStorage with `version`, kennel, active dog, hunter
-  profile, and unlocked regions; v1 saves migrate. **[built]**
+- Career save: v2 localStorage with `version`, kennel (each dog's XP and
+  born season), active dog + bracemate, hunter profile, home region, and
+  the season date; v1 and pre-season v2 saves migrate. **[built]**
 - First-run flow: breed select (stat bars) + puppy naming, then the kennel
   drives every hunt. **[built]**
 
-## Progression & gear **[built — two-dog hunting remains]**
+## Progression & gear **[built]**
 
 Everything derives from hunter level; no purchase economy (yet). Level-ups
 announce their unlocks at the hunt summary.
