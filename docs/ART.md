@@ -168,7 +168,15 @@ flush view.
 ## Regional tilesets (16×16, one prompt per region)
 
 > Pixel art tileset on a 16×16 grid, plain background, seamless: {SET}.
-> [style block]
+> Calm readable shapes — do not match the busy grass of the field mockup;
+> the locked palette carries autumn mood. Cover tiles must be
+> unmistakably darker than open ground at a glance (gameplay constraint:
+> runners hold at cover edges, singles relight into cover — cover-vs-open
+> is mechanical, not just decorative). [style block]
+
+Use the field mockup for **palette and mood only**, not composition or
+grass density. Prefer flat, seamless base grass and distinctly darker
+cover patches over painterly continuous ground.
 
 - **Southern Plains / Quail Fields**: dry straw grass base, ragweed-brown
   cover patch, mesquite shrub, sandy two-track road edge

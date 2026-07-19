@@ -63,6 +63,22 @@ const TINT_SECOND_DOG = 0xd8c090; // the bracemate wears a darker coat
 const TINT_POINTING = 0xffd23f;
 const TINT_HONORING = 0xa8d4e8; // backing dog reads cool blue
 
+// Art pipeline rollout (same pattern as FlushScene's FLUSH_BACKDROPS /
+// BIRD_SHEETS): breeds and regions with painted assets use them, everything
+// else keeps the placeholder textures until its art lands.
+const DOG_SHEETS: Record<string, string> = { 'english-setter': 'setter-field' };
+/** Sheet cells are 32×20 (the art-pipeline size); the field world is scaled
+ * for a ~16px dog, so painted dogs draw at half size — a clean integer
+ * crunch. The eventual hand-clean pass can retarget 16×10 native. */
+const DOG_SHEET_SCALE = 0.5;
+const DOG_FRAME_POINT = 2; // frames 0/1 = run extended/gathered, 2 = point
+const FIELD_TILESETS: Record<string, string> = { 'southern-plains': 'tiles-southern-plains' };
+// Tileset frame order (fixed by the art pipeline): open grass, cover,
+// mesquite landmark, two-track (unused until areas define roads).
+const TILE_OPEN = 0;
+const TILE_COVER = 1;
+const TILE_MESQUITE = 2;
+
 // Whistle button zone (bottom-right corner, screen coords). Taps here don't move the hunter.
 const WHISTLE_BTN = { x: 452, y: 246, w: 48, h: 20 };
 
@@ -108,6 +124,18 @@ export class FieldScene extends Phaser.Scene {
 
   constructor() {
     super('FieldScene');
+  }
+
+  preload(): void {
+    // Already-cached keys are skipped, so this is a no-op after the first visit.
+    this.load.spritesheet('setter-field', 'art/english-setter-sheet-alpha.png', {
+      frameWidth: 32,
+      frameHeight: 20,
+    });
+    this.load.spritesheet('tiles-southern-plains', 'art/tileset-southern-plains.png', {
+      frameWidth: 16,
+      frameHeight: 16,
+    });
   }
 
   create(data: { hunt?: HuntState; areaId?: string; dogs?: Dog[]; quick?: QuickConfig }): void {
@@ -196,7 +224,22 @@ export class FieldScene extends Phaser.Scene {
     addWeatherFx(this, this.hunt.condition, true, 13);
 
     this.hunterSprite = this.add.sprite(this.hunt.hunterPos.x, this.hunt.hunterPos.y, 'hunter');
-    this.dogSprites = this.dogs.map((dog) => this.add.sprite(dog.pos.x, dog.pos.y, 'dog'));
+    this.dogSprites = this.dogs.map((dog, i) => {
+      const sheet = this.dogSheet(i);
+      const sprite = this.add.sprite(dog.pos.x, dog.pos.y, sheet ?? 'dog');
+      if (sheet) {
+        sprite.setScale(DOG_SHEET_SCALE);
+        if (!this.anims.exists(`${sheet}-run`)) {
+          this.anims.create({
+            key: `${sheet}-run`,
+            frames: this.anims.generateFrameNumbers(sheet, { frames: [0, 1] }),
+            frameRate: 8,
+            repeat: -1,
+          });
+        }
+      }
+      return sprite;
+    });
     this.pointMarkers = this.dogs.map(() =>
       this.add
         .text(0, 0, '!', { fontFamily: 'monospace', fontSize: '10px', color: '#ffd23f' })
@@ -451,11 +494,24 @@ export class FieldScene extends Phaser.Scene {
     this.hunterSprite.setPosition(this.hunt.hunterPos.x, this.hunt.hunterPos.y);
     this.dogs.forEach((dog, i) => {
       const sprite = this.dogSprites[i];
+      const sheet = this.dogSheet(i);
       sprite.setPosition(dog.pos.x, dog.pos.y);
       sprite.setFlipX(Math.cos(dog.heading) < 0);
+      if (sheet) {
+        // A painted dog acts the pose: locked up on point (and honoring a
+        // point), gait frames everywhere else.
+        if (dog.state === 'pointing' || dog.state === 'honoring') {
+          sprite.anims.stop();
+          sprite.setFrame(DOG_FRAME_POINT);
+        } else {
+          sprite.anims.play(`${sheet}-run`, true);
+        }
+      }
       const marker = this.pointMarkers[i];
       if (dog.state === 'pointing') {
-        sprite.setTint(TINT_POINTING);
+        // The pose carries the point on painted dogs; placeholders get the tint.
+        if (sheet) sprite.clearTint();
+        else sprite.setTint(TINT_POINTING);
         // The point marker shows the bird's nerve: gold → orange → blinking red.
         const pointed = this.hunt.birds.find((b) => b.id === dog.pointedBirdId);
         const nerveFrac = pointed
@@ -799,6 +855,12 @@ export class FieldScene extends Phaser.Scene {
     });
   }
 
+  /** Painted sheet key for dog i, or null while this breed still wears the placeholder. */
+  private dogSheet(i: number): string | null {
+    const key = DOG_SHEETS[this.breeds[i]?.id ?? ''];
+    return key && this.textures.exists(key) ? key : null;
+  }
+
   private makeTextures(): void {
     if (this.textures.exists('dog')) return;
     const g = this.add.graphics();
@@ -814,17 +876,34 @@ export class FieldScene extends Phaser.Scene {
 
   private drawField(): void {
     const w = this.area.world;
+    // Landmark scatter comes from a stable per-area seed so the covert
+    // looks the same every visit.
+    const seed = [...this.area.id].reduce((a, c) => a + c.charCodeAt(0), 0);
+    const rng = mulberry32(seed);
+    const treeCount = Math.round((w.w * w.h) / 30_000);
+
+    const tiles = FIELD_TILESETS[regionOfArea(this.area.id).id];
+    if (tiles && this.textures.exists(tiles)) {
+      // The painted covert: open-grass base, unmistakably darker cover over
+      // each patch (cover-vs-open readability is mechanical — runners hold
+      // at cover edges and singles relight into it), mesquite clumps as the
+      // landmark trees.
+      this.add.tileSprite(w.x, w.y, w.w, w.h, tiles, TILE_OPEN).setOrigin(0, 0);
+      for (const patch of this.area.patches) {
+        this.add.tileSprite(patch.x, patch.y, patch.w, patch.h, tiles, TILE_COVER).setOrigin(0, 0);
+      }
+      for (let i = 0; i < treeCount; i++) {
+        this.add.image(w.x + 8 + rng() * (w.w - 24), w.y + 8 + rng() * (w.h - 24), tiles, TILE_MESQUITE);
+      }
+      return;
+    }
+
     const g = this.add.graphics();
     g.fillStyle(this.area.grass).fillRect(w.x, w.y, w.w, w.h);
     g.fillStyle(this.area.cover);
     for (const patch of this.area.patches) {
       g.fillRect(patch.x, patch.y, patch.w, patch.h);
     }
-    // Landmark trees, scattered from a stable per-area seed so the covert
-    // looks the same every visit.
-    const seed = [...this.area.id].reduce((a, c) => a + c.charCodeAt(0), 0);
-    const rng = mulberry32(seed);
-    const treeCount = Math.round((w.w * w.h) / 30_000);
     g.fillStyle(0x6b4a2a);
     for (let i = 0; i < treeCount; i++) {
       g.fillRect(w.x + 8 + rng() * (w.w - 24), w.y + 8 + rng() * (w.h - 24), 8, 8);
