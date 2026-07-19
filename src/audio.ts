@@ -124,6 +124,12 @@ export function playThunder(): void {
   tone(140, 0, 0.3, { type: 'triangle', volume: 0.25, slideTo: 60 });
 }
 
+/** Beeper collar locate tone: a sharp electronic beep while the dog stands on point. */
+export function playBeeper(): void {
+  tone(2750, 0, 0.1, { type: 'square', volume: 0.1 });
+  tone(2750, 0.16, 0.1, { type: 'square', volume: 0.1 });
+}
+
 /**
  * Dog bell: one small brass tink. Ring it on a timer while the dog moves;
  * volume carries the distance cue, and silence means the dog is standing.

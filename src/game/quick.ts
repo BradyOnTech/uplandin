@@ -1,6 +1,7 @@
 import { AREAS } from './areas';
 import { BREEDS, LEVEL_CAP } from './breeds';
 import type { StorageLike } from './career';
+import { GUNS } from './guns';
 import { clamp } from './math';
 import type { WindStrength } from './wind';
 
@@ -14,12 +15,15 @@ export interface QuickConfig {
   level: number;
   areaId: string;
   wind: WindStrength | 'random';
+  gunId: string;
+  /** Dog tracking gear tier 0-3: bell, beeper, GPS, GPS+map. */
+  gearTier: number;
 }
 
 export const WIND_CHOICES: (WindStrength | 'random')[] = ['random', 'calm', 'breezy', 'strong'];
 
 export function defaultQuickConfig(): QuickConfig {
-  return { breedId: BREEDS[0].id, level: 5, areaId: AREAS[0].id, wind: 'random' };
+  return { breedId: BREEDS[0].id, level: 5, areaId: AREAS[0].id, wind: 'random', gunId: GUNS[0].id, gearTier: 1 };
 }
 
 /** Step through a list of ids in either direction, wrapping at the ends. */
@@ -36,6 +40,8 @@ export function normalizeQuickConfig(cfg: Partial<QuickConfig>): QuickConfig {
     level: clamp(Math.round(cfg.level ?? base.level), 1, LEVEL_CAP),
     areaId: AREAS.some((a) => a.id === cfg.areaId) ? cfg.areaId! : base.areaId,
     wind: WIND_CHOICES.includes(cfg.wind as WindStrength | 'random') ? (cfg.wind as QuickConfig['wind']) : base.wind,
+    gunId: GUNS.some((g) => g.id === cfg.gunId) ? cfg.gunId! : base.gunId,
+    gearTier: clamp(Math.round(cfg.gearTier ?? base.gearTier), 0, 3),
   };
 }
 

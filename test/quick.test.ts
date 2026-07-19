@@ -52,9 +52,24 @@ describe('quick hunt config', () => {
 
   it('persists and reloads the last setup', () => {
     const storage = memoryStorage();
-    const cfg = { breedId: 'irish-setter', level: 3, areaId: 'grouse-woods', wind: 'strong' as const };
+    const cfg = {
+      breedId: 'irish-setter',
+      level: 3,
+      areaId: 'grouse-woods',
+      wind: 'strong' as const,
+      gunId: 'over-under',
+      gearTier: 3,
+    };
     saveQuickConfig(cfg, storage);
     expect(loadQuickConfig(storage)).toEqual(cfg);
+  });
+
+  it('older saved setups gain gun and gear defaults', () => {
+    const storage = memoryStorage();
+    storage.data[QUICK_KEY] = JSON.stringify({ breedId: 'vizsla', level: 4, areaId: 'quail-fields', wind: 'calm' });
+    const cfg = loadQuickConfig(storage);
+    expect(cfg.gunId).toBe('remington-870');
+    expect(cfg.gearTier).toBe(1);
   });
 
   it('falls back to defaults on missing or corrupt storage', () => {

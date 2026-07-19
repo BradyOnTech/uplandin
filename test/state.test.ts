@@ -23,6 +23,8 @@ function huntWith(states: Bird['state'][]): HuntState {
     windStrength: 'calm',
     downed: 0,
     escaped: 0,
+    doubles: 0,
+    gunId: 'remington-870',
     xpEvents: { pointFlushes: 0, retrieves: 0, downedOverPoint: 0, henDowns: 0 },
   };
 }

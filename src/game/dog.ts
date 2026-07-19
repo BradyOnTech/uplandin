@@ -59,6 +59,8 @@ export interface DogEnv {
   scentMult?: number;
   /** A whistle blast this tick. Never breaks a point or a retrieve. */
   recall?: boolean;
+  /** How far the recall carries; GPS+map gear recalls at any range. */
+  whistleRange?: number;
 }
 
 export interface DogProfile {
@@ -165,7 +167,7 @@ export class Dog {
     const dt = dtMs / 1000;
 
     // The whistle only carries so far — a big-running dog can be out of earshot.
-    const hearsWhistle = !env.hunterPos || dist(this.pos, env.hunterPos) <= WHISTLE_RANGE;
+    const hearsWhistle = !env.hunterPos || dist(this.pos, env.hunterPos) <= (env.whistleRange ?? WHISTLE_RANGE);
     if (env.recall && hearsWhistle && (this.state === 'quartering' || this.state === 'tracking')) {
       this.state = 'recalled';
     }

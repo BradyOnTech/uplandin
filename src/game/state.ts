@@ -27,6 +27,10 @@ export interface HuntState {
   windStrength: WindStrength;
   downed: number;
   escaped: number;
+  /** Flushes where two birds fell — the classic double, bonus hunter XP. */
+  doubles: number;
+  /** The shotgun carried this hunt. */
+  gunId: string;
   xpEvents: XpEvents;
   /** Set on Quick Hunt runs: the picked setup. Career is never touched. */
   quick?: QuickConfig;
@@ -36,6 +40,7 @@ export function createHunt(
   area: AreaConfig,
   rng: RNG = Math.random,
   windOverride?: WindStrength,
+  gunId = 'remington-870',
 ): HuntState {
   const w = area.world;
   const windStrength = windOverride ?? rollWindStrength(rng);
@@ -57,6 +62,8 @@ export function createHunt(
     windStrength,
     downed: 0,
     escaped: 0,
+    doubles: 0,
+    gunId,
     xpEvents: { pointFlushes: 0, retrieves: 0, downedOverPoint: 0, henDowns: 0 },
   };
 }

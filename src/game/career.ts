@@ -1,4 +1,5 @@
 import { levelForXp } from './breeds';
+import { hunterLevelForXp } from './progression';
 
 /**
  * Career persistence v2: hunt totals plus the kennel, the hunter profile,
@@ -127,6 +128,27 @@ export function awardDogXp(
 
 export function activeDog(career: Career): KennelDog | null {
   return career.kennel.find((d) => d.id === career.activeDogId) ?? null;
+}
+
+/** Choose which kennel dog rides along. Unknown ids leave the career as-is. */
+export function setActiveDog(career: Career, dogId: string): Career {
+  if (!career.kennel.some((d) => d.id === dogId)) return career;
+  return { ...career, activeDogId: dogId };
+}
+
+/** Award hunter XP. Pure. Returns the new career plus level-up info. */
+export function awardHunterXp(
+  career: Career,
+  amount: number,
+): { career: Career; newLevel: number; levelsGained: number } {
+  if (amount <= 0) return { career, newLevel: career.hunter.level, levelsGained: 0 };
+  const xp = career.hunter.xp + amount;
+  const newLevel = hunterLevelForXp(xp);
+  return {
+    career: { ...career, hunter: { ...career.hunter, xp, level: newLevel } },
+    newLevel,
+    levelsGained: newLevel - career.hunter.level,
+  };
 }
 
 export const CAREER_KEY = 'uplandin.career.v1';
