@@ -7,7 +7,7 @@ import { slopeFlightMult, type SlopeApproach } from '../game/fieldcraft';
 import { getGun, type GunConfig } from '../game/guns';
 import { clamp, dist } from '../game/math';
 import { regionOfArea } from '../game/regions';
-import { escapeVelocity, hitTest } from '../game/shot';
+import { escapeVelocityFan, hitTest } from '../game/shot';
 import { getSpecies, type SpeciesConfig } from '../game/species';
 import type { HuntState } from '../game/state';
 import type { Vec2 } from '../game/types';
@@ -97,23 +97,29 @@ export class FlushScene extends Phaser.Scene {
     this.makeTimber(data.birdIds);
 
     const flushSounds = new Set<string>();
+    const coveyCount = data.birdIds.length;
     data.birdIds.forEach((id, i) => {
       const fieldBird = this.hunt.birds.find((b) => b.id === id)!;
       const species = getSpecies(fieldBird.speciesId);
-      const vel = escapeVelocity(species.flight);
+      // Each bird takes its own slice of the escape arc — a rise fans out,
+      // it doesn't stack.
+      const vel = escapeVelocityFan(species.flight, i, coveyCount);
       vel.x *= slopeMult;
       vel.y *= slopeMult * (slope === 'above' ? 0.85 : 1); // dropping away below you
       if (fieldBird.young) {
         vel.x *= YOUNG_FLIGHT_MULT; // a young bird hasn't got its wings yet
         vel.y *= YOUNG_FLIGHT_MULT;
       }
-      // World coords → screen: the bird rises where it sat relative to the hunter.
-      const launchX = clamp(240 + (fieldBird.pos.x - this.hunt.hunterPos.x), 48, 432);
+      // World coords → screen: the bird rises where it sat relative to the
+      // hunter, spread so covey mates don't share a launch pixel.
+      const spreadX = (i - (coveyCount - 1) / 2) * 16;
+      const launchX = clamp(240 + (fieldBird.pos.x - this.hunt.hunterPos.x) + spreadX, 48, 432);
+      const launchY = GROUND_Y - 6 - (i % 3) * 6;
       // Steer back toward the middle of the screen so edge flushes stay shootable.
       if ((launchX < 240 && vel.x < 0) || (launchX > 240 && vel.x > 0)) {
         vel.x *= -1;
       }
-      const sprite = this.makeBirdSprite(fieldBird, species, launchX);
+      const sprite = this.makeBirdSprite(fieldBird, species, launchX, launchY);
       sprite.setFlipX(vel.x < 0);
       sprite.setVisible(i === 0);
       const bird: FlyingBird = { id, fieldBird, species, sprite, vel, wobble: i * 2.1, status: 'waiting' };
@@ -182,6 +188,12 @@ export class FlushScene extends Phaser.Scene {
           b.status = 'done';
           playThud();
         }
+      }
+      if (b.status === 'flying' || b.status === 'falling') {
+        // Depth cue: a rising bird is a departing bird — it shrinks with
+        // altitude (and a falling one grows back on the way down).
+        b.sprite.setScale(clamp(1 - (GROUND_Y - b.sprite.y) / 650, 0.55, 1));
+        b.sprite.setDepth(b.sprite.y);
       }
     }
 
@@ -347,7 +359,12 @@ export class FlushScene extends Phaser.Scene {
    * (wing-whir animation, folded frame on the fall); generated
    * palette-rectangle sprites for everyone else until their sheets land.
    */
-  private makeBirdSprite(bird: Bird, species: SpeciesConfig, x: number): Phaser.GameObjects.Sprite {
+  private makeBirdSprite(
+    bird: Bird,
+    species: SpeciesConfig,
+    x: number,
+    y: number,
+  ): Phaser.GameObjects.Sprite {
     const sheet = BIRD_SHEETS[species.id];
     if (sheet && this.textures.exists(sheet)) {
       const animKey = `${sheet}-flap`;
@@ -359,11 +376,11 @@ export class FlushScene extends Phaser.Scene {
           repeat: -1,
         });
       }
-      const sprite = this.add.sprite(x, GROUND_Y - 6, sheet, 0);
+      const sprite = this.add.sprite(x, y, sheet, 0);
       sprite.play(animKey);
       return sprite;
     }
-    return this.add.sprite(x, GROUND_Y - 6, this.birdTexture(bird, species));
+    return this.add.sprite(x, y, this.birdTexture(bird, species));
   }
 
   /** Species-colored bird sprites; ringnecks split into hen and rooster looks. */

@@ -25,3 +25,28 @@ export function escapeVelocity(flight: FlightStyle = DEFAULT_FLIGHT, rng: RNG = 
     y: -Math.abs(Math.sin(angle)) * speed,
   };
 }
+
+/**
+ * A covey rise fans out: each bird gets its own slice of the species'
+ * escape arc (plus a little jitter) instead of an independent roll, so
+ * covey mates never stack on the same bearing. Slot 0 of N takes the
+ * leftmost slice, the last the rightmost.
+ */
+export function escapeVelocityFan(
+  flight: FlightStyle,
+  slot: number,
+  count: number,
+  rng: RNG = Math.random,
+): Vec2 {
+  const speed = flight.speedMin + rng() * (flight.speedMax - flight.speedMin);
+  const halfArc = (Math.PI / 3) * Math.max(0.12, 1.15 - flight.climb);
+  const t = count <= 1 ? rng() : (slot + 0.5) / count;
+  const jitter = count <= 1 ? 0 : (rng() * 2 - 1) * (halfArc / count) * 0.6;
+  // Screen coords: angles past PI/2 point left, so negate the slice offset
+  // to keep slot 0 on the left.
+  const angle = Math.PI / 2 - (2 * t - 1) * halfArc + jitter;
+  return {
+    x: Math.cos(angle) * speed,
+    y: -Math.abs(Math.sin(angle)) * speed,
+  };
+}
