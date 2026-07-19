@@ -1,10 +1,14 @@
 import Phaser from 'phaser';
-import { playShot, playThud, unlockAudio } from '../audio';
+import { playCackle, playShot, playThud, playThunder, playTwitter, unlockAudio } from '../audio';
+import { getArea } from '../game/areas';
+import { relightSurvivors, type Bird } from '../game/birds';
 import type { Dog } from '../game/dog';
 import { clamp, dist } from '../game/math';
 import { escapeVelocity, hitTest } from '../game/shot';
+import { getSpecies, type SpeciesConfig } from '../game/species';
 import type { HuntState } from '../game/state';
 import type { Vec2 } from '../game/types';
+import { windMults } from '../game/wind';
 
 const GROUND_Y = 205;
 const SPREAD_RADIUS = 14; // how forgiving the shot pattern is
@@ -14,6 +18,8 @@ const LAUNCH_STAGGER_MS = 130; // covey birds get airborne one after another
 
 interface FlyingBird {
   id: number;
+  fieldBird: Bird;
+  species: SpeciesConfig;
   sprite: Phaser.GameObjects.Sprite;
   vel: Vec2;
   wobble: number;
@@ -22,8 +28,8 @@ interface FlyingBird {
 
 /**
  * Duck Hunt-style shooting view. A whole covey can rise at once; two shells,
- * one bird per shell. Returns to FieldScene with outcomes folded into the
- * shared HuntState.
+ * one bird per shell. Watch the tail: hens are protected, and dropping one
+ * is a fine. Survivors of the rise relight nearby as tight-holding singles.
  */
 export class FlushScene extends Phaser.Scene {
   private hunt!: HuntState;
@@ -50,26 +56,35 @@ export class FlushScene extends Phaser.Scene {
     this.birds = [];
 
     this.drawSky();
-    this.makeTextures();
+    this.makeCrosshair();
 
+    const flushSounds = new Set<string>();
     data.birdIds.forEach((id, i) => {
       const fieldBird = this.hunt.birds.find((b) => b.id === id)!;
-      const vel = escapeVelocity();
+      const species = getSpecies(fieldBird.speciesId);
+      const vel = escapeVelocity(species.flight);
       // World coords → screen: the bird rises where it sat relative to the hunter.
       const launchX = clamp(240 + (fieldBird.pos.x - this.hunt.hunterPos.x), 48, 432);
       // Steer back toward the middle of the screen so edge flushes stay shootable.
       if ((launchX < 240 && vel.x < 0) || (launchX > 240 && vel.x > 0)) {
         vel.x *= -1;
       }
-      const sprite = this.add.sprite(launchX, GROUND_Y - 6, 'bird');
+      const sprite = this.add.sprite(launchX, GROUND_Y - 6, this.birdTexture(fieldBird, species));
       sprite.setFlipX(vel.x < 0);
       sprite.setVisible(i === 0);
-      const bird: FlyingBird = { id, sprite, vel, wobble: i * 2.1, status: 'waiting' };
+      const bird: FlyingBird = { id, fieldBird, species, sprite, vel, wobble: i * 2.1, status: 'waiting' };
       this.birds.push(bird);
       this.time.delayedCall(i * LAUNCH_STAGGER_MS, () => {
-        if (bird.status === 'waiting') {
-          bird.status = 'flying';
-          sprite.setVisible(true);
+        if (bird.status !== 'waiting') return;
+        bird.status = 'flying';
+        sprite.setVisible(true);
+        // Signature flush sounds, once per species per rise. Hens don't cackle.
+        const soundKey = species.sound && !(species.sound === 'cackle' && fieldBird.sex === 'hen') ? species.id : null;
+        if (soundKey && species.sound && !flushSounds.has(soundKey)) {
+          flushSounds.add(soundKey);
+          if (species.sound === 'cackle') playCackle();
+          else if (species.sound === 'twitter') playTwitter();
+          else playThunder();
         }
       });
     });
@@ -81,10 +96,13 @@ export class FlushScene extends Phaser.Scene {
     for (let i = 0; i < SHELLS; i++) {
       this.shellPips.push(this.add.rectangle(6 + i * 8, 252, 5, 10, 0xd6402c).setOrigin(0, 0.5));
     }
+    const lead = this.birds[0];
+    const henWarning = this.birds.some((b) => b.fieldBird.sex === 'hen') ? '  —  watch for hens!' : '';
     this.hud = this.add.text(
       4,
       4,
-      data.birdIds.length > 1 ? `covey rise! ${data.birdIds.length} birds` : 'lead the bird!',
+      (data.birdIds.length > 1 ? `covey rise! ${data.birdIds.length} ${lead.species.name}s` : `${lead.species.name}!`) +
+        henWarning,
       { fontFamily: 'monospace', fontSize: '8px', color: '#ffffff' },
     );
 
@@ -104,7 +122,7 @@ export class FlushScene extends Phaser.Scene {
     for (const b of this.birds) {
       if (b.status === 'flying') {
         b.wobble += dt * 9;
-        b.sprite.x += b.vel.x * dt + Math.sin(b.wobble) * 24 * dt;
+        b.sprite.x += b.vel.x * dt + Math.sin(b.wobble) * b.species.flight.wobble * dt;
         b.sprite.y += b.vel.y * dt;
         if (b.sprite.y < -16 || b.sprite.x < -16 || b.sprite.x > 496) {
           this.escapeBird(b);
@@ -156,17 +174,25 @@ export class FlushScene extends Phaser.Scene {
     }
     if (best) {
       best.status = 'falling';
-      const fieldBird = this.hunt.birds.find((x) => x.id === best!.id)!;
-      fieldBird.state = 'downed';
+      best.fieldBird.state = 'downed';
       this.hunt.downed++;
+      if (best.fieldBird.sex === 'hen') {
+        this.hunt.xpEvents.henDowns++;
+        this.add
+          .text(best.sprite.x, best.sprite.y - 12, "HEN! that's a fine", {
+            fontFamily: 'monospace',
+            fontSize: '9px',
+            color: '#ff6a5a',
+          })
+          .setOrigin(0.5);
+      }
     }
   }
 
   private escapeBird(b: FlyingBird): void {
     b.status = 'done';
     b.sprite.setVisible(false);
-    const fieldBird = this.hunt.birds.find((x) => x.id === b.id)!;
-    fieldBird.state = 'escaped';
+    b.fieldBird.state = 'escaped';
     this.hunt.escaped++;
   }
 
@@ -175,11 +201,21 @@ export class FlushScene extends Phaser.Scene {
     this.resolved = true;
 
     const total = this.birds.length;
-    const downedHere = this.birds.filter(
-      (b) => this.hunt.birds.find((x) => x.id === b.id)!.state === 'downed',
-    ).length;
+    const downedHere = this.birds.filter((b) => b.fieldBird.state === 'downed').length;
     // Birds downed over the dog's point earn it XP at the summary.
     if (this.dogPointed) this.hunt.xpEvents.downedOverPoint += downedHere;
+
+    // Hunt the singles: survivors of the rise relight nearby, holding tight.
+    const escapedIds = this.birds.filter((b) => b.fieldBird.state === 'escaped').map((b) => b.id);
+    const area = getArea(this.hunt.areaId);
+    const relit = relightSurvivors(
+      this.hunt.birds,
+      escapedIds,
+      area.world,
+      Math.random,
+      windMults(this.hunt.windStrength).nerve,
+    );
+    this.hunt.escaped -= relit.length;
 
     if (downedHere === 0) {
       this.hud.setText(total > 1 ? 'they all got away...' : 'it got away...');
@@ -187,6 +223,13 @@ export class FlushScene extends Phaser.Scene {
       this.hud.setText(`${downedHere} of ${total} down!`);
     } else {
       this.hud.setText('nice shot!');
+    }
+    if (relit.length > 0) {
+      this.add.text(4, 16, `${relit.length} single${relit.length > 1 ? 's' : ''} put down in the grass — hunt 'em up`, {
+        fontFamily: 'monospace',
+        fontSize: '8px',
+        color: '#c9dcc0',
+      });
     }
 
     this.time.delayedCall(1500, () => {
@@ -206,14 +249,40 @@ export class FlushScene extends Phaser.Scene {
     g.fillRect(314, 62, 20, 8);
   }
 
-  private makeTextures(): void {
-    if (this.textures.exists('bird')) return;
+  /** Species-colored bird sprites; ringnecks split into hen and rooster looks. */
+  private birdTexture(bird: Bird, species: SpeciesConfig): string {
+    const variant = bird.sex ?? 'base';
+    const key = `bird-${species.id}-${variant}`;
+    if (this.textures.exists(key)) return key;
     const g = this.add.graphics();
-    g.fillStyle(0x5a3a22).fillRect(2, 2, 8, 5); // body
-    g.fillStyle(0x8a5a2b).fillRect(9, 0, 4, 4); // head
-    g.fillStyle(0x3a3a3a).fillRect(0, 3, 3, 2); // tail
-    g.generateTexture('bird', 13, 8);
-    g.clear();
+    if (bird.sex === 'rooster') {
+      // Long-tailed and flashy: white neck ring, iridescent head.
+      g.fillStyle(species.palette.body).fillRect(4, 2, 8, 5); // body
+      g.fillStyle(0xffffff).fillRect(11, 2, 1, 3); // neck ring
+      g.fillStyle(species.palette.head).fillRect(12, 0, 4, 4); // green head
+      g.fillStyle(0xd6402c).fillRect(13, 1, 1, 1); // wattle
+      g.fillStyle(species.palette.tail).fillRect(0, 3, 5, 1); // long tail
+      g.fillStyle(species.palette.tail).fillRect(1, 4, 4, 1);
+      g.generateTexture(key, 16, 8);
+    } else if (bird.sex === 'hen') {
+      // Tan, short-tailed, deliberately plain — that's the tell.
+      g.fillStyle(0xb59a6a).fillRect(2, 2, 8, 5);
+      g.fillStyle(0xc9b287).fillRect(9, 0, 4, 4);
+      g.fillStyle(0x8a744e).fillRect(0, 3, 3, 2);
+      g.generateTexture(key, 13, 8);
+    } else {
+      g.fillStyle(species.palette.body).fillRect(2, 2, 8, 5); // body
+      g.fillStyle(species.palette.head).fillRect(9, 0, 4, 4); // head
+      g.fillStyle(species.palette.tail).fillRect(0, 3, 3, 2); // tail
+      g.generateTexture(key, 13, 8);
+    }
+    g.destroy();
+    return key;
+  }
+
+  private makeCrosshair(): void {
+    if (this.textures.exists('crosshair')) return;
+    const g = this.add.graphics();
     g.lineStyle(1, 0xffffff);
     g.strokeCircle(8, 8, 7);
     g.lineBetween(8, 0, 8, 16);

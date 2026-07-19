@@ -102,6 +102,28 @@ export function playBlip(): void {
   tone(990, 0.08, 0.09, { type: 'square', volume: 0.08 });
 }
 
+/** Rooster pheasant cackling on the rise: raspy descending squawks. */
+export function playCackle(): void {
+  for (let i = 0; i < 4; i++) {
+    tone(340 - i * 28, i * 0.09, 0.07, { type: 'square', volume: 0.14, slideTo: 190 - i * 15 });
+  }
+}
+
+/** Woodcock wing twitter: rapid high chirps as it towers. */
+export function playTwitter(): void {
+  for (let i = 0; i < 6; i++) {
+    tone(1900 + (i % 2) * 500, i * 0.055, 0.04, { volume: 0.09, slideTo: 2600 });
+  }
+}
+
+/** Ruffed grouse thunder: the flush flutter, but bigger and closer. */
+export function playThunder(): void {
+  for (let i = 0; i < 9; i++) {
+    noise(i * 0.038, 0.05, 1000, 450, 0.4);
+  }
+  tone(140, 0, 0.3, { type: 'triangle', volume: 0.25, slideTo: 60 });
+}
+
 /**
  * Dog bell: one small brass tink. Ring it on a timer while the dog moves;
  * volume carries the distance cue, and silence means the dog is standing.

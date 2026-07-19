@@ -15,8 +15,10 @@ import { devDogLevel } from '../game/dev';
 import { Dog, WHISTLE_RANGE, type DogState } from '../game/dog';
 import { VIEWPORT } from '../game/field';
 import { dist, moveToward, mulberry32, windArrow } from '../game/math';
+import { getSpecies } from '../game/species';
 import { birdsRemaining, createHunt, huntComplete, type HuntState } from '../game/state';
 import type { Vec2 } from '../game/types';
+import { windMults } from '../game/wind';
 
 const HUNTER_SPEED = 55; // px/s walking
 const SPRINT_MULT = 2; // sprint speed multiplier
@@ -26,6 +28,8 @@ const DOUBLE_TAP_MS = 350;
 const DOUBLE_TAP_DIST = 30;
 const FLUSH_RADIUS = 22; // hunter this close to a pointed bird flushes it
 const SHOT_RANGE = 40; // max hunter distance for a shooting chance on a wild flush
+
+const HEN_FINE_XP = 4; // dropping a protected hen costs the dog this much XP
 
 const BELL_INTERVAL_MS = 620; // tinkle cadence while the dog moves
 const BELL_HEARING = 700; // px at which the bell fades to nothing
@@ -221,9 +225,11 @@ export class FieldScene extends Phaser.Scene {
     updateBirds(delta, this.hunt.birds, this.dog.pos, this.area.world);
     const recall = this.recallPending;
     this.recallPending = false;
+    const wind = windMults(this.hunt.windStrength);
     this.dog.update(delta, this.hunt.birds, {
       hunterPos: this.hunt.hunterPos,
       windAngle: this.hunt.wind,
+      scentMult: wind.scent,
       recall,
     });
     this.hunt.dogPos = { ...this.dog.pos };
@@ -252,7 +258,7 @@ export class FieldScene extends Phaser.Scene {
         this.hunt.birds,
         this.dog.pos,
         this.hunt.wind,
-        dogScentRadius(this.dog.level),
+        dogScentRadius(this.dog.level) * wind.dogScent,
       );
       if (scented.length > 0 && !this.flushing) {
         this.flush(scented[0], 'scent');
@@ -300,7 +306,9 @@ export class FieldScene extends Phaser.Scene {
       this.dogSprite.setTint(0xffd23f);
       // The point marker shows the bird's nerve: gold → orange → blinking red.
       const pointed = this.hunt.birds.find((b) => b.id === this.dog.pointedBirdId);
-      const nerveFrac = pointed ? Math.max(0, pointed.nerveMs / this.area.nerveMaxMs) : 1;
+      const nerveFrac = pointed
+        ? Math.max(0, Math.min(1, pointed.nerveMs / getSpecies(pointed.speciesId).nerveMaxMs))
+        : 1;
       this.pointMarker.setColor(nerveFrac > 0.6 ? '#ffd23f' : nerveFrac > 0.3 ? '#ff8c3f' : '#ff4040');
       const visible = nerveFrac >= 0.3 || Math.floor(time / 120) % 2 === 0;
       this.pointMarker.setVisible(visible);
@@ -317,7 +325,7 @@ export class FieldScene extends Phaser.Scene {
     const staminaPips = `[${'#'.repeat(staminaFilled)}${'-'.repeat(5 - staminaFilled)}]`;
     const dogName = this.kennelDog?.name ?? 'dog';
     this.hud.setText(
-      `wind ${windArrow(this.hunt.wind)}   birds: ${birdsRemaining(this.hunt)}   downed: ${this.hunt.downed}   lost: ${this.hunt.escaped}${running ? '   RUNNING' : ''}\n` +
+      `wind ${windArrow(this.hunt.wind)} ${this.hunt.windStrength}   birds: ${birdsRemaining(this.hunt)}   downed: ${this.hunt.downed}   lost: ${this.hunt.escaped}${running ? '   RUNNING' : ''}\n` +
         `${dogName} lv${this.dog.level}${this.devLevel !== null ? ' (dev)' : ''} ${this.dog.state}${this.dog.winded ? ' winded' : ''} ${staminaPips}`,
     );
     this.whistleLabel.setText(this.dog.state === 'heel' ? 'cast off' : 'whistle');
@@ -360,10 +368,11 @@ export class FieldScene extends Phaser.Scene {
   private showSummary(): void {
     this.summaryShown = true;
 
-    // Convert the dog's work into XP (breed XP rate applies).
+    // Convert the dog's work into XP (breed XP rate applies; hen fines come off the top).
     const ev = this.hunt.xpEvents;
     const base = 2 * ev.pointFlushes + ev.retrieves + 3 * ev.downedOverPoint;
-    const gained = Math.round(base * this.breed.xpRate);
+    const fine = HEN_FINE_XP * ev.henDowns;
+    const gained = Math.max(0, Math.round(base * this.breed.xpRate) - fine);
     let career = recordHunt(loadCareer(), this.hunt.areaId, this.hunt.downed, this.hunt.escaped);
     let levelMsg: string | null = null;
     if (this.kennelDog && gained > 0) {
@@ -403,15 +412,26 @@ export class FieldScene extends Phaser.Scene {
         .setScrollFactor(0)
         .setDepth(21);
     }
-    if (levelMsg) {
+    if (ev.henDowns > 0) {
       this.add
-        .text(cx, cy + 14, levelMsg, { fontFamily: 'monospace', fontSize: '9px', color: '#ffd23f' })
+        .text(cx, cy + 12, `${ev.henDowns} hen${ev.henDowns > 1 ? 's' : ''} down — game warden fines you ${fine} xp`, {
+          fontFamily: 'monospace',
+          fontSize: '8px',
+          color: '#ff6a5a',
+        })
         .setOrigin(0.5)
         .setScrollFactor(0)
         .setDepth(21);
     }
-    this.summaryButton(cx - 62, cy + 36, 'hunt again', () => this.scene.restart({ areaId: this.area.id }));
-    this.summaryButton(cx + 62, cy + 36, 'menu', () => this.scene.start('TitleScene'));
+    if (levelMsg) {
+      this.add
+        .text(cx, cy + 24, levelMsg, { fontFamily: 'monospace', fontSize: '9px', color: '#ffd23f' })
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(21);
+    }
+    this.summaryButton(cx - 62, cy + 44, 'hunt again', () => this.scene.restart({ areaId: this.area.id }));
+    this.summaryButton(cx + 62, cy + 44, 'menu', () => this.scene.start('TitleScene'));
   }
 
   private summaryButton(x: number, y: number, label: string, onTap: () => void): void {
