@@ -37,6 +37,7 @@ import { getSpecies } from '../game/species';
 import { birdsRemaining, createHunt, huntComplete, type HuntState } from '../game/state';
 import type { Vec2 } from '../game/types';
 import { windMults } from '../game/wind';
+import { addWeatherFx } from './weatherFx';
 
 const HUNTER_SPEED = 55; // px/s walking
 const SPRINT_MULT = 2; // sprint speed multiplier
@@ -190,6 +191,9 @@ export class FieldScene extends Phaser.Scene {
 
     this.makeTextures();
     this.drawField();
+    // Weather you can see: tint + falling snow/rain pinned to the camera,
+    // above the world (depth 13) and below the HUD (15).
+    addWeatherFx(this, this.hunt.condition, true, 13);
 
     this.hunterSprite = this.add.sprite(this.hunt.hunterPos.x, this.hunt.hunterPos.y, 'hunter');
     this.dogSprites = this.dogs.map((dog) => this.add.sprite(dog.pos.x, dog.pos.y, 'dog'));

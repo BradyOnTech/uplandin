@@ -71,7 +71,9 @@ Dev helpers: `?doglevel=N` on the URL runs career hunts at that dog level
 - **Fieldcraft**: the chukar slope rule (approach from above — they hold,
   and the flush drops away below you), flanking points, blocking runners at
   the end of cover, grouse timber screens in the shot view.
-- Shooting view with species-true escape flight, four shotguns (shells vs.
+- Shooting view on Duck Hunt rules: waves of three readable targets,
+  per-species size/wingbeat/glide/level-off, ground shadows, feather
+  bursts on hits, falling snow and rain, four shotguns (shells vs.
   cooldown vs. spread), doubles bonus, hen discrimination.
 
 ### The career

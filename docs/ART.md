@@ -237,14 +237,16 @@ a human unifying outlines and shading across ~40 sheets is what
 separates "good AI art" from shipped-game art.
 
 **Phase 3 — presentation code (juice — free, huge)**:
-done: covey fan, spread launches, altitude depth-scaling. Next, in
-impact order: a real **pixel bitmap font** for all UI (the single
-biggest production-feel upgrade); **bird ground shadows** in the flush
-view (ellipse shrinking with altitude — sells height instantly);
-**feather-puff burst** on hits + shell eject; weather dressing
-(tint overlay + snow/rain particles in both views); backdrop
-**parallax** (split plates into sky/hills/foreground); quick fade/iris
-scene transitions; field-view walk cycles once dog sheets land.
+done: covey fan + waves, spread launches, altitude depth-scaling, exit
+drive, **bird ground shadows** (shrink/fade with altitude),
+**feather-puff bursts** on hits, **weather dressing** (condition tint +
+falling snow/rain particles in both views, `scenes/weatherFx.ts`), and a
+proper depth ladder in the shot view (birds fly behind timber, under the
+weather, beneath the HUD). Next, in impact order: a real **pixel bitmap
+font** for all UI (the single biggest production-feel upgrade left);
+shell-eject flick; backdrop **parallax** (split plates into
+sky/hills/foreground); quick fade/iris scene transitions; field-view
+walk cycles once dog sheets land.
 
 **Phase 4 — cohesion audit**: screenshot matrix of every region ×
 weather × a flush; fix outliers; final palette-enforcement pass

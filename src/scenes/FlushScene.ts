@@ -12,6 +12,7 @@ import { getSpecies, type SpeciesConfig } from '../game/species';
 import type { HuntState } from '../game/state';
 import type { Vec2 } from '../game/types';
 import { windMults } from '../game/wind';
+import { addWeatherFx } from './weatherFx';
 
 const GROUND_Y = 205;
 const TOUCH_AIM_OFFSET = 56; // crosshair rides above your finger on touch
@@ -21,6 +22,16 @@ const TOUCH_AIM_OFFSET = 56; // crosshair rides above your finger on touch
 const MAX_AIRBORNE = 3;
 const LAUNCH_GAP_MS = 300; // minimum breath between launches
 const WAVE_SLOT_SPREAD = 78; // px between the three airborne lanes
+
+// Depth ladder: birds depth-sort by height (0..~205), so everything that
+// must draw over them starts well above that.
+const DEPTH_SHADOW = 2;
+const DEPTH_TIMBER = 220; // grouse fly BEHIND the trees — that's the screen
+const DEPTH_FEATHERS = 240;
+const DEPTH_WEATHER = 250;
+const DEPTH_UI = 280;
+const DEPTH_FLASH = 290;
+const DEPTH_CROSSHAIR = 300;
 
 /** Painted backdrop plates per region (docs/art pipeline); regions without one get the drawn sky. */
 const FLUSH_BACKDROPS: Record<string, string> = {
@@ -41,6 +52,8 @@ interface FlyingBird {
   wobble: number;
   /** Per-bird depth: covey mates fly at different distances, not one plane. */
   depthBias: number;
+  /** Ground shadow — shrinks and fades as the bird climbs. Sells the height. */
+  shadow: Phaser.GameObjects.Ellipse;
   /** Time on the wing — drives the glide and level-off flight phases. */
   airMs: number;
   /** Locked once a flight phase begins: which screen edge this bird is leaving by. */
@@ -103,6 +116,7 @@ export class FlushScene extends Phaser.Scene {
 
     this.drawSky();
     this.makeCrosshair();
+    addWeatherFx(this, this.hunt.condition, false, DEPTH_WEATHER);
     // The slope shot: from above they drop away slow and open; from below
     // they rocket over your head.
     const slope = data.slopeApproach ?? null;
@@ -135,6 +149,10 @@ export class FlushScene extends Phaser.Scene {
       const sprite = this.makeBirdSprite(fieldBird, species, launchX, launchY);
       sprite.setFlipX(vel.x < 0);
       sprite.setVisible(false);
+      const shadow = this.add
+        .ellipse(launchX, GROUND_Y + 4, Math.round(18 * (species.size ?? 1)), 5, 0x1e2316, 0.28)
+        .setDepth(DEPTH_SHADOW)
+        .setVisible(false);
       this.birds.push({
         id,
         fieldBird,
@@ -143,17 +161,18 @@ export class FlushScene extends Phaser.Scene {
         vel,
         wobble: i * 2.1,
         depthBias: 0.72 + 0.28 * ((i * 0.61) % 1),
+        shadow,
         airMs: 0,
         status: 'waiting',
       });
     });
 
-    this.crosshair = this.add.sprite(240, 120, 'crosshair').setDepth(10);
+    this.crosshair = this.add.sprite(240, 120, 'crosshair').setDepth(DEPTH_CROSSHAIR);
     this.input.setDefaultCursor('none');
 
     this.shellPips = [];
     for (let i = 0; i < this.gun.shells; i++) {
-      this.shellPips.push(this.add.rectangle(6 + i * 8, 252, 5, 10, 0xd6402c).setOrigin(0, 0.5));
+      this.shellPips.push(this.add.rectangle(6 + i * 8, 252, 5, 10, 0xd6402c).setOrigin(0, 0.5).setDepth(DEPTH_UI));
     }
     const lead = this.birds[0];
     const henWarning = this.birds.some((b) => b.fieldBird.sex === 'hen') ? '  —  watch for hens!' : '';
@@ -166,7 +185,7 @@ export class FlushScene extends Phaser.Scene {
         henWarning +
         slopeNote,
       { fontFamily: 'monospace', fontSize: '8px', color: '#ffffff' },
-    );
+    ).setDepth(DEPTH_UI);
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       unlockAudio();
@@ -247,6 +266,15 @@ export class FlushScene extends Phaser.Scene {
           (b.species.size ?? 1) * clamp(1 - (GROUND_Y - b.sprite.y) / 650, 0.55, 1) * b.depthBias,
         );
         b.sprite.setDepth(b.sprite.y);
+        // The ground shadow tracks under the bird, shrinking and fading
+        // with altitude — the cheapest possible statement of height.
+        const altFrac = clamp((GROUND_Y - b.sprite.y) / 300, 0, 1);
+        b.shadow.setVisible(true);
+        b.shadow.x = b.sprite.x;
+        b.shadow.setScale((1 - 0.55 * altFrac) * b.depthBias);
+        b.shadow.setAlpha(0.28 * (1 - 0.6 * altFrac));
+      } else {
+        b.shadow.setVisible(false);
       }
     }
 
@@ -267,7 +295,7 @@ export class FlushScene extends Phaser.Scene {
 
     const aim = { x: p.worldX, y: p.worldY - (p.wasTouch ? TOUCH_AIM_OFFSET : 0) };
     this.cameras.main.shake(70, 0.004);
-    const flash = this.add.circle(aim.x, aim.y, 3, 0xfff2c9).setDepth(9);
+    const flash = this.add.circle(aim.x, aim.y, 3, 0xfff2c9).setDepth(DEPTH_FLASH);
     this.tweens.add({
       targets: flash,
       scale: 5,
@@ -281,7 +309,7 @@ export class FlushScene extends Phaser.Scene {
       this.add
         .text(aim.x, aim.y - 10, 'thwack — timber!', { fontFamily: 'monospace', fontSize: '9px', color: '#c9dcc0' })
         .setOrigin(0.5)
-        .setDepth(11);
+        .setDepth(DEPTH_UI);
       return;
     }
 
@@ -304,6 +332,7 @@ export class FlushScene extends Phaser.Scene {
         best.sprite.stop();
         best.sprite.setFrame(2);
       }
+      this.spawnFeathers(best.sprite.x, best.sprite.y);
       this.hunt.downed++;
       if (best.fieldBird.sex === 'hen') {
         this.hunt.henDowns++;
@@ -313,7 +342,8 @@ export class FlushScene extends Phaser.Scene {
             fontSize: '9px',
             color: '#ff6a5a',
           })
-          .setOrigin(0.5);
+          .setOrigin(0.5)
+          .setDepth(DEPTH_UI);
       }
     }
   }
@@ -356,17 +386,44 @@ export class FlushScene extends Phaser.Scene {
       this.hud.setText('nice shot!');
     }
     if (relit.length > 0) {
-      this.add.text(4, 16, `${relit.length} single${relit.length > 1 ? 's' : ''} put down in the grass — hunt 'em up`, {
-        fontFamily: 'monospace',
-        fontSize: '8px',
-        color: '#c9dcc0',
-      });
+      this.add
+        .text(4, 16, `${relit.length} single${relit.length > 1 ? 's' : ''} put down in the grass — hunt 'em up`, {
+          fontFamily: 'monospace',
+          fontSize: '8px',
+          color: '#c9dcc0',
+        })
+        .setDepth(DEPTH_UI);
     }
 
     this.time.delayedCall(1500, () => {
       this.input.setDefaultCursor('default');
       this.scene.start('FieldScene', { hunt: this.hunt, dogs: this.dogs });
     });
+  }
+
+  /** A puff of feathers hangs where the shot connected. */
+  private spawnFeathers(x: number, y: number): void {
+    if (!this.textures.exists('feather')) {
+      const g = this.add.graphics();
+      g.fillStyle(0xf2e3c6).fillRect(0, 0, 2, 2);
+      g.fillStyle(0x8a5a2b).fillRect(1, 1, 2, 2);
+      g.generateTexture('feather', 3, 3);
+      g.destroy();
+    }
+    const burst = this.add
+      .particles(x, y, 'feather', {
+        speed: { min: 40, max: 130 },
+        angle: { min: 210, max: 330 }, // up and outward
+        gravityY: 150,
+        lifespan: { min: 350, max: 750 },
+        scale: { start: 1, end: 0.5 },
+        alpha: { start: 1, end: 0 },
+        rotate: { min: 0, max: 360 },
+        emitting: false,
+      })
+      .setDepth(DEPTH_FEATHERS);
+    burst.explode(12);
+    this.time.delayedCall(900, () => burst.destroy());
   }
 
   /** Grouse put a tree between themselves and the gun. */
@@ -382,7 +439,7 @@ export class FlushScene extends Phaser.Scene {
       const x = 90 + Math.random() * 300;
       const trunk = { x: x - 3, y: GROUND_Y - 46, w: 6, h: 46 };
       const canopy = { x: x - 16, y: GROUND_Y - 96, w: 32, h: 56 };
-      const g = this.add.graphics().setDepth(5);
+      const g = this.add.graphics().setDepth(DEPTH_TIMBER);
       g.fillStyle(0x4a3626).fillRect(trunk.x, trunk.y, trunk.w, trunk.h);
       g.fillStyle(0x2c4a30).fillRect(canopy.x, canopy.y, canopy.w, canopy.h);
       g.fillStyle(0x35573a).fillRect(canopy.x + 4, canopy.y + 6, canopy.w - 8, canopy.h - 12);
