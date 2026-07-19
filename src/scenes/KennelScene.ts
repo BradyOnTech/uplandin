@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import { playBlip, unlockAudio } from '../audio';
 import { getBreed } from '../game/breeds';
-import { loadCareer, saveCareer, setActiveDog } from '../game/career';
-import { kennelSlots } from '../game/progression';
+import { loadCareer, saveCareer, setActiveDog, setBraceDog } from '../game/career';
+import { kennelSlots, TWO_DOG_LEVEL, twoDogUnlocked } from '../game/progression';
 
 /**
  * The kennel: every dog you've raised. Tap one to bring it on the next
@@ -22,25 +22,32 @@ export class KennelScene extends Phaser.Scene {
     this.add
       .text(240, 20, 'the kennel', { fontFamily: 'monospace', fontSize: '12px', color: '#ffd23f' })
       .setOrigin(0.5);
+    const braceNote = twoDogUnlocked(career.hunter.level)
+      ? ' · brace unlocked'
+      : ` · brace at hunter lv ${TWO_DOG_LEVEL}`;
     this.add
-      .text(240, 36, `dog box: ${career.kennel.length}/${slots} slots · hunter lv ${career.hunter.level}`, {
+      .text(240, 36, `dog box: ${career.kennel.length}/${slots} slots · hunter lv ${career.hunter.level}${braceNote}`, {
         fontFamily: 'monospace',
         fontSize: '8px',
         color: '#9fb896',
       })
       .setOrigin(0.5);
 
+    const canBrace = twoDogUnlocked(career.hunter.level) && career.kennel.length >= 2;
+
     career.kennel.forEach((dog, i) => {
       const y = 62 + i * 36;
       const active = dog.id === career.activeDogId;
+      const braced = dog.id === career.braceDogId;
       const card = this.add
         .rectangle(240, y, 400, 30, active ? 0x2c4a24 : 0x101410, 0.9)
-        .setStrokeStyle(1, active ? 0xffd23f : 0x3a4a3a)
+        .setStrokeStyle(1, active ? 0xffd23f : braced ? 0xa8d4e8 : 0x3a4a3a)
         .setInteractive();
-      this.add.text(52, y - 11, `${dog.name}${active ? '  ★ riding along' : ''}`, {
+      const tag = active ? '  ★ riding along' : braced ? '  ☆ bracemate' : '';
+      this.add.text(52, y - 11, `${dog.name}${tag}`, {
         fontFamily: 'monospace',
         fontSize: '9px',
-        color: active ? '#ffd23f' : '#ffffff',
+        color: active ? '#ffd23f' : braced ? '#a8d4e8' : '#ffffff',
       });
       const toNext = dog.level >= 10 ? 'maxed' : `${dog.xp} xp`;
       this.add.text(52, y + 1, `${getBreed(dog.breedId).name} · lv ${dog.level} · ${toNext}`, {
@@ -54,6 +61,26 @@ export class KennelScene extends Phaser.Scene {
         saveCareer(setActiveDog(career, dog.id));
         this.scene.restart();
       });
+      // Two-dog hunting: mark a non-lead dog as the bracemate.
+      if (canBrace && !active) {
+        this.add
+          .rectangle(410, y, 52, 18, 0x101a26, 0.9)
+          .setStrokeStyle(1, braced ? 0xa8d4e8 : 0x44505c)
+          .setInteractive()
+          .on('pointerdown', () => {
+            unlockAudio();
+            playBlip();
+            saveCareer(setBraceDog(career, braced ? null : dog.id));
+            this.scene.restart();
+          });
+        this.add
+          .text(410, y, braced ? 'unbrace' : 'brace', {
+            fontFamily: 'monospace',
+            fontSize: '8px',
+            color: braced ? '#a8d4e8' : '#9fb896',
+          })
+          .setOrigin(0.5);
+      }
     });
 
     if (career.kennel.length < slots) {

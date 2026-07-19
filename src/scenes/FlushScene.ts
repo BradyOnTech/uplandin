@@ -34,8 +34,8 @@ export class FlushScene extends Phaser.Scene {
   private hunt!: HuntState;
   private birds: FlyingBird[] = [];
   private resolved = false;
-  private dog?: Dog;
-  private dogPointed = false;
+  private dogs: Dog[] = [];
+  private pointingSlot: number | null = null;
 
   private crosshair!: Phaser.GameObjects.Sprite;
   private gun!: GunConfig;
@@ -48,10 +48,16 @@ export class FlushScene extends Phaser.Scene {
     super('FlushScene');
   }
 
-  create(data: { hunt: HuntState; birdIds: number[]; flushDistance?: number; dog?: Dog; dogPointed?: boolean }): void {
+  create(data: {
+    hunt: HuntState;
+    birdIds: number[];
+    flushDistance?: number;
+    dogs?: Dog[];
+    pointingSlot?: number | null;
+  }): void {
     this.hunt = data.hunt;
-    this.dog = data.dog;
-    this.dogPointed = data.dogPointed ?? false;
+    this.dogs = data.dogs ?? [];
+    this.pointingSlot = data.pointingSlot ?? null;
     this.gun = getGun(this.hunt.gunId);
     this.shells = this.gun.shells;
     this.lastShotAt = -Infinity;
@@ -183,7 +189,7 @@ export class FlushScene extends Phaser.Scene {
       best.fieldBird.state = 'downed';
       this.hunt.downed++;
       if (best.fieldBird.sex === 'hen') {
-        this.hunt.xpEvents.henDowns++;
+        this.hunt.henDowns++;
         this.add
           .text(best.sprite.x, best.sprite.y - 12, "HEN! that's a fine", {
             fontFamily: 'monospace',
@@ -208,8 +214,8 @@ export class FlushScene extends Phaser.Scene {
 
     const total = this.birds.length;
     const downedHere = this.birds.filter((b) => b.fieldBird.state === 'downed').length;
-    // Birds downed over the dog's point earn it XP at the summary.
-    if (this.dogPointed) this.hunt.xpEvents.downedOverPoint += downedHere;
+    // Birds downed over a dog's point earn that dog XP at the summary.
+    if (this.pointingSlot !== null) this.hunt.dogWork[this.pointingSlot].downedOverPoint += downedHere;
     // Two on one rise: the classic double, bonus hunter XP.
     if (downedHere >= 2) this.hunt.doubles++;
 
@@ -242,7 +248,7 @@ export class FlushScene extends Phaser.Scene {
 
     this.time.delayedCall(1500, () => {
       this.input.setDefaultCursor('default');
-      this.scene.start('FieldScene', { hunt: this.hunt, dog: this.dog });
+      this.scene.start('FieldScene', { hunt: this.hunt, dogs: this.dogs });
     });
   }
 

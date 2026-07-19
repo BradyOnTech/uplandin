@@ -42,10 +42,10 @@ export class QuickScene extends Phaser.Scene {
 
     this.add.rectangle(240, 135, 480, 270, 0x14201c);
     this.add
-      .text(240, 22, 'quick hunt', { fontFamily: 'monospace', fontSize: '12px', color: '#ffd23f' })
+      .text(240, 14, 'quick hunt', { fontFamily: 'monospace', fontSize: '12px', color: '#ffd23f' })
       .setOrigin(0.5);
     this.add
-      .text(240, 38, 'everything unlocked · nothing saved to your career', {
+      .text(240, 29, 'everything unlocked · nothing saved to your career', {
         fontFamily: 'monospace',
         fontSize: '8px',
         color: '#9fb896',
@@ -59,6 +59,14 @@ export class QuickScene extends Phaser.Scene {
         hint: () => getBreed(this.cfg.breedId).blurb,
         step: (dir) => {
           this.cfg.breedId = cycleId(BREEDS.map((b) => b.id), this.cfg.breedId, dir);
+        },
+      },
+      {
+        label: 'dog 2',
+        value: () => (this.cfg.breed2Id === 'none' ? 'none — hunt solo' : getBreed(this.cfg.breed2Id).name),
+        hint: () => (this.cfg.breed2Id === 'none' ? '' : 'a brace: the second dog honors the point'),
+        step: (dir) => {
+          this.cfg.breed2Id = cycleId(['none', ...BREEDS.map((b) => b.id)], this.cfg.breed2Id, dir);
         },
       },
       {
@@ -108,11 +116,11 @@ export class QuickScene extends Phaser.Scene {
     ];
 
     this.rows.forEach((row, i) => {
-      const y = 58 + i * 31;
-      this.add.text(70, y - 5, row.label, { fontFamily: 'monospace', fontSize: '10px', color: '#9fb896' });
+      const y = 50 + i * 24;
+      this.add.text(70, y - 5, row.label, { fontFamily: 'monospace', fontSize: '9px', color: '#9fb896' });
       const arrow = (x: number, glyph: string, dir: 1 | -1) => {
         this.add
-          .rectangle(x, y, 26, 26, 0x101410, 0.85)
+          .rectangle(x, y, 26, 20, 0x101410, 0.85)
           .setInteractive()
           .on('pointerdown', () => {
             unlockAudio();
@@ -121,15 +129,15 @@ export class QuickScene extends Phaser.Scene {
             this.refresh();
           });
         this.add
-          .text(x, y, glyph, { fontFamily: 'monospace', fontSize: '12px', color: '#dfe9d8' })
+          .text(x, y, glyph, { fontFamily: 'monospace', fontSize: '11px', color: '#dfe9d8' })
           .setOrigin(0.5);
       };
       arrow(160, '<', -1);
       const value = this.add
-        .text(280, y - 6, '', { fontFamily: 'monospace', fontSize: '10px', color: '#ffffff' })
+        .text(280, y - 6, '', { fontFamily: 'monospace', fontSize: '9px', color: '#ffffff' })
         .setOrigin(0.5, 0);
       const hint = this.add
-        .text(280, y + 7, '', { fontFamily: 'monospace', fontSize: '8px', color: '#c9dcc0' })
+        .text(280, y + 5, '', { fontFamily: 'monospace', fontSize: '7px', color: '#c9dcc0' })
         .setOrigin(0.5, 0);
       this.valueTexts.push(value);
       this.hintTexts.push(hint);
