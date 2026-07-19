@@ -30,11 +30,9 @@ describe('areas', () => {
       const count = areaBirdCount(a);
       expect(count).toBeGreaterThanOrEqual(5);
       expect(count).toBeLessThanOrEqual(20);
-      expect(a.coveyMaxSize).toBeGreaterThanOrEqual(1);
-      expect(a.runnerChance).toBeGreaterThanOrEqual(0);
-      expect(a.runnerChance).toBeLessThanOrEqual(1);
-      expect(a.nerveMinMs).toBeLessThanOrEqual(a.nerveMaxMs);
       expect(a.patches.length).toBeGreaterThan(0);
+      expect(a.speciesMix.length).toBeGreaterThan(0);
+      for (const share of a.speciesMix) expect(share.weight).toBeGreaterThan(0);
     }
   });
 

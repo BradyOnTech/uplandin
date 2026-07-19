@@ -55,6 +55,8 @@ export interface DogEnv {
   hunterPos?: Vec2;
   /** Direction the wind blows TOWARD (radians, screen coords). Undefined = calm. */
   windAngle?: number;
+  /** Wind-strength multiplier on scent reach (strong wind carries scent farther). */
+  scentMult?: number;
   /** A whistle blast this tick. Never breaks a point or a retrieve. */
   recall?: boolean;
 }
@@ -151,11 +153,12 @@ export class Dog {
   }
 
   /** Scent reach in a direction, if the dog is old enough to use the wind. */
-  private scentDistance(dx: number, dy: number, windAngle: number | undefined): number {
+  private scentDistance(dx: number, dy: number, env: DogEnv): number {
     const windedNose = this.winded ? 0.8 : 1;
-    const base = SCENT_RADIUS * noseMult(this.profile.breed, this.profile.level) * windedNose;
+    const base =
+      SCENT_RADIUS * noseMult(this.profile.breed, this.profile.level) * windedNose * (env.scentMult ?? 1);
     if (windCraftTier(this.profile.level) === 0) return base; // too young to work wind
-    return (scentRange(windAngle, dx, dy) / SCENT_RADIUS) * base;
+    return (scentRange(env.windAngle, dx, dy) / SCENT_RADIUS) * base;
   }
 
   update(dtMs: number, birds: Bird[], env: DogEnv = {}): void {
@@ -346,7 +349,7 @@ export class Dog {
       if (b.state !== 'hidden') continue;
       if (env.hunterPos && dist(b.pos, env.hunterPos) <= AVOID_HUNTER_RADIUS) continue;
       const d = dist(this.pos, b.pos);
-      const range = this.scentDistance(b.pos.x - this.pos.x, b.pos.y - this.pos.y, env.windAngle);
+      const range = this.scentDistance(b.pos.x - this.pos.x, b.pos.y - this.pos.y, env);
       if (d <= range && d < bestRange) {
         best = b;
         bestRange = d;

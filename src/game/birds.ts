@@ -1,5 +1,6 @@
 import { FIELD_BOUNDS, randomPointIn, type Rect } from './field';
 import { clamp, dist } from './math';
+import { getSpecies, rollSpecies, type SpeciesShare } from './species';
 import type { RNG, Vec2 } from './types';
 
 export type BirdState = 'hidden' | 'flushed' | 'downed' | 'escaped' | 'retrieved';
@@ -7,8 +8,13 @@ export type BirdState = 'hidden' | 'flushed' | 'downed' | 'escaped' | 'retrieved
 export interface Bird {
   id: number;
   coveyId: number;
+  speciesId: string;
   pos: Vec2;
   state: BirdState;
+  /** Ringneck rule: hens are protected. Only set for henRule species. */
+  sex?: 'hen' | 'rooster';
+  /** A relit covey survivor — holds tight, and next escape is for good. */
+  single?: boolean;
   /** Runners (pheasant-types) flee the dog on foot instead of holding tight. */
   runs: boolean;
   /** ms of running left before the bird is winded and must hold. */
@@ -27,47 +33,65 @@ export const RUNNER_MAX_ENERGY = 2500; // ms of running before the bird is winde
 export const RUNNER_REST_MS = 2600; // how long a winded bird holds — the hunter's window
 export const RUNNER_NERVE_FACTOR = 0.7; // runners are nervous
 
+export const SINGLE_NERVE_MULT = 1.7; // relit singles hold very tight
+const SINGLE_SCATTER_MIN = 90; // relit singles put this much ground behind them
+const SINGLE_SCATTER_MAX = 200;
+
 /** What an area's bird population looks like. */
 export interface SpawnConfig {
   patches: Rect[];
   birdCount: number;
-  coveyMaxSize: number;
-  runnerChance: number;
-  nerveMinMs: number;
-  nerveMaxMs: number;
+  speciesMix: SpeciesShare[];
   /** World the birds live in; defaults to FIELD_BOUNDS. */
   bounds?: Rect;
+  /** Wind strength shortens nerve (strong wind = jumpy birds). */
+  nerveMult?: number;
 }
 
 let nextBirdId = 1;
 
-/** Scatter birds through the area's cover patches in coveys. */
+/** Scatter birds through the area's cover patches in coveys, species by weighted mix. */
 export function spawnBirds(cfg: SpawnConfig, rng: RNG = Math.random): Bird[] {
   const bounds = cfg.bounds ?? FIELD_BOUNDS;
+  const nerveMult = cfg.nerveMult ?? 1;
+  // Mix weights mean share of BIRDS, but we roll per covey — so divide each
+  // weight by the species' average covey size, or big-covey species (a
+  // 9-bird hun covey vs a 2-bird ringneck pair) would eat the stocking.
+  const coveyMix = cfg.speciesMix.map((s) => {
+    const sp = getSpecies(s.speciesId);
+    return { speciesId: s.speciesId, weight: s.weight / ((sp.coveyMin + sp.coveyMax) / 2) };
+  });
   const birds: Bird[] = [];
   let coveyId = 0;
   let remaining = cfg.birdCount;
   while (remaining > 0) {
-    const size = Math.min(remaining, 1 + Math.floor(rng() * cfg.coveyMaxSize));
+    const species = rollSpecies(coveyMix, rng());
+    const size = Math.min(
+      remaining,
+      species.coveyMin + Math.floor(rng() * (species.coveyMax - species.coveyMin + 1)),
+    );
     const patch = cfg.patches[Math.floor(rng() * cfg.patches.length)];
     const anchor = randomPointIn(patch, rng);
     for (let i = 0; i < size; i++) {
-      const runs = rng() < cfg.runnerChance;
+      const runs = rng() < species.runnerChance;
       const nerveRoll = rng();
       birds.push({
         id: nextBirdId++,
         coveyId,
+        speciesId: species.id,
         pos: {
           x: clamp(anchor.x + (rng() * 2 - 1) * COVEY_JITTER, bounds.x + 4, bounds.x + bounds.w - 4),
           y: clamp(anchor.y + (rng() * 2 - 1) * COVEY_JITTER, bounds.y + 4, bounds.y + bounds.h - 4),
         },
         state: 'hidden',
+        sex: species.henRule ? (rng() < 0.5 ? 'hen' : 'rooster') : undefined,
         runs,
         runEnergy: RUNNER_MAX_ENERGY,
         restingMs: 0,
         nerveMs:
-          (cfg.nerveMinMs + nerveRoll * (cfg.nerveMaxMs - cfg.nerveMinMs)) *
-          (runs ? RUNNER_NERVE_FACTOR : 1),
+          (species.nerveMinMs + nerveRoll * (species.nerveMaxMs - species.nerveMinMs)) *
+          (runs ? RUNNER_NERVE_FACTOR : 1) *
+          nerveMult,
       });
     }
     coveyId++;
@@ -91,6 +115,43 @@ export function flushCovey(birds: Bird[], birdId: number): Bird[] {
     }
   }
   return flushed;
+}
+
+/**
+ * Hunt the singles: covey survivors that escaped a shooting opportunity
+ * relight in nearby cover, holding very tight. A bird only relights once —
+ * a flushed single (and any bird wild-flushed out of range) is gone for
+ * good. Mutates the eligible birds back to hidden and returns them.
+ */
+export function relightSurvivors(
+  birds: Bird[],
+  escapedIds: number[],
+  bounds: Rect,
+  rng: RNG = Math.random,
+  nerveMult = 1,
+): Bird[] {
+  const relit: Bird[] = [];
+  for (const id of escapedIds) {
+    const b = birds.find((x) => x.id === id);
+    if (!b || b.state !== 'escaped' || b.single) continue;
+    const species = getSpecies(b.speciesId);
+    const away = rng() * Math.PI * 2;
+    const distance = SINGLE_SCATTER_MIN + rng() * (SINGLE_SCATTER_MAX - SINGLE_SCATTER_MIN);
+    b.pos = {
+      x: clamp(b.pos.x + Math.cos(away) * distance, bounds.x + 8, bounds.x + bounds.w - 8),
+      y: clamp(b.pos.y + Math.sin(away) * distance, bounds.y + 8, bounds.y + bounds.h - 8),
+    };
+    b.state = 'hidden';
+    b.single = true;
+    b.coveyId = -b.id; // scattered singles sit alone — the old covey bond is broken
+    b.runs = false; // a scattered single sits, it doesn't run
+    b.nerveMs =
+      (species.nerveMinMs + rng() * (species.nerveMaxMs - species.nerveMinMs)) *
+      SINGLE_NERVE_MULT *
+      nerveMult;
+    relit.push(b);
+  }
+  return relit;
 }
 
 /**

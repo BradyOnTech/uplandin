@@ -3,8 +3,10 @@ import {
   birdsScentingDog,
   birdsSpookedBy,
   flushCovey,
+  relightSurvivors,
   RUNNER_MAX_ENERGY,
   RUNNER_NERVE_FACTOR,
+  SINGLE_NERVE_MULT,
   spawnBirds,
   updateBirdNerve,
   updateBirds,
@@ -12,14 +14,12 @@ import {
   type SpawnConfig,
 } from '../src/game/birds';
 import { dist } from '../src/game/math';
+import { getSpecies } from '../src/game/species';
 
 const CFG: SpawnConfig = {
   patches: [{ x: 20, y: 20, w: 200, h: 150 }],
-  birdCount: 6,
-  coveyMaxSize: 3,
-  runnerChance: 0.4,
-  nerveMinMs: 5000,
-  nerveMaxMs: 9000,
+  birdCount: 12,
+  speciesMix: [{ speciesId: 'bobwhite', weight: 1 }],
 };
 
 /** Deterministic LCG so spawn patterns are reproducible. */
@@ -46,12 +46,13 @@ describe('spawnBirds', () => {
     expect(spawnBirds({ ...CFG, birdCount: 1 }, lcg(3))).toHaveLength(1);
   });
 
-  it('groups birds into coveys bounded by config, clustered together', () => {
-    const birds = spawnBirds({ ...CFG, birdCount: 9 }, lcg(4));
+  it('groups birds into coveys sized by species, clustered together', () => {
+    const bobwhite = getSpecies('bobwhite');
+    const birds = spawnBirds({ ...CFG, birdCount: 24 }, lcg(4));
     const coveys = byCovey(birds);
-    expect(coveys.size).toBeGreaterThan(1); // 9 birds can't fit in one covey of 3
+    expect(coveys.size).toBeGreaterThan(1);
     for (const members of coveys.values()) {
-      expect(members.length).toBeLessThanOrEqual(CFG.coveyMaxSize);
+      expect(members.length).toBeLessThanOrEqual(bobwhite.coveyMax);
       for (let i = 1; i < members.length; i++) {
         // jitter is ±10px per axis, so covey mates stay within ~29px
         expect(dist(members[0].pos, members[i].pos)).toBeLessThanOrEqual(30);
@@ -59,9 +60,80 @@ describe('spawnBirds', () => {
     }
   });
 
-  it('runnerChance 0 spawns no runners, 1 spawns all runners', () => {
-    expect(spawnBirds({ ...CFG, birdCount: 10, runnerChance: 0 }, lcg(5)).every((b) => !b.runs)).toBe(true);
-    expect(spawnBirds({ ...CFG, birdCount: 10, runnerChance: 1 }, lcg(5)).every((b) => b.runs)).toBe(true);
+  it('draws species from the weighted mix and tags every bird', () => {
+    const birds = spawnBirds(
+      {
+        ...CFG,
+        birdCount: 40,
+        speciesMix: [
+          { speciesId: 'sharptail', weight: 0.5 },
+          { speciesId: 'hun', weight: 0.5 },
+        ],
+      },
+      lcg(5),
+    );
+    const ids = new Set(birds.map((b) => b.speciesId));
+    expect(ids.has('sharptail')).toBe(true);
+    expect(ids.has('hun')).toBe(true);
+    expect([...ids].every((id) => id === 'sharptail' || id === 'hun')).toBe(true);
+    // covey members share a species
+    for (const members of byCovey(birds).values()) {
+      expect(new Set(members.map((b) => b.speciesId)).size).toBe(1);
+    }
+  });
+
+  it('mix weights approximate bird share despite covey-size differences', () => {
+    // 80% ringneck (pairs) / 20% hun (big coveys): without covey-size
+    // normalization one hun covey eats half the stocking.
+    const birds = spawnBirds(
+      {
+        ...CFG,
+        birdCount: 200,
+        speciesMix: [
+          { speciesId: 'ringneck', weight: 0.8 },
+          { speciesId: 'hun', weight: 0.2 },
+        ],
+      },
+      lcg(11),
+    );
+    const ringnecks = birds.filter((b) => b.speciesId === 'ringneck').length / birds.length;
+    expect(ringnecks).toBeGreaterThan(0.6);
+    expect(ringnecks).toBeLessThan(0.95);
+  });
+
+  it('sexes henRule species roughly evenly and leaves others unsexed', () => {
+    const ringnecks = spawnBirds(
+      { ...CFG, birdCount: 60, speciesMix: [{ speciesId: 'ringneck', weight: 1 }] },
+      lcg(6),
+    );
+    const hens = ringnecks.filter((b) => b.sex === 'hen').length;
+    expect(hens).toBeGreaterThan(12);
+    expect(hens).toBeLessThan(48);
+    expect(ringnecks.every((b) => b.sex === 'hen' || b.sex === 'rooster')).toBe(true);
+
+    const quail = spawnBirds({ ...CFG, birdCount: 10 }, lcg(7));
+    expect(quail.every((b) => b.sex === undefined)).toBe(true);
+  });
+
+  it('wind strength shortens nerve via nerveMult', () => {
+    const calm = spawnBirds({ ...CFG, birdCount: 10 }, lcg(8));
+    const strong = spawnBirds({ ...CFG, birdCount: 10, nerveMult: 0.8 }, lcg(8));
+    for (let i = 0; i < 10; i++) {
+      expect(strong[i].nerveMs).toBeCloseTo(calm[i].nerveMs * 0.8, 5);
+    }
+  });
+
+  it('runnerChance comes from the species', () => {
+    const roosters = spawnBirds(
+      { ...CFG, birdCount: 30, speciesMix: [{ speciesId: 'ringneck', weight: 1 }] },
+      lcg(9),
+    );
+    const woodcock = spawnBirds(
+      { ...CFG, birdCount: 10, speciesMix: [{ speciesId: 'woodcock', weight: 1 }] },
+      lcg(10),
+    );
+    expect(roosters.some((b) => b.runs)).toBe(true); // 75% runners
+    expect(woodcock.every((b) => !b.runs)).toBe(true); // 0% runners
   });
 });
 
@@ -69,6 +141,7 @@ function bird(over: Partial<Bird>): Bird {
   return {
     id: 1,
     coveyId: 0,
+    speciesId: 'bobwhite',
     pos: { x: 0, y: 0 },
     state: 'hidden',
     runs: false,
@@ -103,6 +176,42 @@ describe('flushCovey', () => {
 
   it('returns empty for an unknown id', () => {
     expect(flushCovey([], 99)).toEqual([]);
+  });
+});
+
+describe('relightSurvivors (hunt the singles)', () => {
+  const bounds = { x: 0, y: 0, w: 1200, h: 700 };
+
+  it('relights escaped birds nearby as tight-holding singles', () => {
+    const b = bird({ id: 1, pos: { x: 600, y: 350 }, state: 'escaped', runs: true });
+    const mate = bird({ id: 2, pos: { x: 620, y: 350 }, state: 'escaped' });
+    const relit = relightSurvivors([b, mate], [1, 2], bounds, () => 0.5);
+    expect(relit).toEqual([b, mate]);
+    expect(b.state).toBe('hidden');
+    expect(b.single).toBe(true);
+    expect(b.runs).toBe(false); // singles sit
+    // The covey bond is broken: one single flushing must not lift the other.
+    expect(b.coveyId).not.toBe(mate.coveyId);
+    const species = getSpecies('bobwhite');
+    expect(b.nerveMs).toBeGreaterThanOrEqual(species.nerveMinMs * SINGLE_NERVE_MULT);
+    const moved = dist(b.pos, { x: 600, y: 350 });
+    expect(moved).toBeGreaterThanOrEqual(90);
+    expect(moved).toBeLessThanOrEqual(200);
+  });
+
+  it('a single only relights once — the second escape is for good', () => {
+    const b = bird({ id: 1, pos: { x: 600, y: 350 }, state: 'escaped', single: true });
+    expect(relightSurvivors([b], [1], bounds, () => 0.5)).toEqual([]);
+    expect(b.state).toBe('escaped');
+  });
+
+  it('ignores birds that are not escaped and stays in bounds', () => {
+    const downed = bird({ id: 1, state: 'downed' });
+    expect(relightSurvivors([downed], [1], bounds, () => 0.5)).toEqual([]);
+    const corner = bird({ id: 2, pos: { x: 4, y: 4 }, state: 'escaped' });
+    relightSurvivors([corner], [2], bounds, () => 0.001);
+    expect(corner.pos.x).toBeGreaterThanOrEqual(bounds.x + 8);
+    expect(corner.pos.y).toBeGreaterThanOrEqual(bounds.y + 8);
   });
 });
 
@@ -162,15 +271,19 @@ describe('birdsSpookedBy (sprinting hunter)', () => {
 });
 
 describe('bird nerve', () => {
-  it('assigns nerve from the configured range, runners discounted', () => {
-    const birds = spawnBirds({ ...CFG, birdCount: 20 }, lcg(7));
+  it('assigns nerve from the species range, runners discounted', () => {
+    const species = getSpecies('ringneck');
+    const birds = spawnBirds(
+      { ...CFG, birdCount: 20, speciesMix: [{ speciesId: 'ringneck', weight: 1 }] },
+      lcg(7),
+    );
     expect(birds.some((b) => b.runs)).toBe(true); // sample actually has runners
     for (const b of birds) {
       if (b.runs) {
-        expect(b.nerveMs).toBeLessThanOrEqual(CFG.nerveMaxMs * RUNNER_NERVE_FACTOR + 1e-9);
+        expect(b.nerveMs).toBeLessThanOrEqual(species.nerveMaxMs * RUNNER_NERVE_FACTOR + 1e-9);
       } else {
-        expect(b.nerveMs).toBeGreaterThanOrEqual(CFG.nerveMinMs);
-        expect(b.nerveMs).toBeLessThanOrEqual(CFG.nerveMaxMs);
+        expect(b.nerveMs).toBeGreaterThanOrEqual(species.nerveMinMs);
+        expect(b.nerveMs).toBeLessThanOrEqual(species.nerveMaxMs);
       }
     }
   });

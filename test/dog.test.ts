@@ -31,6 +31,7 @@ function birdAt(x: number, y: number, over: Partial<Bird> = {}): Bird {
   return {
     id: 1,
     coveyId: 1,
+    speciesId: 'bobwhite',
     pos: { x, y },
     state: 'hidden',
     runs: false,
@@ -242,6 +243,16 @@ describe('Dog', () => {
       const bird = birdAt(160, 100); // 60px — beyond base scent range
       run(dog, [bird], 400, { windAngle: Math.PI });
       expect(dog.state).toBe('pointing');
+    });
+
+    it('strong wind (scentMult) stretches the nose', () => {
+      // 68px out: beyond this dog's 63px base reach, inside 63 × 1.25.
+      const calmDog = makeDog(100, 100);
+      run(calmDog, [birdAt(168, 100)], 30);
+      expect(calmDog.state).toBe('quartering');
+      const strongDog = makeDog(100, 100);
+      run(strongDog, [birdAt(168, 100)], 30, { scentMult: 1.25 });
+      expect(strongDog.state).not.toBe('quartering'); // tracking or already pointing
     });
   });
 
