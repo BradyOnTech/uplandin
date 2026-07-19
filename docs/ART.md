@@ -210,6 +210,42 @@ bare aspen line, rimrock rim, saguaro line, oak-studded ridge.
   olive background — vintage sporting-dog oil portrait rendered in
   16-bit pixels. [style block]
 
+## The road to production quality
+
+Production look = **assets × presentation code**, roughly half each. The
+covey-stacking complaint proved the principle: the bobwhite sheet was
+fine — the launch choreography was the problem. Track both.
+
+**Phase 1 — complete the asset set** (current generation pipeline; every
+batch ships incrementally behind the fallback maps):
+13 remaining bird sheets → 6 remaining backdrop plates (+ snow/rain
+variants for the common regions) → 11 dog sheets (the field view's star)
+→ hunter walk/sprint sheet → 7 tilesets (the flat/bounded-cover rules) →
+title screen, US map plate, icon sheet, kennel portraits.
+
+**Phase 2 — hand-finish to true pixels** (the 80→100): re-pixel each
+@mid source in Aseprite on the locked palette — uniform 1px outlines,
+kill orphan pixels, verify at 1x — or regenerate finals with a
+pixel-native tool using the drafts as reference. The honest production
+option: **commission a pixel artist for a consistency pass** — the AI
+drafts function as a complete, unambiguous spec, which makes this cheap;
+a human unifying outlines and shading across ~40 sheets is what
+separates "good AI art" from shipped-game art.
+
+**Phase 3 — presentation code (juice — free, huge)**:
+done: covey fan, spread launches, altitude depth-scaling. Next, in
+impact order: a real **pixel bitmap font** for all UI (the single
+biggest production-feel upgrade); **bird ground shadows** in the flush
+view (ellipse shrinking with altitude — sells height instantly);
+**feather-puff burst** on hits + shell eject; weather dressing
+(tint overlay + snow/rain particles in both views); backdrop
+**parallax** (split plates into sky/hills/foreground); quick fade/iris
+scene transitions; field-view walk cycles once dog sheets land.
+
+**Phase 4 — cohesion audit**: screenshot matrix of every region ×
+weather × a flush; fix outliers; final palette-enforcement pass
+(index every shipped PNG to the .gpl).
+
 ## Integration notes
 
 - Ship sheets as PNG + Phaser atlas JSON; keep 1 game px = 1 asset px
