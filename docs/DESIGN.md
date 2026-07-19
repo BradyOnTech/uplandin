@@ -11,8 +11,12 @@ Check items off (and adjust them) as tranches ship.
 
 - **The dog is the game.** Finding, pointing, holding, retrieving — your job is
   to read the dog, the wind, and the clock.
-- **Hunting realism over arcade realism.** Wind, nerve, wild flushes, protected
-  birds, puppy mistakes. Target discrimination makes it a hunting game.
+- **Hunting realism over arcade realism — in the field.** Wind, nerve, wild
+  flushes, protected birds, puppy mistakes. Target discrimination makes it
+  a hunting game. **The flush view is the opposite: pure Duck Hunt.** At
+  most three readable targets airborne at once, launching in waves across
+  three lanes as slots free — a big covey is a longer shooting sequence,
+  never a blob. Fun beats covey realism the moment the view switches.
 - **Progression you feel.** A level-1 dog is bad in specific, visible ways;
   a level-10 dog is a partner. Gear changes what questions you can answer.
 - **Everything important is data.** Species, breeds, areas, and gear are
