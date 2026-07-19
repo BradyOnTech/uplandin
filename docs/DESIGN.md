@@ -229,8 +229,15 @@ announce their unlocks at the hunt summary.
     distance.
   - Tier 3 **GPS + map** (lvl 9): corner minimap with hunter/dog (gold on
     point) + remote recall at any range.
-- Two-dog hunting: second `Dog` instance; **honoring** — when one dog points,
-  the other stops and backs. **[planned — T5]**
+- Two-dog hunting **[built]**: mark a bracemate in the kennel (hunter lv 7)
+  or pick a second dog in Quick Hunt. **Honoring**: a dog within ~150px of
+  a packmate's point stops and backs (cool-blue tint) until it resolves —
+  but rolls its steadiness once per point, and a soft young dog may *steal
+  the point* instead, with all the bumping that invites. Honoring breaks
+  off to retrieve. Work is credited per dog (points, retrieves, birds over
+  the point) and each earns its own XP at the summary; the retrieve goes to
+  whichever dog gets there first. The hen fine now docks the *hunter's* XP —
+  he pulled the trigger, not the dog.
 
 ## Tranche sequence
 
@@ -260,7 +267,10 @@ announce their unlocks at the hunt summary.
   flush), prairie chicken, blue grouse, the 5 quail species, per-species
   run speed; Sonoran Desert, High Rockies, and Pacific Valleys open
   (5 new areas, 11 total).
-- **T5 — two dogs**: second instance, honoring, shared retrieves.
+- **T5 — two dogs [shipped]**: brace selection in the kennel + Quick Hunt
+  dog-2 row, honoring (with point-stealing by soft pups), per-dog XP
+  credit, shared retrieves, per-dog arrows/minimap dots/HUD lines; hen
+  fine moved to hunter XP.
 - **T6 — fieldcraft**: slope (chukar/mountain-quail uphill rule), per-hunt
   conditions (frost/heat/rain/snow), time of day, hun circle-back, grouse
   timber screens, blocking runners, walk-in craft. See Fieldcraft section.
