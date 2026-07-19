@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { escapeVelocity, escapeVelocityFan, hitTest } from '../src/game/shot';
+import {
+  escapeVelocity,
+  escapeVelocityFan,
+  exitDirFor,
+  glideStep,
+  GLIDE_MAX,
+  hitTest,
+  LEVEL_MAX,
+  levelStep,
+} from '../src/game/shot';
 
 describe('hitTest', () => {
   it('connects inside the spread', () => {
@@ -45,6 +54,31 @@ describe('escapeVelocity', () => {
       expect(vels[i].x - vels[i - 1].x).toBeGreaterThan(15); // px/s of divergence
     }
     for (const v of vels) expect(v.y).toBeLessThan(-40); // everyone still genuinely climbs
+  });
+
+  it('the tilted playfield: a gliding bird always drives off-screen, even from a hover', () => {
+    // The floating-quail bug: a near-vertical riser has ~0 lateral speed,
+    // and a multiplicative boost multiplies nothing. The glide must build
+    // real exit speed from a standstill.
+    const vel = { x: 2, y: -120 };
+    const dir = exitDirFor(vel.x, 240);
+    for (let i = 0; i < 30; i++) glideStep(vel, dir, 0.05); // 1.5 simulated seconds
+    expect(Math.abs(vel.x)).toBeGreaterThanOrEqual(100); // genuinely leaving
+    expect(Math.abs(vel.x)).toBeLessThanOrEqual(GLIDE_MAX);
+    expect(vel.y).toBeGreaterThan(0); // wings locked, gently sinking
+    // The rooster's level-off builds an even faster crossing exit.
+    const rv = { x: 40, y: -100 };
+    for (let i = 0; i < 40; i++) levelStep(rv, 1, 0.05);
+    expect(rv.x).toBeGreaterThanOrEqual(180);
+    expect(rv.x).toBeLessThanOrEqual(LEVEL_MAX);
+    expect(Math.abs(rv.y)).toBeLessThan(5); // climb is gone — pure crossing shot
+  });
+
+  it('exitDirFor leaves with momentum, or by the nearer edge from a hover', () => {
+    expect(exitDirFor(80, 240)).toBe(1);
+    expect(exitDirFor(-80, 240)).toBe(-1);
+    expect(exitDirFor(3, 100)).toBe(-1); // hovering on the left: leave left
+    expect(exitDirFor(-3, 380)).toBe(1); // hovering on the right: leave right
   });
 
   it('shapes the arc by species flight style', () => {

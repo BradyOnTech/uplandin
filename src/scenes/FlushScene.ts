@@ -7,7 +7,7 @@ import { slopeFlightMult, type SlopeApproach } from '../game/fieldcraft';
 import { getGun, type GunConfig } from '../game/guns';
 import { clamp, dist } from '../game/math';
 import { regionOfArea } from '../game/regions';
-import { escapeVelocityFan, hitTest } from '../game/shot';
+import { escapeVelocityFan, exitDirFor, glideStep, hitTest, levelStep } from '../game/shot';
 import { getSpecies, type SpeciesConfig } from '../game/species';
 import type { HuntState } from '../game/state';
 import type { Vec2 } from '../game/types';
@@ -43,6 +43,8 @@ interface FlyingBird {
   depthBias: number;
   /** Time on the wing — drives the glide and level-off flight phases. */
   airMs: number;
+  /** Locked once a flight phase begins: which screen edge this bird is leaving by. */
+  exitDir?: 1 | -1;
   status: 'waiting' | 'flying' | 'falling' | 'done';
 }
 
@@ -204,19 +206,22 @@ export class FlushScene extends Phaser.Scene {
       if (b.status === 'flying') {
         b.airMs += delta;
         const flight = b.species.flight;
-        // Quail move: burst, then lock wings and glide off on a gentle sink.
+        // Quail move: burst, then lock wings and glide — always driving for
+        // a screen exit, never floating mid-sky.
         if (flight.glideAfterMs !== undefined && b.airMs > flight.glideAfterMs) {
-          b.vel.y += (14 - b.vel.y) * Math.min(1, dt * 2.2);
-          if (Math.abs(b.vel.x) < 140) b.vel.x *= 1 + 0.35 * dt; // gliders carry their speed
+          b.exitDir ??= exitDirFor(b.vel.x, b.sprite.x);
+          glideStep(b.vel, b.exitDir, dt);
           if (b.sprite.anims.isPlaying) {
             b.sprite.stop();
             b.sprite.setFrame(1); // wings locked
           }
+          b.sprite.setFlipX(b.vel.x < 0);
         }
-        // Rooster move: stop climbing and accelerate into a crossing shot.
+        // Rooster move: stop climbing and accelerate into a fast crossing exit.
         if (flight.levelAfterMs !== undefined && b.airMs > flight.levelAfterMs) {
-          b.vel.y += (0 - b.vel.y) * Math.min(1, dt * 2.5);
-          if (Math.abs(b.vel.x) < 210) b.vel.x *= 1 + 0.9 * dt;
+          b.exitDir ??= exitDirFor(b.vel.x, b.sprite.x);
+          levelStep(b.vel, b.exitDir, dt);
+          b.sprite.setFlipX(b.vel.x < 0);
         }
         b.wobble += dt * 9;
         b.sprite.x += b.vel.x * dt + Math.sin(b.wobble) * b.species.flight.wobble * dt;

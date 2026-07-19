@@ -60,3 +60,32 @@ export function escapeVelocityFan(
     y: -Math.abs(Math.sin(angle)) * speed,
   };
 }
+
+// The tilted playfield: an arcade target must always threaten to leave.
+// Whatever a bird's flight phase, it accelerates toward a screen exit —
+// floating mid-screen is realism the game can't afford.
+export const GLIDE_SINK = 18; // px/s of gentle descent on locked wings
+export const GLIDE_ACCEL = 130; // px/s² toward the exit
+export const GLIDE_MAX = 150; // glide exit speed cap
+export const LEVEL_ACCEL = 150; // the rooster pours it on harder
+export const LEVEL_MAX = 210;
+
+/** Which side a bird should leave by: with its momentum, else the nearer edge. */
+export function exitDirFor(velX: number, x: number, screenW = 480): 1 | -1 {
+  if (Math.abs(velX) > 20) return velX > 0 ? 1 : -1;
+  return x >= screenW / 2 ? 1 : -1;
+}
+
+/** Quail glide: wings locked, gentle sink, always accelerating off-screen. */
+export function glideStep(vel: Vec2, exitDir: 1 | -1, dt: number): void {
+  vel.y += (GLIDE_SINK - vel.y) * Math.min(1, dt * 2.2);
+  vel.x += exitDir * GLIDE_ACCEL * dt;
+  if (vel.x * exitDir > GLIDE_MAX) vel.x = GLIDE_MAX * exitDir;
+}
+
+/** Rooster level-off: climb dies, speed builds — a fast crossing exit. */
+export function levelStep(vel: Vec2, exitDir: 1 | -1, dt: number): void {
+  vel.y += (0 - vel.y) * Math.min(1, dt * 2.5);
+  vel.x += exitDir * LEVEL_ACCEL * dt;
+  if (vel.x * exitDir > LEVEL_MAX) vel.x = LEVEL_MAX * exitDir;
+}
