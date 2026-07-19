@@ -93,6 +93,18 @@ Base: `DOG_SPEED` 75, `TRACKING_SPEED` 90, `SCENT_RADIUS` 45,
 `POINT_RANGE` 12, `QUARTER_RANGE` 130 (×Range stat = leash), `WHISTLE_RANGE`
 250, `HONOR_SIGHT` 150, plus private creep/break/retrieve timings inline.
 
+**Cover work** — the dog hunts objectives, not open ground: it casts to the
+nearest unchecked cover patch inside its leash of the hunter
+(`CAST_SPEED_MULT` 1.15), serpentines inside it until it judges it checked,
+remembers it (`COVER_REVISIT_MS` 50s), and moves to the next; only a covert
+with nothing left to check gets the old open sweep. Working time =
+patch area × `COVER_WORK_MS_PER_PX2` (0.9), clamped
+`COVER_WORK_MIN/MAX_MS` (2.2s/10s), × `coverThoroughness(level)`
+(0.62 at lv1 → 1.25 at lv10 — **a pup pops out of cover early and leaves
+birds behind; that's the point**), × ±15% noise. Raise
+`COVER_WORK_MS_PER_PX2` for a more methodical dog, lower it for a faster,
+flashier one.
+
 breeds.ts owns the formulas: `statMult` (1–5 star → 0.9–1.3×), growth
 (+5%/lvl strong axes, +3% others, cap +40%), nose maturity (0.7+0.03/lvl),
 `creepChance`/`breakChance` (steadiness+level → puppy mistakes; break

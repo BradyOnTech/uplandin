@@ -52,6 +52,31 @@ const BREAKING_MS = 2500;
 const BREAK_BUMP_RADIUS = 12;
 const ANCHOR_TURN_RATE = 2.2; // rad/s pulled back toward the hunter past quartering range
 
+// Cover work: a bird dog doesn't scramble open ground — it hunts objectives.
+// Pick a likely patch, cast to it, work it until it feels checked, move on.
+export const CAST_SPEED_MULT = 1.15; // purposeful trot on the way to cover
+export const COVER_WORK_MS_PER_PX2 = 0.9; // base working time per px² of patch
+export const COVER_WORK_MIN_MS = 2200;
+export const COVER_WORK_MAX_MS = 10_000;
+export const COVER_REVISIT_MS = 50_000; // a checked patch stays checked this long
+const COVER_TURN_RATE = 3.2; // rad/s steering onto the cast line
+const COVER_EDGE_MARGIN = 8; // stay inside the patch while working it
+const COVER_GRACE = 9; // weave carrying the dog this far past the edge still counts as working
+const COVER_WEAVE_MULT = 1.7; // busier, tighter serpentine inside cover
+/**
+ * How completely the dog checks cover before calling it empty, by level:
+ * a first-season pup pops out of the ragweed early and leaves birds behind;
+ * a finished dog combs it. Multiplies the patch's working time.
+ */
+export function coverThoroughness(level: number): number {
+  return Math.min(1.25, 0.55 + 0.07 * level);
+}
+
+const rectCx = (r: Rect): number => r.x + r.w / 2;
+const rectCy = (r: Rect): number => r.y + r.h / 2;
+const rectContains = (r: Rect, p: Vec2): boolean =>
+  p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+
 /** Environment the dog is hunting in for this tick. */
 export interface DogEnv {
   hunterPos?: Vec2;
@@ -69,6 +94,8 @@ export interface DogEnv {
   drainMult?: number;
   /** Conditions multiplier on unmarked-fall search time (snow helps, rain hurts). */
   searchMult?: number;
+  /** Cover patches in this covert — the dog hunts these as objectives. */
+  patches?: Rect[];
 }
 
 export interface DogProfile {
@@ -119,6 +146,11 @@ export class Dog {
   /** One honor roll per packmate point: a soft pup may steal it instead. */
   private honorRolled = false;
   private willHonor = false;
+  /** Current cover objective: index into env.patches, or null (open-ground sweep). */
+  private coverIdx: number | null = null;
+  private coverWorkMsLeft = 0;
+  /** Patch index → ms until the dog considers it worth re-checking. */
+  private checkedCovers = new Map<number, number>();
 
   constructor(
     public pos: Vec2,
@@ -319,14 +351,120 @@ export class Dog {
       return;
     }
 
-    // Quartering: serpentine sweep, anchored to the hunter out to Range.
+    // Quartering: hunt objectives, not open ground. With cover in reach the
+    // dog casts to a patch and works it until it feels checked; only a
+    // covert with nothing left to check gets the plain serpentine sweep.
     this.state = 'quartering';
     this.work(dtMs * (env.drainMult ?? 1));
+    this.tickCoverMemory(dtMs);
+    const patch = this.chooseCover(env);
+
+    // Working keeps a grace margin: the serpentine naturally swings a body
+    // length past the edge, and flapping back to "casting" there would
+    // stall the work clock and jitter the dog.
+    const working =
+      patch &&
+      rectContains(
+        { x: patch.x - COVER_GRACE, y: patch.y - COVER_GRACE, w: patch.w + COVER_GRACE * 2, h: patch.h + COVER_GRACE * 2 },
+        this.pos,
+      );
+
+    if (patch && !working) {
+      // Casting: a purposeful trot to the objective, only a hint of weave.
+      this.weavePhase += dt * WEAVE_RATE;
+      const aim = Math.atan2(rectCy(patch) - this.pos.y, rectCx(patch) - this.pos.x);
+      this.heading = turnToward(this.heading, aim, COVER_TURN_RATE * dt);
+      this.steerToAnchor(dt, env.hunterPos);
+      this.advance(this.heading + Math.sin(this.weavePhase) * 0.15, this.speed * CAST_SPEED_MULT * dt);
+      return;
+    }
+
+    if (patch && working) {
+      // Working the cover: a tight serpentine held inside the patch until
+      // the dog judges it checked — then it's remembered and the dog moves
+      // to the next objective. Birds interrupt this at any moment (above).
+      this.coverWorkMsLeft -= dtMs;
+      if (this.coverWorkMsLeft <= 0) {
+        this.checkedCovers.set(this.coverIdx!, COVER_REVISIT_MS);
+        this.coverIdx = null;
+        return;
+      }
+      this.weavePhase += dt * WEAVE_RATE * COVER_WEAVE_MULT;
+      this.steerInsideRect(dt, patch);
+      this.advance(this.heading + Math.sin(this.weavePhase) * this.weave, this.speed * dt);
+      return;
+    }
+
+    // No cover worth checking: the classic open-ground sweep.
     this.weavePhase += dt * WEAVE_RATE;
     this.steerOffEdges(dt);
     this.steerToAnchor(dt, env.hunterPos);
     const weave = Math.sin(this.weavePhase) * this.weave;
     this.advance(this.heading + weave, this.speed * dt);
+  }
+
+  /** Checked patches become interesting again as their cooldown runs out. */
+  private tickCoverMemory(dtMs: number): void {
+    for (const [idx, ms] of this.checkedCovers) {
+      if (ms - dtMs <= 0) this.checkedCovers.delete(idx);
+      else this.checkedCovers.set(idx, ms - dtMs);
+    }
+  }
+
+  /**
+   * The current cover objective, picking a new one when free: the nearest
+   * unchecked patch that stays inside the dog's range of the hunter. The
+   * pick sets the working clock — patch size × level thoroughness, so a
+   * pup calls a big CRP field checked long before it is.
+   */
+  private chooseCover(env: DogEnv): Rect | null {
+    const patches = env.patches ?? [];
+    // Drop the objective if the hunter has moved on past range of it.
+    if (
+      this.coverIdx !== null &&
+      env.hunterPos &&
+      dist({ x: rectCx(patches[this.coverIdx]), y: rectCy(patches[this.coverIdx]) }, env.hunterPos) >
+        this.rangeRadius * 1.2
+    ) {
+      this.coverIdx = null;
+    }
+    if (this.coverIdx !== null) return patches[this.coverIdx] ?? null;
+
+    let best: number | null = null;
+    let bestDist = Infinity;
+    for (let i = 0; i < patches.length; i++) {
+      if (this.checkedCovers.has(i)) continue;
+      const c = { x: rectCx(patches[i]), y: rectCy(patches[i]) };
+      if (env.hunterPos && dist(c, env.hunterPos) > this.rangeRadius) continue;
+      const d = dist(this.pos, c);
+      if (d < bestDist) {
+        best = i;
+        bestDist = d;
+      }
+    }
+    if (best === null) return null;
+    this.coverIdx = best;
+    const p = patches[best];
+    this.coverWorkMsLeft =
+      clamp(p.w * p.h * COVER_WORK_MS_PER_PX2, COVER_WORK_MIN_MS, COVER_WORK_MAX_MS) *
+      coverThoroughness(this.profile.level) *
+      (0.85 + this.rng() * 0.3);
+    // Enter working the long axis — the natural line through a strip of cover.
+    this.heading = p.w >= p.h ? (this.rng() < 0.5 ? 0 : Math.PI) : (this.rng() < 0.5 ? 1 : -1) * (Math.PI / 2);
+    return p;
+  }
+
+  /** While working cover, bounce off the patch edges instead of the field's. */
+  private steerInsideRect(dt: number, r: Rect): void {
+    let tx = 0;
+    let ty = 0;
+    if (this.pos.x < r.x + COVER_EDGE_MARGIN) tx = 1;
+    else if (this.pos.x > r.x + r.w - COVER_EDGE_MARGIN) tx = -1;
+    if (this.pos.y < r.y + COVER_EDGE_MARGIN) ty = 1;
+    else if (this.pos.y > r.y + r.h - COVER_EDGE_MARGIN) ty = -1;
+    if (tx === 0 && ty === 0) return;
+    const toward = Math.atan2(ty || Math.sin(this.heading) * 0.2, tx || Math.cos(this.heading) * 0.2);
+    this.heading = turnToward(this.heading, toward, EDGE_TURN_RATE * 1.4 * dt);
   }
 
   /** Past its Range from the hunter, the dog swings back — harder the farther it is. */

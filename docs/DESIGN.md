@@ -81,6 +81,12 @@ Steadiness→mistake resistance, Stamina→hunt-day endurance.
 - **Creep & bump** (puppy mistakes): on point, a young dog may creep forward;
   inside bump distance the bird flushes wild, no shot. ~25%/point at level 1
   for soft breeds → ~2% at level 10.
+- **Cover work** [built]: the dog hunts objectives, not open ground — it
+  casts to likely cover, works it in a tight serpentine until it feels
+  checked, and moves to the next patch, remembering what it's already
+  combed. Sometimes the birds are right there, sometimes they take real
+  working, often the cover is empty. Thoroughness scales with level: a pup
+  pops out early and leaves birds behind.
 - **Point pressure**: bird nerve drains faster under a crowding puppy (~1.4×)
   and slower under a veteran who gives the bird room (~0.6×). Experienced
   dogs also point from slightly farther out.

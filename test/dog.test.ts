@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Bird } from '../src/game/birds';
 import { getBreed, type BreedConfig } from '../src/game/breeds';
-import { Dog, HONOR_SIGHT, QUARTER_RANGE, SCENT_RADIUS, scentRange, WHISTLE_RANGE, type DogEnv } from '../src/game/dog';
+import { Dog, coverThoroughness, HONOR_SIGHT, QUARTER_RANGE, SCENT_RADIUS, scentRange, WHISTLE_RANGE, type DogEnv } from '../src/game/dog';
 import { FIELD_BOUNDS, type Rect } from '../src/game/field';
 import { dist } from '../src/game/math';
 import type { RNG } from '../src/game/types';
@@ -422,5 +422,71 @@ describe('Dog', () => {
     const gsp = getBreed('gsp');
     const dog = makeDog(0, 0, 1, () => 0.5, gsp);
     expect(dog.pressure).toBeCloseTo(1.35, 2);
+  });
+
+  describe('cover work', () => {
+    const patch: Rect = { x: 120, y: 80, w: 90, h: 60 };
+    const farPatch: Rect = { x: 150, y: 90, w: 60, h: 40 };
+    const hunter = { x: 60, y: 110 };
+
+    it('casts to cover and works it instead of scrambling open ground', () => {
+      const dog = makeDog(40, 100);
+      const env: DogEnv = { hunterPos: hunter, patches: [patch] };
+      let insideMs = 0;
+      for (let t = 0; t < 12_000; t += 16) {
+        dog.update(16, [], env);
+        if (
+          dog.pos.x >= patch.x && dog.pos.x <= patch.x + patch.w &&
+          dog.pos.y >= patch.y && dog.pos.y <= patch.y + patch.h
+        ) insideMs += 16;
+      }
+      // A dog with one objective in range spends real time working it —
+      // far more than a random sweep of the whole field would produce.
+      expect(insideMs).toBeGreaterThan(2500);
+    });
+
+    it('remembers checked cover and moves on to the next patch', () => {
+      const second: Rect = { x: 20, y: 40, w: 70, h: 50 };
+      const dog = makeDog(130, 100);
+      const env: DogEnv = { hunterPos: { x: 110, y: 100 }, patches: [patch, second] };
+      let visitedSecondAfterFirst = false;
+      let firstChecked = false;
+      for (let t = 0; t < 40_000; t += 16) {
+        dog.update(16, [], env);
+        const inFirst =
+          dog.pos.x >= patch.x && dog.pos.x <= patch.x + patch.w &&
+          dog.pos.y >= patch.y && dog.pos.y <= patch.y + patch.h;
+        const inSecond =
+          dog.pos.x >= second.x && dog.pos.x <= second.x + second.w &&
+          dog.pos.y >= second.y && dog.pos.y <= second.y + second.h;
+        if (firstChecked && inSecond) visitedSecondAfterFirst = true;
+        if (!firstChecked && !inFirst && t > 6000) firstChecked = true;
+      }
+      expect(visitedSecondAfterFirst).toBe(true);
+    });
+
+    it('ignores cover beyond its range of the hunter', () => {
+      const distant: Rect = { x: 600, y: 600, w: 80, h: 60 };
+      const dog = makeDog(40, 100, 10, () => 0.5, testBreed);
+      const env: DogEnv = { hunterPos: hunter, patches: [distant] };
+      for (let t = 0; t < 8000; t += 16) dog.update(16, [], env);
+      // Never dragged out of its working range chasing unreachable cover.
+      expect(dist(dog.pos, hunter)).toBeLessThanOrEqual(dog.rangeRadius * 1.3);
+    });
+
+    it('a pup calls cover checked sooner than a finished dog', () => {
+      expect(coverThoroughness(1)).toBeLessThan(coverThoroughness(10) * 0.6);
+    });
+
+    it('still points a bird hidden in the cover it works', () => {
+      const dog = makeDog(100, 100);
+      const bird = birdAt(160, 110);
+      const env: DogEnv = { hunterPos: { x: 100, y: 160 }, patches: [farPatch] };
+      for (let t = 0; t < 10_000 && dog.state !== 'pointing'; t += 16) {
+        dog.update(16, [bird], env);
+      }
+      expect(dog.state).toBe('pointing');
+      expect(dog.pointedBirdId).toBe(bird.id);
+    });
   });
 });

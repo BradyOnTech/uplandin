@@ -68,10 +68,10 @@ const TINT_HONORING = 0xa8d4e8; // backing dog reads cool blue
 // BIRD_SHEETS): breeds and regions with painted assets use them, everything
 // else keeps the placeholder textures until its art lands.
 const DOG_SHEETS: Record<string, string> = { 'english-setter': 'setter-field' };
-/** Sheet cells are 32×20 (the art-pipeline size); the field world is scaled
- * for a ~16px dog, so painted dogs draw at half size — a clean integer
- * crunch. The eventual hand-clean pass can retarget 16×10 native. */
-const DOG_SHEET_SCALE = 0.5;
+/** Painted dogs draw at full sheet size (32×20): the dog is the star of the
+ * field view and reads from across the room, mockup-style. Purely visual —
+ * every mechanical radius is in sim px and unchanged. */
+const DOG_SHEET_SCALE = 1;
 const DOG_FRAME_POINT = 2; // frames 0/1 = run extended/gathered, 2 = point
 const FIELD_TILESETS: Record<string, string> = { 'southern-plains': 'tiles-southern-plains' };
 // Tileset frame order (fixed by the art pipeline): open grass, cover,
@@ -82,6 +82,12 @@ const TILE_MESQUITE = 2;
 
 // Whistle button zone (bottom-right corner, screen coords). Taps here don't move the hunter.
 const WHISTLE_BTN = { x: 452, y: 246, w: 48, h: 20 };
+
+/** Brighten/darken a 0xRRGGBB color by a factor. */
+function scaleColor(c: number, f: number): number {
+  const ch = (v: number) => Math.min(255, Math.round(v * f));
+  return (ch((c >> 16) & 0xff) << 16) | (ch((c >> 8) & 0xff) << 8) | ch(c & 0xff);
+}
 
 /**
  * Top-down view of the field. The world is bigger than the screen; the camera
@@ -400,6 +406,7 @@ export class FieldScene extends Phaser.Scene {
         honorPoint: packmate?.pos,
         drainMult: weather.stamina,
         searchMult: weather.search,
+        patches: this.area.patches,
       });
       this.hunt.dogsPos[i] = { ...dog.pos };
 
@@ -831,9 +838,14 @@ export class FieldScene extends Phaser.Scene {
     g.fillStyle(0xb08d5f).fillRect(7, 0, 3, 3); // head
     g.generateTexture('dog', 10, 6);
     g.clear();
-    g.fillStyle(COLOR_HUNTER).fillRect(0, 0, 6, 6);
-    g.fillStyle(0x2a2a2a).fillRect(1, 1, 2, 2);
-    g.generateTexture('hunter', 6, 6);
+    // The mockup hunter in miniature: blaze cap, face, vest, dark legs.
+    g.fillStyle(COLOR_HUNTER).fillRect(1, 0, 6, 3); // cap (also the minimap color)
+    g.fillStyle(0xd8a878).fillRect(2, 3, 4, 2); // face
+    g.fillStyle(0x5c5a34).fillRect(1, 5, 6, 4); // vest
+    g.fillStyle(0x6b4a2a).fillRect(6, 4, 3, 1); // gun over the shoulder
+    g.fillStyle(0x3a3226).fillRect(2, 9, 2, 3); // legs
+    g.fillStyle(0x3a3226).fillRect(5, 9, 2, 3);
+    g.generateTexture('hunter', 9, 12);
     g.destroy();
   }
 
@@ -846,30 +858,91 @@ export class FieldScene extends Phaser.Scene {
     const treeCount = Math.round((w.w * w.h) / 30_000);
 
     const tiles = FIELD_TILESETS[regionOfArea(this.area.id).id];
-    if (tiles && this.textures.exists(tiles)) {
-      // The painted covert: open-grass base, unmistakably darker cover over
-      // each patch (cover-vs-open readability is mechanical — runners hold
-      // at cover edges and singles relight into it), mesquite clumps as the
-      // landmark trees.
+    const tiled = !!tiles && this.textures.exists(tiles);
+    if (tiled) {
       this.add.tileSprite(w.x, w.y, w.w, w.h, tiles, TILE_OPEN).setOrigin(0, 0);
-      for (const patch of this.area.patches) {
-        this.add.tileSprite(patch.x, patch.y, patch.w, patch.h, tiles, TILE_COVER).setOrigin(0, 0);
-      }
+    } else {
+      this.add.graphics().fillStyle(this.area.grass).fillRect(w.x, w.y, w.w, w.h);
+    }
+
+    // Cover is grass you can hide in, not a painted rectangle: dense tuft
+    // clusters with ragged edges (the field-view-mockup look). It must stay
+    // unmistakably darker than open ground — that contrast is mechanical
+    // (runners hold at cover edges, singles relight into it).
+    this.drawOrganicCover(rng, tiled);
+
+    if (tiled) {
       for (let i = 0; i < treeCount; i++) {
         this.add.image(w.x + 8 + rng() * (w.w - 24), w.y + 8 + rng() * (w.h - 24), tiles, TILE_MESQUITE);
       }
-      return;
+    } else {
+      const g = this.add.graphics();
+      g.fillStyle(0x6b4a2a);
+      for (let i = 0; i < treeCount; i++) {
+        g.fillRect(w.x + 8 + rng() * (w.w - 24), w.y + 8 + rng() * (w.h - 24), 8, 8);
+      }
+    }
+  }
+
+  /**
+   * Stamp every cover patch as a thicket of individual grass tufts into one
+   * static world-sized RenderTexture (drawn once — a Graphics this dense
+   * would replay tens of thousands of rects every frame). Tuft positions
+   * average two rolls so they crowd the patch core and straggle past the
+   * rect edge: the ragged organic fringe. Rust shrub accents echo the
+   * mockup's sumac; a sparse sprinkle of pale tufts textures open ground.
+   */
+  private drawOrganicCover(rng: () => number, tiled: boolean): void {
+    const w = this.area.world;
+    const rt = this.add.renderTexture(w.x, w.y, w.w, w.h).setOrigin(0, 0);
+    const g = this.make.graphics({}, false);
+    // Tiled regions get dried-grass olives to sit on the tan plate; painted-
+    // color regions derive their tuft shades from the area's cover color.
+    const [dark, mid, light] = tiled
+      ? [0x3a3a1e, 0x545026, 0x6e6832]
+      : [scaleColor(this.area.cover, 0.62), this.area.cover, scaleColor(this.area.cover, 1.3)];
+    const seedHead = tiled ? 0x2a2814 : scaleColor(this.area.cover, 0.4);
+    const rust = [0x8f4a26, 0xa85c30];
+
+    for (const p of this.area.patches) {
+      const pad = 6; // strays land this far outside the rect
+      const tufts = Math.round((p.w * p.h) / 24);
+      for (let i = 0; i < tufts; i++) {
+        const fx = (rng() + rng()) / 2;
+        const fy = (rng() + rng()) / 2;
+        const x = Math.round(p.x - pad + fx * (p.w + pad * 2)) - w.x;
+        const y = Math.round(p.y - pad + fy * (p.h + pad * 2)) - w.y;
+        const blades = 3 + Math.floor(rng() * 3);
+        for (let b = 0; b < blades; b++) {
+          const bx = x + Math.floor(rng() * 7) - 3;
+          const h = 3 + Math.floor(rng() * 5);
+          g.fillStyle([dark, mid, dark, light][Math.floor(rng() * 4)], 1).fillRect(bx, y - h, 1, h);
+          if (rng() < 0.22) g.fillStyle(seedHead, 1).fillRect(bx, y - h - 2, 1, 2);
+        }
+      }
+      // A few rust shrubs per patch — autumn accents, and quick landmarks.
+      const shrubs = Math.max(1, Math.round((p.w * p.h) / 5200));
+      for (let i = 0; i < shrubs; i++) {
+        const sx = Math.round(p.x + rng() * p.w) - w.x;
+        const sy = Math.round(p.y + rng() * p.h) - w.y;
+        const r = 2 + Math.floor(rng() * 3);
+        g.fillStyle(rust[Math.floor(rng() * 2)], 1).fillCircle(sx, sy, r);
+        g.fillStyle(rust[0], 1).fillCircle(sx - r / 2, sy + 1, Math.max(1, r - 1));
+      }
     }
 
-    const g = this.add.graphics();
-    g.fillStyle(this.area.grass).fillRect(w.x, w.y, w.w, w.h);
-    g.fillStyle(this.area.cover);
-    for (const patch of this.area.patches) {
-      g.fillRect(patch.x, patch.y, patch.w, patch.h);
+    // Open-ground texture: pale lone tufts, sparse enough to stay "open".
+    const openTone = tiled ? 0x9c8a56 : scaleColor(this.area.grass, 1.2);
+    const openTufts = Math.round((w.w * w.h) / 2400);
+    for (let i = 0; i < openTufts; i++) {
+      const x = Math.floor(rng() * w.w);
+      const y = Math.floor(rng() * w.h);
+      const h = 2 + Math.floor(rng() * 3);
+      g.fillStyle(openTone, 0.8).fillRect(x, y - h, 1, h);
+      if (rng() < 0.5) g.fillStyle(openTone, 0.8).fillRect(x + 1, y - h + 1, 1, h - 1);
     }
-    g.fillStyle(0x6b4a2a);
-    for (let i = 0; i < treeCount; i++) {
-      g.fillRect(w.x + 8 + rng() * (w.w - 24), w.y + 8 + rng() * (w.h - 24), 8, 8);
-    }
+
+    rt.draw(g);
+    g.destroy();
   }
 }
