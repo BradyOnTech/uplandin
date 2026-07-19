@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { playCackle, playShot, playThud, playThunder, playTwitter, unlockAudio } from '../audio';
 import { getArea } from '../game/areas';
-import { relightSurvivors, type Bird } from '../game/birds';
+import { relightSurvivors, YOUNG_FLIGHT_MULT, type Bird } from '../game/birds';
 import type { Dog } from '../game/dog';
 import { slopeFlightMult, type SlopeApproach } from '../game/fieldcraft';
 import { getGun, type GunConfig } from '../game/guns';
@@ -83,6 +83,10 @@ export class FlushScene extends Phaser.Scene {
       const vel = escapeVelocity(species.flight);
       vel.x *= slopeMult;
       vel.y *= slopeMult * (slope === 'above' ? 0.85 : 1); // dropping away below you
+      if (fieldBird.young) {
+        vel.x *= YOUNG_FLIGHT_MULT; // a young bird hasn't got its wings yet
+        vel.y *= YOUNG_FLIGHT_MULT;
+      }
       // World coords → screen: the bird rises where it sat relative to the hunter.
       const launchX = clamp(240 + (fieldBird.pos.x - this.hunt.hunterPos.x), 48, 432);
       // Steer back toward the middle of the screen so edge flushes stay shootable.

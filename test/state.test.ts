@@ -68,8 +68,8 @@ describe('hunt bookkeeping', () => {
         return s / 2147483647;
       };
     }
-    const mild = createHunt(AREAS[0], rng(9), 'calm', 'remington-870', 'mild');
-    const frost = createHunt(AREAS[0], rng(9), 'calm', 'remington-870', 'frost');
+    const mild = createHunt(AREAS[0], rng(9), { wind: 'calm', condition: 'mild' });
+    const frost = createHunt(AREAS[0], rng(9), { wind: 'calm', condition: 'frost' });
     expect(mild.condition).toBe('mild');
     expect(frost.condition).toBe('frost');
     for (let i = 0; i < mild.birds.length; i++) {

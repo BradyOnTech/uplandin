@@ -116,6 +116,19 @@ describe('spawnBirds', () => {
     expect(quail.every((b) => b.sex === undefined)).toBe(true);
   });
 
+  it('young-of-year birds sit longer and mostly refuse to run', () => {
+    const veterans = spawnBirds({ ...CFG, birdCount: 30, youngShare: 0 }, lcg(21));
+    const juveniles = spawnBirds({ ...CFG, birdCount: 30, youngShare: 1 }, lcg(21));
+    expect(veterans.every((b) => !b.young)).toBe(true);
+    expect(juveniles.every((b) => b.young)).toBe(true);
+    // Same rolls, so every juvenile holds exactly 1.3x its veteran twin.
+    for (let i = 0; i < 30; i++) {
+      if (veterans[i].runs === juveniles[i].runs) {
+        expect(juveniles[i].nerveMs).toBeCloseTo(veterans[i].nerveMs * 1.3, 5);
+      }
+    }
+  });
+
   it('wind strength shortens nerve via nerveMult', () => {
     const calm = spawnBirds({ ...CFG, birdCount: 10 }, lcg(8));
     const strong = spawnBirds({ ...CFG, birdCount: 10, nerveMult: 0.8 }, lcg(8));

@@ -2,12 +2,16 @@ import { describe, expect, it } from 'vitest';
 import {
   activeDog,
   addDogToKennel,
+  advanceCareerWeeks,
   awardDogXp,
   CAREER_KEY,
+  dogAge,
   emptyCareer,
   loadCareer,
   recordHunt,
+  rollToNextSeason,
   saveCareer,
+  setHomeRegion,
   type StorageLike,
 } from '../src/game/career';
 
@@ -69,6 +73,45 @@ describe('career', () => {
   it('handles missing storage', () => {
     expect(loadCareer(null)).toEqual(emptyCareer());
     expect(() => saveCareer(emptyCareer(), null)).not.toThrow();
+  });
+});
+
+describe('seasons in the career', () => {
+  it('starts in week 0 of season 1 with no home chosen', () => {
+    const c = emptyCareer();
+    expect(c.date).toEqual({ season: 1, week: 0 });
+    expect(c.homeRegionId).toBeNull();
+  });
+
+  it('hunts move the calendar; summer rolls the season and ages the dogs', () => {
+    let { career: c, dog } = addDogToKennel(emptyCareer(), 'Millie', 'gsp');
+    c = setHomeRegion(c, 'southern-plains');
+    expect(dog.bornSeason).toBe(1);
+    expect(dogAge(c, dog)).toBe(1);
+    c = advanceCareerWeeks(c, 22);
+    expect(c.date.week).toBe(22);
+    c = rollToNextSeason(c);
+    expect(c.date).toEqual({ season: 2, week: 0 });
+    expect(dogAge(c, c.kennel[0])).toBe(2);
+    // A pup raised in season 3 is younger than the old dog.
+    c = rollToNextSeason(c);
+    const { career: c2, dog: pup } = addDogToKennel(c, 'Boone', 'vizsla');
+    expect(pup.bornSeason).toBe(3);
+    expect(dogAge(c2, pup)).toBe(1);
+    expect(dogAge(c2, c2.kennel[0])).toBe(3);
+  });
+
+  it('pre-season v2 saves gain a calendar and season-1 dogs', () => {
+    const s = memStorage();
+    const old = { ...emptyCareer(), kennel: [{ id: 'dog-1', name: 'Rex', breedId: 'gsp', level: 4, xp: 100 }] };
+    delete (old as Record<string, unknown>).date;
+    delete (old as Record<string, unknown>).homeRegionId;
+    delete ((old.kennel as Record<string, unknown>[])[0] as Record<string, unknown>).bornSeason;
+    s.data[CAREER_KEY] = JSON.stringify(old);
+    const c = loadCareer(s);
+    expect(c.date).toEqual({ season: 1, week: 0 });
+    expect(c.homeRegionId).toBeNull();
+    expect(c.kennel[0].bornSeason).toBe(1);
   });
 });
 

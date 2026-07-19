@@ -17,6 +17,8 @@ export interface Bird {
   single?: boolean;
   /** Hun circle-back already used — the next wild flush is for good. */
   circled?: boolean;
+  /** Young-of-year: naive early-season bird — sits longer, flies slower. */
+  young?: boolean;
   /** Runners (pheasant-types) flee the dog on foot instead of holding tight. */
   runs: boolean;
   /** ms of running left before the bird is winded and must hold. */
@@ -48,7 +50,12 @@ export interface SpawnConfig {
   bounds?: Rect;
   /** Wind strength shortens nerve (strong wind = jumpy birds). */
   nerveMult?: number;
+  /** Share of birds that are naive young-of-year (early season). */
+  youngShare?: number;
 }
+
+export const YOUNG_NERVE_MULT = 1.3; // a young bird sits longer
+export const YOUNG_FLIGHT_MULT = 0.9; // and flies slower when it finally goes
 
 let nextBirdId = 1;
 
@@ -75,7 +82,9 @@ export function spawnBirds(cfg: SpawnConfig, rng: RNG = Math.random): Bird[] {
     const patch = cfg.patches[Math.floor(rng() * cfg.patches.length)];
     const anchor = randomPointIn(patch, rng);
     for (let i = 0; i < size; i++) {
-      const runs = rng() < species.runnerChance;
+      const young = rng() < (cfg.youngShare ?? 0);
+      // Young birds haven't learned to run from a dog yet.
+      const runs = rng() < species.runnerChance * (young ? 0.5 : 1);
       const nerveRoll = rng();
       birds.push({
         id: nextBirdId++,
@@ -87,12 +96,14 @@ export function spawnBirds(cfg: SpawnConfig, rng: RNG = Math.random): Bird[] {
         },
         state: 'hidden',
         sex: species.henRule ? (rng() < 0.5 ? 'hen' : 'rooster') : undefined,
+        young: young || undefined,
         runs,
         runEnergy: RUNNER_MAX_ENERGY,
         restingMs: 0,
         nerveMs:
           (species.nerveMinMs + nerveRoll * (species.nerveMaxMs - species.nerveMinMs)) *
           (runs ? RUNNER_NERVE_FACTOR : 1) *
+          (young ? YOUNG_NERVE_MULT : 1) *
           nerveMult,
       });
     }

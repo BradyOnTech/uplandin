@@ -15,9 +15,11 @@ import { FLANK_NERVE_MULT, isFlanking, slopeApproach, slopeNerveMult } from '../
 import { dogScentRadius, getBreed, type BreedConfig } from '../game/breeds';
 import {
   activeDog,
+  advanceCareerWeeks,
   awardDogXp,
   awardHunterXp,
   braceDog,
+  dogAge,
   loadCareer,
   recordHunt,
   saveCareer,
@@ -29,6 +31,8 @@ import { VIEWPORT } from '../game/field';
 import { dist, moveToward, mulberry32, windArrow } from '../game/math';
 import { gearTierFor, twoDogUnlocked, unlocksAtLevel } from '../game/progression';
 import type { QuickConfig } from '../game/quick';
+import { ageMult, dateLabel, educatedNerveMult, HOME_HUNT_WEEKS, openMix, seasonalBias, seasonOver, TRIP_HUNT_WEEKS, youngShare } from '../game/season';
+import { regionOfArea } from '../game/regions';
 import { getSpecies } from '../game/species';
 import { birdsRemaining, createHunt, huntComplete, type HuntState } from '../game/state';
 import type { Vec2 } from '../game/types';
@@ -119,9 +123,21 @@ export class FieldScene extends Phaser.Scene {
       createHunt(
         this.area,
         Math.random,
-        this.quick && this.quick.wind !== 'random' ? this.quick.wind : undefined,
-        this.quick?.gunId ?? career.hunter.shotgunId,
-        this.quick && this.quick.weather !== 'random' ? this.quick.weather : undefined,
+        this.quick
+          ? {
+              wind: this.quick.wind !== 'random' ? this.quick.wind : undefined,
+              gunId: this.quick.gunId,
+              condition: this.quick.weather !== 'random' ? this.quick.weather : undefined,
+            }
+          : {
+              // Career: the calendar shapes the hunt — what's open, how the
+              // weather leans, how naive or educated the birds are.
+              gunId: career.hunter.shotgunId,
+              conditionBias: seasonalBias(career.date.week, this.area.conditionBias),
+              mix: openMix(this.area, career.date.week),
+              youngShare: youngShare(career.date.week),
+              educatedMult: educatedNerveMult(career.date.week),
+            },
       );
     if (this.quick) this.hunt.quick = this.quick;
 
@@ -140,16 +156,26 @@ export class FieldScene extends Phaser.Scene {
     const levels = this.kennelDogs.map((kd) =>
       this.quick ? this.quick.level : this.devLevel ?? kd?.level ?? 1,
     );
+    // The calendar ages the body: a growing pup or an old campaigner is a
+    // touch slower and shallower-winded. Quick Hunt dogs are always prime.
+    const ageMults = this.kennelDogs.map((kd) =>
+      this.quick || !kd ? 1 : ageMult(dogAge(career, kd)),
+    );
     // Dog instances ride through FlushScene and back so breaking chase,
     // creep state, and heading survive the transition.
     this.dogs =
       data.dogs ??
       this.breeds.map(
         (breed, i) =>
-          new Dog({ ...this.hunt.dogsPos[i] }, { breed, level: levels[i] }, Math.random, this.area.world),
+          new Dog(
+            { ...this.hunt.dogsPos[i] },
+            { breed, level: levels[i], ageMult: ageMults[i] },
+            Math.random,
+            this.area.world,
+          ),
       );
     this.dogs.forEach((dog, i) => {
-      dog.profile = { breed: this.breeds[i], level: levels[i] };
+      dog.profile = { breed: this.breeds[i], level: levels[i], ageMult: ageMults[i] };
     });
 
     this.flushing = false;
@@ -554,6 +580,7 @@ export class FieldScene extends Phaser.Scene {
     const fine = HEN_FINE_XP * this.hunt.henDowns;
     const hunterGained = Math.max(0, this.hunt.downed + this.hunt.doubles + 2 - fine);
     const lines: { text: string; color: string }[] = [];
+    let seasonEnded = false;
     if (this.quick) {
       lines.push({ text: 'quick hunt — career untouched', color: '#9fb896' });
     } else {
@@ -592,6 +619,18 @@ export class FieldScene extends Phaser.Scene {
           }
         }
       }
+      // The calendar takes its cut: a home weekend, or two weeks for a trip.
+      const home = regionOfArea(this.hunt.areaId).id === career.homeRegionId;
+      const cost = home ? HOME_HUNT_WEEKS : TRIP_HUNT_WEEKS;
+      career = advanceCareerWeeks(career, cost);
+      lines.push({
+        text: `${cost} week${cost > 1 ? 's' : ''} pass${cost > 1 ? '' : 'es'} — ${dateLabel(career.date)}`,
+        color: '#c9dcc0',
+      });
+      if (seasonOver(career.date)) {
+        seasonEnded = true;
+        lines.push({ text: 'the season is over — head home for summer', color: '#ffd23f' });
+      }
       saveCareer(career);
     }
 
@@ -624,6 +663,8 @@ export class FieldScene extends Phaser.Scene {
     if (this.quick) {
       this.summaryButton(cx - 62, buttonY, 'hunt again', () => this.scene.restart({ quick: this.quick }));
       this.summaryButton(cx + 62, buttonY, 'setup', () => this.scene.start('QuickScene'));
+    } else if (seasonEnded) {
+      this.summaryButton(cx, buttonY, 'head home', () => this.scene.start('MapScene'));
     } else {
       this.summaryButton(cx - 62, buttonY, 'hunt again', () => this.scene.restart({ areaId: this.area.id }));
       this.summaryButton(cx + 62, buttonY, 'menu', () => this.scene.start('TitleScene'));

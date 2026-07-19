@@ -74,6 +74,8 @@ export interface DogEnv {
 export interface DogProfile {
   breed: BreedConfig;
   level: number;
+  /** Age curve on the body (speed/stamina): growing pup <1, prime 1, old dog <1. The nose holds. */
+  ageMult?: number;
 }
 
 /**
@@ -126,7 +128,7 @@ export class Dog {
   ) {
     this.heading = rng() * Math.PI * 2;
     this.rng = rng;
-    this.maxStaminaMs = breedStaminaMs(profile.breed, profile.level);
+    this.maxStaminaMs = breedStaminaMs(profile.breed, profile.level) * (profile.ageMult ?? 1);
     this.staminaMs = this.maxStaminaMs;
   }
 
@@ -154,11 +156,13 @@ export class Dog {
   }
 
   private get speed(): number {
-    return DOG_SPEED * speedMult(this.profile.breed, this.profile.level) * this.fatigueMult;
+    return DOG_SPEED * speedMult(this.profile.breed, this.profile.level) * this.fatigueMult * (this.profile.ageMult ?? 1);
   }
 
   private get trackSpeed(): number {
-    return TRACKING_SPEED * speedMult(this.profile.breed, this.profile.level) * this.fatigueMult;
+    return (
+      TRACKING_SPEED * speedMult(this.profile.breed, this.profile.level) * this.fatigueMult * (this.profile.ageMult ?? 1)
+    );
   }
 
   private get weave(): number {

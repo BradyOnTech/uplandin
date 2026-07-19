@@ -2,6 +2,7 @@ import { areaBirdCount, type AreaConfig } from './areas';
 import { spawnBirds, type Bird } from './birds';
 import { conditionMults, rollCondition, type Condition } from './conditions';
 import type { QuickConfig } from './quick';
+import type { SpeciesShare } from './species';
 import type { RNG, Vec2 } from './types';
 import { rollWindStrength, windMults, type WindStrength } from './wind';
 
@@ -45,25 +46,34 @@ export interface HuntState {
   quick?: QuickConfig;
 }
 
-export function createHunt(
-  area: AreaConfig,
-  rng: RNG = Math.random,
-  windOverride?: WindStrength,
-  gunId = 'remington-870',
-  conditionOverride?: Condition,
-): HuntState {
+export interface HuntOptions {
+  wind?: WindStrength;
+  gunId?: string;
+  condition?: Condition;
+  /** Seasonal climate lean; defaults to the area's flat bias. */
+  conditionBias?: Condition;
+  /** Season-filtered species mix (openers); defaults to the whole area mix. */
+  mix?: SpeciesShare[];
+  /** Share of naive young-of-year birds (early season). */
+  youngShare?: number;
+  /** Educated-survivor nerve multiplier (late season). */
+  educatedMult?: number;
+}
+
+export function createHunt(area: AreaConfig, rng: RNG = Math.random, opts: HuntOptions = {}): HuntState {
   const w = area.world;
-  const windStrength = windOverride ?? rollWindStrength(rng);
-  const condition = conditionOverride ?? rollCondition(rng, area.conditionBias);
+  const windStrength = opts.wind ?? rollWindStrength(rng);
+  const condition = opts.condition ?? rollCondition(rng, opts.conditionBias ?? area.conditionBias);
   return {
     areaId: area.id,
     birds: spawnBirds(
       {
         patches: area.patches,
         birdCount: areaBirdCount(area),
-        speciesMix: area.speciesMix,
+        speciesMix: opts.mix && opts.mix.length > 0 ? opts.mix : area.speciesMix,
         bounds: w,
-        nerveMult: windMults(windStrength).nerve * conditionMults(condition).nerve,
+        nerveMult: windMults(windStrength).nerve * conditionMults(condition).nerve * (opts.educatedMult ?? 1),
+        youngShare: opts.youngShare,
       },
       rng,
     ),
@@ -79,7 +89,7 @@ export function createHunt(
     escaped: 0,
     doubles: 0,
     henDowns: 0,
-    gunId,
+    gunId: opts.gunId ?? 'remington-870',
     dogWork: [emptyDogWork(), emptyDogWork()],
   };
 }

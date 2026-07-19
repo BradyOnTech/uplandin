@@ -1,5 +1,6 @@
 import { levelForXp } from './breeds';
 import { hunterLevelForXp } from './progression';
+import { advanceWeeks, nextSeason, startingDate, type SeasonDate } from './season';
 
 /**
  * Career persistence v2: hunt totals plus the kennel, the hunter profile,
@@ -21,6 +22,8 @@ export interface KennelDog {
   breedId: string;
   level: number;
   xp: number;
+  /** The season this dog's career started — age derives from the calendar. */
+  bornSeason: number;
 }
 
 export interface HunterProfile {
@@ -43,6 +46,10 @@ export interface Career {
   braceDogId: string | null;
   hunter: HunterProfile;
   regionsUnlocked: string[];
+  /** Where the season calendar stands. */
+  date: SeasonDate;
+  /** Home ground: hunts here cost 1 week, trips elsewhere cost 2. */
+  homeRegionId: string | null;
 }
 
 export const STARTER_REGION = 'southern-plains';
@@ -60,6 +67,8 @@ export function emptyCareer(): Career {
     braceDogId: null,
     hunter: { level: 1, xp: 0, shotgunId: STARTER_SHOTGUN, truckTier: 0, dogBoxTier: 1 },
     regionsUnlocked: [STARTER_REGION],
+    date: startingDate(),
+    homeRegionId: null,
   };
 }
 
@@ -95,6 +104,7 @@ export function addDogToKennel(
     breedId,
     level: 1,
     xp: 0,
+    bornSeason: career.date.season,
   };
   return {
     dog,
@@ -151,6 +161,26 @@ export function braceDog(career: Career): KennelDog | null {
   return career.kennel.find((d) => d.id === career.braceDogId) ?? null;
 }
 
+/** How many seasons this dog has hunted, counting the current one. */
+export function dogAge(career: Career, dog: KennelDog): number {
+  return Math.max(1, career.date.season - dog.bornSeason + 1);
+}
+
+/** Pick where you live. Home hunts cost a week; everywhere else is a trip. */
+export function setHomeRegion(career: Career, regionId: string): Career {
+  return { ...career, homeRegionId: regionId };
+}
+
+/** A hunt (or a skipped week) moves the calendar. Pure. */
+export function advanceCareerWeeks(career: Career, weeks: number): Career {
+  return { ...career, date: advanceWeeks(career.date, weeks) };
+}
+
+/** Summer passes: the calendar rolls to next September and every dog is a season older. */
+export function rollToNextSeason(career: Career): Career {
+  return { ...career, date: nextSeason(career.date) };
+}
+
 /** Award hunter XP. Pure. Returns the new career plus level-up info. */
 export function awardHunterXp(
   career: Career,
@@ -190,9 +220,12 @@ function migrate(parsed: Record<string, unknown>): Career {
       ...base,
       ...v2,
       areas: v2.areas ?? {},
-      kennel: v2.kennel ?? [],
+      // Pre-season saves: existing dogs count as born in season 1.
+      kennel: (v2.kennel ?? []).map((d) => ({ ...d, bornSeason: (d as Partial<KennelDog>).bornSeason ?? 1 })),
       hunter: { ...base.hunter, ...v2.hunter },
       regionsUnlocked: v2.regionsUnlocked ?? base.regionsUnlocked,
+      date: v2.date ?? base.date,
+      homeRegionId: v2.homeRegionId ?? null,
     };
   }
   return {
