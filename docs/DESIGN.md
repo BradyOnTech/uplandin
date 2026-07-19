@@ -92,10 +92,16 @@ Steadiness→mistake resistance, Stamina→hunt-day endurance.
 - **Marking**: instant retrieve if the dog watched the fall; breaking chase
   means the next retrieve needs a search first.
 
-## The birds **[partially built — species pack planned]**
+## The birds **[species pack 1 built — 6 of 14 species]**
 
-Species are configs: covey size, runner chance, nerve range, escape-flight
-style, region, protected flag.
+Species are configs (`species.ts`): covey size range, runner chance, nerve
+range, escape-flight style (speed/climb/wobble), palette, flush sound, and
+special rules. Areas carry a weighted `speciesMix`; weights mean share of
+*birds* (spawn normalizes by covey size so a 9-bird hun covey doesn't eat
+the stocking).
+
+Built: bobwhite, ringneck (hen/rooster rule), ruffed grouse, woodcock,
+sharptail, Hungarian partridge.
 
 Archetypes:
 
@@ -113,24 +119,32 @@ mountain quail.
 
 Special rules:
 
-- **Hen/rooster pheasant** **[planned]**: hens flush too but are protected —
-  shooting a hen carries a penalty (XP fine). Visually distinct (tan/short
-  tail vs iridescent/long tail). Roosters cackle on the flush.
-- **Scattered singles** **[planned]**: covey survivors of a shooting
-  opportunity relight in nearby cover and hold very tight ("hunt the
-  singles"). Wild-flushed-too-far birds are gone for good.
+- **Hen/rooster pheasant** **[built]**: hens flush too but are protected —
+  a downed hen is a 4-xp game-warden fine at the summary. Visually distinct
+  (tan/short tail vs white ring/green head/long tail). Roosters cackle on
+  the flush; hens rise silent. The shot view warns "watch for hens!".
+- **Scattered singles** **[built]**: covey survivors of a shooting
+  opportunity relight 90–200px away in cover, hold ~1.7× tighter, and sit
+  alone (the covey bond breaks — one single flushing doesn't lift another).
+  A single only relights once; wild-flushed-too-far birds are gone for good.
+- **Flush sounds** **[built]**: rooster cackle, woodcock wing twitter,
+  ruffed grouse thunder.
 
 ## Wind **[built — extensions planned]**
 
 - Fixed direction per hunt, HUD arrow; upwind scent ~1.9×, downwind ~0.35×. **[built]**
-- Per-hunt strength (calm/breezy/strong): strong wind carries scent farther
-  but shortens bird nerve ~20% and widens flush distance. **[planned]**
+- Per-hunt strength (calm/breezy/strong, shown in the HUD): strong wind
+  carries scent ~1.25× farther but shortens bird nerve ~20% and carries the
+  dog's own scent ~1.3× farther to downwind birds. **[built]**
 - Birds scent the dog downwind (see wind craft). **[built]**
 
 ## Meta layer **[partially built]**
 
 - Title screen, area select, career totals **[built]**.
-- Continental-US travel map, 7 regions **[planned]**:
+- Continental-US travel map (`MapScene` → region area select) **[built]**:
+  4 regions open (Southern Plains · Prairie Pothole · North Woods · Great
+  Basin, 6 areas), 3 marked for later seasons; truck gating comes with T3.
+- The 7 regions:
   North Woods (ruffed, woodcock) · Prairie Pothole (ringneck, sharptail, Huns,
   prairie chicken) · Southern Plains (bobwhite — starting region) · Sonoran
   Desert (Gambel's, scaled, Mearns) · Great Basin rimrock (chukar, Huns) ·
@@ -177,9 +191,10 @@ Special rules:
   density stocking), hunter-follow camera, hunter-anchored quartering, sprint
   (+underfoot flushes), whistle range, bell + basic edge arrow, stamina pool
   resized for the bigger ground (90s base).
-- **T2 — map & species pack 1**: US travel map + 4 starter regions; bobwhite,
-  ringneck w/ hen-rooster rule, ruffed, woodcock, sharptail, Huns; scattered
-  singles; wind strength; escape-flight styles.
+- **T2 — map & species pack 1 [shipped]**: US travel map + 4 starter regions
+  (6 areas); bobwhite, ringneck w/ hen-rooster rule, ruffed, woodcock,
+  sharptail, Huns; scattered singles; wind strength; escape-flight styles +
+  flush sounds; `?doglevel=N` dev override.
 - **T3 — hunter progression**: hunter XP, shotguns, truck/region gating, dog
   box, GPS tiers.
 - **T4 — species pack 2**: chukar, prairie chicken, blue grouse, the 5 quail
