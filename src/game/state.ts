@@ -8,19 +8,22 @@ import { rollWindStrength, windMults, type WindStrength } from './wind';
  * Everything that needs to survive a scene transition. Plain data, passed
  * from FieldScene to FlushScene and back via Phaser's scene-start payload.
  */
-/** Dog-work tallies for the hunt, converted to XP at the summary. */
-export interface XpEvents {
+/** One dog's work for the hunt, converted to its XP at the summary. */
+export interface DogWork {
   pointFlushes: number;
   retrieves: number;
   downedOverPoint: number;
-  /** Protected hens downed — each one is an XP fine. */
-  henDowns: number;
+}
+
+export function emptyDogWork(): DogWork {
+  return { pointFlushes: 0, retrieves: 0, downedOverPoint: 0 };
 }
 
 export interface HuntState {
   areaId: string;
   birds: Bird[];
-  dogPos: Vec2;
+  /** Start/current positions per dog slot (a brace is two dogs). */
+  dogsPos: Vec2[];
   hunterPos: Vec2;
   /** Direction the wind blows toward (radians, screen coords) — constant for a hunt. */
   wind: number;
@@ -29,9 +32,12 @@ export interface HuntState {
   escaped: number;
   /** Flushes where two birds fell — the classic double, bonus hunter XP. */
   doubles: number;
+  /** Protected hens downed — each one fines the hunter's XP. */
+  henDowns: number;
   /** The shotgun carried this hunt. */
   gunId: string;
-  xpEvents: XpEvents;
+  /** Per-dog work tallies, indexed by dog slot. */
+  dogWork: DogWork[];
   /** Set on Quick Hunt runs: the picked setup. Career is never touched. */
   quick?: QuickConfig;
 }
@@ -56,15 +62,19 @@ export function createHunt(
       },
       rng,
     ),
-    dogPos: { x: w.x + w.w / 2 - 30, y: w.y + w.h - 30 },
+    dogsPos: [
+      { x: w.x + w.w / 2 - 30, y: w.y + w.h - 30 },
+      { x: w.x + w.w / 2 + 30, y: w.y + w.h - 30 },
+    ],
     hunterPos: { x: w.x + w.w / 2, y: w.y + w.h - 20 },
     wind: rng() * Math.PI * 2,
     windStrength,
     downed: 0,
     escaped: 0,
     doubles: 0,
+    henDowns: 0,
     gunId,
-    xpEvents: { pointFlushes: 0, retrieves: 0, downedOverPoint: 0, henDowns: 0 },
+    dogWork: [emptyDogWork(), emptyDogWork()],
   };
 }
 

@@ -17,15 +17,22 @@ function huntWith(states: Bird['state'][]): HuntState {
       restingMs: 0,
       nerveMs: 5000,
     })),
-    dogPos: { x: 0, y: 0 },
+    dogsPos: [
+      { x: 0, y: 0 },
+      { x: 0, y: 0 },
+    ],
     hunterPos: { x: 0, y: 0 },
     wind: 0,
     windStrength: 'calm',
     downed: 0,
     escaped: 0,
     doubles: 0,
+    henDowns: 0,
     gunId: 'remington-870',
-    xpEvents: { pointFlushes: 0, retrieves: 0, downedOverPoint: 0, henDowns: 0 },
+    dogWork: [
+      { pointFlushes: 0, retrieves: 0, downedOverPoint: 0 },
+      { pointFlushes: 0, retrieves: 0, downedOverPoint: 0 },
+    ],
   };
 }
 
@@ -61,7 +68,7 @@ describe('hunt bookkeeping', () => {
         p.y >= area.world.y &&
         p.y <= area.world.y + area.world.h;
       expect(inWorld(hunt.hunterPos)).toBe(true);
-      expect(inWorld(hunt.dogPos)).toBe(true);
+      for (const p of hunt.dogsPos) expect(inWorld(p)).toBe(true);
       for (const b of hunt.birds) expect(inWorld(b.pos)).toBe(true);
     }
   });

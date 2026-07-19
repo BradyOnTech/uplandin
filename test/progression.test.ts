@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addDogToKennel, awardHunterXp, emptyCareer, setActiveDog } from '../src/game/career';
+import { addDogToKennel, awardHunterXp, emptyCareer, setActiveDog, setBraceDog } from '../src/game/career';
 import { getGun, GUNS, unlockedGuns } from '../src/game/guns';
 import {
   gearTierFor,
@@ -7,6 +7,7 @@ import {
   hunterXpForLevel,
   kennelSlots,
   truckUnlocked,
+  twoDogUnlocked,
   unlocksAtLevel,
 } from '../src/game/progression';
 
@@ -80,5 +81,32 @@ describe('setActiveDog', () => {
     const switched = setActiveDog(c2, second.id);
     expect(switched.activeDogId).toBe(second.id);
     expect(setActiveDog(switched, 'stray')).toBe(switched);
+  });
+});
+
+describe('the brace', () => {
+  it('unlocks with the big dog box', () => {
+    expect(twoDogUnlocked(6)).toBe(false);
+    expect(twoDogUnlocked(7)).toBe(true);
+  });
+
+  it('marks and clears a bracemate; the lead dog cannot brace itself', () => {
+    const { career: c1 } = addDogToKennel(emptyCareer(), 'Millie', 'gsp');
+    const { career: c2, dog: second } = addDogToKennel(c1, 'Boone', 'vizsla');
+    expect(setBraceDog(c2, c2.activeDogId!)).toBe(c2); // lead can't brace itself
+    const braced = setBraceDog(c2, second.id);
+    expect(braced.braceDogId).toBe(second.id);
+    expect(setBraceDog(braced, second.id).braceDogId).toBeNull(); // toggle off
+    expect(setBraceDog(braced, null).braceDogId).toBeNull();
+    expect(setBraceDog(braced, 'stray')).toBe(braced);
+  });
+
+  it('promoting the bracemate to lead clears the brace', () => {
+    const { career: c1 } = addDogToKennel(emptyCareer(), 'Millie', 'gsp');
+    const { career: c2, dog: second } = addDogToKennel(c1, 'Boone', 'vizsla');
+    const braced = setBraceDog(c2, second.id);
+    const promoted = setActiveDog(braced, second.id);
+    expect(promoted.activeDogId).toBe(second.id);
+    expect(promoted.braceDogId).toBeNull();
   });
 });

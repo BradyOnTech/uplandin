@@ -18,6 +18,7 @@ export type DogState =
   | 'quartering'
   | 'tracking'
   | 'pointing'
+  | 'honoring'
   | 'retrieving'
   | 'recalled'
   | 'heel'
@@ -29,6 +30,7 @@ export const SCENT_RADIUS = 45; // base scent range, before nose multipliers
 export const POINT_RANGE = 12; // freezes into a point this close
 export const QUARTER_RANGE = 130; // base hunter-anchored quartering radius, × Range multiplier
 export const WHISTLE_RANGE = 250; // the whistle only carries this far
+export const HONOR_SIGHT = 150; // a dog this close to a packmate's point sees it and should honor
 
 const WEAVE_AMPLITUDE = 0.7; // base radians of serpentine swing while quartering
 const WEAVE_RATE = 2.2; // how fast the weave swings
@@ -61,6 +63,8 @@ export interface DogEnv {
   recall?: boolean;
   /** How far the recall carries; GPS+map gear recalls at any range. */
   whistleRange?: number;
+  /** Where a packmate stands on point — a finished dog stops and backs. */
+  honorPoint?: Vec2;
 }
 
 export interface DogProfile {
@@ -106,6 +110,9 @@ export class Dog {
   private creepStepsLeft = 0;
   private creepTimerMs = 0;
   private breakMsLeft = 0;
+  /** One honor roll per packmate point: a soft pup may steal it instead. */
+  private honorRolled = false;
+  private willHonor = false;
 
   constructor(
     public pos: Vec2,
@@ -191,6 +198,22 @@ export class Dog {
       return;
     }
 
+    // Backing a packmate's point: stand and face it until the point
+    // resolves — unless there's a bird down to fetch.
+    if (this.state === 'honoring') {
+      const hasDowned = birds.some((b) => b.state === 'downed');
+      if (!env.honorPoint || hasDowned) {
+        this.state = 'quartering'; // resume below (retrieve wins if a bird is down)
+      } else {
+        this.heading = Math.atan2(env.honorPoint.y - this.pos.y, env.honorPoint.x - this.pos.x);
+        return;
+      }
+    }
+    if (!env.honorPoint) {
+      this.honorRolled = false;
+      this.willHonor = false;
+    }
+
     if (this.state === 'breaking') {
       this.work(dtMs);
       this.breakMsLeft -= dtMs;
@@ -257,6 +280,22 @@ export class Dog {
       this.retrieveTargetId = downed.id;
       this.retrieveHoldMs = 0;
       return;
+    }
+
+    // A packmate is on point within sight: a finished dog stops and backs.
+    // Soft young dogs may fail the roll and keep hunting — stealing the
+    // point, with all the bumping that invites.
+    if (env.honorPoint && dist(this.pos, env.honorPoint) <= HONOR_SIGHT) {
+      if (!this.honorRolled) {
+        this.honorRolled = true;
+        this.willHonor = this.rng() >= breedBreakChance(this.profile.breed, this.profile.level);
+      }
+      if (this.willHonor) {
+        this.state = 'honoring';
+        this.pointedBirdId = null;
+        this.heading = Math.atan2(env.honorPoint.y - this.pos.y, env.honorPoint.x - this.pos.x);
+        return;
+      }
     }
 
     const bird = this.nearestHiddenBird(birds, env);

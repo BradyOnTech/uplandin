@@ -39,6 +39,8 @@ export interface Career {
   areas: Record<string, AreaRecord>;
   kennel: KennelDog[];
   activeDogId: string | null;
+  /** Second dog for two-dog hunts (hunter lv 7+); null hunts solo. */
+  braceDogId: string | null;
   hunter: HunterProfile;
   regionsUnlocked: string[];
 }
@@ -55,6 +57,7 @@ export function emptyCareer(): Career {
     areas: {},
     kennel: [],
     activeDogId: null,
+    braceDogId: null,
     hunter: { level: 1, xp: 0, shotgunId: STARTER_SHOTGUN, truckTier: 0, dogBoxTier: 1 },
     regionsUnlocked: [STARTER_REGION],
   };
@@ -133,7 +136,19 @@ export function activeDog(career: Career): KennelDog | null {
 /** Choose which kennel dog rides along. Unknown ids leave the career as-is. */
 export function setActiveDog(career: Career, dogId: string): Career {
   if (!career.kennel.some((d) => d.id === dogId)) return career;
-  return { ...career, activeDogId: dogId };
+  // The lead dog can't also be its own bracemate.
+  return { ...career, activeDogId: dogId, braceDogId: career.braceDogId === dogId ? null : career.braceDogId };
+}
+
+/** Pick (or clear, with null) the bracemate for two-dog hunts. */
+export function setBraceDog(career: Career, dogId: string | null): Career {
+  if (dogId === null) return { ...career, braceDogId: null };
+  if (!career.kennel.some((d) => d.id === dogId) || dogId === career.activeDogId) return career;
+  return { ...career, braceDogId: career.braceDogId === dogId ? null : dogId };
+}
+
+export function braceDog(career: Career): KennelDog | null {
+  return career.kennel.find((d) => d.id === career.braceDogId) ?? null;
 }
 
 /** Award hunter XP. Pure. Returns the new career plus level-up info. */

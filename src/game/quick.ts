@@ -18,12 +18,22 @@ export interface QuickConfig {
   gunId: string;
   /** Dog tracking gear tier 0-3: bell, beeper, GPS, GPS+map. */
   gearTier: number;
+  /** Second dog's breed for a brace, or 'none' to hunt solo. */
+  breed2Id: string;
 }
 
 export const WIND_CHOICES: (WindStrength | 'random')[] = ['random', 'calm', 'breezy', 'strong'];
 
 export function defaultQuickConfig(): QuickConfig {
-  return { breedId: BREEDS[0].id, level: 5, areaId: AREAS[0].id, wind: 'random', gunId: GUNS[0].id, gearTier: 1 };
+  return {
+    breedId: BREEDS[0].id,
+    level: 5,
+    areaId: AREAS[0].id,
+    wind: 'random',
+    gunId: GUNS[0].id,
+    gearTier: 1,
+    breed2Id: 'none',
+  };
 }
 
 /** Step through a list of ids in either direction, wrapping at the ends. */
@@ -42,6 +52,7 @@ export function normalizeQuickConfig(cfg: Partial<QuickConfig>): QuickConfig {
     wind: WIND_CHOICES.includes(cfg.wind as WindStrength | 'random') ? (cfg.wind as QuickConfig['wind']) : base.wind,
     gunId: GUNS.some((g) => g.id === cfg.gunId) ? cfg.gunId! : base.gunId,
     gearTier: clamp(Math.round(cfg.gearTier ?? base.gearTier), 0, 3),
+    breed2Id: cfg.breed2Id === 'none' || BREEDS.some((b) => b.id === cfg.breed2Id) ? cfg.breed2Id! : 'none',
   };
 }
 

@@ -28,6 +28,13 @@ export function kennelSlots(hunterLevel: number): number {
   return hunterLevel >= 7 ? 5 : hunterLevel >= 4 ? 3 : 1;
 }
 
+export const TWO_DOG_LEVEL = 7;
+
+/** Running a brace needs the big dog box. */
+export function twoDogUnlocked(hunterLevel: number): boolean {
+  return hunterLevel >= TWO_DOG_LEVEL;
+}
+
 /** XP required to advance FROM `level`. */
 export function hunterXpForLevel(level: number): number {
   return Math.round(10 * Math.pow(level, 1.5));
@@ -55,6 +62,6 @@ export function unlocksAtLevel(level: number): string[] {
   if (level === 6) out.push('GPS handheld');
   if (level === 9) out.push('GPS + map');
   if (level === 4) out.push('dog box (3 kennel slots)');
-  if (level === 7) out.push('big dog box (5 kennel slots)');
+  if (level === 7) out.push('big dog box (5 slots) + two-dog hunting — mark a bracemate in the kennel');
   return out;
 }

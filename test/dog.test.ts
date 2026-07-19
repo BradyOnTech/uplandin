@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Bird } from '../src/game/birds';
 import { getBreed, type BreedConfig } from '../src/game/breeds';
-import { Dog, QUARTER_RANGE, SCENT_RADIUS, scentRange, WHISTLE_RANGE, type DogEnv } from '../src/game/dog';
+import { Dog, HONOR_SIGHT, QUARTER_RANGE, SCENT_RADIUS, scentRange, WHISTLE_RANGE, type DogEnv } from '../src/game/dog';
 import { FIELD_BOUNDS, type Rect } from '../src/game/field';
 import { dist } from '../src/game/math';
 import type { RNG } from '../src/game/types';
@@ -302,6 +302,60 @@ describe('Dog', () => {
       run(dog, [], 40, { hunterPos: hunter }); // 2s at heel = 6s of recovery
       expect(dog.staminaMs).toBeGreaterThan(0);
       expect(dog.winded).toBe(false);
+    });
+  });
+
+  describe('honoring a packmate\'s point', () => {
+    const point = { x: 160, y: 100 }; // where the other dog stands on point
+
+    it('a steady dog stops, backs, and stands until the point resolves', () => {
+      const dog = makeDog(100, 100, 10, () => 0.999); // 0.999 beats any break chance
+      dog.update(50, [], { honorPoint: point });
+      expect(dog.state).toBe('honoring');
+      const held = { ...dog.pos };
+      run(dog, [], 100, { honorPoint: point });
+      expect(dog.pos).toEqual(held); // standing, not creeping
+      dog.update(50, [], {}); // point resolved
+      expect(dog.state).toBe('quartering');
+    });
+
+    it('ignores points beyond sight', () => {
+      const dog = makeDog(100, 100, 10, () => 0.999);
+      dog.update(50, [], { honorPoint: { x: 100 + HONOR_SIGHT + 60, y: 100 } });
+      expect(dog.state).toBe('quartering');
+    });
+
+    it('a soft young dog may steal the point instead', () => {
+      const irish = getBreed('irish-setter');
+      // heading roll, then honor roll: 0.01 < breakChance for a lv1 Irish
+      const dog = makeDog(100, 100, 1, seq([0.5, 0.01]), irish);
+      dog.update(50, [], { honorPoint: point });
+      expect(dog.state).not.toBe('honoring'); // kept hunting — trouble incoming
+    });
+
+    it('rolls once per point, not per tick', () => {
+      const irish = getBreed('irish-setter');
+      const dog = makeDog(100, 100, 1, seq([0.5, 0.01, 0.999, 0.999]), irish);
+      run(dog, [], 20, { honorPoint: point });
+      expect(dog.state).not.toBe('honoring'); // failed roll sticks for this point
+    });
+
+    it('breaks off honoring to retrieve a downed bird', () => {
+      const dog = makeDog(100, 100, 10, () => 0.999);
+      dog.update(50, [], { honorPoint: point });
+      expect(dog.state).toBe('honoring');
+      const downed = birdAt(120, 100, { state: 'downed' });
+      run(dog, [downed], 40, { honorPoint: point });
+      expect(downed.state).toBe('retrieved');
+    });
+
+    it('a recalled or heeled dog does not honor', () => {
+      const dog = makeDog(100, 100, 10, () => 0.999);
+      const hunter = { x: 300, y: 100 };
+      dog.update(50, [], { hunterPos: hunter, recall: true });
+      expect(dog.state).toBe('recalled');
+      dog.update(50, [], { hunterPos: hunter, honorPoint: point });
+      expect(dog.state).toBe('recalled');
     });
   });
 
