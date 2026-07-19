@@ -1,15 +1,16 @@
 import Phaser from 'phaser';
 import { playBlip, unlockAudio } from '../audio';
 import { BREEDS, DOG_NAMES, type BreedConfig } from '../game/breeds';
-import { addDogToKennel, loadCareer, saveCareer } from '../game/career';
+import { addDogToKennel, loadCareer, saveCareer, setActiveDog } from '../game/career';
 
 const pips = (v: number) => '#'.repeat(v) + '-'.repeat(5 - v);
 
 /**
- * First-run flow: pick a breed, name the puppy. Shown once, when the kennel
- * is empty.
+ * Pick a breed, name the puppy. Runs on first launch (empty kennel) and
+ * again whenever the kennel raises a new pup — the new dog becomes active.
  */
 export class BreedScene extends Phaser.Scene {
+  private fromKennel = false;
   private selected: BreedConfig | null = null;
   private selectedCell: Phaser.GameObjects.Rectangle | null = null;
   private confirmText!: Phaser.GameObjects.Text;
@@ -23,7 +24,8 @@ export class BreedScene extends Phaser.Scene {
     super('BreedScene');
   }
 
-  create(): void {
+  create(data: { fromKennel?: boolean } = {}): void {
+    this.fromKennel = data.fromKennel ?? false;
     this.selected = null;
     this.selectedCell = null;
     this.gridObjects = [];
@@ -32,7 +34,7 @@ export class BreedScene extends Phaser.Scene {
     const g = this.add.graphics();
     g.fillStyle(0x1c2b18).fillRect(0, 0, 480, 270);
     const header = this.add
-      .text(240, 14, 'choose your first bird dog', {
+      .text(240, 14, this.fromKennel ? 'choose your next bird dog' : 'choose your first bird dog', {
         fontFamily: 'monospace',
         fontSize: '12px',
         color: '#ffd23f',
@@ -126,9 +128,10 @@ export class BreedScene extends Phaser.Scene {
       if (!this.selected) return;
       unlockAudio();
       playBlip();
-      const { career } = addDogToKennel(loadCareer(), this.puppyName, this.selected.id);
-      saveCareer(career);
-      this.scene.start('MapScene');
+      const { career, dog } = addDogToKennel(loadCareer(), this.puppyName, this.selected.id);
+      // A fresh pup always rides along next.
+      saveCareer(setActiveDog(career, dog.id));
+      this.scene.start(this.fromKennel ? 'KennelScene' : 'MapScene');
     });
 
     this.panelObjects.push(title, nameText, reroll, rerollLabel, start, startLabel);

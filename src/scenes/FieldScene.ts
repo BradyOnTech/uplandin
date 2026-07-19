@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { playBell, playBlip, playFlush, playPoint, playWhistle, unlockAudio } from '../audio';
+import { playBeeper, playBell, playBlip, playFlush, playPoint, playWhistle, unlockAudio } from '../audio';
 import { AREAS, getArea, type AreaConfig } from '../game/areas';
 import {
   birdsScentingDog,
@@ -10,8 +10,17 @@ import {
   type Bird,
 } from '../game/birds';
 import { dogScentRadius, getBreed, type BreedConfig } from '../game/breeds';
-import { activeDog, awardDogXp, loadCareer, recordHunt, saveCareer, type KennelDog } from '../game/career';
+import {
+  activeDog,
+  awardDogXp,
+  awardHunterXp,
+  loadCareer,
+  recordHunt,
+  saveCareer,
+  type KennelDog,
+} from '../game/career';
 import { devDogLevel } from '../game/dev';
+import { gearTierFor, unlocksAtLevel } from '../game/progression';
 import { Dog, WHISTLE_RANGE, type DogState } from '../game/dog';
 import type { QuickConfig } from '../game/quick';
 import { VIEWPORT } from '../game/field';
@@ -35,6 +44,7 @@ const HEN_FINE_XP = 4; // dropping a protected hen costs the dog this much XP
 const BELL_INTERVAL_MS = 620; // tinkle cadence while the dog moves
 const BELL_HEARING = 700; // px at which the bell fades to nothing
 const BELL_VOLUME = 0.16;
+const BEEPER_INTERVAL_MS = 1400; // locate-beep cadence while on point (gear tier 1+)
 /** States where the bell rings — a standing (pointing/heeled) dog is silent. */
 const BELL_STATES: DogState[] = ['quartering', 'tracking', 'breaking', 'retrieving', 'recalled'];
 
@@ -57,6 +67,8 @@ export class FieldScene extends Phaser.Scene {
   private breed: BreedConfig = getBreed('gsp');
   private devLevel: number | null = null;
   private quick: QuickConfig | null = null;
+  private gearTier = 0;
+  private beeperMs = 0;
 
   private hunterTarget: Vec2 | null = null;
   private sprinting = false;
@@ -73,6 +85,10 @@ export class FieldScene extends Phaser.Scene {
   private hunterSprite!: Phaser.GameObjects.Sprite;
   private pointMarker!: Phaser.GameObjects.Text;
   private dogArrow!: Phaser.GameObjects.Text;
+  private dogDistLabel!: Phaser.GameObjects.Text;
+  private miniMap: { x: number; y: number; sx: number; sy: number } | null = null;
+  private miniHunter!: Phaser.GameObjects.Rectangle;
+  private miniDog!: Phaser.GameObjects.Rectangle;
   private hud!: Phaser.GameObjects.Text;
   private whistleLabel!: Phaser.GameObjects.Text;
   private toastText: Phaser.GameObjects.Text | null = null;
@@ -89,11 +105,18 @@ export class FieldScene extends Phaser.Scene {
     this.area = data.hunt
       ? getArea(data.hunt.areaId)
       : getArea(data.areaId ?? this.quick?.areaId ?? AREAS[0].id);
+    const career = loadCareer();
+    this.gearTier = this.quick?.gearTier ?? gearTierFor(career.hunter.level);
     this.hunt =
       data.hunt ??
-      createHunt(this.area, Math.random, this.quick && this.quick.wind !== 'random' ? this.quick.wind : undefined);
+      createHunt(
+        this.area,
+        Math.random,
+        this.quick && this.quick.wind !== 'random' ? this.quick.wind : undefined,
+        this.quick?.gunId ?? career.hunter.shotgunId,
+      );
     if (this.quick) this.hunt.quick = this.quick;
-    this.kennelDog = this.quick ? null : activeDog(loadCareer());
+    this.kennelDog = this.quick ? null : activeDog(career);
     this.breed = this.quick
       ? getBreed(this.quick.breedId)
       : this.kennelDog
@@ -130,13 +153,36 @@ export class FieldScene extends Phaser.Scene {
     cam.setBounds(this.area.world.x, this.area.world.y, this.area.world.w, this.area.world.h);
     cam.startFollow(this.hunterSprite, true, 0.12, 0.12);
 
-    // Edge arrow: where the dog is when it's working off-screen.
+    // Edge arrow: where the dog is when it's working off-screen. What it
+    // shows depends on tracking gear: bell (nothing), beeper (only on
+    // point), GPS (always, plus live distance), GPS+map (minimap too).
     this.dogArrow = this.add
       .text(0, 0, '▲', { fontFamily: 'monospace', fontSize: '10px', color: '#f2e3c6' })
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(15)
       .setVisible(false);
+    this.dogDistLabel = this.add
+      .text(0, 0, '', { fontFamily: 'monospace', fontSize: '8px', color: '#f2e3c6' })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(15)
+      .setVisible(false);
+    this.beeperMs = 0;
+
+    if (this.gearTier >= 3) {
+      const w = this.area.world;
+      const mapW = 90;
+      const mapH = Math.round((mapW * w.h) / w.w);
+      const mapX = VIEWPORT.w - mapW - 6;
+      const mapY = 6;
+      this.add.rectangle(mapX, mapY, mapW, mapH, 0x101410, 0.7).setOrigin(0, 0).setScrollFactor(0).setDepth(14);
+      this.miniHunter = this.add.rectangle(0, 0, 2, 2, 0xd6402c).setScrollFactor(0).setDepth(15);
+      this.miniDog = this.add.rectangle(0, 0, 2, 2, 0xf2e3c6).setScrollFactor(0).setDepth(15);
+      this.miniMap = { x: mapX, y: mapY, sx: mapW / w.w, sy: mapH / w.h };
+    } else {
+      this.miniMap = null;
+    }
 
     this.hud = this.add
       .text(4, 4, '', { fontFamily: 'monospace', fontSize: '8px', color: '#ffffff' })
@@ -213,9 +259,12 @@ export class FieldScene extends Phaser.Scene {
       this.dog.castOff();
       return;
     }
-    // The blast goes out either way; the dog only hears it inside whistle range.
+    // The blast goes out either way; the dog only hears it inside whistle
+    // range — unless the GPS+map handheld pages the collar directly.
     this.recallPending = true;
-    if (dist(this.dog.pos, this.hunt.hunterPos) > WHISTLE_RANGE) this.toast('out of earshot...');
+    if (this.gearTier < 3 && dist(this.dog.pos, this.hunt.hunterPos) > WHISTLE_RANGE) {
+      this.toast('out of earshot...');
+    }
   }
 
   private toast(msg: string): void {
@@ -245,6 +294,7 @@ export class FieldScene extends Phaser.Scene {
       windAngle: this.hunt.wind,
       scentMult: wind.scent,
       recall,
+      whistleRange: this.gearTier >= 3 ? Infinity : undefined,
     });
     this.hunt.dogPos = { ...this.dog.pos };
 
@@ -351,22 +401,56 @@ export class FieldScene extends Phaser.Scene {
     }
   }
 
-  /** Tier-0 tracking gear: the bell tinkles while the dog moves, fades with distance, and goes silent on point. */
+  /**
+   * Tracking gear, tier 0: the bell tinkles while the dog moves, fades with
+   * distance, and goes silent on point. Tier 1 adds the beeper collar:
+   * sharp locate beeps while the dog stands on point.
+   */
   private updateBell(delta: number): void {
     this.bellMs += delta;
-    if (this.bellMs < BELL_INTERVAL_MS) return;
-    this.bellMs = 0;
-    if (!BELL_STATES.includes(this.dog.state)) return;
-    const d = dist(this.dog.pos, this.hunt.hunterPos);
-    playBell(BELL_VOLUME * Math.max(0, 1 - d / BELL_HEARING));
+    if (this.bellMs >= BELL_INTERVAL_MS) {
+      this.bellMs = 0;
+      if (BELL_STATES.includes(this.dog.state)) {
+        const d = dist(this.dog.pos, this.hunt.hunterPos);
+        playBell(BELL_VOLUME * Math.max(0, 1 - d / BELL_HEARING));
+      }
+    }
+    if (this.gearTier >= 1 && this.dog.state === 'pointing') {
+      this.beeperMs += delta;
+      if (this.beeperMs >= BEEPER_INTERVAL_MS) {
+        this.beeperMs = 0;
+        playBeeper();
+      }
+    } else {
+      this.beeperMs = BEEPER_INTERVAL_MS; // first beep lands the moment the point starts
+    }
   }
 
-  /** When the dog works off-screen, pin an arrow to the viewport edge pointing at it. */
+  /**
+   * The edge arrow shows what your gear can tell you: nothing on the bell,
+   * point-only direction on the beeper, always plus live distance on GPS.
+   * GPS+map also keeps the minimap current.
+   */
   private updateDogArrow(): void {
+    if (this.miniMap) {
+      this.miniHunter.setPosition(
+        this.miniMap.x + this.hunt.hunterPos.x * this.miniMap.sx,
+        this.miniMap.y + this.hunt.hunterPos.y * this.miniMap.sy,
+      );
+      this.miniDog.setPosition(
+        this.miniMap.x + this.dog.pos.x * this.miniMap.sx,
+        this.miniMap.y + this.dog.pos.y * this.miniMap.sy,
+      );
+      this.miniDog.setFillStyle(this.dog.state === 'pointing' ? 0xffd23f : 0xf2e3c6);
+    }
+
     const view = this.cameras.main.worldView;
     const off = !view.contains(this.dog.pos.x, this.dog.pos.y);
-    this.dogArrow.setVisible(off);
-    if (!off) return;
+    const show =
+      off && (this.gearTier >= 2 || (this.gearTier === 1 && this.dog.state === 'pointing'));
+    this.dogArrow.setVisible(show);
+    this.dogDistLabel.setVisible(show && this.gearTier >= 2);
+    if (!show) return;
     const ang = Math.atan2(this.dog.pos.y - view.centerY, this.dog.pos.x - view.centerX);
     const halfW = VIEWPORT.w / 2 - 10;
     const halfH = VIEWPORT.h / 2 - 10;
@@ -374,9 +458,15 @@ export class FieldScene extends Phaser.Scene {
       halfW / Math.max(1e-6, Math.abs(Math.cos(ang))),
       halfH / Math.max(1e-6, Math.abs(Math.sin(ang))),
     );
-    this.dogArrow.setPosition(VIEWPORT.w / 2 + Math.cos(ang) * t, VIEWPORT.h / 2 + Math.sin(ang) * t);
+    const ax = VIEWPORT.w / 2 + Math.cos(ang) * t;
+    const ay = VIEWPORT.h / 2 + Math.sin(ang) * t;
+    this.dogArrow.setPosition(ax, ay);
     this.dogArrow.setRotation(ang + Math.PI / 2);
     this.dogArrow.setColor(this.dog.state === 'pointing' ? '#ffd23f' : '#f2e3c6');
+    if (this.gearTier >= 2) {
+      this.dogDistLabel.setText(String(Math.round(dist(this.dog.pos, this.hunt.hunterPos))));
+      this.dogDistLabel.setPosition(ax - Math.cos(ang) * 16, ay - Math.sin(ang) * 16);
+    }
   }
 
   private showSummary(): void {
@@ -388,14 +478,41 @@ export class FieldScene extends Phaser.Scene {
     const base = 2 * ev.pointFlushes + ev.retrieves + 3 * ev.downedOverPoint;
     const fine = HEN_FINE_XP * ev.henDowns;
     const gained = Math.max(0, Math.round(base * this.breed.xpRate) - fine);
-    let levelMsg: string | null = null;
-    if (!this.quick) {
+    // Hunter XP: each bird +1, each double +1 bonus, finishing the hunt +2.
+    const hunterGained = this.hunt.downed + this.hunt.doubles + 2;
+    const lines: { text: string; color: string }[] = [];
+    if (this.quick) {
+      lines.push({ text: 'quick hunt — career untouched', color: '#9fb896' });
+    } else {
       let career = recordHunt(loadCareer(), this.hunt.areaId, this.hunt.downed, this.hunt.escaped);
+      if (this.kennelDog) {
+        lines.push({ text: `${this.kennelDog.name} +${gained} xp`, color: '#9fd88f' });
+      }
+      if (ev.henDowns > 0) {
+        lines.push({
+          text: `${ev.henDowns} hen${ev.henDowns > 1 ? 's' : ''} down — game warden fines you ${fine} xp`,
+          color: '#ff6a5a',
+        });
+      }
       if (this.kennelDog && gained > 0) {
         const res = awardDogXp(career, this.kennelDog.id, gained);
         career = res.career;
         this.kennelDog = career.kennel.find((d) => d.id === this.kennelDog!.id) ?? this.kennelDog;
-        if (res.levelsGained > 0) levelMsg = `LEVEL UP! ${this.kennelDog.name} is level ${res.newLevel}!`;
+        if (res.levelsGained > 0) {
+          lines.push({ text: `LEVEL UP! ${this.kennelDog.name} is level ${res.newLevel}!`, color: '#ffd23f' });
+        }
+      }
+      const before = career.hunter.level;
+      const hres = awardHunterXp(career, hunterGained);
+      career = hres.career;
+      lines.push({ text: `hunter +${hunterGained} xp${this.hunt.doubles > 0 ? ' (double!)' : ''}`, color: '#8fc7ff' });
+      if (hres.levelsGained > 0) {
+        lines.push({ text: `HUNTER LEVEL ${hres.newLevel}!`, color: '#ffd23f' });
+        for (let lvl = before + 1; lvl <= hres.newLevel; lvl++) {
+          for (const unlock of unlocksAtLevel(lvl)) {
+            lines.push({ text: `unlocked: ${unlock}`, color: '#ffd23f' });
+          }
+        }
       }
       saveCareer(career);
     }
@@ -418,51 +535,20 @@ export class FieldScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(21);
+    lines.forEach((line, i) => {
+      this.add
+        .text(cx, cy - 2 + i * 11, line.text, { fontFamily: 'monospace', fontSize: '8px', color: line.color })
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(21);
+    });
+    const buttonY = Math.max(cy + 44, cy - 2 + lines.length * 11 + 16);
     if (this.quick) {
-      this.add
-        .text(cx, cy + 0, 'quick hunt — career untouched', {
-          fontFamily: 'monospace',
-          fontSize: '8px',
-          color: '#9fb896',
-        })
-        .setOrigin(0.5)
-        .setScrollFactor(0)
-        .setDepth(21);
-    } else if (this.kennelDog) {
-      this.add
-        .text(cx, cy + 0, `${this.kennelDog.name} +${gained} xp`, {
-          fontFamily: 'monospace',
-          fontSize: '8px',
-          color: '#9fd88f',
-        })
-        .setOrigin(0.5)
-        .setScrollFactor(0)
-        .setDepth(21);
-    }
-    if (!this.quick && ev.henDowns > 0) {
-      this.add
-        .text(cx, cy + 12, `${ev.henDowns} hen${ev.henDowns > 1 ? 's' : ''} down — game warden fines you ${fine} xp`, {
-          fontFamily: 'monospace',
-          fontSize: '8px',
-          color: '#ff6a5a',
-        })
-        .setOrigin(0.5)
-        .setScrollFactor(0)
-        .setDepth(21);
-    }
-    if (levelMsg) {
-      this.add
-        .text(cx, cy + 24, levelMsg, { fontFamily: 'monospace', fontSize: '9px', color: '#ffd23f' })
-        .setOrigin(0.5)
-        .setScrollFactor(0)
-        .setDepth(21);
-    }
-    if (this.quick) {
-      this.summaryButton(cx - 62, cy + 44, 'hunt again', () => this.scene.restart({ quick: this.quick }));
-      this.summaryButton(cx + 62, cy + 44, 'setup', () => this.scene.start('QuickScene'));
+      this.summaryButton(cx - 62, buttonY, 'hunt again', () => this.scene.restart({ quick: this.quick }));
+      this.summaryButton(cx + 62, buttonY, 'setup', () => this.scene.start('QuickScene'));
     } else {
-      this.summaryButton(cx - 62, cy + 44, 'hunt again', () => this.scene.restart({ areaId: this.area.id }));
-      this.summaryButton(cx + 62, cy + 44, 'menu', () => this.scene.start('TitleScene'));
+      this.summaryButton(cx - 62, buttonY, 'hunt again', () => this.scene.restart({ areaId: this.area.id }));
+      this.summaryButton(cx + 62, buttonY, 'menu', () => this.scene.start('TitleScene'));
     }
   }
 

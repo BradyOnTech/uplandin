@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { playBlip, unlockAudio } from '../audio';
 import { AREAS, getArea } from '../game/areas';
 import { BREEDS, getBreed, LEVEL_CAP } from '../game/breeds';
+import { getGun, GUNS } from '../game/guns';
+import { GEAR_NAMES } from '../game/progression';
 import {
   cycleId,
   loadQuickConfig,
@@ -88,10 +90,25 @@ export class QuickScene extends Phaser.Scene {
           this.cfg.wind = cycleId(WIND_CHOICES, this.cfg.wind, dir);
         },
       },
+      {
+        label: 'gun',
+        value: () => getGun(this.cfg.gunId).name,
+        hint: () => getGun(this.cfg.gunId).blurb,
+        step: (dir) => {
+          this.cfg.gunId = cycleId(GUNS.map((g) => g.id), this.cfg.gunId, dir);
+        },
+      },
+      {
+        label: 'gear',
+        value: () => GEAR_NAMES[this.cfg.gearTier],
+        step: (dir) => {
+          this.cfg.gearTier = (this.cfg.gearTier + dir + GEAR_NAMES.length) % GEAR_NAMES.length;
+        },
+      },
     ];
 
     this.rows.forEach((row, i) => {
-      const y = 70 + i * 38;
+      const y = 58 + i * 31;
       this.add.text(70, y - 5, row.label, { fontFamily: 'monospace', fontSize: '10px', color: '#9fb896' });
       const arrow = (x: number, glyph: string, dir: 1 | -1) => {
         this.add
@@ -120,7 +137,7 @@ export class QuickScene extends Phaser.Scene {
     });
 
     const go = this.add
-      .rectangle(240, 236, 150, 24, 0x3d7429)
+      .rectangle(240, 250, 150, 24, 0x3d7429)
       .setInteractive()
       .on('pointerdown', () => {
         unlockAudio();
@@ -130,7 +147,7 @@ export class QuickScene extends Phaser.Scene {
       });
     go.setStrokeStyle(1, 0x9fd88f);
     this.add
-      .text(240, 236, 'hunt', { fontFamily: 'monospace', fontSize: '10px', color: '#ffffff' })
+      .text(240, 250, 'hunt', { fontFamily: 'monospace', fontSize: '10px', color: '#ffffff' })
       .setOrigin(0.5);
 
     const back = this.add

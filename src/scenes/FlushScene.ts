@@ -3,6 +3,7 @@ import { playCackle, playShot, playThud, playThunder, playTwitter, unlockAudio }
 import { getArea } from '../game/areas';
 import { relightSurvivors, type Bird } from '../game/birds';
 import type { Dog } from '../game/dog';
+import { getGun, type GunConfig } from '../game/guns';
 import { clamp, dist } from '../game/math';
 import { escapeVelocity, hitTest } from '../game/shot';
 import { getSpecies, type SpeciesConfig } from '../game/species';
@@ -11,8 +12,6 @@ import type { Vec2 } from '../game/types';
 import { windMults } from '../game/wind';
 
 const GROUND_Y = 205;
-const SPREAD_RADIUS = 14; // how forgiving the shot pattern is
-const SHELLS = 2;
 const TOUCH_AIM_OFFSET = 56; // crosshair rides above your finger on touch
 const LAUNCH_STAGGER_MS = 130; // covey birds get airborne one after another
 
@@ -39,7 +38,9 @@ export class FlushScene extends Phaser.Scene {
   private dogPointed = false;
 
   private crosshair!: Phaser.GameObjects.Sprite;
-  private shells = SHELLS;
+  private gun!: GunConfig;
+  private shells = 2;
+  private lastShotAt = -Infinity;
   private shellPips: Phaser.GameObjects.Rectangle[] = [];
   private hud!: Phaser.GameObjects.Text;
 
@@ -51,7 +52,9 @@ export class FlushScene extends Phaser.Scene {
     this.hunt = data.hunt;
     this.dog = data.dog;
     this.dogPointed = data.dogPointed ?? false;
-    this.shells = SHELLS;
+    this.gun = getGun(this.hunt.gunId);
+    this.shells = this.gun.shells;
+    this.lastShotAt = -Infinity;
     this.resolved = false;
     this.birds = [];
 
@@ -93,7 +96,7 @@ export class FlushScene extends Phaser.Scene {
     this.input.setDefaultCursor('none');
 
     this.shellPips = [];
-    for (let i = 0; i < SHELLS; i++) {
+    for (let i = 0; i < this.gun.shells; i++) {
       this.shellPips.push(this.add.rectangle(6 + i * 8, 252, 5, 10, 0xd6402c).setOrigin(0, 0.5));
     }
     const lead = this.birds[0];
@@ -146,6 +149,9 @@ export class FlushScene extends Phaser.Scene {
 
   private shoot(p: Phaser.Input.Pointer): void {
     if (this.resolved || this.shells <= 0) return;
+    // Working the action: the pump makes you wait between shots.
+    if (this.time.now - this.lastShotAt < this.gun.cooldownMs) return;
+    this.lastShotAt = this.time.now;
     this.shells--;
     this.shellPips[this.shells].setFillStyle(0x333333);
     playShot();
@@ -163,7 +169,7 @@ export class FlushScene extends Phaser.Scene {
 
     // One shell, one bird: the nearest flying bird inside the pattern.
     let best: FlyingBird | null = null;
-    let bestDist = SPREAD_RADIUS;
+    let bestDist = this.gun.spread;
     for (const b of this.birds) {
       if (b.status !== 'flying') continue;
       const d = dist(aim, b.sprite);
@@ -204,6 +210,8 @@ export class FlushScene extends Phaser.Scene {
     const downedHere = this.birds.filter((b) => b.fieldBird.state === 'downed').length;
     // Birds downed over the dog's point earn it XP at the summary.
     if (this.dogPointed) this.hunt.xpEvents.downedOverPoint += downedHere;
+    // Two on one rise: the classic double, bonus hunter XP.
+    if (downedHere >= 2) this.hunt.doubles++;
 
     // Hunt the singles: survivors of the rise relight nearby, holding tight.
     const escapedIds = this.birds.filter((b) => b.fieldBird.state === 'escaped').map((b) => b.id);
@@ -220,7 +228,7 @@ export class FlushScene extends Phaser.Scene {
     if (downedHere === 0) {
       this.hud.setText(total > 1 ? 'they all got away...' : 'it got away...');
     } else if (total > 1) {
-      this.hud.setText(`${downedHere} of ${total} down!`);
+      this.hud.setText(`${downedHere} of ${total} down!${downedHere >= 2 ? '  A DOUBLE!' : ''}`);
     } else {
       this.hud.setText('nice shot!');
     }

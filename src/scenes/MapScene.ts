@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
 import { playBlip, unlockAudio } from '../audio';
 import { getBreed } from '../game/breeds';
-import { activeDog, loadCareer } from '../game/career';
+import { activeDog, loadCareer, saveCareer, STARTER_REGION } from '../game/career';
+import { getGun, unlockedGuns } from '../game/guns';
+import { GEAR_NAMES, gearTierFor, TRUCK_LEVEL, truckUnlocked } from '../game/progression';
 import { REGIONS } from '../game/regions';
 
 /** Chunky pixel-style continental US, y-down screen coords on 480×270. */
@@ -13,9 +15,9 @@ const US_OUTLINE: [number, number][] = [
 ];
 
 /**
- * The travel map: seven regions across the country. Built regions open with
- * a tap; the rest are marked for later seasons. Truck-based travel gating
- * arrives with hunter progression.
+ * The travel map: seven regions across the country. Home ground is always
+ * open; the rest of the built regions need the truck (hunter level 2).
+ * The bottom bar carries your gun choice and the kennel door.
  */
 export class MapScene extends Phaser.Scene {
   constructor() {
@@ -24,6 +26,7 @@ export class MapScene extends Phaser.Scene {
 
   create(): void {
     const career = loadCareer();
+    const hasTruck = truckUnlocked(career.hunter.level);
 
     this.add.rectangle(240, 135, 480, 270, 0x101a26);
     const g = this.add.graphics();
@@ -32,22 +35,24 @@ export class MapScene extends Phaser.Scene {
     g.lineStyle(1, 0x3a4a5a).strokePoints(US_OUTLINE.map(([x, y]) => new Phaser.Geom.Point(x, y)), true);
 
     this.add
-      .text(240, 16, 'where to, boss?', { fontFamily: 'monospace', fontSize: '12px', color: '#ffd23f' })
+      .text(240, 14, 'where to, boss?', { fontFamily: 'monospace', fontSize: '12px', color: '#ffd23f' })
       .setOrigin(0.5);
     const dog = activeDog(career);
-    if (dog) {
-      this.add
-        .text(240, 32, `${dog.name} the ${getBreed(dog.breedId).name} rides shotgun`, {
-          fontFamily: 'monospace',
-          fontSize: '8px',
-          color: '#dfe9d8',
-        })
-        .setOrigin(0.5);
-    }
+    const header = dog
+      ? `${dog.name} the ${getBreed(dog.breedId).name} rides shotgun`
+      : 'the kennel is empty';
+    this.add
+      .text(240, 30, `${header} · hunter lv ${career.hunter.level} · ${GEAR_NAMES[gearTierFor(career.hunter.level)]}`, {
+        fontFamily: 'monospace',
+        fontSize: '8px',
+        color: '#dfe9d8',
+      })
+      .setOrigin(0.5);
 
     for (const region of REGIONS) {
       const { x, y } = region.map;
-      if (region.built) {
+      const open = region.built && (hasTruck || region.id === STARTER_REGION);
+      if (open) {
         const hunts = region.areaIds.reduce((a, id) => a + (career.areas[id]?.hunts ?? 0), 0);
         const dot = this.add.circle(x, y, 5, 0xffd23f).setInteractive({ useHandCursor: true });
         this.add.circle(x, y, 2, 0x101a26);
@@ -68,20 +73,45 @@ export class MapScene extends Phaser.Scene {
         });
       } else {
         this.add.circle(x, y, 3, 0x44505c);
+        const note = region.built ? `needs the truck (hunter lv ${TRUCK_LEVEL})` : 'a later season';
         this.add
           .text(x, y + 8, region.name, { fontFamily: 'monospace', fontSize: '8px', color: '#8a97a4' })
+          .setOrigin(0.5, 0)
+          .setShadow(1, 1, '#101a26', 0);
+        this.add
+          .text(x, y + 18, note, { fontFamily: 'monospace', fontSize: '8px', color: '#5a6a78' })
           .setOrigin(0.5, 0)
           .setShadow(1, 1, '#101a26', 0);
       }
     }
 
-    this.add
-      .text(240, 258, 'gold pins are open — the rest come with later seasons', {
-        fontFamily: 'monospace',
-        fontSize: '8px',
-        color: '#5a6a78',
-      })
-      .setOrigin(0.5);
+    // Gun rack: tap to cycle through what your hunter level has unlocked.
+    const guns = unlockedGuns(career.hunter.level);
+    const gunLabel = this.add
+      .text(240, 246, '', { fontFamily: 'monospace', fontSize: '8px', color: '#dfe9d8' })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+    const setGunText = () =>
+      gunLabel.setText(`gun: ${getGun(career.hunter.shotgunId).name}${guns.length > 1 ? '  <tap to swap>' : ''}`);
+    setGunText();
+    gunLabel.on('pointerdown', () => {
+      unlockAudio();
+      playBlip();
+      const i = guns.findIndex((gn) => gn.id === career.hunter.shotgunId);
+      career.hunter.shotgunId = guns[(i + 1) % guns.length].id;
+      saveCareer(career);
+      setGunText();
+    });
+
+    const kennel = this.add
+      .text(470, 252, 'kennel >', { fontFamily: 'monospace', fontSize: '8px', color: '#9fb896' })
+      .setOrigin(1, 0)
+      .setInteractive();
+    kennel.on('pointerdown', () => {
+      unlockAudio();
+      playBlip();
+      this.scene.start('KennelScene');
+    });
 
     const back = this.add
       .text(10, 252, '< title', { fontFamily: 'monospace', fontSize: '8px', color: '#9fb896' })
