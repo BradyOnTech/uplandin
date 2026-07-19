@@ -15,7 +15,8 @@ import { windMults } from '../game/wind';
 
 const GROUND_Y = 205;
 const TOUCH_AIM_OFFSET = 56; // crosshair rides above your finger on touch
-const LAUNCH_STAGGER_MS = 130; // covey birds get airborne one after another
+const LAUNCH_STAGGER_MS = 160; // covey birds get airborne one after another
+const LAUNCH_SPREAD_X = 24; // px between covey launch slots (sprites are ~44 wide)
 
 /** Painted backdrop plates per region (docs/art pipeline); regions without one get the drawn sky. */
 const FLUSH_BACKDROPS: Record<string, string> = {
@@ -34,6 +35,8 @@ interface FlyingBird {
   sprite: Phaser.GameObjects.Sprite;
   vel: Vec2;
   wobble: number;
+  /** Per-bird depth: covey mates fly at different distances, not one plane. */
+  depthBias: number;
   status: 'waiting' | 'flying' | 'falling' | 'done';
 }
 
@@ -112,9 +115,9 @@ export class FlushScene extends Phaser.Scene {
       }
       // World coords → screen: the bird rises where it sat relative to the
       // hunter, spread so covey mates don't share a launch pixel.
-      const spreadX = (i - (coveyCount - 1) / 2) * 16;
+      const spreadX = (i - (coveyCount - 1) / 2) * LAUNCH_SPREAD_X;
       const launchX = clamp(240 + (fieldBird.pos.x - this.hunt.hunterPos.x) + spreadX, 48, 432);
-      const launchY = GROUND_Y - 6 - (i % 3) * 6;
+      const launchY = GROUND_Y - 6 - (i % 3) * 9;
       // Steer back toward the middle of the screen so edge flushes stay shootable.
       if ((launchX < 240 && vel.x < 0) || (launchX > 240 && vel.x > 0)) {
         vel.x *= -1;
@@ -122,7 +125,16 @@ export class FlushScene extends Phaser.Scene {
       const sprite = this.makeBirdSprite(fieldBird, species, launchX, launchY);
       sprite.setFlipX(vel.x < 0);
       sprite.setVisible(i === 0);
-      const bird: FlyingBird = { id, fieldBird, species, sprite, vel, wobble: i * 2.1, status: 'waiting' };
+      const bird: FlyingBird = {
+        id,
+        fieldBird,
+        species,
+        sprite,
+        vel,
+        wobble: i * 2.1,
+        depthBias: 0.72 + 0.28 * ((i * 0.61) % 1),
+        status: 'waiting',
+      };
       this.birds.push(bird);
       this.time.delayedCall(i * LAUNCH_STAGGER_MS, () => {
         if (bird.status !== 'waiting') return;
@@ -191,8 +203,9 @@ export class FlushScene extends Phaser.Scene {
       }
       if (b.status === 'flying' || b.status === 'falling') {
         // Depth cue: a rising bird is a departing bird — it shrinks with
-        // altitude (and a falling one grows back on the way down).
-        b.sprite.setScale(clamp(1 - (GROUND_Y - b.sprite.y) / 650, 0.55, 1));
+        // altitude (and a falling one grows back on the way down), and each
+        // covey mate carries its own distance so they never share a plane.
+        b.sprite.setScale(clamp(1 - (GROUND_Y - b.sprite.y) / 650, 0.55, 1) * b.depthBias);
         b.sprite.setDepth(b.sprite.y);
       }
     }

@@ -35,6 +35,18 @@ describe('escapeVelocity', () => {
     expect(solo.y).toBeLessThan(0);
   });
 
+  it('even steep climbers separate laterally — the push beats a narrow arc', () => {
+    // Bobwhite-like: climb 0.75 gives a ~24-degree half arc, which alone
+    // separates 44px sprites far too slowly. The per-slot push guarantees
+    // adjacent covey mates diverge fast enough to read as a scatter.
+    const steep = { speedMin: 115, speedMax: 155, climb: 0.75, wobble: 26 };
+    const vels = Array.from({ length: 6 }, (_, i) => escapeVelocityFan(steep, i, 6, () => 0.5));
+    for (let i = 1; i < vels.length; i++) {
+      expect(vels[i].x - vels[i - 1].x).toBeGreaterThan(15); // px/s of divergence
+    }
+    for (const v of vels) expect(v.y).toBeLessThan(-40); // everyone still genuinely climbs
+  });
+
   it('shapes the arc by species flight style', () => {
     const tower = { speedMin: 100, speedMax: 100, climb: 0.95, wobble: 0 };
     const burner = { speedMin: 100, speedMax: 100, climb: 0.4, wobble: 0 };
