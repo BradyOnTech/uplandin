@@ -66,8 +66,9 @@ export const AREAS: AreaConfig[] = [
     patches: scatterRects(world(1400, 800), { count: 22, minW: 110, maxW: 200, minH: 40, maxH: 70 }, mulberry32(44)),
     stocking: 0.7,
     speciesMix: [
-      { speciesId: 'sharptail', weight: 0.7 },
-      { speciesId: 'hun', weight: 0.3 },
+      { speciesId: 'sharptail', weight: 0.5 },
+      { speciesId: 'prairie-chicken', weight: 0.3 },
+      { speciesId: 'hun', weight: 0.2 },
     ],
   },
   // — North Woods —
@@ -110,6 +111,76 @@ export const AREAS: AreaConfig[] = [
     patches: scatterRects(world(1400, 800), { count: 18, minW: 100, maxW: 180, minH: 35, maxH: 60 }, mulberry32(66)),
     stocking: 0.65,
     speciesMix: [{ speciesId: 'hun', weight: 1 }],
+  },
+  {
+    id: 'chukar-ridge',
+    name: 'Chukar Ridge',
+    tagline: 'they run up and fly down',
+    grass: 0x8f7f5e,
+    cover: 0x5e5340,
+    world: world(1400, 800),
+    patches: scatterRects(world(1400, 800), { count: 16, minW: 90, maxW: 160, minH: 30, maxH: 55 }, mulberry32(77)),
+    stocking: 0.7,
+    speciesMix: [
+      { speciesId: 'chukar', weight: 0.8 },
+      { speciesId: 'hun', weight: 0.2 },
+    ],
+  },
+  // — Sonoran Desert —
+  {
+    id: 'desert-washes',
+    name: 'Desert Washes',
+    tagline: 'big desert coveys in the thornscrub',
+    grass: 0xb89f72,
+    cover: 0x77694a,
+    world: world(1200, 700),
+    patches: scatterRects(world(1200, 700), { count: 22, minW: 70, maxW: 130, minH: 35, maxH: 65 }, mulberry32(88)),
+    stocking: 1.6,
+    speciesMix: [
+      { speciesId: 'gambels-quail', weight: 0.6 },
+      { speciesId: 'scaled-quail', weight: 0.4 },
+    ],
+  },
+  {
+    id: 'mearns-canyons',
+    name: 'Oak Canyons',
+    tagline: 'Montezuma quail sit until your boot moves them',
+    grass: 0x8a8050,
+    cover: 0x565c30,
+    world: world(1000, 640),
+    patches: scatterRects(world(1000, 640), { count: 24, minW: 65, maxW: 120, minH: 45, maxH: 75 }, mulberry32(99)),
+    stocking: 1.3,
+    speciesMix: [
+      { speciesId: 'mearns-quail', weight: 0.8 },
+      { speciesId: 'gambels-quail', weight: 0.2 },
+    ],
+  },
+  // — High Rockies —
+  {
+    id: 'timberline-parks',
+    name: 'Timberline Parks',
+    tagline: 'blue grouse hold on the high edges',
+    grass: 0x55704e,
+    cover: 0x334a36,
+    world: world(1000, 640),
+    patches: scatterRects(world(1000, 640), { count: 22, minW: 75, maxW: 140, minH: 45, maxH: 80 }, mulberry32(111)),
+    stocking: 1.0,
+    speciesMix: [
+      { speciesId: 'blue-grouse', weight: 0.7 },
+      { speciesId: 'mountain-quail', weight: 0.3 },
+    ],
+  },
+  // — Pacific Valleys —
+  {
+    id: 'valley-oaks',
+    name: 'Valley Oaks',
+    tagline: 'topknots by the dozen under the oaks',
+    grass: 0x7e8a4a,
+    cover: 0x4e5c2e,
+    world: world(1200, 700),
+    patches: scatterRects(world(1200, 700), { count: 24, minW: 70, maxW: 135, minH: 40, maxH: 70 }, mulberry32(122)),
+    stocking: 1.6,
+    speciesMix: [{ speciesId: 'california-quail', weight: 1 }],
   },
 ];
 
