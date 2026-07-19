@@ -132,6 +132,15 @@ Special rules:
   A single only relights once; wild-flushed-too-far birds are gone for good.
 - **Flush sounds** **[built]**: rooster cackle, woodcock wing twitter,
   ruffed grouse thunder.
+- **Target personality** **[built]** — tributes to realism inside the
+  Duck Hunt view, all species data: per-species target `size` (a bobwhite
+  is a 0.62-scale speck, a rooster a 1.15 barn door), wingbeat `flapRate`
+  (quail buzz at 18fps, roosters row at 9), the quail move
+  (`glideAfterMs`: burst, then wings lock and it glides off on a sink),
+  and the rooster move (`levelAfterMs`: stops climbing and accelerates
+  into a fast crossing shot — faster than it looks, like the real bird).
+  Chukar bomb flat, woodcock flutter and wobble, grouse jink through
+  timber — those were already in the flight data.
 
 ## Wind **[built]**
 

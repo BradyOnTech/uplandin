@@ -41,6 +41,8 @@ interface FlyingBird {
   wobble: number;
   /** Per-bird depth: covey mates fly at different distances, not one plane. */
   depthBias: number;
+  /** Time on the wing — drives the glide and level-off flight phases. */
+  airMs: number;
   status: 'waiting' | 'flying' | 'falling' | 'done';
 }
 
@@ -139,6 +141,7 @@ export class FlushScene extends Phaser.Scene {
         vel,
         wobble: i * 2.1,
         depthBias: 0.72 + 0.28 * ((i * 0.61) % 1),
+        airMs: 0,
         status: 'waiting',
       });
     });
@@ -199,10 +202,26 @@ export class FlushScene extends Phaser.Scene {
 
     for (const b of this.birds) {
       if (b.status === 'flying') {
+        b.airMs += delta;
+        const flight = b.species.flight;
+        // Quail move: burst, then lock wings and glide off on a gentle sink.
+        if (flight.glideAfterMs !== undefined && b.airMs > flight.glideAfterMs) {
+          b.vel.y += (14 - b.vel.y) * Math.min(1, dt * 2.2);
+          if (Math.abs(b.vel.x) < 140) b.vel.x *= 1 + 0.35 * dt; // gliders carry their speed
+          if (b.sprite.anims.isPlaying) {
+            b.sprite.stop();
+            b.sprite.setFrame(1); // wings locked
+          }
+        }
+        // Rooster move: stop climbing and accelerate into a crossing shot.
+        if (flight.levelAfterMs !== undefined && b.airMs > flight.levelAfterMs) {
+          b.vel.y += (0 - b.vel.y) * Math.min(1, dt * 2.5);
+          if (Math.abs(b.vel.x) < 210) b.vel.x *= 1 + 0.9 * dt;
+        }
         b.wobble += dt * 9;
         b.sprite.x += b.vel.x * dt + Math.sin(b.wobble) * b.species.flight.wobble * dt;
         b.sprite.y += b.vel.y * dt;
-        if (b.sprite.y < -16 || b.sprite.x < -16 || b.sprite.x > 496) {
+        if (b.sprite.y < -16 || b.sprite.x < -16 || b.sprite.x > 496 || b.sprite.y > GROUND_Y + 20) {
           this.escapeBird(b);
         }
       } else if (b.status === 'falling') {
@@ -216,9 +235,12 @@ export class FlushScene extends Phaser.Scene {
       }
       if (b.status === 'flying' || b.status === 'falling') {
         // Depth cue: a rising bird is a departing bird — it shrinks with
-        // altitude (and a falling one grows back on the way down), and each
-        // covey mate carries its own distance so they never share a plane.
-        b.sprite.setScale(clamp(1 - (GROUND_Y - b.sprite.y) / 650, 0.55, 1) * b.depthBias);
+        // altitude (and a falling one grows back on the way down), each
+        // covey mate carries its own distance, and species set the base
+        // size: a quail is a small fast target, a rooster a barn door.
+        b.sprite.setScale(
+          (b.species.size ?? 1) * clamp(1 - (GROUND_Y - b.sprite.y) / 650, 0.55, 1) * b.depthBias,
+        );
         b.sprite.setDepth(b.sprite.y);
       }
     }
@@ -398,7 +420,8 @@ export class FlushScene extends Phaser.Scene {
         this.anims.create({
           key: animKey,
           frames: this.anims.generateFrameNumbers(sheet, { start: 0, end: 1 }),
-          frameRate: 14, // the quail whir
+          // Wingbeat is species character: quail buzz, roosters row.
+          frameRate: species.flight.flapRate ?? 14,
           repeat: -1,
         });
       }

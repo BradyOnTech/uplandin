@@ -46,6 +46,27 @@ describe('species', () => {
     expect(SPECIES.filter((s) => s.henRule).map((s) => s.id)).toEqual(['ringneck']);
   });
 
+  it('target personality: quail are small buzzing gliders, roosters big slow-beating liars', () => {
+    const quail = getSpecies('bobwhite');
+    const rooster = getSpecies('ringneck');
+    // Smaller and faster-winged than a pheasant — your realism tribute.
+    expect(quail.size!).toBeLessThan(rooster.size!);
+    expect(quail.flight.flapRate!).toBeGreaterThan(rooster.flight.flapRate!);
+    // Quail burst then lock wings; the rooster levels off and accelerates.
+    expect(quail.flight.glideAfterMs).toBeGreaterThan(0);
+    expect(rooster.flight.levelAfterMs).toBeGreaterThan(0);
+    expect(SPECIES.filter((s) => s.flight.levelAfterMs).map((s) => s.id)).toEqual(['ringneck']);
+    // Every species carries a sane shot-view size.
+    for (const s of SPECIES) {
+      expect(s.size ?? 1).toBeGreaterThanOrEqual(0.5);
+      expect(s.size ?? 1).toBeLessThanOrEqual(1.3);
+    }
+    // All the quail-family birds glide; the pheasant is the only one in its class.
+    for (const id of ['california-quail', 'gambels-quail', 'scaled-quail', 'mountain-quail', 'hun', 'sharptail']) {
+      expect(getSpecies(id).flight.glideAfterMs).toBeGreaterThan(0);
+    }
+  });
+
   it('getSpecies falls back to the first species', () => {
     expect(getSpecies('nope')).toBe(SPECIES[0]);
   });

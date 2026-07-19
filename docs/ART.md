@@ -157,6 +157,10 @@ Template (each species, two wingbeat frames + one falling frame):
 | Montezuma quail | dark round bird, clown-striped black-and-white face, white-spotted flanks |
 | Mountain quail | gray-and-chestnut, white-barred flanks, long straight head plume |
 
+Canvas note: the engine scales species size at runtime (quail 0.62 →
+pheasant 1.15), so most sheets stay 44×28 — but draw the pheasants on
+56×32 so the long tail gets real pixels.
+
 Field-view birds stay tiny (10–13px) — generate one generic "hidden bird"
 dot-sprite and a small "downed bird" sprite; species identity lives in the
 flush view.
