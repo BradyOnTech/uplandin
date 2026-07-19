@@ -28,6 +28,17 @@ correct with no rework.
    tiles 16×16. Ask for sprite-sheet rows on plain white/transparent
    backgrounds. Never generate big and shrink blindly.
 
+## Locked reference (step 1 done)
+
+`docs/art/field-view-mockup.png` is the blessed field-view style
+reference; `field-view-palette.gpl` (24 colors) is the palette — law for
+every asset from here on. Caveats when using the mockup as an image
+reference: it is painterly 3/4 with continuous grass — for tiles, take
+its palette and mood but keep the prompts' flat/seamless/bounded-cover
+language; its sprites are ~4x final scale (fine — detail simplifies down);
+its setter spotting is bolder than belton (self-resolves at 24px). Next:
+lock the flush-view mockup against this palette, then sprite sheets.
+
 ## The master style block
 
 Prepend (or attach as reference-image notes) to every prompt:
