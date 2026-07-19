@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import { playBlip, unlockAudio } from '../audio';
 import { getBreed } from '../game/breeds';
-import { loadCareer, saveCareer, setActiveDog, setBraceDog } from '../game/career';
+import { dogAge, loadCareer, saveCareer, setActiveDog, setBraceDog } from '../game/career';
 import { kennelSlots, TWO_DOG_LEVEL, twoDogUnlocked } from '../game/progression';
+import { ageLabel } from '../game/season';
 
 /**
  * The kennel: every dog you've raised. Tap one to bring it on the next
@@ -50,7 +51,7 @@ export class KennelScene extends Phaser.Scene {
         color: active ? '#ffd23f' : braced ? '#a8d4e8' : '#ffffff',
       });
       const toNext = dog.level >= 10 ? 'maxed' : `${dog.xp} xp`;
-      this.add.text(52, y + 1, `${getBreed(dog.breedId).name} · lv ${dog.level} · ${toNext}`, {
+      this.add.text(52, y + 1, `${getBreed(dog.breedId).name} · lv ${dog.level} · ${toNext} · ${ageLabel(dogAge(career, dog))}`, {
         fontFamily: 'monospace',
         fontSize: '8px',
         color: '#dfe9d8',

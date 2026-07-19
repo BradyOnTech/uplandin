@@ -130,8 +130,11 @@ export class BreedScene extends Phaser.Scene {
       playBlip();
       const { career, dog } = addDogToKennel(loadCareer(), this.puppyName, this.selected.id);
       // A fresh pup always rides along next.
-      saveCareer(setActiveDog(career, dog.id));
-      this.scene.start(this.fromKennel ? 'KennelScene' : 'MapScene');
+      const saved = setActiveDog(career, dog.id);
+      saveCareer(saved);
+      // A brand-new career picks its home ground before the first hunt.
+      if (this.fromKennel) this.scene.start('KennelScene');
+      else this.scene.start('MapScene', saved.homeRegionId === null ? { chooseHome: true } : {});
     });
 
     this.panelObjects.push(title, nameText, reroll, rerollLabel, start, startLabel);
