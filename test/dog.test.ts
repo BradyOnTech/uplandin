@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Bird } from '../src/game/birds';
 import { getBreed, type BreedConfig } from '../src/game/breeds';
-import { Dog, SCENT_RADIUS, scentRange, type DogEnv } from '../src/game/dog';
-import { FIELD_BOUNDS } from '../src/game/field';
+import { Dog, QUARTER_RANGE, SCENT_RADIUS, scentRange, WHISTLE_RANGE, type DogEnv } from '../src/game/dog';
+import { FIELD_BOUNDS, type Rect } from '../src/game/field';
 import { dist } from '../src/game/math';
 import type { RNG } from '../src/game/types';
 
@@ -57,6 +57,55 @@ describe('Dog', () => {
     expect(dog.pos.x).toBeLessThanOrEqual(FIELD_BOUNDS.w);
     expect(dog.pos.y).toBeGreaterThanOrEqual(0);
     expect(dog.pos.y).toBeLessThanOrEqual(FIELD_BOUNDS.h);
+  });
+
+  it('respects custom world bounds', () => {
+    const world: Rect = { x: 0, y: 0, w: 1400, h: 800 };
+    const dog = new Dog({ x: 700, y: 400 }, { breed: testBreed, level: 10 }, () => 0.5, world);
+    for (let i = 0; i < 1200; i++) {
+      dog.update(50, []);
+      expect(dog.pos.x).toBeGreaterThanOrEqual(0);
+      expect(dog.pos.x).toBeLessThanOrEqual(world.w);
+      expect(dog.pos.y).toBeGreaterThanOrEqual(0);
+      expect(dog.pos.y).toBeLessThanOrEqual(world.h);
+    }
+  });
+
+  describe('hunter-anchored quartering', () => {
+    const world: Rect = { x: 0, y: 0, w: 1400, h: 800 };
+
+    it('works the ground around the hunter, not the whole world', () => {
+      const hunter = { x: 700, y: 400 };
+      const dog = new Dog({ x: 700, y: 380 }, { breed: testBreed, level: 10 }, () => 0.5, world);
+      // Overshoot slack: the dog turns back at Range, it doesn't teleport.
+      const leash = dog.rangeRadius + 110;
+      for (let i = 0; i < 1200; i++) {
+        dog.update(50, [], { hunterPos: hunter });
+        expect(dist(dog.pos, hunter)).toBeLessThanOrEqual(leash);
+      }
+    });
+
+    it('actually uses its range instead of hugging the hunter', () => {
+      const hunter = { x: 700, y: 400 };
+      const dog = new Dog({ x: 700, y: 380 }, { breed: testBreed, level: 10 }, () => 0.5, world);
+      let farthest = 0;
+      for (let i = 0; i < 1200; i++) {
+        dog.update(50, [], { hunterPos: hunter });
+        farthest = Math.max(farthest, dist(dog.pos, hunter));
+      }
+      expect(farthest).toBeGreaterThan(QUARTER_RANGE * 0.5);
+    });
+
+    it('follows a moving hunter across the world', () => {
+      const hunter = { x: 200, y: 400 };
+      const dog = new Dog({ x: 200, y: 380 }, { breed: testBreed, level: 10 }, () => 0.5, world);
+      for (let i = 0; i < 1200; i++) {
+        hunter.x = Math.min(1200, hunter.x + 0.9); // hunter marches east
+        dog.update(50, [], { hunterPos: hunter });
+      }
+      expect(dist(dog.pos, hunter)).toBeLessThanOrEqual(dog.rangeRadius + 110);
+      expect(dog.pos.x).toBeGreaterThan(700); // came along instead of staying put
+    });
   });
 
   it('tracks and points a bird it can smell', () => {
@@ -118,11 +167,22 @@ describe('Dog', () => {
     run(dog, [bird], 100, { hunterPos: hunter });
     expect(dog.state).toBe('quartering');
     // and points it once the hunter moves away
-    for (let i = 0; i < 400 && dog.state !== 'pointing'; i++) dog.update(50, [bird]);
+    for (let i = 0; i < 2000 && dog.state !== 'pointing'; i++) dog.update(50, [bird]);
     expect(dog.state).toBe('pointing');
   });
 
   describe('whistle recall', () => {
+    it('is out of earshot beyond whistle range', () => {
+      const world: Rect = { x: 0, y: 0, w: 1400, h: 800 };
+      const dog = new Dog({ x: 700, y: 400 }, { breed: testBreed, level: 10 }, () => 0.5, world);
+      const farHunter = { x: 700 + WHISTLE_RANGE + 50, y: 400 };
+      dog.update(50, [], { hunterPos: farHunter, recall: true });
+      expect(dog.state).toBe('quartering'); // never heard it
+      const nearHunter = { x: 700 + WHISTLE_RANGE - 50, y: 400 };
+      dog.update(50, [], { hunterPos: nearHunter, recall: true });
+      expect(dog.state).toBe('recalled');
+    });
+
     it('comes back to the hunter and waits at heel until cast off', () => {
       const dog = makeDog(60, 60);
       const hunter = { x: 300, y: 60 };
@@ -216,14 +276,14 @@ describe('Dog', () => {
 
   describe('fatigue', () => {
     it('drains stamina while working and goes winded', () => {
-      const dog = makeDog(240, 135, 1); // 60s pool at level 1
-      run(dog, [], 1300); // 65s of quartering
+      const dog = makeDog(240, 135, 1); // 90s pool at level 1
+      run(dog, [], 1900); // 95s of quartering
       expect(dog.winded).toBe(true);
     });
 
     it('recovers at heel', () => {
       const dog = makeDog(240, 135, 1);
-      run(dog, [], 1300);
+      run(dog, [], 1900);
       expect(dog.winded).toBe(true);
       const hunter = { ...dog.pos };
       dog.update(50, [], { hunterPos: hunter, recall: true }); // recalled, already home

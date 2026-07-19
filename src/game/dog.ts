@@ -10,7 +10,7 @@ import {
   windCraftTier,
   type BreedConfig,
 } from './breeds';
-import { FIELD_BOUNDS } from './field';
+import { FIELD_BOUNDS, type Rect } from './field';
 import { clamp, dist, turnToward } from './math';
 import type { RNG, Vec2 } from './types';
 
@@ -27,6 +27,8 @@ export const DOG_SPEED = 75; // base px/s while quartering, before breed multipl
 export const TRACKING_SPEED = 90; // base px/s once it has the scent
 export const SCENT_RADIUS = 45; // base scent range, before nose multipliers
 export const POINT_RANGE = 12; // freezes into a point this close
+export const QUARTER_RANGE = 130; // base hunter-anchored quartering radius, × Range multiplier
+export const WHISTLE_RANGE = 250; // the whistle only carries this far
 
 const WEAVE_AMPLITUDE = 0.7; // base radians of serpentine swing while quartering
 const WEAVE_RATE = 2.2; // how fast the weave swings
@@ -46,6 +48,7 @@ const CREEP_INTERVAL_MS = 800;
 const BREAKING_SPEED = 110;
 const BREAKING_MS = 2500;
 const BREAK_BUMP_RADIUS = 12;
+const ANCHOR_TURN_RATE = 2.2; // rad/s pulled back toward the hunter past quartering range
 
 /** Environment the dog is hunting in for this tick. */
 export interface DogEnv {
@@ -100,7 +103,12 @@ export class Dog {
   private creepTimerMs = 0;
   private breakMsLeft = 0;
 
-  constructor(public pos: Vec2, public profile: DogProfile, rng: RNG = Math.random) {
+  constructor(
+    public pos: Vec2,
+    public profile: DogProfile,
+    rng: RNG = Math.random,
+    public bounds: Rect = FIELD_BOUNDS,
+  ) {
     this.heading = rng() * Math.PI * 2;
     this.rng = rng;
     this.maxStaminaMs = breedStaminaMs(profile.breed, profile.level);
@@ -119,6 +127,11 @@ export class Dog {
   /** Bird nerve drain multiplier while this dog is on point. */
   get pressure(): number {
     return breedPointPressure(this.profile.breed, this.profile.level);
+  }
+
+  /** How far from the hunter this dog works while quartering. */
+  get rangeRadius(): number {
+    return QUARTER_RANGE * rangeMult(this.profile.breed, this.profile.level);
   }
 
   private get fatigueMult(): number {
@@ -148,7 +161,9 @@ export class Dog {
   update(dtMs: number, birds: Bird[], env: DogEnv = {}): void {
     const dt = dtMs / 1000;
 
-    if (env.recall && (this.state === 'quartering' || this.state === 'tracking')) {
+    // The whistle only carries so far — a big-running dog can be out of earshot.
+    const hearsWhistle = !env.hunterPos || dist(this.pos, env.hunterPos) <= WHISTLE_RANGE;
+    if (env.recall && hearsWhistle && (this.state === 'quartering' || this.state === 'tracking')) {
       this.state = 'recalled';
     }
 
@@ -252,13 +267,24 @@ export class Dog {
       return;
     }
 
-    // Quartering: serpentine sweep back and forth across the field.
+    // Quartering: serpentine sweep, anchored to the hunter out to Range.
     this.state = 'quartering';
     this.work(dtMs);
     this.weavePhase += dt * WEAVE_RATE;
     this.steerOffEdges(dt);
+    this.steerToAnchor(dt, env.hunterPos);
     const weave = Math.sin(this.weavePhase) * this.weave;
     this.advance(this.heading + weave, this.speed * dt);
+  }
+
+  /** Past its Range from the hunter, the dog swings back — harder the farther it is. */
+  private steerToAnchor(dt: number, anchor?: Vec2): void {
+    if (!anchor) return;
+    const d = dist(this.pos, anchor);
+    if (d <= this.rangeRadius) return;
+    const toward = Math.atan2(anchor.y - this.pos.y, anchor.x - this.pos.x);
+    const urgency = Math.min(2.5, 1 + (d - this.rangeRadius) / 50);
+    this.heading = turnToward(this.heading, toward, ANCHOR_TURN_RATE * urgency * dt);
   }
 
   /**
@@ -351,10 +377,10 @@ export class Dog {
     const { x, y } = this.pos;
     let dx = 0;
     let dy = 0;
-    if (x < EDGE_MARGIN) dx += 1;
-    if (x > FIELD_BOUNDS.w - EDGE_MARGIN) dx -= 1;
-    if (y < EDGE_MARGIN) dy += 1;
-    if (y > FIELD_BOUNDS.h - EDGE_MARGIN) dy -= 1;
+    if (x < this.bounds.x + EDGE_MARGIN) dx += 1;
+    if (x > this.bounds.x + this.bounds.w - EDGE_MARGIN) dx -= 1;
+    if (y < this.bounds.y + EDGE_MARGIN) dy += 1;
+    if (y > this.bounds.y + this.bounds.h - EDGE_MARGIN) dy -= 1;
     if (dx !== 0 || dy !== 0) {
       this.heading = turnToward(this.heading, Math.atan2(dy, dx), EDGE_TURN_RATE * dt);
     }
@@ -362,8 +388,8 @@ export class Dog {
 
   private advance(heading: number, distance: number): void {
     this.pos = {
-      x: clamp(this.pos.x + Math.cos(heading) * distance, 4, FIELD_BOUNDS.w - 4),
-      y: clamp(this.pos.y + Math.sin(heading) * distance, 4, FIELD_BOUNDS.h - 4),
+      x: clamp(this.pos.x + Math.cos(heading) * distance, this.bounds.x + 4, this.bounds.x + this.bounds.w - 4),
+      y: clamp(this.pos.y + Math.sin(heading) * distance, this.bounds.y + 4, this.bounds.y + this.bounds.h - 4),
     };
   }
 }

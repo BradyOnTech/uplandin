@@ -180,9 +180,9 @@ export function dogScentRadius(level: number): number {
   return tier === 2 ? 0 : tier === 1 ? 15 : 30;
 }
 
-/** Stamina pool in ms of active work. */
+/** Stamina pool in ms of active work — sized for the bigger T1.5 worlds. */
 export function staminaMs(breed: BreedConfig, level: number): number {
-  return 60_000 * statMult(breed.stats.stamina) * growthMult(breed, level, 'stamina');
+  return 90_000 * statMult(breed.stats.stamina) * growthMult(breed, level, 'stamina');
 }
 
 /** XP required to advance FROM `level`. */
