@@ -130,8 +130,9 @@ export class FlushScene extends Phaser.Scene {
     this.load.image('icon-crosshair', 'art/icon-crosshair.png');
     // NOTE: the generated shotgun-fp.png / shotgun-side.png plates were cut —
     // a full-height FP barrel can't work at 480×270 (it owns the playfield).
-    // The barrel is drawn procedurally in makeShotgun(); a future painted
-    // sprite should match its ~26×74 over-the-shoulder proportions (ART.md).
+    // The gun is drawn procedurally in makeShotgun() as a hunter's-eye
+    // corner gun; a future painted sprite must match its 30×148 vertical
+    // layout — muzzle/barrels/brass receiver/stock/hand (spec in ART.md).
     this.load.image('flush-veg-block', 'art/flush-veg-block.png');
     this.load.spritesheet('bobwhite-flush', 'art/bobwhite-flush-sheet-alpha.png', {
       frameWidth: 44,
@@ -614,37 +615,61 @@ export class FlushScene extends Phaser.Scene {
   }
 
   private makeShotgun(): void {
-    // Over-the-shoulder double barrel, drawn small: at rest only the muzzle
-    // end pokes above the frame (~50px), mounting raises it to ~90px. The
-    // sky belongs to the birds — the gun is presence, not scenery.
+    // The hunter's-eye gun (reference: real over-the-shoulder POV shots):
+    // muzzle → blued barrels → brass receiver → walnut stock → gripping
+    // hand, drawn as one tall sprite. Anchored off the bottom-right corner
+    // and leaned up-left by gunAim.ts, so the stock/hand live in the corner
+    // and only the barrels cross into the frame. The sky stays open.
     if (!this.textures.exists('shotgun-gen')) {
-      const W = 26;
-      const H = 74;
-      const FOREND_Y = 56; // walnut starts here
+      const W = 30;
+      const H = 148;
+      const CX = 15;
+      const BREECH_Y = 88; // barrels end, action begins
+      const RECEIVER_Y = 95; // brass band
+      const STOCK_Y = 110; // walnut from here down
+      const HAND_Y = 128; // fingers wrap the grip
       const g = this.add.graphics();
       for (let y = 0; y < H; y++) {
-        // Perspective: the far (top) end is slightly narrower.
-        const half = Math.round(9 + (y / H) * 4) / 2 + 6;
-        const x0 = Math.round(13 - half);
-        const x1 = Math.round(13 + half);
-        const w = x1 - x0;
-        if (y < FOREND_Y) {
-          // Blued steel tubes with a shadowed rib line down the middle.
-          g.fillStyle(0x101410).fillRect(x0, y, w, 1); // outline base
-          g.fillStyle(0x2a3036).fillRect(x0 + 1, y, w - 2, 1); // steel
-          g.fillStyle(0x3f4a52).fillRect(x0 + 2, y, 2, 1); // left tube sheen
-          g.fillStyle(0x3f4a52).fillRect(x1 - 4, y, 2, 1); // right tube sheen
-          g.fillStyle(0x14171a).fillRect(12, y, 2, 1); // rib shadow
+        if (y < BREECH_Y) {
+          // Twin blued tubes, far end narrower (perspective down the rib).
+          const half = 7 + Math.round((y / BREECH_Y) * 3);
+          const x0 = CX - half;
+          const w = half * 2;
+          g.fillStyle(0x101410).fillRect(x0, y, w, 1);
+          g.fillStyle(0x262c33).fillRect(x0 + 1, y, w - 2, 1);
+          g.fillStyle(0x424d57).fillRect(x0 + 2, y, 2, 1);
+          g.fillStyle(0x424d57).fillRect(x0 + w - 4, y, 2, 1);
+          g.fillStyle(0x14171a).fillRect(CX - 1, y, 2, 1); // rib shadow
+        } else if (y < RECEIVER_Y) {
+          // Breech step: the action face, a shade darker and wider.
+          g.fillStyle(0x101410).fillRect(CX - 12, y, 24, 1);
+          g.fillStyle(0x1c2126).fillRect(CX - 11, y, 22, 1);
+        } else if (y < STOCK_Y) {
+          // Brass receiver band (the reference gun's gold action).
+          g.fillStyle(0x101410).fillRect(CX - 12, y, 24, 1);
+          g.fillStyle(0xc9a24a).fillRect(CX - 11, y, 22, 1);
+          g.fillStyle(0x8a6a28).fillRect(CX - 11, y, 3, 1); // shaded edge
+          if (y % 3 === 0) g.fillStyle(0x8a6a28).fillRect(CX + 4, y, 1, 1); // engraving flecks
         } else {
-          // Walnut forend widening into the viewer's hands.
-          g.fillStyle(0x101410).fillRect(x0 - 1, y, w + 2, 1);
-          g.fillStyle(0x5a3c22).fillRect(x0, y, w, 1);
-          g.fillStyle(0x76512e).fillRect(x0 + 3, y, w - 6, 1);
+          // Walnut stock widening into the corner, warm grain streaks.
+          const half = 12 + Math.round(((y - STOCK_Y) / (H - STOCK_Y)) * 3);
+          const x0 = CX - half;
+          const w = half * 2;
+          g.fillStyle(0x101410).fillRect(x0, y, w, 1);
+          g.fillStyle(0x5a3a20).fillRect(x0 + 1, y, w - 2, 1);
+          g.fillStyle(0x7a5230).fillRect(x0 + 4, y, w - 12, 1);
+          if (y % 5 === 0) g.fillStyle(0x3c2814).fillRect(x0 + 6, y, w - 16, 1); // grain
         }
       }
+      // The gripping hand: knuckles wrapping the near side of the grip.
+      g.fillStyle(0x101410).fillRect(CX - 14, HAND_Y, 15, 14);
+      g.fillStyle(0xd8a878).fillRect(CX - 13, HAND_Y + 1, 13, 12);
+      g.fillStyle(0xb8875f).fillRect(CX - 13, HAND_Y + 4, 13, 1); // finger lines
+      g.fillStyle(0xb8875f).fillRect(CX - 13, HAND_Y + 7, 13, 1);
+      g.fillStyle(0xb8875f).fillRect(CX - 13, HAND_Y + 10, 13, 1);
       // Muzzle face + brass bead.
-      g.fillStyle(0x14171a).fillRect(5, 0, 16, 2);
-      g.fillStyle(0xd9b25f).fillRect(12, 0, 2, 2);
+      g.fillStyle(0x14171a).fillRect(CX - 8, 0, 16, 2);
+      g.fillStyle(0xd9b25f).fillRect(CX - 1, 0, 2, 2);
       g.generateTexture('shotgun-gen', W, H);
       g.destroy();
     }

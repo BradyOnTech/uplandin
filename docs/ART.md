@@ -221,52 +221,49 @@ bare aspen line, rimrock rim, saguaro line, oak-studded ridge.
   head-and-chest of a {COAT} hunting dog, three-quarter view, plain dark
   olive background — vintage sporting-dog oil portrait rendered in
   16-bit pixels. [style block]
+- **Flush-view shotgun** (currently procedural in
+  `FlushScene.makeShotgun`; pose math in `game/gunAim.ts` anchors it off
+  the bottom-right corner, barrels leaning up-left toward the aim — the
+  hunter's-eye POV reference. A painted replacement must match the same
+  30×148 vertical layout, NOT a full-height centered barrel; that
+  failed: it owns the sky where the birds fly): > Pixel art sprite,
+  30×148, transparent background, drawn pointing straight up (the game
+  rotates it): from top — muzzle face with single brass bead; twin
+  blued-steel barrels with a shadowed center rib, subtle taper (narrow
+  at muzzle); breech step; engraved brass/gold receiver band; walnut
+  stock widening toward the base with grain streaks; a hand gripping
+  the wrist at the bottom. [style block] Ship as `art/shotgun-fp.png`,
+  restore the preload line in FlushScene, and prefer it over
+  `shotgun-gen` there.
 
 ## The road to production quality
+
+**Executable plan (phases, gates, AI-only finish path):** see
+[`docs/PRODUCTION.md`](PRODUCTION.md). This section is the short form.
 
 Production look = **assets × presentation code**, roughly half each. The
 covey-stacking complaint proved the principle: the bobwhite sheet was
 fine — the launch choreography was the problem. Track both.
 
-**Phase 1 — complete the asset set** (current generation pipeline; every
-batch ships incrementally behind the fallback maps):
-13 remaining bird sheets → 6 remaining backdrop plates (+ snow/rain
-variants for the common regions) → 11 dog sheets (the field view's star)
-→ hunter walk/sprint sheet → 7 tilesets (the flat/bounded-cover rules) →
-title screen, US map plate, icon sheet, kennel portraits.
+**Constraint:** no human true-pixel / hired artist required. Finish =
+generate → cell pack → nearest-neighbor native size → **palette quantize**
+→ scripted cleanup → QA checklist → `public/art/`. Human Aseprite is an
+optional future if quality plateaus — not a gate.
 
-**Phase 2 — hand-finish to true pixels** (the 80→100): re-pixel each
-@mid source in Aseprite on the locked palette — uniform 1px outlines,
-kill orphan pixels, verify at 1x — or regenerate finals with a
-pixel-native tool using the drafts as reference. The honest production
-option: **commission a pixel artist for a consistency pass** — the AI
-drafts function as a complete, unambiguous spec, which makes this cheap;
-a human unifying outlines and shading across ~40 sheets is what
-separates "good AI art" from shipped-game art.
+**Order (do not skip):** Phase 0 foundations (pipeline + field/flush
+presentation seams) → Phase 1 vertical slice (setter + SP + hunter +
+bobwhite, zero placeholders) → Phase 2 visible dog craft → Phase 3
+factory (dogs → regions → birds → meta) → Phase 4 cohesion audit.
 
-**Phase 3 — presentation code (juice — free, huge)**:
-done: covey fan + waves, spread launches, altitude depth-scaling, exit
-drive, **bird ground shadows** (shrink/fade with altitude),
-**feather-puff bursts** on hits, **weather dressing** (condition tint +
-falling snow/rain particles in both views, `scenes/weatherFx.ts`), and a
-proper depth ladder in the shot view (birds fly behind timber, under the
-weather, beneath the HUD). Done: the **pixel bitmap font** — a hand-authored
-5×7 uppercase face (`scenes/pixelFont.ts`, glyphs generated into a RetroFont
-at boot; every scene renders text through `pixelText()`, arrows and stars
-included). Next, in impact order: shell-eject flick; backdrop **parallax**
-(split plates into sky/hills/foreground); quick fade/iris scene transitions;
-more field-view gait frames as dog sheets land.
-
-**Phase 4 — cohesion audit**: screenshot matrix of every region ×
-weather × a flush; fix outliers; final palette-enforcement pass
-(index every shipped PNG to the .gpl).
+**Already shipped (juice):** covey fan/waves, shadows, feathers, weather
+FX, shot depth ladder, bitmap font, setter 4-gait + point, SP tiles/plate,
+bobwhite sheet, cover edge work, wind-aware cast.
 
 ## Integration notes
 
-- Ship sheets as PNG + Phaser atlas JSON; keep 1 game px = 1 asset px
-  (integer zoom only, `pixelArt: true` already set).
-- Replace `makeTextures()` rectangles scene by scene; tiles draw via
-  tilemap or blitter over the current `Graphics` field.
-- Keep every asset on the locked palette; recolor breeds/species by
-  palette swap where silhouettes match (the two Brittanys, the desert
-  quail) to buy consistency for free.
+- Ship sheets as PNG (+ atlas JSON when frame maps stabilize); 1 game px =
+  1 asset px (`pixelArt: true`, integer zoom only).
+- Register art in scene fallback maps (`DOG_SHEETS`, `BIRD_SHEETS`,
+  `FIELD_TILESETS`, `FLUSH_BACKDROPS`); placeholders remain for gaps.
+- Keep every asset on the locked palette (quantize script); recolor
+  breeds/species by palette swap where silhouettes match.
