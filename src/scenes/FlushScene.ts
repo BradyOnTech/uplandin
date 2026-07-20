@@ -9,8 +9,8 @@ import { clamp, dist } from '../game/math';
 import { regionOfArea } from '../game/regions';
 import {
   flushHasVegBlock,
-  GUN_MUZZLE_OFFSET,
   GUN_REST,
+  muzzlePoint,
   pickBackdropIndex,
   recoilOffset,
   stepGunPose,
@@ -136,12 +136,10 @@ export class FlushScene extends Phaser.Scene {
     this.load.image('flush-bg-southern-plains-c', 'art/flush-backdrop-southern-plains-c.png');
     this.load.image('icon-shell', 'art/icon-shell.png');
     this.load.image('icon-crosshair', 'art/icon-crosshair.png');
-    // NOTE: the generated shotgun-fp.png / shotgun-side.png plates were cut —
-    // a full-height FP barrel can't work at 480×270 (it owns the playfield).
-    // The gun is drawn procedurally in makeShotgun() as a hunter's-eye
-    // corner gun; a future painted sprite must match its 30×148 vertical
-    // layout — muzzle/barrels/brass receiver/stock/hand (spec in ART.md).
     this.load.image('flush-veg-block', 'art/flush-veg-block.png');
+    // The painted FPS gun (v3 socket): makeShotgun prefers this texture
+    // over the generated placeholder whenever it loads.
+    this.load.image('shotgun-fp-v3', 'art/shotgun-fp-v3.png');
     this.load.spritesheet('bobwhite-flush', 'art/bobwhite-flush-sheet-alpha.png', {
       frameWidth: 44,
       frameHeight: 28,
@@ -423,8 +421,7 @@ export class FlushScene extends Phaser.Scene {
     const aim = { x: p.worldX, y: p.worldY - (p.wasTouch ? TOUCH_AIM_OFFSET : 0) };
     // Muzzle flash at the barrel tip — two frames of star, half the recoil feel.
     if (this.gunSprite) {
-      const mx = this.gunSprite.x + GUN_MUZZLE_OFFSET.x;
-      const my = this.gunSprite.y + GUN_MUZZLE_OFFSET.y;
+      const { x: mx, y: my } = muzzlePoint(this.gunSprite.x, this.gunSprite.y, this.gunSprite.angle);
       const flash = this.add.graphics().setDepth(DEPTH_GUN + 1);
       flash.fillStyle(0xfff3c0, 1).fillCircle(mx, my, 5);
       flash.fillStyle(0xd9b25f, 0.9);
@@ -698,7 +695,7 @@ export class FlushScene extends Phaser.Scene {
     }
     this.gunSprite = this.add
       .image(GUN_REST.x, GUN_REST.y, painted ? 'shotgun-fp-v3' : 'shotgun-gen3')
-      .setOrigin(0.5, 1)
+      .setOrigin(0.72, 1) // pivot under the stock — tilt mounts like a gun, not a propeller
       .setDepth(DEPTH_GUN)
       .setAngle(GUN_REST.angleDeg);
   }

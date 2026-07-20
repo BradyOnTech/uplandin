@@ -1,40 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import {
+  barrelTiltDeg,
   blendGunPose,
   flushHasVegBlock,
-  GUN_LEAN_MAX,
-  GUN_MOUNT_Y,
+  GUN_MOUNT,
   GUN_REST,
-  GUN_SWAY_MAX,
-  leanDeg,
   pickBackdropIndex,
   RECOIL_MS,
   recoilOffset,
   stepGunPose,
 } from '../src/game/gunAim';
 
-describe('gunAim (v3 — sway, never swing)', () => {
-  it('a held gun leans only a few degrees, toward the aim', () => {
-    expect(leanDeg(300, 60, 1)).toBeLessThan(0);
-    expect(leanDeg(300, 460, 1)).toBeGreaterThan(0);
-    // Even an aim at the far screen edge never breaks the hold illusion.
-    expect(Math.abs(leanDeg(300, -500, 1))).toBeLessThanOrEqual(GUN_LEAN_MAX);
-    expect(Math.abs(leanDeg(300, 900, 1))).toBeLessThanOrEqual(GUN_LEAN_MAX);
-    // At rest (mount 0) there is no lean at all.
-    expect(Math.abs(leanDeg(300, 60, 0))).toBe(0);
+describe('gunAim (FPS weapon sprite)', () => {
+  it('barrelTiltDeg leans toward aim X and stays modest', () => {
+    expect(barrelTiltDeg(300, 100, 1)).toBeLessThan(0);
+    expect(barrelTiltDeg(300, 400, 1)).toBeGreaterThan(0);
+    expect(Math.abs(barrelTiltDeg(300, 800, 1))).toBeLessThanOrEqual(16);
   });
 
-  it('blendGunPose: rest sits low; mounting rises and sways with the aim', () => {
+  it('blendGunPose at 0 is rest; at 1 sits higher and tracks aim X gently', () => {
     const rest = blendGunPose(0, 240, 100);
+    expect(rest.mount).toBe(0);
     expect(rest.y).toBeCloseTo(GUN_REST.y, 5);
-    expect(rest.x).toBeCloseTo(GUN_REST.x, 5); // no sway while lowered
-    const left = blendGunPose(1, 60, 80);
-    const right = blendGunPose(1, 420, 80);
-    expect(left.y).toBeCloseTo(GUN_MOUNT_Y, 5);
-    // The anchor translates with the aim — the FPS sway — but stays leashed.
-    expect(left.x).toBeLessThan(right.x);
-    expect(Math.abs(left.x - GUN_REST.x)).toBeLessThanOrEqual(GUN_SWAY_MAX);
-    expect(Math.abs(right.x - GUN_REST.x)).toBeLessThanOrEqual(GUN_SWAY_MAX);
+    const up = blendGunPose(1, 320, 60);
+    expect(up.mount).toBe(1);
+    expect(up.y).toBeCloseTo(GUN_MOUNT.y, 5);
+    // Stays in lower-right / center-right — never a full-screen wedge.
+    expect(up.y).toBeGreaterThan(230);
+    expect(up.x).toBeGreaterThan(250);
   });
 
   it('stepGunPose rises toward full mount when wantMounted', () => {

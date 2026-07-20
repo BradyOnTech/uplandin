@@ -1,60 +1,79 @@
 /**
- * First-person shotgun presentation for the flush view — the v3 "FPS
- * natural" model. The sprite is authored in PERSPECTIVE (from behind,
- * barrels receding to a tiny muzzle, DOOM-style), so the pose math must
- * SWAY, not swing: a held gun translates with your aim and leans only a
- * few degrees — rotation is what a stick does. Anchored bottom-center-
- * right (the BF1 hip-fire composition); the muzzle tops out around the
- * horizon so the upper sky — where every bird flies — stays untouched.
+ * First-person double-barrel shotgun for the flush view (classic FPS weapon
+ * sprite: stock large bottom-right, muzzle small upper-left).
  *
- * Pure math, no Phaser. FlushScene owns the sprite; docs/TUNING.md and
- * ART.md carry the knobs and the painted-sprite spec.
+ * The gun sits in the lower portion of the screen and tracks the reticle
+ * with lag — it must never become a full-height screen wedge.
  */
 
 export type GunPose = {
-  /** Screen position of the sprite anchor (bottom-center of the gun). */
+  /** Screen position of the sprite origin (stock / grip pivot, bottom-right of art). */
   x: number;
   y: number;
-  /** Degrees of lean; a held gun never exceeds a slight tilt. */
+  /** Degrees; small tilt so the muzzle leans toward the reticle. */
   angleDeg: number;
-  /** 0 = lowered rest, 1 = fully mounted into the aim. */
+  /** 0 = low ready (mostly lower edge), 1 = mounted toward aim. */
   mount: number;
 };
 
-/** Rest: hip carry — most of the gun below the frame, a touch right of center. */
-export const GUN_REST: GunPose = { x: 300, y: 346, angleDeg: 0, mount: 0 };
+/** Low ready: lower-right, slightly clipped under the frame. */
+export const GUN_REST: GunPose = { x: 332, y: 300, angleDeg: -6, mount: 0 };
 
-/** Mounted: the gun rises into frame; the muzzle reaches toward the horizon. */
-export const GUN_MOUNT_Y = 306;
+/** Mounted: higher, more centered under the playfield, still lower half only. */
+export const GUN_MOUNT = { x: 306, y: 282 };
 
-/** How far the anchor slides horizontally with the aim (fraction of aim offset). */
-export const GUN_SWAY_X = 0.22;
-/** The anchor never strays further than this from its base x. */
-export const GUN_SWAY_MAX = 46;
-/** Max lean, degrees — beyond this the illusion of holding breaks. */
-export const GUN_LEAN_MAX = 6;
+/**
+ * Small tilt so barrels lean toward aim X. Clamped so the gun never lays flat.
+ */
+export function barrelTiltDeg(pivotX: number, aimX: number, mount: number): number {
+  const raw = (aimX - pivotX) * 0.04;
+  const max = 6 + 10 * Math.max(0, Math.min(1, mount));
+  // Base art already points up-left; tilt is additive.
+  return Math.max(-max, Math.min(max, raw));
+}
 
-/** Muzzle tip in sprite-local px, measured from the anchor (bottom-center). */
-export const GUN_MUZZLE_OFFSET = { x: -5, y: -126 };
+/** Linear blend of rest → mounted pose for a given mount factor [0,1]. */
+export function blendGunPose(mount: number, aimX: number, _aimY: number): GunPose {
+  const m = Math.max(0, Math.min(1, mount));
+  // Track aim X gently so the bead follows the reticle without sliding off-screen.
+  const mountedX = GUN_MOUNT.x + (aimX - 240) * 0.18;
+  const x = GUN_REST.x + (mountedX - GUN_REST.x) * m;
+  const y = GUN_REST.y + (GUN_MOUNT.y - GUN_REST.y) * m;
+  const baseAngle = -12; // art default: low ready up toward horizon
+  const angleDeg = baseAngle * (1 - m * 0.35) + barrelTiltDeg(x, aimX, m);
+  return { x, y, angleDeg, mount: m };
+}
+
+/** Muzzle bead of the painted sprite (art/shotgun-fp-v3.png), sprite-local
+ * from the anchor at origin (0.72, 1) = cell (65, 130); the bead pixel sits
+ * at cell (8, 76). Rotate by the pose angle when placing the flash. */
+export const GUN_MUZZLE_OFFSET = { x: -57, y: -54 };
+
+/** GUN_MUZZLE_OFFSET rotated by the sprite's current angle (degrees). */
+export function muzzlePoint(x: number, y: number, angleDeg: number): { x: number; y: number } {
+  const r = (angleDeg * Math.PI) / 180;
+  const c = Math.cos(r);
+  const s = Math.sin(r);
+  return {
+    x: x + GUN_MUZZLE_OFFSET.x * c - GUN_MUZZLE_OFFSET.y * s,
+    y: y + GUN_MUZZLE_OFFSET.x * s + GUN_MUZZLE_OFFSET.y * c,
+  };
+}
 
 /** Recoil: a sharp kick that settles fast. */
 export const RECOIL_MS = 150;
 export const RECOIL_KICK_PX = 7;
 export const RECOIL_KICK_DEG = 2.5;
 
-/** Slight lean toward the aim — sway, never swing. */
-export function leanDeg(anchorX: number, aimX: number, mount: number): number {
-  const raw = (aimX - anchorX) * 0.035 * Math.max(0, Math.min(1, mount));
-  return Math.max(-GUN_LEAN_MAX, Math.min(GUN_LEAN_MAX, raw));
-}
-
-/** Linear blend of rest → mounted pose for a given mount factor [0,1]. */
-export function blendGunPose(mount: number, aimX: number, _aimY: number): GunPose {
-  const m = Math.max(0, Math.min(1, mount));
-  const sway = Math.max(-GUN_SWAY_MAX, Math.min(GUN_SWAY_MAX, (aimX - 240) * GUN_SWAY_X));
-  const x = GUN_REST.x + sway * m;
-  const y = GUN_REST.y + (GUN_MOUNT_Y - GUN_REST.y) * m;
-  return { x, y, angleDeg: leanDeg(x, aimX, m), mount: m };
+/**
+ * Recoil offset for a shot fired `msAgo` ms in the past: an instant kick
+ * down-and-tilted that eases back to zero. Add to the posed sprite.
+ */
+export function recoilOffset(msAgo: number): { dy: number; dAngleDeg: number } {
+  if (msAgo < 0 || msAgo >= RECOIL_MS) return { dy: 0, dAngleDeg: 0 };
+  const t = 1 - msAgo / RECOIL_MS; // 1 at impact → 0 settled
+  const ease = t * t;
+  return { dy: RECOIL_KICK_PX * ease, dAngleDeg: RECOIL_KICK_DEG * ease };
 }
 
 /**
@@ -79,15 +98,11 @@ export function stepGunPose(
   return { x, y, angleDeg, mount };
 }
 
-/**
- * Recoil offset for a shot fired `msAgo` ms in the past: an instant kick
- * down-and-tilted that eases back to zero. Add to the posed sprite.
- */
-export function recoilOffset(msAgo: number): { dy: number; dAngleDeg: number } {
-  if (msAgo < 0 || msAgo >= RECOIL_MS) return { dy: 0, dAngleDeg: 0 };
-  const t = 1 - msAgo / RECOIL_MS; // 1 at impact → 0 settled
-  const ease = t * t;
-  return { dy: RECOIL_KICK_PX * ease, dAngleDeg: RECOIL_KICK_DEG * ease };
+/** @deprecated kept for callers that still use full atan2 aiming. */
+export function barrelAngleDeg(pivotX: number, pivotY: number, aimX: number, aimY: number): number {
+  const dx = aimX - pivotX;
+  const dy = aimY - pivotY;
+  return (Math.atan2(dy, dx) * 180) / Math.PI;
 }
 
 /**
