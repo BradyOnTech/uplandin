@@ -7,6 +7,7 @@ import { slopeFlightMult, type SlopeApproach } from '../game/fieldcraft';
 import { getGun, type GunConfig } from '../game/guns';
 import { clamp, dist } from '../game/math';
 import { regionOfArea } from '../game/regions';
+import { flushHasVegBlock, GUN_REST, pickBackdropIndex, stepGunPose, type GunPose } from '../game/gunAim';
 import { escapeVelocityFan, exitDirFor, flushBias, glideStep, hitTest, levelStep } from '../game/shot';
 import { getSpecies, type SpeciesConfig } from '../game/species';
 import type { HuntState } from '../game/state';
@@ -28,15 +29,25 @@ const WAVE_SLOT_SPREAD = 78; // px between the three airborne lanes
 // must draw over them starts well above that.
 const DEPTH_SHADOW = 2;
 const DEPTH_TIMBER = 220; // grouse fly BEHIND the trees — that's the screen
+const DEPTH_VEG = 225; // mid-ground brush that can block the pattern
+const DEPTH_GUN = 270;
 const DEPTH_FEATHERS = 240;
 const DEPTH_WEATHER = 250;
 const DEPTH_UI = 280;
 const DEPTH_FLASH = 290;
 const DEPTH_CROSSHAIR = 300;
 
-/** Painted backdrop plates per region (docs/art pipeline); regions without one get the drawn sky. */
-const FLUSH_BACKDROPS: Record<string, string> = {
-  'southern-plains': 'flush-bg-southern-plains',
+/**
+ * Painted backdrop pools per region. First key is the canonical plate;
+ * further keys are variants so consecutive flushes don't share a stage set.
+ * Regions without a pool fall back to the drawn sky.
+ */
+const FLUSH_BACKDROP_POOLS: Record<string, string[]> = {
+  'southern-plains': [
+    'flush-bg-southern-plains',
+    'flush-bg-southern-plains-b',
+    'flush-bg-southern-plains-c',
+  ],
 };
 
 /** Species with real sprite sheets (3 frames: wings up, wings down, folded). */
@@ -94,12 +105,17 @@ export class FlushScene extends Phaser.Scene {
   private gun!: GunConfig;
   private shells = 2;
   private lastShotAt = -Infinity;
-  private shellPips: Phaser.GameObjects.Rectangle[] = [];
+  private shellPips: Phaser.GameObjects.GameObject[] = [];
   private hud!: PixelText;
   /** Timber the pattern can't punch through (grouse cover). */
   private trees: { x: number; y: number; w: number; h: number }[] = [];
+  /** Mid-ground brush rects that also block the pattern (fair silhouette). */
+  private vegBlocks: { x: number; y: number; w: number; h: number }[] = [];
   private lastLaunchAt = -Infinity;
   private flushSounds = new Set<string>();
+  private gunSprite: Phaser.GameObjects.Image | null = null;
+  private gunPose: GunPose = { ...GUN_REST };
+  private gunWantMounted = false;
 
   constructor() {
     super('FlushScene');
@@ -108,6 +124,15 @@ export class FlushScene extends Phaser.Scene {
   preload(): void {
     // Already-cached keys are skipped, so this is a no-op after the first visit.
     this.load.image('flush-bg-southern-plains', 'art/flush-backdrop-southern-plains.png');
+    this.load.image('flush-bg-southern-plains-b', 'art/flush-backdrop-southern-plains-b.png');
+    this.load.image('flush-bg-southern-plains-c', 'art/flush-backdrop-southern-plains-c.png');
+    this.load.image('icon-shell', 'art/icon-shell.png');
+    this.load.image('icon-crosshair', 'art/icon-crosshair.png');
+    // NOTE: the generated shotgun-fp.png / shotgun-side.png plates were cut —
+    // a full-height FP barrel can't work at 480×270 (it owns the playfield).
+    // The barrel is drawn procedurally in makeShotgun(); a future painted
+    // sprite should match its ~26×74 over-the-shoulder proportions (ART.md).
+    this.load.image('flush-veg-block', 'art/flush-veg-block.png');
     this.load.spritesheet('bobwhite-flush', 'art/bobwhite-flush-sheet-alpha.png', {
       frameWidth: 44,
       frameHeight: 28,
@@ -131,7 +156,13 @@ export class FlushScene extends Phaser.Scene {
     this.resolved = false;
     this.birds = [];
 
-    this.drawSky();
+    this.cameras.main.fadeIn(160, 16, 20, 16);
+    // Stable seed per rise: wind angle bits + bird ids — same rise = same plate.
+    const flushSeed =
+      Math.floor(this.hunt.wind * 1000) +
+      data.birdIds.reduce((a, id) => a + id * 17, 0) +
+      Math.floor((data.flushDistance ?? 25) * 3);
+    this.drawSky(flushSeed);
     this.makeCrosshair();
     addWeatherFx(this, this.hunt.condition, false, DEPTH_WEATHER);
     // The slope shot: from above they drop away slow and open; from below
@@ -139,6 +170,10 @@ export class FlushScene extends Phaser.Scene {
     const slope = data.slopeApproach ?? null;
     const slopeMult = slopeFlightMult(slope);
     this.makeTimber(data.birdIds);
+    this.makeVegBlocks(flushSeed);
+    this.gunPose = { ...GUN_REST };
+    this.gunWantMounted = false;
+    this.makeShotgun();
 
     this.flushSounds.clear();
     this.lastLaunchAt = -Infinity;
@@ -206,12 +241,29 @@ export class FlushScene extends Phaser.Scene {
       });
     });
 
-    this.crosshair = this.add.sprite(240, 120, 'crosshair').setDepth(DEPTH_CROSSHAIR);
+    const crossKey = this.textures.exists('icon-crosshair') ? 'icon-crosshair' : 'crosshair';
+    this.crosshair = this.add.sprite(240, 120, crossKey).setDepth(DEPTH_CROSSHAIR);
     this.input.setDefaultCursor('none');
+    // Mount as soon as the pointer moves or the finger is down.
+    this.input.on('pointermove', () => {
+      this.gunWantMounted = true;
+    });
+    this.input.on('pointerdown', () => {
+      this.gunWantMounted = true;
+    });
 
     this.shellPips = [];
     for (let i = 0; i < this.gun.shells; i++) {
-      this.shellPips.push(this.add.rectangle(6 + i * 8, 252, 5, 10, 0xd6402c).setOrigin(0, 0.5).setDepth(DEPTH_UI));
+      // Painted shell icons when the art pipeline has delivered them.
+      if (this.textures.exists('icon-shell')) {
+        this.shellPips.push(
+          this.add.image(8 + i * 10, 252, 'icon-shell').setOrigin(0, 0.5).setDepth(DEPTH_UI),
+        );
+      } else {
+        this.shellPips.push(
+          this.add.rectangle(6 + i * 8, 252, 5, 10, 0xd6402c).setOrigin(0, 0.5).setDepth(DEPTH_UI),
+        );
+      }
     }
     const lead = this.birds[0];
     const henWarning = this.birds.some((b) => b.fieldBird.sex === 'hen') ? '  —  watch for hens!' : '';
@@ -273,7 +325,15 @@ export class FlushScene extends Phaser.Scene {
 
     const p = this.input.activePointer;
     const yOff = p.wasTouch ? TOUCH_AIM_OFFSET : 0;
-    this.crosshair.setPosition(p.worldX, p.worldY - yOff);
+    const aimX = p.worldX;
+    const aimY = p.worldY - yOff;
+    this.crosshair.setPosition(aimX, aimY);
+    // Shotgun mounts toward the crosshair with lag (pure math in gunAim.ts).
+    if (this.gunSprite) {
+      this.gunPose = stepGunPose(this.gunPose, aimX, aimY, this.gunWantMounted || p.isDown, dt);
+      this.gunSprite.setPosition(this.gunPose.x, this.gunPose.y);
+      this.gunSprite.setAngle(this.gunPose.angleDeg);
+    }
 
     for (const b of this.birds) {
       if (b.status === 'flying') {
@@ -344,11 +404,31 @@ export class FlushScene extends Phaser.Scene {
     if (this.time.now - this.lastShotAt < this.gun.cooldownMs) return;
     this.lastShotAt = this.time.now;
     this.shells--;
-    this.shellPips[this.shells].setFillStyle(0x333333);
+    const spent = this.shellPips[this.shells];
+    if (spent instanceof Phaser.GameObjects.Rectangle) spent.setFillStyle(0x333333);
+    else if (spent instanceof Phaser.GameObjects.Image) spent.setTint(0x444444).setAlpha(0.45);
     playShot();
 
     const aim = { x: p.worldX, y: p.worldY - (p.wasTouch ? TOUCH_AIM_OFFSET : 0) };
-    this.cameras.main.shake(70, 0.004);
+    // Spent hull flick: tiny shell arc out of the action.
+    if (this.textures.exists('icon-shell')) {
+      const hull = this.add.image(aim.x + 10, aim.y + 8, 'icon-shell').setDepth(DEPTH_UI).setScale(0.9);
+      this.tweens.add({
+        targets: hull,
+        x: aim.x + 28,
+        y: aim.y + 36,
+        angle: 140,
+        alpha: 0,
+        duration: 280,
+        onComplete: () => hull.destroy(),
+      });
+    }
+    // Hit-pause feel: brief global tween slowdown so the shot lands in the hand.
+    this.tweens.timeScale = 0.12;
+    this.time.delayedCall(70, () => {
+      this.tweens.timeScale = 1;
+    });
+    this.cameras.main.shake(90, 0.006);
     const flash = this.add.circle(aim.x, aim.y, 3, 0xfff2c9).setDepth(DEPTH_FLASH);
     this.tweens.add({
       targets: flash,
@@ -358,9 +438,16 @@ export class FlushScene extends Phaser.Scene {
       onComplete: () => flash.destroy(),
     });
 
-    // Grouse cover: the pattern can't punch through timber.
+    this.gunWantMounted = true;
+    // Grouse cover / mid-ground brush: the pattern can't punch through.
     if (this.trees.some((t) => aim.x >= t.x && aim.x <= t.x + t.w && aim.y >= t.y && aim.y <= t.y + t.h)) {
       pixelText(this, aim.x, aim.y - 10, 'thwack — timber!', 1, '#c9dcc0')
+        .setOrigin(0.5)
+        .setDepth(DEPTH_UI);
+      return;
+    }
+    if (this.vegBlocks.some((t) => aim.x >= t.x && aim.x <= t.x + t.w && aim.y >= t.y && aim.y <= t.y + t.h)) {
+      pixelText(this, aim.x, aim.y - 10, 'thwack — brush!', 1, '#c9dcc0')
         .setOrigin(0.5)
         .setDepth(DEPTH_UI);
       return;
@@ -491,10 +578,12 @@ export class FlushScene extends Phaser.Scene {
     }
   }
 
-  private drawSky(): void {
-    // A painted plate where the art pipeline has one; drawn sky otherwise.
-    const key = FLUSH_BACKDROPS[regionOfArea(this.hunt.areaId).id];
-    if (key && this.textures.exists(key)) {
+  private drawSky(flushSeed = 0): void {
+    // Pick a plate from the region's pool so consecutive flushes vary.
+    const regionId = regionOfArea(this.hunt.areaId).id;
+    const pool = (FLUSH_BACKDROP_POOLS[regionId] ?? []).filter((k) => this.textures.exists(k));
+    if (pool.length > 0) {
+      const key = pool[pickBackdropIndex(pool.length, flushSeed)];
       this.add.image(240, 135, key);
       return;
     }
@@ -506,6 +595,64 @@ export class FlushScene extends Phaser.Scene {
     g.fillRect(70, 32, 18, 8);
     g.fillRect(300, 70, 40, 8);
     g.fillRect(314, 62, 20, 8);
+  }
+
+  /** Mid-ground ragweed/cattail silhouettes that can block a shell (~40% of rises). */
+  private makeVegBlocks(flushSeed: number): void {
+    this.vegBlocks = [];
+    if (!flushHasVegBlock(flushSeed) || !this.textures.exists('flush-veg-block')) return;
+    // One or two clumps in the lower sky — readable silhouettes, fair block boxes.
+    const count = 1 + ((flushSeed >>> 3) % 2);
+    for (let i = 0; i < count; i++) {
+      const x = 70 + ((flushSeed * (i + 3) * 47) % 300);
+      const y = GROUND_Y - 36;
+      const img = this.add.image(x, y, 'flush-veg-block').setOrigin(0.5, 1).setDepth(DEPTH_VEG);
+      img.setFlipX(i % 2 === 1);
+      // Hit box slightly inside the sprite so edge aims still clear.
+      this.vegBlocks.push({ x: x - 40, y: y - 40, w: 80, h: 36 });
+    }
+  }
+
+  private makeShotgun(): void {
+    // Over-the-shoulder double barrel, drawn small: at rest only the muzzle
+    // end pokes above the frame (~50px), mounting raises it to ~90px. The
+    // sky belongs to the birds — the gun is presence, not scenery.
+    if (!this.textures.exists('shotgun-gen')) {
+      const W = 26;
+      const H = 74;
+      const FOREND_Y = 56; // walnut starts here
+      const g = this.add.graphics();
+      for (let y = 0; y < H; y++) {
+        // Perspective: the far (top) end is slightly narrower.
+        const half = Math.round(9 + (y / H) * 4) / 2 + 6;
+        const x0 = Math.round(13 - half);
+        const x1 = Math.round(13 + half);
+        const w = x1 - x0;
+        if (y < FOREND_Y) {
+          // Blued steel tubes with a shadowed rib line down the middle.
+          g.fillStyle(0x101410).fillRect(x0, y, w, 1); // outline base
+          g.fillStyle(0x2a3036).fillRect(x0 + 1, y, w - 2, 1); // steel
+          g.fillStyle(0x3f4a52).fillRect(x0 + 2, y, 2, 1); // left tube sheen
+          g.fillStyle(0x3f4a52).fillRect(x1 - 4, y, 2, 1); // right tube sheen
+          g.fillStyle(0x14171a).fillRect(12, y, 2, 1); // rib shadow
+        } else {
+          // Walnut forend widening into the viewer's hands.
+          g.fillStyle(0x101410).fillRect(x0 - 1, y, w + 2, 1);
+          g.fillStyle(0x5a3c22).fillRect(x0, y, w, 1);
+          g.fillStyle(0x76512e).fillRect(x0 + 3, y, w - 6, 1);
+        }
+      }
+      // Muzzle face + brass bead.
+      g.fillStyle(0x14171a).fillRect(5, 0, 16, 2);
+      g.fillStyle(0xd9b25f).fillRect(12, 0, 2, 2);
+      g.generateTexture('shotgun-gen', W, H);
+      g.destroy();
+    }
+    this.gunSprite = this.add
+      .image(GUN_REST.x, GUN_REST.y, 'shotgun-gen')
+      .setOrigin(0.5, 1)
+      .setDepth(DEPTH_GUN)
+      .setAngle(GUN_REST.angleDeg);
   }
 
   /**
@@ -570,7 +717,8 @@ export class FlushScene extends Phaser.Scene {
   }
 
   private makeCrosshair(): void {
-    if (this.textures.exists('crosshair')) return;
+    // Painted icon loads in preload; only generate a procedural fallback.
+    if (this.textures.exists('icon-crosshair') || this.textures.exists('crosshair')) return;
     const g = this.add.graphics();
     g.lineStyle(1, 0xffffff);
     g.strokeCircle(8, 8, 7);

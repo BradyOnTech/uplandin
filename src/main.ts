@@ -26,10 +26,17 @@ const config: Phaser.Types.Core.GameConfig = {
   scene: [TitleScene, BreedScene, MapScene, KennelScene, QuickScene, AreaScene, FieldScene, FlushScene],
 };
 
+// Vite HMR can re-evaluate this module (any update it can't accept in place
+// falls through to here). Never let two Phaser games race one page: the old
+// loop keeps ticking under the new canvas and both crawl.
+const w = window as unknown as Record<string, unknown>;
+const prev = w.__uplandin as Phaser.Game | undefined;
+if (prev && typeof prev.destroy === 'function') prev.destroy(true);
+
 const game = new Phaser.Game(config);
 
 // Handle for poking at the running game from devtools / browser automation.
-(window as unknown as Record<string, unknown>).__uplandin = game;
+w.__uplandin = game;
 
 // PWA: register the service worker in production builds only, so dev never
 // fights a cache. Installed to a phone's home screen, the game runs
