@@ -221,20 +221,23 @@ bare aspen line, rimrock rim, saguaro line, oak-studded ridge.
   head-and-chest of a {COAT} hunting dog, three-quarter view, plain dark
   olive background — vintage sporting-dog oil portrait rendered in
   16-bit pixels. [style block]
-- **Flush-view shotgun** (currently procedural in
-  `FlushScene.makeShotgun`; pose math in `game/gunAim.ts` anchors it off
-  the bottom-right corner, barrels leaning up-left toward the aim — the
-  hunter's-eye POV reference. A painted replacement must match the same
-  30×148 vertical layout, NOT a full-height centered barrel; that
-  failed: it owns the sky where the birds fly): > Pixel art sprite,
-  30×148, transparent background, drawn pointing straight up (the game
-  rotates it): from top — muzzle face with single brass bead; twin
-  blued-steel barrels with a shadowed center rib, subtle taper (narrow
-  at muzzle); breech step; engraved brass/gold receiver band; walnut
-  stock widening toward the base with grain streaks; a hand gripping
-  the wrist at the bottom. [style block] Ship as `art/shotgun-fp.png`,
-  restore the preload line in FlushScene, and prefer it over
-  `shotgun-gen` there.
+- **Flush-view shotgun, v3 socket** (procedural placeholder in
+  `FlushScene.makeShotgun`; pose math in `game/gunAim.ts` — the gun
+  SWAYS with the aim and recoils, it never swings like a stick. The
+  painted sprite must be authored in PERSPECTIVE, from behind, DOOM
+  weapon-sprite style; profile/side views and full-height centered
+  barrels are both rejected looks): > Pixel art sprite, 90×130,
+  transparent background, single frame: side-by-side double-barrel
+  shotgun from the shooter's first-person view, low ready, angled up.
+  Strong foreshortening: walnut stock and trigger area LARGE at bottom
+  right, twin blued barrels tapering steeply to a small distant muzzle
+  with one brass bead top-center-left, engraved brass receiver between,
+  simple gloved left hand gripping the forend, mitten-simple. Muzzle =
+  smallest element; stock and hand = largest. [style block]
+  **Drop-in**: ship as `art/shotgun-fp-v3.png`, add its preload line in
+  FlushScene — the scene already prefers the `shotgun-fp-v3` texture
+  over the generated placeholder. Muzzle tip must sit at sprite-local
+  (40, 2) or adjust `GUN_MUZZLE_OFFSET` so the flash stays on the bead.
 
 ## The road to production quality
 

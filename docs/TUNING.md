@@ -71,6 +71,8 @@ which builds the rise in this order — each stage has its own knobs:
 | sleeper chance/delay (inline) | 0.18 / 350–900ms | more/later stragglers |
 | `SHELLS`/spread/cooldown | guns.ts table | per-gun difficulty |
 | `TOUCH_AIM_OFFSET` | 56 | crosshair height above finger (mobile) |
+| `GUN_SWAY_X` / `GUN_LEAN_MAX` | 0.22 / 6° | how alive the held gun feels (gunAim.ts — sway, never swing) |
+| `RECOIL_KICK_PX` / `RECOIL_MS` | 7 / 150 | how hard the shot lands in the hand |
 | `GROUND_Y` | 205 | horizon of the shooting gallery |
 
 Species character (all in **species.ts**, per species): `size` (0.62 quail
@@ -95,15 +97,50 @@ Base: `DOG_SPEED` 75, `TRACKING_SPEED` 90, `SCENT_RADIUS` 45,
 
 **Cover work** — the dog hunts objectives, not open ground: it casts to the
 nearest unchecked cover patch inside its leash of the hunter
-(`CAST_SPEED_MULT` 1.15), serpentines inside it until it judges it checked,
-remembers it (`COVER_REVISIT_MS` 50s), and moves to the next; only a covert
-with nothing left to check gets the old open sweep. Working time =
-patch area × `COVER_WORK_MS_PER_PX2` (0.9), clamped
-`COVER_WORK_MIN/MAX_MS` (2.2s/10s), × `coverThoroughness(level)`
-(0.62 at lv1 → 1.25 at lv10 — **a pup pops out of cover early and leaves
-birds behind; that's the point**), × ±15% noise. Raise
-`COVER_WORK_MS_PER_PX2` for a more methodical dog, lower it for a faster,
-flashier one.
+(`CAST_SPEED_MULT` 1.15), works it until it judges it checked, remembers
+it (`COVER_REVISIT_MS` 50s), and moves to the next; only a covert with
+nothing left to check gets the old open sweep. Working time = patch area ×
+`COVER_WORK_MS_PER_PX2` (0.9), clamped `COVER_WORK_MIN/MAX_MS` (2.2s/10s),
+× `coverThoroughness(level)` (0.62 at lv1 → 1.25 at lv10 — **a pup pops
+out of cover early and leaves birds behind; that's the point**), × ±15%
+noise.
+
+**Edge work** — `coverEdgeFraction(level)` (0 at lv1 → ~0.45 at lv10)
+spends that share of the work budget on the **perimeter** first
+(`COVER_EDGE_LAP_RATE` 0.35 laps/s via `perimeterPoint`), then the interior
+serpentine comb. Finished dogs ring the edge (where runners hold); pups
+dive the middle. Raise the fraction for more methodical edge craft.
+
+**Wind-aware cast** — `castAimPoint(patch, windAngle, windCraftTier)`:
+tier 0 or calm → patch center; tier ≥1 with wind → a point on the
+**downwind** side so the dog approaches leeward and works into the wind.
+Does not change scent math — only the cast approach.
+
+**Presentation gait** — `Dog.gait` (`run` / `trot` / `track` / `still`) and
+`scentCheck` are set each tick for FieldScene only. Cast → trot; open work /
+edge → run; tracking → track (faster FPS); first scent freezes ~320ms
+(`scentCheck`). Winded multiplies FPS ×0.55 and applies a dusty tint.
+
+**End hunt** — `endHuntEarly(hunt)` marks every `hidden`/`flushed` bird
+`escaped` and increments `hunt.escaped`; FieldScene **end hunt** button
+(top-right) + **E** / **Esc**. Summary uses the normal XP path.
+
+**Hunter scale** — `HUNTER_SHEET_SCALE` 1.45 (setter sheet is wider; scale
+balances on-screen weight).
+
+**Flush backdrops** — `FLUSH_BACKDROP_POOLS[region]` arrays; index via
+`pickBackdropIndex(pool, seed)`. Mid-ground brush: `flushHasVegBlock(seed)`
+~40%, blocks pattern like timber (`thwack — brush!`).
+
+**Shotgun (v3, FPS-natural)** — `gunAim.ts`. The sprite is authored in
+perspective (from behind, DOOM-style: big stock/hand, barrels converging
+to a small far muzzle), so the pose **sways, never swings**: the anchor
+translates with aim X (`GUN_SWAY_X`, leashed by `GUN_SWAY_MAX`), lean is
+capped at `GUN_LEAN_MAX` (6°), mount rises `GUN_REST.y → GUN_MOUNT_Y`
+with lag, and each shot applies `recoilOffset` (kick + tilt easing out
+over `RECOIL_MS`) plus a muzzle flash at `GUN_MUZZLE_OFFSET`. The muzzle
+tops out near the horizon — the upper sky belongs to the birds. Painted
+replacement: `art/shotgun-fp-v3.png` (spec in ART.md).
 
 breeds.ts owns the formulas: `statMult` (1–5 star → 0.9–1.3×), growth
 (+5%/lvl strong axes, +3% others, cap +40%), nose maturity (0.7+0.03/lvl),

@@ -1,42 +1,40 @@
 import { describe, expect, it } from 'vitest';
 import {
-  barrelTiltDeg,
   blendGunPose,
   flushHasVegBlock,
+  GUN_LEAN_MAX,
   GUN_MOUNT_Y,
   GUN_REST,
+  GUN_SWAY_MAX,
+  leanDeg,
   pickBackdropIndex,
+  RECOIL_MS,
+  recoilOffset,
   stepGunPose,
 } from '../src/game/gunAim';
 
-describe('gunAim (first-person barrel)', () => {
-  it('barrelTiltDeg leans toward aim X and stays modest', () => {
-    expect(barrelTiltDeg(240, 100, 1)).toBeLessThan(0);
-    expect(barrelTiltDeg(240, 380, 1)).toBeGreaterThan(0);
-    expect(Math.abs(barrelTiltDeg(240, 800, 1))).toBeLessThanOrEqual(18);
+describe('gunAim (v3 — sway, never swing)', () => {
+  it('a held gun leans only a few degrees, toward the aim', () => {
+    expect(leanDeg(300, 60, 1)).toBeLessThan(0);
+    expect(leanDeg(300, 460, 1)).toBeGreaterThan(0);
+    // Even an aim at the far screen edge never breaks the hold illusion.
+    expect(Math.abs(leanDeg(300, -500, 1))).toBeLessThanOrEqual(GUN_LEAN_MAX);
+    expect(Math.abs(leanDeg(300, 900, 1))).toBeLessThanOrEqual(GUN_LEAN_MAX);
+    // At rest (mount 0) there is no lean at all.
+    expect(Math.abs(leanDeg(300, 60, 0))).toBe(0);
   });
 
-  it('blendGunPose at 0 is rest; at 1 rises but the pivot stays in the corner', () => {
+  it('blendGunPose: rest sits low; mounting rises and sways with the aim', () => {
     const rest = blendGunPose(0, 240, 100);
-    expect(rest.mount).toBe(0);
     expect(rest.y).toBeCloseTo(GUN_REST.y, 5);
-    const up = blendGunPose(1, 320, 60);
-    expect(up.mount).toBe(1);
-    expect(up.y).toBeCloseTo(GUN_MOUNT_Y, 5);
-    // The hunter's-eye gun is corner-anchored: the pivot never wanders
-    // toward screen center — the swing toward the aim is all in the angle.
-    expect(up.x).toBeGreaterThan(430);
-    expect(up.x).toBeLessThanOrEqual(GUN_REST.x);
-  });
-
-  it('the barrels always run up-left out of the corner, never upright or flat', () => {
-    for (const aimX of [20, 240, 460]) {
-      const pose = blendGunPose(1, aimX, 80);
-      expect(pose.angleDeg).toBeLessThanOrEqual(-10); // never a vertical monolith
-      expect(pose.angleDeg).toBeGreaterThanOrEqual(-56); // never lays across the view
-    }
-    // Aiming left leans the muzzle further left than aiming right.
-    expect(blendGunPose(1, 60, 80).angleDeg).toBeLessThan(blendGunPose(1, 420, 80).angleDeg);
+    expect(rest.x).toBeCloseTo(GUN_REST.x, 5); // no sway while lowered
+    const left = blendGunPose(1, 60, 80);
+    const right = blendGunPose(1, 420, 80);
+    expect(left.y).toBeCloseTo(GUN_MOUNT_Y, 5);
+    // The anchor translates with the aim — the FPS sway — but stays leashed.
+    expect(left.x).toBeLessThan(right.x);
+    expect(Math.abs(left.x - GUN_REST.x)).toBeLessThanOrEqual(GUN_SWAY_MAX);
+    expect(Math.abs(right.x - GUN_REST.x)).toBeLessThanOrEqual(GUN_SWAY_MAX);
   });
 
   it('stepGunPose rises toward full mount when wantMounted', () => {
@@ -46,6 +44,17 @@ describe('gunAim (first-person barrel)', () => {
     }
     expect(pose.mount).toBeGreaterThan(0.9);
     expect(pose.y).toBeLessThan(GUN_REST.y);
+  });
+
+  it('recoil kicks hard at impact and settles to nothing', () => {
+    const impact = recoilOffset(0);
+    expect(impact.dy).toBeGreaterThan(0);
+    expect(impact.dAngleDeg).toBeGreaterThan(0);
+    const mid = recoilOffset(RECOIL_MS / 2);
+    expect(mid.dy).toBeLessThan(impact.dy);
+    expect(mid.dy).toBeGreaterThan(0);
+    expect(recoilOffset(RECOIL_MS)).toEqual({ dy: 0, dAngleDeg: 0 });
+    expect(recoilOffset(-5)).toEqual({ dy: 0, dAngleDeg: 0 }); // pre-shot: no kick
   });
 
   it('pickBackdropIndex cycles the pool deterministically', () => {
