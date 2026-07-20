@@ -16,31 +16,40 @@ export type GunPose = {
   mount: number;
 };
 
-/** Low ready: lower-right, slightly clipped under the frame. */
-export const GUN_REST: GunPose = { x: 332, y: 300, angleDeg: -6, mount: 0 };
-
-/** Mounted: higher, more centered under the playfield, still lower half only. */
-export const GUN_MOUNT = { x: 306, y: 282 };
-
 /**
- * Small tilt so barrels lean toward aim X. Clamped so the gun never lays flat.
+ * The pose model. The art is painted pre-angled with the muzzle up-LEFT of
+ * the stock pivot, so a rotation delta acts on the art: POSITIVE (clockwise)
+ * swings the bead up — mounting; NEGATIVE flattens it — the hip-carry
+ * droop. Rest droops a touch; mounting raises toward the aim line. The
+ * anchor translates with aim (sway); lean stays small — rotating
+ * perspective art far tilts its own baked horizon and breaks the illusion.
  */
-export function barrelTiltDeg(pivotX: number, aimX: number, mount: number): number {
-  const raw = (aimX - pivotX) * 0.04;
-  const max = 6 + 10 * Math.max(0, Math.min(1, mount));
-  // Base art already points up-left; tilt is additive.
-  return Math.max(-max, Math.min(max, raw));
+
+/** Low ready: lower-right, muzzle drooped flat, clipped under the frame. */
+export const GUN_REST: GunPose = { x: 332, y: 300, angleDeg: -4, mount: 0 };
+
+/** Mounted: higher and more centered, muzzle raised toward the aim line. */
+export const GUN_MOUNT = { x: 306, y: 282, angleDeg: 6 };
+
+/** Max lean toward the aim, degrees — sway, never swing. */
+export const GUN_LEAN_MAX = 8;
+/** How far the anchor slides with the aim (fraction of aim offset from center). */
+export const GUN_SWAY_X = 0.18;
+
+/** Slight lean toward the crosshair; the sway does most of the tracking. */
+export function leanDeg(pivotX: number, aimX: number, mount: number): number {
+  const raw = (aimX - pivotX) * 0.03 * Math.max(0, Math.min(1, mount));
+  return Math.max(-GUN_LEAN_MAX, Math.min(GUN_LEAN_MAX, raw));
 }
 
 /** Linear blend of rest → mounted pose for a given mount factor [0,1]. */
 export function blendGunPose(mount: number, aimX: number, _aimY: number): GunPose {
   const m = Math.max(0, Math.min(1, mount));
-  // Track aim X gently so the bead follows the reticle without sliding off-screen.
-  const mountedX = GUN_MOUNT.x + (aimX - 240) * 0.18;
+  const mountedX = GUN_MOUNT.x + (aimX - 240) * GUN_SWAY_X;
   const x = GUN_REST.x + (mountedX - GUN_REST.x) * m;
   const y = GUN_REST.y + (GUN_MOUNT.y - GUN_REST.y) * m;
-  const baseAngle = -12; // art default: low ready up toward horizon
-  const angleDeg = baseAngle * (1 - m * 0.35) + barrelTiltDeg(x, aimX, m);
+  // Consistent with the declared poses: blend(0) IS the rest pose.
+  const angleDeg = GUN_REST.angleDeg + (GUN_MOUNT.angleDeg - GUN_REST.angleDeg) * m + leanDeg(x, aimX, m);
   return { x, y, angleDeg, mount: m };
 }
 
@@ -96,13 +105,6 @@ export function stepGunPose(
   const x = current.x + (target.x - current.x) * alpha;
   const y = current.y + (target.y - current.y) * alpha;
   return { x, y, angleDeg, mount };
-}
-
-/** @deprecated kept for callers that still use full atan2 aiming. */
-export function barrelAngleDeg(pivotX: number, pivotY: number, aimX: number, aimY: number): number {
-  const dx = aimX - pivotX;
-  const dy = aimY - pivotY;
-  return (Math.atan2(dy, dx) * 180) / Math.PI;
 }
 
 /**

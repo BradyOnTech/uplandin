@@ -1,33 +1,53 @@
 import { describe, expect, it } from 'vitest';
 import {
-  barrelTiltDeg,
   blendGunPose,
   flushHasVegBlock,
+  GUN_LEAN_MAX,
   GUN_MOUNT,
+  GUN_MUZZLE_OFFSET,
   GUN_REST,
+  leanDeg,
+  muzzlePoint,
   pickBackdropIndex,
   RECOIL_MS,
   recoilOffset,
   stepGunPose,
 } from '../src/game/gunAim';
 
-describe('gunAim (FPS weapon sprite)', () => {
-  it('barrelTiltDeg leans toward aim X and stays modest', () => {
-    expect(barrelTiltDeg(300, 100, 1)).toBeLessThan(0);
-    expect(barrelTiltDeg(300, 400, 1)).toBeGreaterThan(0);
-    expect(Math.abs(barrelTiltDeg(300, 800, 1))).toBeLessThanOrEqual(16);
+describe('gunAim (painted FPS gun — sway, never swing)', () => {
+  it('blend(0) IS the declared rest pose — no first-frame snap', () => {
+    const rest = blendGunPose(0, 240, 100);
+    expect(rest.x).toBeCloseTo(GUN_REST.x, 5);
+    expect(rest.y).toBeCloseTo(GUN_REST.y, 5);
+    expect(rest.angleDeg).toBeCloseTo(GUN_REST.angleDeg, 5);
   });
 
-  it('blendGunPose at 0 is rest; at 1 sits higher and tracks aim X gently', () => {
+  it('mounting RAISES the muzzle toward the aim line (rest droops it)', () => {
+    // This art's muzzle sits up-left of the pivot: POSITIVE delta raises
+    // the bead (verified via muzzlePoint below). Mounted > rest.
     const rest = blendGunPose(0, 240, 100);
-    expect(rest.mount).toBe(0);
-    expect(rest.y).toBeCloseTo(GUN_REST.y, 5);
-    const up = blendGunPose(1, 320, 60);
-    expect(up.mount).toBe(1);
+    const up = blendGunPose(1, 240, 100);
+    expect(up.angleDeg).toBeGreaterThan(rest.angleDeg);
     expect(up.y).toBeCloseTo(GUN_MOUNT.y, 5);
-    // Stays in lower-right / center-right — never a full-screen wedge.
-    expect(up.y).toBeGreaterThan(230);
-    expect(up.x).toBeGreaterThan(250);
+    // And the bead genuinely sits higher when mounted:
+    const restBead = muzzlePoint(rest.x, rest.y, rest.angleDeg);
+    const upBead = muzzlePoint(up.x, up.y, up.angleDeg);
+    expect(upBead.y).toBeLessThan(restBead.y);
+  });
+
+  it('sway does the tracking; lean stays small', () => {
+    const left = blendGunPose(1, 60, 80);
+    const right = blendGunPose(1, 420, 80);
+    // The anchor translates with the aim…
+    expect(left.x).toBeLessThan(right.x);
+    // …and the lean toward the aim never exceeds the sway cap.
+    expect(Math.abs(leanDeg(300, -500, 1))).toBeLessThanOrEqual(GUN_LEAN_MAX);
+    expect(Math.abs(leanDeg(300, 900, 1))).toBeLessThanOrEqual(GUN_LEAN_MAX);
+    expect(Math.abs(leanDeg(300, 60, 0))).toBe(0); // no lean while lowered
+    // Aiming left swings the bead left of aiming right.
+    const lb = muzzlePoint(left.x, left.y, left.angleDeg);
+    const rb = muzzlePoint(right.x, right.y, right.angleDeg);
+    expect(lb.x).toBeLessThan(rb.x);
   });
 
   it('stepGunPose rises toward full mount when wantMounted', () => {
@@ -48,6 +68,19 @@ describe('gunAim (FPS weapon sprite)', () => {
     expect(mid.dy).toBeGreaterThan(0);
     expect(recoilOffset(RECOIL_MS)).toEqual({ dy: 0, dAngleDeg: 0 });
     expect(recoilOffset(-5)).toEqual({ dy: 0, dAngleDeg: 0 }); // pre-shot: no kick
+  });
+
+  it('muzzlePoint rotates the bead offset with the pose', () => {
+    // Unrotated: the raw offset.
+    const flat = muzzlePoint(100, 200, 0);
+    expect(flat.x).toBeCloseTo(100 + GUN_MUZZLE_OFFSET.x, 5);
+    expect(flat.y).toBeCloseTo(200 + GUN_MUZZLE_OFFSET.y, 5);
+    // Raising the muzzle (positive delta for this art) lifts the bead.
+    const raised = muzzlePoint(100, 200, 15);
+    expect(raised.y).toBeLessThan(flat.y);
+    // Rotation preserves the distance from anchor to bead.
+    const d = Math.hypot(GUN_MUZZLE_OFFSET.x, GUN_MUZZLE_OFFSET.y);
+    expect(Math.hypot(raised.x - 100, raised.y - 200)).toBeCloseTo(d, 5);
   });
 
   it('pickBackdropIndex cycles the pool deterministically', () => {

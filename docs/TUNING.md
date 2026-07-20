@@ -71,7 +71,7 @@ which builds the rise in this order — each stage has its own knobs:
 | sleeper chance/delay (inline) | 0.18 / 350–900ms | more/later stragglers |
 | `SHELLS`/spread/cooldown | guns.ts table | per-gun difficulty |
 | `TOUCH_AIM_OFFSET` | 56 | crosshair height above finger (mobile) |
-| `GUN_SWAY_X` / `GUN_LEAN_MAX` | 0.22 / 6° | how alive the held gun feels (gunAim.ts — sway, never swing) |
+| `GUN_SWAY_X` / `GUN_LEAN_MAX` | 0.18 / 8° | how alive the held gun feels (gunAim.ts — sway, never swing) |
 | `RECOIL_KICK_PX` / `RECOIL_MS` | 7 / 150 | how hard the shot lands in the hand |
 | `GROUND_Y` | 205 | horizon of the shooting gallery |
 
@@ -132,15 +132,16 @@ balances on-screen weight).
 `pickBackdropIndex(pool, seed)`. Mid-ground brush: `flushHasVegBlock(seed)`
 ~40%, blocks pattern like timber (`thwack — brush!`).
 
-**Shotgun (v3, FPS-natural)** — `gunAim.ts`. The sprite is authored in
-perspective (from behind, DOOM-style: big stock/hand, barrels converging
-to a small far muzzle), so the pose **sways, never swings**: the anchor
-translates with aim X (`GUN_SWAY_X`, leashed by `GUN_SWAY_MAX`), lean is
-capped at `GUN_LEAN_MAX` (6°), mount rises `GUN_REST.y → GUN_MOUNT_Y`
-with lag, and each shot applies `recoilOffset` (kick + tilt easing out
-over `RECOIL_MS`) plus a muzzle flash at `GUN_MUZZLE_OFFSET`. The muzzle
-tops out near the horizon — the upper sky belongs to the birds. Painted
-replacement: `art/shotgun-fp-v3.png` (spec in ART.md).
+**Shotgun (painted FPS gun)** — `gunAim.ts` + `art/shotgun-fp-v3.png`.
+The art is pre-angled (muzzle up-LEFT of the stock pivot), so the pose is
+a small DELTA on it: rest droops (`GUN_REST.angleDeg` −4), mounting
+raises the muzzle (`GUN_MOUNT.angleDeg` +6 — positive = bead up for this
+art) and rises `GUN_REST.y → GUN_MOUNT.y` with lag. The pose **sways,
+never swings**: the anchor translates with aim X (`GUN_SWAY_X` 0.18),
+lean capped at `GUN_LEAN_MAX` (8°). Each shot: `recoilOffset` (7px kick +
+2.5° muzzle flip over `RECOIL_MS` 150) and a flash at `muzzlePoint`
+(bead offset rotated with the pose). The muzzle stays out of the upper
+sky — that belongs to the birds. Sprite spec: ART.md.
 
 breeds.ts owns the formulas: `statMult` (1–5 star → 0.9–1.3×), growth
 (+5%/lvl strong axes, +3% others, cap +40%), nose maturity (0.7+0.03/lvl),
