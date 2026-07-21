@@ -73,8 +73,10 @@ describe('shipped public/art assets', () => {
     expect(field).toMatch(/DOG_FRAME_HEEL\s*=\s*5/);
     expect(field).toMatch(/DOG_FRAME_RETRIEVE\s*=\s*6/);
     expect(field).toMatch(/applyDogPose/);
-    expect(field).toMatch(/TILE_COVER/);
-    expect(field).toMatch(/drawFrame\(tilesKey,\s*TILE_COVER/);
+    // Config-driven tiles: shuffled open variants + cover stamped into the RT.
+    expect(field).toMatch(/FIELD_TILESETS/);
+    expect(field).toMatch(/drawFrame\(cfg\.key,\s*cfg\.cover/);
+    expect(field).toMatch(/cfg\.open\[Math\.floor/);
     expect(field).toMatch(/updateWindLean/);
     expect(field).toMatch(/fadeOut/);
   });

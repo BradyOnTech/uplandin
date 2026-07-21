@@ -8,12 +8,21 @@ export class TitleScene extends Phaser.Scene {
     super('TitleScene');
   }
 
+  preload(): void {
+    this.load.image('title-screen', 'art/title-screen.png');
+  }
+
   create(): void {
     const career = loadCareer();
 
-    const g = this.add.graphics();
-    g.fillStyle(0x63a4ff).fillRect(0, 0, 480, 100);
-    g.fillStyle(0x2f5d23).fillRect(0, 100, 480, 170);
+    if (this.textures.exists('title-screen')) {
+      // The painted ridge at dawn; "UPLANDIN" renders over its calm sky.
+      this.add.image(240, 135, 'title-screen');
+    } else {
+      const g = this.add.graphics();
+      g.fillStyle(0x63a4ff).fillRect(0, 0, 480, 100);
+      g.fillStyle(0x2f5d23).fillRect(0, 100, 480, 170);
+    }
 
     pixelText(this, 240, 66, 'UPLANDIN', 4, '#ffd23f')
       .setOrigin(0.5);

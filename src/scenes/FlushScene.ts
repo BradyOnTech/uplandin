@@ -56,12 +56,24 @@ const FLUSH_BACKDROP_POOLS: Record<string, string[]> = {
     'flush-bg-southern-plains-b',
     'flush-bg-southern-plains-c',
   ],
+  'prairie-pothole': ['flush-bg-prairie-pothole', 'flush-bg-prairie-pothole-b'],
 };
 
 /** Species with real sprite sheets (3 frames: wings up, wings down, folded). */
 const BIRD_SHEETS: Record<string, string> = {
   bobwhite: 'bobwhite-flush',
 };
+/** Species whose sheet splits by sex — the hen/rooster read is a game rule. */
+const BIRD_SHEETS_BY_SEX: Record<string, { hen: string; rooster: string }> = {
+  ringneck: { hen: 'ringneck-hen-flush', rooster: 'ringneck-rooster-flush' },
+};
+
+/** Sheet key for this bird, honoring sex-split species; undefined = no sheet yet. */
+function birdSheetKey(bird: Bird, species: SpeciesConfig): string | undefined {
+  const split = BIRD_SHEETS_BY_SEX[species.id];
+  if (split) return bird.sex === 'hen' ? split.hen : split.rooster;
+  return BIRD_SHEETS[species.id];
+}
 
 interface FlyingBird {
   id: number;
@@ -134,6 +146,16 @@ export class FlushScene extends Phaser.Scene {
     this.load.image('flush-bg-southern-plains', 'art/flush-backdrop-southern-plains.png');
     this.load.image('flush-bg-southern-plains-b', 'art/flush-backdrop-southern-plains-b.png');
     this.load.image('flush-bg-southern-plains-c', 'art/flush-backdrop-southern-plains-c.png');
+    this.load.image('flush-bg-prairie-pothole', 'art/flush-bg-prairie-pothole.png');
+    this.load.image('flush-bg-prairie-pothole-b', 'art/flush-bg-prairie-pothole-b.png');
+    this.load.spritesheet('ringneck-rooster-flush', 'art/ringneck-rooster-flush.png', {
+      frameWidth: 44,
+      frameHeight: 28,
+    });
+    this.load.spritesheet('ringneck-hen-flush', 'art/ringneck-hen-flush.png', {
+      frameWidth: 44,
+      frameHeight: 28,
+    });
     this.load.image('icon-shell', 'art/icon-shell.png');
     this.load.image('icon-crosshair', 'art/icon-crosshair.png');
     this.load.image('flush-veg-block', 'art/flush-veg-block.png');
@@ -489,7 +511,7 @@ export class FlushScene extends Phaser.Scene {
       best.status = 'falling';
       best.fieldBird.state = 'downed';
       // Sheet birds fold up on the shot.
-      if (best.sprite.texture.key === BIRD_SHEETS[best.species.id]) {
+      if (best.sprite.texture.key === birdSheetKey(best.fieldBird, best.species)) {
         best.sprite.stop();
         best.sprite.setFrame(2);
       }
@@ -711,7 +733,7 @@ export class FlushScene extends Phaser.Scene {
     x: number,
     y: number,
   ): Phaser.GameObjects.Sprite {
-    const sheet = BIRD_SHEETS[species.id];
+    const sheet = birdSheetKey(bird, species);
     if (sheet && this.textures.exists(sheet)) {
       const animKey = `${sheet}-flap`;
       if (!this.anims.exists(animKey)) {

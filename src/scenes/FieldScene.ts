@@ -89,7 +89,7 @@ const TINT_HONORING = 0xa8d4e8; // backing dog reads cool blue
 // Art pipeline rollout (same pattern as FlushScene's FLUSH_BACKDROPS /
 // BIRD_SHEETS): breeds and regions with painted assets use them, everything
 // else keeps the placeholder textures until its art lands.
-const DOG_SHEETS: Record<string, string> = { 'english-setter': 'setter-field' };
+const DOG_SHEETS: Record<string, string> = { 'english-setter': 'setter-field', gsp: 'gsp-field' };
 /** Painted dogs draw at full sheet size (32×20): the dog is the star of the
  * field view and reads from across the room, mockup-style. Purely visual —
  * every mechanical radius is in sim px and unchanged. */
@@ -127,12 +127,25 @@ const FACING_EXIT_SIN = 0.7;
  */
 // End-hunt control (top-right corner, screen coords).
 const END_HUNT_BTN = { x: 428, y: 18, w: 88, h: 18 };
-const FIELD_TILESETS: Record<string, string> = { 'southern-plains': 'tiles-southern-plains' };
-// Tileset frame order (fixed by the art pipeline): open grass, cover,
-// mesquite landmark, two-track (unused until areas define roads).
-const TILE_OPEN = 0;
-const TILE_COVER = 1;
-const TILE_MESQUITE = 2;
+/** Per-region tiles. v2 strips: frames 0–2 = shuffled open-ground variants
+ * (three randomized layouts so nothing repeats at tile frequency), 3 =
+ * cover, 4 = two-track (unused until areas define roads). Legacy sheets
+ * supply landmark frames (mesquite) where a region has one. */
+interface RegionTiles {
+  key: string;
+  open: number[];
+  cover: number;
+  landmark?: { key: string; frame: number };
+}
+const FIELD_TILESETS: Record<string, RegionTiles> = {
+  'southern-plains': {
+    key: 'tiles-southern-plains-v2',
+    open: [0, 1, 2],
+    cover: 3,
+    landmark: { key: 'tiles-southern-plains', frame: 2 },
+  },
+  'prairie-pothole': { key: 'tiles-prairie-pothole', open: [0, 1, 2], cover: 3 },
+};
 
 // Whistle button zone (bottom-right corner, screen coords). Taps here don't move the hunter.
 const WHISTLE_BTN = { x: 452, y: 246, w: 48, h: 20 };
@@ -217,9 +230,24 @@ export class FieldScene extends Phaser.Scene {
       frameWidth: 32,
       frameHeight: 20,
     });
-    // Painted hunter (v2 socket): when a sheet passes ART.md acceptance,
-    // ship it as art/hunter-dirs-v2.png and uncomment — it wins in create().
-    // this.load.spritesheet('hunter-dirs-v2', 'art/hunter-dirs-v2.png', { frameWidth: 20, frameHeight: 28 });
+    // The painted directional hunter (v2 — passed acceptance): wins in
+    // create() and turns directional facing on.
+    this.load.spritesheet('hunter-dirs-v2', 'art/hunter-dirs-v2.png', {
+      frameWidth: 20,
+      frameHeight: 28,
+    });
+    this.load.spritesheet('tiles-southern-plains-v2', 'art/tileset-southern-plains-v2.png', {
+      frameWidth: 16,
+      frameHeight: 16,
+    });
+    this.load.spritesheet('tiles-prairie-pothole', 'art/tileset-prairie-pothole.png', {
+      frameWidth: 16,
+      frameHeight: 16,
+    });
+    this.load.spritesheet('gsp-field', 'art/gsp-sheet-alpha.png', {
+      frameWidth: 32,
+      frameHeight: 20,
+    });
     this.load.spritesheet(HUNTER_SHEET, 'art/hunter-sheet-alpha.png', {
       frameWidth: 16,
       frameHeight: 20,
@@ -1314,13 +1342,13 @@ export class FieldScene extends Phaser.Scene {
     // Denser landmarks than the original sparse scatter — still seeded stable.
     const treeCount = Math.round((w.w * w.h) / 18_000);
 
-    const tiles = FIELD_TILESETS[regionOfArea(this.area.id).id];
-    const tiled = !!tiles && this.textures.exists(tiles);
-    if (tiled) {
-      this.add.tileSprite(w.x, w.y, w.w, w.h, tiles, TILE_OPEN).setOrigin(0, 0);
-    } else {
+    const cfg = FIELD_TILESETS[regionOfArea(this.area.id).id];
+    const tiled = !!cfg && this.textures.exists(cfg.key);
+    if (!tiled) {
       this.add.graphics().fillStyle(this.area.grass).fillRect(w.x, w.y, w.w, w.h);
     }
+    // Tiled ground is stamped into the RenderTexture inside
+    // drawOrganicCover — shuffled open variants, seeded per covert.
 
     // Cover is grass you can hide in, not a painted rectangle: dense tuft
     // clusters with ragged edges (the field-view-mockup look). It must stay
@@ -1328,13 +1356,13 @@ export class FieldScene extends Phaser.Scene {
     // (runners hold at cover edges, singles relight into it).
     this.drawOrganicCover(rng, tiled);
 
-    if (tiled) {
+    if (tiled && cfg.landmark && this.textures.exists(cfg.landmark.key)) {
       for (let i = 0; i < treeCount; i++) {
         const img = this.add.image(
           w.x + 8 + rng() * (w.w - 24),
           w.y + 8 + rng() * (w.h - 24),
-          tiles,
-          TILE_MESQUITE,
+          cfg.landmark.key,
+          cfg.landmark.frame,
         );
         // Slight size variety so mesquite isn't a rubber stamp.
         img.setScale(0.85 + rng() * 0.45);
@@ -1368,15 +1396,26 @@ export class FieldScene extends Phaser.Scene {
       : [scaleColor(this.area.cover, 0.62), this.area.cover, scaleColor(this.area.cover, 1.3)];
     const seedHead = tiled ? 0x2a2814 : scaleColor(this.area.cover, 0.4);
     const rust = [0x8f4a26, 0xa85c30];
-    const tilesKey = FIELD_TILESETS[regionOfArea(this.area.id).id];
+    const cfg = FIELD_TILESETS[regionOfArea(this.area.id).id];
+
+    // The ground itself: every 16px cell gets one of the open variants at
+    // random (seeded) — three layouts shuffled so no feature repeats at
+    // tile frequency. This is what killed the wallpaper.
+    if (tiled && cfg) {
+      for (let gy = 0; gy < Math.ceil(w.h / 16); gy++) {
+        for (let gx = 0; gx < Math.ceil(w.w / 16); gx++) {
+          rt.drawFrame(cfg.key, cfg.open[Math.floor(rng() * cfg.open.length)], gx * 16, gy * 16);
+        }
+      }
+    }
 
     for (const p of this.area.patches) {
       // Stamp cover tiles under the organic fringe so patches read as
       // hide-here at a glance (mechanical contrast, not just tuft noise).
-      if (tiled && tilesKey && this.textures.exists(tilesKey)) {
+      if (tiled && cfg) {
         for (let ty = Math.floor(p.y / 16) * 16; ty < p.y + p.h; ty += 16) {
           for (let tx = Math.floor(p.x / 16) * 16; tx < p.x + p.w; tx += 16) {
-            rt.drawFrame(tilesKey, TILE_COVER, tx - w.x, ty - w.y);
+            rt.drawFrame(cfg.key, cfg.cover, tx - w.x, ty - w.y);
           }
         }
       }
