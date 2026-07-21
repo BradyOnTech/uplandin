@@ -38,6 +38,7 @@ import {
 import { devDogLevel } from '../game/dev';
 import { Dog, WHISTLE_RANGE, type DogState } from '../game/dog';
 import { VIEWPORT } from '../game/field';
+import { inCoverFringe, inRaggedCoverCore } from '../game/fieldDraw';
 import { dist, moveToward, mulberry32, windArrow } from '../game/math';
 import { gearTierFor, twoDogUnlocked, unlocksAtLevel } from '../game/progression';
 import type { QuickConfig } from '../game/quick';
@@ -127,25 +128,36 @@ const FACING_EXIT_SIN = 0.7;
  */
 // End-hunt control (top-right corner, screen coords).
 const END_HUNT_BTN = { x: 428, y: 18, w: 88, h: 18 };
-/** Per-region tiles. v2 strips: frames 0–2 = shuffled open-ground variants
- * (three randomized layouts so nothing repeats at tile frequency), 3 =
- * cover, 4 = two-track (unused until areas define roads). Legacy sheets
- * supply landmark frames (mesquite) where a region has one. */
+/**
+ * Per-region tiles. v3 SP strip: frames 0–5 multi-tone open (shuffled),
+ * 6 cover clump, 7 two-track. Props live on field-props (32×32 cells).
+ */
 interface RegionTiles {
   key: string;
   open: number[];
   cover: number;
+  /** Optional mid-tone open frame used as cover fringe. */
+  fringe?: number;
   landmark?: { key: string; frame: number };
+  /** Prop sheet key + frame indices for oak / shrub / cattail. */
+  props?: { key: string; frames: number[] };
 }
 const FIELD_TILESETS: Record<string, RegionTiles> = {
   'southern-plains': {
-    key: 'tiles-southern-plains-v2',
+    key: 'tiles-southern-plains-v3',
+    open: [0, 1, 2, 3, 4, 5],
+    cover: 6,
+    fringe: 2, // slightly olive open variant as soft fringe
+    props: { key: 'field-props', frames: [0, 1, 2, 3] },
+  },
+  'prairie-pothole': {
+    key: 'tiles-prairie-pothole',
     open: [0, 1, 2],
     cover: 3,
-    landmark: { key: 'tiles-southern-plains', frame: 2 },
+    props: { key: 'field-props', frames: [2, 3] },
   },
-  'prairie-pothole': { key: 'tiles-prairie-pothole', open: [0, 1, 2], cover: 3 },
 };
+const PROP_CELL = 32;
 
 // Whistle button zone (bottom-right corner, screen coords). Taps here don't move the hunter.
 const WHISTLE_BTN = { x: 452, y: 246, w: 48, h: 20 };
@@ -236,6 +248,10 @@ export class FieldScene extends Phaser.Scene {
       frameWidth: 20,
       frameHeight: 28,
     });
+    this.load.spritesheet('tiles-southern-plains-v3', 'art/tileset-southern-plains-v3.png', {
+      frameWidth: 16,
+      frameHeight: 16,
+    });
     this.load.spritesheet('tiles-southern-plains-v2', 'art/tileset-southern-plains-v2.png', {
       frameWidth: 16,
       frameHeight: 16,
@@ -243,6 +259,10 @@ export class FieldScene extends Phaser.Scene {
     this.load.spritesheet('tiles-prairie-pothole', 'art/tileset-prairie-pothole.png', {
       frameWidth: 16,
       frameHeight: 16,
+    });
+    this.load.spritesheet('field-props', 'art/field-props.png', {
+      frameWidth: PROP_CELL,
+      frameHeight: PROP_CELL,
     });
     this.load.spritesheet('gsp-field', 'art/gsp-sheet-alpha.png', {
       frameWidth: 32,
@@ -1339,58 +1359,80 @@ export class FieldScene extends Phaser.Scene {
     // looks the same every visit.
     const seed = [...this.area.id].reduce((a, c) => a + c.charCodeAt(0), 0);
     const rng = mulberry32(seed);
-    // Denser landmarks than the original sparse scatter — still seeded stable.
-    const treeCount = Math.round((w.w * w.h) / 18_000);
 
     const cfg = FIELD_TILESETS[regionOfArea(this.area.id).id];
     const tiled = !!cfg && this.textures.exists(cfg.key);
     if (!tiled) {
       this.add.graphics().fillStyle(this.area.grass).fillRect(w.x, w.y, w.w, w.h);
     }
-    // Tiled ground is stamped into the RenderTexture inside
-    // drawOrganicCover — shuffled open variants, seeded per covert.
-
-    // Cover is grass you can hide in, not a painted rectangle: dense tuft
-    // clusters with ragged edges (the field-view-mockup look). It must stay
-    // unmistakably darker than open ground — that contrast is mechanical
-    // (runners hold at cover edges, singles relight into it).
+    // Multi-tone open + ragged cover + fringe all live in one RT.
     this.drawOrganicCover(rng, tiled);
-
-    if (tiled && cfg.landmark && this.textures.exists(cfg.landmark.key)) {
-      for (let i = 0; i < treeCount; i++) {
-        const img = this.add.image(
-          w.x + 8 + rng() * (w.w - 24),
-          w.y + 8 + rng() * (w.h - 24),
-          cfg.landmark.key,
-          cfg.landmark.frame,
-        );
-        // Slight size variety so mesquite isn't a rubber stamp.
-        img.setScale(0.85 + rng() * 0.45);
-        this.landmarkSprites.push(img);
-      }
-    } else {
-      const g = this.add.graphics();
-      g.fillStyle(0x6b4a2a);
-      for (let i = 0; i < treeCount; i++) {
-        g.fillRect(w.x + 8 + rng() * (w.w - 24), w.y + 8 + rng() * (w.h - 24), 8, 8);
-      }
-    }
+    this.scatterProps(rng, tiled);
   }
 
   /**
-   * Stamp every cover patch as a thicket of individual grass tufts into one
-   * static world-sized RenderTexture (drawn once — a Graphics this dense
-   * would replay tens of thousands of rects every frame). Tuft positions
-   * average two rolls so they crowd the patch core and straggle past the
-   * rect edge: the ragged organic fringe. Rust shrub accents echo the
-   * mockup's sumac; a sparse sprinkle of pale tufts textures open ground.
+   * Mockup-like props: bur oaks, russet/olive shrubs, cattail clumps.
+   * Seeded scatter; Y-sorted with actors so dogs walk in front of trunks.
+   */
+  private scatterProps(rng: () => number, tiled: boolean): void {
+    const w = this.area.world;
+    const cfg = FIELD_TILESETS[regionOfArea(this.area.id).id];
+    if (!tiled || !cfg?.props || !this.textures.exists(cfg.props.key)) {
+      // Fallback: a few brown squares if props missing.
+      const g = this.add.graphics();
+      g.fillStyle(0x6b4a2a);
+      const n = Math.round((w.w * w.h) / 28_000);
+      for (let i = 0; i < n; i++) {
+        g.fillRect(w.x + 8 + rng() * (w.w - 24), w.y + 8 + rng() * (w.h - 24), 8, 8);
+      }
+      return;
+    }
+    // Mockup density: oaks along rim, shrubs mid-field, cattails near cover.
+    // Leave open lanes so the white dog stays readable.
+    const oakN = Math.max(5, Math.round((w.w * w.h) / 38_000));
+    const shrubN = Math.max(14, Math.round((w.w * w.h) / 14_000));
+    const cattailN = Math.max(8, Math.round((w.w * w.h) / 22_000));
+    const place = (
+      frame: number,
+      n: number,
+      scaleLo: number,
+      scaleHi: number,
+      prefer: 'open' | 'fringe' | 'any' = 'any',
+    ) => {
+      let placed = 0;
+      let tries = 0;
+      while (placed < n && tries < n * 8) {
+        tries++;
+        const x = w.x + 20 + rng() * (w.w - 40);
+        const y = w.y + 20 + rng() * (w.h - 40);
+        const inCore = this.area.patches.some((p) => inRaggedCoverCore(x, y, p));
+        const inFringe = this.area.patches.some((p) => inCoverFringe(x, y, p));
+        if (inCore && rng() < 0.7) continue;
+        if (prefer === 'open' && (inCore || inFringe) && rng() < 0.55) continue;
+        if (prefer === 'fringe' && !inFringe && !inCore && rng() < 0.5) continue;
+        const img = this.add.image(x, y, cfg.props!.key, frame);
+        img.setOrigin(0.5, 1);
+        img.setScale(scaleLo + rng() * (scaleHi - scaleLo));
+        this.landmarkSprites.push(img);
+        placed++;
+      }
+    };
+    const frames = cfg.props.frames;
+    if (frames[0] !== undefined) place(frames[0], oakN, 1.05, 1.55, 'open'); // oak
+    if (frames[1] !== undefined) place(frames[1], Math.ceil(shrubN * 0.55), 0.9, 1.3, 'any'); // russet
+    if (frames[2] !== undefined) place(frames[2], Math.ceil(shrubN * 0.45), 0.85, 1.25, 'any'); // olive
+    if (frames[3] !== undefined) place(frames[3], cattailN, 0.95, 1.4, 'fringe'); // cattail
+  }
+
+  /**
+   * Pokémon/mockup field plate: multi-tone open tiles, ragged dark cover
+   * cores (sim rects unchanged), mid-tone fringe, sparse tuft accents.
+   * Cover stays darker than open for the dog AI.
    */
   private drawOrganicCover(rng: () => number, tiled: boolean): void {
     const w = this.area.world;
     const rt = this.add.renderTexture(w.x, w.y, w.w, w.h).setOrigin(0, 0);
     const g = this.make.graphics({}, false);
-    // Tiled regions get dried-grass olives to sit on the tan plate; painted-
-    // color regions derive their tuft shades from the area's cover color.
     const [dark, mid, light] = tiled
       ? [0x3a3a1e, 0x545026, 0x6e6832]
       : [scaleColor(this.area.cover, 0.62), this.area.cover, scaleColor(this.area.cover, 1.3)];
@@ -1398,83 +1440,96 @@ export class FieldScene extends Phaser.Scene {
     const rust = [0x8f4a26, 0xa85c30];
     const cfg = FIELD_TILESETS[regionOfArea(this.area.id).id];
 
-    // The ground itself: every 16px cell gets one of the open variants at
-    // random (seeded) — three layouts shuffled so no feature repeats at
-    // tile frequency. This is what killed the wallpaper.
+    // Open multi-tone plate: low-contrast shuffled variants (mean delta ~1)
+    // with sparse flecks. No grid-aligned path bias / sin cell assignment —
+    // that stamped 16px wallpaper. After tiles, stamp irregular world-space
+    // flecks (not on the 16 grid) so any residual tile period dissolves.
     if (tiled && cfg) {
       for (let gy = 0; gy < Math.ceil(w.h / 16); gy++) {
         for (let gx = 0; gx < Math.ceil(w.w / 16); gx++) {
-          rt.drawFrame(cfg.key, cfg.open[Math.floor(rng() * cfg.open.length)], gx * 16, gy * 16);
+          const frame = cfg.open[Math.floor(rng() * cfg.open.length)];
+          rt.drawFrame(cfg.key, frame, gx * 16, gy * 16);
         }
       }
+      const openFlecks = this.make.graphics({}, false);
+      const nFleck = Math.round((w.w * w.h) / 90);
+      for (let i = 0; i < nFleck; i++) {
+        const x = Math.floor(rng() * w.w);
+        const y = Math.floor(rng() * w.h);
+        // Soft ±step only — continuous prairie, not a speck lattice.
+        openFlecks.fillStyle(rng() < 0.5 ? 0xc0a060 : 0xac8c4c, 0.55).fillRect(x, y, 1, 1);
+      }
+      rt.draw(openFlecks);
+      openFlecks.destroy();
     }
 
     for (const p of this.area.patches) {
-      // Stamp cover tiles under the organic fringe so patches read as
-      // hide-here at a glance (mechanical contrast, not just tuft noise).
+      // Fringe first (mid-tone), then dark ragged core on top.
       if (tiled && cfg) {
+        const pad = 16;
+        const x0 = Math.floor((p.x - pad) / 16) * 16;
+        const y0 = Math.floor((p.y - pad) / 16) * 16;
+        const x1 = Math.ceil((p.x + p.w + pad) / 16) * 16;
+        const y1 = Math.ceil((p.y + p.h + pad) / 16) * 16;
+        const fringeFrame = cfg.fringe ?? cfg.open[0];
+        for (let ty = y0; ty < y1; ty += 16) {
+          for (let tx = x0; tx < x1; tx += 16) {
+            const cx = tx + 8;
+            const cy = ty + 8;
+            if (inCoverFringe(cx, cy, p)) {
+              rt.drawFrame(cfg.key, fringeFrame, tx - w.x, ty - w.y);
+            }
+          }
+        }
         for (let ty = Math.floor(p.y / 16) * 16; ty < p.y + p.h; ty += 16) {
           for (let tx = Math.floor(p.x / 16) * 16; tx < p.x + p.w; tx += 16) {
-            rt.drawFrame(cfg.key, cfg.cover, tx - w.x, ty - w.y);
+            if (inRaggedCoverCore(tx + 8, ty + 8, p)) {
+              rt.drawFrame(cfg.key, cfg.cover, tx - w.x, ty - w.y);
+            }
           }
         }
       }
-      const pad = 8; // strays land this far outside the rect
-      // Denser cover thatch — still darker than open (mechanical).
+
+      // Dense thatch on core + fringe — mockup reads as tall grass islands, not
+      // painted rectangles. Keep blade strokes 1px for GBA crispness.
+      const pad = 14;
       const tufts = Math.round((p.w * p.h) / 14);
       for (let i = 0; i < tufts; i++) {
         const fx = (rng() + rng()) / 2;
         const fy = (rng() + rng()) / 2;
-        const x = Math.round(p.x - pad + fx * (p.w + pad * 2)) - w.x;
-        const y = Math.round(p.y - pad + fy * (p.h + pad * 2)) - w.y;
+        const wx = p.x - pad + fx * (p.w + pad * 2);
+        const wy = p.y - pad + fy * (p.h + pad * 2);
+        if (!inRaggedCoverCore(wx, wy, p) && !inCoverFringe(wx, wy, p)) continue;
+        const x = Math.round(wx) - w.x;
+        const y = Math.round(wy) - w.y;
         const blades = 4 + Math.floor(rng() * 4);
         for (let b = 0; b < blades; b++) {
           const bx = x + Math.floor(rng() * 9) - 4;
-          const h = 4 + Math.floor(rng() * 6);
+          const h = 4 + Math.floor(rng() * 7);
           g.fillStyle([dark, mid, dark, light][Math.floor(rng() * 4)], 1).fillRect(bx, y - h, 1, h);
           if (rng() < 0.28) g.fillStyle(seedHead, 1).fillRect(bx, y - h - 2, 1, 2);
         }
-        // Occasional cattail stem (vertical dark with brown head).
-        if (rng() < 0.06) {
-          const ch = 8 + Math.floor(rng() * 8);
-          g.fillStyle(0x2a3a1e, 1).fillRect(x, y - ch, 1, ch);
-          g.fillStyle(0x4a3820, 1).fillRect(x - 1, y - ch - 3, 3, 4);
-        }
       }
-      // Rust shrubs + a few olive clumps for variety.
+      // Sumac / russet dots for mockup color accents inside cover.
       const shrubs = Math.max(2, Math.round((p.w * p.h) / 3200));
       for (let i = 0; i < shrubs; i++) {
         const sx = Math.round(p.x + rng() * p.w) - w.x;
         const sy = Math.round(p.y + rng() * p.h) - w.y;
-        const r = 2 + Math.floor(rng() * 4);
-        if (rng() < 0.55) {
-          g.fillStyle(rust[Math.floor(rng() * 2)], 1).fillCircle(sx, sy, r);
-          g.fillStyle(rust[0], 1).fillCircle(sx - r / 2, sy + 1, Math.max(1, r - 1));
-        } else {
-          g.fillStyle(0x3a4a24, 1).fillCircle(sx, sy, r + 1);
-          g.fillStyle(mid, 1).fillCircle(sx + 1, sy - 1, r);
-        }
+        const r = 2 + Math.floor(rng() * 3);
+        g.fillStyle(rust[Math.floor(rng() * 2)], 1).fillCircle(sx, sy, r);
       }
     }
 
-    // Open-ground texture: denser pale flecks, still lighter than cover.
-    const openTone = tiled ? 0x9c8a56 : scaleColor(this.area.grass, 1.2);
-    const openTone2 = tiled ? 0x8a7848 : scaleColor(this.area.grass, 1.05);
+    // Open-ground micro-tufts — straw flecks like the mockup's dry prairie.
+    const openTone = tiled ? 0xb89858 : scaleColor(this.area.grass, 1.15);
+    const openDark = tiled ? 0x887038 : scaleColor(this.area.grass, 0.85);
     const openTufts = Math.round((w.w * w.h) / 1400);
     for (let i = 0; i < openTufts; i++) {
       const x = Math.floor(rng() * w.w);
       const y = Math.floor(rng() * w.h);
+      if (this.area.patches.some((p) => inRaggedCoverCore(x + w.x, y + w.y, p))) continue;
       const h = 2 + Math.floor(rng() * 4);
-      const tone = rng() < 0.5 ? openTone : openTone2;
-      g.fillStyle(tone, 0.85).fillRect(x, y - h, 1, h);
-      if (rng() < 0.55) g.fillStyle(tone, 0.8).fillRect(x + 1, y - h + 1, 1, h - 1);
-    }
-    // Sparse open-ground rust accents (not cover — just place).
-    const openShrubs = Math.round((w.w * w.h) / 45_000);
-    for (let i = 0; i < openShrubs; i++) {
-      const sx = Math.floor(rng() * w.w);
-      const sy = Math.floor(rng() * w.h);
-      g.fillStyle(0xa85c30, 0.9).fillCircle(sx, sy, 2);
+      g.fillStyle(rng() < 0.55 ? openTone : openDark, 0.85).fillRect(x, y - h, 1, h);
     }
 
     rt.draw(g);

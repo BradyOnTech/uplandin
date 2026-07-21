@@ -184,6 +184,8 @@ on; hunter footfalls cover-vs-open; whistle/minimap olive panels; winded tint
 - [x] **Denser field vegetation** — more tufts/landmarks/cattails/open flecks
 - [x] **SP multi-backdrop pool** (3 plates) + mid-ground brush that blocks shots
 - [x] **Shotgun** rest → mount → lag-aim (`gunAim.ts` + `shotgun-side.png`)
+- [x] **Field look (Pokémon/mockup)** — multi-tone open v3, ragged cover + fringe
+  (`fieldDraw.ts`), prop sheet (oak/shrub/cattail) Y-sorted scatter
 
 **Do not** add deep pathfinding or multi-pass AI until 2.1–2.2 feel good.
 
