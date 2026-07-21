@@ -1,5 +1,15 @@
 import Phaser from 'phaser';
-import { playBeeper, playBell, playBlip, playFlush, playPoint, playWhistle, unlockAudio } from '../audio';
+import {
+  playBeeper,
+  playBell,
+  playBlip,
+  playFootstep,
+  playFlush,
+  playPoint,
+  playScentCheck,
+  playWhistle,
+  unlockAudio,
+} from '../audio';
 import { AREAS, getArea, type AreaConfig } from '../game/areas';
 import {
   birdsScentingDog,
@@ -34,7 +44,7 @@ import type { QuickConfig } from '../game/quick';
 import { ageMult, dateLabel, educatedNerveMult, HOME_HUNT_WEEKS, openMix, seasonalBias, seasonOver, TRIP_HUNT_WEEKS, youngShare } from '../game/season';
 import { regionOfArea } from '../game/regions';
 import { getSpecies } from '../game/species';
-import { birdsRemaining, createHunt, huntComplete, type HuntState } from '../game/state';
+import { birdsRemaining, createHunt, endHuntEarly, huntComplete, type HuntState } from '../game/state';
 import type { Vec2 } from '../game/types';
 import { windMults } from '../game/wind';
 import { addWeatherFx } from './weatherFx';
@@ -55,6 +65,17 @@ const BELL_INTERVAL_MS = 620; // tinkle cadence while a dog moves
 const BELL_HEARING = 700; // px at which the bell fades to nothing
 const BELL_VOLUME = 0.16;
 const BEEPER_INTERVAL_MS = 1400; // locate-beep cadence while on point (gear tier 1+)
+const FOOT_INTERVAL_MS = 280; // hunter walk cadence
+
+// Pokémon-grade movement: frames advance by DISTANCE TRAVELED, not by
+// wall-clock — feet plant instead of sliding, at every speed (sprint,
+// winded trot, tracking) with no per-state frame-rate table to maintain.
+const HUNTER_STEP_PX = 7; // one walk frame per this many px of travel
+const DOG_STRIDE_PX = 9; // one gait frame per this many px (4-frame cycle ≈ a body length)
+/** The dog only turns around when its heading is decisively sideways —
+ * near-vertical serpentine crossings keep the last facing (no flip jitter). */
+const FLIP_DEADBAND = 0.25;
+const FOOT_SPRINT_MS = 160;
 /** States where the bell rings — a standing (pointing/honoring/heeled) dog is silent. */
 const BELL_STATES: DogState[] = ['quartering', 'tracking', 'breaking', 'retrieving', 'recalled'];
 
@@ -72,7 +93,21 @@ const DOG_SHEETS: Record<string, string> = { 'english-setter': 'setter-field' };
  * field view and reads from across the room, mockup-style. Purely visual —
  * every mechanical radius is in sim px and unchanged. */
 const DOG_SHEET_SCALE = 1;
-const DOG_FRAME_POINT = 2; // frames 0/1 = run extended/gathered, 2 = point
+/** Sheet layout (english-setter-sheet-alpha.png): 0–3 run, 4 point, 5 heel, 6 retrieve. */
+const DOG_FRAME_POINT = 4;
+const DOG_FRAME_HEEL = 5;
+const DOG_FRAME_RETRIEVE = 6;
+const DOG_FRAME_COUNT = 7;
+const HUNTER_SHEET = 'hunter-field';
+const HUNTER_FRAME_IDLE = 0;
+const HUNTER_WALK_FRAMES = [1, 2, 3];
+/**
+ * Painted hunter sheet is 16×20 vs setter 32×20 — without scale the dog
+ * reads as the giant. 1.45 puts them co-equal at GBA overworld weight.
+ */
+const HUNTER_SHEET_SCALE = 1.45;
+// End-hunt control (top-right corner, screen coords).
+const END_HUNT_BTN = { x: 428, y: 18, w: 88, h: 18 };
 const FIELD_TILESETS: Record<string, string> = { 'southern-plains': 'tiles-southern-plains' };
 // Tileset frame order (fixed by the art pipeline): open grass, cover,
 // mesquite landmark, two-track (unused until areas define roads).
@@ -118,6 +153,13 @@ export class FieldScene extends Phaser.Scene {
 
   private dogSprites: Phaser.GameObjects.Sprite[] = [];
   private hunterSprite!: Phaser.GameObjects.Sprite;
+  /** Soft ground blobs under hunter/dogs — sell contact with the prairie. */
+  private hunterShadow!: Phaser.GameObjects.Ellipse;
+  private dogShadows: Phaser.GameObjects.Ellipse[] = [];
+  /** Landmarks that participate in Y-sort with actors. */
+  private landmarkSprites: Phaser.GameObjects.Image[] = [];
+  private windLeanGfx: Phaser.GameObjects.Graphics | null = null;
+  private windLeanMs = 0;
   private pointMarkers: PixelText[] = [];
   private dogArrows: PixelText[] = [];
   private dogDistLabels: PixelText[] = [];
@@ -127,7 +169,20 @@ export class FieldScene extends Phaser.Scene {
   private hud!: PixelText;
   private whistleLabel!: PixelText;
   private toastText: PixelText | null = null;
-  private birdMarkers: Phaser.GameObjects.Rectangle[] = [];
+  /** Hidden (B-key debug) + always-on downed bird field sprites. */
+  private birdMarkers: Phaser.GameObjects.Sprite[] = [];
+  private footMs = 0;
+  // Distance-driven stepping state (see HUNTER_STEP_PX / DOG_STRIDE_PX).
+  private hunterStepAcc = 0;
+  private hunterStepFrame = 0;
+  private prevHunterPos: Vec2 = { x: 0, y: 0 };
+  private dogStepAcc: number[] = [];
+  private dogStepFrame: number[] = [];
+  private prevDogPos: Vec2[] = [];
+  private dogFaceLeft: boolean[] = [];
+  /** Blade-shake tones for the rustle burst, matched to the covert's cover. */
+  private rustleColors: number[] = [];
+  private prevDogStatesForScent: DogState[] = [];
 
   constructor() {
     super('FieldScene');
@@ -137,6 +192,10 @@ export class FieldScene extends Phaser.Scene {
     // Already-cached keys are skipped, so this is a no-op after the first visit.
     this.load.spritesheet('setter-field', 'art/english-setter-sheet-alpha.png', {
       frameWidth: 32,
+      frameHeight: 20,
+    });
+    this.load.spritesheet(HUNTER_SHEET, 'art/hunter-sheet-alpha.png', {
+      frameWidth: 16,
       frameHeight: 20,
     });
     this.load.spritesheet('tiles-southern-plains', 'art/tileset-southern-plains.png', {
@@ -225,12 +284,36 @@ export class FieldScene extends Phaser.Scene {
     this.toastText = null;
 
     this.makeTextures();
+    this.landmarkSprites = [];
     this.drawField();
     // Weather you can see: tint + falling snow/rain pinned to the camera,
     // above the world (depth 13) and below the HUD (15).
     addWeatherFx(this, this.hunt.condition, true, 13);
 
-    this.hunterSprite = this.add.sprite(this.hunt.hunterPos.x, this.hunt.hunterPos.y, 'hunter');
+    // Ground contact: shallow ellipses under every actor (depth under bodies).
+    this.hunterShadow = this.add
+      .ellipse(this.hunt.hunterPos.x, this.hunt.hunterPos.y + 5, 10, 4, 0x1e2316, 0.28)
+      .setDepth(1);
+    this.dogShadows = this.dogs.map((dog) =>
+      this.add.ellipse(dog.pos.x, dog.pos.y + 4, 14, 5, 0x1e2316, 0.28).setDepth(1),
+    );
+
+    const hunterKey = this.textures.exists(HUNTER_SHEET) ? HUNTER_SHEET : 'hunter';
+    this.hunterSprite = this.add.sprite(this.hunt.hunterPos.x, this.hunt.hunterPos.y, hunterKey);
+    if (hunterKey === HUNTER_SHEET) {
+      this.hunterSprite.setScale(HUNTER_SHEET_SCALE);
+      if (!this.anims.exists('hunter-walk')) {
+        this.anims.create({
+          key: 'hunter-walk',
+          frames: this.anims.generateFrameNumbers(HUNTER_SHEET, { frames: HUNTER_WALK_FRAMES }),
+          frameRate: 6,
+          repeat: -1,
+        });
+      }
+      this.hunterSprite.setFrame(HUNTER_FRAME_IDLE);
+      // Shadow scales with the painted hunter.
+      this.hunterShadow.setSize(14, 5);
+    }
     this.dogSprites = this.dogs.map((dog, i) => {
       const sheet = this.dogSheet(i);
       const sprite = this.add.sprite(dog.pos.x, dog.pos.y, sheet ?? 'dog');
@@ -239,14 +322,17 @@ export class FieldScene extends Phaser.Scene {
         if (!this.anims.exists(`${sheet}-run`)) {
           this.anims.create({
             key: `${sheet}-run`,
-            frames: this.anims.generateFrameNumbers(sheet, { frames: [0, 1] }),
-            frameRate: 8,
+            frames: this.anims.generateFrameNumbers(sheet, { frames: [0, 1, 2, 3] }),
+            frameRate: 7, // four-frame lope reads smoother slower than a 2-frame skitter
             repeat: -1,
           });
         }
       }
       return sprite;
     });
+    // Wind tell: sparse grass ticks that lean with the hunt wind (screen space).
+    this.windLeanGfx = this.add.graphics().setScrollFactor(0).setDepth(12);
+    this.windLeanMs = 0;
     this.pointMarkers = this.dogs.map(() =>
       pixelText(this, 0, 0, '!', 1, '#ffd23f')
         .setOrigin(0.5)
@@ -282,7 +368,8 @@ export class FieldScene extends Phaser.Scene {
       const mapH = Math.round((mapW * w.h) / w.w);
       const mapX = VIEWPORT.w - mapW - 6;
       const mapY = 6;
-      this.add.rectangle(mapX, mapY, mapW, mapH, 0x101410, 0.7).setOrigin(0, 0).setScrollFactor(0).setDepth(14);
+      this.drawUiPanel(mapX - 2, mapY - 2, mapW + 4, mapH + 4, 14);
+      this.add.rectangle(mapX, mapY, mapW, mapH, 0x0c120e, 0.85).setOrigin(0, 0).setScrollFactor(0).setDepth(14);
       this.miniHunter = this.add.rectangle(0, 0, 2, 2, 0xd6402c).setScrollFactor(0).setDepth(15);
       this.miniDogs = this.dogs.map(() => this.add.rectangle(0, 0, 2, 2, 0xf2e3c6).setScrollFactor(0).setDepth(15));
       this.miniMap = { x: mapX, y: mapY, sx: mapW / w.w, sy: mapH / w.h };
@@ -298,19 +385,42 @@ export class FieldScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(15);
 
-    // Debug aid: press B to peek at where the hidden birds are.
-    this.birdMarkers = this.hunt.birds.map((b) =>
-      this.add.rectangle(b.pos.x, b.pos.y, 4, 4, 0x8a5a2b).setVisible(false),
-    );
+    // Field birds: downed always visible; hidden only with B (debug).
+    this.birdMarkers = this.hunt.birds.map((b) => {
+      const key = b.state === 'downed' ? 'bird-downed' : 'bird-hidden';
+      return this.add.sprite(b.pos.x, b.pos.y, key).setVisible(b.state === 'downed').setDepth(8);
+    });
     this.input.keyboard?.on('keydown-B', () => {
       this.birdMarkers.forEach((m, i) => {
-        m.setVisible(m.visible ? false : this.hunt.birds[i].state === 'hidden');
+        const bird = this.hunt.birds[i];
+        if (bird.state === 'downed') {
+          m.setVisible(true);
+          return;
+        }
+        if (bird.state === 'hidden') m.setVisible(!m.visible);
+        else m.setVisible(false);
       });
     });
+    this.footMs = 0;
+    this.prevDogStatesForScent = this.dogs.map((d) => d.state);
+    this.hunterStepAcc = 0;
+    this.hunterStepFrame = 0;
+    this.prevHunterPos = { ...this.hunt.hunterPos };
+    this.dogStepAcc = this.dogs.map(() => 0);
+    this.dogStepFrame = this.dogs.map(() => 0);
+    this.prevDogPos = this.dogs.map((d) => ({ ...d.pos }));
+    this.dogFaceLeft = this.dogs.map((d) => Math.cos(d.heading) < 0);
+    // Rustle blades take the same tones as the organic cover render.
+    const rustleTiled = !!FIELD_TILESETS[regionOfArea(this.area.id).id];
+    // Light shade leads: kicked blades must read against the dark thicket.
+    this.rustleColors = rustleTiled
+      ? [0x8a8248, 0x6e6832, 0x545026]
+      : [scaleColor(this.area.cover, 1.55), scaleColor(this.area.cover, 1.3), this.area.cover];
 
     // Whistle button + keyboard shortcut call the dogs back to the hunter.
+    this.drawUiPanel(WHISTLE_BTN.x - WHISTLE_BTN.w / 2 - 2, WHISTLE_BTN.y - WHISTLE_BTN.h / 2 - 2, WHISTLE_BTN.w + 4, WHISTLE_BTN.h + 4, 15);
     const btn = this.add
-      .rectangle(WHISTLE_BTN.x, WHISTLE_BTN.y, WHISTLE_BTN.w, WHISTLE_BTN.h, 0x101410, 0.65)
+      .rectangle(WHISTLE_BTN.x, WHISTLE_BTN.y, WHISTLE_BTN.w, WHISTLE_BTN.h, 0x14201c, 0.92)
       .setScrollFactor(0)
       .setDepth(15)
       .setInteractive();
@@ -323,11 +433,35 @@ export class FieldScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-SPACE', () => this.whistle());
     this.shiftKey = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
 
+    // End hunt early — top-right, Esc/E also work.
+    this.drawUiPanel(END_HUNT_BTN.x - END_HUNT_BTN.w / 2 - 2, END_HUNT_BTN.y - END_HUNT_BTN.h / 2 - 2, END_HUNT_BTN.w + 4, END_HUNT_BTN.h + 4, 15);
+    const endBtn = this.add
+      .rectangle(END_HUNT_BTN.x, END_HUNT_BTN.y, END_HUNT_BTN.w, END_HUNT_BTN.h, 0x1a1410, 0.92)
+      .setScrollFactor(0)
+      .setDepth(15)
+      .setInteractive();
+    pixelText(this, END_HUNT_BTN.x, END_HUNT_BTN.y, 'end hunt', 1, '#e8c9a0')
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(16);
+    endBtn.on('pointerdown', () => this.requestEndHunt());
+    this.input.keyboard?.on('keydown-E', () => this.requestEndHunt());
+    this.input.keyboard?.on('keydown-ESC', () => this.requestEndHunt());
+
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       unlockAudio();
       // Summary buttons handle their own taps.
       if (this.summaryShown) return;
       if (this.flushing) return;
+      // Taps on the end-hunt control are commands, not walk orders.
+      if (
+        p.x > END_HUNT_BTN.x - END_HUNT_BTN.w / 2 &&
+        p.x < END_HUNT_BTN.x + END_HUNT_BTN.w / 2 &&
+        p.y > END_HUNT_BTN.y - END_HUNT_BTN.h / 2 &&
+        p.y < END_HUNT_BTN.y + END_HUNT_BTN.h / 2
+      ) {
+        return;
+      }
       // Taps on the whistle button are commands, not walk orders (screen coords).
       if (
         p.x > WHISTLE_BTN.x - WHISTLE_BTN.w / 2 &&
@@ -485,20 +619,54 @@ export class FieldScene extends Phaser.Scene {
     }
 
     this.hunterSprite.setPosition(this.hunt.hunterPos.x, this.hunt.hunterPos.y);
+    this.hunterShadow.setPosition(this.hunt.hunterPos.x, this.hunt.hunterPos.y + 5);
+    // Hunter facing + walk/idle when painted sheet is loaded.
+    if (this.hunterTarget) {
+      const dx = this.hunterTarget.x - this.hunt.hunterPos.x;
+      if (Math.abs(dx) > 0.5) this.hunterSprite.setFlipX(dx < 0);
+    }
+    if (this.hunterSprite.texture.key === HUNTER_SHEET) {
+      // Feet plant: the walk frame advances by distance covered, so sprint
+      // legs pump double-time and there is no ice-skating at any speed.
+      const moved = dist(this.hunt.hunterPos, this.prevHunterPos);
+      this.hunterSprite.anims.stop();
+      if (moved < 0.01) {
+        this.hunterStepAcc = 0;
+        this.hunterSprite.setFrame(HUNTER_FRAME_IDLE);
+      } else {
+        this.hunterStepAcc += moved;
+        while (this.hunterStepAcc >= HUNTER_STEP_PX) {
+          this.hunterStepAcc -= HUNTER_STEP_PX;
+          this.hunterStepFrame = (this.hunterStepFrame + 1) % HUNTER_WALK_FRAMES.length;
+          this.stepDressing(this.hunt.hunterPos, running);
+        }
+        this.hunterSprite.setFrame(HUNTER_WALK_FRAMES[this.hunterStepFrame]);
+      }
+    }
+    this.prevHunterPos = { ...this.hunt.hunterPos };
     this.dogs.forEach((dog, i) => {
       const sprite = this.dogSprites[i];
       const sheet = this.dogSheet(i);
       sprite.setPosition(dog.pos.x, dog.pos.y);
-      sprite.setFlipX(Math.cos(dog.heading) < 0);
+      this.dogShadows[i].setPosition(dog.pos.x, dog.pos.y + 4);
+      // Winded dogs: dimmer shadow + slower gait.
+      this.dogShadows[i].setAlpha(dog.winded ? 0.16 : 0.28);
+      // Only turn around on a decisively sideways heading — near-vertical
+      // serpentine crossings keep the last facing instead of flip-jittering.
+      const cosH = Math.cos(dog.heading);
+      if (Math.abs(cosH) > FLIP_DEADBAND) this.dogFaceLeft[i] = cosH < 0;
+      sprite.setFlipX(this.dogFaceLeft[i]);
+      // Distance-driven gait: legs move exactly as fast as the ground does.
+      const dogMoved = dist(dog.pos, this.prevDogPos[i]);
+      this.dogStepAcc[i] += dogMoved;
+      while (this.dogStepAcc[i] >= DOG_STRIDE_PX) {
+        this.dogStepAcc[i] -= DOG_STRIDE_PX;
+        this.dogStepFrame[i] = (this.dogStepFrame[i] + 1) % 4;
+        if (this.inCoverAt(dog.pos)) this.spawnRustle(dog.pos.x, dog.pos.y);
+      }
+      this.prevDogPos[i] = { ...dog.pos };
       if (sheet) {
-        // A painted dog acts the pose: locked up on point (and honoring a
-        // point), gait frames everywhere else.
-        if (dog.state === 'pointing' || dog.state === 'honoring') {
-          sprite.anims.stop();
-          sprite.setFrame(DOG_FRAME_POINT);
-        } else {
-          sprite.anims.play(`${sheet}-run`, true);
-        }
+        this.applyDogPose(sprite, sheet, dog, this.dogStepFrame[i]);
       }
       const marker = this.pointMarkers[i];
       if (dog.state === 'pointing') {
@@ -515,16 +683,43 @@ export class FieldScene extends Phaser.Scene {
         marker.setPosition(dog.pos.x, dog.pos.y - 8);
       } else {
         if (dog.state === 'honoring') sprite.setTint(TINT_HONORING);
+        else if (dog.winded) sprite.setTint(0xc8c0b0);
         else if (i === 1) sprite.setTint(TINT_SECOND_DOG);
         else sprite.clearTint();
         marker.setVisible(false);
       }
     });
 
-    // Debug markers track the birds (runners move).
-    this.birdMarkers.forEach((m, i) => m.setPosition(this.hunt.birds[i].pos.x, this.hunt.birds[i].pos.y));
+    // Y-sort field actors + landmarks (lower on screen = in front).
+    this.hunterSprite.setDepth(10 + this.hunt.hunterPos.y * 0.01);
+    this.dogSprites.forEach((s, i) => s.setDepth(10 + this.dogs[i].pos.y * 0.01));
+    this.landmarkSprites.forEach((img) => img.setDepth(10 + img.y * 0.01));
 
+    // Field bird markers: runners move; downed always show; hidden B-key only.
+    this.birdMarkers.forEach((m, i) => {
+      const bird = this.hunt.birds[i];
+      m.setPosition(bird.pos.x, bird.pos.y);
+      if (bird.state === 'downed') {
+        m.setTexture('bird-downed').setVisible(true).setDepth(8 + bird.pos.y * 0.01);
+      } else if (bird.state === 'hidden') {
+        m.setTexture('bird-hidden');
+        // leave visibility as B-key toggled
+      } else {
+        m.setVisible(false);
+      }
+    });
+
+    // Scent-check cue: first tick of tracking plays a soft audio tell.
+    this.dogs.forEach((dog, i) => {
+      if (dog.scentCheck && this.prevDogStatesForScent[i] !== 'tracking') {
+        playScentCheck();
+      }
+      this.prevDogStatesForScent[i] = dog.state;
+    });
+
+    this.updateWindLean(delta);
     this.updateBell(delta);
+    this.updateFootsteps(delta, running);
     this.updateDogArrows();
 
     const dogLines = this.dogs
@@ -623,6 +818,21 @@ export class FieldScene extends Phaser.Scene {
         this.dogDistLabels[i].setPosition(ax - Math.cos(ang) * 16, ay - Math.sin(ang) * 16);
       }
     });
+  }
+
+  /** Player elects to leave the field; remaining birds are written off as lost. */
+  private requestEndHunt(): void {
+    if (this.summaryShown || this.flushing) return;
+    unlockAudio();
+    playBlip();
+    const n = endHuntEarly(this.hunt);
+    if (n > 0) {
+      pixelText(this, VIEWPORT.w / 2, 40, `hunt called — ${n} bird${n > 1 ? 's' : ''} left in the cover`, 1, '#e8c9a0')
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(18);
+    }
+    this.showSummary();
   }
 
   private showSummary(): void {
@@ -784,7 +994,12 @@ export class FieldScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     if (hunterDist <= SHOT_RANGE) {
-      this.time.delayedCall(450, () => {
+      // Fade the field out before the shot view so the cut doesn't feel like
+      // two separate prototypes glued together.
+      this.time.delayedCall(280, () => {
+        this.cameras.main.fadeOut(180, 16, 20, 16);
+      });
+      this.time.delayedCall(480, () => {
         this.scene.start('FlushScene', {
           hunt: this.hunt,
           birdIds: flushed.map((b) => b.id),
@@ -825,10 +1040,157 @@ export class FieldScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * Sparse screen-space grass ticks that lean with the hunt wind — a cheap
+   * tell so wind-aware cast reads as craft, not a secret.
+   */
+  private updateWindLean(delta: number): void {
+    if (!this.windLeanGfx) return;
+    this.windLeanMs += delta;
+    const g = this.windLeanGfx;
+    g.clear();
+    const wx = Math.cos(this.hunt.wind);
+    const wy = Math.sin(this.hunt.wind);
+    const strength = this.hunt.windStrength === 'strong' ? 1.35 : this.hunt.windStrength === 'breezy' ? 1 : 0.55;
+    const lean = 4 * strength;
+    const phase = this.windLeanMs * 0.004;
+    g.lineStyle(1, 0x6e6832, 0.35);
+    // Fixed pattern in view space so it doesn't fight the camera scroll.
+    for (let i = 0; i < 28; i++) {
+      const x = 18 + ((i * 53) % 450);
+      const y = 36 + ((i * 97) % 210);
+      const wobble = Math.sin(phase + i * 0.7) * 1.2;
+      g.lineBetween(x, y, x + wx * lean + wobble, y + wy * lean);
+    }
+  }
+
   /** Painted sheet key for dog i, or null while this breed still wears the placeholder. */
   private dogSheet(i: number): string | null {
     const key = DOG_SHEETS[this.breeds[i]?.id ?? ''];
     return key && this.textures.exists(key) ? key : null;
+  }
+
+  /**
+   * Map dog AI state + gait → painted frame/anim.
+   * Stills for point/honor/heel/retrieve/scent-check; run rates differ for
+   * cast-trot vs work-run vs track so the gallery can read the dog.
+   */
+  private applyDogPose(
+    sprite: Phaser.GameObjects.Sprite,
+    sheet: string,
+    dog: Dog,
+    gaitFrame: number,
+  ): void {
+    const still = (frame: number) => {
+      sprite.anims.stop();
+      // Guard missing cells on older cached sheets.
+      const max = (sprite.texture.frameTotal || DOG_FRAME_COUNT) - 1;
+      sprite.setFrame(Math.min(frame, Math.max(0, max)));
+    };
+    // Scent check: freeze on point pose for a beat (locked-up look).
+    if (dog.scentCheck || dog.gait === 'still') {
+      if (dog.state === 'retrieving') still(DOG_FRAME_RETRIEVE);
+      else if (dog.state === 'heel' || dog.state === 'recalled') still(DOG_FRAME_HEEL);
+      else if (dog.state === 'pointing' || dog.state === 'honoring' || dog.scentCheck) still(DOG_FRAME_POINT);
+      else still(DOG_FRAME_HEEL);
+      return;
+    }
+    switch (dog.state) {
+      case 'pointing':
+      case 'honoring':
+        still(DOG_FRAME_POINT);
+        break;
+      case 'heel':
+      case 'recalled':
+        still(DOG_FRAME_HEEL);
+        break;
+      case 'retrieving':
+        // Moving to the fall uses retrieve still carried at trot speed via gait;
+        // when moving we show retrieve frame bobbing via run is wrong — keep retrieve.
+        still(DOG_FRAME_RETRIEVE);
+        break;
+      default: {
+        // Distance-driven gait (stepped by the caller): a casting trot, a
+        // tracking burst, and a winded shuffle all read honestly because
+        // the legs turn exactly as fast as the ground moves — no per-state
+        // frame-rate table to maintain. A paused dog freezes mid-stride.
+        sprite.anims.stop();
+        sprite.setFrame(gaitFrame);
+        break;
+      }
+    }
+  }
+
+  /** Olive frame + cream inner edge — shared chrome for whistle + minimap. */
+  private drawUiPanel(x: number, y: number, w: number, h: number, depth: number): void {
+    const g = this.add.graphics().setScrollFactor(0).setDepth(depth);
+    g.fillStyle(0x1e2316, 0.95).fillRect(x, y, w, h);
+    g.lineStyle(1, 0x6e6832, 0.9).strokeRect(x, y, w, h);
+    g.lineStyle(1, 0xd4d1c2, 0.35).strokeRect(x + 1, y + 1, w - 2, h - 2);
+  }
+
+  /** Walk/sprint footfalls; softer when the hunter stands in a cover patch. */
+  private updateFootsteps(delta: number, sprinting: boolean): void {
+    const moving = this.hunterTarget !== null || sprinting;
+    if (!moving) {
+      this.footMs = 0;
+      return;
+    }
+    this.footMs += delta;
+    const interval = sprinting ? FOOT_SPRINT_MS : FOOT_INTERVAL_MS;
+    if (this.footMs < interval) return;
+    this.footMs = 0;
+    playFootstep(this.inCoverAt(this.hunt.hunterPos), sprinting ? 0.14 : 0.1);
+  }
+
+  private inCoverAt(pos: Vec2): boolean {
+    return this.area.patches.some(
+      (p) => pos.x >= p.x && pos.x <= p.x + p.w && pos.y >= p.y && pos.y <= p.y + p.h,
+    );
+  }
+
+  /** The world answers a footfall: cover rustles, dry open ground dusts. */
+  private stepDressing(pos: Vec2, sprinting: boolean): void {
+    if (this.inCoverAt(pos)) this.spawnRustle(pos.x, pos.y);
+    else if (sprinting) this.spawnDust(pos.x, pos.y);
+  }
+
+  /** A kicked-grass shake at the feet — Emerald's tall-grass rustle, our way. */
+  private spawnRustle(x: number, y: number): void {
+    for (let i = 0; i < 3; i++) {
+      const bx = x + (Math.random() * 12 - 6);
+      const by = y + 4 + (Math.random() * 4 - 2);
+      const blade = this.add
+        .rectangle(bx, by, 1, 3 + Math.floor(Math.random() * 3), this.rustleColors[i % this.rustleColors.length])
+        .setOrigin(0.5, 1)
+        .setDepth(10 + (y + 2) * 0.01);
+      this.tweens.add({
+        targets: blade,
+        y: by - (2 + Math.random() * 3),
+        angle: (Math.random() < 0.5 ? -1 : 1) * (18 + Math.random() * 24),
+        alpha: 0,
+        duration: 240 + Math.random() * 140,
+        onComplete: () => blade.destroy(),
+      });
+    }
+  }
+
+  /** Dust motes off a sprinting boot on open ground. */
+  private spawnDust(x: number, y: number): void {
+    for (let i = 0; i < 2; i++) {
+      const mote = this.add
+        .circle(x + (Math.random() * 8 - 4), y + 5, 1 + Math.random(), 0xcbb98a, 0.45)
+        .setDepth(10 + (y + 2) * 0.01);
+      this.tweens.add({
+        targets: mote,
+        x: mote.x - (3 + Math.random() * 5),
+        y: mote.y - (3 + Math.random() * 3),
+        scale: 1.9,
+        alpha: 0,
+        duration: 360 + Math.random() * 120,
+        onComplete: () => mote.destroy(),
+      });
+    }
   }
 
   private makeTextures(): void {
@@ -838,7 +1200,7 @@ export class FieldScene extends Phaser.Scene {
     g.fillStyle(0xb08d5f).fillRect(7, 0, 3, 3); // head
     g.generateTexture('dog', 10, 6);
     g.clear();
-    // The mockup hunter in miniature: blaze cap, face, vest, dark legs.
+    // Procedural fallback only when hunter-sheet-alpha.png is missing.
     g.fillStyle(COLOR_HUNTER).fillRect(1, 0, 6, 3); // cap (also the minimap color)
     g.fillStyle(0xd8a878).fillRect(2, 3, 4, 2); // face
     g.fillStyle(0x5c5a34).fillRect(1, 5, 6, 4); // vest
@@ -846,6 +1208,16 @@ export class FieldScene extends Phaser.Scene {
     g.fillStyle(0x3a3226).fillRect(2, 9, 2, 3); // legs
     g.fillStyle(0x3a3226).fillRect(5, 9, 2, 3);
     g.generateTexture('hunter', 9, 12);
+    g.clear();
+    // Tiny field birds: hidden = dark olive speck; downed = russet with wing.
+    g.fillStyle(0x3a3a1e).fillRect(1, 2, 4, 3);
+    g.fillStyle(0x2a2814).fillRect(4, 1, 2, 2);
+    g.generateTexture('bird-hidden', 7, 5);
+    g.clear();
+    g.fillStyle(0x8f4a26).fillRect(1, 2, 5, 3);
+    g.fillStyle(0x6b4a2a).fillRect(0, 3, 2, 2);
+    g.fillStyle(0xb44a1a).fillRect(5, 1, 3, 2); // wing splay
+    g.generateTexture('bird-downed', 9, 6);
     g.destroy();
   }
 
@@ -855,7 +1227,8 @@ export class FieldScene extends Phaser.Scene {
     // looks the same every visit.
     const seed = [...this.area.id].reduce((a, c) => a + c.charCodeAt(0), 0);
     const rng = mulberry32(seed);
-    const treeCount = Math.round((w.w * w.h) / 30_000);
+    // Denser landmarks than the original sparse scatter — still seeded stable.
+    const treeCount = Math.round((w.w * w.h) / 18_000);
 
     const tiles = FIELD_TILESETS[regionOfArea(this.area.id).id];
     const tiled = !!tiles && this.textures.exists(tiles);
@@ -873,7 +1246,15 @@ export class FieldScene extends Phaser.Scene {
 
     if (tiled) {
       for (let i = 0; i < treeCount; i++) {
-        this.add.image(w.x + 8 + rng() * (w.w - 24), w.y + 8 + rng() * (w.h - 24), tiles, TILE_MESQUITE);
+        const img = this.add.image(
+          w.x + 8 + rng() * (w.w - 24),
+          w.y + 8 + rng() * (w.h - 24),
+          tiles,
+          TILE_MESQUITE,
+        );
+        // Slight size variety so mesquite isn't a rubber stamp.
+        img.setScale(0.85 + rng() * 0.45);
+        this.landmarkSprites.push(img);
       }
     } else {
       const g = this.add.graphics();
@@ -903,43 +1284,74 @@ export class FieldScene extends Phaser.Scene {
       : [scaleColor(this.area.cover, 0.62), this.area.cover, scaleColor(this.area.cover, 1.3)];
     const seedHead = tiled ? 0x2a2814 : scaleColor(this.area.cover, 0.4);
     const rust = [0x8f4a26, 0xa85c30];
+    const tilesKey = FIELD_TILESETS[regionOfArea(this.area.id).id];
 
     for (const p of this.area.patches) {
-      const pad = 6; // strays land this far outside the rect
-      const tufts = Math.round((p.w * p.h) / 24);
+      // Stamp cover tiles under the organic fringe so patches read as
+      // hide-here at a glance (mechanical contrast, not just tuft noise).
+      if (tiled && tilesKey && this.textures.exists(tilesKey)) {
+        for (let ty = Math.floor(p.y / 16) * 16; ty < p.y + p.h; ty += 16) {
+          for (let tx = Math.floor(p.x / 16) * 16; tx < p.x + p.w; tx += 16) {
+            rt.drawFrame(tilesKey, TILE_COVER, tx - w.x, ty - w.y);
+          }
+        }
+      }
+      const pad = 8; // strays land this far outside the rect
+      // Denser cover thatch — still darker than open (mechanical).
+      const tufts = Math.round((p.w * p.h) / 14);
       for (let i = 0; i < tufts; i++) {
         const fx = (rng() + rng()) / 2;
         const fy = (rng() + rng()) / 2;
         const x = Math.round(p.x - pad + fx * (p.w + pad * 2)) - w.x;
         const y = Math.round(p.y - pad + fy * (p.h + pad * 2)) - w.y;
-        const blades = 3 + Math.floor(rng() * 3);
+        const blades = 4 + Math.floor(rng() * 4);
         for (let b = 0; b < blades; b++) {
-          const bx = x + Math.floor(rng() * 7) - 3;
-          const h = 3 + Math.floor(rng() * 5);
+          const bx = x + Math.floor(rng() * 9) - 4;
+          const h = 4 + Math.floor(rng() * 6);
           g.fillStyle([dark, mid, dark, light][Math.floor(rng() * 4)], 1).fillRect(bx, y - h, 1, h);
-          if (rng() < 0.22) g.fillStyle(seedHead, 1).fillRect(bx, y - h - 2, 1, 2);
+          if (rng() < 0.28) g.fillStyle(seedHead, 1).fillRect(bx, y - h - 2, 1, 2);
+        }
+        // Occasional cattail stem (vertical dark with brown head).
+        if (rng() < 0.06) {
+          const ch = 8 + Math.floor(rng() * 8);
+          g.fillStyle(0x2a3a1e, 1).fillRect(x, y - ch, 1, ch);
+          g.fillStyle(0x4a3820, 1).fillRect(x - 1, y - ch - 3, 3, 4);
         }
       }
-      // A few rust shrubs per patch — autumn accents, and quick landmarks.
-      const shrubs = Math.max(1, Math.round((p.w * p.h) / 5200));
+      // Rust shrubs + a few olive clumps for variety.
+      const shrubs = Math.max(2, Math.round((p.w * p.h) / 3200));
       for (let i = 0; i < shrubs; i++) {
         const sx = Math.round(p.x + rng() * p.w) - w.x;
         const sy = Math.round(p.y + rng() * p.h) - w.y;
-        const r = 2 + Math.floor(rng() * 3);
-        g.fillStyle(rust[Math.floor(rng() * 2)], 1).fillCircle(sx, sy, r);
-        g.fillStyle(rust[0], 1).fillCircle(sx - r / 2, sy + 1, Math.max(1, r - 1));
+        const r = 2 + Math.floor(rng() * 4);
+        if (rng() < 0.55) {
+          g.fillStyle(rust[Math.floor(rng() * 2)], 1).fillCircle(sx, sy, r);
+          g.fillStyle(rust[0], 1).fillCircle(sx - r / 2, sy + 1, Math.max(1, r - 1));
+        } else {
+          g.fillStyle(0x3a4a24, 1).fillCircle(sx, sy, r + 1);
+          g.fillStyle(mid, 1).fillCircle(sx + 1, sy - 1, r);
+        }
       }
     }
 
-    // Open-ground texture: pale lone tufts, sparse enough to stay "open".
+    // Open-ground texture: denser pale flecks, still lighter than cover.
     const openTone = tiled ? 0x9c8a56 : scaleColor(this.area.grass, 1.2);
-    const openTufts = Math.round((w.w * w.h) / 2400);
+    const openTone2 = tiled ? 0x8a7848 : scaleColor(this.area.grass, 1.05);
+    const openTufts = Math.round((w.w * w.h) / 1400);
     for (let i = 0; i < openTufts; i++) {
       const x = Math.floor(rng() * w.w);
       const y = Math.floor(rng() * w.h);
-      const h = 2 + Math.floor(rng() * 3);
-      g.fillStyle(openTone, 0.8).fillRect(x, y - h, 1, h);
-      if (rng() < 0.5) g.fillStyle(openTone, 0.8).fillRect(x + 1, y - h + 1, 1, h - 1);
+      const h = 2 + Math.floor(rng() * 4);
+      const tone = rng() < 0.5 ? openTone : openTone2;
+      g.fillStyle(tone, 0.85).fillRect(x, y - h, 1, h);
+      if (rng() < 0.55) g.fillStyle(tone, 0.8).fillRect(x + 1, y - h + 1, 1, h - 1);
+    }
+    // Sparse open-ground rust accents (not cover — just place).
+    const openShrubs = Math.round((w.w * w.h) / 45_000);
+    for (let i = 0; i < openShrubs; i++) {
+      const sx = Math.floor(rng() * w.w);
+      const sy = Math.floor(rng() * w.h);
+      g.fillStyle(0xa85c30, 0.9).fillCircle(sx, sy, 2);
     }
 
     rt.draw(g);

@@ -27,6 +27,12 @@ correct with no rework.
 5. **Real sizes.** Field sprites ~16–24px, flush-view birds ~40–48px wide,
    tiles 16×16. Ask for sprite-sheet rows on plain white/transparent
    backgrounds. Never generate big and shrink blindly.
+6. **Integer scale is law.** Every sprite is authored at the size it
+   displays; scenes may draw at ×1 or ×2 ONLY. Fractional nearest-neighbor
+   scaling makes uneven fat/thin pixel columns — the least GBA thing a
+   screen can do. (Standing violation: the hunter sheet draws at ×1.45;
+   the directional hunter sheet below retires it by being authored at
+   native 20×28.)
 
 ## Locked reference (step 1 done)
 
@@ -127,6 +133,51 @@ Coats (accurate; the point pose is the money shot):
 Extra poses worth a second row later: honoring (standing rigid, staring
 sideways), swimming-through-grass "quartering" 3/4 view, curled asleep
 (kennel screen).
+
+## Directional sheets (Pokémon-grade movement)
+
+GBA Pokémon characters read as *people in a place* because they face the
+way they walk: three art rows — toward camera (down), away (up), side —
+with side mirrored for left/right, and only 2–3 frames per row. These
+two sheets close that gap for the shipping pair. Generate both as
+edit-chains from the existing setter/hunter art so coats and palette
+hold. Cell grids are exact — the loaders cut on these numbers.
+
+**Hunter, directional (retires the ×1.45 scale hack)** — one sheet,
+**3 columns × 3 rows of 20×28 cells (60×84 total)**, transparent
+background. Authored at native size: he displays at ×1.
+
+> Pixel art sprite sheet, GBA overworld character style, 3×3 grid of
+> 20×28 cells, transparent background: a bird hunter in blaze-orange cap,
+> olive vest, tan brush pants, shotgun carried over his shoulder.
+> Row 1 walking TOWARD the camera (facing down-screen): standing, left
+> step, right step. Row 2 walking AWAY (back view, cap and vest from
+> behind, gun across the back): standing, left step, right step. Row 3
+> side view walking: standing, stride extended, stride gathered.
+> Consistent 1px dark outline, same palette across all rows. [style block]
+
+**English Setter, directional gait + point** — one sheet, **3 columns ×
+2 rows of 32×20 cells (96×40 total)**, transparent. The side-view rows
+already ship; this adds the end-on views. The directional POINT is the
+money: a dog locked up facing away, tail high toward the camera, is the
+shot the whole field view is for.
+
+> Pixel art sprite sheet, 3×2 grid of 32×20 cells, transparent
+> background: a small English Setter (white coat, fine blue-black belton
+> speckling, feathered tail) seen end-on. Row 1, dog moving AWAY from
+> camera: trot frame A (hindquarters and driving rear legs), trot frame
+> B (opposite legs), then LOCKED ON POINT seen from behind — body rigid,
+> tail straight up and prominent. Row 2, dog moving TOWARD camera: trot
+> frame A (chest and reaching forelegs), trot frame B, then LOCKED ON
+> POINT head-on — low head, intense stare, one foreleg lifted. The dog
+> is narrow in these views (~14px wide), centered per cell. [style block]
+
+Acceptance (30s at @4x): silhouettes read as *away/toward* at a glance
+(shoulders + tail vs chest + head); the two trot frames genuinely
+alternate legs (no pose-clone with shifted pixels); point poses are
+unmistakable without motion; palette matches the shipping side-view
+sheets. Ship as `art/hunter-dirs.png` and `art/english-setter-dirs.png`
+— the scenes select rows by heading once these land.
 
 ## Flush-view birds
 
