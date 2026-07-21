@@ -117,16 +117,27 @@ tier 0 or calm → patch center; tier ≥1 with wind → a point on the
 Does not change scent math — only the cast approach.
 
 **Presentation gait** — `Dog.gait` (`run` / `trot` / `track` / `still`) and
-`scentCheck` are set each tick for FieldScene only. Cast → trot; open work /
-edge → run; tracking → track (faster FPS); first scent freezes ~320ms
-(`scentCheck`). Winded multiplies FPS ×0.55 and applies a dusty tint.
+`scentCheck` are set each tick for FieldScene only. Since the distance
+stepper landed, gait tiers express through actual ground speed (no FPS
+table): first scent freezes ~320ms (`scentCheck`), winded applies a dusty
+tint and its slower legs come free with its slower feet.
 
 **End hunt** — `endHuntEarly(hunt)` marks every `hidden`/`flushed` bird
 `escaped` and increments `hunt.escaped`; FieldScene **end hunt** button
 (top-right) + **E** / **Esc**. Summary uses the normal XP path.
 
-**Hunter scale** — `HUNTER_SHEET_SCALE` 1.45 (setter sheet is wider; scale
-balances on-screen weight).
+**Directional movement (Pokémon-grade)** — frames advance by DISTANCE
+(`HUNTER_STEP_PX` 7, `DOG_STRIDE_PX` 9): feet plant at every speed, no
+per-state frame-rate table. Facing selects sheet rows: hunter
+`hunter-dirs` (toward/away/side, Emerald 4-beat walk `HUNTER_WALK_SEQ`),
+setter `english-setter-dirs` (away/toward trot + the directional POINT).
+End-on facing is hysteretic (`FACING_ENTER_SIN` 0.85 / `FACING_EXIT_SIN`
+0.7 — side rows are the best art and win diagonals); side flips only on a
+decisive heading (`FLIP_DEADBAND`). Footfalls dress the world:
+`spawnRustle` in cover (light-leading cover tones), `spawnDust` on
+sprinted open ground — riding the same stride ticks as footstep audio.
+The old single-row hunter sheet (`HUNTER_SHEET_SCALE` 1.45) is the
+fallback when `hunter-dirs` is missing; integer-scale law is ART.md §6.
 
 **Flush backdrops** — `FLUSH_BACKDROP_POOLS[region]` arrays; index via
 `pickBackdropIndex(pool, seed)`. Mid-ground brush: `flushHasVegBlock(seed)`

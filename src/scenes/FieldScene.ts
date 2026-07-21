@@ -99,6 +99,21 @@ const DOG_FRAME_HEEL = 5;
 const DOG_FRAME_RETRIEVE = 6;
 const DOG_FRAME_COUNT = 7;
 const HUNTER_SHEET = 'hunter-field';
+// Directional sheets (Pokémon-grade): rows select by heading.
+// hunter-dirs: 3×3 of 20×28 — row 0 toward camera, 1 away, 2 side;
+// cols: stand, step-L, step-R. Walk is the Emerald 4-beat: L, stand, R, stand.
+const HUNTER_DIRS_SHEET = 'hunter-dirs';
+const HUNTER_DIR_ROW = { down: 0, up: 1, side: 2 } as const;
+const HUNTER_WALK_SEQ = [1, 0, 2, 0];
+// english-setter-dirs: 3×2 of 32×20 — row 0 away, 1 toward; cols: trot A,
+// trot B, LOCKED POINT. Side view keeps the richer 7-frame sheet.
+const DOG_DIR_SHEETS: Record<string, string> = { 'english-setter': 'english-setter-dirs' };
+const DOG_DIR_ROW = { up: 0, down: 1 } as const;
+const DOG_DIR_POINT_COL = 2;
+/** Enter an end-on facing only when decisively vertical; leave it early —
+ * the side rows are the best art, so they win all diagonals. */
+const FACING_ENTER_SIN = 0.85;
+const FACING_EXIT_SIN = 0.7;
 const HUNTER_FRAME_IDLE = 0;
 const HUNTER_WALK_FRAMES = [1, 2, 3];
 /**
@@ -180,6 +195,9 @@ export class FieldScene extends Phaser.Scene {
   private dogStepFrame: number[] = [];
   private prevDogPos: Vec2[] = [];
   private dogFaceLeft: boolean[] = [];
+  private hunterFacing: 'down' | 'up' | 'side' = 'down';
+  private hunterSideLeft = false;
+  private dogFacing: ('side' | 'up' | 'down')[] = [];
   /** Blade-shake tones for the rustle burst, matched to the covert's cover. */
   private rustleColors: number[] = [];
   private prevDogStatesForScent: DogState[] = [];
@@ -191,6 +209,14 @@ export class FieldScene extends Phaser.Scene {
   preload(): void {
     // Already-cached keys are skipped, so this is a no-op after the first visit.
     this.load.spritesheet('setter-field', 'art/english-setter-sheet-alpha.png', {
+      frameWidth: 32,
+      frameHeight: 20,
+    });
+    this.load.spritesheet(HUNTER_DIRS_SHEET, 'art/hunter-dirs.png', {
+      frameWidth: 20,
+      frameHeight: 28,
+    });
+    this.load.spritesheet('english-setter-dirs', 'art/english-setter-dirs.png', {
       frameWidth: 32,
       frameHeight: 20,
     });
@@ -298,18 +324,18 @@ export class FieldScene extends Phaser.Scene {
       this.add.ellipse(dog.pos.x, dog.pos.y + 4, 14, 5, 0x1e2316, 0.28).setDepth(1),
     );
 
-    const hunterKey = this.textures.exists(HUNTER_SHEET) ? HUNTER_SHEET : 'hunter';
+    const hunterKey = this.textures.exists(HUNTER_DIRS_SHEET)
+      ? HUNTER_DIRS_SHEET // native 20×28, ×1 — retires the ×1.45 scale hack
+      : this.textures.exists(HUNTER_SHEET)
+        ? HUNTER_SHEET
+        : 'hunter';
     this.hunterSprite = this.add.sprite(this.hunt.hunterPos.x, this.hunt.hunterPos.y, hunterKey);
-    if (hunterKey === HUNTER_SHEET) {
+    if (hunterKey === HUNTER_DIRS_SHEET) {
+      // Integer scale law: authored at native size, drawn at ×1.
+      this.hunterSprite.setFrame(HUNTER_DIR_ROW.down * 3);
+      this.hunterShadow.setSize(14, 5);
+    } else if (hunterKey === HUNTER_SHEET) {
       this.hunterSprite.setScale(HUNTER_SHEET_SCALE);
-      if (!this.anims.exists('hunter-walk')) {
-        this.anims.create({
-          key: 'hunter-walk',
-          frames: this.anims.generateFrameNumbers(HUNTER_SHEET, { frames: HUNTER_WALK_FRAMES }),
-          frameRate: 6,
-          repeat: -1,
-        });
-      }
       this.hunterSprite.setFrame(HUNTER_FRAME_IDLE);
       // Shadow scales with the painted hunter.
       this.hunterShadow.setSize(14, 5);
@@ -410,6 +436,9 @@ export class FieldScene extends Phaser.Scene {
     this.dogStepFrame = this.dogs.map(() => 0);
     this.prevDogPos = this.dogs.map((d) => ({ ...d.pos }));
     this.dogFaceLeft = this.dogs.map((d) => Math.cos(d.heading) < 0);
+    this.hunterFacing = 'down';
+    this.hunterSideLeft = false;
+    this.dogFacing = this.dogs.map(() => 'side');
     // Rustle blades take the same tones as the organic cover render.
     const rustleTiled = !!FIELD_TILESETS[regionOfArea(this.area.id).id];
     // Light shade leads: kicked blades must read against the dark thicket.
@@ -620,27 +649,44 @@ export class FieldScene extends Phaser.Scene {
 
     this.hunterSprite.setPosition(this.hunt.hunterPos.x, this.hunt.hunterPos.y);
     this.hunterShadow.setPosition(this.hunt.hunterPos.x, this.hunt.hunterPos.y + 5);
-    // Hunter facing + walk/idle when painted sheet is loaded.
-    if (this.hunterTarget) {
+    // Hunter facing + walk/idle. The directional branch below owns flipX;
+    // this legacy flip only serves the single-row sheet and placeholder.
+    if (this.hunterTarget && this.hunterSprite.texture.key !== HUNTER_DIRS_SHEET) {
       const dx = this.hunterTarget.x - this.hunt.hunterPos.x;
       if (Math.abs(dx) > 0.5) this.hunterSprite.setFlipX(dx < 0);
     }
-    if (this.hunterSprite.texture.key === HUNTER_SHEET) {
+    const hunterKey = this.hunterSprite.texture.key;
+    if (hunterKey === HUNTER_DIRS_SHEET || hunterKey === HUNTER_SHEET) {
       // Feet plant: the walk frame advances by distance covered, so sprint
       // legs pump double-time and there is no ice-skating at any speed.
-      const moved = dist(this.hunt.hunterPos, this.prevHunterPos);
+      const hdx = this.hunt.hunterPos.x - this.prevHunterPos.x;
+      const hdy = this.hunt.hunterPos.y - this.prevHunterPos.y;
+      const moved = Math.hypot(hdx, hdy);
       this.hunterSprite.anims.stop();
-      if (moved < 0.01) {
-        this.hunterStepAcc = 0;
-        this.hunterSprite.setFrame(HUNTER_FRAME_IDLE);
-      } else {
+      if (moved >= 0.01) {
+        // Facing follows the dominant movement axis, sticky on diagonals.
+        if (Math.abs(hdy) > Math.abs(hdx) * 1.2) this.hunterFacing = hdy > 0 ? 'down' : 'up';
+        else if (Math.abs(hdx) > Math.abs(hdy) * 1.2) this.hunterFacing = 'side';
+        if (Math.abs(hdx) > 0.05) this.hunterSideLeft = hdx < 0;
         this.hunterStepAcc += moved;
         while (this.hunterStepAcc >= HUNTER_STEP_PX) {
           this.hunterStepAcc -= HUNTER_STEP_PX;
-          this.hunterStepFrame = (this.hunterStepFrame + 1) % HUNTER_WALK_FRAMES.length;
+          this.hunterStepFrame = (this.hunterStepFrame + 1) % HUNTER_WALK_SEQ.length;
           this.stepDressing(this.hunt.hunterPos, running);
         }
-        this.hunterSprite.setFrame(HUNTER_WALK_FRAMES[this.hunterStepFrame]);
+      } else {
+        this.hunterStepAcc = 0;
+      }
+      if (hunterKey === HUNTER_DIRS_SHEET) {
+        const row = HUNTER_DIR_ROW[this.hunterFacing];
+        const col = moved >= 0.01 ? HUNTER_WALK_SEQ[this.hunterStepFrame] : 0;
+        this.hunterSprite.setFrame(row * 3 + col);
+        // Side row is authored facing right; up/down never mirror.
+        this.hunterSprite.setFlipX(this.hunterFacing === 'side' && this.hunterSideLeft);
+      } else {
+        this.hunterSprite.setFrame(
+          moved >= 0.01 ? HUNTER_WALK_FRAMES[this.hunterStepFrame % HUNTER_WALK_FRAMES.length] : HUNTER_FRAME_IDLE,
+        );
       }
     }
     this.prevHunterPos = { ...this.hunt.hunterPos };
@@ -655,7 +701,12 @@ export class FieldScene extends Phaser.Scene {
       // serpentine crossings keep the last facing instead of flip-jittering.
       const cosH = Math.cos(dog.heading);
       if (Math.abs(cosH) > FLIP_DEADBAND) this.dogFaceLeft[i] = cosH < 0;
-      sprite.setFlipX(this.dogFaceLeft[i]);
+      // End-on facing with hysteresis: enter only decisively vertical,
+      // exit early — the side rows are the best art and win diagonals.
+      const sinH = Math.sin(dog.heading);
+      if (Math.abs(sinH) > FACING_ENTER_SIN) this.dogFacing[i] = sinH < 0 ? 'up' : 'down';
+      else if (Math.abs(sinH) < FACING_EXIT_SIN) this.dogFacing[i] = 'side';
+      sprite.setFlipX(this.dogFacing[i] === 'side' && this.dogFaceLeft[i]);
       // Distance-driven gait: legs move exactly as fast as the ground does.
       const dogMoved = dist(dog.pos, this.prevDogPos[i]);
       this.dogStepAcc[i] += dogMoved;
@@ -666,7 +717,7 @@ export class FieldScene extends Phaser.Scene {
       }
       this.prevDogPos[i] = { ...dog.pos };
       if (sheet) {
-        this.applyDogPose(sprite, sheet, dog, this.dogStepFrame[i]);
+        this.applyDogPose(sprite, sheet, dog, this.dogStepFrame[i], this.dogFacing[i], this.dogDirSheet(i));
       }
       const marker = this.pointMarkers[i];
       if (dog.state === 'pointing') {
@@ -1080,7 +1131,36 @@ export class FieldScene extends Phaser.Scene {
     sheet: string,
     dog: Dog,
     gaitFrame: number,
+    facing: 'side' | 'up' | 'down' = 'side',
+    dirSheet: string | null = null,
   ): void {
+    // End-on rows (away/toward) live on the directional sheet; everything
+    // else — and every pose the dirs sheet lacks (heel, retrieve) — falls
+    // back to the richer side-view sheet. Texture swaps are guarded.
+    const setTex = (key: string) => {
+      if (sprite.texture.key !== key) sprite.setTexture(key);
+    };
+    const endOn = dirSheet !== null && facing !== 'side';
+    if (endOn) {
+      const base = DOG_DIR_ROW[facing as 'up' | 'down'] * 3;
+      const pointing =
+        dog.scentCheck || dog.state === 'pointing' || dog.state === 'honoring';
+      const gaitStates = dog.state === 'quartering' || dog.state === 'tracking' || dog.state === 'breaking';
+      if (pointing) {
+        setTex(dirSheet);
+        sprite.anims.stop();
+        sprite.setFrame(base + DOG_DIR_POINT_COL);
+        return;
+      }
+      if (gaitStates && dog.gait !== 'still') {
+        setTex(dirSheet);
+        sprite.anims.stop();
+        sprite.setFrame(base + (gaitFrame % 2));
+        return;
+      }
+      // Heel / retrieve / stills: the side sheet has the pose, dirs doesn't.
+    }
+    setTex(sheet);
     const still = (frame: number) => {
       sprite.anims.stop();
       // Guard missing cells on older cached sheets.
@@ -1191,6 +1271,12 @@ export class FieldScene extends Phaser.Scene {
         onComplete: () => mote.destroy(),
       });
     }
+  }
+
+  /** Directional sheet for dog i, or null while this breed only has side art. */
+  private dogDirSheet(i: number): string | null {
+    const key = DOG_DIR_SHEETS[this.breeds[i]?.id ?? ''];
+    return key && this.textures.exists(key) ? key : null;
   }
 
   private makeTextures(): void {
