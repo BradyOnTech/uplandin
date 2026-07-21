@@ -24,6 +24,9 @@ export type DogState =
   | 'heel'
   | 'breaking';
 
+/** Field presentation gait — set each tick by `update`, read by FieldScene. */
+export type DogGait = 'run' | 'trot' | 'track' | 'still';
+
 export const DOG_SPEED = 75; // base px/s while quartering, before breed multipliers
 export const TRACKING_SPEED = 90; // base px/s once it has the scent
 export const SCENT_RADIUS = 45; // base scent range, before nose multipliers
@@ -63,6 +66,8 @@ const COVER_TURN_RATE = 3.2; // rad/s steering onto the cast line
 const COVER_EDGE_MARGIN = 8; // stay inside the patch while working it
 const COVER_GRACE = 9; // weave carrying the dog this far past the edge still counts as working
 const COVER_WEAVE_MULT = 1.7; // busier, tighter serpentine inside cover
+/** Perimeter lap speed while edge-working (fraction of perimeter per second). */
+const COVER_EDGE_LAP_RATE = 0.35;
 /**
  * How completely the dog checks cover before calling it empty, by level:
  * a first-season pup pops out of the ragweed early and leaves birds behind;
@@ -72,10 +77,84 @@ export function coverThoroughness(level: number): number {
   return Math.min(1.25, 0.55 + 0.07 * level);
 }
 
+/**
+ * Fraction of a patch's work budget spent on the perimeter before combing
+ * the middle. Pups dive the core; finished dogs ring the edge first
+ * (where runners hold and singles drop).
+ * Level 1 → ~0; level 10 → ~0.45.
+ */
+export function coverEdgeFraction(level: number): number {
+  return Math.min(0.48, Math.max(0, 0.05 * (level - 1)));
+}
+
 const rectCx = (r: Rect): number => r.x + r.w / 2;
 const rectCy = (r: Rect): number => r.y + r.h / 2;
 const rectContains = (r: Rect, p: Vec2): boolean =>
   p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+
+/** Positive distance from an interior point to the nearest side (0 on the edge). */
+function distToRectEdge(r: Rect, p: Vec2): number {
+  return Math.min(p.x - r.x, r.x + r.w - p.x, p.y - r.y, r.y + r.h - p.y);
+}
+
+/** Point on the rectangle perimeter at normalized progress t ∈ [0,1). Clockwise from top-left. */
+export function perimeterPoint(r: Rect, t: number): Vec2 {
+  const peri = 2 * (r.w + r.h);
+  let d = (((t % 1) + 1) % 1) * peri;
+  if (d <= r.w) return { x: r.x + d, y: r.y };
+  d -= r.w;
+  if (d <= r.h) return { x: r.x + r.w, y: r.y + d };
+  d -= r.h;
+  if (d <= r.w) return { x: r.x + r.w - d, y: r.y + r.h };
+  d -= r.w;
+  return { x: r.x, y: r.y + r.h - d };
+}
+
+/** Nearest perimeter parameter t for a point (for starting edge work). */
+export function nearestPerimeterT(r: Rect, p: Vec2): number {
+  const peri = 2 * (r.w + r.h);
+  if (peri <= 0) return 0;
+  // Clamp to rect, then project to closest edge.
+  const cx = clamp(p.x, r.x, r.x + r.w);
+  const cy = clamp(p.y, r.y, r.y + r.h);
+  const dTop = Math.abs(cy - r.y);
+  const dBot = Math.abs(cy - (r.y + r.h));
+  const dLeft = Math.abs(cx - r.x);
+  const dRight = Math.abs(cx - (r.x + r.w));
+  const m = Math.min(dTop, dBot, dLeft, dRight);
+  let along = 0;
+  if (m === dTop) along = cx - r.x;
+  else if (m === dRight) along = r.w + (cy - r.y);
+  else if (m === dBot) along = r.w + r.h + (r.x + r.w - cx);
+  else along = r.w + r.h + r.w + (r.y + r.h - cy);
+  return along / peri;
+}
+
+/**
+ * Where the dog aims when casting to a patch.
+ * Tier 0 / calm: geometric center (classic).
+ * Wind-craft > 0: downwind side of the patch so the dog approaches from
+ * leeward and works into the wind through the cover.
+ * `windAngle` is the direction the wind blows TOWARD (screen radians).
+ */
+export function castAimPoint(
+  patch: Rect,
+  windAngle: number | undefined,
+  craftTier: 0 | 1 | 2,
+): Vec2 {
+  const cx = rectCx(patch);
+  const cy = rectCy(patch);
+  if (craftTier === 0 || windAngle === undefined) return { x: cx, y: cy };
+  const dx = Math.cos(windAngle);
+  const dy = Math.sin(windAngle);
+  const halfW = patch.w / 2;
+  const halfH = patch.h / 2;
+  // Ray from center in the wind direction until it hits the rect edge.
+  const sx = Math.abs(dx) < 1e-6 ? Infinity : halfW / Math.abs(dx);
+  const sy = Math.abs(dy) < 1e-6 ? Infinity : halfH / Math.abs(dy);
+  const s = Math.min(sx, sy) * 0.82; // slightly inside the downwind edge
+  return { x: cx + dx * s, y: cy + dy * s };
+}
 
 /** Environment the dog is hunting in for this tick. */
 export interface DogEnv {
@@ -134,6 +213,13 @@ export class Dog {
   readonly maxStaminaMs: number;
   /** True after breaking chase: the next retrieve needs a search first. */
   needsSearch = false;
+  /**
+   * How the dog should animate this frame (run / cast-trot / track / still).
+   * Pure presentation — does not affect sim math.
+   */
+  gait: DogGait = 'run';
+  /** True for a brief beat when scent first hits — head up, freeze a step. */
+  scentCheck = false;
 
   private rng: RNG;
   private weavePhase = 0;
@@ -149,8 +235,14 @@ export class Dog {
   /** Current cover objective: index into env.patches, or null (open-ground sweep). */
   private coverIdx: number | null = null;
   private coverWorkMsLeft = 0;
+  /** ms remaining of perimeter-first work before interior comb. */
+  private coverEdgeMsLeft = 0;
+  /** Normalized progress around the patch perimeter while edge-working. */
+  private coverEdgeT = 0;
   /** Patch index → ms until the dog considers it worth re-checking. */
   private checkedCovers = new Map<number, number>();
+  /** ms left of the first-scent freeze. */
+  private scentCheckMs = 0;
 
   constructor(
     public pos: Vec2,
@@ -212,6 +304,9 @@ export class Dog {
 
   update(dtMs: number, birds: Bird[], env: DogEnv = {}): void {
     const dt = dtMs / 1000;
+    // Default presentation; branches below overwrite for cast/track/still.
+    this.gait = 'run';
+    this.scentCheck = false;
 
     // The whistle only carries so far — a big-running dog can be out of earshot.
     const hearsWhistle = !env.hunterPos || dist(this.pos, env.hunterPos) <= (env.whistleRange ?? WHISTLE_RANGE);
@@ -220,8 +315,10 @@ export class Dog {
     }
 
     if (this.state === 'recalled') {
+      this.gait = 'run';
       if (!env.hunterPos || dist(this.pos, env.hunterPos) <= RECALL_ARRIVE) {
         this.state = 'heel'; // waits at heel until cast off
+        this.gait = 'still';
         return;
       }
       this.heading = Math.atan2(env.hunterPos.y - this.pos.y, env.hunterPos.x - this.pos.x);
@@ -230,8 +327,10 @@ export class Dog {
     }
 
     if (this.state === 'heel') {
+      this.gait = 'still';
       this.staminaMs = Math.min(this.maxStaminaMs, this.staminaMs + dtMs * HEEL_RECOVER_MULT);
       if (env.hunterPos && dist(this.pos, env.hunterPos) > HEEL_FOLLOW) {
+        this.gait = 'trot';
         this.heading = Math.atan2(env.hunterPos.y - this.pos.y, env.hunterPos.x - this.pos.x);
         this.advance(this.heading, RECALL_SPEED * 0.8 * dt);
       }
@@ -241,6 +340,7 @@ export class Dog {
     // Backing a packmate's point: stand and face it until the point
     // resolves — unless there's a bird down to fetch.
     if (this.state === 'honoring') {
+      this.gait = 'still';
       const hasDowned = birds.some((b) => b.state === 'downed');
       if (!env.honorPoint || hasDowned) {
         this.state = 'quartering'; // resume below (retrieve wins if a bird is down)
@@ -255,6 +355,7 @@ export class Dog {
     }
 
     if (this.state === 'breaking') {
+      this.gait = 'run';
       this.work(dtMs * (env.drainMult ?? 1));
       this.breakMsLeft -= dtMs;
       if (this.breakMsLeft <= 0) {
@@ -270,6 +371,7 @@ export class Dog {
     }
 
     if (this.state === 'pointing') {
+      this.gait = 'still';
       const pointed = birds.find((b) => b.id === this.pointedBirdId);
       if (!pointed || pointed.state !== 'hidden') {
         // Bird flushed or collected — cast off and hunt again.
@@ -281,6 +383,7 @@ export class Dog {
         this.state = 'tracking';
         this.pointedBirdId = null;
         this.resetCreep();
+        this.gait = 'track';
       } else {
         this.creep(dtMs, pointed);
       }
@@ -296,10 +399,12 @@ export class Dog {
         return;
       }
       if (dist(this.pos, target.pos) > RETRIEVE_RANGE) {
+        this.gait = 'trot';
         this.retrieveHoldMs = 0;
         this.heading = Math.atan2(target.pos.y - this.pos.y, target.pos.x - this.pos.x);
         this.advance(this.heading, this.trackSpeed * dt);
       } else {
+        this.gait = 'still';
         this.retrieveHoldMs += dtMs;
         const holdNeeded = RETRIEVE_HOLD_MS + (this.needsSearch ? SEARCH_HOLD_MS * (env.searchMult ?? 1) : 0);
         if (this.retrieveHoldMs >= holdNeeded) {
@@ -340,16 +445,30 @@ export class Dog {
 
     const bird = this.nearestHiddenBird(birds, env);
     if (bird) {
+      // First contact with scent: freeze a beat, head locked on the line —
+      // the "dog makes game" moment the handler reads from the gallery.
+      if (this.state !== 'tracking' && this.scentCheckMs <= 0) {
+        this.scentCheckMs = 320;
+      }
       this.state = 'tracking';
       this.work(dtMs * (env.drainMult ?? 1));
       this.heading = Math.atan2(bird.pos.y - this.pos.y, bird.pos.x - this.pos.x);
+      if (this.scentCheckMs > 0) {
+        this.scentCheckMs -= dtMs;
+        this.scentCheck = true;
+        this.gait = 'still';
+        if (this.scentCheckMs > 0) return;
+      }
+      this.gait = 'track';
       this.advance(this.heading, this.trackSpeed * dt);
       if (dist(this.pos, bird.pos) <= POINT_RANGE) {
         this.state = 'pointing';
         this.pointedBirdId = bird.id;
+        this.gait = 'still';
       }
       return;
     }
+    this.scentCheckMs = 0;
 
     // Quartering: hunt objectives, not open ground. With cover in reach the
     // dog casts to a patch and works it until it feels checked; only a
@@ -370,9 +489,12 @@ export class Dog {
       );
 
     if (patch && !working) {
-      // Casting: a purposeful trot to the objective, only a hint of weave.
+      // Casting: purposeful trot to the aim point (center, or downwind edge
+      // when the dog knows wind), only a hint of weave.
+      this.gait = 'trot';
       this.weavePhase += dt * WEAVE_RATE;
-      const aim = Math.atan2(rectCy(patch) - this.pos.y, rectCx(patch) - this.pos.x);
+      const aimPt = castAimPoint(patch, env.windAngle, windCraftTier(this.profile.level));
+      const aim = Math.atan2(aimPt.y - this.pos.y, aimPt.x - this.pos.x);
       this.heading = turnToward(this.heading, aim, COVER_TURN_RATE * dt);
       this.steerToAnchor(dt, env.hunterPos);
       this.advance(this.heading + Math.sin(this.weavePhase) * 0.15, this.speed * CAST_SPEED_MULT * dt);
@@ -380,22 +502,44 @@ export class Dog {
     }
 
     if (patch && working) {
-      // Working the cover: a tight serpentine held inside the patch until
-      // the dog judges it checked — then it's remembered and the dog moves
-      // to the next objective. Birds interrupt this at any moment (above).
+      // Working the cover: finished dogs ring the perimeter first (edge
+      // phase), then comb the interior; pups skip straight to the comb.
+      // Birds interrupt this at any moment (above).
+      this.gait = 'run';
       this.coverWorkMsLeft -= dtMs;
       if (this.coverWorkMsLeft <= 0) {
         this.checkedCovers.set(this.coverIdx!, COVER_REVISIT_MS);
         this.coverIdx = null;
+        this.coverEdgeMsLeft = 0;
         return;
       }
+      if (this.coverEdgeMsLeft > 0) {
+        this.coverEdgeMsLeft -= dtMs;
+        // Snap to the rim first, then lap: birds sit edges, so stay on them.
+        const onRim = distToRectEdge(patch, this.pos) <= COVER_EDGE_MARGIN + 2;
+        if (!onRim) {
+          this.coverEdgeT = nearestPerimeterT(patch, this.pos);
+        } else {
+          this.coverEdgeT = (this.coverEdgeT + dt * COVER_EDGE_LAP_RATE) % 1;
+        }
+        const edgePt = perimeterPoint(patch, this.coverEdgeT);
+        const aim = Math.atan2(edgePt.y - this.pos.y, edgePt.x - this.pos.x);
+        this.heading = turnToward(this.heading, aim, COVER_TURN_RATE * 2.4 * dt);
+        this.advance(this.heading, this.speed * (onRim ? 1 : 1.15) * dt);
+        return;
+      }
+      // Interior comb: tight serpentine with a soft pull toward the core
+      // (pups spend almost all their budget here).
       this.weavePhase += dt * WEAVE_RATE * COVER_WEAVE_MULT;
+      const toCore = Math.atan2(rectCy(patch) - this.pos.y, rectCx(patch) - this.pos.x);
+      this.heading = turnToward(this.heading, toCore, 0.9 * dt);
       this.steerInsideRect(dt, patch);
       this.advance(this.heading + Math.sin(this.weavePhase) * this.weave, this.speed * dt);
       return;
     }
 
     // No cover worth checking: the classic open-ground sweep.
+    this.gait = 'run';
     this.weavePhase += dt * WEAVE_RATE;
     this.steerOffEdges(dt);
     this.steerToAnchor(dt, env.hunterPos);
@@ -445,12 +589,18 @@ export class Dog {
     if (best === null) return null;
     this.coverIdx = best;
     const p = patches[best];
-    this.coverWorkMsLeft =
+    const total =
       clamp(p.w * p.h * COVER_WORK_MS_PER_PX2, COVER_WORK_MIN_MS, COVER_WORK_MAX_MS) *
       coverThoroughness(this.profile.level) *
       (0.85 + this.rng() * 0.3);
-    // Enter working the long axis — the natural line through a strip of cover.
-    this.heading = p.w >= p.h ? (this.rng() < 0.5 ? 0 : Math.PI) : (this.rng() < 0.5 ? 1 : -1) * (Math.PI / 2);
+    this.coverWorkMsLeft = total;
+    // Perimeter-first budget: pups ~0, finished dogs nearly half the clock.
+    this.coverEdgeMsLeft = total * coverEdgeFraction(this.profile.level);
+    this.coverEdgeT = nearestPerimeterT(p, this.pos);
+    // Face the cast aim immediately so approach heading matches the objective
+    // (center for pups/calm; downwind flank when wind-craft applies).
+    const aim = castAimPoint(p, env.windAngle, windCraftTier(this.profile.level));
+    this.heading = Math.atan2(aim.y - this.pos.y, aim.x - this.pos.x);
     return p;
   }
 

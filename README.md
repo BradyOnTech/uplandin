@@ -105,11 +105,12 @@ Dev helpers: `?doglevel=N` on the URL runs career hunts at that dog level
 
 ## What's left
 
-- **Art pass** — underway: style locked (docs/ART.md). In-engine so far:
-  Southern Plains flush backdrop, animated bobwhite, the English Setter in
-  the field (gait + point pose), Southern Plains ground tiles, and a
-  hand-authored 5×7 pixel font on every screen. Remaining species, dogs,
-  regions, and scenes still placeholder.
+- **Production polish** — executable roadmap in [`docs/PRODUCTION.md`](docs/PRODUCTION.md)
+  (AI-only art finish path; no human pixel-artist gate). Style + prompts:
+  [`docs/ART.md`](docs/ART.md). In-engine so far: SP flush plate, bobwhite,
+  English Setter (4-frame gait + point), SP tiles, bitmap font, cover edge
+  work + wind-aware cast. Vertical slice next: hunter sheet, seamless
+  tiles, shell UI, field presentation (Y-sort, shadows, wind tell, transitions).
 - Time-of-day fieldcraft (low sun, glare) and distance-scaled shot views.
 - Open design decision: how (or whether) old dogs retire.
 

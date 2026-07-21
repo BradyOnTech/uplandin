@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AREAS, areaBirdCount } from '../src/game/areas';
 import type { Bird } from '../src/game/birds';
-import { birdsRemaining, createHunt, huntComplete, type HuntState } from '../src/game/state';
+import { birdsRemaining, createHunt, endHuntEarly, huntComplete, type HuntState } from '../src/game/state';
 
 function huntWith(states: Bird['state'][]): HuntState {
   return {
@@ -50,6 +50,26 @@ describe('hunt bookkeeping', () => {
   it('is complete when every bird is resolved', () => {
     expect(huntComplete(huntWith(['downed', 'escaped']))).toBe(true);
     expect(huntComplete(huntWith(['retrieved', 'escaped']))).toBe(true);
+  });
+
+  it('endHuntEarly writes off hidden and flushed birds as escaped', () => {
+    const hunt = huntWith(['hidden', 'flushed', 'downed', 'retrieved']);
+    hunt.escaped = 1;
+    const n = endHuntEarly(hunt);
+    expect(n).toBe(2);
+    expect(hunt.escaped).toBe(3);
+    expect(hunt.birds[0].state).toBe('escaped');
+    expect(hunt.birds[1].state).toBe('escaped');
+    expect(hunt.birds[2].state).toBe('downed');
+    expect(hunt.birds[3].state).toBe('retrieved');
+    expect(huntComplete(hunt)).toBe(true);
+    expect(birdsRemaining(hunt)).toBe(0);
+  });
+
+  it('endHuntEarly is a no-op when the hunt is already complete', () => {
+    const hunt = huntWith(['downed', 'escaped']);
+    expect(endHuntEarly(hunt)).toBe(0);
+    expect(hunt.escaped).toBe(0);
   });
 
   it('createHunt builds a hunt from the area config', () => {

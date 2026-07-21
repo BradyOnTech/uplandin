@@ -145,3 +145,23 @@ export function playWhistle(): void {
   tone(700, 0, 0.16, { volume: 0.22, slideTo: 1250 });
   tone(1250, 0.18, 0.22, { volume: 0.22, slideTo: 850 });
 }
+
+/**
+ * Hunter footfall. `inCover` uses a duller, softer thump (grass/ragweed);
+ * open ground is a drier click. Volume should already encode distance.
+ */
+export function playFootstep(inCover: boolean, volume = 0.12): void {
+  if (volume <= 0.01) return;
+  if (inCover) {
+    noise(0, 0.05, 380, 120, volume * 0.55);
+    tone(90, 0, 0.06, { type: 'triangle', volume: volume * 0.35, slideTo: 50 });
+  } else {
+    noise(0, 0.03, 900, 400, volume * 0.4);
+    tone(140, 0, 0.04, { type: 'square', volume: volume * 0.12, slideTo: 80 });
+  }
+}
+
+/** Soft head-up when the dog first hits scent — almost subliminal. */
+export function playScentCheck(): void {
+  tone(520, 0, 0.05, { volume: 0.06, slideTo: 640 });
+}

@@ -185,12 +185,17 @@ figure must FILL the cell** — ≥24px of the hunter's 28px cell height
 `art/hunter-dirs.png` and `art/english-setter-dirs.png` — the scenes
 select rows by heading once these land.
 
-**REGEN OPEN — hunter-dirs**: re-run the hunter prompt above with:
-"Each figure fills the cell: 24–26px tall of the 28px cell height,
-feet on the bottom cell edge. Fully transparent background, no backing
-tile or frame behind the figure." The shipping sheet is a keyed-out
-cleanup of delivery 1 drawn at ×2 as an interim; the regen restores ×1
-(delete the setScale(2) in FieldScene's hunter-dirs branch).
+**Hunter status: hand-authored.** After two failed deliveries (unkeyed
+backing block; half-cell mushy figure), the shipping hunter is drawn in
+code — `scenes/hunterSheet.ts`, the pixelFont.ts craft applied to the
+player character. Division of labor, learned: tiny iconic characters →
+hand pixels; organic subjects (dogs, birds, plates, tiles) → the
+generation pipeline. A painted regen stays welcome but the bar moved:
+re-run the hunter prompt with "each figure fills the cell: 24–26px tall
+of the 28px height, feet on the bottom edge, fully transparent
+background, no backing tile," ship as `art/hunter-dirs-v2.png`,
+uncomment its preload in FieldScene — and it only stays if it beats the
+hand-authored sheet side by side in-engine.
 
 ## Flush-view birds
 

@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { Bird } from '../src/game/birds';
 import { getBreed, type BreedConfig } from '../src/game/breeds';
-import { Dog, coverThoroughness, HONOR_SIGHT, QUARTER_RANGE, SCENT_RADIUS, scentRange, WHISTLE_RANGE, type DogEnv } from '../src/game/dog';
+import {
+  Dog,
+  castAimPoint,
+  coverEdgeFraction,
+  coverThoroughness,
+  HONOR_SIGHT,
+  perimeterPoint,
+  QUARTER_RANGE,
+  SCENT_RADIUS,
+  scentRange,
+  WHISTLE_RANGE,
+  type DogEnv,
+} from '../src/game/dog';
 import { FIELD_BOUNDS, type Rect } from '../src/game/field';
 import { dist } from '../src/game/math';
 import type { RNG } from '../src/game/types';
@@ -478,6 +490,50 @@ describe('Dog', () => {
       expect(coverThoroughness(1)).toBeLessThan(coverThoroughness(10) * 0.6);
     });
 
+    it('a finished dog rings the perimeter before combing; a pup dives the middle', () => {
+      // Large square so edge vs core is unambiguous.
+      const big: Rect = { x: 100, y: 80, w: 120, h: 100 };
+      const hunter = { x: 160, y: 200 };
+      const env: DogEnv = { hunterPos: hunter, patches: [big] };
+
+      const distToEdge = (p: { x: number; y: number }): number =>
+        Math.min(p.x - big.x, big.x + big.w - p.x, p.y - big.y, big.y + big.h - p.y);
+
+      const edgeShare = (level: number): number => {
+        const dog = makeDog(160, 220, level, () => 0.5);
+        let insideSamples = 0;
+        let nearEdgeSamples = 0;
+        let entered = false;
+        // Early work window after first entry — edge phase for a finished dog.
+        let earlyMs = 0;
+        for (let t = 0; t < 20_000; t += 16) {
+          dog.update(16, [], env);
+          const inside =
+            dog.pos.x >= big.x &&
+            dog.pos.x <= big.x + big.w &&
+            dog.pos.y >= big.y &&
+            dog.pos.y <= big.y + big.h;
+          if (inside) {
+            if (!entered) entered = true;
+            if (entered && earlyMs < 2800) {
+              earlyMs += 16;
+              insideSamples++;
+              if (distToEdge(dog.pos) <= 14) nearEdgeSamples++;
+            }
+          }
+        }
+        expect(insideSamples).toBeGreaterThan(20);
+        return nearEdgeSamples / insideSamples;
+      };
+
+      expect(coverEdgeFraction(1)).toBeLessThan(0.05);
+      expect(coverEdgeFraction(10)).toBeGreaterThan(0.35);
+      const pupEdge = edgeShare(1);
+      const vetEdge = edgeShare(10);
+      // Finished dog spends early work hugging the rim; pup's early path is deeper.
+      expect(vetEdge).toBeGreaterThan(pupEdge + 0.15);
+    });
+
     it('still points a bird hidden in the cover it works', () => {
       const dog = makeDog(100, 100);
       const bird = birdAt(160, 110);
@@ -487,6 +543,93 @@ describe('Dog', () => {
       }
       expect(dog.state).toBe('pointing');
       expect(dog.pointedBirdId).toBe(bird.id);
+    });
+  });
+
+  describe('presentation gait + scent check', () => {
+    it('casts with a trot gait and works cover at a run', () => {
+      // Patch must sit inside the dog's leash of the hunter or it won't cast.
+      const patch: Rect = { x: 120, y: 100, w: 70, h: 50 };
+      const dog = makeDog(40, 120, 10, () => 0.5);
+      const env: DogEnv = { hunterPos: { x: 80, y: 120 }, patches: [patch] };
+      // First ticks: outside cover → cast.
+      dog.update(50, [], env);
+      expect(dog.state).toBe('quartering');
+      expect(dog.gait).toBe('trot');
+      // Drive into the patch.
+      for (let t = 0; t < 8000 && dog.gait === 'trot'; t += 16) dog.update(16, [], env);
+      // Once working, gait is run (edge/comb).
+      let sawRun = false;
+      for (let t = 0; t < 2000; t += 16) {
+        dog.update(16, [], env);
+        if (dog.gait === 'run') sawRun = true;
+      }
+      expect(sawRun).toBe(true);
+    });
+
+    it('freezes on first scent then tracks', () => {
+      const dog = makeDog(100, 100, 10, () => 0.5);
+      const bird = birdAt(100 + SCENT_RADIUS - 10, 100);
+      dog.update(50, [bird]);
+      // First contact: scent check still, no point yet.
+      expect(dog.state).toBe('tracking');
+      expect(dog.scentCheck).toBe(true);
+      expect(dog.gait).toBe('still');
+      const freezePos = { ...dog.pos };
+      dog.update(50, [bird]);
+      // Still frozen for ~320ms.
+      expect(dist(dog.pos, freezePos)).toBeLessThan(2);
+      // After the freeze, it tracks forward.
+      for (let i = 0; i < 20; i++) dog.update(50, [bird]);
+      expect(dog.scentCheck).toBe(false);
+      expect(dog.gait === 'track' || dog.state === 'pointing').toBe(true);
+    });
+  });
+
+  describe('wind-aware cast', () => {
+    const patch: Rect = { x: 200, y: 100, w: 80, h: 60 };
+
+    it('castAimPoint is center for tier-0 or calm; downwind for craft', () => {
+      const center = castAimPoint(patch, 0, 0);
+      expect(center.x).toBeCloseTo(240, 5);
+      expect(center.y).toBeCloseTo(130, 5);
+      // Calm: still center even for a veteran.
+      const calm = castAimPoint(patch, undefined, 2);
+      expect(calm.x).toBeCloseTo(center.x, 5);
+      // Wind blows east (+x): downwind aim is east of center.
+      const east = castAimPoint(patch, 0, 1);
+      expect(east.x).toBeGreaterThan(center.x + 10);
+      // Wind blows south (+y on screen): downwind aim is below center.
+      const south = castAimPoint(patch, Math.PI / 2, 1);
+      expect(south.y).toBeGreaterThan(center.y + 8);
+      // perimeter helper stays on the rect
+      const pp = perimeterPoint(patch, 0.25);
+      expect(pp.x).toBeGreaterThanOrEqual(patch.x);
+      expect(pp.x).toBeLessThanOrEqual(patch.x + patch.w);
+    });
+
+    it('a wind-craft dog casts toward the downwind side; a pup aims the center', () => {
+      // Dog starts north of the patch. Wind blows east → veteran aim is the
+      // eastern (downwind) flank, so its cast path drifts east of the pup's.
+      const hunter = { x: 240, y: 40 };
+      const envBase = { hunterPos: hunter, patches: [patch], windAngle: 0 as number };
+
+      const castX = (level: number): number => {
+        const dog = makeDog(240, 40, level, () => 0.5);
+        // Sample while still outside the patch (casting).
+        const xs: number[] = [];
+        for (let t = 0; t < 4000; t += 16) {
+          dog.update(16, [], envBase);
+          const outside = dog.pos.y < patch.y - 2;
+          if (outside) xs.push(dog.pos.x);
+          if (!outside && xs.length > 5) break;
+        }
+        expect(xs.length).toBeGreaterThan(5);
+        return xs.reduce((a, b) => a + b, 0) / xs.length;
+      };
+
+      // Level 1 = tier 0 (center cast); level 5 = tier 1 (winded cast).
+      expect(castX(5)).toBeGreaterThan(castX(1) + 6);
     });
   });
 });

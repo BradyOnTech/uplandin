@@ -102,3 +102,20 @@ export function birdsRemaining(hunt: HuntState): number {
 export function huntComplete(hunt: HuntState): boolean {
   return hunt.birds.every((b) => b.state !== 'hidden' && b.state !== 'flushed');
 }
+
+/**
+ * Player elects to quit the field early: every still-hidden or mid-flush bird
+ * becomes escaped (and counts as lost). Mutates `hunt` in place and returns
+ * how many birds were written off. Already downed/retrieved birds are kept.
+ */
+export function endHuntEarly(hunt: HuntState): number {
+  let writtenOff = 0;
+  for (const bird of hunt.birds) {
+    if (bird.state === 'hidden' || bird.state === 'flushed') {
+      bird.state = 'escaped';
+      writtenOff++;
+    }
+  }
+  hunt.escaped += writtenOff;
+  return writtenOff;
+}

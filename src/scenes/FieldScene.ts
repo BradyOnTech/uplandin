@@ -48,6 +48,7 @@ import { birdsRemaining, createHunt, endHuntEarly, huntComplete, type HuntState 
 import type { Vec2 } from '../game/types';
 import { windMults } from '../game/wind';
 import { addWeatherFx } from './weatherFx';
+import { ensureHunterGenSheet, HUNTER_GEN_SHEET } from './hunterSheet';
 import { pixelText, type PixelText } from './pixelFont';
 
 const HUNTER_SPEED = 55; // px/s walking
@@ -98,11 +99,9 @@ const DOG_FRAME_POINT = 4;
 const DOG_FRAME_HEEL = 5;
 const DOG_FRAME_RETRIEVE = 6;
 const DOG_FRAME_COUNT = 7;
-const HUNTER_SHEET = 'hunter-field';
 // Directional sheets (Pokémon-grade): rows select by heading.
 // hunter-dirs: 3×3 of 20×28 — row 0 toward camera, 1 away, 2 side;
 // cols: stand, step-L, step-R. Walk is the Emerald 4-beat: L, stand, R, stand.
-const HUNTER_DIRS_SHEET = 'hunter-dirs';
 const HUNTER_DIR_ROW = { down: 0, up: 1, side: 2 } as const;
 const HUNTER_WALK_SEQ = [1, 0, 2, 0];
 // english-setter-dirs: 3×2 of 32×20 — row 0 away, 1 toward; cols: trot A,
@@ -114,13 +113,10 @@ const DOG_DIR_POINT_COL = 2;
  * the side rows are the best art, so they win all diagonals. */
 const FACING_ENTER_SIN = 0.85;
 const FACING_EXIT_SIN = 0.7;
-const HUNTER_FRAME_IDLE = 0;
-const HUNTER_WALK_FRAMES = [1, 2, 3];
 /**
  * Painted hunter sheet is 16×20 vs setter 32×20 — without scale the dog
  * reads as the giant. 1.45 puts them co-equal at GBA overworld weight.
  */
-const HUNTER_SHEET_SCALE = 1.45;
 // End-hunt control (top-right corner, screen coords).
 const END_HUNT_BTN = { x: 428, y: 18, w: 88, h: 18 };
 const FIELD_TILESETS: Record<string, string> = { 'southern-plains': 'tiles-southern-plains' };
@@ -212,16 +208,11 @@ export class FieldScene extends Phaser.Scene {
       frameWidth: 32,
       frameHeight: 20,
     });
-    this.load.spritesheet(HUNTER_DIRS_SHEET, 'art/hunter-dirs.png', {
-      frameWidth: 20,
-      frameHeight: 28,
-    });
+    // Painted hunter (v2 socket): when a sheet passes ART.md acceptance,
+    // ship it as art/hunter-dirs-v2.png and uncomment — it wins in create().
+    // this.load.spritesheet('hunter-dirs-v2', 'art/hunter-dirs-v2.png', { frameWidth: 20, frameHeight: 28 });
     this.load.spritesheet('english-setter-dirs', 'art/english-setter-dirs.png', {
       frameWidth: 32,
-      frameHeight: 20,
-    });
-    this.load.spritesheet(HUNTER_SHEET, 'art/hunter-sheet-alpha.png', {
-      frameWidth: 16,
       frameHeight: 20,
     });
     this.load.spritesheet('tiles-southern-plains', 'art/tileset-southern-plains.png', {
@@ -324,25 +315,11 @@ export class FieldScene extends Phaser.Scene {
       this.add.ellipse(dog.pos.x, dog.pos.y + 4, 14, 5, 0x1e2316, 0.28).setDepth(1),
     );
 
-    const hunterKey = this.textures.exists(HUNTER_DIRS_SHEET)
-      ? HUNTER_DIRS_SHEET // native 20×28, ×1 — retires the ×1.45 scale hack
-      : this.textures.exists(HUNTER_SHEET)
-        ? HUNTER_SHEET
-        : 'hunter';
+    ensureHunterGenSheet(this);
+    const hunterKey = this.textures.exists('hunter-dirs-v2') ? 'hunter-dirs-v2' : HUNTER_GEN_SHEET;
     this.hunterSprite = this.add.sprite(this.hunt.hunterPos.x, this.hunt.hunterPos.y, hunterKey);
-    if (hunterKey === HUNTER_DIRS_SHEET) {
-      // Interim ×2 (legal: integer law allows ×1/×2): the delivered figure
-      // fills only ~15px of its 28px cell. The regen ask in ART.md restores
-      // ×1 by filling the cell — then delete this scale call.
-      this.hunterSprite.setScale(2);
-      this.hunterSprite.setFrame(HUNTER_DIR_ROW.down * 3);
-      this.hunterShadow.setSize(16, 6);
-    } else if (hunterKey === HUNTER_SHEET) {
-      this.hunterSprite.setScale(HUNTER_SHEET_SCALE);
-      this.hunterSprite.setFrame(HUNTER_FRAME_IDLE);
-      // Shadow scales with the painted hunter.
-      this.hunterShadow.setSize(14, 5);
-    }
+    this.hunterSprite.setFrame(HUNTER_DIR_ROW.down * 3);
+    this.hunterShadow.setSize(14, 5);
     this.dogSprites = this.dogs.map((dog, i) => {
       const sheet = this.dogSheet(i);
       const sprite = this.add.sprite(dog.pos.x, dog.pos.y, sheet ?? 'dog');
@@ -652,14 +629,7 @@ export class FieldScene extends Phaser.Scene {
 
     this.hunterSprite.setPosition(this.hunt.hunterPos.x, this.hunt.hunterPos.y);
     this.hunterShadow.setPosition(this.hunt.hunterPos.x, this.hunt.hunterPos.y + 5);
-    // Hunter facing + walk/idle. The directional branch below owns flipX;
-    // this legacy flip only serves the single-row sheet and placeholder.
-    if (this.hunterTarget && this.hunterSprite.texture.key !== HUNTER_DIRS_SHEET) {
-      const dx = this.hunterTarget.x - this.hunt.hunterPos.x;
-      if (Math.abs(dx) > 0.5) this.hunterSprite.setFlipX(dx < 0);
-    }
-    const hunterKey = this.hunterSprite.texture.key;
-    if (hunterKey === HUNTER_DIRS_SHEET || hunterKey === HUNTER_SHEET) {
+    {
       // Feet plant: the walk frame advances by distance covered, so sprint
       // legs pump double-time and there is no ice-skating at any speed.
       const hdx = this.hunt.hunterPos.x - this.prevHunterPos.x;
@@ -680,17 +650,11 @@ export class FieldScene extends Phaser.Scene {
       } else {
         this.hunterStepAcc = 0;
       }
-      if (hunterKey === HUNTER_DIRS_SHEET) {
-        const row = HUNTER_DIR_ROW[this.hunterFacing];
-        const col = moved >= 0.01 ? HUNTER_WALK_SEQ[this.hunterStepFrame] : 0;
-        this.hunterSprite.setFrame(row * 3 + col);
-        // Side row is authored facing right; up/down never mirror.
-        this.hunterSprite.setFlipX(this.hunterFacing === 'side' && this.hunterSideLeft);
-      } else {
-        this.hunterSprite.setFrame(
-          moved >= 0.01 ? HUNTER_WALK_FRAMES[this.hunterStepFrame % HUNTER_WALK_FRAMES.length] : HUNTER_FRAME_IDLE,
-        );
-      }
+      const row = HUNTER_DIR_ROW[this.hunterFacing];
+      const col = moved >= 0.01 ? HUNTER_WALK_SEQ[this.hunterStepFrame] : 0;
+      this.hunterSprite.setFrame(row * 3 + col);
+      // Side row is authored facing right; up/down never mirror.
+      this.hunterSprite.setFlipX(this.hunterFacing === 'side' && this.hunterSideLeft);
     }
     this.prevHunterPos = { ...this.hunt.hunterPos };
     this.dogs.forEach((dog, i) => {

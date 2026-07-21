@@ -82,18 +82,19 @@ Steadiness→mistake resistance, Stamina→hunt-day endurance.
   inside bump distance the bird flushes wild, no shot. ~25%/point at level 1
   for soft breeds → ~2% at level 10.
 - **Cover work** [built]: the dog hunts objectives, not open ground — it
-  casts to likely cover, works it in a tight serpentine until it feels
-  checked, and moves to the next patch, remembering what it's already
-  combed. Sometimes the birds are right there, sometimes they take real
-  working, often the cover is empty. Thoroughness scales with level: a pup
-  pops out early and leaves birds behind.
+  casts to likely cover, works it until checked, and moves to the next
+  patch, remembering what it's already combed. Finished dogs **ring the
+  perimeter first** (where runners hold), then comb the middle; pups dive
+  the core and pop out early. Thoroughness and edge fraction both scale
+  with level.
 - **Point pressure**: bird nerve drains faster under a crowding puppy (~1.4×)
   and slower under a veteran who gives the bird room (~0.6×). Experienced
   dogs also point from slightly farther out.
 - **Wind craft**: levels 1–3 the dog gets no upwind scent bonus AND birds
   within ~30px downwind of it catch its scent and flush wild. 4–7: full
-  upwind bonus, dog-scent radius ~15px. 8+: birds effectively never scent a
-  quartering dog.
+  upwind bonus, dog-scent radius ~15px, and casts to the **downwind side**
+  of cover to work into the wind. 8+: birds effectively never scent a
+  quartering dog; same winded cast.
 - **Steady to wing & shot**: finished dogs stand through flush + shot and mark
   the fall; puppies **break chase** and can bump birds they run past while
   you're in the shooting view.
@@ -347,8 +348,9 @@ announce their unlocks at the hunt summary.
   decline; retirement question deliberately open), off-season rollover.
 - **Anytime**: PWA packaging **[built]** — manifest, home-screen icons
   (the bobwhite), and a stale-while-revalidate service worker (prod-only;
-  updates land next launch); art pass (underway, see docs/ART.md);
-  distance-scaled shot views (`flushDistance` already plumbed).
+  updates land next launch); art pass (underway — executable plan in
+  docs/PRODUCTION.md, prompts in docs/ART.md); distance-scaled shot views
+  (`flushDistance` already plumbed).
 
 ## Engineering rules
 
