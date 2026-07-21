@@ -331,9 +331,12 @@ export class FieldScene extends Phaser.Scene {
         : 'hunter';
     this.hunterSprite = this.add.sprite(this.hunt.hunterPos.x, this.hunt.hunterPos.y, hunterKey);
     if (hunterKey === HUNTER_DIRS_SHEET) {
-      // Integer scale law: authored at native size, drawn at ×1.
+      // Interim ×2 (legal: integer law allows ×1/×2): the delivered figure
+      // fills only ~15px of its 28px cell. The regen ask in ART.md restores
+      // ×1 by filling the cell — then delete this scale call.
+      this.hunterSprite.setScale(2);
       this.hunterSprite.setFrame(HUNTER_DIR_ROW.down * 3);
-      this.hunterShadow.setSize(14, 5);
+      this.hunterShadow.setSize(16, 6);
     } else if (hunterKey === HUNTER_SHEET) {
       this.hunterSprite.setScale(HUNTER_SHEET_SCALE);
       this.hunterSprite.setFrame(HUNTER_FRAME_IDLE);

@@ -176,8 +176,21 @@ Acceptance (30s at @4x): silhouettes read as *away/toward* at a glance
 (shoulders + tail vs chest + head); the two trot frames genuinely
 alternate legs (no pose-clone with shifted pixels); point poses are
 unmistakable without motion; palette matches the shipping side-view
-sheets. Ship as `art/hunter-dirs.png` and `art/english-setter-dirs.png`
-— the scenes select rows by heading once these land.
+sheets. Two rules learned the hard way (first delivery failed both):
+**QA transparency against a DARK background, never white** — the first
+hunter sheet shipped each figure on an unkeyed pale backing block,
+invisible in the white preview, a glowing box in the field; and **the
+figure must FILL the cell** — ≥24px of the hunter's 28px cell height
+(first delivery: 15px, forcing an interim ×2 display). Ship as
+`art/hunter-dirs.png` and `art/english-setter-dirs.png` — the scenes
+select rows by heading once these land.
+
+**REGEN OPEN — hunter-dirs**: re-run the hunter prompt above with:
+"Each figure fills the cell: 24–26px tall of the 28px cell height,
+feet on the bottom cell edge. Fully transparent background, no backing
+tile or frame behind the figure." The shipping sheet is a keyed-out
+cleanup of delivery 1 drawn at ×2 as an interim; the regen restores ×1
+(delete the setScale(2) in FieldScene's hunter-dirs branch).
 
 ## Flush-view birds
 
