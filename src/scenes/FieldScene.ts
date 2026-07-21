@@ -99,6 +99,14 @@ const DOG_FRAME_POINT = 4;
 const DOG_FRAME_HEEL = 5;
 const DOG_FRAME_RETRIEVE = 6;
 const DOG_FRAME_COUNT = 7;
+// The shipping hunter: the painted side-view sheet (idle + 3 walk frames,
+// flip for left) — the look that passed playtesting. Directional facing is
+// wired but DORMANT until painted art passes ART.md acceptance as
+// hunter-dirs-v2; the hand-drawn generated sheet is a last-resort fallback.
+const HUNTER_SHEET = 'hunter-field';
+const HUNTER_FRAME_IDLE = 0;
+const HUNTER_WALK_FRAMES = [1, 2, 3];
+const HUNTER_SHEET_SCALE = 1.45; // ART.md law exception, standing until v2 lands
 // Directional sheets (Pokémon-grade): rows select by heading.
 // hunter-dirs: 3×3 of 20×28 — row 0 toward camera, 1 away, 2 side;
 // cols: stand, step-L, step-R. Walk is the Emerald 4-beat: L, stand, R, stand.
@@ -192,6 +200,7 @@ export class FieldScene extends Phaser.Scene {
   private prevDogPos: Vec2[] = [];
   private dogFaceLeft: boolean[] = [];
   private hunterFacing: 'down' | 'up' | 'side' = 'down';
+  private hunterDirectional = false;
   private hunterSideLeft = false;
   private dogFacing: ('side' | 'up' | 'down')[] = [];
   /** Blade-shake tones for the rustle burst, matched to the covert's cover. */
@@ -211,6 +220,10 @@ export class FieldScene extends Phaser.Scene {
     // Painted hunter (v2 socket): when a sheet passes ART.md acceptance,
     // ship it as art/hunter-dirs-v2.png and uncomment — it wins in create().
     // this.load.spritesheet('hunter-dirs-v2', 'art/hunter-dirs-v2.png', { frameWidth: 20, frameHeight: 28 });
+    this.load.spritesheet(HUNTER_SHEET, 'art/hunter-sheet-alpha.png', {
+      frameWidth: 16,
+      frameHeight: 20,
+    });
     this.load.spritesheet('english-setter-dirs', 'art/english-setter-dirs.png', {
       frameWidth: 32,
       frameHeight: 20,
@@ -316,9 +329,19 @@ export class FieldScene extends Phaser.Scene {
     );
 
     ensureHunterGenSheet(this);
-    const hunterKey = this.textures.exists('hunter-dirs-v2') ? 'hunter-dirs-v2' : HUNTER_GEN_SHEET;
+    const hunterKey = this.textures.exists('hunter-dirs-v2')
+      ? 'hunter-dirs-v2'
+      : this.textures.exists(HUNTER_SHEET)
+        ? HUNTER_SHEET
+        : HUNTER_GEN_SHEET;
+    this.hunterDirectional = hunterKey !== HUNTER_SHEET;
     this.hunterSprite = this.add.sprite(this.hunt.hunterPos.x, this.hunt.hunterPos.y, hunterKey);
-    this.hunterSprite.setFrame(HUNTER_DIR_ROW.down * 3);
+    if (this.hunterDirectional) {
+      this.hunterSprite.setFrame(HUNTER_DIR_ROW.down * 3);
+    } else {
+      this.hunterSprite.setScale(HUNTER_SHEET_SCALE);
+      this.hunterSprite.setFrame(HUNTER_FRAME_IDLE);
+    }
     this.hunterShadow.setSize(14, 5);
     this.dogSprites = this.dogs.map((dog, i) => {
       const sheet = this.dogSheet(i);
@@ -650,11 +673,19 @@ export class FieldScene extends Phaser.Scene {
       } else {
         this.hunterStepAcc = 0;
       }
-      const row = HUNTER_DIR_ROW[this.hunterFacing];
-      const col = moved >= 0.01 ? HUNTER_WALK_SEQ[this.hunterStepFrame] : 0;
-      this.hunterSprite.setFrame(row * 3 + col);
-      // Side row is authored facing right; up/down never mirror.
-      this.hunterSprite.setFlipX(this.hunterFacing === 'side' && this.hunterSideLeft);
+      if (this.hunterDirectional) {
+        const row = HUNTER_DIR_ROW[this.hunterFacing];
+        const col = moved >= 0.01 ? HUNTER_WALK_SEQ[this.hunterStepFrame] : 0;
+        this.hunterSprite.setFrame(row * 3 + col);
+        // Side row is authored facing right; up/down never mirror.
+        this.hunterSprite.setFlipX(this.hunterFacing === 'side' && this.hunterSideLeft);
+      } else {
+        // Painted side-view sheet: distance-stepped walk frames, flip for left.
+        this.hunterSprite.setFrame(
+          moved >= 0.01 ? HUNTER_WALK_FRAMES[this.hunterStepFrame % HUNTER_WALK_FRAMES.length] : HUNTER_FRAME_IDLE,
+        );
+        this.hunterSprite.setFlipX(this.hunterSideLeft);
+      }
     }
     this.prevHunterPos = { ...this.hunt.hunterPos };
     this.dogs.forEach((dog, i) => {

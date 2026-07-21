@@ -185,17 +185,27 @@ figure must FILL the cell** — ≥24px of the hunter's 28px cell height
 `art/hunter-dirs.png` and `art/english-setter-dirs.png` — the scenes
 select rows by heading once these land.
 
-**Hunter status: hand-authored.** After two failed deliveries (unkeyed
-backing block; half-cell mushy figure), the shipping hunter is drawn in
-code — `scenes/hunterSheet.ts`, the pixelFont.ts craft applied to the
-player character. Division of labor, learned: tiny iconic characters →
-hand pixels; organic subjects (dogs, birds, plates, tiles) → the
-generation pipeline. A painted regen stays welcome but the bar moved:
-re-run the hunter prompt with "each figure fills the cell: 24–26px tall
-of the 28px height, feet on the bottom edge, fully transparent
-background, no backing tile," ship as `art/hunter-dirs-v2.png`,
-uncomment its preload in FieldScene — and it only stays if it beats the
-hand-authored sheet side by side in-engine.
+**Hunter status: painted side-view sheet ships; directional is DORMANT
+until worthy art exists.** The quality ladder, learned across three
+attempts: the original painted side-view sheet (hunter-sheet-alpha,
+idle + 3 walk frames) looks right and is the shipping hunter — at its
+playtested ×1.45, a standing exception to law #6 until v2. The
+directional delivery failed twice (unkeyed backing block; half-cell
+figure) and a code-drawn stand-in was rejected on sight (rect-block
+programmer art — hand-authoring in code has a lower ceiling for human
+characters than for glyphs). All directional wiring is built and waits
+behind the `hunter-dirs-v2` socket.
+
+**REGEN — hunter-dirs-v2** (the one open art task for the hunter):
+generate the 3×3 directional sheet as a strict edit-chain FROM
+`hunter-sheet-alpha.png` — attach that sheet as the image reference and
+demand the SAME character, palette, and rendering style, adding only
+the toward/away rows. Append to the prompt: "Each figure fills the
+cell: 24–26px tall of the 28px cell height, feet on the bottom edge.
+Fully transparent background — no backing tile or frame behind the
+figure." QA against a dark background. Ship as
+`art/hunter-dirs-v2.png`, uncomment its preload in FieldScene — it
+becomes the hunter AND enables directional facing in one step.
 
 ## Flush-view birds
 

@@ -64,11 +64,11 @@ describe('shipped public/art assets', () => {
 
   it('FieldScene wires hunter sheet, dog pose frames, and presentation', () => {
     const field = readFileSync(resolve(__dirname, '../src/scenes/FieldScene.ts'), 'utf8');
-    // The hunter is hand-authored (two failed AI deliveries on this asset):
-    // generated sheet always present, painted v2 socket wins when it lands.
-    expect(field).toMatch(/ensureHunterGenSheet/);
-    expect(field).toMatch(/HUNTER_GEN_SHEET/);
+    // Shipping hunter = the painted side-view sheet; directional facing is
+    // dormant until a painted sheet passes acceptance as hunter-dirs-v2.
+    expect(field).toMatch(/hunter-sheet-alpha\.png/);
     expect(field).toMatch(/hunter-dirs-v2/);
+    expect(field).toMatch(/ensureHunterGenSheet/); // last-resort fallback only
     expect(field).toMatch(/DOG_FRAME_POINT\s*=\s*4/);
     expect(field).toMatch(/DOG_FRAME_HEEL\s*=\s*5/);
     expect(field).toMatch(/DOG_FRAME_RETRIEVE\s*=\s*6/);
@@ -111,8 +111,9 @@ describe('shipped public/art assets', () => {
     expect(field).toMatch(/endHuntEarly/);
     expect(field).toMatch(/requestEndHunt/);
     expect(field).toMatch(/END_HUNT_BTN/);
-    // Integer-scale law: the ×1.45 hack is gone; stepping is distance-driven.
-    expect(field).not.toMatch(/HUNTER_SHEET_SCALE/);
+    // The painted hunter ships at its playtested scale (law exception,
+    // standing until v2); stepping stays distance-driven.
+    expect(field).toMatch(/HUNTER_SHEET_SCALE\s*=\s*1\.45/);
     expect(field).toMatch(/HUNTER_STEP_PX/);
   });
 });
