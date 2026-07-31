@@ -21,12 +21,14 @@ import puppeteer from 'puppeteer';
 
 const SHOTS = {
   // name: [x, z, yawDeg, pitchDeg, tod]
-  'dawn-field': [0, 40, 180, 2, 'dawn'],
+  'dawn-field': [0, 40, 180, 4, 'dawn'],
   'dawn-into-sun': [0, 40, 265, 4, 'dawn'],
   'dawn-ridge': [-60, -20, 150, -2, 'dawn'],
-  'noon-open': [20, 10, 200, 0, 'noon'],
+  'noon-open': [20, 10, 200, 4, 'noon'],
   'evening-field': [0, 40, 85, 3, 'evening'],
   'lastlight': [10, 20, 90, 5, 'lastlight'],
+  // Debug pose (not part of the standard set — request via --shots).
+  'debug-shadow': [26, 82, 180, -6, 'dawn'],
 };
 
 const args = process.argv.slice(2);
@@ -36,7 +38,10 @@ const get = (flag, dflt) => {
 };
 const baseUrl = get('--url', 'http://localhost:4517');
 const outDir = resolve(get('--out', 'docs/3d/shots'));
-const wanted = get('--shots', Object.keys(SHOTS).join(',')).split(',');
+const wanted = get(
+  '--shots',
+  Object.keys(SHOTS).filter((n) => !n.startsWith('debug-')).join(','),
+).split(',');
 const W = 960;
 const H = 540;
 
@@ -92,7 +97,8 @@ async function main() {
       await new Promise((r) => setTimeout(r, 400)); // settle a few frames
       const file = `${outDir}/${name}.png`;
       await page.screenshot({ path: file });
-      console.log(`shot ${name} -> ${file}`);
+      const info = await page.evaluate(() => window.__api3d.info());
+      console.log(`shot ${name} -> ${file} (${info.calls} calls, ${info.triangles} tris)`);
     }
     if (failed > 0) process.exit(1);
   } finally {

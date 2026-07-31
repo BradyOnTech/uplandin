@@ -41,7 +41,12 @@ A subsystem is done when the critic would hesitate in the blind A/B.
 - **Never import another subsystem's module.** Use `ctx.get(id)` at
   runtime (typed) or `ctx.events`. Exception: everyone may import
   `palette.ts`, `engine.ts` types, and `src/game/*` (the sim).
-- Deterministic randomness only: `ctx.rng`, never `Math.random()`.
+- Deterministic randomness only — and **per-subsystem streams**: seed a
+  local `mulberry32(FIXED_SEED)` inside your subsystem instead of drawing
+  from the shared `ctx.rng` for placement. (Round-2 lesson: one agent
+  changing its draw count re-rolled every other subsystem's placement and
+  broke framed compositions.) `ctx.rng` remains for genuinely shared
+  choices; never `Math.random()`.
 - **Allocate nothing per frame.** Preallocate vectors/colors; reuse.
 - `dispose()` releases every GPU resource you created.
 - The sim is read-only to presentation subsystems. Intent flows through

@@ -41,6 +41,8 @@ export const P = {
   skyDeep: 0x7d9cc0,
   ridgeDawn: 0x5d5266,
   ridgeDusk: 0x241019,
+  // Dusk far grass melts toward dark trodden ground, not a lit tan.
+  grassHazeDusk: 0x594740,
   // Haze roles: pale enough to survive linear-space + ACES without going
   // rust — fog and hemisphere colors must come from these, not the hot
   // accents (blush/emberSoft read warm in sRGB but saturate to mud).
@@ -52,13 +54,38 @@ export const P = {
   // golden-hour frames never collapse into a single-hue orange filter.
   grassHazeDawn: 0xc9b6a8,
   ridgeEvening: 0x7a4526,
-  ridgeNoon: 0x7b90a3,
+  // Teal-shifted noon ridge per fw-firewatch-e3-5's monolith staging.
+  ridgeNoon: 0x5e8894,
   // Shadow-core tints (multipliers on grass root colors, not albedos):
   // neutral at midday, cool violet at the golden hours.
   shadowNeutral: 0xf0eeea,
   shadowDawn: 0xd7cfdd,
   shadowEvening: 0xb7a4d0,
   shadowNight: 0x9a8fc2,
+  // Noon rescue roles: round 1's noon was a dead washed blue. Firewatch
+  // noon commits — saturated teal zenith, a warmed cream horizon.
+  noonZenith: 0x4f87a8,
+  noonMid: 0x8fb4c6,
+  noonHorizon: 0xe9dcc0,
+  // Flat cumulus roles: lit face / underside shade at full day. The other
+  // TODs tint clouds from existing sky roles (blush, mauve, glowGold...).
+  cloudWhite: 0xf7f3e8,
+  cloudShadeNoon: 0xbfc9d1,
+  // Round-3 hue-separation roles: soil and grass are DIFFERENT materials.
+  // Soil is brown and 15-20% darker than the old straw ramp; grass sits in
+  // a straw-gold band with olive/green undertones so the lower two thirds
+  // of frame is never a single tan ramp again.
+  soilBrown: 0x8a6c46,
+  soilDark: 0x6b5335,
+  grassGold: 0xcfae56,
+  grassOlive: 0x877b36,
+  forbGreen: 0x67752f,
+  // Midground canopy green — the second hue family the noon frame needs.
+  canopyGreen: 0x54622a,
+  // Evening anti-monochrome roles: blue-grey zenith, desaturated grass haze
+  // so warmth reads as light on surfaces instead of a tint over the lens.
+  eveningZenith: 0x4d5a7c,
+  grassHazeEvening: 0xb38a70,
 } as const;
 
 /** Time-of-day presets the whole world keys from. */
@@ -95,10 +122,17 @@ export interface TodSpec {
   grassHaze: number;
   /** Multiplier tint on grass shadow cores (cool at the golden hours). */
   grassShadow: number;
+  /** Ridge haze multiplier: >1 melts silhouettes higher into the sky (the
+   *  lastlight navy-wedge fix — dusk ridges dissolve, never intersect). */
+  ridgeHazeBoost: number;
   /** Mid stop of the sun bloom halo: core -> this -> ambient sky. */
   sunGlowMid: number;
   /** Tone-mapping exposure for this light — dawn/dusk lift, noon restraint. */
   exposure: number;
+  /** Flat cumulus tinting: sunlit face, underside shade, and coverage 0-1. */
+  cloudLit: number;
+  cloudShade: number;
+  cloudAmount: number;
 }
 
 export const TOD: Record<TimeOfDay, TodSpec> = {
@@ -106,9 +140,9 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     sunElevation: 6,
     sunAzimuth: 95,
     sunColor: P.sunLow,
-    // First light: the sun is a rim, not a floodlight — the ground hasn't
-    // warmed yet. Cool neutral ambient, restrained sun, only tips catch it.
-    sunIntensity: 2.0,
+    // First light: restrained but DIRECTIONAL — the sun must model the
+    // swells and throw long shadows or the disc reads painted-on.
+    sunIntensity: 3.0,
     skyTop: P.slate,
     skyMid: P.mauve,
     skyHorizon: P.hazeDawn,
@@ -121,13 +155,17 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     fogDensity: 0.0045,
     ambientSky: P.cream,
     ambientGround: P.warmGray,
-    ambientIntensity: 1.0,
+    ambientIntensity: 0.72,
     ridge: P.ridgeDawn,
     ridgeFar: P.mauve,
     grassHaze: P.grassHazeDawn,
     grassShadow: P.shadowDawn,
+    ridgeHazeBoost: 1.0,
     sunGlowMid: P.sunLow,
     exposure: 1.32,
+    cloudLit: P.blush,
+    cloudShade: P.mauve,
+    cloudAmount: 0.42,
   },
   morning: {
     sunElevation: 25,
@@ -146,50 +184,63 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     fogDensity: 0.003,
     ambientSky: P.skyPale,
     ambientGround: P.straw,
-    ambientIntensity: 0.9,
+    ambientIntensity: 0.8,
     ridge: P.slate,
     ridgeFar: P.mauve,
     grassHaze: P.skyMilk,
     grassShadow: P.shadowNeutral,
+    ridgeHazeBoost: 1.0,
     sunGlowMid: P.strawPale,
     exposure: 1.1,
+    cloudLit: P.cloudWhite,
+    cloudShade: P.skyPale,
+    cloudAmount: 0.7,
   },
   noon: {
     sunElevation: 52,
     sunAzimuth: 180,
     sunColor: P.sunCore,
     sunIntensity: 2.6,
-    skyTop: P.skyDeep,
-    skyMid: P.skyPale,
-    skyHorizon: P.skyMilk,
-    hotBand: P.skyMilk,
-    hotStrength: 0.15,
+    // Noon commits now: saturated teal zenith over a warmed cream horizon
+    // (the round-1 washed skyDeep/skyMilk lerp read as a dead overcast).
+    skyTop: P.noonZenith,
+    skyMid: P.noonMid,
+    skyHorizon: P.noonHorizon,
+    hotBand: P.strawPale,
+    hotStrength: 0.3,
     sunDisc: P.sunHigh,
     sunGlow: P.skyMilk,
     glowStrength: 0.2,
-    fogColor: P.skyMilk,
+    fogColor: P.noonHorizon,
     fogDensity: 0.0018,
     ambientSky: P.skyPale,
     ambientGround: P.straw,
-    ambientIntensity: 0.6,
-    // Lifted, desaturated slate: the near band must read as hazy mountains,
-    // not a sea — darkest nearest, still lighter than foreground shadows.
+    ambientIntensity: 0.55,
+    // Teal-shifted hazy ranges (fw-e3-5): darkest nearest, still lighter
+    // than foreground shadows.
     ridge: P.ridgeNoon,
     ridgeFar: P.skyPale,
-    grassHaze: P.cream,
+    // Far grass melts toward sunlit straw, not cream — round 2's cream
+    // haze bleached the whole midfield white.
+    grassHaze: P.straw,
     grassShadow: P.shadowNeutral,
+    ridgeHazeBoost: 1.0,
     sunGlowMid: P.skyMilk,
     exposure: 0.9,
+    cloudLit: P.cloudWhite,
+    cloudShade: P.cloudShadeNoon,
+    cloudAmount: 1.0,
   },
   evening: {
     sunElevation: 9,
     sunAzimuth: 260,
-    // emberSoft, restrained: full ember at 3.2 painted the entire field one
-    // saturated orange — light should be warm, not a filter.
+    // Warm KEY, not a warm filter: the sun is emberSoft but restrained, and
+    // everything it doesn't touch — shadow sides, zenith, fill — pulls
+    // violet/blue-grey so warmth reads as light striking surfaces.
     sunColor: P.emberSoft,
-    sunIntensity: 2.8,
-    skyTop: P.slate,
-    skyMid: P.blush,
+    sunIntensity: 3.0,
+    skyTop: P.eveningZenith,
+    skyMid: P.mauve,
     skyHorizon: P.hazeEvening,
     hotBand: P.glowGold,
     hotStrength: 1.0,
@@ -198,23 +249,30 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     glowStrength: 0.9,
     fogColor: P.hazeEvening,
     fogDensity: 0.0045,
-    ambientSky: P.hazeEvening,
-    ambientGround: P.straw,
-    ambientIntensity: 0.9,
+    // Cool violet fill from the sky vault, desaturated ground bounce.
+    ambientSky: P.mauve,
+    ambientGround: P.warmGray,
+    ambientIntensity: 1.15,
     // Warm near ridge stepping to desaturated blue-violet far — the cool
     // counterweight that keeps golden hour from reading as an orange filter.
     ridge: P.ridgeEvening,
     ridgeFar: P.ridgeDawn,
-    grassHaze: P.emberSoft,
+    grassHaze: P.grassHazeEvening,
     grassShadow: P.shadowEvening,
+    ridgeHazeBoost: 1.1,
     sunGlowMid: P.ember,
     exposure: 1.3,
+    cloudLit: P.glowGold,
+    cloudShade: P.mauve,
+    cloudAmount: 0.38,
   },
   lastlight: {
     sunElevation: 2,
     sunAzimuth: 275,
+    // Silhouette hour: the ground drops BELOW the horizon glow — dusk
+    // ground is darker than dusk sky — and only grass tips keep a warm rim.
     sunColor: P.russet,
-    sunIntensity: 2.0,
+    sunIntensity: 1.8,
     skyTop: P.nightNavy,
     skyMid: P.duskNavy,
     skyHorizon: P.oxblood,
@@ -227,14 +285,20 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     fogDensity: 0.006,
     ambientSky: P.slate,
     ambientGround: P.warmGray,
-    ambientIntensity: 0.7,
+    ambientIntensity: 0.65,
     // Near ridge sits at the fog color so the fogged terrain crest melts
     // into it instead of reading as a mismatched lit patch.
     ridge: P.oxblood,
     ridgeFar: P.duskNavy,
-    grassHaze: P.warmGray,
+    grassHaze: P.grassHazeDusk,
     grassShadow: P.shadowNight,
+    // Dusk ranges dissolve high into the afterglow — no flat navy wedge
+    // intersecting the sky.
+    ridgeHazeBoost: 1.8,
     sunGlowMid: P.russet,
     exposure: 1.15,
+    cloudLit: P.duskNavy,
+    cloudShade: P.nightNavy,
+    cloudAmount: 0.3,
   },
 };

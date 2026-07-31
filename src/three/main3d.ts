@@ -4,6 +4,7 @@ import { SkySystem } from './subsystems/sky';
 import { TerrainSystem } from './subsystems/terrain';
 import { PlayerSystem } from './subsystems/player';
 import { GrassSystem } from './subsystems/grass';
+import { FloraSystem } from './subsystems/flora';
 
 /*
  * Uplandin 3D entry. Boot order = subsystem registration order; the
@@ -21,6 +22,7 @@ engine.register(new SkySystem());
 engine.register(new TerrainSystem());
 engine.register(new PlayerSystem());
 engine.register(new GrassSystem());
+engine.register(new FloraSystem());
 
 declare global {
   interface Window {
