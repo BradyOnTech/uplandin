@@ -75,8 +75,8 @@ export const P = {
   // Soil is brown and 15-20% darker than the old straw ramp; grass sits in
   // a straw-gold band with olive/green undertones so the lower two thirds
   // of frame is never a single tan ramp again.
-  soilBrown: 0x8a6c46,
-  soilDark: 0x6b5335,
+  soilBrown: 0x775a38,
+  soilDark: 0x54402a,
   grassGold: 0xcfae56,
   grassOlive: 0x877b36,
   forbGreen: 0x67752f,
@@ -84,8 +84,16 @@ export const P = {
   canopyGreen: 0x54622a,
   // Evening anti-monochrome roles: blue-grey zenith, desaturated grass haze
   // so warmth reads as light on surfaces instead of a tint over the lens.
-  eveningZenith: 0x4d5a7c,
+  eveningZenith: 0x455478,
   grassHazeEvening: 0xb38a70,
+  // Round-4 light-truth roles: the soil's cool umber half (the sun drench
+  // lobe warms the other half — two hues, one field), the evening
+  // foreground's deep warm sienna (true black is reserved for lastlight),
+  // and the violet the lastlight foreground lifts toward so silhouettes
+  // stay readable instead of crushing to void.
+  soilCool: 0x5f4c3a,
+  siennaDusk: 0x9a5a36,
+  duskViolet: 0x655a8a,
 } as const;
 
 /** Time-of-day presets the whole world keys from. */
@@ -98,6 +106,13 @@ export interface TodSpec {
   sunAzimuth: number;
   sunColor: number;
   sunIntensity: number;
+  /**
+   * High-elevation fill that models the swells when the shadow-casting key
+   * rides low (the key follows the TRUE sun elevation so dawn/evening throw
+   * long shadows; the fill restores form modeling without casting).
+   */
+  fillColor: number;
+  fillIntensity: number;
   /** Three-stop sky gradient: horizon → mid → top (cooling upward). */
   skyTop: number;
   skyMid: number;
@@ -133,16 +148,44 @@ export interface TodSpec {
   cloudLit: number;
   cloudShade: number;
   cloudAmount: number;
+  /**
+   * Sun drench: distant ground and grass albedo grade toward this hue in a
+   * lobe around the sun azimuth, strongest near the horizon — Firewatch
+   * carries the sky's color down onto the field instead of stopping the
+   * light at the horizon line.
+   */
+  groundSunTint: number;
+  /** 0-1 strength of the drench lobe (0 kills it). */
+  groundSunK: number;
+  /** Small additive glow riding the drench so low light reads ON the ground. */
+  groundSunEmit: number;
+  /**
+   * Ceiling on grass albedo luminance. Effectively off (>=4) in daylight;
+   * at silhouette hour it clamps the pale seed heads and cut tips that
+   * otherwise sparkle inside the black foreground.
+   */
+  grassLumCap: number;
+  /** Painted flora two-tone: warm sun-facing facets / cooled shade facets. */
+  floraWarm: number;
+  floraCool: number;
 }
 
 export const TOD: Record<TimeOfDay, TodSpec> = {
   dawn: {
     sunElevation: 6,
-    sunAzimuth: 95,
+    // 52, not 95: dawn-field looks along az 0, and a shadow band running
+    // perpendicular to the view collapses to ~3 px at 80 m — the sun must
+    // sit AHEAD-right of that view so the long tree/fence shadows rake
+    // diagonally TOWARD the camera. At 52 the dawn-into-sun pose (view az
+    // ~85, ~96 deg horizontal FOV) still holds the disc in frame-left.
+    sunAzimuth: 52,
     sunColor: P.sunLow,
-    // First light: restrained but DIRECTIONAL — the sun must model the
-    // swells and throw long shadows or the disc reads painted-on.
-    sunIntensity: 3.0,
+    // First light: the key is HOT and everything else restrained, so the
+    // long shadows it throws at 6° actually read against the lit field —
+    // shadow contrast is key/(fill+ambient), not key intensity alone.
+    sunIntensity: 5.0,
+    fillColor: P.glowGold,
+    fillIntensity: 0.55,
     skyTop: P.slate,
     skyMid: P.mauve,
     skyHorizon: P.hazeDawn,
@@ -155,23 +198,31 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     fogDensity: 0.0045,
     ambientSky: P.cream,
     ambientGround: P.warmGray,
-    ambientIntensity: 0.72,
+    ambientIntensity: 0.42,
     ridge: P.ridgeDawn,
     ridgeFar: P.mauve,
     grassHaze: P.grassHazeDawn,
     grassShadow: P.shadowDawn,
     ridgeHazeBoost: 1.0,
     sunGlowMid: P.sunLow,
-    exposure: 1.32,
+    exposure: 1.42,
     cloudLit: P.blush,
     cloudShade: P.mauve,
     cloudAmount: 0.42,
+    groundSunTint: P.glowGold,
+    groundSunK: 0.55,
+    groundSunEmit: 0.2,
+    grassLumCap: 4,
+    floraWarm: 1.0,
+    floraCool: 0.5,
   },
   morning: {
     sunElevation: 25,
     sunAzimuth: 120,
     sunColor: P.sunCore,
     sunIntensity: 2.3,
+    fillColor: P.sunCore,
+    fillIntensity: 0,
     skyTop: P.skyBlue,
     skyMid: P.skyPale,
     skyHorizon: P.skyMilk,
@@ -195,12 +246,27 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     cloudLit: P.cloudWhite,
     cloudShade: P.skyPale,
     cloudAmount: 0.7,
+    groundSunTint: P.strawPale,
+    groundSunK: 0.15,
+    groundSunEmit: 0.04,
+    grassLumCap: 4,
+    floraWarm: 0.35,
+    floraCool: 0.3,
   },
   noon: {
-    sunElevation: 52,
-    sunAzimuth: 180,
+    // 38, not 52: an October noon sun at prairie latitude rides low — and
+    // it is the difference between a foreshortened shadow sliver hiding
+    // behind each trunk and a real directional shadow the frame can read.
+    sunElevation: 38,
+    // 115, not 180: the noon-open camera looks az ~20, and a sun parked at
+    // its back drops every shadow BEHIND its own tree (invisible). Coming
+    // from the frame's right, shadows rake screen-left ACROSS the view —
+    // Firewatch cross-lights its middays for exactly this reason.
+    sunAzimuth: 115,
     sunColor: P.sunCore,
     sunIntensity: 2.6,
+    fillColor: P.sunCore,
+    fillIntensity: 0,
     // Noon commits now: saturated teal zenith over a warmed cream horizon
     // (the round-1 washed skyDeep/skyMilk lerp read as a dead overcast).
     skyTop: P.noonZenith,
@@ -230,6 +296,12 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     cloudLit: P.cloudWhite,
     cloudShade: P.cloudShadeNoon,
     cloudAmount: 1.0,
+    groundSunTint: P.noonHorizon,
+    groundSunK: 0.08,
+    groundSunEmit: 0,
+    grassLumCap: 4,
+    floraWarm: 0.3,
+    floraCool: 0.45,
   },
   evening: {
     sunElevation: 9,
@@ -238,7 +310,9 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     // everything it doesn't touch — shadow sides, zenith, fill — pulls
     // violet/blue-grey so warmth reads as light striking surfaces.
     sunColor: P.emberSoft,
-    sunIntensity: 3.0,
+    sunIntensity: 4.2,
+    fillColor: P.emberSoft,
+    fillIntensity: 0.95,
     skyTop: P.eveningZenith,
     skyMid: P.mauve,
     skyHorizon: P.hazeEvening,
@@ -249,10 +323,12 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     glowStrength: 0.9,
     fogColor: P.hazeEvening,
     fogDensity: 0.0045,
-    // Cool violet fill from the sky vault, desaturated ground bounce.
+    // Cool violet fill from the sky vault; the ground bounce is a deep warm
+    // SIENNA (item 5: the evening foreground reads as late sun, not the
+    // near-black that belongs to lastlight — the value crush is delayed).
     ambientSky: P.mauve,
-    ambientGround: P.warmGray,
-    ambientIntensity: 1.15,
+    ambientGround: P.siennaDusk,
+    ambientIntensity: 1.0,
     // Warm near ridge stepping to desaturated blue-violet far — the cool
     // counterweight that keeps golden hour from reading as an orange filter.
     ridge: P.ridgeEvening,
@@ -265,6 +341,12 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     cloudLit: P.glowGold,
     cloudShade: P.mauve,
     cloudAmount: 0.38,
+    groundSunTint: P.sunLow,
+    groundSunK: 0.55,
+    groundSunEmit: 0.26,
+    grassLumCap: 4,
+    floraWarm: 0.95,
+    floraCool: 0.55,
   },
   lastlight: {
     sunElevation: 2,
@@ -273,6 +355,10 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     // ground is darker than dusk sky — and only grass tips keep a warm rim.
     sunColor: P.russet,
     sunIntensity: 1.8,
+    // Silhouette hour: barely any fill — the ground must drop BELOW the
+    // horizon glow, so nothing lifts it except the warm rim on tips.
+    fillColor: P.russet,
+    fillIntensity: 0.3,
     skyTop: P.nightNavy,
     skyMid: P.duskNavy,
     skyHorizon: P.oxblood,
@@ -283,9 +369,11 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     glowStrength: 0.9,
     fogColor: P.oxblood,
     fogDensity: 0.006,
-    ambientSky: P.slate,
+    // Violet sky vault (item 10): the crushed foreground lifts toward deep
+    // violet instead of void black, so silhouettes stay readable.
+    ambientSky: P.duskViolet,
     ambientGround: P.warmGray,
-    ambientIntensity: 0.65,
+    ambientIntensity: 1.7,
     // Near ridge sits at the fog color so the fogged terrain crest melts
     // into it instead of reading as a mismatched lit patch.
     ridge: P.oxblood,
@@ -300,5 +388,13 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     cloudLit: P.duskNavy,
     cloudShade: P.nightNavy,
     cloudAmount: 0.3,
+    groundSunTint: P.russet,
+    groundSunK: 0.28,
+    groundSunEmit: 0.08,
+    // The silhouette-hour clamp (item 4): no stubble facet may out-shine
+    // the afterglow — pale seed heads and cut tips stop sparkling.
+    grassLumCap: 0.34,
+    floraWarm: 0.15,
+    floraCool: 0.65,
   },
 };

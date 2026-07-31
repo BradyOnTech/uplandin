@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mulberry32 } from '../../game/math';
 import type { RNG } from '../../game/types';
 import type { Ctx, Subsystem } from '../engine';
-import { P } from '../palette';
+import { P, TOD, type TimeOfDay } from '../palette';
 import type { TerrainSystem } from './terrain';
 
 /*
@@ -134,7 +134,10 @@ function nearHeroAxis(x: number, z: number, r: number): boolean {
     const rx = x - ox;
     const rz = z - oz;
     const t = rx * dx + rz * dz;
-    if (t < 12 || t > 110) continue;
+    // The corridor starts just BEHIND the camera: a prop 6 m out fills a
+    // third of the frame as an unlit near-black mass (round-3's dawn-ridge
+    // left foreground) — the near field is part of the sightline.
+    if (t < -4 || t > 110) continue;
     const px = rx - t * dx;
     const pz = rz - t * dz;
     if (px * px + pz * pz < r * r) return true;
@@ -195,8 +198,19 @@ export class FloraSystem implements Subsystem {
 
   private terrain!: TerrainSystem;
   private mat?: THREE.MeshLambertMaterial;
+  private poolMat?: THREE.MeshBasicMaterial;
   private objs: THREE.Mesh[] = [];
   private geos: THREE.BufferGeometry[] = [];
+  // Contact-occlusion pool specs: [x, z, rx, rz, yaw] collected while props
+  // place, then baked into ONE terrain-conforming multiply-blend mesh.
+  private pools: Array<readonly [number, number, number, number, number]> = [];
+  // Painted two-tone uniforms (item 9/11): facets turn with the sun — warm
+  // toward it, cooled violet away — updated per TOD, shared by every prop.
+  private tone = {
+    uSunDirW: { value: new THREE.Vector3(0, 1, 0) },
+    uWarmK: { value: 0 },
+    uCoolK: { value: 0 },
+  };
   // Scratch (init-time reuse; no per-frame work exists in this system).
   private im = new THREE.Matrix4();
   private iq = new THREE.Quaternion();
@@ -209,6 +223,51 @@ export class FloraSystem implements Subsystem {
     this.terrain = ctx.get<TerrainSystem>('terrain');
     const high = ctx.quality === 'high';
     this.mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    // Two-tone sun answer: baked vertex colors are hue/value structure, but
+    // the LIGHT DIRECTION is painted here — sun-facing facets take a warm
+    // multiplier, shade facets cool toward violet, so canopies and the hero
+    // snag visibly turn with the same sun the sky shows. (Flat-shaded
+    // normal arrives in view space; viewMatrix^T rotates it back to world.)
+    const tone = this.tone;
+    this.mat.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, tone);
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nuniform vec3 uSunDirW;\nuniform float uWarmK;\nuniform float uCoolK;',
+        )
+        .replace(
+          '#include <normal_fragment_begin>',
+          '#include <normal_fragment_begin>\n' +
+            '\tvec3 gWN = normalize( ( vec4( normal, 0.0 ) * viewMatrix ).xyz );\n' +
+            '\tfloat gSF = dot( gWN, uSunDirW );\n' +
+            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 1.32, 1.12, 0.82 ), clamp( gSF, 0.0, 1.0 ) * uWarmK );\n' +
+            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 0.60, 0.64, 0.80 ), clamp( -gSF, 0.0, 1.0 ) * uCoolK );',
+        );
+    };
+    // Minimum sky-fill ambient: near-camera props must never render as an
+    // unlit black mass — a whisper of the TOD's sky ambient rides the
+    // emissive channel (scaled by ambient intensity, so lastlight's
+    // silhouettes stay silhouettes).
+    const applyTod = (tod: TimeOfDay): void => {
+      const spec = TOD[tod];
+      this.mat!.emissive.setHex(spec.ambientSky);
+      // Capped: lastlight drives a strong violet hemisphere to lift the
+      // GROUND, but props must stay silhouettes — the emissive whisper
+      // must not scale up with it.
+      this.mat!.emissiveIntensity = 0.11 * Math.min(spec.ambientIntensity, 0.85);
+      const el = THREE.MathUtils.degToRad(spec.sunElevation);
+      const az = THREE.MathUtils.degToRad(spec.sunAzimuth);
+      this.tone.uSunDirW.value.set(
+        Math.sin(az) * Math.cos(el),
+        Math.sin(el),
+        Math.cos(az) * Math.cos(el),
+      );
+      this.tone.uWarmK.value = spec.floraWarm;
+      this.tone.uCoolK.value = spec.floraCool;
+    };
+    applyTod(ctx.timeOfDay);
+    ctx.events.addEventListener('tod', ((e: CustomEvent) => applyTod(e.detail)) as EventListener);
 
     this.buildOaks(high, ctx);
     this.buildLandmark(ctx);
@@ -218,6 +277,7 @@ export class FloraSystem implements Subsystem {
     this.buildDeadfall(high, ctx);
     this.buildFence(ctx);
     this.buildRocks(high, ctx);
+    this.buildContactPools(ctx);
   }
 
   dispose(ctx: Ctx): void {
@@ -227,9 +287,12 @@ export class FloraSystem implements Subsystem {
     }
     for (const g of this.geos) g.dispose();
     this.mat?.dispose();
+    this.poolMat?.dispose();
     this.objs.length = 0;
     this.geos.length = 0;
+    this.pools.length = 0;
     this.mat = undefined;
+    this.poolMat = undefined;
   }
 
   /* ---------------------------------------------------------------- */
@@ -270,7 +333,9 @@ export class FloraSystem implements Subsystem {
       out.copy(base).lerp(olive, rng() * 0.25);
       if (rng() < 0.1) out.lerp(russet, 0.22); // quiet autumn flecks, not neon
       out.lerp(top, Math.max(ny, 0) * (0.45 + rng() * 0.25));
-      if (ny < -0.15) out.multiplyScalar(0.78);
+      // Committed underside shade (item 3): canopies hold a dark belly the
+      // way noon-open's clouds already shade — that IS the tree's shadow.
+      if (ny < -0.15) out.multiplyScalar(0.6);
       out.multiplyScalar(1.0 + rng() * 0.18);
     };
 
@@ -335,13 +400,13 @@ export class FloraSystem implements Subsystem {
     const a = new Asm();
     // Muted wine-olive brush lifted into the scene's shadow palette (warm
     // dark brown + sky bounce) — never 3 stops darker than the field.
-    const base = new THREE.Color(P.oxblood).lerp(new THREE.Color(P.olive), 0.55).lerp(new THREE.Color(P.warmGray), 0.18);
+    const base = new THREE.Color(P.oxblood).lerp(new THREE.Color(P.olive), 0.55).lerp(new THREE.Color(P.warmGray), 0.3);
     const top = base.clone().lerp(new THREE.Color(P.khaki), 0.5).multiplyScalar(1.2);
     const dark = new THREE.Color(P.oliveDeep);
     const face = (out: THREE.Color, _cy: number, ny: number): void => {
       out.copy(base).lerp(dark, rng() * 0.2);
       out.lerp(top, Math.max(ny, 0) * (0.4 + rng() * 0.3));
-      if (ny < -0.2) out.multiplyScalar(0.82);
+      if (ny < -0.2) out.multiplyScalar(0.68);
       out.multiplyScalar(1.0 + rng() * 0.22);
     };
     const n = 4 + Math.floor(rng() * 2);
@@ -410,22 +475,58 @@ export class FloraSystem implements Subsystem {
     return a.build();
   }
 
-  /** Deadfall log: tapered trunk lying down, silvered top, stub branches. */
+  /**
+   * Deadfall log, round-4 finish pass (item 6: the old one read as an
+   * untextured gray plank in a hero foreground): warm weathered brown wood
+   * with silvering confined to the top, dark bark ridge strips running the
+   * length, pale cut-end discs, a slight elliptical squash (settled into
+   * the ground), and stub branches. Facet variance carries the "texture".
+   */
   private buildLog(seed: number): THREE.BufferGeometry {
     const rng = mulberry32(seed);
     const a = new Asm();
-    const wood = new THREE.Color(P.warmGray).lerp(new THREE.Color(P.charcoal), 0.22);
-    const silver = new THREE.Color(P.stoneGray);
+    // Weathered deadfall brown: warm gray pulled toward dark russet heart-
+    // wood — never the flat fence-gray that read as a placeholder plank.
+    const wood = new THREE.Color(P.warmGray).lerp(new THREE.Color(P.russetDeep), 0.32);
+    const silver = new THREE.Color(P.stoneGray).lerp(new THREE.Color(P.warmGray), 0.35);
+    const bark = new THREE.Color(P.charcoal).lerp(new THREE.Color(P.russetDeep), 0.35);
+    const cut = new THREE.Color(P.khaki).lerp(new THREE.Color(P.stoneGray), 0.4);
     const face = (out: THREE.Color, _cy: number, ny: number): void => {
-      out.copy(wood).lerp(silver, Math.max(ny, 0) * (0.3 + rng() * 0.2));
-      if (ny < -0.3) out.multiplyScalar(0.65);
+      out.copy(wood).lerp(silver, Math.max(ny, 0) * (0.45 + rng() * 0.25));
+      if (ny < -0.3) out.multiplyScalar(0.55);
       out.multiplyScalar(0.88 + rng() * 0.24);
     };
+    const barkFace = (out: THREE.Color): void => {
+      out.copy(bark).multiplyScalar(0.8 + rng() * 0.3);
+    };
+    const cutFace = (out: THREE.Color): void => {
+      out.copy(cut).multiplyScalar(0.9 + rng() * 0.2);
+    };
     const len = 4.5 + rng() * 2.5;
-    const trunk = new THREE.CylinderGeometry(0.16, 0.28, len, 7, 1);
+    const r0 = 0.17;
+    const r1 = 0.29;
+    const trunk = new THREE.CylinderGeometry(r0, r1, len, 8, 1, true);
     trunk.rotateZ(Math.PI / 2); // lie along +x
-    a.add(trunk, xform(0, 0.22, 0, 0, 0, 0, 1, 1, 1), face);
+    a.add(trunk, xform(0, 0.24, 0, 0.35 + rng() * 0.5, 0, 0, 1, 0.82, 1), face);
     trunk.dispose();
+    // Pale cut/broken end discs — sawn-wood value break at both ends.
+    for (const [ex, er] of [[len / 2, r0], [-len / 2, r1]] as const) {
+      const disc = new THREE.CircleGeometry(er * 0.94, 8);
+      disc.rotateY(ex > 0 ? Math.PI / 2 : -Math.PI / 2);
+      a.add(disc, xform(ex, 0.24, 0, 0, 0, 0, 1, 0.82, 1), cutFace);
+      disc.dispose();
+    }
+    // Bark ridge strips: thin darker runs along the length at varied rolls
+    // — the facet break-up that keeps the barrel from reading as a plank.
+    for (let i = 0; i < 4; i++) {
+      const roll = (i / 4) * Math.PI * 2 + rng() * 0.8;
+      const rr = (r0 + r1) * 0.5 * 0.94;
+      const sl = len * (0.35 + rng() * 0.4);
+      const strip = new THREE.BoxGeometry(sl, 0.045, 0.1 + rng() * 0.06);
+      strip.translate((rng() - 0.5) * len * 0.35, Math.sin(roll) * rr, Math.cos(roll) * rr * 0.82);
+      a.add(strip, xform(0, 0.24, 0, 0, 0, 0, 1, 1, 1), barkFace);
+      strip.dispose();
+    }
     for (let i = 0; i < 2; i++) {
       const bl = 0.7 + rng() * 0.9;
       const br = new THREE.CylinderGeometry(0.04, 0.09, bl, 4, 1);
@@ -440,42 +541,105 @@ export class FloraSystem implements Subsystem {
   }
 
   /**
-   * Dead snag, round-3 rebuild: warm weathered-brown bark with sky-bounce
-   * silvering up the trunk (a silhouette 3+ stops darker than the scene
-   * reads as a compositing error in soft light), a massive trunk, and a
-   * FEW committed asymmetric branch gestures clustered on one side —
-   * shape authorship, not a bottle brush.
+   * Dead snag, FORMS rebuild — "a tree that died", not a plank:
+   *  - swept tapered trunk: three stacked segments, each leaning further
+   *    into the prevailing wind, so the silhouette curves;
+   *  - splintered break at the crown (two shards, not a clean cylinder cap);
+   *  - root flare buttresses grounding the base;
+   *  - 2-3 committed branch GESTURES with elbows: a long low arm that kicks
+   *    up at the wrist, a counter arm higher, a stub near the top.
+   * Weathered grey-brown driftwood with silvering toward the crown.
    */
   private buildSnag(seed: number, h: number, girth: number, nBranch: number): THREE.BufferGeometry {
     const rng = mulberry32(seed);
     const a = new Asm();
-    // Weathered grey-brown driftwood — never terra-cotta, never charcoal,
-    // never birch-white: the scene's shadow palette plus sky bounce.
     const bark = new THREE.Color(P.warmGray).lerp(new THREE.Color(P.stoneGray), 0.35);
-    const silver = new THREE.Color(P.stoneGray);
+    const silver = new THREE.Color(P.stoneGray).lerp(new THREE.Color(P.cream), 0.2);
     const face = (out: THREE.Color, cy: number): void => {
-      out.copy(bark).lerp(silver, Math.max(cy / h, 0) * (0.3 + 0.25 * rng()));
-      out.multiplyScalar(0.78 + rng() * 0.22);
+      out.copy(bark).lerp(silver, THREE.MathUtils.clamp(cy / h, 0, 1) * (0.35 + 0.2 * rng()));
+      out.multiplyScalar(0.82 + rng() * 0.2);
     };
-    const trunk = new THREE.CylinderGeometry(0.1 * girth, 0.45 * girth, h, 6, 1);
-    a.add(trunk, xform(0, h / 2, 0, 0.015, rng() * Math.PI, 0.045, 1, 1, 1), face);
-    trunk.dispose();
-    // Branch gestures share one favored side of the trunk (windthrow bias):
-    // LONG reaching arms starting mid-trunk, each thinner than the last —
-    // the silhouette must read at 25 m as three committed strokes.
-    // Yaws fan across ~200° so the gestures read from every hero azimuth:
-    // two arms shoulder one side, the third counters — asymmetric balance.
-    const arc = rng() * Math.PI * 2;
-    const yawFan = [0, 0.85, 2.9];
-    for (let b = 0; b < nBranch; b++) {
-      const bl = (3.0 + rng() * 2.4) * Math.sqrt(girth) * (1 - 0.16 * b);
-      const br = new THREE.CylinderGeometry(0.05, 0.15 * girth * (1 - 0.2 * b), bl, 4, 1);
-      br.translate(0, bl / 2, 0);
-      br.rotateZ(0.7 + rng() * 0.5);
-      br.rotateY(arc + yawFan[b % 3] + (rng() - 0.5) * 0.5);
-      br.translate(0, h * (0.38 + (0.48 * b) / Math.max(nBranch - 1, 1)), 0);
-      a.add(br, null, face);
-      br.dispose();
+    // Swept trunk: segment bases chain; lean accumulates in the +x plane
+    // (the mesh's rotation.y stages which way the sweep faces on-site).
+    const radii = [0.42 * girth, 0.27 * girth, 0.15 * girth, 0.06 * girth];
+    const segH = [0.38 * h, 0.33 * h, 0.29 * h];
+    const joints: Array<[number, number, number, number]> = []; // x,y,z,r at seg base
+    let bx = 0;
+    let by = 0;
+    let tilt = 0.04 + rng() * 0.03;
+    for (let i = 0; i < 3; i++) {
+      joints.push([bx, by, 0, radii[i]]);
+      const st = new THREE.CylinderGeometry(radii[i + 1], radii[i], segH[i], 7, 1);
+      st.translate(0, segH[i] / 2, 0);
+      st.rotateZ(-tilt); // -z rotation leans the +y axis toward +x
+      st.translate(bx, by, 0);
+      a.add(st, null, face);
+      st.dispose();
+      bx += Math.sin(tilt) * segH[i];
+      by += Math.cos(tilt) * segH[i];
+      tilt += 0.05 + rng() * 0.06;
+    }
+    // Splintered crown: two shards past the break, one long one short —
+    // tight to the trunk line (wide splay reads as a teepee of planks).
+    for (const [len, dTilt, yaw] of [
+      [h * 0.11, 0.05, 0],
+      [h * 0.055, -0.2, 1.3],
+    ] as const) {
+      const sh = new THREE.CylinderGeometry(0.02, radii[3] * 1.2, len, 4, 1);
+      sh.translate(0, len / 2, 0);
+      sh.rotateZ(-(tilt + dTilt));
+      sh.rotateY(yaw);
+      sh.translate(bx, by, 0);
+      a.add(sh, null, face);
+      sh.dispose();
+    }
+    // Root flare: three short buttresses hugging the trunk base — grounding,
+    // not a splay of dark spikes.
+    for (let i = 0; i < 3; i++) {
+      const ang = (i / 3) * Math.PI * 2 + rng() * 0.9;
+      const bl = (0.55 + rng() * 0.25) * girth;
+      const bt = new THREE.CylinderGeometry(0.05, 0.2 * girth, bl, 4, 1);
+      bt.translate(0, bl / 2, 0);
+      bt.rotateZ(0.6 + rng() * 0.18);
+      bt.rotateY(ang);
+      bt.translate(0, 0.1, 0);
+      a.add(bt, null, face);
+      bt.dispose();
+    }
+    // Branch gestures with ELBOWS. Yaw 0 reaches along the trunk's sweep;
+    // the counter arm opposes it — asymmetric balance that reads at 30 m.
+    const gestures: ReadonlyArray<readonly [number, number, number, number, number, number]> = [
+      // jointIdx, yaw, pitch1 (from vertical), lenA/h, elbow kick, lenB/h
+      [1, 0.5, 1.3, 0.3, -0.62, 0.22],
+      [2, -2.5, 0.95, 0.2, -0.5, 0.14],
+      [2, 1.9, 0.62, 0.11, -0.32, 0.07],
+    ];
+    for (let g = 0; g < Math.min(nBranch, gestures.length); g++) {
+      const [ji, yaw0, p1, lA, kick, lB] = gestures[g];
+      const yaw = yaw0 + (rng() - 0.5) * 0.3;
+      const [jx, jy, jz, jr] = joints[ji];
+      const lenA = lA * h;
+      const lenB = lB * h;
+      const r0 = Math.min(jr * 0.55, 0.16 * girth);
+      const armA = new THREE.CylinderGeometry(r0 * 0.5, r0, lenA, 5, 1);
+      armA.translate(0, lenA / 2, 0);
+      armA.rotateZ(-p1);
+      armA.rotateY(yaw);
+      armA.translate(jx, jy, jz);
+      a.add(armA, null, face);
+      armA.dispose();
+      // Elbow position, then the forearm kicks back toward vertical.
+      const ex = jx + Math.cos(yaw) * Math.sin(p1) * lenA;
+      const ey = jy + Math.cos(p1) * lenA;
+      const ez = jz - Math.sin(yaw) * Math.sin(p1) * lenA;
+      const p2 = p1 + kick;
+      const armB = new THREE.CylinderGeometry(0.025, r0 * 0.55, lenB, 4, 1);
+      armB.translate(0, lenB / 2, 0);
+      armB.rotateZ(-p2);
+      armB.rotateY(yaw + (rng() - 0.5) * 0.4);
+      armB.translate(ex, ey, ez);
+      a.add(armB, null, face);
+      armB.dispose();
     }
     return a.build();
   }
@@ -484,21 +648,23 @@ export class FloraSystem implements Subsystem {
   private buildBaseCluster(seed: number): THREE.BufferGeometry {
     const rng = mulberry32(seed);
     const a = new Asm();
-    const stone = new THREE.Color(P.stoneGray).lerp(new THREE.Color(P.warmGray), 0.45);
-    const brush = new THREE.Color(P.oxblood).lerp(new THREE.Color(P.olive), 0.55);
+    // Lifted a half stop: the grounding rocks must READ as rocks at dawn,
+    // not as more unlit mass under the anchor.
+    const stone = new THREE.Color(P.stoneGray).lerp(new THREE.Color(P.warmGray), 0.3);
+    const brush = new THREE.Color(P.oxblood).lerp(new THREE.Color(P.olive), 0.55).lerp(new THREE.Color(P.warmGray), 0.45);
     const brushTop = brush.clone().lerp(new THREE.Color(P.khaki), 0.5).multiplyScalar(1.15);
     const stoneFace = (out: THREE.Color, _cy: number, ny: number): void => {
-      out.copy(stone).multiplyScalar(0.82 + rng() * 0.25 + Math.max(ny, 0) * 0.2);
+      out.copy(stone).multiplyScalar(0.88 + rng() * 0.25 + Math.max(ny, 0) * 0.22);
     };
     const brushFace = (out: THREE.Color, _cy: number, ny: number): void => {
       out.copy(brush).lerp(brushTop, Math.max(ny, 0) * (0.4 + rng() * 0.3));
       out.multiplyScalar(0.95 + rng() * 0.2);
     };
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       const ang = rng() * Math.PI * 2;
-      const d = 0.9 + rng() * 1.6;
+      const d = 0.9 + rng() * 1.7;
       const rock = new THREE.DodecahedronGeometry(1, 0);
-      const sc = 0.5 + rng() * 0.6;
+      const sc = 0.6 + rng() * 0.7;
       a.add(
         rock,
         xform(
@@ -536,7 +702,11 @@ export class FloraSystem implements Subsystem {
     return this.terrain.heightAt(x, z);
   }
 
-  /** Instance a geometry over a placement list. Returns the mesh. */
+  /**
+   * Instance a geometry over a placement list. Returns the mesh. poolR > 0
+   * records a contact-occlusion pool per instance (radius scales with the
+   * instance; poolAspect < 1 stretches it along the instance yaw for logs).
+   */
   private instance(
     ctx: Ctx,
     geo: THREE.BufferGeometry,
@@ -544,6 +714,8 @@ export class FloraSystem implements Subsystem {
     sink: number,
     castShadow: boolean,
     rng: RNG,
+    poolR = 0,
+    poolAspect = 1,
   ): THREE.InstancedMesh {
     const mesh = new THREE.InstancedMesh(geo, this.mat!, spots.length);
     for (let i = 0; i < spots.length; i++) {
@@ -555,6 +727,7 @@ export class FloraSystem implements Subsystem {
       mesh.setMatrixAt(i, this.im.compose(this.iv, this.iq, this.is));
       this.ic.setScalar(0.92 + rng() * 0.16);
       mesh.setColorAt(i, this.ic);
+      if (poolR > 0) this.pools.push([x, z, poolR * sc, poolR * sc * poolAspect, yaw] as const);
     }
     mesh.castShadow = castShadow;
     mesh.receiveShadow = true;
@@ -562,6 +735,74 @@ export class FloraSystem implements Subsystem {
     ctx.scene.add(mesh);
     this.objs.push(mesh);
     return mesh;
+  }
+
+  /**
+   * Contact-occlusion pools (item 8, the cheapest fix in the set): one
+   * merged fan mesh, every vertex conformed to heightAt, multiply-blended
+   * onto whatever ground pixels lie under it — a soft dark pool beneath
+   * every canopy, post, rock, snag and log, so props sit IN the field at
+   * every hour, including shadowless noon. Center multiplies ~0.56 (a
+   * slightly cool occlusion), feathering to 1.0 (no-op) at the rim.
+   */
+  private buildContactPools(ctx: Ctx): void {
+    const SEG = 10;
+    const pos: number[] = [];
+    const col: number[] = [];
+    const dark: readonly [number, number, number] = [0.5, 0.49, 0.54];
+    const mid: readonly [number, number, number] = [0.7, 0.69, 0.74];
+    for (const [x, z, rx, rz, yaw] of this.pools) {
+      const cy = this.groundY(x, z) + 0.05;
+      const cosY = Math.cos(yaw);
+      const sinY = Math.sin(yaw);
+      const ring = (a: number, f: number): [number, number, number] => {
+        const lx = Math.cos(a) * rx * f;
+        const lz = Math.sin(a) * rz * f;
+        const wx = x + lx * cosY + lz * sinY;
+        const wz = z - lx * sinY + lz * cosY;
+        return [wx, Math.min(this.groundY(wx, wz), cy - 0.02) + 0.06, wz];
+      };
+      for (let i = 0; i < SEG; i++) {
+        const a0 = (i / SEG) * Math.PI * 2;
+        const a1 = ((i + 1) / SEG) * Math.PI * 2;
+        const i0 = ring(a0, 0.45);
+        const i1 = ring(a1, 0.45);
+        const o0 = ring(a0, 1);
+        const o1 = ring(a1, 1);
+        // Inner disc (flat dark core).
+        pos.push(x, cy, z, ...i1, ...i0);
+        col.push(...dark, ...mid, ...mid);
+        // Feather ring: mid -> no-op white rim.
+        pos.push(...i0, ...i1, ...o1, ...i0, ...o1, ...o0);
+        col.push(...mid, ...mid, 1, 1, 1, ...mid, 1, 1, 1, 1, 1, 1);
+      }
+    }
+    if (pos.length === 0) return;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(col), 3));
+    geo.computeBoundingSphere();
+    this.geos.push(geo);
+    this.poolMat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      blending: THREE.MultiplyBlending,
+      // Required by WebGLState for MultiplyBlending (with alpha=1 the blend
+      // reduces to pure src*dst); without it three logs an error and leaves
+      // the previous blend state — the pools rendered as opaque pale fans.
+      premultipliedAlpha: true,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      toneMapped: false,
+      fog: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+    const mesh = new THREE.Mesh(geo, this.poolMat);
+    mesh.renderOrder = 2; // after the order-0 opaque ground/props/grass
+    mesh.frustumCulled = false; // spans the map; the one mesh is cheap
+    ctx.scene.add(mesh);
+    this.objs.push(mesh);
   }
 
   private buildOaks(high: boolean, ctx: Ctx): void {
@@ -575,7 +816,7 @@ export class FloraSystem implements Subsystem {
         if (!high && keep === 0) continue;
         spots.push([x, z, sc, rng() * Math.PI * 2] as const);
       }
-      if (spots.length) this.instance(ctx, geos[v], spots, 0.35, true, rng);
+      if (spots.length) this.instance(ctx, geos[v], spots, 0.35, true, rng, 3.1);
     }
   }
 
@@ -591,34 +832,37 @@ export class FloraSystem implements Subsystem {
     mesh.receiveShadow = true;
     ctx.scene.add(mesh);
     this.objs.push(mesh);
+    this.pools.push([26, 96, 7.0, 7.0, 0] as const);
   }
 
-  /** Grand snag on the evening third + the modest dawn-field snag. */
+  /** The hero snag (dawn-ridge focal anchor) + the modest dawn-field snag. */
   private buildSnags(ctx: Ctx): void {
-    const specs: ReadonlyArray<readonly [number, number, number, number, number, number]> = [
-      // x, z, seed, height, girth, branches
-      // Windmill-scale anchor: pulled off the dawn-ridge sightline center
-      // onto its left third (and still the evening/lastlight right third),
-      // triple trunk mass, three committed gestures.
-      [-81, -2, 41, 12.0, 2.4, 3],
-      [-26, 118, 42, 7.6, 1.1, 3], // dawn-field counterweight right of center
+    const specs: ReadonlyArray<readonly [number, number, number, number, number, number, number]> = [
+      // x, z, seed, height, girth, branches, stage yaw (rad)
+      // HERO: parked exactly on dawn-ridge's right-third line at ~30 m
+      // (camera -60,-20 looking az -30; also evening/lastlight right third).
+      // Stage yaw faces the trunk sweep across both key sightlines.
+      [-84.5, 0.5, 41, 12.0, 2.4, 3, -1.22],
+      [-26, 118, 42, 7.6, 1.1, 3, 0.6], // dawn-field counterweight right of center
     ];
-    for (const [x, z, seed, h, girth, nb] of specs) {
+    for (const [x, z, seed, h, girth, nb, ry] of specs) {
       const geo = this.buildSnag(seed, h, girth, nb);
       this.geos.push(geo);
       const mesh = new THREE.Mesh(geo, this.mat!);
       mesh.position.set(x, this.groundY(x, z) - 0.2, z);
-      mesh.rotation.y = seed * 1.7;
+      mesh.rotation.y = ry;
       mesh.castShadow = true;
+      mesh.receiveShadow = true;
       ctx.scene.add(mesh);
       this.objs.push(mesh);
+      this.pools.push([x, z, 1.1 * girth, 1.1 * girth, 0] as const);
     }
-    // Ground the grand snag: boulders and low brush at its feet — an
+    // Ground the hero snag: boulders and low brush at its feet — an
     // anchor stands IN the field, not plunked on it like a flagpole.
     const base = this.buildBaseCluster(4243);
     this.geos.push(base);
-    const bx = -81;
-    const bz = -2;
+    const bx = -84.5;
+    const bz = 0.5;
     const baseMesh = new THREE.Mesh(base, this.mat!);
     baseMesh.position.set(bx, this.groundY(bx, bz) - 0.15, bz);
     baseMesh.castShadow = true;
@@ -639,7 +883,7 @@ export class FloraSystem implements Subsystem {
         0.8 + rng() * 0.7, rng() * Math.PI * 2,
       ] as const);
     }
-    this.instance(ctx, geo, spots, 0.25, high, rng);
+    this.instance(ctx, geo, spots, 0.25, high, rng, 1.8);
   }
 
   /**
@@ -664,13 +908,18 @@ export class FloraSystem implements Subsystem {
       if (wet.some((s) => Math.hypot(s[0] - x, s[1] - z) < 30)) continue;
       wet.push([x, z]);
     }
+    // Feathered stand edges: dense hearts, runty fringe stands trailing off
+    // radially — never a square clot of equal-sized props.
     const spots: Array<readonly [number, number, number, number]> = [];
     for (const [wx, wz] of wet) {
-      const n = 3 + Math.floor(rng() * 2);
+      const n = high ? 6 : 3;
       for (let i = 0; i < n; i++) {
+        const a = rng() * Math.PI * 2;
+        const d = Math.sqrt(rng()) * 8;
+        const fringe = d / 8;
         spots.push([
-          wx + (rng() - 0.5) * 7, wz + (rng() - 0.5) * 7,
-          0.85 + rng() * 0.4, rng() * Math.PI * 2,
+          wx + Math.sin(a) * d, wz + Math.cos(a) * d,
+          (1.0 - 0.4 * fringe) * (0.85 + rng() * 0.3), rng() * Math.PI * 2,
         ] as const);
       }
     }
@@ -688,10 +937,12 @@ export class FloraSystem implements Subsystem {
       const d = 24 + rng() * 66;
       const x = Math.sin(a) * d;
       const z = Math.cos(a) * d;
-      if (nearHeroAxis(x, z, 5)) continue;
+      // 14 m, not 5: a log inside ~10 m of a hero camera fills the bottom
+      // third of frame and reads prop-shop (round-3 noon-open's plank).
+      if (nearHeroAxis(x, z, 14)) continue;
       spots.push([x, z, 0.8 + rng() * 0.5, rng() * Math.PI * 2] as const);
     }
-    this.instance(ctx, geo, spots, 0.06, high, rng);
+    this.instance(ctx, geo, spots, 0.06, high, rng, 2.3, 0.33);
   }
 
   /** Fence lines: leaning posts + two sagging wire ribbons per span. */
@@ -727,6 +978,7 @@ export class FloraSystem implements Subsystem {
           xform(x, y + 0.68, z, (rng() - 0.5) * 0.14, rng() * Math.PI, (rng() - 0.5) * 0.14, 1, 0.92 + rng() * 0.16, 1),
           postFace,
         );
+        this.pools.push([x, z, 0.42, 0.42, 0] as const);
         if (i > 0) {
           for (const wh of [1.06, 0.68]) {
             // Three segments per span with a parabolic sag hint.
@@ -777,15 +1029,18 @@ export class FloraSystem implements Subsystem {
       const d = 22 + rng() * 85;
       const x = Math.sin(ang) * d;
       const z = Math.cos(ang) * d;
-      const sc = 0.35 + rng() * rng() * 1.5;
-      if (nearHeroAxis(x, z, sc > 0.9 ? 9 : 5)) continue;
+      // Capped: a 1.8-scale boulder squatting shadow-side at a frame edge
+      // reads as an unlit mass at dawn (round-3 dawn-ridge left edge).
+      const sc = 0.35 + rng() * rng() * 0.95;
+      if (nearHeroAxis(x, z, sc > 0.8 ? 12 : 5)) continue;
       this.ie.set(rng() * Math.PI, rng() * Math.PI, rng() * Math.PI);
       this.iq.setFromEuler(this.ie);
       this.is.set(sc * (0.8 + rng() * 0.5), sc * (0.5 + rng() * 0.4), sc);
       this.iv.set(x, this.groundY(x, z) + sc * 0.15, z);
       mesh.setMatrixAt(placed, this.im.compose(this.iv, this.iq, this.is));
-      this.ic.copy(stone).lerp(warm, rng() * 0.6).multiplyScalar(0.85 + rng() * 0.3);
+      this.ic.copy(stone).lerp(warm, rng() * 0.6).multiplyScalar(0.95 + rng() * 0.3);
       mesh.setColorAt(placed, this.ic);
+      this.pools.push([x, z, 1.25 * sc, 1.25 * sc, 0] as const);
       placed++;
     }
     mesh.count = placed;

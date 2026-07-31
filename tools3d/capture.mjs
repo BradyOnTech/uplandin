@@ -27,8 +27,9 @@ const SHOTS = {
   'noon-open': [20, 10, 200, 4, 'noon'],
   'evening-field': [0, 40, 85, 3, 'evening'],
   'lastlight': [10, 20, 90, 5, 'lastlight'],
-  // Debug pose (not part of the standard set — request via --shots).
+  // Debug poses (not part of the standard set — request via --shots).
   'debug-shadow': [26, 82, 180, -6, 'dawn'],
+  'debug-noon-shadow': [36, 62, 180, -10, 'noon'],
 };
 
 const args = process.argv.slice(2);
