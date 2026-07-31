@@ -121,6 +121,24 @@ const SHOTS = {
       { tod: 'dawn', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 4.2, camAz: az, pitch: -13 },
     ]),
   ),
+  // THE PLAYER'S HANDS (gun round, append-only) — Firewatch's E3 framing:
+  // tools in hand, world beyond. Both shots reuse the existing sim staging
+  // (work/point predicates) for the CAMERA, then the appended gun hook
+  // below stages the viewmodel state and prints measured mount/recoil/info
+  // numbers before the screenshot.
+  //   gameplay-walk:  dawn, CARRY — diagonal ready across the lower frame,
+  //                   the dog working cover ahead at honest follow range.
+  //   gameplay-mount: dawn, MOUNT at the locked point — cheek-weld rib
+  //                   view, barrels centered low toward the dog's mark,
+  //                   dog and cover ahead past the muzzles.
+  //   (iteration 2: walk stages the OPEN-ground cast — cover work buried
+  //   the dog to a white speck; mount stands a half-radian off the
+  //   dog-bird line so the dog reads BESIDE the rib, not behind it.)
+  //   (iteration 3: mount walks in to gun range and stands further off
+  //   the line — at 7 m dead astern the dog was a white sliver behind
+  //   the rib.)
+  'gameplay-walk': { tod: 'dawn', sim: 'open', base: [0, 40, 180, 4], maxTicks: 12000, dist: 7.5, spin: 0.55, pitch: -3, gun: 'carry', gunYawBias: 8 },
+  'gameplay-mount': { tod: 'dawn', sim: 'point', base: [0, 40, 180, 4], maxTicks: 30000, dist: 5, spin: -0.65, pitch: -4, gun: 'mount', gunYawBias: 12 },
 };
 
 const args = process.argv.slice(2);
@@ -544,6 +562,55 @@ async function main() {
           console.log(
             `  lock: still=${simInfo.lock.still} planted=${simInfo.lock.planted} ` +
             `stance paw gaps [${simInfo.lock.gaps.join(', ')}] m`,
+          );
+        }
+      }
+      // GUN STAGING HOOK (gun round, append-only): shots that declare
+      // spec.gun stage the viewmodel AFTER the sim/camera staging above.
+      // Every claim ships as a number: mount timing and recoil excursion
+      // are measured by stepping the SAME integrator update() runs, and
+      // the viewmodel's draw-call/triangle cost is a renderer.info DELTA
+      // (same frame rendered with the gun hidden, then shown).
+      if (spec.gun) {
+        const gunInfo = await page.evaluate((mode, yawBias) => {
+          if (!window.__gunAudit) return { ok: false, why: 'no __gunAudit handle' };
+          // A mounted gun sits dead center — exactly where the generic
+          // staging parks the dog. gunYawBias swings the view a few
+          // degrees so the dog stands BESIDE the rib, not behind it.
+          if (yawBias) {
+            const cp = window.__gunAudit.camPose();
+            window.__api3d.setPose(cp.x, cp.z, cp.yawDeg + yawBias, cp.pitchDeg);
+          }
+          const mount = window.__gunAudit.measureMount();
+          const recoil = window.__gunAudit.kickProbe();
+          window.__gunAudit.setState('carry');
+          window.__gunAudit.setVisible(false);
+          window.__api3d.renderOnce();
+          const without = window.__api3d.info();
+          window.__gunAudit.setVisible(true);
+          window.__api3d.renderOnce();
+          const withGun = window.__api3d.info();
+          window.__gunAudit.setState(mode);
+          window.__api3d.renderOnce();
+          const state = window.__gunAudit.state();
+          return {
+            ok: true,
+            mount,
+            recoil,
+            state,
+            delta: { calls: withGun.calls - without.calls, tris: withGun.triangles - without.triangles },
+          };
+        }, spec.gun, spec.gunYawBias ?? 0);
+        if (!gunInfo.ok) {
+          console.error(`  gun: ${name} failed — ${gunInfo.why}`);
+          failed++;
+        } else {
+          console.log(
+            `  gun: state=${spec.gun} mountT=${gunInfo.state.mountT.toFixed(2)} ` +
+            `mount ${gunInfo.mount.ms.toFixed(1)}ms to 99%, ` +
+            `recoil peak ${(gunInfo.recoil.peakZ * 100).toFixed(1)}cm / ${gunInfo.recoil.peakPitchDeg.toFixed(1)}deg, ` +
+            `recovered ${gunInfo.recoil.recoverMs.toFixed(0)}ms, ` +
+            `cost +${gunInfo.delta.calls} calls / +${gunInfo.delta.tris} tris`,
           );
         }
       }

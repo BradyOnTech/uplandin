@@ -8,6 +8,7 @@ import { GrassSystem } from './subsystems/grass';
 import { FloraSystem } from './subsystems/flora';
 import { DogSystem } from './subsystems/dog';
 import { BirdsSystem } from './subsystems/birds';
+import { GunSystem } from './subsystems/gun';
 
 /*
  * Uplandin 3D entry. Boot order = subsystem registration order; the
@@ -30,6 +31,7 @@ engine.register(new GrassSystem());
 engine.register(new FloraSystem());
 engine.register(new DogSystem());
 engine.register(new BirdsSystem());
+engine.register(new GunSystem());
 
 declare global {
   interface Window {

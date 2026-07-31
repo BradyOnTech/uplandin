@@ -22,12 +22,27 @@ import type { TerrainSystem } from './terrain';
  *    two-segment legs. White coat off the palette's pale role with dark
  *    head patches and a sparse belton ticking suggestion. ~0.55 m at the
  *    shoulder, ~490 tris, 15 draw calls.
- *  - LIGHTING: the coat takes the WORLD's light (round-7 mandate — the
- *    fullbright emissive cheat made the dog ignore every TOD): Lambert
- *    under the scene sun/hemisphere plus the flora facet recipe — warm
- *    sun-side lift, shade facets multiplied toward the TOD shadow tint
- *    (mauve-gray at dawn, violet at lastlight), sun-colored rim at the
- *    golden hours. Albedo is strawPale — never #fff.
+ *  - LIGHTING (round 11 rebuild — the audit-gated coat): Lambert under
+ *    the scene sun/hemisphere, plus four committed terms measured by
+ *    tools3d/audit-dog-light.mjs against hard thresholds:
+ *      (1) headroom normalization — uAlbedoK scales the near-white coat
+ *          so a full-sun facet lands on the responsive part of the ACES
+ *          curve instead of the flat shoulder that erased three rounds
+ *          of modeling;
+ *      (2) a POSITIONAL core shadow along the flat sun axis across the
+ *          dog's own body (the torso is a hex prism — broadside views
+ *          are ONE facet, and only a positional term can split a flat
+ *          facet the way the dog's sun-ward half really shadows its lee
+ *          half at a 6-degree sun), a narrow committed terminator band
+ *          relieved under backlight;
+ *      (3) warm sun paint on grazing sun-facing facets and on the
+ *          sun-ward end (forward scatter), swelling when the camera
+ *          faces the sun — the 270-melt fix;
+ *      (4) the shade mass re-lit by the hour's shadow tint (mauve-gray
+ *          at dawn, violet at lastlight — the roles the grass cores
+ *          breathe), graded by sky exposure, plus a hot backlit rim.
+ *    Albedo roles come from strawPale — never #fff, and nothing renders
+ *    effectively fullbright (audit clip gate <= 2%).
  *  - GROUNDING: dog meshes never render into the shadow map (the grazing-
  *    sun splat read as a burn mark); one soft contact ellipse (multiply-
  *    blended, terrain-draped per vertex, body-parented, leaned/stretched
@@ -308,13 +323,20 @@ export class DogSystem implements Subsystem {
   /** Sun-answer uniforms shared by the one coat material. */
   private tone = {
     uSunDirW: { value: new THREE.Vector3(0, 1, 0) },
+    uAlbedoK: { value: 1 },
     uWarmK: { value: 0 },
     uCoolK: { value: 0 },
     uCoolTint: { value: new THREE.Color(P.shadowNeutral) },
     uRimColor: { value: new THREE.Color(0) },
     uRimK: { value: 0 },
+    uSunPaintK: { value: 0 },
+    uShadeFillK: { value: 0 },
+    /** Dog body center, world — anchors the positional core-shadow axis. */
+    uDogCtrW: { value: new THREE.Vector3() },
   };
   private creamScratch = new THREE.Color(P.cream);
+  /** Scratch for the headroom normalization's luminance reads. */
+  private lumScratch = new THREE.Color();
 
   // Contact-shadow ellipse (the grounding — dog meshes never cast).
   private shadowGrp = new THREE.Group();
@@ -375,43 +397,146 @@ export class DogSystem implements Subsystem {
     const tone = this.tone;
     this.mat.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, tone);
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vGWposR11;')
+        .replace(
+          '#include <begin_vertex>',
+          '#include <begin_vertex>\n\tvGWposR11 = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;',
+        );
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
-          '#include <common>\nuniform vec3 uSunDirW;\nuniform float uWarmK;\nuniform float uCoolK;\n' +
-            'uniform vec3 uCoolTint;\nuniform vec3 uRimColor;\nuniform float uRimK;',
+          '#include <common>\nuniform vec3 uSunDirW;\nuniform float uAlbedoK;\nuniform float uWarmK;\nuniform float uCoolK;\n' +
+            'uniform vec3 uCoolTint;\nuniform vec3 uRimColor;\nuniform float uRimK;\n' +
+            'uniform float uSunPaintK;\nuniform float uShadeFillK;\nuniform vec3 uDogCtrW;\nvarying vec3 vGWposR11;',
         )
         .replace(
           '#include <normal_fragment_begin>',
           '#include <normal_fragment_begin>\n' +
             '\tvec3 gWN = normalize( ( vec4( normal, 0.0 ) * viewMatrix ).xyz );\n' +
             '\tvec3 gVW = normalize( ( vec4( normalize( vViewPosition ), 0.0 ) * viewMatrix ).xyz );\n' +
+            // ROUND 11 — HEADROOM NORMALIZATION, the real cause of three
+            // rounds of paper-white: a near-white albedo under the dawn
+            // key (4.0) and exposure (1.42) parked the ENTIRE coat on the
+            // flat shoulder of the ACES curve, where a 2:1 lit-vs-shade
+            // radiance difference tone-maps to a 0.95 display ratio — the
+            // audit measured the ring at ratios 0.93-1.09 (angle 135 was
+            // INVERTED). No tint multiplier can survive that compression.
+            // uAlbedoK (set per TOD below) scales the coat's albedo so a
+            // full-sun facet lands ~1.3 pre-tonemap — the responsive part
+            // of the curve — and the N-dot-L modeling that was always
+            // there becomes VISIBLE. The dog still reads white because the
+            // lit coat sits far above everything else in frame.
+            '\tdiffuseColor.rgb *= uAlbedoK;\n' +
             // Committed plateau split at the terminator (the flora round-6
             // lesson): one lit face, one shade face, a few degrees of
-            // anti-aliased transition between them.
+            // anti-aliased transition between them. The warm term is a HUE
+            // shift (gain ~1.0), not a lift — gain was re-spending the
+            // headroom the normalization just bought.
             '\tfloat gSplit = smoothstep( -0.15, 0.3, dot( gWN, uSunDirW ) );\n' +
-            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 1.26, 1.1, 0.88 ), gSplit * uWarmK );\n' +
+            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 1.18, 1.02, 0.80 ), gSplit * uWarmK );\n' +
+            // ROUND 11 — POSITIONAL CORE SHADOW. The audit's column
+            // profiles found the geometric truth behind three flat-white
+            // rounds: the torso is a hex prism, so a broadside ring view
+            // is ONE flat facet — and every normal-based term is constant
+            // across a flat facet. But at a 6-degree sun the dog's
+            // sun-ward half really does shadow its lee half, so gPosSun —
+            // the fragment's position along the FLAT sun axis across the
+            // dog's own body (uDogCtrW, +-0.45 m) — carries the split
+            // that facet normals cannot: the lee END of the dog commits
+            // to shade even mid-facet.
+            '\tvec3 gSFlat = normalize( vec3( uSunDirW.x, 0.0, uSunDirW.z ) );\n' +
+            '\tfloat gPosSun = clamp( dot( vGWposR11 - uDogCtrW, gSFlat ) / 0.45, -1.0, 1.0 );\n' +
+            // Midpoint shifted sun-ward (0.45): when the body lies across
+            // the sun axis the whole dog sits near gPosSun 0, and the
+            // core shadow must already be biting there or broadside views
+            // stay one flat tone (audit iteration 3: ratio 0.98 at 90).
+            // A NARROW committed transition (0.42 -> -0.02): the earlier
+            // 0.84-body-length ramp left a wide mid-tone strip that
+            // diluted both centroid halves at every angle. The band is
+            // still anti-aliased, but the coat now breaks into two
+            // committed tones — the house terminator style. Backlight
+            // relieves it (translucency): the 270 wrap needs the sun-ward
+            // slice alive when the camera faces the sun.
+            '\tfloat gPosShade = smoothstep( 0.42, -0.02, gPosSun );\n' +
+            '\tfloat gBackPre = clamp( dot( -gVW, uSunDirW ), 0.0, 1.0 );\n' +
+            '\tgPosShade *= 1.0 - 0.5 * gBackPre * gBackPre;\n' +
             // MOMENT ROUND, item 5 — the shade mass is MODELED, not one
-            // flat multiply (from rear/backlit angles every facet fell on
-            // the same side of the terminator and the coat collapsed to
-            // unlit flat white): shade facets grade by SKY EXPOSURE — an
+            // flat multiply: shade facets grade by SKY EXPOSURE — an
             // up-facing rump catches the dawn vault, flanks fall off,
-            // undersides sink — and facets pointing squarely AWAY from
-            // the sun take one further step down, so a rear view reads
-            // rump-light-over-belly-dark instead of paper.
+            // undersides sink. Round 11: the shade weight is the UNION of
+            // the facet term and the positional core shadow, and the sink
+            // deepens (tint * 0.75) — the shade-fill light below re-lights
+            // the mass in the hour's shadow tint, so committing the
+            // multiply reads as one painted shade tone, never a hole.
             '\tfloat gSky = clamp( gWN.y * 0.5 + 0.5, 0.0, 1.0 );\n' +
-            '\tvec3 gShadeTint = uCoolTint * mix( 0.74, 1.08, gSky );\n' +
-            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), gShadeTint, ( 1.0 - gSplit ) * uCoolK );\n' +
+            '\tfloat gShadeW = max( 1.0 - gSplit, gPosShade );\n' +
+            // gSky ceiling capped at 0.8 (round 11): the up-facing topline
+            // and raised flag ran a pale glowing stripe across BOTH halves
+            // of every ring view — skylight on the back stays a whisper.
+            '\tvec3 gShadeTint = uCoolTint * mix( 0.66, 0.8, gSky ) * 0.75;\n' +
+            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), gShadeTint, gShadeW * uCoolK );\n' +
+            // The core shadow takes one further VALUE step the tint mix
+            // cannot reach (ACES compresses display ratios ~0.6 power —
+            // a 0.5 radiance step lands as 0.87 on screen): direct sun
+            // falling on the lee half is sunk like the real self-shadow
+            // it stands in.
+            '\tdiffuseColor.rgb *= 1.0 - gPosShade * uCoolK * 0.6;\n' +
+            // Away-from-sun step deepened 0.22 -> 0.36 (round 11): on the
+            // backlit ring angles both centroid halves are shade — the
+            // sun-ward half must still win via the facets that lean toward
+            // the sun, so the squarely-away facets take a real step down.
             '\tfloat gAway = clamp( ( -dot( gWN, uSunDirW ) - 0.1 ) * 1.1, 0.0, 1.0 );\n' +
-            '\tdiffuseColor.rgb *= 1.0 - gAway * uCoolK * 0.22;',
+            '\tdiffuseColor.rgb *= 1.0 - gAway * uCoolK * 0.36;',
         )
         .replace(
           '#include <emissivemap_fragment>',
           '#include <emissivemap_fragment>\n' +
+            '\tfloat gBack = gBackPre;\n' +
+            '\tfloat gSF = dot( gWN, uSunDirW );\n' +
+            // ROUND 11 — SUN PAINT: an analytic warm band on the GRAZING
+            // sun-facing facets (the terminator side). Lambert's own N-dot-L
+            // gives these facets almost nothing at a 6-degree sun, which is
+            // why the sun-ward half of every broadside ring view measured
+            // as dark as the shade half (audit: 135 ratio 1.14, INVERTED).
+            // The band fades out on full-sun facets (Lambert already owns
+            // them, and adding there would re-clip) and swells ~2x when the
+            // camera looks toward the sun — the translucent glow of backlit
+            // coat hair, and the fix for the 270 melt.
+            // The terminator band yields to the positional core shadow —
+            // ungated it painted the lee half of the end-on rump (ring
+            // 135) and propped up the exact half the split must sink.
+            '\tfloat gPaint = smoothstep( -0.02, 0.25, gSF ) * ( 1.0 - smoothstep( 0.35, 0.75, gSF ) ) * ( 1.0 - gPosShade * 0.85 );\n' +
+            // Positional wrap: the sun-ward END of the body carries the
+            // warm paint even where the facet normal looks away (forward
+            // scatter through backlit coat hair) — the term that makes the
+            // 270 view read "lit animal" instead of grey ghost. Swells
+            // with backlight, whispers on side views.
+            // Gated by the POSITIONAL shade only — iteration 4 gated on
+            // gShadeW, and at backlit angles every facet is normal-shade,
+            // which nuked the wrap exactly where the 270 melt needed it.
+            '\tfloat gPosLit = smoothstep( -0.2, 0.55, gPosSun ) * ( 1.0 - gPosShade );\n' +
+            '\tfloat gPaintW = min( gPaint + gPosLit * ( 0.75 + 1.0 * gBack * gBack ), 1.3 );\n' +
+            '\ttotalEmissiveRadiance += uRimColor * ( gPaintW * uSunPaintK * ( 1.0 + 1.8 * gBack * gBack ) );\n' +
+            // ROUND 11 — SHADE FILL: the shade mass is LIT by the hour's
+            // shadow tint (the same role the grass cores breathe), graded
+            // by sky exposure so the rump catches the vault and the belly
+            // sinks. Additive light on shade facets only — the multiply
+            // above sinks Lambert's leftovers, this re-lights them mauve:
+            // a committed two-tone body, never an unlit black hole, and
+            // never a lift on the lit side (ratio numerator untouched).
+            '\ttotalEmissiveRadiance += uCoolTint * ( gShadeW * uShadeFillK * mix( 0.5, 1.1, gSky ) );\n' +
             // Low-sun rim: the hot edge on glancing sun-facing facets that
             // keeps the white coat alive when the camera faces the sunrise.
-            '\tfloat gRim = pow( 1.0 - abs( dot( gWN, gVW ) ), 2.5 ) * clamp( dot( gWN, uSunDirW ) * 0.7 + 0.3, 0.0, 1.0 );\n' +
-            '\ttotalEmissiveRadiance += uRimColor * ( gRim * uRimK );',
+            // Round 11: the rim answers BACKLIGHT — when the camera looks
+            // toward the sun (the 135/180/225 vanish angles) the edge
+            // burns ~2x hotter, and side views drop to a whisper; the
+            // sun-facing gate tightened (0.3 floor -> 0.15) so the rim
+            // stays on the sun-ward silhouette instead of wrapping the
+            // whole outline symmetrically. Capped so no rim pixel can
+            // push the coat back into clipping.
+            '\tfloat gRim = pow( 1.0 - abs( dot( gWN, gVW ) ), 2.5 ) * clamp( gSF * 0.95 + 0.05, 0.0, 1.0 );\n' +
+            '\ttotalEmissiveRadiance += uRimColor * min( gRim * uRimK * ( 0.5 + 1.4 * gBack * gBack ), 0.8 );',
         );
     };
     const applyTod = (tod: TimeOfDay): void => {
@@ -420,15 +545,35 @@ export class DogSystem implements Subsystem {
       const lowSun = THREE.MathUtils.clamp(1 - (spec.sunElevation - 2) / 13, 0, 1);
       // Sky-fill whisper: enough that the coat never renders slate-blue
       // under the vault (iteration-2 measure: an ambientSky fill turned
-      // the noon dog pewter), never enough to go fullbright again. The
-      // fill leans on the hour's HAZE role — pale and warm by palette
-      // construction — at roughly half round-6's fullbright dose.
-      // Moment round, item 5: the fill dropped a step (0.11 -> 0.075) —
-      // it was the last flattener: a uniform additive wash that filled
-      // every shade facet the modeling above tries to separate, and on
-      // the sun side it tipped the warm-lifted coat into clipping.
+      // the noon dog pewter), never enough to go fullbright again.
+      // Round 11: 0.075 -> 0.045 — with the headroom normalization below
+      // the lit coat's radiance dropped ~2.5x, so the old flat additive
+      // dose became HALF the shade side's light and pinned both centroid
+      // halves of every backlit ring view to the same value (the audit's
+      // ratio-1.0 melt at 270). The whisper only guards against slate.
       this.mat!.emissive.setHex(spec.fogColor).lerp(this.creamScratch, 0.4);
-      this.mat!.emissiveIntensity = silh ? 0.04 : 0.075;
+      this.mat!.emissiveIntensity = silh ? 0.04 : 0.035;
+      // ROUND 11 — HEADROOM NORMALIZATION (see the shader block): scale
+      // the coat's albedo so a full-sun facet lands ~1.3 pre-tonemap
+      // under THIS hour's total light (key + fill + hemisphere, times the
+      // hour's exposure), i.e. on the responsive part of the ACES curve
+      // (~0.90 display) instead of the flat shoulder that erased three
+      // rounds of modeling. Pure scalar on palette roles; the silhouette
+      // hours clamp to 1 (their light budget is already dim).
+      const lum = (hex: number): number => {
+        this.lumScratch.setHex(hex);
+        return 0.2126 * this.lumScratch.r + 0.7152 * this.lumScratch.g + 0.0722 * this.lumScratch.b;
+      };
+      const coatLum = lum(P.strawPale) * 1.05;
+      const lightLum =
+        spec.sunIntensity * lum(spec.sunColor) +
+        spec.fillIntensity * lum(spec.fillColor) +
+        spec.ambientIntensity * 0.5 * (lum(spec.ambientSky) + lum(spec.ambientGround));
+      this.tone.uAlbedoK.value = THREE.MathUtils.clamp(
+        1.2 / (coatLum * spec.exposure * lightLum),
+        0.2,
+        1.0,
+      );
       const el = THREE.MathUtils.degToRad(spec.sunElevation);
       const az = THREE.MathUtils.degToRad(spec.sunAzimuth);
       this.tone.uSunDirW.value.set(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
@@ -439,10 +584,15 @@ export class DogSystem implements Subsystem {
       // multipliers sized for grass roots; on the bright coat they need
       // real darkening to read as the mauve-gray shade mass at all.
       this.tone.uCoolTint.value.setHex(spec.grassShadow).multiplyScalar(0.78);
-      // Moment round, item 5: shade strength stepped up (0.3+0.35 ->
-      // 0.34+0.42 on lowSun) — the ring audit showed the dawn shade mass
-      // barely biting; the coat must sit IN the scene from every angle.
-      this.tone.uCoolK.value = silh ? 0.6 : 0.34 + lowSun * 0.42;
+      // Round 11: the shade multiply COMMITS (0.34+0.42 -> 0.42+0.4 on
+      // lowSun) — Lambert's leftover on shade facets is sunk hard and the
+      // shade-fill emissive below re-lights the mass with the hour's
+      // shadow tint: two committed tones, not one compressed ramp.
+      this.tone.uCoolK.value = silh ? 0.6 : 0.58 + lowSun * 0.45;
+      // Round 11 sun paint / shade fill doses (see shader): both lean on
+      // lowSun — at noon the high sun models the coat by itself.
+      this.tone.uSunPaintK.value = silh ? 0.05 : 0.2 + lowSun * 0.55;
+      this.tone.uShadeFillK.value = silh ? 0.02 : 0.05 + lowSun * 0.07;
       // Rim rides the hour's sun color — HOT at the golden hours: the
       // backlit money shot lives on this one warm edge.
       this.tone.uRimColor.value.setHex(spec.sunColor);
@@ -541,6 +691,24 @@ export class DogSystem implements Subsystem {
         setFov: (deg: number) => {
           ctx.camera.fov = deg;
           ctx.camera.updateProjectionMatrix();
+        },
+        // Round 11 light audit: hide ONLY the dog's body meshes (the
+        // contact shadow, grass parting and everything else stay put) so
+        // tools3d/audit-dog-light.mjs can isolate coat pixels by diffing
+        // a with-dog and a without-dog render of the same frame.
+        setBodyVisible: (v: boolean) => {
+          this.root.visible = v;
+        },
+        // World -> screen-pixel projection through the live camera: the
+        // light audit derives its sun-side/shade-side split axis from
+        // MEASURED projections instead of a hand-derived camera-space
+        // convention (which round 11 got wrong twice).
+        project: (wx: number, wy: number, wz: number) => {
+          this.pawV.set(wx, wy, wz).project(ctx.camera);
+          return {
+            x: (this.pawV.x * 0.5 + 0.5) * ctx.renderer.domElement.clientWidth,
+            y: (0.5 - this.pawV.y * 0.5) * ctx.renderer.domElement.clientHeight,
+          };
         },
         heightAt: (wx: number, wz: number) => this.terrain.heightAt(wx, wz),
         slopeAt: (wx: number, wz: number) => {
@@ -751,10 +919,13 @@ export class DogSystem implements Subsystem {
     // hip. A short tapered ROOT segment blends out of the rump and takes
     // ~45% of the carriage angle; the FLAG (bone + notched feathering)
     // hangs off its end and takes the rest — a raised point-flag now
-    // CURVES out of the topline instead of kinking. Round 9, item 3: the
-    // flag quads run thicker and the tip facets whiten toward sunHigh so
-    // the flag survives the gameplay-range read over the cover line.
-    const flagTip = new THREE.Color(P.sunHigh);
+    // CURVES out of the topline instead of kinking. Round 9, item 3 gave
+    // the tip a full sunHigh whitening so the flag survived the gameplay
+    // read; round 11 TAMES it (lerp 0.35) — the near-white albedo was a
+    // fullbright element that ignored every shade term and propped up the
+    // lee half of the ring views. The flag now earns its range read from
+    // the sun paint and rim, which it catches proudly above the cover.
+    const flagTip = new THREE.Color(P.strawPale).multiplyScalar(1.05);
     {
       const b = new PartBuilder();
       // Root: rump-thick at the hip, tapering to the flag joint.
@@ -1138,6 +1309,9 @@ export class DogSystem implements Subsystem {
     }
     sink = THREE.MathUtils.clamp(sink, -0.07, 0.14);
     this.root.position.y = gy - sink;
+    // Core-shadow anchor: the torso's world center (round 11 — the
+    // positional sun-axis split in the coat shader measures from here).
+    this.tone.uDogCtrW.value.set(x, gy - sink + 0.43, z);
 
     // TAIL DROOP CLAMP (round 9): the relaxed tail never spears into a
     // rising grade behind the dog — measure the flag tip against the
