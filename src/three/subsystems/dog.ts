@@ -193,7 +193,7 @@ function loftZ(
 // A 0.55 m setter, nose +z. Pivots are where groups attach; geometry is
 // built in each group's local space with the origin AT the joint.
 
-const FORE_X = 0.062;
+const FORE_X = 0.068;
 const FORE_Y = 0.415;
 const FORE_Z = 0.155;
 const HIND_X = 0.066;
@@ -210,12 +210,15 @@ const TAIL_PIVOT: V3 = [0, 0.465, -0.33];
  * deepest ring on the dog and the prosternum stays broad so a front or
  * three-quarter view reads chest mass, not a spindle.
  */
+// Round 9: the beam widened again — heart girth and prosternum pushed
+// toward a third of the torso's side-view depth so the front and
+// three-quarter reads carry real chest mass, not a keel.
 const TORSO_SECTS: SectZ[] = [
   { x: 0, y: 0.44, z: -0.33, hw: 0.055, hh: 0.075 },
   { x: 0, y: 0.43, z: -0.24, hw: 0.084, hh: 0.11 },
-  { x: 0, y: 0.445, z: -0.06, hw: 0.074, hh: 0.1 },
-  { x: 0, y: 0.42, z: 0.13, hw: 0.108, hh: 0.148 },
-  { x: 0, y: 0.415, z: 0.27, hw: 0.088, hh: 0.13 },
+  { x: 0, y: 0.445, z: -0.06, hw: 0.076, hh: 0.1 },
+  { x: 0, y: 0.42, z: 0.13, hw: 0.116, hh: 0.148 },
+  { x: 0, y: 0.415, z: 0.27, hw: 0.1, hh: 0.13 },
 ];
 
 /** Gait cycle tuning. Stride = meters of ground per full leg cycle. */
@@ -288,7 +291,12 @@ export class DogSystem implements Subsystem {
   private head = new THREE.Group();
   private earL = new THREE.Group();
   private earR = new THREE.Group();
-  private tail = new THREE.Group();
+  /** Tail root (hip joint) and flag (mid-tail joint) — the carriage angle
+   *  splits across both so the flag CURVES out of the topline (round 9). */
+  private tailRoot = new THREE.Group();
+  private tailFlag = new THREE.Group();
+  /** Flag-tip marker — the droop clamp measures THIS against terrain. */
+  private tailTip = new THREE.Object3D();
   /** FL, FR, HL, HR — upper pivots at shoulder/hip, lower at knee/hock. */
   private legU: THREE.Group[] = [];
   private legL: THREE.Group[] = [];
@@ -310,7 +318,7 @@ export class DogSystem implements Subsystem {
 
   // Contact-shadow ellipse (the grounding — dog meshes never cast).
   private shadowGrp = new THREE.Group();
-  private shadowGeo?: THREE.CircleGeometry;
+  private shadowGeo?: THREE.RingGeometry;
   private shadowMat?: THREE.ShaderMaterial;
   /** Unit-disc rest positions (xz) — the per-frame conform reads these. */
   private shadowBase?: Float32Array;
@@ -320,6 +328,8 @@ export class DogSystem implements Subsystem {
   /** Center shift away from the sun / elongation along it (per TOD). */
   private shadowLean = 0.06;
   private shadowStretch = 0.2;
+  /** Cross-axis half-width — tightens as the along-axis stretches. */
+  private shadowWidth = 0.42;
 
   // Smoothed pose state.
   private yaw = 0;
@@ -425,11 +435,29 @@ export class DogSystem implements Subsystem {
       // sliver survived — the blob read a body-length off the dog).
       this.shadowDirX = -Math.sin(az);
       this.shadowDirZ = -Math.cos(az);
-      this.shadowLean = 0.05 + 0.22 * lowSun;
-      this.shadowStretch = 0.15 + 1.0 * lowSun;
+      // ROUND 9, item 2 — LOW-SUN SHADOW STRETCH: the ellipse scales along
+      // the sun axis by ~1/tan(sunElevation), clamped, so a 6-degree dawn
+      // sun rakes a LONG shadow off the dog while noon stays a tight blob.
+      // (shear factor s means length multiplier 1+s along the axis.)
+      const stretchMult = THREE.MathUtils.clamp(
+        1 / Math.tan(Math.max(el, 0.03)),
+        1.1,
+        4.2,
+      );
+      this.shadowStretch = stretchMult - 1;
+      // Center walks away from the sun just far enough that the DARK CORE
+      // (inner 30% of the falloff) starts under the paws and runs away
+      // from the sun — anchored at the feet, not a detached streak.
+      this.shadowLean = 0.05 + Math.max(0, 0.62 * stretchMult * 0.3 - 0.25);
+      // Long shadows are narrow beams: the cross-axis tightens as the
+      // along-axis stretches, so dawn reads as a raking shadow, not a
+      // wider smear of the noon blob.
+      this.shadowWidth = 0.42 / (1 + 0.3 * this.shadowStretch);
       const su = this.shadowMat!.uniforms;
       (su.uTint.value as THREE.Color).setHex(spec.grassShadow).multiplyScalar(0.45);
-      su.uK.value = silh ? 0.14 : 0.46 + lowSun * 0.1;
+      // Low sun leans harder on the contact shadow: it is the only shadow
+      // the dog throws, and the long dawn rake must survive dark stubble.
+      su.uK.value = silh ? 0.14 : 0.46 + lowSun * 0.32;
     };
 
     // Contact ellipse build: a unit disc, multiply-blended radial falloff —
@@ -440,7 +468,11 @@ export class DogSystem implements Subsystem {
     // dog in every pose, TOD and heading, instead of a flat free disc that
     // z-buries under any terrain bulge. Falloff radius rides the uvs (the
     // positions now carry the drape, not the unit disc).
-    this.shadowGeo = new THREE.CircleGeometry(1, 28);
+    // Ring-subdivided disc (round 9): a center+rim fan spans meters once
+    // the low-sun stretch kicks in, and any terrain bulge between center
+    // and rim buried the whole mid-span — interior rings keep the drape
+    // ON the ground along the full length of the raking shadow.
+    this.shadowGeo = new THREE.RingGeometry(0.001, 1, 24, 6);
     this.shadowGeo.rotateX(-Math.PI / 2);
     this.shadowBase = new Float32Array(this.shadowGeo.attributes.position.array);
     this.shadowMat = new THREE.ShaderMaterial({
@@ -457,7 +489,7 @@ export class DogSystem implements Subsystem {
       fragmentShader:
         'uniform vec3 uTint;\nuniform float uK;\nvarying vec2 vXY;\n' +
         'void main() {\n' +
-        '\tfloat gFall = 1.0 - smoothstep( 0.3, 1.0, length( vXY ) );\n' +
+        '\tfloat gFall = 1.0 - smoothstep( 0.42, 1.0, length( vXY ) );\n' +
         '\tgl_FragColor = vec4( mix( vec3( 1.0 ), uTint, gFall * uK ), 1.0 );\n' +
         '}',
       blending: THREE.MultiplyBlending,
@@ -484,6 +516,13 @@ export class DogSystem implements Subsystem {
     // here never run in gameplay frames.
     if (this.frozen) {
       (window as unknown as { __dogAudit?: unknown }).__dogAudit = {
+        // Capture-only lens: gameplay-point shoots at honest follow range
+        // with a slightly longer lens (reduced FOV) so the dog holds a
+        // meaningful share of frame. Never runs outside ?capture=1.
+        setFov: (deg: number) => {
+          ctx.camera.fov = deg;
+          ctx.camera.updateProjectionMatrix();
+        },
         heightAt: (wx: number, wz: number) => this.terrain.heightAt(wx, wz),
         slopeAt: (wx: number, wz: number) => {
           const s = 0.6;
@@ -548,6 +587,11 @@ export class DogSystem implements Subsystem {
     // patches an oxblood-charcoal near-black, warm shading underneath.
     const coat = new THREE.Color(P.strawPale).multiplyScalar(1.05);
     const coatDim = new THREE.Color(P.strawPale).multiplyScalar(0.88);
+    // Round 9, item 4: lower legs and paws step DOWN in value so the
+    // articulation (knee/hock joints, four separate columns) reads inside
+    // the white mass, not only in silhouette.
+    const legShade = new THREE.Color(P.strawPale).multiplyScalar(0.8);
+    const pawShade = new THREE.Color(P.strawPale).multiplyScalar(0.68);
     const patch = new THREE.Color(P.oxblood).lerp(new THREE.Color(P.charcoal), 0.42);
     const nose = new THREE.Color(P.charcoal).multiplyScalar(0.55);
     const tick = patch.clone().lerp(coat, 0.12);
@@ -684,48 +728,67 @@ export class DogSystem implements Subsystem {
       this.head.add(grp);
     }
 
-    // TAIL — round 7, item 4: a RIGID FLAG. Straight tapered bone, and the
-    // feathering rebuilt as three notched facets with sawtooth gaps along
-    // the trailing edge — raised on point it reads as the flag over the
-    // grass, the read a handler steers by.
+    // TAIL — round 9, item 4: the flag no longer hinges 90 degrees off the
+    // hip. A short tapered ROOT segment blends out of the rump and takes
+    // ~45% of the carriage angle; the FLAG (bone + notched feathering)
+    // hangs off its end and takes the rest — a raised point-flag now
+    // CURVES out of the topline instead of kinking. Round 9, item 3: the
+    // flag quads run thicker and the tip facets whiten toward sunHigh so
+    // the flag survives the gameplay-range read over the cover line.
+    const flagTip = new THREE.Color(P.sunHigh);
     {
       const b = new PartBuilder();
-      // Straight bone, root -> tip, no saber droop: the flag pole.
+      // Root: rump-thick at the hip, tapering to the flag joint.
       b.boxZ(
-        { x: 0, y: 0, z: -0.34, hw: 0.008, hh: 0.01 },
-        { x: 0, y: 0, z: 0, hw: 0.024, hh: 0.028 },
-        { side: coat },
+        { x: 0, y: -0.004, z: -0.105, hw: 0.02, hh: 0.024 },
+        { x: 0, y: -0.006, z: 0.025, hw: 0.034, hh: 0.042 },
+        { side: coat, bottom: coatDim },
+      );
+      this.tailRoot.add(this.mesh(b.build(), high));
+    }
+    {
+      const b = new PartBuilder();
+      // Straight bone, joint -> tip, no saber droop: the flag pole.
+      // Tip thickened (0.008 -> 0.012) and capped bright.
+      b.boxZ(
+        { x: 0, y: 0, z: -0.3, hw: 0.012, hh: 0.014 },
+        { x: 0, y: 0, z: 0, hw: 0.022, hh: 0.026 },
+        { side: coat, back: flagTip },
       );
       // Three feathering facets off the underside, each ending in a notch
       // (the sawtooth trailing edge of real setter feathering), emitted as
-      // TWO layers in a shallow V so the flag keeps presence when the
-      // camera lines up with its plane — a single fin vanished edge-on in
-      // the dawn-point frame. Alternating coat/coatDim per lock.
-      for (const lx of [-0.009, 0.009]) {
+      // TWO layers in a WIDER shallow V (2.2 -> 2.8 spread) so the flag
+      // keeps presence when the camera lines up with its plane. The last
+      // facet — the tip lock — takes the bright flagTip role.
+      for (const lx of [-0.012, 0.012]) {
         const yb = lx < 0 ? 0 : -0.008; // layered locks, not a mirror
         b.quad2(
-          [lx, -0.018, -0.04], [lx, -0.022, -0.125],
-          [lx * 2.2, -0.108 + yb, -0.088], [lx * 2.2, -0.09 + yb, -0.03],
+          [lx, -0.018, -0.035], [lx, -0.022, -0.115],
+          [lx * 2.8, -0.108 + yb, -0.081], [lx * 2.8, -0.09 + yb, -0.028],
           coat,
         );
         b.quad2(
-          [lx, -0.024, -0.13], [lx, -0.028, -0.225],
-          [lx * 2.2, -0.102 + yb, -0.188], [lx * 2.2, -0.114 + yb, -0.114],
+          [lx, -0.024, -0.12], [lx, -0.028, -0.207],
+          [lx * 2.8, -0.102 + yb, -0.173], [lx * 2.8, -0.114 + yb, -0.105],
           coatDim,
         );
         b.quad2(
-          [lx, -0.03, -0.23], [lx, -0.036, -0.325],
-          [lx * 2.2, -0.08 + yb, -0.282], [lx * 2.2, -0.094 + yb, -0.208],
-          coat,
+          [lx, -0.03, -0.212], [lx, -0.036, -0.3],
+          [lx * 2.8, -0.08 + yb, -0.26], [lx * 2.8, -0.094 + yb, -0.192],
+          flagTip,
         );
       }
-      this.tail.add(this.mesh(b.build(), high));
+      this.tailFlag.add(this.mesh(b.build(), high));
     }
-    this.tail.position.set(TAIL_PIVOT[0], TAIL_PIVOT[1], TAIL_PIVOT[2]);
+    this.tailRoot.position.set(TAIL_PIVOT[0], TAIL_PIVOT[1], TAIL_PIVOT[2]);
     // The flag reads at gameplay range or it doesn't exist: +18% so the
     // raised tip clears the cover line the parting can't duck (bug 4).
-    this.tail.scale.setScalar(1.18);
-    this.body.add(this.tail);
+    this.tailRoot.scale.setScalar(1.18);
+    this.tailFlag.position.set(0, 0, -0.095);
+    this.tailRoot.add(this.tailFlag);
+    this.tailTip.position.set(0, 0, -0.305);
+    this.tailFlag.add(this.tailTip);
+    this.body.add(this.tailRoot);
 
     // LEGS — two segments each, origin at the joint, geometry down -y.
     for (let i = 0; i < 4; i++) {
@@ -741,7 +804,7 @@ export class DogSystem implements Subsystem {
           // chest mass (bug 2: at full swing the old 0.03 stub cleared the
           // torso underside and the shoulder read dislocated).
           b.boxY(
-            { x: 0, y: 0.09, z: -0.006, hw: 0.042, hd: 0.068 },
+            { x: 0, y: 0.09, z: -0.006, hw: 0.045, hd: 0.068 },
             { x: 0, y: -0.195, z: 0.004, hw: 0.021, hd: 0.027 },
             coat,
           );
@@ -768,13 +831,13 @@ export class DogSystem implements Subsystem {
         b.boxY(
           { x: 0, y: 0, z: 0, hw: 0.017, hd: 0.024 },
           { x: 0, y: -len + 0.03, z: -0.004, hw: 0.013, hd: 0.018 },
-          coat,
+          legShade,
         );
-        // Paw: small forward block.
+        // Paw: small forward block, darkest step in the leg ramp.
         b.boxY(
           { x: 0, y: -len + 0.032, z: 0.012, hw: 0.022, hd: 0.036 },
           { x: 0, y: -len, z: 0.014, hw: 0.02, hd: 0.034 },
-          coatDim,
+          pawShade,
         );
         lower.add(this.mesh(b.build(), high));
       }
@@ -1037,7 +1100,10 @@ export class DogSystem implements Subsystem {
     this.body.rotation.set(this.bodyPitch, 0, this.roll);
     this.neck.rotation.x = this.neckPitch;
     this.head.rotation.set(this.headPitch, this.headYaw, 0);
-    this.tail.rotation.set(this.tailPitch, this.tailYaw, 0);
+    // Carriage splits across root and flag joints (round 9): 45% at the
+    // hip, 55% at the mid-tail joint — the raised flag curves, no kink.
+    this.tailRoot.rotation.set(this.tailPitch * 0.45, this.tailYaw * 0.4, 0);
+    this.tailFlag.rotation.set(this.tailPitch * 0.55, this.tailYaw * 0.6, 0);
     this.earL.rotation.x = this.earFlop;
     this.earR.rotation.x = this.earFlop;
 
@@ -1054,6 +1120,19 @@ export class DogSystem implements Subsystem {
     sink = THREE.MathUtils.clamp(sink, -0.07, 0.14);
     this.root.position.y = gy - sink;
 
+    // TAIL DROOP CLAMP (round 9): the relaxed tail never spears into a
+    // rising grade behind the dog — measure the flag tip against the
+    // terrain under it and lift both joints just enough to clear.
+    this.tailTip.getWorldPosition(this.pawV);
+    const tipGap =
+      this.pawV.y - this.terrain.heightAt(this.pawV.x, this.pawV.z) - 0.05;
+    if (tipGap < 0) {
+      // 0.47 m = flag reach from the hip pivot (0.4 local * 1.18 scale).
+      const lift = Math.asin(Math.min(1, -tipGap / 0.47));
+      this.tailRoot.rotation.x += lift * 0.45;
+      this.tailFlag.rotation.x += lift * 0.55;
+    }
+
     // Contact ellipse: draped onto the terrain vertex-by-vertex under the
     // torso — parented to the dog's x/z and yaw so it survives rotation and
     // every heading; the sun only leans the center and stretches the long
@@ -1069,8 +1148,8 @@ export class DogSystem implements Subsystem {
     const posAttr = this.shadowGeo!.attributes.position as THREE.BufferAttribute;
     const arr = posAttr.array as Float32Array;
     for (let i = 0; i < base.length; i += 3) {
-      // Body-aligned footprint (half-width 0.42, half-length 0.62)...
-      const sx = base[i] * 0.42;
+      // Body-aligned footprint (half-width per TOD, half-length 0.62)...
+      const sx = base[i] * this.shadowWidth;
       const sz = base[i + 2] * 0.62;
       let dxw = sx * cosY + sz * sinY;
       let dzw = -sx * sinY + sz * cosY;

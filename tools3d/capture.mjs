@@ -46,11 +46,25 @@ const SHOTS = {
   // reads side-on — level topline, raised flag, folded foreleg — with the
   // sunrise still in the top of the wide frame.
   'dawn-point': { tod: 'dawn', sim: 'point', base: [0, 40, 180, 4], maxTicks: 30000, dist: 2.2, spin: -1.35, pitch: -18 },
-  // THE GAMEPLAY READ (dog-mechanic round): true hunter-follow framing —
-  // the fixed 1.62 m eye, 14 m back, three-quarter off the dog-bird line.
-  // This is the frame the player actually hunts from; the point silhouette
-  // (raised flag, level topline, lifted fore) must read INSTANTLY here.
-  'gameplay-point': { tod: 'dawn', sim: 'point', base: [0, 40, 180, 4], maxTicks: 30000, dist: 12, spin: -1.3, pitch: -6 },
+  // THE GAMEPLAY READ (round 9 reframe): honest hunter-follow range — the
+  // fixed 1.62 m eye at 9 m, three-quarter off the dog-bird line — with a
+  // slightly longer lens (FOV 70 -> 44, capture-only via __dogAudit.setFov)
+  // so the dog holds a meaningful share of frame. This is the frame the
+  // player actually hunts from; the point silhouette (raised flag, level
+  // topline, lifted fore) must read INSTANTLY here.
+  'gameplay-point': { tod: 'dawn', sim: 'point', base: [0, 40, 180, 4], maxTicks: 30000, dist: 8.5, spin: -1.3, pitch: -7, fov: 40 },
+  // THE COVEY RISE — the whole game in one frame. Deterministic: gate on
+  // the locked point (same round-9 predicate), triggerFlush() walks the
+  // mapped hunter in under the sim's own checkFlush law, then stepRise
+  // advances ONLY the rise (field time holds its breath, the dog stands)
+  // to peak spread. 'the-rise' shoots hunter's-eye over the pointing dog
+  // into the explosion; 'rise-wide' stands broadside to the escape line
+  // and reads the fan.
+  // riseTicks 13: probed — this seed's wave has a ~367 ms sleeper, so
+  // tick 13 catches it BURSTING out of the grass while its wave-mates
+  // hang 5-7 m up: three birds, honestly staggered heights.
+  'the-rise': { tod: 'dawn', sim: 'rise', base: [0, 40, 180, 4], maxTicks: 30000, riseTicks: 15, view: 'behind', dist: 5.5, aimK: 0.5, pitchBias: -2, fov: 52 },
+  'rise-wide': { tod: 'dawn', sim: 'rise', base: [0, 40, 180, 4], maxTicks: 30000, riseTicks: 14, view: 'side', dist: 12, aimK: 0.5, pitchBias: 0, fov: 55 },
   // Debug poses (not part of the standard set — request via --shots).
   'debug-shadow': [26, 82, 180, -6, 'dawn'],
   'debug-noon-shadow': [36, 62, 180, -10, 'noon'],
@@ -67,6 +81,12 @@ const SHOTS = {
   'debug-dog-work-close': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 6, spin: 0.8, pitch: -8 },
   // Mid-stride on open ground — proportion/gait inspection in the clear.
   'debug-dog-open': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 4.5, spin: 1.5, pitch: -14 },
+  // Same open-ground pose at DAWN: the low-sun contact-shadow stretch
+  // (1/tan(elevation)) is only measurable in the clear. camAz pins the
+  // camera BROADSIDE to the dawn shadow axis (sun az 52 -> shadow az 232;
+  // a spin-relative camera landed nearly down-axis and foreshortened the
+  // whole rake out of frame).
+  'debug-dog-open-dawn': { tod: 'dawn', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 5, camAz: 322, pitch: -16 },
   'debug-dog-open-rear': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 4.5, spin: 0.2, pitch: -14 },
   // Macro poses at 2 m for anatomy work — steep pitch so the dog CENTERS
   // and fills the frame from the fixed 1.62 m eye height.
@@ -151,13 +171,148 @@ async function main() {
           },
           x, z, yaw, pitch, tod,
         );
+      } else if (spec.sim === 'rise') {
+        // THE RISE: locked point -> triggerFlush (the sim walks the hunter
+        // in and flushes under its own checkFlush law) -> stepRise to peak
+        // spread -> frame off live bird telemetry. Every stage is a pure
+        // function of the seed.
+        const riseInfo = await page.evaluate(
+          (base, maxTicks, riseTicks, view, dist, aimK, pitchBias, ptod, fov) => {
+            window.__api3d.setTod(ptod);
+            window.__api3d.setPose(...base);
+            const hunt = () => window.__api3d.hunt();
+            // Locked-point gate — the round-9 predicate, verbatim.
+            let lpx = null;
+            let lpz = null;
+            let locked = false;
+            const lockedPoint = (h) => {
+              if (h.dog.state !== 'pointing') {
+                lpx = null;
+                return false;
+              }
+              const still = lpx !== null && Math.hypot(h.dog.x - lpx, h.dog.z - lpz) < 0.01;
+              lpx = h.dog.x;
+              lpz = h.dog.z;
+              if (!still) return false;
+              window.__api3d.renderOnce();
+              const st = window.__dogAudit && window.__dogAudit.state();
+              if (!st) return false;
+              const stance = st.paws.filter((p) => p.i !== 0);
+              locked = stance.every((p) => p.gap > -0.06 && p.gap < 0.05);
+              return locked;
+            };
+            window.__api3d.stepSim(240);
+            let ticks = 240;
+            let h = hunt();
+            while (!lockedPoint(h) && ticks < maxTicks) {
+              window.__api3d.stepSim(15);
+              ticks += 15;
+              h = hunt();
+            }
+            if (!locked) return { ok: false, why: 'no locked point' };
+            const dogX = h.dog.x;
+            const dogZ = h.dog.z;
+            const flush = window.__api3d.triggerFlush();
+            if (!flush) return { ok: false, why: 'triggerFlush returned null' };
+            // Field time holds its breath; only the rise plays.
+            window.__api3d.stepRise(riseTicks);
+            const birds = window.__api3d.birds();
+            const flying = birds.filter((b) => b.status === 'flying');
+            if (flying.length === 0) return { ok: false, why: 'no birds airborne', birds };
+            let cx = 0;
+            let cy = 0;
+            let cz = 0;
+            for (const b of flying) {
+              cx += b.x;
+              cy += b.y;
+              cz += b.z;
+            }
+            cx /= flying.length;
+            cy /= flying.length;
+            cz /= flying.length;
+            let camX;
+            let camZ;
+            if (view === 'behind') {
+              // Hunter's eye BEHIND the pointing dog on the dog->covey line.
+              let dx = cx - dogX;
+              let dz = cz - dogZ;
+              const l = Math.hypot(dx, dz) || 1;
+              dx /= l;
+              dz /= l;
+              camX = dogX - dx * dist;
+              camZ = dogZ - dz * dist;
+            } else {
+              // Three-quarter behind the fan: mostly beside the escape
+              // line, pulled back toward the gun — a pure side angle
+              // collapsed the lateral fan into depth (iteration 3).
+              let ex = cx - dogX;
+              let ez = cz - dogZ;
+              const l = Math.hypot(ex, ez) || 1;
+              ex /= l;
+              ez /= l;
+              let dxq = ez * 1.0 - ex * 0.8;
+              let dzq = -ex * 1.0 - ez * 0.8;
+              const lq = Math.hypot(dxq, dzq) || 1;
+              dxq /= lq;
+              dzq /= lq;
+              camX = cx + dxq * dist;
+              camZ = cz + dzq * dist;
+            }
+            camX = Math.max(-230, Math.min(230, camX));
+            camZ = Math.max(-230, Math.min(230, camZ));
+            const vx = cx - camX;
+            const vz = cz - camZ;
+            const yawDeg = (Math.atan2(-vx, -vz) * 180) / Math.PI;
+            const horiz = Math.hypot(vx, vz);
+            // Terrain-aware aim (iteration 2: absolute-y aim stared into
+            // empty sky on elevated ground): eye = terrain + 1.62 at the
+            // camera, target = a point partway up the covey's height ABOVE
+            // ITS OWN GROUND, so the explosion sits mid-frame and the dog
+            // and cover line hold the lower third.
+            const hAt = (x, z) => (window.__dogAudit ? window.__dogAudit.heightAt(x, z) : 0);
+            const eyeY = hAt(camX, camZ) + 1.62;
+            const aimY = hAt(cx, cz) + (cy - hAt(cx, cz)) * aimK;
+            const pitchDeg = (Math.atan2(aimY - eyeY, horiz) * 180) / Math.PI + pitchBias;
+            window.__api3d.setPose(camX, camZ, yawDeg, pitchDeg);
+            if (fov && window.__dogAudit) window.__dogAudit.setFov(fov);
+            window.__api3d.renderOnce();
+            return {
+              ok: true,
+              flush,
+              birds,
+              dog: { x: dogX, z: dogZ, state: h.dog.state },
+              cam: { x: camX, z: camZ, yawDeg: yawDeg, pitchDeg: pitchDeg },
+              ticks,
+              simMs: hunt().simMs,
+            };
+          },
+          spec.base, spec.maxTicks, spec.riseTicks, spec.view, spec.dist,
+          spec.aimK ?? 0.55, spec.pitchBias ?? 0, tod, spec.fov ?? 0,
+        );
+        if (!riseInfo.ok) {
+          console.error(`  rise: ${name} failed — ${riseInfo.why}`);
+          failed++;
+        } else {
+          console.log(
+            `  rise: ${riseInfo.birds.length} staged, walk-in ${riseInfo.flush.distPx.toFixed(1)}px, ` +
+            `covey [${riseInfo.flush.ids.join(',')}], dog held at (${riseInfo.dog.x.toFixed(1)}, ${riseInfo.dog.z.toFixed(1)})`,
+          );
+          for (const b of riseInfo.birds) {
+            console.log(
+              `    bird ${b.simId}: ${b.status} at (${b.x.toFixed(1)}, ${b.y.toFixed(1)}, ${b.z.toFixed(1)}) air ${b.airMs.toFixed(0)}ms`,
+            );
+          }
+          console.log(
+            `  cam (${riseInfo.cam.x.toFixed(1)}, ${riseInfo.cam.z.toFixed(1)}) yaw ${riseInfo.cam.yawDeg.toFixed(0)} pitch ${riseInfo.cam.pitchDeg.toFixed(1)}`,
+          );
+        }
       } else {
         // Sim-posed shot: park the hunter, advance the frozen sim from the
         // fixed seed until the dog reaches the wanted read (pure function
         // of the seed), then frame it from `dist` meters at a `spin`-rad
         // three-quarter angle off the line to the cover it faces.
         const simInfo = await page.evaluate(
-          (base, mode, maxTicks, dist, spin, camPitch, ptod) => {
+          (base, mode, maxTicks, dist, spin, camPitch, ptod, fov, camAz) => {
             window.__api3d.setTod(ptod);
             window.__api3d.setPose(...base);
             const hunt = () => window.__api3d.hunt();
@@ -173,13 +328,47 @@ async function main() {
               }
               return best;
             };
+            // LOCKED-POINT GATE (round 9): a point shot only fires when the
+            // sim dog is in a LOCKED point — state 'pointing' held across
+            // two consecutive probes with ~zero ground speed — AND every
+            // stance paw probe-verifies planted (|gap| inside tolerance,
+            // measured through the full transform chain by __dogAudit; the
+            // lifted foreleg, paw 0, is exempt by design). Stepping until
+            // this predicate is a pure function of the seed: deterministic.
+            let lpx = null;
+            let lpz = null;
+            let lastLock = null;
+            let locked = false;
+            const lockedPoint = (h) => {
+              if (h.dog.state !== 'pointing') {
+                lpx = null;
+                return false;
+              }
+              const still = lpx !== null && Math.hypot(h.dog.x - lpx, h.dog.z - lpz) < 0.01;
+              lpx = h.dog.x;
+              lpz = h.dog.z;
+              if (!still) return false;
+              // Snap the visual pose to the sim (capture mode snaps all
+              // smoothing), then audit the paw markers against terrain.
+              window.__api3d.renderOnce();
+              const st = window.__dogAudit && window.__dogAudit.state();
+              if (!st) return false;
+              const stance = st.paws.filter((p) => p.i !== 0);
+              const planted = stance.every((p) => p.gap > -0.06 && p.gap < 0.05);
+              lastLock = {
+                still,
+                planted,
+                gaps: stance.map((p) => Number(p.gap.toFixed(4))),
+              };
+              locked = planted;
+              return planted;
+            };
             const want =
               mode === 'point'
-                // The point. (Probed: this seed's covey holds mid-patch, so
-                // the dog stands IN the bluestem — white coat, tail flag and
-                // head over the grass carry the read; edge points don't
-                // exist here to wait for.)
-                ? (h) => h.dog.state === 'pointing'
+                // The LOCKED point. (Probed: this seed's covey holds
+                // mid-patch, so the dog stands IN the bluestem — white
+                // coat, tail flag and head over the grass carry the read.)
+                ? lockedPoint
                 : mode === 'open'
                   // Anatomy/gait inspection: mid-stride on open ground —
                   // and INSIDE the camera's ±230 clamp with orbit room (a
@@ -211,25 +400,43 @@ async function main() {
               if (d < bd) { bd = d; nearest = p; }
             }
             // Back direction: away from the cover the dog faces, rotated by
-            // `spin` so the pose reads three-quarter, never dead-on rear.
-            let dx = h.dog.x - nearest.cx;
-            let dz = h.dog.z - nearest.cz;
-            const l = Math.hypot(dx, dz) || 1;
-            dx /= l; dz /= l;
-            const ca = Math.cos(spin);
-            const sa = Math.sin(spin);
-            const rx = dx * ca - dz * sa;
-            const rz = dx * sa + dz * ca;
+            // `spin` so the pose reads three-quarter, never dead-on rear —
+            // or, when camAz is set, an ABSOLUTE azimuth from the dog
+            // (sun-aware witness framings need a fixed axis, not one that
+            // re-rolls with whatever cover the dog stopped near).
+            let rx;
+            let rz;
+            if (camAz !== null) {
+              const azr = (camAz * Math.PI) / 180;
+              rx = Math.sin(azr);
+              rz = Math.cos(azr);
+            } else {
+              let dx = h.dog.x - nearest.cx;
+              let dz = h.dog.z - nearest.cz;
+              const l = Math.hypot(dx, dz) || 1;
+              dx /= l; dz /= l;
+              const ca = Math.cos(spin);
+              const sa = Math.sin(spin);
+              rx = dx * ca - dz * sa;
+              rz = dx * sa + dz * ca;
+            }
             const camX = Math.max(-230, Math.min(230, h.dog.x + rx * dist));
             const camZ = Math.max(-230, Math.min(230, h.dog.z + rz * dist));
             const vx = h.dog.x - camX;
             const vz = h.dog.z - camZ;
             const yawDeg = (Math.atan2(-vx, -vz) * 180) / Math.PI;
             window.__api3d.setPose(camX, camZ, yawDeg, camPitch);
+            // Capture-only lens for framed reads (gameplay-point): reduced
+            // FOV = slight lens length at honest follow range.
+            if (fov && window.__dogAudit) window.__dogAudit.setFov(fov);
             window.__api3d.renderOnce();
-            return { dog: h.dog, ticks, reached: want(h), cam: { x: camX, z: camZ, yawDeg }, simMs: h.simMs };
+            const reached = mode === 'point' ? locked : want(h);
+            return {
+              dog: h.dog, ticks, reached, lock: lastLock,
+              cam: { x: camX, z: camZ, yawDeg }, simMs: h.simMs,
+            };
           },
-          spec.base, spec.sim, spec.maxTicks, spec.dist, spec.spin ?? 0, spec.pitch ?? 0, tod,
+          spec.base, spec.sim, spec.maxTicks, spec.dist, spec.spin ?? 0, spec.pitch ?? 0, tod, spec.fov ?? 0, spec.camAz ?? null,
         );
         if (!simInfo.reached) {
           console.error(`  sim: ${name} never reached mode '${spec.sim}' in ${spec.maxTicks} ticks`);
@@ -240,6 +447,12 @@ async function main() {
           `cam (${simInfo.cam.x.toFixed(1)}, ${simInfo.cam.z.toFixed(1)}) yaw ${simInfo.cam.yawDeg.toFixed(0)}, ` +
           `sim ${simInfo.simMs.avg.toFixed(3)}ms avg / ${simInfo.simMs.max.toFixed(2)}ms max per tick`,
         );
+        if (simInfo.lock) {
+          console.log(
+            `  lock: still=${simInfo.lock.still} planted=${simInfo.lock.planted} ` +
+            `stance paw gaps [${simInfo.lock.gaps.join(', ')}] m`,
+          );
+        }
       }
       await new Promise((r) => setTimeout(r, 400)); // settle a few frames
       const file = `${outDir}/${name}.png`;

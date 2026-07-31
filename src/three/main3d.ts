@@ -7,6 +7,7 @@ import { PlayerSystem } from './subsystems/player';
 import { GrassSystem } from './subsystems/grass';
 import { FloraSystem } from './subsystems/flora';
 import { DogSystem } from './subsystems/dog';
+import { BirdsSystem } from './subsystems/birds';
 
 /*
  * Uplandin 3D entry. Boot order = subsystem registration order; the
@@ -28,6 +29,7 @@ engine.register(new PlayerSystem());
 engine.register(new GrassSystem());
 engine.register(new FloraSystem());
 engine.register(new DogSystem());
+engine.register(new BirdsSystem());
 
 declare global {
   interface Window {
@@ -39,6 +41,16 @@ declare global {
       info(): { calls: number; triangles: number };
       /** Advance the (capture-frozen) sim by exact 30 Hz ticks. */
       stepSim(ticks: number): void;
+      /**
+       * Advance ONLY the covey-rise presentation (the 2D scene-cut,
+       * translated: field time holds its breath while the rise plays —
+       * the pointing dog stands under the exploding birds).
+       */
+      stepRise(ticks: number): void;
+      /** Walk the mapped hunter in and flush the pointed covey (sim law). */
+      triggerFlush(): { ids: number[]; distPx: number } | null;
+      /** Airborne rise birds, world meters — capture telemetry. */
+      birds(): { simId: number; x: number; y: number; z: number; airMs: number; status: string }[];
       /** Sim snapshot in world meters — capture poses shots off this. */
       hunt(): {
         dog: { x: number; z: number; state: string; gait: string };
@@ -61,7 +73,15 @@ engine.start().then(() => {
       calls: engine.ctx.renderer.info.render.calls,
       triangles: engine.ctx.renderer.info.render.triangles,
     }),
-    stepSim: (ticks) => engine.ctx.get<Hunt3DSystem>('hunt3d').step(engine.ctx, ticks),
+    // Field sim and rise presentation advance in lockstep (a no-op for
+    // birds until a covey is up); stepRise moves ONLY the rise.
+    stepSim: (ticks) => {
+      engine.ctx.get<Hunt3DSystem>('hunt3d').step(engine.ctx, ticks);
+      engine.ctx.get<BirdsSystem>('birds').step(engine.ctx, ticks);
+    },
+    stepRise: (ticks) => engine.ctx.get<BirdsSystem>('birds').step(engine.ctx, ticks),
+    triggerFlush: () => engine.ctx.get<Hunt3DSystem>('hunt3d').triggerFlush(engine.ctx),
+    birds: () => engine.ctx.get<BirdsSystem>('birds').airborne(),
     hunt: () => {
       const h = engine.ctx.get<Hunt3DSystem>('hunt3d');
       const dogW = h.dogWorld({ x: 0, z: 0 });

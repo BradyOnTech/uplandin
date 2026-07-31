@@ -1,9 +1,9 @@
 import { getArea, type AreaConfig } from '../../game/areas';
-import { updateBirds } from '../../game/birds';
+import { flushCovey, updateBirds } from '../../game/birds';
 import { getBreed } from '../../game/breeds';
 import { conditionMults } from '../../game/conditions';
 import { Dog, type DogEnv } from '../../game/dog';
-import { mulberry32 } from '../../game/math';
+import { dist, mulberry32 } from '../../game/math';
 import { createHunt, type HuntState } from '../../game/state';
 import type { Vec2 } from '../../game/types';
 import { windMults } from '../../game/wind';
@@ -48,6 +48,17 @@ const DOG_LEVEL = 8;
 /** Sim tick budget (ms). The sim is tiny; blowing this means a bug. */
 const SIM_MS_BUDGET = 2;
 
+/** FieldScene's walk-in trigger: hunter this close to a pointed bird
+ *  flushes the covey (checkFlush's own gate — sim px). */
+const FLUSH_RADIUS_PX = 22;
+/** FieldScene's HUNTER_SPEED (sim px/s): triggerFlush walks in honestly. */
+const HUNTER_SPEED_PX = 55;
+/** Guard on the walk-in (30 Hz ticks): far past any legal point range. */
+const WALK_IN_MAX_TICKS = 2400;
+/** Independent stream for the flush dice the 2D flow rolled on
+ *  Math.random (Dog.onFlush steadiness) — capture must not re-roll. */
+const FLUSH_SEED = 0xf1a5e5;
+
 /** An axis-aligned cover patch in world meters (center + half extents). */
 export interface WorldPatch {
   cx: number;
@@ -75,6 +86,10 @@ export class Hunt3DSystem implements Subsystem {
   private simMsTotal = 0;
   private simTicks = 0;
   private budgetWarned = false;
+  /** Flush dice (Dog.onFlush steadiness roll) — own deterministic stream. */
+  private flushRng: () => number = mulberry32(FLUSH_SEED);
+  /** The most recent covey rise: ids + the walk-in distance that earned it. */
+  private lastFlush: { ids: number[]; distPx: number } | null = null;
 
   init(ctx: Ctx): void {
     this.frozen = new URLSearchParams(location.search).has('capture');
@@ -155,6 +170,63 @@ export class Hunt3DSystem implements Subsystem {
       this.budgetWarned = true;
       console.warn(`hunt3d: sim tick ${ms.toFixed(2)}ms exceeds ${SIM_MS_BUDGET}ms budget`);
     }
+  }
+
+  /* ------------------------ flush-trigger plumbing --------------------- */
+
+  /**
+   * Deterministically WALK THE MAPPED HUNTER IN on the pointed bird and
+   * flush the covey under the sim's own checkFlush conditions (FieldScene:
+   * dog pointing + pointed bird still hidden + hunter within FLUSH_RADIUS).
+   * The camera IS the mapped hunter, so the walk moves the camera along
+   * the hunter->bird line at HUNTER_SPEED, ticking the sim at 30 Hz — a
+   * pure function of the seed. On arrival the flush goes through the same
+   * call surfaces the 2D game used: flushCovey + Dog.onFlush (steady dogs
+   * stand; the roll comes from a fixed local stream).
+   *
+   * Returns the risen bird ids + the walk-in distance (flushBias's input),
+   * or null if there is no live point (or the point broke on the way in).
+   */
+  triggerFlush(ctx: Ctx): { ids: number[]; distPx: number } | null {
+    if (this.simDog.state !== 'pointing' || this.simDog.pointedBirdId === null) return null;
+    const birds = this.hunt.birds;
+    let bird: (typeof birds)[number] | undefined;
+    for (const b of birds) {
+      if (b.id === this.simDog.pointedBirdId) {
+        bird = b;
+        break;
+      }
+    }
+    if (!bird || bird.state !== 'hidden') return null;
+
+    const stepPx = HUNTER_SPEED_PX / 30;
+    let guard = 0;
+    while (dist(this.hunt.hunterPos, bird.pos) > FLUSH_RADIUS_PX && guard++ < WALK_IN_MAX_TICKS) {
+      const dx = bird.pos.x - this.hunt.hunterPos.x;
+      const dy = bird.pos.y - this.hunt.hunterPos.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const nx = this.hunt.hunterPos.x + (dx / d) * stepPx;
+      const ny = this.hunt.hunterPos.y + (dy / d) * stepPx;
+      // Move the camera (the mapped hunter); tick() reads it back into
+      // hunterPos — the exact FieldScene consumption order still runs.
+      ctx.camera.position.x = (nx - this.simCx) * SIM_PX_TO_M;
+      ctx.camera.position.z = (ny - this.simCy) * SIM_PX_TO_M;
+      this.tick(ctx, 1000 / 30);
+      if (this.simDog.state !== 'pointing' || bird.state !== 'hidden') return null;
+    }
+    if (dist(this.hunt.hunterPos, bird.pos) > FLUSH_RADIUS_PX) return null;
+
+    const distPx = dist(this.hunt.hunterPos, bird.pos);
+    const flushed = flushCovey(birds, bird.id);
+    // Steady dogs stand through the rise; soft ones break — sim's call.
+    this.simDog.onFlush(this.flushRng, bird.pos);
+    this.lastFlush = { ids: flushed.map((b) => b.id), distPx };
+    return this.lastFlush;
+  }
+
+  /** The most recent rise (birds subsystem feeds flushBias from this). */
+  lastFlushInfo(): { ids: number[]; distPx: number } | null {
+    return this.lastFlush;
   }
 
   /* ------------------------- read-only surface ------------------------- */
