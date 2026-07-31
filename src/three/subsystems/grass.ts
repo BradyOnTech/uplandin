@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
 import { P, TOD, type TimeOfDay } from '../palette';
+import type { BirdsSystem } from './birds';
 import type { DogSystem } from './dog';
 import type { Hunt3DSystem } from './hunt3d';
 import type { TerrainSystem } from './terrain';
@@ -215,6 +216,7 @@ uniform vec2 uWindDir;
 uniform float uWindAmp;
 uniform float uPartRadius;
 uniform vec3 uPart2;
+uniform vec3 uPart3;
 uniform vec2 uFade;
 uniform vec3 uHaze;
 uniform vec2 uHazeRange;
@@ -281,6 +283,17 @@ float gPart2 = 1.0 - smoothstep( 0.0, uPart2.z, gDogD );
 gPart2 *= gPart2;
 gWorld.xz += ( gAway2 / max( gDogD, 1e-4 ) ) * gPart2 * 0.72 * gT;
 gWorld.y -= gPart2 * 0.55 * gT;
+
+// Rise-burst parting (moment round): the covey EXPLODES out of this spot —
+// blades blow outward and DOWN, harder than the dog's push, and the radius
+// itself carries a pop-then-shake envelope fed per-frame from the birds
+// subsystem (xy = world xz, z = radius; epsilon when no rise is live).
+vec2 gAway3 = gWorld.xz - uPart3.xy;
+float gBurstD = length( gAway3 );
+float gPart3 = 1.0 - smoothstep( 0.0, uPart3.z, gBurstD );
+gPart3 *= gPart3;
+gWorld.xz += ( gAway3 / max( gBurstD, 1e-4 ) ) * gPart3 * 0.95 * gT;
+gWorld.y -= gPart3 * 0.62 * gT;
 
 // Distance collapse, confined to the LAST THIRD of draw distance: each
 // tuft shrinks smoothly to its root over a 12 m window ending at a hashed
@@ -399,6 +412,7 @@ interface GrassUniforms {
   uWindAmp: { value: number };
   uPartRadius: { value: number };
   uPart2: { value: THREE.Vector3 };
+  uPart3: { value: THREE.Vector3 };
   uFade: { value: THREE.Vector2 };
   uHaze: { value: THREE.Color };
   uHazeRange: { value: THREE.Vector2 };
@@ -742,6 +756,8 @@ export class GrassSystem implements Subsystem {
   /** Lazily-resolved dog system (undefined = not looked up yet). */
   private dogRef: DogSystem | null | undefined;
   private dogPart = { x: 0, z: 0, r: 1e-4 };
+  private birdsRef: BirdsSystem | null | undefined;
+  private burstPart = { x: 0, z: 0, r: 1e-4 };
 
   // Preallocated scratch — nothing allocated per frame, and rebuilds reuse.
   private m = new THREE.Matrix4();
@@ -770,6 +786,8 @@ export class GrassSystem implements Subsystem {
   // The terrain's sward paint (same recipe as terrain.ts): the haze target
   // is the GROUND the tufts dissolve into, tinted by the TOD's haze role.
   private swardTone = new THREE.Color(P.grassOlive).lerp(new THREE.Color(P.grassGold), 0.42);
+  /** Scratch for the dawn shadow-floor lift (moment round, item 4). */
+  private violetLift = new THREE.Color(P.mauve);
 
   init(ctx: Ctx): void {
     this.cfg = CFG[ctx.quality];
@@ -876,6 +894,21 @@ export class GrassSystem implements Subsystem {
       this.dogRef.partingPoint(this.dogPart);
       this.openUniforms.uPart2.value.set(this.dogPart.x, this.dogPart.z, this.dogPart.r);
       this.coverUniforms.uPart2.value.set(this.dogPart.x, this.dogPart.z, this.dogPart.r);
+    }
+    // Rise-burst parting (moment round): the birds subsystem's documented
+    // burstPoint() getter — the launch blows the cover open at the origin
+    // and shakes it while the covey clears. Same lazy ctx.get contract.
+    if (this.birdsRef === undefined) {
+      try {
+        this.birdsRef = ctx.get<BirdsSystem>('birds');
+      } catch {
+        this.birdsRef = null;
+      }
+    }
+    if (this.birdsRef) {
+      this.birdsRef.burstPoint(this.burstPart);
+      this.openUniforms.uPart3.value.set(this.burstPart.x, this.burstPart.z, this.burstPart.r);
+      this.coverUniforms.uPart3.value.set(this.burstPart.x, this.burstPart.z, this.burstPart.r);
     }
     const cx = Math.floor(ctx.camera.position.x / TILE);
     const cz = Math.floor(ctx.camera.position.z / TILE);
@@ -1056,6 +1089,8 @@ export class GrassSystem implements Subsystem {
       // Dog parting point: xy = world xz, z = radius (epsilon until the
       // dog subsystem reports in — smoothstep needs a nonzero edge).
       uPart2: { value: new THREE.Vector3(0, 0, 1e-4) },
+      // Rise-burst parting point (birds subsystem, same contract).
+      uPart3: { value: new THREE.Vector3(0, 0, 1e-4) },
       uFade: { value: new THREE.Vector2(fadeNear, fadeFar) },
       uHaze: { value: new THREE.Color(P.grassHazeDawn) },
       // Haze completes just before the collapse window ends, so shrinking
@@ -1093,6 +1128,13 @@ export class GrassSystem implements Subsystem {
       // is painted, so the hand-off is invisible (item 3).
       u.uHaze.value.setHex(spec.grassHaze).lerp(this.swardTone, 0.5);
       u.uShadowTint.value.setHex(spec.grassShadow);
+      // Moment round, item 4 — the dawn value floor: shadow tones lift
+      // toward the sky's violet so an away-from-sun foreground (the-rise's
+      // lower 60%) breathes dawn air over straw instead of crushing to
+      // mud. Dawn only: every other hour keeps its measured floor.
+      if (tod === 'dawn') {
+        u.uShadowTint.value.lerp(this.violetLift.setHex(P.mauve), 0.2).multiplyScalar(1.18);
+      }
       u.uSunXZ.value.set(Math.sin(az), Math.cos(az));
       // True sun direction (world) for the view-dependent backlight; its
       // strength rides the TOD's glow — hot at the golden hours, a whisper
@@ -1682,6 +1724,15 @@ export class GrassSystem implements Subsystem {
         this.c.lerp(this.olive, s * (0.3 + rng() * 0.2));
         if (rng() < 0.12) this.c.lerp(this.oliveDeep, 0.2);
         this.c.multiplyScalar(0.98 + rng() * 0.26);
+        // Moment round, item 4 — pale seed-head highlights: ~13% of the
+        // dense-tier tussocks bleach toward pale straw, the scattered
+        // ripe heads that keep a shaded cover mass breathing. Hashed off
+        // position (NOT the placement stream) so the layout every framed
+        // shot depends on is untouched.
+        const paleHash = Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1;
+        if (paleHash < 0.13) {
+          this.c.lerp(this.strawPale, 0.5).multiplyScalar(1.12);
+        }
         coverMesh.setMatrixAt(counts[V_COVER], this.m);
         coverMesh.setColorAt(counts[V_COVER], this.c);
         counts[V_COVER]++;

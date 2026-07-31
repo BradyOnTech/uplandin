@@ -42,6 +42,17 @@ import type { TerrainSystem } from './terrain';
  *     the bearing supplies what the 2D view said with depth-shrink: a
  *     rising bird is a DEPARTING bird. Every airborne bird gains range
  *     from the hunter every tick — no hovering, ever.
+ *  6. LOW BURST LAW (moment round): for the first ~1.5 s a rising bird's
+ *     climb is capped under ~15 degrees of elevation — the covey blows
+ *     OUT through the cover line and the horizon band, not straight up
+ *     into empty sky; surplus climb becomes drive down the escape
+ *     bearing, and the real lift unlocks as the burst turns downwind.
+ *
+ * CAPTURE COVEY STAGE: gameplay keeps the wave law verbatim (WAVE_MAX
+ * birds up, sky must clear). Under ?capture=1 the harness stages the
+ * FULL sim covey instead — one clustered launch staggered over ~0.8 s —
+ * because the store-page frame is the whole covey blowing at once, and
+ * the wave law exists for aiming readability the capture doesn't need.
  *
  * TIME: bird flight advances on the 30 Hz fixed tick (or step() under
  * ?capture=1 — the 2D game froze field time during a rise by switching
@@ -50,13 +61,16 @@ import type { TerrainSystem } from './terrain';
  * per-rise mulberry32 stream. update() only writes transforms — a
  * captured rise is a pure function of the seed and the tick count.
  *
- * BODIES: low-poly bobwhite ~0.24 m — chunky hex-loft body (russet back,
- * buff belly — the palette's gamebird roles), dark cap over a buff
- * throat, SHORT ROUNDED wings (two double-sided quads each, flapping at
- * the species' flapRate), stub tail. ~132 tris a bird, 3 draw calls
- * (body+tail, wingL, wingR); 6-bird pool worst case ≈ 19 calls with the
- * launch-burst debris. A folded falling frame (wings pinned, tumbling)
- * ships now for the gun phase to call via downBird().
+ * BODIES: low-poly bobwhite ~0.24 m — chunky hex-loft body (DARK russet
+ * topside, pale buff belly — the palette's gamebird roles), dark cap
+ * over a buff throat, SHORT ROUNDED wings (dark topside, buff underside,
+ * beating a readable 3-POSITION up/mid/down cycle at the species'
+ * flapRate), stub tail. NO emissive, NO rim: the bodies take the world's
+ * light exactly like the dog — dark against the sky between camera and
+ * sun, lit bellies when the sun catches them. ~150 tris a bird, 3 draw
+ * calls (body+tail, wingL, wingR); 14-bird pool worst case ≈ 43 calls
+ * with the launch-burst debris. A folded falling frame (wings pinned,
+ * tumbling) ships now for the gun phase to call via downBird().
  *
  * Per-frame: transform writes only, zero allocations.
  */
@@ -114,10 +128,14 @@ const LAUNCH_JITTER_PX = 16;
  * Presentation scale on the 0.24 m body — the same tribute the 2D view
  * paid with chunky sprites (its bobwhite spanned ~9% of the screen):
  * the silhouette must read GAMEBIRD at the 15-25 m a rise honestly
- * frames from, and a to-scale bobwhite is a 6-12 px speck there. 2.4
- * is still a fraction of the 2D license. Duck Hunt rules the sky.
+ * frames from, and a to-scale bobwhite is a 6-12 px speck there.
+ * Moment round: 3.0, measured — the-rise's camera (fov ~55) puts a
+ * bird's 0.82 m scaled wingspan at 18-28 px across the 15-25 m band,
+ * the mandated mass. Still a fraction of the 2D license.
  */
-const RISE_SCALE = 2.4;
+const RISE_SCALE = 3.3;
+/** Tip-to-tip wingspan of the UNSCALED model (m) — telemetry only. */
+const SPAN_M = 0.308;
 
 /** Forward carry along the escape bearing (m/s): what 2D said with
  *  depth-shrink. Ramps up as wings bite so range ALWAYS grows. */
@@ -127,14 +145,26 @@ const FWD_RAMP_MS = 1400;
 /** How hard the escape bearing bends downwind (0 = pure away). */
 const WIND_BIAS = 0.55;
 
+/** LOW BURST LAW (moment round): elevation stays under ~15 deg for the
+ *  first LOW_MS, then the climb unlocks over CLIMB_RAMP_MS — birds cross
+ *  cover and horizon first, and only then lift away downwind. */
+const LOW_ELEV_TAN = Math.tan((15 * Math.PI) / 180);
+const LOW_MS = 1500;
+const CLIMB_RAMP_MS = 1300;
+
+/** Capture covey stage: the full covey launches clustered inside ~0.8 s. */
+const CAPTURE_STAGGER_MS = 800;
+
 /** A bird this far from the hunter (m) has left the stage. */
 const GONE_RANGE = 80;
 /** A glide that touches grass after this long has put down — gone. */
 const LAND_MIN_AIR_MS = 1200;
 const MAX_AIR_MS = 15000;
 
-/** Pool = the airborne budget: one wave + sleepers, headroom for later. */
-const POOL = 6;
+/** Pool = the airborne budget. Gameplay never holds more than a wave +
+ *  sleepers aloft; the pool is sized for the capture covey stage, where
+ *  a full 9-13 bird covey is up at once (~43 draw calls, ~2k tris). */
+const POOL = 14;
 
 /** 2D falling authority: 170 px/s drop, 540 deg/s tumble. */
 const FALL_PX_PER_S = 170;
@@ -239,16 +269,14 @@ export class BirdsSystem implements Subsystem {
   private geos: THREE.BufferGeometry[] = [];
   private slots: Slot[] = [];
 
-  /** Sun-answer uniforms (the dog's proven coat recipe, sized for russet). */
+  /** Sun-answer uniforms (the dog's facet recipe — diffuse only, sized
+   *  for russet; NO emissive, NO rim: moment round, item 1). */
   private tone = {
     uSunDirW: { value: new THREE.Vector3(0, 1, 0) },
     uWarmK: { value: 0 },
     uCoolK: { value: 0 },
     uCoolTint: { value: new THREE.Color(P.shadowNeutral) },
-    uRimColor: { value: new THREE.Color(0) },
-    uRimK: { value: 0 },
   };
-  private hazeScratch = new THREE.Color(P.cream);
 
   /* --------------------------- rise state --------------------------- */
   /** Sim bird ids already staged into this presentation. */
@@ -299,10 +327,12 @@ export class BirdsSystem implements Subsystem {
     this.terrain = ctx.get<TerrainSystem>('terrain');
 
     this.mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-    // The dog's round-7 lesson, inherited whole: bodies take the WORLD's
-    // light. Warm lift on sun-facing facets, shade facets multiplied
-    // toward the hour's shadow tint, and a HOT sun-colored rim at the
-    // golden hours — the dawn rise is backlit russet, the money light.
+    // Moment round, item 1: NO emissive, NO rim — the ember-speck read
+    // was exactly the old glow kit. Bodies take the WORLD's light like
+    // everything else: warm lift on sun-facing facets, shade facets
+    // multiplied toward the hour's shadow tint with the dog's sky-grade
+    // modeling — dark against the dawn sky between camera and sun, lit
+    // buff bellies when the sun catches them.
     const tone = this.tone;
     this.mat.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, tone);
@@ -310,68 +340,106 @@ export class BirdsSystem implements Subsystem {
         .replace(
           '#include <common>',
           '#include <common>\nuniform vec3 uSunDirW;\nuniform float uWarmK;\nuniform float uCoolK;\n' +
-            'uniform vec3 uCoolTint;\nuniform vec3 uRimColor;\nuniform float uRimK;',
+            'uniform vec3 uCoolTint;',
         )
         .replace(
           '#include <normal_fragment_begin>',
           '#include <normal_fragment_begin>\n' +
             '\tvec3 gWN = normalize( ( vec4( normal, 0.0 ) * viewMatrix ).xyz );\n' +
-            '\tvec3 gVW = normalize( ( vec4( normalize( vViewPosition ), 0.0 ) * viewMatrix ).xyz );\n' +
             '\tfloat gSplit = smoothstep( -0.15, 0.3, dot( gWN, uSunDirW ) );\n' +
             '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 1.26, 1.1, 0.88 ), gSplit * uWarmK );\n' +
-            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), uCoolTint, ( 1.0 - gSplit ) * uCoolK );',
-        )
-        .replace(
-          '#include <emissivemap_fragment>',
-          '#include <emissivemap_fragment>\n' +
-            '\tfloat gRim = pow( 1.0 - abs( dot( gWN, gVW ) ), 2.5 ) * clamp( dot( gWN, uSunDirW ) * 0.7 + 0.3, 0.0, 1.0 );\n' +
-            '\ttotalEmissiveRadiance += uRimColor * ( gRim * uRimK );',
+            '\tfloat gSky = clamp( gWN.y * 0.5 + 0.5, 0.0, 1.0 );\n' +
+            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), uCoolTint * mix( 0.72, 1.1, gSky ), ( 1.0 - gSplit ) * uCoolK );',
         );
     };
     const applyTod = (tod: TimeOfDay): void => {
       const spec = TOD[tod];
       const silh = spec.grassLumCap < 1;
       const lowSun = THREE.MathUtils.clamp(1 - (spec.sunElevation - 2) / 13, 0, 1);
-      this.mat!.emissive.setHex(spec.fogColor).lerp(this.hazeScratch, 0.4);
-      this.mat!.emissiveIntensity = silh ? 0.04 : 0.1;
       const el = THREE.MathUtils.degToRad(spec.sunElevation);
       const az = THREE.MathUtils.degToRad(spec.sunAzimuth);
       this.tone.uSunDirW.value.set(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
       this.tone.uWarmK.value = 0.3 + spec.floraWarm * 0.5;
       this.tone.uCoolTint.value.setHex(spec.grassShadow).multiplyScalar(0.82);
-      this.tone.uCoolK.value = silh ? 0.6 : 0.3 + lowSun * 0.3;
-      // The rise against the sunrise lives on this edge: rim rides the
-      // hour's sun color, hotter than the dog's — small bodies against
-      // bright sky need the halo to keep their silhouette warm-lined.
-      this.tone.uRimColor.value.setHex(spec.sunColor);
-      this.tone.uRimK.value = (silh ? 0.35 : 0.15) + lowSun * 1.45;
+      this.tone.uCoolK.value = silh ? 0.65 : 0.35 + lowSun * 0.35;
     };
     applyTod(ctx.timeOfDay);
     ctx.events.addEventListener('tod', ((e: CustomEvent) => applyTod(e.detail)) as EventListener);
 
     this.buildPool(ctx);
     this.buildDebris(ctx);
+
+    // CAPTURE AUDIT (moment round): read-only measurement handle so the
+    // harness can gate the rise on a REAL covey (9-13 birds, not the
+    // 4-bird family the first point happens to find) and frame off the
+    // true escape bearing. Tooling-only; never runs in gameplay frames.
+    if (this.frozen) {
+      (window as unknown as { __riseAudit?: unknown }).__riseAudit = {
+        /** Hidden-bird head count per covey, plus the pointed covey. */
+        census: () => {
+          const counts = new Map<number, number>();
+          const birds = this.hunt.huntState().birds;
+          for (const b of birds) {
+            if (b.state !== 'hidden') continue;
+            counts.set(b.coveyId, (counts.get(b.coveyId) ?? 0) + 1);
+          }
+          return [...counts.entries()].map(([coveyId, n]) => ({ coveyId, n }));
+        },
+        /** Hidden birds in the covey the dog is pointing (0 = no point). */
+        pointedCoveySize: () => {
+          const dog = this.hunt.dog();
+          if (dog.state !== 'pointing' || dog.pointedBirdId === null) return 0;
+          const birds = this.hunt.huntState().birds;
+          let cid = -1;
+          for (const b of birds) {
+            if (b.id === dog.pointedBirdId) {
+              cid = b.coveyId;
+              break;
+            }
+          }
+          let n = 0;
+          for (const b of birds) {
+            if (b.state === 'hidden' && b.coveyId === cid) n++;
+          }
+          return n;
+        },
+        /** The staged rise's geometry: escape bearing, origin, hunter. */
+        rise: () => ({
+          escX: this.escX,
+          escZ: this.escZ,
+          originX: this.originX,
+          originZ: this.originZ,
+          hunterX: this.hunterX,
+          hunterZ: this.hunterZ,
+        }),
+      };
+    }
   }
 
   /* ------------------------------ build ------------------------------ */
 
   private buildPool(ctx: Ctx): void {
     const rng = mulberry32(BIRD_ART_SEED);
-    // Bobwhite roles off the locked palette: russet back over buff belly,
-    // an oxblood-dark cap above a pale throat, dusk-brown wings a step
-    // darker than the back so the beat reads inside the body mass.
-    const back = new THREE.Color(P.russet).lerp(new THREE.Color(P.warmGray), 0.35);
-    const backDim = back.clone().multiplyScalar(0.82);
-    const belly = new THREE.Color(P.strawLight).lerp(new THREE.Color(P.strawPale), 0.45);
+    // Bobwhite roles off the locked palette (moment round, item 1): DARK
+    // russet topside over a pale buff belly — the two-tone that reads
+    // gamebird whether the sky silhouettes the back or the sun finds the
+    // underside. Wings run the same law: dark russet above, buff below.
+    // Iteration 2: the pure russet ramp read CARDINAL-red under the warm
+    // dawn key — the topside pulls toward warmGray/soil (a bobwhite's
+    // back is grayed red-BROWN) and the underside steps off pale cream.
+    const back = new THREE.Color(P.russetDeep).lerp(new THREE.Color(P.warmGray), 0.45);
+    const backDim = back.clone().multiplyScalar(0.8);
+    const belly = new THREE.Color(P.strawLight).lerp(new THREE.Color(P.strawPale), 0.55);
     const cap = new THREE.Color(P.oxblood).lerp(new THREE.Color(P.charcoal), 0.3);
     const throat = new THREE.Color(P.strawPale);
-    const wingC = new THREE.Color(P.russetDeep).lerp(new THREE.Color(P.warmGray), 0.4);
-    const wingDim = wingC.clone().multiplyScalar(0.85);
-    const tailC = new THREE.Color(P.warmGray).multiplyScalar(0.7);
+    const wingTop = new THREE.Color(P.russetDeep).lerp(new THREE.Color(P.warmGray), 0.55);
+    const wingTopDim = wingTop.clone().multiplyScalar(0.85);
+    const wingUnder = belly.clone().multiplyScalar(0.78);
+    const tailC = new THREE.Color(P.warmGray).multiplyScalar(0.62);
 
     const bodyGeo = this.buildBodyGeo(back, backDim, belly, cap, throat, tailC);
-    const wingGeoL = this.buildWingGeo(-1, wingC, wingDim);
-    const wingGeoR = this.buildWingGeo(1, wingC, wingDim);
+    const wingGeoL = this.buildWingGeo(-1, wingTop, wingTopDim, wingUnder);
+    const wingGeoR = this.buildWingGeo(1, wingTop, wingTopDim, wingUnder);
     this.geos.push(bodyGeo, wingGeoL, wingGeoR);
 
     for (let i = 0; i < POOL; i++) {
@@ -475,29 +543,48 @@ export class BirdsSystem implements Subsystem {
   }
 
   /**
-   * One wing: TWO quads — broad inner panel, shorter ROUNDED outer panel
-   * (narrower, swept back, a hair drooped). Double-sided. side -1 = left
-   * (extends -x), +1 = right.
+   * One wing: broad inner panel, shorter ROUNDED outer panel, and a blunt
+   * tip cap that rounds the silhouette — the stubby quail paddle, nothing
+   * like a swallow's taper. Each panel is emitted with BOTH windings and
+   * TWO colors: dark russet reads from above, buff belly-tone from below
+   * (moment round: lit bellies when the sun catches the beat).
+   * side -1 = left (extends -x), +1 = right.
    */
-  private buildWingGeo(side: 1 | -1, wingC: THREE.Color, wingDim: THREE.Color): THREE.BufferGeometry {
+  private buildWingGeo(
+    side: 1 | -1,
+    top: THREE.Color,
+    topDim: THREE.Color,
+    under: THREE.Color,
+  ): THREE.BufferGeometry {
     const b = new SoupBuilder();
     const s = side;
+    const panel = (a: V3, p2: V3, c: V3, d: V3, up: THREE.Color): void => {
+      b.quad(a, p2, c, d, up); // top winding — dark russet
+      b.quad(d, c, p2, a, under); // underside winding — pale buff
+    };
     // Inner panel: shoulder edge hugs the body, trailing edge full-chord.
-    b.quad2(
+    panel(
       [0, 0, -0.034],
       [0, 0, 0.038],
-      [s * 0.058, -0.002, 0.032],
-      [s * 0.058, -0.004, -0.048],
-      wingC,
+      [s * 0.06, -0.002, 0.034],
+      [s * 0.06, -0.004, -0.046],
+      top,
     );
-    // Outer panel: chord shrinks hard and the tip sweeps BACK — the round
-    // stubby quail wing, nothing like a swallow's taper.
-    b.quad2(
-      [s * 0.058, -0.004, -0.048],
-      [s * 0.058, -0.002, 0.032],
-      [s * 0.106, -0.008, 0.004],
-      [s * 0.106, -0.01, -0.038],
-      wingDim,
+    // Outer panel: chord eases in, tip barely sweeps — ROUND, not tapered.
+    panel(
+      [s * 0.06, -0.004, -0.046],
+      [s * 0.06, -0.002, 0.034],
+      [s * 0.102, -0.008, 0.022],
+      [s * 0.102, -0.009, -0.032],
+      topDim,
+    );
+    // Blunt tip cap: closes the paddle with a rounded end.
+    panel(
+      [s * 0.102, -0.009, -0.032],
+      [s * 0.102, -0.008, 0.022],
+      [s * 0.124, -0.011, 0.008],
+      [s * 0.124, -0.011, -0.016],
+      topDim,
     );
     return b.build();
   }
@@ -617,10 +704,38 @@ export class BirdsSystem implements Subsystem {
       // screen-y, forward carry along the escape bearing (ramping as the
       // wings bite). Range from the hunter grows every single tick.
       const fwd = FWD_MIN + (FWD_MAX - FWD_MIN) * Math.min(1, s.airMs / FWD_RAMP_MS);
-      const latM = latPx * FLUSH_PX_TO_M;
+      // Lateral ramp (iteration 3): the 2D fan speeds are instant-on —
+      // honest on a flat screen, but in world space they tore the covey
+      // 20 m wide inside a second. The burst leaves as ONE explosion and
+      // the fan opens as the wings bite (full authority by 1.5 s).
+      const latK = 0.5 + 0.5 * Math.min(1, s.airMs / 1500);
+      const latM = latPx * FLUSH_PX_TO_M * latK;
       s.vxW = this.escX * fwd + this.rightX * latM;
       s.vzW = this.escZ * fwd + this.rightZ * latM;
       s.vyW = -s.vel.y * FLUSH_PX_TO_M_V;
+      // LOW BURST LAW (moment round, item 2): cap the climb under ~15 deg
+      // for the first 1.5 s, unlocking over the next 1.3 — the covey
+      // crosses COVER and HORIZON, then lifts away downwind. Surplus
+      // climb is not thrown away: it becomes drive down the escape
+      // bearing, so the burst reads VIOLENT, not clipped.
+      const horizV = Math.hypot(s.vxW, s.vzW);
+      const free = Math.min(1, Math.max(0, (s.airMs - LOW_MS) / CLIMB_RAMP_MS));
+      const climbCap = horizV * (LOW_ELEV_TAN + free * 1.8);
+      if (s.vyW > climbCap) {
+        const excess = s.vyW - climbCap;
+        s.vyW = climbCap;
+        s.vxW += this.escX * excess * 0.4;
+        s.vzW += this.escZ * excess * 0.4;
+      }
+      // A bobwhite tops out near 18 m/s over the ground — the transfer
+      // must not turn the burst into artillery (iteration 2: 0.85 of the
+      // freed climb sent birds 20 m in 0.8 s).
+      const hv2 = Math.hypot(s.vxW, s.vzW);
+      if (hv2 > 18.5) {
+        const k = 18.5 / hv2;
+        s.vxW *= k;
+        s.vzW *= k;
+      }
       s.x += s.vxW * dt;
       s.z += s.vzW * dt;
       s.y += s.vyW * dt;
@@ -728,7 +843,11 @@ export class BirdsSystem implements Subsystem {
     this.rightZ = this.escX;
   }
 
-  /** One wave: up to WAVE_MAX birds burst together on shuffled lanes. */
+  /** One wave: up to WAVE_MAX birds burst together on shuffled lanes.
+   *  CAPTURE COVEY STAGE (moment round, item 2): under ?capture=1 the
+   *  whole queued covey launches in this one call instead — clustered,
+   *  staggered inside ~0.8 s — the full-covey explosion the store-page
+   *  frame needs. Gameplay keeps the wave law verbatim. */
   private launchWave(simBirds: readonly {
     id: number;
     pos: { x: number; y: number };
@@ -743,10 +862,11 @@ export class BirdsSystem implements Subsystem {
       this.laneBuf[i] = this.laneBuf[j];
       this.laneBuf[j] = t;
     }
+    const waveN = this.frozen ? this.qTail - this.qHead : WAVE_MAX;
     let bx = 0;
     let bz = 0;
     let launched = 0;
-    for (let k = 0; k < WAVE_MAX && this.qHead < this.qTail; k++) {
+    for (let k = 0; k < waveN && this.qHead < this.qTail; k++) {
       const id = this.queue[this.qHead % this.queue.length];
       this.qHead++;
       let sim: (typeof simBirds)[number] | null = null;
@@ -766,7 +886,7 @@ export class BirdsSystem implements Subsystem {
       }
       if (!slot) break; // airborne budget is law
       const species = getSpecies(sim.speciesId);
-      const lane = this.laneBuf[k];
+      const lane = this.laneBuf[k % 3];
       // STAGE 3, verbatim: the species fan slice for this lane...
       const v = escapeVelocityFan(species.flight, lane, WAVE_MAX, this.riseRng);
       // ...hot and lazy rolls (wild rises come out hotter)...
@@ -797,7 +917,9 @@ export class BirdsSystem implements Subsystem {
       const offM =
         ((lane - 1) * SLOT_SPREAD_PX + nudgePx + (this.riseRng() * 2 - 1) * LAUNCH_JITTER_PX) *
         LAUNCH_PX_TO_M;
-      const alongM = (this.riseRng() * 2 - 1) * 0.7;
+      // Capture covey stage deepens the cluster: 12 birds off 3 lanes
+      // need the depth axis or the burst reads as a picket line.
+      const alongM = (this.riseRng() * 2 - 1) * (this.frozen ? 1.7 : 0.7);
       slot.x = this.originX + this.rightX * offM + this.escX * alongM;
       slot.z = this.originZ + this.rightZ * offM + this.escZ * alongM;
       slot.y = this.terrain.heightAt(slot.x, slot.z) + 0.2;
@@ -808,9 +930,17 @@ export class BirdsSystem implements Subsystem {
       slot.wobblePh = launched * 2.1;
       slot.wobbleMult = 0.6 + this.riseRng();
       slot.gliding = false;
-      // The sleeper: rises a beat after its wave.
-      const sleeper = this.riseRng() < SLEEPER_CHANCE;
-      slot.delayMs = sleeper ? SLEEPER_MIN_MS + this.riseRng() * SLEEPER_RAND_MS : 0;
+      if (this.frozen) {
+        // Capture covey stage: clustered staggered launch across ~0.8 s
+        // — the first birds are 10 m out while the last still blow from
+        // the grass. (The sleeper roll stays a gameplay beat.)
+        slot.delayMs = launched === 0 ? 0 : this.riseRng() * CAPTURE_STAGGER_MS;
+      } else {
+        // The sleeper: rises a beat after its wave.
+        const sleeper = this.riseRng() < SLEEPER_CHANCE;
+        slot.delayMs = sleeper ? SLEEPER_MIN_MS + this.riseRng() * SLEEPER_RAND_MS : 0;
+      }
+      const sleeper = slot.delayMs > 0;
       slot.status = sleeper ? 'waiting' : 'flying';
       slot.root.visible = !sleeper;
       bx += slot.x;
@@ -850,16 +980,45 @@ export class BirdsSystem implements Subsystem {
     return false;
   }
 
-  /** Capture telemetry: airborne birds (world m). Allocates — tooling only. */
-  airborne(): { simId: number; x: number; y: number; z: number; airMs: number; status: string }[] {
-    const out: { simId: number; x: number; y: number; z: number; airMs: number; status: string }[] = [];
+  /** Capture telemetry: airborne birds (world m). Allocates — tooling only.
+   *  sizeM is the SCALED wingspan: the harness projects it to pixels. */
+  airborne(): {
+    simId: number; x: number; y: number; z: number; airMs: number; status: string; sizeM: number;
+  }[] {
+    const out: {
+      simId: number; x: number; y: number; z: number; airMs: number; status: string; sizeM: number;
+    }[] = [];
     for (let i = 0; i < POOL; i++) {
       const s = this.slots[i];
       if (s.status === 'flying' || s.status === 'falling' || s.status === 'waiting') {
-        out.push({ simId: s.simId, x: s.x, y: s.y, z: s.z, airMs: s.airMs, status: s.status });
+        out.push({
+          simId: s.simId, x: s.x, y: s.y, z: s.z, airMs: s.airMs, status: s.status,
+          sizeM: SPAN_M * RISE_SCALE,
+        });
       }
     }
     return out;
+  }
+
+  /**
+   * GROUNDING CONTRACT (moment round, item 2): grass reads this via
+   * ctx.get('birds') — the launch burst PARTS the cover at the rise
+   * origin. World meters; r carries the whole envelope: it pops open
+   * with the first wave, breathes a decaying shake, and settles closed.
+   * Keyed to the rise clock — deterministic under capture stepping.
+   */
+  burstPoint(out: { x: number; z: number; r: number }): void {
+    out.x = this.originX;
+    out.z = this.originZ;
+    let r = 1e-4;
+    if (this.riseSeq > 0 && this.riseMs < 2600) {
+      const t = this.riseMs;
+      const grow = Math.min(1, t / 200);
+      const settle = 1 - THREE.MathUtils.smoothstep(t, 1500, 2600);
+      const shake = 1 + 0.16 * Math.sin(t * 0.05) * settle;
+      r = Math.max(1e-4, 2.7 * grow * settle * shake);
+    }
+    out.r = r;
   }
 
   /* ------------------------------ render ----------------------------- */
@@ -890,10 +1049,13 @@ export class BirdsSystem implements Subsystem {
         s.wingL.rotation.set(0, 0, -0.16);
         s.wingR.rotation.set(0, 0, 0.16);
       } else {
-        // Wingbeat at the species' flapRate, keyed to airMs — VISIBLE
-        // (±70 deg) and deterministic under capture stepping.
+        // Wingbeat at the species' flapRate, keyed to airMs — a visible
+        // 3-POSITION beat (up / mid / down with dwell at each, moment
+        // round item 1): three readable frames at 20 m, like the 2D
+        // sprite flapped, and deterministic under capture stepping.
         const hz = s.species.flight.flapRate ?? 14;
-        const ang = Math.sin((s.airMs / 1000) * hz * Math.PI * 2) * 1.25 - 0.12;
+        const ph = Math.sin((s.airMs / 1000) * hz * Math.PI * 2 + s.wobblePh * 0.35);
+        const ang = ph > 0.33 ? 0.88 : ph < -0.33 ? -0.78 : 0.1;
         s.wingL.rotation.set(0, 0, -ang);
         s.wingR.rotation.set(0, 0, ang);
       }
@@ -914,8 +1076,8 @@ export class BirdsSystem implements Subsystem {
           const px = this.debrisOx + this.debrisVel[i * 4] * spd * t;
           const py = this.debrisOy + this.debrisVel[i * 4 + 1] * spd * t - 4.9 * t * t;
           const pz = this.debrisOz + this.debrisVel[i * 4 + 2] * spd * t;
-          // Big enough to read at the 12-15 m the rise frames from.
-          const sz = 0.07 * fade;
+          // Big enough to read at the 15-20 m the rise frames from.
+          const sz = 0.16 * fade;
           const o = i * 12;
           arr[o] = px - sz;
           arr[o + 1] = py - sz;

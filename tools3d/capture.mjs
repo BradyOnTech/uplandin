@@ -60,11 +60,25 @@ const SHOTS = {
   // to peak spread. 'the-rise' shoots hunter's-eye over the pointing dog
   // into the explosion; 'rise-wide' stands broadside to the escape line
   // and reads the fan.
-  // riseTicks 13: probed — this seed's wave has a ~367 ms sleeper, so
-  // tick 13 catches it BURSTING out of the grass while its wave-mates
-  // hang 5-7 m up: three birds, honestly staggered heights.
-  'the-rise': { tod: 'dawn', sim: 'rise', base: [0, 40, 180, 4], maxTicks: 30000, riseTicks: 15, view: 'behind', dist: 5.5, aimK: 0.5, pitchBias: -2, fov: 52 },
-  'rise-wide': { tod: 'dawn', sim: 'rise', base: [0, 40, 180, 4], maxTicks: 30000, riseTicks: 14, view: 'side', dist: 12, aimK: 0.5, pitchBias: 0, fov: 55 },
+  // MOMENT ROUND reframe: the capture stages the FULL covey (minCovey
+  // gates the locked point onto a real 8+ bird covey, not the 4-bird
+  // family the first point finds), launches clustered inside ~0.8 s, and
+  // shoots from the hunter's eye JUST OVER THE POINTING DOG'S BACK
+  // (~3 m, sideM pulls the eye off the escape line so the break
+  // quarters across frame). riseTicks 28: the first birds ~0.9 s out
+  // riding the horizon band low (the low-burst law holds them under
+  // ~15 deg so they cross COVER and SKY, not empty vault), the last
+  // still climbing out of the parted, shaking grass. Probed ticks: 17
+  // buries the burst inside the cover mass, 36 scatters the fan — 28 is
+  // the beat where the covey hangs together against the sky line.
+  // rise-wide stands broadside off the fan's flank and quarters it past
+  // the foreground cover; debug-burst (below) witnesses the launch.
+  'the-rise': { tod: 'dawn', sim: 'rise', base: [0, 40, 180, 4], maxTicks: 60000, riseTicks: 28, view: 'behind', dist: 3.4, sideM: 1.4, aimK: 0.5, pitchBias: -11, yawBias: 5, fov: 48, minCovey: 8 },
+  'rise-wide': { tod: 'dawn', sim: 'rise', base: [0, 40, 180, 4], maxTicks: 60000, riseTicks: 26, view: 'side', dist: 15, aimK: 0.5, pitchBias: 0, yawBias: 0, fov: 55, minCovey: 8 },
+  // Burst witness (moment round, item 2): the same rise 8 ticks in —
+  // the cover blown OPEN at the origin, debris up, first birds a meter
+  // out of the grass. Debug only; evidence that the launch parts cover.
+  'debug-burst': { tod: 'dawn', sim: 'rise', base: [0, 40, 180, 4], maxTicks: 60000, riseTicks: 8, view: 'behind', dist: 3.4, sideM: 1.4, aimK: 0.35, pitchBias: -9, yawBias: 5, fov: 48, minCovey: 8 },
   // Debug poses (not part of the standard set — request via --shots).
   'debug-shadow': [26, 82, 180, -6, 'dawn'],
   'debug-noon-shadow': [36, 62, 180, -10, 'noon'],
@@ -97,6 +111,16 @@ const SHOTS = {
   // off window.__dogAudit.slopeAt), framed low and side-on so daylight
   // under a paw — or a buried shin — is unmissable.
   'debug-dog-slope': { tod: 'noon', sim: 'slope', maxTicks: 24000, base: [0, 40, 180, 4], dist: 3.2, spin: 1.55, pitch: -14 },
+  // DOG LIGHT AUDIT (moment round, item 5): a ring of 8 dawn captures at
+  // 45-degree steps around the locked point. The coat must sit in the
+  // scene at EVERY angle — sun-side modeled, shade-side breathing the
+  // dawn shadow tint, no angle collapsing to unlit flat white.
+  ...Object.fromEntries(
+    [0, 45, 90, 135, 180, 225, 270, 315].map((az) => [
+      `debug-dog-ring-${az}`,
+      { tod: 'dawn', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 4.2, camAz: az, pitch: -13 },
+    ]),
+  ),
 };
 
 const args = process.argv.slice(2);
@@ -177,11 +201,14 @@ async function main() {
         // spread -> frame off live bird telemetry. Every stage is a pure
         // function of the seed.
         const riseInfo = await page.evaluate(
-          (base, maxTicks, riseTicks, view, dist, aimK, pitchBias, ptod, fov) => {
+          (base, maxTicks, riseTicks, view, dist, aimK, pitchBias, yawBias, sideM, ptod, fov, minCovey) => {
             window.__api3d.setTod(ptod);
             window.__api3d.setPose(...base);
             const hunt = () => window.__api3d.hunt();
-            // Locked-point gate — the round-9 predicate, verbatim.
+            // Locked-point gate — the round-9 predicate — PLUS the moment-
+            // round covey gate: the rise stages a REAL covey (minCovey+
+            // hidden birds), so the sim runs on past any small-family
+            // point until the dog pins one worth the store-page frame.
             let lpx = null;
             let lpz = null;
             let locked = false;
@@ -204,21 +231,44 @@ async function main() {
             window.__api3d.stepSim(240);
             let ticks = 240;
             let h = hunt();
-            while (!lockedPoint(h) && ticks < maxTicks) {
+            let flushedThrough = 0;
+            while (ticks < maxTicks) {
+              // Covey gate (moment round, item 2): a point on a small
+              // family gets FLUSHED THROUGH — walk in, blow it, let the
+              // sky clear (800 ticks > MAX_AIR) and hunt on until the
+              // dog pins the real 8+ bird covey worth the frame.
+              if (
+                minCovey > 0 && window.__riseAudit && h.dog.state === 'pointing' &&
+                window.__riseAudit.pointedCoveySize() > 0 &&
+                window.__riseAudit.pointedCoveySize() < minCovey
+              ) {
+                const small = window.__api3d.triggerFlush();
+                if (small) {
+                  flushedThrough++;
+                  window.__api3d.stepSim(800);
+                  ticks += 800;
+                  h = hunt();
+                  lpx = null;
+                  continue;
+                }
+              }
+              if (lockedPoint(h)) break;
               window.__api3d.stepSim(15);
               ticks += 15;
               h = hunt();
             }
-            if (!locked) return { ok: false, why: 'no locked point' };
+            const census = window.__riseAudit ? window.__riseAudit.census() : [];
+            if (!locked) return { ok: false, why: 'no locked point (covey gate?)', census };
             const dogX = h.dog.x;
             const dogZ = h.dog.z;
             const flush = window.__api3d.triggerFlush();
-            if (!flush) return { ok: false, why: 'triggerFlush returned null' };
+            if (!flush) return { ok: false, why: 'triggerFlush returned null', census };
             // Field time holds its breath; only the rise plays.
             window.__api3d.stepRise(riseTicks);
             const birds = window.__api3d.birds();
             const flying = birds.filter((b) => b.status === 'flying');
-            if (flying.length === 0) return { ok: false, why: 'no birds airborne', birds };
+            if (flying.length === 0) return { ok: false, why: 'no birds airborne', birds, census };
+            const rise = window.__riseAudit ? window.__riseAudit.rise() : null;
             let cx = 0;
             let cy = 0;
             let cz = 0;
@@ -230,39 +280,58 @@ async function main() {
             cx /= flying.length;
             cy /= flying.length;
             cz /= flying.length;
+            // The launch origin anchors the framing; the live centroid
+            // only steers the aim height and the fan direction.
+            const ox = rise ? rise.originX : cx;
+            const oz = rise ? rise.originZ : cz;
             let camX;
             let camZ;
             if (view === 'behind') {
-              // Hunter's eye BEHIND the pointing dog on the dog->covey line.
-              let dx = cx - dogX;
-              let dz = cz - dogZ;
+              // MOMENT ROUND, item 3: the hunter's eye JUST OVER THE
+              // POINTING DOG'S BACK — pulled sideM off the dog->origin
+              // line (a hunter swings around the point, never straddles
+              // the dog), so the break quarters ACROSS the frame instead
+              // of foreshortening straight away. The dog's rump and flag
+              // hold the frame bottom, the covey explodes at the cover
+              // edge 12-18 m ahead.
+              let dx = ox - dogX;
+              let dz = oz - dogZ;
               const l = Math.hypot(dx, dz) || 1;
               dx /= l;
               dz /= l;
-              camX = dogX - dx * dist;
-              camZ = dogZ - dz * dist;
+              camX = dogX - dx * dist - dz * sideM;
+              camZ = dogZ - dz * dist + dx * sideM;
             } else {
-              // Three-quarter behind the fan: mostly beside the escape
-              // line, pulled back toward the gun — a pure side angle
-              // collapsed the lateral fan into depth (iteration 3).
-              let ex = cx - dogX;
-              let ez = cz - dogZ;
-              const l = Math.hypot(ex, ez) || 1;
-              ex /= l;
-              ez /= l;
-              let dxq = ez * 1.0 - ex * 0.8;
-              let dzq = -ex * 1.0 - ez * 0.8;
-              const lq = Math.hypot(dxq, dzq) || 1;
-              dxq /= lq;
-              dzq /= lq;
-              camX = cx + dxq * dist;
-              camZ = cz + dzq * dist;
+              // Broadside of the escape bearing at the origin: the fan
+              // CROSSES the frame, quartering past the foreground cover.
+              const ex = rise ? rise.escX : (cx - dogX) / (Math.hypot(cx - dogX, cz - dogZ) || 1);
+              const ez = rise ? rise.escZ : (cz - dogZ) / (Math.hypot(cx - dogX, cz - dogZ) || 1);
+              // Stand off the MID-FLIGHT point's flank (origin + 8 m down
+              // the bearing), square to the fan — iteration 2 planted the
+              // camera in the fan's path and a bird filled a sixth of the
+              // frame like a moth. Of the two flanks, take the one with
+              // more room inside the ±230 world clamp (this seed's covey
+              // lives at the west edge; the west flank clamps).
+              const mx = ox + ex * 8;
+              const mz = oz + ez * 8;
+              const margin = (x, z) =>
+                Math.min(230 - Math.abs(x), 230 - Math.abs(z));
+              const c1 = { x: mx + ez * dist, z: mz - ex * dist };
+              const c2 = { x: mx - ez * dist, z: mz + ex * dist };
+              const pick = margin(c1.x, c1.z) >= margin(c2.x, c2.z) ? c1 : c2;
+              camX = pick.x;
+              camZ = pick.z;
             }
             camX = Math.max(-230, Math.min(230, camX));
             camZ = Math.max(-230, Math.min(230, camZ));
-            const vx = cx - camX;
-            const vz = cz - camZ;
-            const yawDeg = (Math.atan2(-vx, -vz) * 180) / Math.PI;
+            // Aim between the origin's cover edge and the live fan so the
+            // birds ride the MIDDLE BAND; yawBias slides the fan across
+            // frame for the left-to-right crossing read.
+            const ax = ox + (cx - ox) * 0.6;
+            const az = oz + (cz - oz) * 0.6;
+            const vx = ax - camX;
+            const vz = az - camZ;
+            const yawDeg = (Math.atan2(-vx, -vz) * 180) / Math.PI + yawBias;
             const horiz = Math.hypot(vx, vz);
             // Terrain-aware aim (iteration 2: absolute-y aim stared into
             // empty sky on elevated ground): eye = terrain + 1.62 at the
@@ -271,15 +340,27 @@ async function main() {
             // and cover line hold the lower third.
             const hAt = (x, z) => (window.__dogAudit ? window.__dogAudit.heightAt(x, z) : 0);
             const eyeY = hAt(camX, camZ) + 1.62;
-            const aimY = hAt(cx, cz) + (cy - hAt(cx, cz)) * aimK;
+            const aimY = hAt(ax, az) + (cy - hAt(cx, cz)) * aimK;
             const pitchDeg = (Math.atan2(aimY - eyeY, horiz) * 180) / Math.PI + pitchBias;
             window.__api3d.setPose(camX, camZ, yawDeg, pitchDeg);
             if (fov && window.__dogAudit) window.__dogAudit.setFov(fov);
             window.__api3d.renderOnce();
+            // Projected-size telemetry (moment round, item 1): a bird at
+            // 15-25 m must span ~18-30 px at this camera — measured, not
+            // claimed. sizeM comes from the birds subsystem (scaled span).
+            const fovDeg = fov || 70;
+            const pxPerM = (d) => 270 / (Math.tan(((fovDeg / 2) * Math.PI) / 180) * d);
+            for (const b of birds) {
+              const d = Math.hypot(b.x - camX, b.y - (eyeY), b.z - camZ);
+              b.camDist = d;
+              b.spanPx = (b.sizeM ?? 0) * pxPerM(d);
+            }
             return {
               ok: true,
               flush,
               birds,
+              census,
+              rise,
               dog: { x: dogX, z: dogZ, state: h.dog.state },
               cam: { x: camX, z: camZ, yawDeg: yawDeg, pitchDeg: pitchDeg },
               ticks,
@@ -287,19 +368,31 @@ async function main() {
             };
           },
           spec.base, spec.maxTicks, spec.riseTicks, spec.view, spec.dist,
-          spec.aimK ?? 0.55, spec.pitchBias ?? 0, tod, spec.fov ?? 0,
+          spec.aimK ?? 0.55, spec.pitchBias ?? 0, spec.yawBias ?? 0, spec.sideM ?? 0, tod, spec.fov ?? 0,
+          spec.minCovey ?? 0,
         );
         if (!riseInfo.ok) {
           console.error(`  rise: ${name} failed — ${riseInfo.why}`);
+          if (riseInfo.census) {
+            console.error(`  census: ${riseInfo.census.map((c) => `covey ${c.coveyId}: ${c.n}`).join(', ')}`);
+          }
           failed++;
         } else {
+          console.log(`  census: ${riseInfo.census.map((c) => `covey ${c.coveyId}: ${c.n}`).join(', ')}`);
+          if (riseInfo.rise) {
+            console.log(
+              `  origin (${riseInfo.rise.originX.toFixed(1)}, ${riseInfo.rise.originZ.toFixed(1)}) ` +
+              `esc (${riseInfo.rise.escX.toFixed(2)}, ${riseInfo.rise.escZ.toFixed(2)})`,
+            );
+          }
           console.log(
             `  rise: ${riseInfo.birds.length} staged, walk-in ${riseInfo.flush.distPx.toFixed(1)}px, ` +
             `covey [${riseInfo.flush.ids.join(',')}], dog held at (${riseInfo.dog.x.toFixed(1)}, ${riseInfo.dog.z.toFixed(1)})`,
           );
           for (const b of riseInfo.birds) {
             console.log(
-              `    bird ${b.simId}: ${b.status} at (${b.x.toFixed(1)}, ${b.y.toFixed(1)}, ${b.z.toFixed(1)}) air ${b.airMs.toFixed(0)}ms`,
+              `    bird ${b.simId}: ${b.status} at (${b.x.toFixed(1)}, ${b.y.toFixed(1)}, ${b.z.toFixed(1)}) air ${b.airMs.toFixed(0)}ms` +
+              (b.camDist !== undefined ? ` dist ${b.camDist.toFixed(1)}m span ${b.spanPx.toFixed(1)}px` : ''),
             );
           }
           console.log(

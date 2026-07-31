@@ -391,7 +391,19 @@ export class DogSystem implements Subsystem {
             // anti-aliased transition between them.
             '\tfloat gSplit = smoothstep( -0.15, 0.3, dot( gWN, uSunDirW ) );\n' +
             '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 1.26, 1.1, 0.88 ), gSplit * uWarmK );\n' +
-            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), uCoolTint, ( 1.0 - gSplit ) * uCoolK );',
+            // MOMENT ROUND, item 5 — the shade mass is MODELED, not one
+            // flat multiply (from rear/backlit angles every facet fell on
+            // the same side of the terminator and the coat collapsed to
+            // unlit flat white): shade facets grade by SKY EXPOSURE — an
+            // up-facing rump catches the dawn vault, flanks fall off,
+            // undersides sink — and facets pointing squarely AWAY from
+            // the sun take one further step down, so a rear view reads
+            // rump-light-over-belly-dark instead of paper.
+            '\tfloat gSky = clamp( gWN.y * 0.5 + 0.5, 0.0, 1.0 );\n' +
+            '\tvec3 gShadeTint = uCoolTint * mix( 0.74, 1.08, gSky );\n' +
+            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), gShadeTint, ( 1.0 - gSplit ) * uCoolK );\n' +
+            '\tfloat gAway = clamp( ( -dot( gWN, uSunDirW ) - 0.1 ) * 1.1, 0.0, 1.0 );\n' +
+            '\tdiffuseColor.rgb *= 1.0 - gAway * uCoolK * 0.22;',
         )
         .replace(
           '#include <emissivemap_fragment>',
@@ -411,8 +423,12 @@ export class DogSystem implements Subsystem {
       // the noon dog pewter), never enough to go fullbright again. The
       // fill leans on the hour's HAZE role — pale and warm by palette
       // construction — at roughly half round-6's fullbright dose.
+      // Moment round, item 5: the fill dropped a step (0.11 -> 0.075) —
+      // it was the last flattener: a uniform additive wash that filled
+      // every shade facet the modeling above tries to separate, and on
+      // the sun side it tipped the warm-lifted coat into clipping.
       this.mat!.emissive.setHex(spec.fogColor).lerp(this.creamScratch, 0.4);
-      this.mat!.emissiveIntensity = silh ? 0.04 : 0.11;
+      this.mat!.emissiveIntensity = silh ? 0.04 : 0.075;
       const el = THREE.MathUtils.degToRad(spec.sunElevation);
       const az = THREE.MathUtils.degToRad(spec.sunAzimuth);
       this.tone.uSunDirW.value.set(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
@@ -423,7 +439,10 @@ export class DogSystem implements Subsystem {
       // multipliers sized for grass roots; on the bright coat they need
       // real darkening to read as the mauve-gray shade mass at all.
       this.tone.uCoolTint.value.setHex(spec.grassShadow).multiplyScalar(0.78);
-      this.tone.uCoolK.value = silh ? 0.6 : 0.3 + lowSun * 0.35;
+      // Moment round, item 5: shade strength stepped up (0.3+0.35 ->
+      // 0.34+0.42 on lowSun) — the ring audit showed the dawn shade mass
+      // barely biting; the coat must sit IN the scene from every angle.
+      this.tone.uCoolK.value = silh ? 0.6 : 0.34 + lowSun * 0.42;
       // Rim rides the hour's sun color — HOT at the golden hours: the
       // backlit money shot lives on this one warm edge.
       this.tone.uRimColor.value.setHex(spec.sunColor);
