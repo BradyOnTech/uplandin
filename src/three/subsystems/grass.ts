@@ -196,6 +196,9 @@ uniform vec3 uSunHaze;
 uniform float uSunHazeK;
 uniform float uLumCap;
 uniform float uLitRimK;
+uniform vec3 uCoolTint;
+uniform float uCoolK;
+uniform vec2 uSunRange;
 varying float vRim;
 `;
 
@@ -273,6 +276,19 @@ float gRim = min( ( gLit * 0.35 * uLitRimK + gBack * 1.7 ) * ( gT * gT ) * uRimS
 float gLum = dot( vColor.rgb, vec3( 0.299, 0.587, 0.114 ) );
 vColor.rgb *= min( 1.0, uLumCap / max( gLum, 1e-4 ) );
 
+// Cool-mass tint (round 5): the sky's ambient carried into every blade the
+// sun lobe does not claim — the lastlight field is a violet shadow mass
+// with a warm wedge, not a gray carpet. Complement of the terrain's lobe.
+vec2 gToC = gRoot.xz - cameraPosition.xz;
+float gAzC = clamp( dot( gToC / max( length( gToC ), 1e-3 ), uSunXZ ), 0.0, 1.0 );
+vColor.rgb = mix( vColor.rgb, uCoolTint * ( 0.5 + 0.5 * gT ), uCoolK * ( 1.0 - gAzC * gAzC * 0.85 ) );
+// Warm wedge (round 5): grass answers the SAME drench lobe the terrain
+// runs, at all distances — without this the wedge dies wherever tufts
+// cover the ground (the lastlight orange pool, the dawn sun-side grade).
+float gAzC4 = gAzC * gAzC * gAzC * gAzC;
+float gWarm = gAzC4 * smoothstep( uSunRange.x, uSunRange.y, gInstD ) * uSunHazeK * 0.5;
+vColor.rgb = mix( vColor.rgb, uSunHaze, gWarm );
+
 // Aerial perspective: across the far field the albedo dissolves fully into
 // the TOD haze, so silhouettes melt into atmosphere instead of burning to
 // a near-black hedge under the ridge line. The haze itself warms toward
@@ -308,6 +324,9 @@ interface GrassUniforms {
   uSunHaze: { value: THREE.Color };
   uSunHazeK: { value: number };
   uLumCap: { value: number };
+  uCoolTint: { value: THREE.Color };
+  uCoolK: { value: number };
+  uSunRange: { value: THREE.Vector2 };
   uLitRimK: { value: number };
   [key: string]: { value: unknown };
 }
@@ -854,6 +873,9 @@ export class GrassSystem implements Subsystem {
       uSunHazeK: { value: 0 },
       uLumCap: { value: 4 },
       uLitRimK: { value: 1 },
+      uCoolTint: { value: new THREE.Color(P.duskGroundViolet) },
+      uCoolK: { value: 0 },
+      uSunRange: { value: new THREE.Vector2(10, 80) },
     };
   }
 
@@ -900,6 +922,10 @@ export class GrassSystem implements Subsystem {
       // dependent rim term once the sun is at the horizon.
       u.uLumCap.value = spec.grassLumCap;
       u.uLitRimK.value = spec.sunElevation <= 3 ? 0 : 1;
+      // Cool-mass: unlit blades carry the sky's ambient (lastlight violet).
+      u.uCoolTint.value.setHex(spec.groundCoolTint);
+      u.uCoolK.value = spec.groundCoolK;
+      u.uSunRange.value.set(spec.groundSunNear, spec.groundSunFar);
     }
   }
 
@@ -1124,7 +1150,7 @@ export class GrassSystem implements Subsystem {
       // straw-gold heart, olive-tinged runs, pale bleached crowns.
       const fam = rng();
       if (fam < 0.45) this.c.lerp(this.grassGold, 0.28 + rng() * 0.22);
-      else if (fam < 0.88) this.c.lerp(this.grassOlive, 0.3 + rng() * 0.3);
+      else if (fam < 0.88) this.c.lerp(this.grassOlive, 0.38 + rng() * 0.32);
       else this.c.lerp(this.strawPale, 0.26 + rng() * 0.22);
     } else if (vi === V_FORB) {
       // Green forbs — the third hue family scattered through the stubble.

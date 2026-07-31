@@ -56,15 +56,29 @@ uniform vec2 uSunXZ;
 uniform vec3 uSunTint;
 uniform float uSunK;
 uniform float uSunEmit;
+uniform vec2 uSunRange;
+uniform vec3 uCoolTint;
+uniform float uCoolK;
 varying vec3 vWPos;
 `;
 
+// Round 5: the lobe is two-term — a broad wash plus a TIGHT bloom wedge
+// under the disc (pow 8) so a low sun visibly pools on the ground along
+// its azimuth instead of a uniform warm filter. The cool-mass term is the
+// complement: everything the lobe does NOT claim grades toward the sky's
+// ambient (the lastlight violet shadow mass; ~0 in daylight).
 const DRENCH_FRAG = /* glsl */ `
 vec2 gTo = vWPos.xz - cameraPosition.xz;
 float gD = length( gTo );
 float gAz = clamp( dot( gTo / max( gD, 1e-3 ), uSunXZ ), 0.0, 1.0 );
-float gLobe = gAz * gAz * smoothstep( 4.0, 90.0, gD ) * uSunK;
-diffuseColor.rgb = mix( diffuseColor.rgb, uSunTint, min( gLobe, 0.8 ) );
+float gAz4 = gAz * gAz * gAz * gAz;
+float gLobe = ( gAz * gAz * 0.6 + gAz4 * gAz4 * 0.7 ) * smoothstep( uSunRange.x, uSunRange.y, gD ) * uSunK;
+gLobe = min( gLobe, 0.85 );
+// Albedo takes only HALF the lobe (a hue grade, not red paint); the
+// emissive bloom below carries the heat of the wedge.
+diffuseColor.rgb = mix( diffuseColor.rgb, uSunTint, gLobe * 0.55 );
+float gCool = uCoolK * ( 1.0 - min( gLobe * 2.2, 1.0 ) );
+diffuseColor.rgb = mix( diffuseColor.rgb, uCoolTint, gCool );
 `;
 
 export class TerrainSystem implements Subsystem {
@@ -85,6 +99,9 @@ export class TerrainSystem implements Subsystem {
     uSunTint: { value: new THREE.Color() },
     uSunK: { value: 0 },
     uSunEmit: { value: 0 },
+    uSunRange: { value: new THREE.Vector2(10, 80) },
+    uCoolTint: { value: new THREE.Color() },
+    uCoolK: { value: 0 },
   };
 
   /** One ground material for plate + skirt, with the sun-drench injection. */
@@ -117,6 +134,9 @@ export class TerrainSystem implements Subsystem {
     this.drench.uSunTint.value.setHex(spec.groundSunTint);
     this.drench.uSunK.value = spec.groundSunK;
     this.drench.uSunEmit.value = spec.groundSunEmit;
+    this.drench.uSunRange.value.set(spec.groundSunNear, spec.groundSunFar);
+    this.drench.uCoolTint.value.setHex(spec.groundCoolTint);
+    this.drench.uCoolK.value = spec.groundCoolK;
   }
 
   heightAt(x: number, z: number): number {
@@ -140,8 +160,10 @@ export class TerrainSystem implements Subsystem {
     // thatch with a green-gold undertone, a half stop darker than before —
     // so soil glimpsed between clumps reads as earth under a meadow, and
     // the whole floor sits closer to the tufts riding it.
+    // Khaki pull reduced (0.35 -> 0.24): khaki's H36/S0.72 dragged the
+    // cooled soil straight back into the tuft hue band.
     const duff = new THREE.Color(P.soilBrown)
-      .lerp(new THREE.Color(P.khaki), 0.35)
+      .lerp(new THREE.Color(P.khaki), 0.24)
       .lerp(new THREE.Color(P.grassOlive), 0.22)
       .multiplyScalar(0.93);
     const soilBare = new THREE.Color(P.soilBrown).lerp(new THREE.Color(P.soilCool), 0.45);
@@ -187,8 +209,11 @@ export class TerrainSystem implements Subsystem {
       const fertile = macro * 0.62 + meso * 0.38;
       // Aligned with the grass bald threshold (0.17): dirt paints only
       // where tufts genuinely stop; the runt fringe stays sward-toned.
+      // 0.72, was 0.85 (round 5): full sward coverage hid every square
+      // meter of umber — the measured fg hue range was 8 deg vs the ref's
+      // 16. Duff must breathe through the grass paint.
       const swardT = THREE.MathUtils.clamp((fertile - 0.2) / 0.24, 0, 1);
-      tmp.lerp(sward, swardT * 0.85);
+      tmp.lerp(sward, swardT * 0.72);
       if (fertile < 0.19) tmp.lerp(soilBare, Math.min(0.75, (0.19 - fertile) * 5));
       // Pale crowns on the high swells only where grass thins out (kept
       // shy — crown bleach was a third of the noon bone-pale wash).
@@ -217,7 +242,9 @@ export class TerrainSystem implements Subsystem {
       // Litter/thatch strokes (item 4): the dark runs are dead grass in
       // shade — olive-thatch, not mud — so the near floor reads duff.
       if (strokeA < 0.36) tmp.lerp(oliveDeepMix, Math.min(0.55, (0.36 - strokeA) * 0.9));
-      if (strokeB < 0.3) tmp.lerp(soilDark, Math.min(0.3, (0.3 - strokeB) * 0.7));
+      // Soil strokes carry the fg's cool-umber floor (round 5: wider and
+      // stronger — these are the H17 pixels the ref meadow shows as dirt).
+      if (strokeB < 0.34) tmp.lerp(soilDark, Math.min(0.5, (0.34 - strokeB) * 1.1));
       // Fine grain plus band- and meadow-scale luminance swings: ±10%
       // blade-scale jitter riding a ±12% 30m wave riding a ±13% 110m wave.
       // ACES at noon compresses mid-tone differences ~3:1 — the input
@@ -260,7 +287,7 @@ export class TerrainSystem implements Subsystem {
     const pos = geo.attributes.position as THREE.BufferAttribute;
     const colors = new Float32Array(pos.count * 3);
     const duff = new THREE.Color(P.soilBrown)
-      .lerp(new THREE.Color(P.khaki), 0.32)
+      .lerp(new THREE.Color(P.khaki), 0.22)
       .lerp(new THREE.Color(P.grassOlive), 0.22)
       .multiplyScalar(0.93);
     const khaki = new THREE.Color(P.khaki);

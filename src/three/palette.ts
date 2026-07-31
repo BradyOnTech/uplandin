@@ -41,14 +41,22 @@ export const P = {
   skyDeep: 0x7d9cc0,
   ridgeDawn: 0x5d5266,
   ridgeDusk: 0x241019,
-  // Dusk far grass melts toward dark trodden ground, not a lit tan.
-  grassHazeDusk: 0x594740,
+  // Dusk far grass melts into the violet shadow mass (round 5: measured
+  // lastlight ground was H357 S0.45 — warm concrete under a violet sky.
+  // The dusk field must carry the sky's ambient, so the haze goes violet).
+  grassHazeDusk: 0x473a5e,
   // Haze roles: pale enough to survive linear-space + ACES without going
   // rust — fog and hemisphere colors must come from these, not the hot
   // accents (blush/emberSoft read warm in sRGB but saturate to mud).
   hazeDawn: 0xf2c4a4,
   hazeEvening: 0xf3b183,
-  sunLow: 0xf0a060,
+  sunLow: 0xf2ab72,
+  // Round-5 measured fix: in LINEAR space a saturated warm key multiplies
+  // every albedo to H~31 — grass at H52 and soil at H17 both landed on the
+  // same orange (measured hueGap -1.5 vs fw's +13). The dawn KEY must be
+  // pale enough that albedo hue survives; the dawn's warmth lives in the
+  // sky, halo, rim, and drench wedge instead.
+  sunDawnKey: 0xf6c493,
   // Aerial-perspective roles: distant vegetation dissolves toward these,
   // and ridge stacks step near->far toward a cool counterweight so the
   // golden-hour frames never collapse into a single-hue orange filter.
@@ -59,7 +67,7 @@ export const P = {
   // Shadow-core tints (multipliers on grass root colors, not albedos):
   // neutral at midday, cool violet at the golden hours.
   shadowNeutral: 0xf0eeea,
-  shadowDawn: 0xd7cfdd,
+  shadowDawn: 0xc0b2da,
   shadowEvening: 0xb7a4d0,
   shadowNight: 0x9a8fc2,
   // Noon rescue roles: round 1's noon was a dead washed blue. Firewatch
@@ -75,11 +83,18 @@ export const P = {
   // Soil is brown and 15-20% darker than the old straw ramp; grass sits in
   // a straw-gold band with olive/green undertones so the lower two thirds
   // of frame is never a single tan ramp again.
-  soilBrown: 0x775a38,
-  soilDark: 0x54402a,
-  grassGold: 0xcfae56,
-  grassOlive: 0x877b36,
-  forbGreen: 0x67752f,
+  // Round-5 measured move: fw meadows keep soil ~13 deg COOLER in hue and
+  // ~0.15 LESS saturated than the straw above it (soil H16-18/S0.4, grass
+  // H30/S0.66). Ours sat at H32/S0.79 — same hue as the tufts. Soil family
+  // pulled to cool umber; tufts nudged yellower so the split reads BY HUE.
+  // Iteration 2: the warm dawn key multiplies every hue ~15 deg toward
+  // orange, so the ALBEDO split must overshoot — grass at H52, soil at H17
+  // — to land at the ref's lit-straw-vs-cool-umber gap after lighting.
+  soilBrown: 0x664639,
+  soilDark: 0x483227,
+  grassGold: 0xd2c157,
+  grassOlive: 0x808540,
+  forbGreen: 0x5f7a33,
   // Midground canopy green — the second hue family the noon frame needs.
   canopyGreen: 0x54622a,
   // Evening anti-monochrome roles: blue-grey zenith, desaturated grass haze
@@ -91,9 +106,21 @@ export const P = {
   // foreground's deep warm sienna (true black is reserved for lastlight),
   // and the violet the lastlight foreground lifts toward so silhouettes
   // stay readable instead of crushing to void.
-  soilCool: 0x5f4c3a,
+  soilCool: 0x55453c,
   siennaDusk: 0x9a5a36,
   duskViolet: 0x655a8a,
+  // Round-5 roles — measure-driven. The lastlight field carries the sky's
+  // ambient: a violet shadow mass (hemisphere ground bounce + the cool-mass
+  // tint the ground/grass shaders mix toward away from the sun lobe).
+  duskGroundViolet: 0x50427a,
+  // Noon cumulus paint: near-white lit faces (ref p50 V=0.92; ours read
+  // 0.78 gray) over a flat shaded underside step.
+  cloudBright: 0xfffef8,
+  // Mid-ground landform silhouettes (the third depth plane): one hue per
+  // light, stepped between the field and the far ridges.
+  landDawn: 0x5c4c3d,
+  landEvening: 0x6e3a24,
+  landDusk: 0x2e2038,
 } as const;
 
 /** Time-of-day presets the whole world keys from. */
@@ -160,6 +187,14 @@ export interface TodSpec {
   /** Small additive glow riding the drench so low light reads ON the ground. */
   groundSunEmit: number;
   /**
+   * Distance band of the drench lobe (meters). Screen geometry rules it:
+   * a first-person camera puts 10-80 m in a thin strip under the horizon,
+   * so a wedge that must fill frame (lastlight pool) starts near, and a
+   * wedge that must hug the horizon (dawn) starts far.
+   */
+  groundSunNear: number;
+  groundSunFar: number;
+  /**
    * Ceiling on grass albedo luminance. Effectively off (>=4) in daylight;
    * at silhouette hour it clamps the pale seed heads and cut tips that
    * otherwise sparkle inside the black foreground.
@@ -168,6 +203,18 @@ export interface TodSpec {
   /** Painted flora two-tone: warm sun-facing facets / cooled shade facets. */
   floraWarm: number;
   floraCool: number;
+  /**
+   * Mid-ground landform silhouette color (the third depth plane between
+   * the fence line and the far ridge stack — rock bench / treeline wedge).
+   */
+  landform: number;
+  /**
+   * Cool-mass tint: the sky ambient carried into the UNLIT ground/grass —
+   * everything outside the sun-drench lobe grades toward this. The
+   * lastlight violet-shadow-mass fix; ~0 in full daylight.
+   */
+  groundCoolTint: number;
+  groundCoolK: number;
 }
 
 export const TOD: Record<TimeOfDay, TodSpec> = {
@@ -179,13 +226,17 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     // diagonally TOWARD the camera. At 52 the dawn-into-sun pose (view az
     // ~85, ~96 deg horizontal FOV) still holds the disc in frame-left.
     sunAzimuth: 52,
-    sunColor: P.sunLow,
-    // First light: the key is HOT and everything else restrained, so the
+    sunColor: P.sunDawnKey,
+    // First light: the key is hot and everything else restrained, so the
     // long shadows it throws at 6° actually read against the lit field —
     // shadow contrast is key/(fill+ambient), not key intensity alone.
-    sunIntensity: 5.0,
-    fillColor: P.glowGold,
-    fillIntensity: 0.55,
+    // 4.0, was 5.0: the round-5 pale key carries more luminance per unit,
+    // and 5.0 blew the pale stubble to frost-white.
+    sunIntensity: 4.0,
+    // Fill matches the pale key: a glowGold fill re-oranged every shadow
+    // the key missed and erased the hue split all over again.
+    fillColor: P.sunDawnKey,
+    fillIntensity: 0.45,
     skyTop: P.slate,
     skyMid: P.mauve,
     skyHorizon: P.hazeDawn,
@@ -196,9 +247,13 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     glowStrength: 0.85,
     fogColor: P.hazeDawn,
     fogDensity: 0.0045,
-    ambientSky: P.cream,
-    ambientGround: P.warmGray,
-    ambientIntensity: 0.42,
+    // Round-5 keystone: warm key, COOL sky ambient (the fw complementary).
+    // A cream/warmGray ambient kept every shadow orange — measured shadow
+    // mass H37/S0.73 vs the ref's cool umber H16/S0.48. The vault is
+    // slate-lavender at dawn; shadows must breathe it.
+    ambientSky: P.mauve,
+    ambientGround: P.soilCool,
+    ambientIntensity: 0.58,
     ridge: P.ridgeDawn,
     ridgeFar: P.mauve,
     grassHaze: P.grassHazeDawn,
@@ -209,12 +264,22 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     cloudLit: P.blush,
     cloudShade: P.mauve,
     cloudAmount: 0.42,
-    groundSunTint: P.glowGold,
-    groundSunK: 0.55,
-    groundSunEmit: 0.2,
+    // Round-5 sun response: the field must not wear noon colors with the
+    // sun 10 degrees up — stronger, tighter drench wedge + ground bloom.
+    // sunLow, not glowGold: the wedge needs a HUE step off the field
+    // (glowGold sits at the same H33 as the straw and vanished) — but
+    // emberSoft painted a brick-red carpet; sunLow is the sun's own orange.
+    groundSunTint: P.sunLow,
+    groundSunK: 0.5,
+    groundSunEmit: 0.3,
+    groundSunNear: 25,
+    groundSunFar: 95,
     grassLumCap: 4,
     floraWarm: 1.0,
     floraCool: 0.5,
+    landform: P.landDawn,
+    groundCoolTint: P.shadowDawn,
+    groundCoolK: 0,
   },
   morning: {
     sunElevation: 25,
@@ -249,9 +314,14 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     groundSunTint: P.strawPale,
     groundSunK: 0.15,
     groundSunEmit: 0.04,
+    groundSunNear: 20,
+    groundSunFar: 80,
     grassLumCap: 4,
     floraWarm: 0.35,
     floraCool: 0.3,
+    landform: P.canopyGreen,
+    groundCoolTint: P.shadowNeutral,
+    groundCoolK: 0,
   },
   noon: {
     // 38, not 52: an October noon sun at prairie latitude rides low — and
@@ -293,18 +363,24 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     ridgeHazeBoost: 1.0,
     sunGlowMid: P.skyMilk,
     exposure: 0.9,
-    cloudLit: P.cloudWhite,
+    // Near-white lit faces (measured: ref cloud p50 V=0.92, ours 0.78).
+    cloudLit: P.cloudBright,
     cloudShade: P.cloudShadeNoon,
     cloudAmount: 1.0,
     groundSunTint: P.noonHorizon,
     groundSunK: 0.08,
     groundSunEmit: 0,
+    groundSunNear: 20,
+    groundSunFar: 80,
     grassLumCap: 4,
     // Committed noon canopy split (item 7): bright sun-struck top, a
     // distinctly cooler/darker underside mass — flat single-value canopies
     // read as painted rocks under the audit light.
     floraWarm: 0.6,
     floraCool: 0.62,
+    landform: P.canopyGreen,
+    groundCoolTint: P.shadowNeutral,
+    groundCoolK: 0,
   },
   evening: {
     sunElevation: 9,
@@ -347,9 +423,16 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     groundSunTint: P.sunLow,
     groundSunK: 0.55,
     groundSunEmit: 0.26,
+    groundSunNear: 8,
+    groundSunFar: 60,
     grassLumCap: 4,
     floraWarm: 0.95,
     floraCool: 0.55,
+    landform: P.landEvening,
+    // A whisper of the violet vault on the shadow masses keeps golden hour
+    // from reading as one red filter.
+    groundCoolTint: P.eveningZenith,
+    groundCoolK: 0.12,
   },
   lastlight: {
     sunElevation: 2,
@@ -374,8 +457,12 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     fogDensity: 0.006,
     // Violet sky vault (item 10): the crushed foreground lifts toward deep
     // violet instead of void black, so silhouettes stay readable.
+    // Round 5: the ground bounce is VIOLET too — warmGray bounced a warm
+    // gray onto the dusk field and produced the measured concrete (ground
+    // H357 S0.45 flat V0.20 under a H290 sky). The field is the sky's
+    // shadow mass now; only the drench lobe stays warm.
     ambientSky: P.duskViolet,
-    ambientGround: P.warmGray,
+    ambientGround: P.duskGroundViolet,
     ambientIntensity: 1.7,
     // Near ridge sits at the fog color so the fogged terrain crest melts
     // into it instead of reading as a mismatched lit patch.
@@ -391,14 +478,23 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     cloudLit: P.duskNavy,
     cloudShade: P.nightNavy,
     cloudAmount: 0.3,
+    // Round 5: the warm half of the dusk field — a real orange gradient
+    // under the glow (K 0.28 was a whisper; the wedge must READ).
     groundSunTint: P.russet,
-    groundSunK: 0.28,
-    groundSunEmit: 0.08,
+    groundSunK: 0.85,
+    groundSunEmit: 0.32,
+    groundSunNear: 3,
+    groundSunFar: 40,
     // The silhouette-hour clamp (item 6): no stubble facet may out-shine
     // the afterglow — the field reads as ONE dim mass so the sky stays the
     // hero. 0.24, was 0.34: the pale tips still glittered like stars.
     grassLumCap: 0.24,
     floraWarm: 0.15,
     floraCool: 0.65,
+    landform: P.landDusk,
+    // The violet shadow mass itself: unlit ground and grass grade hard
+    // toward the sky vault's hue away from the sun lobe.
+    groundCoolTint: P.duskGroundViolet,
+    groundCoolK: 0.55,
   },
 };

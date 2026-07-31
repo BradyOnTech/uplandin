@@ -118,15 +118,20 @@ void main() {
   // so a low sun still burns through them instead of being pasted over.
   vec2 ae = vec2(atan(dir.x, dir.z), h);
   float cf = cloudField(ae);
-  float cm = smoothstep(0.52, 0.60, cf) * uCloudAmt * smoothstep(0.05, 0.10, h);
-  // Shaded volumes, not sticker blobs (item 10): where more cloud sits
-  // ABOVE a texel it is underside (flat gray-violet base); where the mass
-  // thins just BELOW, it is a lit top. Two samples give each cumulus a
-  // bright crown over a shaded belly, keyed per TOD by uCloudLit/Shade.
-  float cAbove = smoothstep(0.40, 0.62, cloudField(ae + vec2(0.0, 0.085)));
-  float cBelow = smoothstep(0.45, 0.62, cloudField(ae - vec2(0.0, 0.05)));
-  vec3 cCol = mix(uCloudLit, uCloudShade, cAbove);
-  cCol = mix(cCol, uCloudLit * 1.07, (1.0 - cAbove) * cBelow * 0.55);
+  float cm = smoothstep(0.52, 0.565, cf) * uCloudAmt * smoothstep(0.05, 0.10, h);
+  // Flat painted plates (round 5): fw-e3-5's cumulus is 2-3 VALUE STEPS
+  // with hard undersides — not an airbrushed gradient (measured: our cloud
+  // interior ramped 0.69->0.87 with 13% banding edges; the ref holds ~3
+  // flat plates at 0.85/0.92/1.0). Quantize the thickness-above field into
+  // a lit face, a mid plate, and a shaded belly; smoothsteps kept tight so
+  // edges are anti-aliased, never gradients.
+  float cAboveRaw = cloudField(ae + vec2(0.0, 0.05));
+  float plateMid = smoothstep(0.34, 0.40, cAboveRaw);
+  float plateDeep = smoothstep(0.62, 0.68, cAboveRaw);
+  // Lit faces ride ABOVE 1.0 pre-tonemap so ACES blows them toward the
+  // reference's paper-white crowns (measured ref p50 V=1.0, ours 0.84).
+  vec3 cCol = mix(uCloudLit * 1.28, mix(uCloudLit, uCloudShade, 0.4), plateMid);
+  cCol = mix(cCol, uCloudShade, plateDeep);
   col = mix(col, cCol, cm);
 
   float g2 = pow(d, 42.0) * uGlowStrength;
@@ -158,11 +163,17 @@ void main() {
  * (Firewatch's sunset frames always light the ridge nearest the sun).
  */
 const RIDGE_VERT = /* glsl */ `
+attribute float aHaze;
+attribute float aBase;
 varying vec2 vDirXZ;
 varying float vY;
+varying float vHaze;
+varying float vBase;
 void main() {
   vDirXZ = position.xz; // ring is camera-centered: model xz = azimuth dir
   vY = position.y;
+  vHaze = aHaze;
+  vBase = aBase;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 `;
@@ -182,11 +193,17 @@ uniform float uHazeK;
 uniform float uHazeAmt;
 varying vec2 vDirXZ;
 varying float vY;
+varying float vHaze;
+varying float vBase;
 void main() {
   float az = max(dot(normalize(vDirXZ), uSunXZ), 0.0);
   float spill = pow(az, 9.0) * uSpillStrength;
   vec3 col = mix(uCol, uSpill, clamp(spill, 0.0, 0.6));
-  float haze = exp(-max(vY, 0.0) * uHazeK) * uHazeAmt;
+  // Haze absorption (round 5): tree-serration columns carry aHaze, CONFINED
+  // above the tree-base line aBase — the sawtooth dissolves partway into
+  // atmosphere without smearing pale stripes down the whole card.
+  float tHaze = vHaze * smoothstep(vBase, vBase + 1.2, vY);
+  float haze = exp(-max(vY, 0.0) * uHazeK) * uHazeAmt + tHaze;
   col = mix(col, uHaze, clamp(haze, 0.0, 0.95));
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
@@ -215,8 +232,21 @@ const RIDGE_LAYERS: ReadonlyArray<{
   /** Scale on the connective noise: authored features must not drown in
    *  octave soup, so layers carrying named landmarks damp the noise. */
   noiseScale: number;
+  /** Mid-ground landform ring: colored from TOD.landform (not the ridge
+   *  ramp) and pre-fogged to its radius — the THIRD depth plane. */
+  land?: boolean;
+  /** Conifer serration height in meters (0/undefined = no treeline). */
+  trees?: number;
+  /** How far the serration dissolves into haze (aHaze on tree verts). */
+  treeHaze?: number;
 }> = [
-  { radius: 300, base: 11, amp: 20, far: 0.0, fogMix: 0.08, hazeAmt: 0.55, jag: 0.05, freqs: [3, 8, 19], noiseScale: 1.0 },
+  // THE BENCH (round 5): a low mid-ground landform ring between the fence
+  // line and the hills — treeline wedges rise only where features are
+  // authored, so each hero frame reads one mass, not a moat.
+  // base sits BELOW the plain: only the authored features surface, as
+  // isolated masses — a 360-degree bench read as a pale moat wall.
+  { radius: 235, base: -7, amp: 15, far: 0, fogMix: 0, hazeAmt: 0.32, jag: 0.06, freqs: [4, 9, 21], noiseScale: 0.5, land: true, trees: 3.0, treeHaze: 0.25 },
+  { radius: 300, base: 11, amp: 20, far: 0.0, fogMix: 0.08, hazeAmt: 0.55, jag: 0.05, freqs: [3, 8, 19], noiseScale: 1.0, trees: 3.4, treeHaze: 0.4 },
   { radius: 430, base: 14, amp: 32, far: 0.55, fogMix: 0.16, hazeAmt: 0.75, jag: 0.18, freqs: [4, 10, 23], noiseScale: 0.72 },
   // far stops short of 1.0 so THE PEAK keeps a hint of its own hue against
   // the sky at noon instead of dissolving into ridgeFar completely.
@@ -240,6 +270,19 @@ interface RidgeFeature {
   sr: number;
 }
 const RIDGE_FEATURES: ReadonlyArray<ReadonlyArray<RidgeFeature>> = [
+  // THE BENCH ring: one authored landform per hero frame, placed off the
+  // frame centers (dawn-field 0, noon-open +20, dawn-ridge -30,
+  // dawn-into-sun +85, evening -95, lastlight -90). The +40..+62 window
+  // stays empty — the dawn sun corridor keeps its clean glow horizon.
+  [
+    { c: 12, h: 1.55, sl: 11, sr: 17 }, // treeline bench: dawn-field / noon-open
+    { c: -24, h: 0.95, sl: 6, sr: 9 }, // small knob, dawn-field left third
+    { c: -42, h: 1.2, sl: 7, sr: 11 }, // dawn-ridge mass
+    { c: 95, h: 0.9, sl: 6, sr: 10 }, // dawn-into-sun, right of the disc
+    { c: -70, h: 1.1, sl: 8, sr: 12 }, // lastlight/evening, screen-left of glow
+    { c: -116, h: 1.3, sl: 9, sr: 14 }, // evening right third
+    { c: 165, h: 1.0, sl: 10, sr: 16 }, // back hemisphere filler
+  ],
   // Near band (conifer line): a long low bench behind dawn-field, a small
   // knob screen-left of it, a pass notch, back-hemisphere fillers.
   [
@@ -278,10 +321,10 @@ const RIDGE_FEATURES: ReadonlyArray<ReadonlyArray<RidgeFeature>> = [
     { c: -165, h: 0.5, sl: 12, sr: 16 },
   ],
 ];
-// Nearest band carries a serrated conifer line, so it gets the resolution.
-const RIDGE_SEGS = [1536, 640, 512] as const;
+// Serrated bands get the resolution.
+const RIDGE_SEGS = [1536, 1536, 640, 512] as const;
 const RIDGE_BOTTOM = -40;
-const TREE_COUNT = 190; // conifers around the nearest ring (~10 m spacing)
+const TREE_COUNT = 190; // conifers around a serrated ring (~8-10 m spacing)
 
 /** Deterministic integer hash -> [0,1). */
 function hash01(i: number, seed: number): number {
@@ -440,7 +483,10 @@ export class SkySystem implements Subsystem {
       const sTreeH = (rng() * 0x7fffffff) | 0;
       const sTreeP = (rng() * 0x7fffffff) | 0;
       const sCluster = (rng() * 0x7fffffff) | 0;
+      const sTreeW = (rng() * 0x7fffffff) | 0;
       const positions = new Float32Array((SEG + 1) * 2 * 3);
+      const hazeAttr = new Float32Array((SEG + 1) * 2);
+      const baseAttr = new Float32Array((SEG + 1) * 2);
       const indices: number[] = [];
       for (let i = 0; i <= SEG; i++) {
         const theta = (i / SEG) * Math.PI * 2;
@@ -467,25 +513,40 @@ export class SkySystem implements Subsystem {
         // summit, not split into sub-peaks.
         const n4 = ringNoise(theta, f3 * 2 + 1, s4) * 2 - 1;
         h += peakSum * (1 + 0.14 * layer.noiseScale * n4);
-        if (l === 0) {
-          // Conifer serration, e3-5 bar: per-tree hashed height AND apex
-          // skew, cluster noise bunching tall runs with genuine gaps —
-          // an irregular treeline, not a doily edge.
+        // Conifer serration (round-5 rewrite, item 6): per-tree WIDTH and
+        // height variation, clustered MULTI-CELL gaps (a slow cluster noise
+        // gates whole runs empty, a per-tree roll knocks out singles inside
+        // stands), and haze absorption via aHaze — an irregular treeline,
+        // not a doily edge. On the land ring, trees ride the authored
+        // features only (treeline WEDGES, not a 360-degree moat).
+        let treeFrac = 0;
+        let treeBase = 0;
+        if (layer.trees) {
           const u = (theta / (Math.PI * 2)) * TREE_COUNT + treePhase * TREE_COUNT;
           const ui = Math.floor(u);
           const f = u - ui;
           const uiw = ((ui % TREE_COUNT) + TREE_COUNT) % TREE_COUNT; // seam-safe
-          const gap = hash01(uiw, sTree);
-          if (gap > 0.16) {
-            const apex = 0.32 + 0.36 * hash01(uiw, sTreeP);
-            const tri = f < apex ? f / apex : (1 - f) / (1 - apex);
-            const cluster = ringNoise(theta, 13, sCluster);
-            const hgt =
-              (0.35 + 0.65 * hash01(uiw, sTreeH)) * (0.35 + 0.85 * cluster);
-            h += tri * 3.4 * hgt;
+          const cluster = ringNoise(theta, 11, sCluster);
+          if (cluster > 0.36 && hash01(uiw, sTree) > 0.12) {
+            const wvar = 0.5 + 0.85 * hash01(uiw, sTreeW);
+            const fc = (f - 0.5) / wvar + 0.5;
+            if (fc > 0 && fc < 1) {
+              const apex = 0.3 + 0.4 * hash01(uiw, sTreeP);
+              const tri = fc < apex ? fc / apex : (1 - fc) / (1 - apex);
+              let hgt = (0.3 + 0.7 * hash01(uiw, sTreeH)) * (0.2 + 1.0 * cluster);
+              if (layer.land) {
+                hgt *= THREE.MathUtils.clamp(peakSum / (0.45 * layer.amp), 0.1, 1);
+              }
+              treeBase = h;
+              const rise = tri * layer.trees * hgt;
+              h += rise;
+              treeFrac = THREE.MathUtils.clamp(rise / layer.trees, 0, 1);
+            }
           }
         }
-        h = Math.max(h, l === 0 ? 2.5 : 1.2);
+        // Land ring may sink below the plain (isolated masses); real ridge
+        // bands keep their floor so the skyline never gaps.
+        h = Math.max(h, layer.land ? -2.0 : l <= 1 ? 2.5 : 1.2);
         const x = Math.sin(theta) * layer.radius;
         const z = Math.cos(theta) * layer.radius;
         const top = i * 2;
@@ -495,6 +556,12 @@ export class SkySystem implements Subsystem {
         positions[(top + 1) * 3] = x;
         positions[(top + 1) * 3 + 1] = RIDGE_BOTTOM;
         positions[(top + 1) * 3 + 2] = z;
+        // Both column verts carry the SAME haze amount and tree-base line —
+        // the frag confines the absorb above aBase, so nothing smears down.
+        hazeAttr[top] = treeFrac * (layer.treeHaze ?? 0);
+        hazeAttr[top + 1] = hazeAttr[top];
+        baseAttr[top] = treeFrac > 0 ? treeBase : h + 1;
+        baseAttr[top + 1] = baseAttr[top];
         if (i < SEG) {
           const a = top;
           indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
@@ -502,6 +569,8 @@ export class SkySystem implements Subsystem {
       }
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geo.setAttribute('aHaze', new THREE.BufferAttribute(hazeAttr, 1));
+      geo.setAttribute('aBase', new THREE.BufferAttribute(baseAttr, 1));
       geo.setIndex(indices);
       const mat = new THREE.ShaderMaterial({
         vertexShader: RIDGE_VERT,
@@ -597,13 +666,25 @@ export class SkySystem implements Subsystem {
     this.hazeCol.setHex(spec.skyHorizon).lerp(this.fogCol, 0.55);
     const sunFlatLen = Math.hypot(sx, sz) || 1;
     for (let l = 0; l < this.ridgeMats.length; l++) {
-      this.ridgeBase.setHex(spec.ridge);
-      this.ridgeFar.setHex(spec.ridgeFar);
       const ru = this.ridgeMats[l].uniforms;
-      (ru.uCol.value as THREE.Color)
-        .copy(this.ridgeBase)
-        .lerp(this.ridgeFar, RIDGE_LAYERS[l].far)
-        .lerp(this.fogCol, RIDGE_LAYERS[l].fogMix);
+      if (RIDGE_LAYERS[l].land) {
+        // THE BENCH: its own hue (TOD.landform), sunk into the scene fog at
+        // its radius so it reads as a mass IN the field's atmosphere — the
+        // haze step between the fence line and the ridge stack.
+        const d = RIDGE_LAYERS[l].radius;
+        const ff = 1 - Math.exp(-(spec.fogDensity * d) * (spec.fogDensity * d));
+        this.ridgeBase.setHex(spec.landform);
+        (ru.uCol.value as THREE.Color)
+          .copy(this.ridgeBase)
+          .lerp(this.fogCol, Math.min(0.42, ff * 0.5));
+      } else {
+        this.ridgeBase.setHex(spec.ridge);
+        this.ridgeFar.setHex(spec.ridgeFar);
+        (ru.uCol.value as THREE.Color)
+          .copy(this.ridgeBase)
+          .lerp(this.ridgeFar, RIDGE_LAYERS[l].far)
+          .lerp(this.fogCol, RIDGE_LAYERS[l].fogMix);
+      }
       (ru.uHaze.value as THREE.Color).copy(this.hazeCol);
       (ru.uSpill.value as THREE.Color).setHex(spec.hotBand);
       ru.uSpillStrength.value = spec.hotStrength * 0.55 * (1 - 0.55 * RIDGE_LAYERS[l].far);
