@@ -48,10 +48,15 @@ interface QualityCfg {
   radius: number;
   /** Jittered-grid spacing between candidate tuft sites (m). */
   cellStep: number;
+  /** Body-tuft lattice spacing (m) — the continuous grass mass. */
+  tuftStep: number;
+  /** Blade width multiplier — lite trades count for width. */
+  bladeWide: number;
   /** Instance capacity per tile per variant. */
   capOpen: number;
   capStalk: number;
   capForb: number;
+  capTuft: number;
   /** Per-instance collapse thresholds hash into [near, far] — last third. */
   openFadeNear: number;
   openFadeFar: number;
@@ -69,29 +74,44 @@ interface QualityCfg {
 
 const CFG: Record<'high' | 'lite', QualityCfg> = {
   high: {
-    radius: 70,
+    // Round-5 coverage inversion (critic item 1): the active ring shrinks
+    // (54, was 70) and the DENSITY inside it jumps ~2.4x — coverage where
+    // the eye can resolve tufts, a hue-matched painted meadow band past the
+    // fade line instead of a sparse speckle scatter to 80 m.
+    radius: 54,
     cellStep: 0.75,
-    capOpen: 1400,
-    capStalk: 110,
-    capForb: 200,
-    openFadeNear: 46,
-    openFadeFar: 68,
-    coverDensity: 3.0,
-    coverFadeNear: 85,
-    coverFadeFar: 125,
+    tuftStep: 0.64,
+    bladeWide: 1.0,
+    // capTuft must NOT saturate: fillTile scans the lattice in grid order,
+    // so a binding cap truncates the same corner of every tile — the round-
+    // 4.x "straight-edged bald strip" artifact. Sized above the worst tile.
+    capOpen: 420,
+    capStalk: 90,
+    capForb: 170,
+    capTuft: 1650,
+    openFadeNear: 40,
+    openFadeFar: 58,
+    coverDensity: 1.5,
+    coverFadeNear: 70,
+    coverFadeFar: 105,
     castShadow: true,
   },
   lite: {
-    radius: 46,
+    radius: 38,
     cellStep: 1.0,
-    capOpen: 820,
-    capStalk: 70,
-    capForb: 130,
-    openFadeNear: 30,
-    openFadeFar: 44,
-    coverDensity: 2.0,
-    coverFadeNear: 60,
-    coverFadeFar: 95,
+    tuftStep: 0.92,
+    bladeWide: 1.45,
+    capOpen: 300,
+    capStalk: 60,
+    capForb: 110,
+    // Head-room above the worst-case fill (a binding cap truncates in grid
+    // order — tile-aligned bald strips; see the high-tier note above).
+    capTuft: 680,
+    openFadeNear: 26,
+    openFadeFar: 40,
+    coverDensity: 1.8,
+    coverFadeNear: 55,
+    coverFadeFar: 85,
     castShadow: false,
   },
 };
@@ -136,13 +156,18 @@ interface CoverPatch {
   ph2: number;
 }
 
-/** Tuft variants: 0 = common tuft, 1 = seed-head stalk, 2 = low forb. */
+/**
+ * Tuft variants: 0 = stubble row, 1 = seed-head stalk, 2 = low forb,
+ * 3 = the body tuft — the multi-blade bunch the whole field is made of.
+ */
 const V_OPEN = 0;
 const V_STALK = 1;
 const V_FORB = 2;
+const V_TUFT = 3;
+const N_VARIANTS = 4;
 
 interface Tile {
-  meshes: [THREE.InstancedMesh, THREE.InstancedMesh, THREE.InstancedMesh];
+  meshes: THREE.InstancedMesh[];
   /** Tile-grid coords of the current fill (for the shadow-radius check). */
   tx: number;
   tz: number;
@@ -220,7 +245,10 @@ gWorld.xyz = mix( gRoot, gWorld.xyz, gKeep );
 // length. Light with a direction, even without real grass shadows.
 vec2 gLean = gWorld.xz - gRoot.xz;
 float gFace = dot( gLean, uSunXZ ) / max( length( gLean ), 1e-4 );
-vColor.rgb *= mix( uShadowTint, vec3( 1.0 ), gT );   // root shadow core
+// Root shadow core: the TOD tint TIMES a neutral bake-in — a meadow's
+// bases sit in self-shadow at every hour, noon included (shadowNeutral
+// alone left the noon mass flat and paper-pale).
+vColor.rgb *= mix( uShadowTint * 0.75, vec3( 1.0 ), gT );
 float gLit = clamp( gFace, 0.0, 1.0 );
 float gShade = clamp( -gFace, 0.0, 1.0 ) * uDirStrength;
 vColor.rgb *= mix( vec3( 1.0 ), uShadowTint * 0.62, min( gShade * ( 0.45 + 0.55 * gT ), 0.85 ) );
@@ -237,7 +265,7 @@ vColor.rgb *= 1.0 - gBack * 0.38 * ( 1.0 - gT );
 // translucent tips must glow at silhouette hour, not just recolor). The
 // gLit term is NOT view-dependent, so uLitRimK gates it off at silhouette
 // hour — after sunset only true backlight (between camera and sun) rims.
-float gRim = min( ( gLit * 0.35 * uLitRimK + gBack * 1.2 ) * ( gT * gT ) * uRimStrength, 1.2 );
+float gRim = min( ( gLit * 0.35 * uLitRimK + gBack * 1.7 ) * ( gT * gT ) * uRimStrength, 1.5 );
 
 // Silhouette-hour luminance ceiling: no facet may out-shine the afterglow.
 // Effectively off in daylight (uLumCap >= 4); at lastlight it clamps the
@@ -305,6 +333,8 @@ class GeoBuilder {
    * Two-segment arcing blade with a blunt tip: root quad (full → mid width)
    * then a short tip triangle from mid width — the tip never collapses to a
    * sub-pixel spike that stipples at range. Color lerps rootC → tipC.
+   * `droop` is the ABSOLUTE extra bend at the tip (radians): a near-upright
+   * blade with droop ~1 folds its tip clean over — grass, never yucca.
    */
   blade(
     rx: number,
@@ -317,6 +347,7 @@ class GeoBuilder {
     tipC: readonly [number, number, number],
     bright: number,
     phase: number,
+    droop: number,
   ): void {
     const ox = Math.sin(ang);
     const oz = Math.cos(ang);
@@ -326,7 +357,7 @@ class GeoBuilder {
     const mx = rx + ox * Math.sin(lean) * h * mT;
     const my = Math.cos(lean) * h * mT;
     const mz = rz + oz * Math.sin(lean) * h * mT;
-    const lean2 = lean * 2.3; // drooping tip — grass arcs, not spikes
+    const lean2 = lean + droop; // drooping tip — grass arcs, not spikes
     const tx = mx + ox * Math.sin(lean2) * h * (1 - mT);
     const ty = my + Math.cos(lean2) * h * (1 - mT);
     const tz = mz + oz * Math.sin(lean2) * h * (1 - mT);
@@ -425,8 +456,12 @@ class GeoBuilder {
   skirt(radius: number, n: number, rng: () => number, cx = 0, cz = 0, ex = 1, ez = 1): void {
     const cy = 0.05; // slight dome so gentle slopes never float it
     const ey = 0.015;
-    const c: [number, number, number] = [0.3, 0.27, 0.21];
-    const e: [number, number, number] = [0.74, 0.69, 0.58];
+    // Duff-dark thatch, not chocolate: the contact shadow under a tuft is
+    // dead grass in shade — it must agree with the repainted duff ground.
+    // Center deepened a notch (item 12): shadow pooling under tufts is what
+    // keeps flat noon light from reading as stamped texture.
+    const c: [number, number, number] = [0.33, 0.3, 0.22];
+    const e: [number, number, number] = [0.74, 0.69, 0.57];
     for (let i = 0; i < n; i++) {
       const a0 = (i / n) * Math.PI * 2;
       const a1 = ((i + 1) / n) * Math.PI * 2;
@@ -462,8 +497,9 @@ class GeoBuilder {
     // Diamond seed head — the pale catch-light silhouette at the skyline.
     const hh = 0.16 * (0.85 + rng() * 0.3);
     const hw = 0.042;
-    const head: [number, number, number] = [1.34, 1.26, 1.0];
-    const headLo: [number, number, number] = [1.05, 0.96, 0.72];
+    // Dimmed a third of a stop: seed heads read as catch-lights, not stars.
+    const head: [number, number, number] = [1.16, 1.08, 0.86];
+    const headLo: [number, number, number] = [0.98, 0.9, 0.68];
     this.vert(tx, ty - hh * 0.25, tz, topT, phase, headLo[0], headLo[1], headLo[2]);
     this.vert(tx + sx * hw, ty + hh * 0.35, tz + sz * hw, 0.86, phase, head[0], head[1], head[2]);
     this.vert(tx, ty + hh, tz, 1, phase, head[0], head[1], head[2]);
@@ -541,12 +577,15 @@ export class GrassSystem implements Subsystem {
   private grassGold = new THREE.Color(P.grassGold);
   private grassOlive = new THREE.Color(P.grassOlive);
   private forbGreen = new THREE.Color(P.forbGreen);
+  // The terrain's sward paint (same recipe as terrain.ts): the haze target
+  // is the GROUND the tufts dissolve into, tinted by the TOD's haze role.
+  private swardTone = new THREE.Color(P.grassOlive).lerp(new THREE.Color(P.grassGold), 0.42);
 
   init(ctx: Ctx): void {
     this.cfg = CFG[ctx.quality];
     this.terrain = ctx.get<TerrainSystem>('terrain');
 
-    this.buildVariantGeos(mulberry32(0x9e1d77));
+    this.buildVariantGeos(mulberry32(0x9e1d77), this.cfg.bladeWide);
 
     this.openUniforms = this.makeUniforms(0.09, this.cfg.openFadeNear, this.cfg.openFadeFar);
     this.coverUniforms = this.makeUniforms(0.13, this.cfg.coverFadeNear, this.cfg.coverFadeFar);
@@ -563,7 +602,7 @@ export class GrassSystem implements Subsystem {
         if (d <= this.cfg.radius + TILE * 0.5) this.offsets.push([dx, dz] as const);
       }
     }
-    const caps = [this.cfg.capOpen, this.cfg.capStalk, this.cfg.capForb];
+    const caps = [this.cfg.capOpen, this.cfg.capStalk, this.cfg.capForb, this.cfg.capTuft];
     for (let i = 0; i < this.offsets.length; i++) {
       const mkMesh = (vi: number): THREE.InstancedMesh => {
         const mesh = new THREE.InstancedMesh(this.variantGeos[vi], this.openMat, caps[vi]);
@@ -572,11 +611,12 @@ export class GrassSystem implements Subsystem {
         mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
         mesh.count = 0;
         mesh.visible = false;
-        // High tier: tufts render into the shadow map, so clumps ground
-        // themselves with real contact shadows and the low key streaks
-        // them along the sun azimuth. (Depth pass skips the wind/parting
-        // vertex displacement — unnoticeable at blade scale.)
-        mesh.castShadow = this.cfg.castShadow;
+        // High tier: stubble and stalks render into the shadow map, so
+        // clumps ground themselves with real contact shadows and the low
+        // key streaks them along the sun azimuth. The body-tuft MASS never
+        // casts (its instance count would double the depth pass for a
+        // shadow texture the baked skirts already fake) — nor do forbs.
+        mesh.castShadow = this.cfg.castShadow && vi !== V_TUFT && vi !== V_FORB;
         // Tree/prop shadows fall across the grass (sampled at the root
         // position — no swim): the cast-shadow corroboration item 2 asks for.
         mesh.receiveShadow = true;
@@ -584,7 +624,11 @@ export class GrassSystem implements Subsystem {
         ctx.scene.add(mesh);
         return mesh;
       };
-      const tile: Tile = { meshes: [mkMesh(V_OPEN), mkMesh(V_STALK), mkMesh(V_FORB)], tx: 0, tz: 0 };
+      const tile: Tile = {
+        meshes: [mkMesh(V_OPEN), mkMesh(V_STALK), mkMesh(V_FORB), mkMesh(V_TUFT)],
+        tx: 0,
+        tz: 0,
+      };
       this.pool.push(tile);
       this.free.push(tile);
     }
@@ -653,13 +697,13 @@ export class GrassSystem implements Subsystem {
   /* ---------------------------------------------------------------- */
 
   /**
-   * The four tuft geometries (built once from a LOCAL seeded stream —
-   * per-subsystem RNG contract). Round-4 forms pass: the radial-splay tuft
-   * is RETIRED. The field is now stubble-and-bunchgrass — short cut rows,
-   * wispy sheaves with visible stems, broken-over stalks — never a
-   * succulent rosette.
+   * The tuft geometries (built once from a LOCAL seeded stream —
+   * per-subsystem RNG contract). Round-4 mass pass: the field BODY is the
+   * V_TUFT multi-blade bunch; stubble rows, bluestem sheaves and forbs are
+   * variety WITHIN that mass, never the whole field. `wide` is the lite
+   * tier's trade: fewer tufts, each with broader blades.
    */
-  private buildVariantGeos(rng: () => number): void {
+  private buildVariantGeos(rng: () => number, wide: number): void {
     // V_OPEN — wheat-stubble row segment: two ragged drill rows of short
     // clipped stems with the odd taller straggler snapped over at the top.
     // Instanced with a COHERENT yaw (see placeTuft) so the rows run one
@@ -667,8 +711,10 @@ export class GrassSystem implements Subsystem {
     {
       const b = new GeoBuilder();
       const rootC = [0.42, 0.38, 0.29] as const;
-      // Pale cut ends catch light — but stay straw, not white confetti.
-      const tipC = [1.08, 0.99, 0.66] as const;
+      // Cut ends stay STRAW (item 3): at 40-60 m these tips are exactly the
+      // speckle static the critics flagged — they must sit near the tuft
+      // band's own value, never pop white against the sward.
+      const tipC = [0.95, 0.87, 0.6] as const;
       for (const rowZ of [-0.105, 0.105]) {
         const n = 4 + Math.floor(rng() * 2);
         for (let i = 0; i < n; i++) {
@@ -722,11 +768,46 @@ export class GrassSystem implements Subsystem {
       for (let i = 0; i < 6; i++) {
         const ang = ((i + rng() * 0.9) / 6) * Math.PI * 2;
         const r0 = 0.03 + rng() * 0.05;
-        b.blade(Math.sin(ang) * r0, Math.cos(ang) * r0, ang, 0.7 + rng() * 0.5,
-          0.09 + rng() * 0.08, 0.075 * (0.8 + rng() * 0.4), rootC, tipC, 0.85 + rng() * 0.3, rng());
+        b.blade(Math.sin(ang) * r0, Math.cos(ang) * r0, ang, 0.55 + rng() * 0.4,
+          0.09 + rng() * 0.08, 0.075 * (0.8 + rng() * 0.4), rootC, tipC, 0.85 + rng() * 0.3, rng(),
+          1.1 + rng() * 0.5);
       }
       b.skirt(0.12, 5, rng);
       this.variantGeos[V_FORB] = b.build();
+    }
+    // V_TUFT — the BODY of the field, round-5 rebuild (critic item 2: the
+    // radiating-spike rosette read yucca/agave at every distance). A clump
+    // of 8-10 FINE near-upright blades with drooping tips, laid out on two
+    // crossed planes (the classic grass-card cross, done in geometry): each
+    // plane carries 4-5 blades along a short row, tips arcing out to both
+    // sides. Shafts rise, tips fold — the 10 m silhouette says grass.
+    // Baked color stays a neutral straw ramp — the instance color carries
+    // the hue family (straw-gold / olive-tinged / pale bleached).
+    {
+      const b = new GeoBuilder();
+      const rootC = [0.4, 0.37, 0.28] as const;
+      const tipC = [1.1, 1.02, 0.7] as const;
+      const baseYaw = rng() * Math.PI;
+      for (let p = 0; p < 2; p++) {
+        const pa = baseYaw + p * (Math.PI / 2 + (rng() - 0.5) * 0.5);
+        const dx = Math.cos(pa);
+        const dz = -Math.sin(pa);
+        const n = 4 + Math.floor(rng() * 2);
+        for (let i = 0; i < n; i++) {
+          const off = (i / (n - 1) - 0.5) * (0.17 + rng() * 0.07);
+          const rx = dx * off + (rng() - 0.5) * 0.035;
+          const rz = dz * off + (rng() - 0.5) * 0.035;
+          // Tips arc out of the plane, alternating sides.
+          const ang = pa + (i % 2 === 0 ? 1 : -1) * (Math.PI / 2) + (rng() - 0.5) * 0.9;
+          const lean = 0.05 + rng() * 0.15; // near-upright shaft
+          const droop = 0.65 + rng() * 0.85; // tip folds clean over
+          const h = 0.2 + rng() * 0.26;
+          const w = 0.034 * wide * (0.8 + rng() * 0.45);
+          b.blade(rx, rz, ang, lean, h, w, rootC, tipC, 0.86 + rng() * 0.3, rng(), droop);
+        }
+      }
+      b.skirt(0.14, 4, rng);
+      this.variantGeos[V_TUFT] = b.build();
     }
     // Cover tussock — big bunchgrass fountain: many thin stems, outer ones
     // leaning further and arcing over, two seed stalks breaking the top —
@@ -735,7 +816,7 @@ export class GrassSystem implements Subsystem {
       const b = new GeoBuilder();
       const rootC = [0.36, 0.37, 0.28] as const;
       const tipC = [1.05, 0.98, 0.68] as const;
-      for (let i = 0; i < 9; i++) {
+      for (let i = 0; i < 7; i++) {
         const ang = rng() * Math.PI * 2;
         const r0 = Math.sqrt(rng()) * 0.1;
         const tilt = 0.05 + (r0 / 0.1) * 0.22 + rng() * 0.08;
@@ -757,9 +838,10 @@ export class GrassSystem implements Subsystem {
       uPartRadius: { value: 1.2 },
       uFade: { value: new THREE.Vector2(fadeNear, fadeFar) },
       uHaze: { value: new THREE.Color(P.grassHazeDawn) },
-      // Haze holds off until past half the draw distance: round-2's early
-      // onset bleached the whole midfield to cream at noon.
-      uHazeRange: { value: new THREE.Vector2(fadeFar * 0.55, fadeFar * 1.05) },
+      // Haze completes just before the collapse window ends, so shrinking
+      // tufts are already ground-colored when they go — clumps dissolve
+      // into the painted meadow band, never into speckle static (item 3).
+      uHazeRange: { value: new THREE.Vector2(fadeFar * 0.52, fadeFar * 0.95) },
       uShadowTint: { value: new THREE.Color(P.shadowNeutral) },
       uSunXZ: { value: new THREE.Vector2(1, 0) },
       uSunDir3: { value: new THREE.Vector3(1, 0, 0) },
@@ -781,7 +863,10 @@ export class GrassSystem implements Subsystem {
     const az = THREE.MathUtils.degToRad(spec.sunAzimuth);
     const el = THREE.MathUtils.degToRad(spec.sunElevation);
     for (const u of [this.openUniforms, this.coverUniforms]) {
-      u.uHaze.value.setHex(spec.grassHaze);
+      // Haze target = the terrain's sward paint pulled toward the TOD haze
+      // role: a tuft at the fade line lands on the same albedo the ground
+      // is painted, so the hand-off is invisible (item 3).
+      u.uHaze.value.setHex(spec.grassHaze).lerp(this.swardTone, 0.5);
       u.uShadowTint.value.setHex(spec.grassShadow);
       u.uSunXZ.value.set(Math.sin(az), Math.cos(az));
       // True sun direction (world) for the view-dependent backlight; its
@@ -796,12 +881,18 @@ export class GrassSystem implements Subsystem {
       // Rim: the sun color pulled slightly toward pale straw; strength rides
       // the TOD's horizon heat hard — dawn/evening blades must answer the
       // sun; noon keeps only a whisper (a hot rim at noon bleaches tips).
-      u.uRimColor.value.setHex(spec.sunColor).lerp(this.rimPale, 0.25);
+      // Rim keeps the SUN'S hue (a heavy pale lerp bleached the backlit
+      // tips white through ACES — the glow must read warm, not confetti).
+      u.uRimColor.value.setHex(spec.sunColor).lerp(this.rimPale, 0.12);
       u.uRimStrength.value = 0.12 + 0.75 * spec.hotStrength;
       // Two-tone strength: strong at the golden hours, present at noon.
       u.uDirStrength.value = 0.4 + 0.5 * spec.hotStrength;
-      // Emissive backlight scale rides the sun-glow (low sun = hot rims).
-      u.uRimGlow.value = spec.glowStrength * 0.55;
+      // Emissive backlight scale rides the sun-glow — HOT at the golden
+      // hours (item 8: tips between camera and a horizon sun must glow
+      // translucent-warm), but once the sun sits below the ridge line
+      // (silhouette hour) the additive rim collapses to a whisper — the
+      // round-4 lastlight glitter was exactly this term left uncapped.
+      u.uRimGlow.value = spec.glowStrength * (spec.grassLumCap < 1 ? 0.12 : 0.8);
       // Sun drench on the far-field haze (same lobe the terrain runs).
       u.uSunHaze.value.setHex(spec.groundSunTint);
       u.uSunHazeK.value = Math.min(1, spec.groundSunK * 1.2);
@@ -987,6 +1078,9 @@ export class GrassSystem implements Subsystem {
         tile.meshes[V_OPEN].castShadow = near;
         tile.meshes[V_STALK].castShadow = near;
         tile.meshes[V_FORB].castShadow = false;
+        // The body mass never casts — its skirts fake contact shadows and
+        // its instance count would double the depth pass for nothing.
+        tile.meshes[V_TUFT].castShadow = false;
       }
     }
   }
@@ -1025,7 +1119,14 @@ export class GrassSystem implements Subsystem {
 
     // Grass-band base color + per-variant character.
     this.groundColorAt(px, pz, y);
-    if (vi === V_FORB) {
+    if (vi === V_TUFT) {
+      // The body mass carries the 2-3 hue variants the meadow needs:
+      // straw-gold heart, olive-tinged runs, pale bleached crowns.
+      const fam = rng();
+      if (fam < 0.45) this.c.lerp(this.grassGold, 0.28 + rng() * 0.22);
+      else if (fam < 0.88) this.c.lerp(this.grassOlive, 0.3 + rng() * 0.3);
+      else this.c.lerp(this.strawPale, 0.26 + rng() * 0.22);
+    } else if (vi === V_FORB) {
       // Green forbs — the third hue family scattered through the stubble.
       this.c.lerp(this.forbGreen, 0.55 + rng() * 0.3);
     } else if (vi === V_STALK) {
@@ -1045,19 +1146,66 @@ export class GrassSystem implements Subsystem {
   }
 
   /**
-   * Deterministic tile fill: same tile, same tufts, every visit. Round-3
-   * structure inversion: grass grows in CLUMPS of 5-15 tufts (2-3x scale
-   * swing from clump heart to fringe runts) on a coarse jittered lattice,
-   * with a low ground-cover sprinkle of runts and green forbs between the
-   * clumps — so bare soil reads as patches inside grass, never grass as
-   * ornaments sprinkled on dirt.
+   * Deterministic tile fill: same tile, same tufts, every visit. Round-4
+   * mass inversion: the field IS grass — a near-continuous body-tuft
+   * lattice where fertility only carves the bare exceptions — with the
+   * round-3 stubble clumps, bluestem stalks and forbs riding inside that
+   * mass as variety. Bare dirt is a patch inside grass, never the default.
    */
   private fillTile(tile: Tile, tx: number, tz: number): void {
     tile.tx = tx;
     tile.tz = tz;
     const rng = mulberry32(hashTile(tx, tz));
-    const counts = [0, 0, 0];
-    const caps = [this.cfg.capOpen, this.cfg.capStalk, this.cfg.capForb];
+    const counts = [0, 0, 0, 0];
+    const caps = [this.cfg.capOpen, this.cfg.capStalk, this.cfg.capForb, this.cfg.capTuft];
+
+    // THE BODY: continuous tuft mass on a fine jittered grid. ~85% of
+    // sites grow (the Firewatch meadow coverage the fw-* stills hold);
+    // below the bare line almost nothing does, with a thin thinning
+    // fringe just above it so bald patches keep ragged edges.
+    const tStep = this.cfg.tuftStep;
+    const tCells = Math.floor(TILE / tStep);
+    for (let gx = 0; gx < tCells; gx++) {
+      for (let gz = 0; gz < tCells; gz++) {
+        const x = tx * TILE + (gx + 0.08 + rng() * 0.84) * tStep;
+        const z = tz * TILE + (gz + 0.08 + rng() * 0.84) * tStep;
+        if (Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT) continue;
+        // Inside cover patches the tall tussocks carry the mass instead.
+        if (rng() < 0.8 * THREE.MathUtils.smoothstep(this.coverAt(x, z), 0.12, 0.6)) continue;
+        const macro = this.clumpNoise(x * 0.055 + 40, z * 0.055 + 40);
+        const meso = this.clumpNoise(x * 0.16 + 700, z * 0.16 + 700);
+        const fertile = macro * 0.62 + meso * 0.38;
+        // Coverage is the whole ballgame (item 1): bald patches survive but
+        // TIGHTER, and even they keep a scatter of runts — noon is the
+        // audit light, and soil must be the exception glimpsed between
+        // clumps, never the subject.
+        // Bald patches shrink to true exceptions (0.17, was 0.21 — the
+        // macro minima were carving subject-sized dirt lots into the noon
+        // frame), and even they keep readable runts.
+        if (fertile < 0.17) {
+          if (rng() > 0.62) continue; // thin runts even on the bald spots
+        } else if (fertile < 0.23 && rng() < (0.23 - fertile) / 0.12) {
+          continue; // ragged fringe around the bald spot
+        }
+        // Drift structure: a mid-scale wave thins the mass slightly in the
+        // troughs and doubles tufts on the crests, so the body reads as
+        // overlapping DRIFTS of grass, not one tuft per lattice site.
+        const drift = this.clumpNoise(x * 0.09 + 5100, z * 0.09 + 5100);
+        if (drift < 0.3 && rng() < 0.22) continue;
+        // Vigor floors at ~0.69x: bald-zone runts stay SHORT, not invisible.
+        const vigor =
+          (0.8 + 0.45 * THREE.MathUtils.clamp((fertile - 0.3) / 0.3, -0.28, 1)) *
+          (0.85 + rng() * 0.35);
+        this.placeTuft(tile, counts, caps, V_TUFT, x, z, vigor, rng);
+        if (drift > 0.52 && rng() < 0.5) {
+          const a2 = rng() * Math.PI * 2;
+          const d2 = 0.3 + rng() * 0.3;
+          this.placeTuft(tile, counts, caps, V_TUFT,
+            x + Math.sin(a2) * d2, z + Math.cos(a2) * d2,
+            vigor * (0.7 + rng() * 0.4), rng);
+        }
+      }
+    }
     // Clump lattice: candidate centers every ~2.7x the round-2 site step.
     const cStep = this.cfg.cellStep * 2.7;
     const cells = Math.floor(TILE / cStep);
@@ -1086,9 +1234,10 @@ export class GrassSystem implements Subsystem {
         }
         const edge = THREE.MathUtils.clamp((fertile - 0.38) / 0.24, 0, 1);
 
-        // One clump: 5-15 tufts inside ~a meter, big in the heart, runts at
-        // the fringe (2-3x scale swing), a shared per-clump hue lean.
-        const n = Math.round((6 + rng() * 9) * (0.55 + 0.45 * edge));
+        // One stubble clump — VARIETY riding inside the tuft mass now, so
+        // leaner than round 3: 3-8 stems, big heart, runt fringe, a shared
+        // per-clump hue lean.
+        const n = Math.round((3.5 + rng() * 5.5) * (0.55 + 0.45 * edge));
         const clumpR = 0.72 + rng() * 0.6 + edge * 0.25;
         const clumpOlive = rng() * 0.3;
         for (let i = 0; i < n; i++) {
@@ -1113,13 +1262,13 @@ export class GrassSystem implements Subsystem {
       }
     }
 
-    // Ground cover between clumps: a fine sprinkle of runts and green forbs
-    // over the fertile fringes, so clump gaps stay grassy, not bald.
+    // A light sprinkle of runt stubble and green forbs threaded through
+    // the tuft mass — the third hue family showing between gold tufts.
     const gStep = this.cfg.cellStep * 1.6;
     const gCells = Math.floor(TILE / gStep);
     for (let gx = 0; gx < gCells; gx++) {
       for (let gz = 0; gz < gCells; gz++) {
-        if (rng() < 0.45) continue;
+        if (rng() < 0.68) continue;
         const x = tx * TILE + (gx + 0.1 + rng() * 0.8) * gStep;
         const z = tz * TILE + (gz + 0.1 + rng() * 0.8) * gStep;
         if (Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT) continue;
@@ -1132,7 +1281,7 @@ export class GrassSystem implements Subsystem {
         this.placeTuft(tile, counts, caps, vi, x, z, 0.35 + rng() * 0.3, rng);
       }
     }
-    for (let vi = 0; vi < 3; vi++) {
+    for (let vi = 0; vi < N_VARIANTS; vi++) {
       const mesh = tile.meshes[vi];
       mesh.count = counts[vi];
       mesh.visible = counts[vi] > 0;

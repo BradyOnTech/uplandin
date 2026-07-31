@@ -70,7 +70,7 @@ export const P = {
   // Flat cumulus roles: lit face / underside shade at full day. The other
   // TODs tint clouds from existing sky roles (blush, mauve, glowGold...).
   cloudWhite: 0xf7f3e8,
-  cloudShadeNoon: 0xbfc9d1,
+  cloudShadeNoon: 0xaebbca,
   // Round-3 hue-separation roles: soil and grass are DIFFERENT materials.
   // Soil is brown and 15-20% darker than the old straw ramp; grass sits in
   // a straw-gold band with olive/green undertones so the lower two thirds
@@ -278,7 +278,7 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     sunGlow: P.skyMilk,
     glowStrength: 0.2,
     fogColor: P.noonHorizon,
-    fogDensity: 0.0018,
+    fogDensity: 0.0021,
     ambientSky: P.skyPale,
     ambientGround: P.straw,
     ambientIntensity: 0.55,
@@ -300,8 +300,11 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     groundSunK: 0.08,
     groundSunEmit: 0,
     grassLumCap: 4,
-    floraWarm: 0.3,
-    floraCool: 0.45,
+    // Committed noon canopy split (item 7): bright sun-struck top, a
+    // distinctly cooler/darker underside mass — flat single-value canopies
+    // read as painted rocks under the audit light.
+    floraWarm: 0.6,
+    floraCool: 0.62,
   },
   evening: {
     sunElevation: 9,
@@ -391,9 +394,10 @@ export const TOD: Record<TimeOfDay, TodSpec> = {
     groundSunTint: P.russet,
     groundSunK: 0.28,
     groundSunEmit: 0.08,
-    // The silhouette-hour clamp (item 4): no stubble facet may out-shine
-    // the afterglow — pale seed heads and cut tips stop sparkling.
-    grassLumCap: 0.34,
+    // The silhouette-hour clamp (item 6): no stubble facet may out-shine
+    // the afterglow — the field reads as ONE dim mass so the sky stays the
+    // hero. 0.24, was 0.34: the pale tips still glittered like stars.
+    grassLumCap: 0.24,
     floraWarm: 0.15,
     floraCool: 0.65,
   },

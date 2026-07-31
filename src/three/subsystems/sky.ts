@@ -119,8 +119,14 @@ void main() {
   vec2 ae = vec2(atan(dir.x, dir.z), h);
   float cf = cloudField(ae);
   float cm = smoothstep(0.52, 0.60, cf) * uCloudAmt * smoothstep(0.05, 0.10, h);
-  float cAbove = smoothstep(0.48, 0.60, cloudField(ae + vec2(0.0, 0.055)));
-  vec3 cCol = mix(uCloudLit, uCloudShade, cAbove * 0.85);
+  // Shaded volumes, not sticker blobs (item 10): where more cloud sits
+  // ABOVE a texel it is underside (flat gray-violet base); where the mass
+  // thins just BELOW, it is a lit top. Two samples give each cumulus a
+  // bright crown over a shaded belly, keyed per TOD by uCloudLit/Shade.
+  float cAbove = smoothstep(0.40, 0.62, cloudField(ae + vec2(0.0, 0.085)));
+  float cBelow = smoothstep(0.45, 0.62, cloudField(ae - vec2(0.0, 0.05)));
+  vec3 cCol = mix(uCloudLit, uCloudShade, cAbove);
+  cCol = mix(cCol, uCloudLit * 1.07, (1.0 - cAbove) * cBelow * 0.55);
   col = mix(col, cCol, cm);
 
   float g2 = pow(d, 42.0) * uGlowStrength;

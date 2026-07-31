@@ -38,7 +38,11 @@ function makeNoise(seed: number) {
 }
 
 const SKIRT_INNER = 200;
-const SKIRT_OUTER = 700;
+// 1000, was 700 (item 12): at noon's thin fog a 700 m rim was only ~80%
+// fogged where the dome below-horizon is 100% — a visible seam band. At
+// 1000 m the exp2 integral closes to ~95% and the haze gradient reads
+// continuous. Same vertex count; the outer rings just stretch.
+const SKIRT_OUTER = 1000;
 
 /*
  * Sun-drench injection (round-4 item 2): the ground's albedo grades toward
@@ -127,21 +131,35 @@ export class TerrainSystem implements Subsystem {
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position as THREE.BufferAttribute;
     const colors = new Float32Array(pos.count * 3);
-    // Cool umber soil (item 1): the bare-dirt half of the field leans cool
-    // and dark, so the sun drench's warm straw half has something to answer
-    // — two hues in the ground, never one tan ramp.
-    const soil = new THREE.Color(P.soilBrown).lerp(new THREE.Color(P.soilCool), 0.6);
-    const soilDark = new THREE.Color(P.soilDark).lerp(new THREE.Color(P.soilCool), 0.35);
+    // Round-4 soil agreement: the ground between tufts is DEAD THATCH —
+    // duff in grass-adjacent straw-browns — so ground and grass read as one
+    // dry meadow with dirt showing through, never grass stapled onto mud.
+    // True dirt (cool, darker) is confined to the bare patches the grass
+    // fertility field carves out — dirt is the exception, not the default.
+    // Round-5 hue pull (item 4): duff leans INTO the grass band — dead
+    // thatch with a green-gold undertone, a half stop darker than before —
+    // so soil glimpsed between clumps reads as earth under a meadow, and
+    // the whole floor sits closer to the tufts riding it.
+    const duff = new THREE.Color(P.soilBrown)
+      .lerp(new THREE.Color(P.khaki), 0.35)
+      .lerp(new THREE.Color(P.grassOlive), 0.22)
+      .multiplyScalar(0.93);
+    const soilBare = new THREE.Color(P.soilBrown).lerp(new THREE.Color(P.soilCool), 0.45);
+    const soilDark = new THREE.Color(P.soilDark).lerp(new THREE.Color(P.soilCool), 0.3);
+    // Mottle-dip tone: deep olive pulled toward the grass band — dark
+    // enough to survive noon tone mapping, still reading as denser grass.
+    const oliveDeepMix = new THREE.Color(P.olive).lerp(new THREE.Color(P.grassOlive), 0.35);
     const khaki = new THREE.Color(P.khaki);
     const pale = new THREE.Color(P.strawPale);
     const olive = new THREE.Color(P.oliveMid);
-    // Trodden ground-cover tone under the tuft clumps: straw-olive, clearly
-    // a grass hue, a half-step darker than the gold tufts riding it (the
-    // first pass at 0.78x read as mud under grazing dawn light).
-    // Half a step darker than before: the tufts riding it are gold, and the
-    // value gap between sward and tuft is what keeps the lower two-thirds
-    // of frame from fusing into one rust mass (round-1/2's core complaint).
-    const sward = new THREE.Color(P.grassOlive).lerp(new THREE.Color(P.grassGold), 0.22).multiplyScalar(0.84);
+    // Trodden ground-cover tone under the tuft mass: straw-olive, clearly a
+    // grass hue, a half-step darker than the gold tufts riding it so the
+    // sward-vs-tuft value gap survives, but no darker — the body mass now
+    // covers most of it, and what shows through must read thatch.
+    // Matched to GrassSystem.swardTone (the tuft haze target): the painted
+    // meadow band past the fade line must be the same print the dissolving
+    // tufts land on — mid-distance reads as texture, never as static.
+    const sward = new THREE.Color(P.grassOlive).lerp(new THREE.Color(P.grassGold), 0.42).multiplyScalar(0.97);
     const tmp = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
@@ -149,44 +167,62 @@ export class TerrainSystem implements Subsystem {
       const y = this.heightAt(x, z);
       pos.setY(i, y);
 
-      // Soil base: brown, 15-20% darker than round 2's straw ramp, with a
-      // patchwork drift toward khaki so it still reads painted.
+      // Duff base: dead-thatch straw-brown with a patchwork drift toward
+      // khaki — grass-adjacent everywhere, so tufts and soil are one field.
       const patch = this.noise(x * 0.016 + 700, z * 0.016 + 700);
-      tmp.copy(soil).lerp(khaki, Math.min(0.7, patch * 0.8));
-      // Dry-dirt patches sink darker and browner, not lighter.
+      tmp.copy(duff).lerp(khaki, Math.min(0.4, patch * 0.5));
+      // Dry-dirt sinks stay, but tighter and shallower — accents, not the
+      // floor's identity.
       const dry = this.noise(x * 0.021 + 4200, z * 0.021 + 4200);
-      if (dry < 0.45) tmp.lerp(soilDark, Math.min(0.85, (0.45 - dry) * 2.2));
+      if (dry < 0.34) tmp.lerp(soilDark, Math.min(0.5, (0.34 - dry) * 1.6));
       // Cool olive sweeps — the field's shadowed, damper runs.
       const cool = this.noise(x * 0.011 + 1900, z * 0.011 + 1900);
       if (cool < 0.35) tmp.lerp(olive, Math.min(0.55, (0.35 - cool) * 1.5));
-      // Ground cover: wherever the grass fertility field will grow tufts,
-      // the ground itself turns grass-toned (a dark sward the gold tufts
-      // sit on). Same formula as GrassSystem.fillTile — one print.
+      // Ground cover: wherever the grass fertility field grows the tuft
+      // mass, the ground turns grass-toned sward; where it carves a BARE
+      // patch, real dirt shows through. Same formula as
+      // GrassSystem.fillTile — one print, dirt as the exception.
       const macro = this.fertNoise(x * 0.055 + 40, z * 0.055 + 40);
       const meso = this.fertNoise(x * 0.16 + 700, z * 0.16 + 700);
       const fertile = macro * 0.62 + meso * 0.38;
-      const swardT = THREE.MathUtils.clamp((fertile - 0.36) / 0.2, 0, 1);
-      tmp.lerp(sward, swardT * 0.6);
-      // Pale crowns on the high swells only where grass thins out.
+      // Aligned with the grass bald threshold (0.17): dirt paints only
+      // where tufts genuinely stop; the runt fringe stays sward-toned.
+      const swardT = THREE.MathUtils.clamp((fertile - 0.2) / 0.24, 0, 1);
+      tmp.lerp(sward, swardT * 0.85);
+      if (fertile < 0.19) tmp.lerp(soilBare, Math.min(0.75, (0.19 - fertile) * 5));
+      // Pale crowns on the high swells only where grass thins out (kept
+      // shy — crown bleach was a third of the noon bone-pale wash).
       const hNorm = THREE.MathUtils.clamp((y - 8) / 8, 0, 1);
-      tmp.lerp(pale, hNorm * 0.18 * (1 - swardT * 0.7));
+      tmp.lerp(pale, hNorm * 0.08 * (1 - swardT * 0.7));
       if (y < 2) tmp.lerp(olive, (2 - y) * 0.05);
-      // Mid-scale bands (~30m) so the far field keeps painted texture
-      // instead of airbrushing to bare sand at distance.
+      // Mid-scale bands (~30m), STRONGER than round 3: past the tuft draw
+      // distance these are what keep the field from airbrushing to one
+      // mustard ramp under flat noon light. Dips go to DEEP olive — the
+      // shallow oliveMid dips vanished inside ACES at noon.
       const band = this.noise(x * 0.035 + 9000, z * 0.035 + 9000);
-      if (band > 0.6) tmp.lerp(khaki, Math.min(0.4, (band - 0.6) * 0.9));
-      if (band < 0.35) tmp.lerp(olive, Math.min(0.35, (0.35 - band) * 0.8));
+      if (band > 0.58) tmp.lerp(khaki, Math.min(0.5, (band - 0.58) * 1.1));
+      if (band < 0.4) tmp.lerp(oliveDeepMix, Math.min(0.5, (0.4 - band) * 1.3));
+      // Macro mottle (~70-110m): broad meadow-scale drifts between pale
+      // bleached sweeps and olive runs, so the 40m-to-horizon band carries
+      // scale under any light — the noon dead-band killer.
+      const mot = this.noise(x * 0.009 + 15000, z * 0.009 + 15000);
+      if (mot > 0.55) tmp.lerp(pale, Math.min(0.26, (mot - 0.55) * 0.7));
+      else if (mot < 0.44) tmp.lerp(oliveDeepMix, Math.min(0.5, (0.44 - mot) * 1.25));
       // Grass-stroke scale (the foreground is a handful of meters — the
       // big patches above never show there): soil-toned strokes at 3-6m
       // so near ground reads painted, not airbrushed.
       const strokeA = this.noise(x * 0.19 + 5000, z * 0.19 + 5000);
       const strokeB = this.noise(x * 0.47 + 8000, z * 0.47 + 8000);
       if (strokeA > 0.58) tmp.lerp(khaki, Math.min(1, (strokeA - 0.58) * 0.9));
-      if (strokeA < 0.36) tmp.lerp(soilDark, Math.min(0.8, (0.36 - strokeA) * 0.9));
-      // Fine grain: ±11% luminance jitter so nothing reads airbrushed
-      // (kept modest — per-vertex jitter aliases into streaks at grazing
-      // angles; the grass subsystem will carry the near-field texture).
-      const g = 0.89 + strokeB * 0.22;
+      // Litter/thatch strokes (item 4): the dark runs are dead grass in
+      // shade — olive-thatch, not mud — so the near floor reads duff.
+      if (strokeA < 0.36) tmp.lerp(oliveDeepMix, Math.min(0.55, (0.36 - strokeA) * 0.9));
+      if (strokeB < 0.3) tmp.lerp(soilDark, Math.min(0.3, (0.3 - strokeB) * 0.7));
+      // Fine grain plus band- and meadow-scale luminance swings: ±10%
+      // blade-scale jitter riding a ±12% 30m wave riding a ±13% 110m wave.
+      // ACES at noon compresses mid-tone differences ~3:1 — the input
+      // amplitude must be this loud for ANY texture to survive flat light.
+      const g = (0.9 + strokeB * 0.2) * (0.88 + band * 0.24) * (0.87 + mot * 0.26);
       tmp.r *= g;
       tmp.g *= g;
       tmp.b *= g;
@@ -216,13 +252,22 @@ export class TerrainSystem implements Subsystem {
    * plane edge with sky sparkle leaking through the terrain-to-ridge gap.
    */
   private buildSkirt(ctx: Ctx): void {
-    const geo = new THREE.RingGeometry(SKIRT_INNER, SKIRT_OUTER, 128, 6);
+    // 24 radial rings (was 6): the far plain needs enough vertex density to
+    // carry the same mid-distance mottle as the plate — a 6-ring skirt
+    // interpolates any paint into one smooth mustard band by 300m out.
+    const geo = new THREE.RingGeometry(SKIRT_INNER, SKIRT_OUTER, 128, 24);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position as THREE.BufferAttribute;
     const colors = new Float32Array(pos.count * 3);
-    const soil = new THREE.Color(P.soilBrown);
+    const duff = new THREE.Color(P.soilBrown)
+      .lerp(new THREE.Color(P.khaki), 0.32)
+      .lerp(new THREE.Color(P.grassOlive), 0.22)
+      .multiplyScalar(0.93);
     const khaki = new THREE.Color(P.khaki);
-    const sward = new THREE.Color(P.grassOlive).multiplyScalar(0.85);
+    // Same sward print as the plate (slightly dimmed with distance).
+    const sward = new THREE.Color(P.grassOlive).lerp(new THREE.Color(P.grassGold), 0.42).multiplyScalar(0.92);
+    const oliveDeepMix = new THREE.Color(P.olive).lerp(new THREE.Color(P.grassOlive), 0.35);
+    const pale = new THREE.Color(P.strawPale);
     const tmp = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
@@ -233,10 +278,24 @@ export class TerrainSystem implements Subsystem {
       // settle to a calm plain further out.
       const y = THREE.MathUtils.lerp(this.heightAt(x, z) - 0.5, 0.8, t * t * (3 - 2 * t));
       pos.setY(i, y);
-      // Muted soil-olive — matches the plate's new darker average so the
-      // fogged far plain never glows like water at midday.
+      // Same duff-meadow print as the plate: sward where the fertility
+      // field runs fertile, khaki/olive band mottle, meadow-scale
+      // luminance drift — the horizon band mottles like the field it
+      // extends instead of going one smooth mustard.
       const patch = this.noise(x * 0.016 + 700, z * 0.016 + 700);
-      tmp.copy(soil).lerp(khaki, 0.2 + patch * 0.35).lerp(sward, 0.35).multiplyScalar(0.95);
+      tmp.copy(duff).lerp(khaki, 0.15 + patch * 0.4);
+      const macro = this.fertNoise(x * 0.055 + 40, z * 0.055 + 40);
+      const meso = this.fertNoise(x * 0.16 + 700, z * 0.16 + 700);
+      const fertile = macro * 0.62 + meso * 0.38;
+      const swardT = THREE.MathUtils.clamp((fertile - 0.2) / 0.24, 0, 1);
+      tmp.lerp(sward, 0.3 + swardT * 0.5);
+      const band = this.noise(x * 0.035 + 9000, z * 0.035 + 9000);
+      if (band > 0.58) tmp.lerp(khaki, Math.min(0.5, (band - 0.58) * 1.1));
+      if (band < 0.4) tmp.lerp(oliveDeepMix, Math.min(0.48, (0.4 - band) * 1.25));
+      const mot = this.noise(x * 0.009 + 15000, z * 0.009 + 15000);
+      if (mot > 0.55) tmp.lerp(pale, Math.min(0.22, (mot - 0.55) * 0.6));
+      else if (mot < 0.44) tmp.lerp(oliveDeepMix, Math.min(0.48, (0.44 - mot) * 1.2));
+      tmp.multiplyScalar(0.95 * (0.88 + band * 0.24) * (0.87 + mot * 0.26));
       colors[i * 3] = tmp.r;
       colors[i * 3 + 1] = tmp.g;
       colors[i * 3 + 2] = tmp.b;

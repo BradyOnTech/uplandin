@@ -81,12 +81,14 @@ class Asm {
   private pos: number[] = [];
   private nor: number[] = [];
   private col: number[] = [];
+  private ton: number[] = [];
   private c = new THREE.Color();
 
   add(
     src: THREE.BufferGeometry,
     m: THREE.Matrix4 | null,
     faceColor: (out: THREE.Color, cy: number, ny: number) => void,
+    tone = 1,
   ): void {
     const g = src.index ? src.toNonIndexed() : src.clone();
     if (m) g.applyMatrix4(m);
@@ -100,6 +102,7 @@ class Asm {
         this.pos.push(p.getX(i + k), p.getY(i + k), p.getZ(i + k));
         this.nor.push(n.getX(i + k), n.getY(i + k), n.getZ(i + k));
         this.col.push(this.c.r, this.c.g, this.c.b);
+        this.ton.push(tone);
       }
     }
     g.dispose();
@@ -110,9 +113,35 @@ class Asm {
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(this.pos), 3));
     geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(this.nor), 3));
     geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(this.col), 3));
+    // Sun-answer weight: how strongly a facet takes the material's per-TOD
+    // warm/cool turn and the low-sun rim. Canopy foliage rides ~1.7 (the
+    // painted two-tone), wood/stone stays near 1.
+    geo.setAttribute('aTone', new THREE.BufferAttribute(new Float32Array(this.ton), 1));
     geo.computeBoundingSphere();
     return geo;
   }
+}
+
+/**
+ * Deterministic lumpy displacement for canopy blobs: every vertex slides
+ * radially by a fixed spatial hash of its (unit-space) position, so
+ * coincident vertices of the non-indexed icosahedron move together and the
+ * surface stays watertight while the sphere silhouette breaks into massed
+ * clumps. Phase varies the pattern per blob.
+ */
+function lumpy(g: THREE.BufferGeometry, amp: number, phase: number): void {
+  const p = g.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i);
+    const y = p.getY(i);
+    const z = p.getZ(i);
+    const n =
+      Math.sin(x * 4.9 + y * 2.3 + phase) * Math.cos(y * 4.1 + z * 3.1 - phase) +
+      0.6 * Math.sin(z * 5.7 + x * 1.9 + phase * 2.7);
+    const s = 1 + n * amp;
+    p.setXYZ(i, x * s, y * s, z * s);
+  }
+  g.computeVertexNormals();
 }
 
 /* ------------------------------------------------------------------ */
@@ -210,6 +239,12 @@ export class FloraSystem implements Subsystem {
     uSunDirW: { value: new THREE.Vector3(0, 1, 0) },
     uWarmK: { value: 0 },
     uCoolK: { value: 0 },
+    // Silhouette truth into the sun: strength of the view-dependent
+    // darkening on fragments that sit between camera and a low sun.
+    uContraK: { value: 0 },
+    // Low-sun warm rim: sun-colored additive on glancing, sun-facing facets.
+    uRimColor: { value: new THREE.Color(0) },
+    uRimK: { value: 0 },
   };
   // Scratch (init-time reuse; no per-frame work exists in this system).
   private im = new THREE.Matrix4();
@@ -231,18 +266,68 @@ export class FloraSystem implements Subsystem {
     const tone = this.tone;
     this.mat.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, tone);
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nattribute float aTone;\nvarying float vTone;',
+        )
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvTone = aTone;');
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
-          '#include <common>\nuniform vec3 uSunDirW;\nuniform float uWarmK;\nuniform float uCoolK;',
+          '#include <common>\nuniform vec3 uSunDirW;\nuniform float uWarmK;\nuniform float uCoolK;\n' +
+            'uniform float uContraK;\nuniform vec3 uRimColor;\nuniform float uRimK;\nvarying float vTone;',
         )
         .replace(
           '#include <normal_fragment_begin>',
           '#include <normal_fragment_begin>\n' +
             '\tvec3 gWN = normalize( ( vec4( normal, 0.0 ) * viewMatrix ).xyz );\n' +
+            '\tvec3 gVW = normalize( ( vec4( normalize( vViewPosition ), 0.0 ) * viewMatrix ).xyz );\n' +
+            // Contra lobe FIRST: it gates the warm paint below (item 9 — no
+            // sunlit facet may survive on the camera side of an into-sun
+            // silhouette; the pink patch on the hero tree was warm paint
+            // leaking through the edge of the pow-6 crush).
+            '\tfloat gCtrBase = clamp( dot( -gVW, uSunDirW ), 0.0, 1.0 );\n' +
+            '\tfloat gCtr = pow( gCtrBase, 6.0 ) * uContraK;\n' +
+            '\tfloat gWarmGate = 1.0 - pow( gCtrBase, 3.0 ) * min( uContraK * 1.2, 1.0 );\n' +
             '\tfloat gSF = dot( gWN, uSunDirW );\n' +
-            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 1.32, 1.12, 0.82 ), clamp( gSF, 0.0, 1.0 ) * uWarmK );\n' +
-            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 0.60, 0.64, 0.80 ), clamp( -gSF, 0.0, 1.0 ) * uCoolK );',
+            // Wrapped warm lobe (item 7): the sun's hue reaches ~30 deg past
+            // the terminator, so a canopy's camera side at dawn still takes
+            // SOME of the key's color instead of dropping straight to the
+            // cool shade tone — the lit/shade split reads painted, not
+            // binary. The shade multiplier is also lifted off near-black.
+            '\tfloat gWarm = min( clamp( gSF * 0.8 + 0.22, 0.0, 1.0 ) * uWarmK * vTone, 1.25 ) * gWarmGate;\n' +
+            '\tfloat gCool = min( clamp( -gSF, 0.0, 1.0 ) * uCoolK * min( vTone, 1.1 ), 1.0 );\n' +
+            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 1.32, 1.12, 0.82 ), gWarm );\n' +
+            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 0.68, 0.70, 0.84 ), gCool );\n' +
+            // Light truth into a low sun: a fragment the camera sees against
+            // the sun shows its shade side — pull its albedo hard toward
+            // dark silhouette, and let the warm sun-facing glancing facets
+            // keep the one bright edge via rim.
+            // Tight lobe (^6): only objects truly between camera and sun
+            // silhouette — the dawn-field landmark at ~35 deg off keeps its
+            // painted canopy while the evening fence run (view-aligned with
+            // the sun) crushes dark.
+            '\tdiffuseColor.rgb *= mix( 1.0, 0.08, gCtr );',
+        )
+        .replace(
+          '#include <emissivemap_fragment>',
+          '#include <emissivemap_fragment>\n' +
+            // Foliage reflects the sky-fill whisper THROUGH its baked albedo
+            // (a flat cream lift washed the canopies gray — the painted
+            // canopy must keep its olive/russet hue while it lifts), wood
+            // and stone keep only the flat whisper. Nothing lifts a
+            // silhouette into the sun: gCtr crushes both terms, and
+            // diffuseColor already carries the contra darkening.
+            '\tfloat gFol = clamp( ( vTone - 1.0 ) / 0.7, 0.0, 1.0 );\n' +
+            '\tvec3 gWh = totalEmissiveRadiance;\n' +
+            '\ttotalEmissiveRadiance = gWh * mix( 0.85, 0.3, gFol ) + gWh * diffuseColor.rgb * ( gFol * 8.0 );\n' +
+            '\ttotalEmissiveRadiance *= mix( 1.0, 0.15, gCtr );\n' +
+            // Warm rim at the golden hours: a tight sun-colored EDGE on
+            // glancing facets that lean toward the sun — an edge accent,
+            // never a wash (round-4 first try bloomed shrubs into popcorn).
+            '\tfloat gRim = pow( 1.0 - abs( dot( gWN, gVW ) ), 4.0 ) * clamp( gSF * 0.8 + 0.2, 0.0, 1.0 );\n' +
+            '\ttotalEmissiveRadiance += uRimColor * ( gRim * uRimK * min( vTone, 1.4 ) );',
         );
     };
     // Minimum sky-fill ambient: near-camera props must never render as an
@@ -252,10 +337,17 @@ export class FloraSystem implements Subsystem {
     const applyTod = (tod: TimeOfDay): void => {
       const spec = TOD[tod];
       this.mat!.emissive.setHex(spec.ambientSky);
-      // Capped: lastlight drives a strong violet hemisphere to lift the
-      // GROUND, but props must stay silhouettes — the emissive whisper
-      // must not scale up with it.
-      this.mat!.emissiveIntensity = 0.11 * Math.min(spec.ambientIntensity, 0.85);
+      // Daylight hours carry a real sky-fill whisper — the round-4 canopy
+      // fix: a shade-side canopy at dawn ambient was reading near-black
+      // boulder, and foliage multiplies this further in-shader. The
+      // silhouette hour (grassLumCap < 1 marks it) stays crushed: props at
+      // lastlight are silhouettes, not lifted violet masses.
+      const silh = spec.grassLumCap < 1;
+      // 0.26, was 0.16 (item 5): the shade side of a canopy on the sunlit
+      // side of a sunrise is hazed warm mass, never a near-black boulder —
+      // silhouette-dark props belong only against the light (gCtr handles
+      // that side; lastlight keeps its crush via the silh gate).
+      this.mat!.emissiveIntensity = (silh ? 0.06 : 0.26) * Math.min(spec.ambientIntensity, 0.85);
       const el = THREE.MathUtils.degToRad(spec.sunElevation);
       const az = THREE.MathUtils.degToRad(spec.sunAzimuth);
       this.tone.uSunDirW.value.set(
@@ -265,6 +357,16 @@ export class FloraSystem implements Subsystem {
       );
       this.tone.uWarmK.value = spec.floraWarm;
       this.tone.uCoolK.value = spec.floraCool;
+      // Low-sun factor drives silhouette truth: full at lastlight (el 2),
+      // strong at dawn (6) and evening (9), zero by mid-morning elevations.
+      const lowSun = THREE.MathUtils.clamp(1 - (spec.sunElevation - 2) / 13, 0, 1);
+      this.tone.uContraK.value = lowSun > 0 ? 0.55 + 0.4 * lowSun : 0;
+      // Rim color is the hour's sun (sunLow / emberSoft / russet — palette
+      // roles already chosen per TOD); strength follows the painted warmth,
+      // with a small daylight floor (item 7: every canopy keeps a warm rim
+      // strip on the sun side, noon included).
+      this.tone.uRimColor.value.setHex(spec.sunColor);
+      this.tone.uRimK.value = (silh ? 0 : 0.1) + lowSun * (0.2 + 0.32 * spec.floraWarm);
     };
     applyTod(ctx.timeOfDay);
     ctx.events.addEventListener('tod', ((e: CustomEvent) => applyTod(e.detail)) as EventListener);
@@ -308,35 +410,61 @@ export class FloraSystem implements Subsystem {
   private buildOak(seed: number, variant: number): THREE.BufferGeometry {
     const rng = mulberry32(seed);
     const a = new Asm();
-    const bark = new THREE.Color(P.charcoal);
+    // Warm brown bark (item 12): pure charcoal under the cool shade
+    // multiplier read teal-green at noon — trunks are wood, not slate.
+    const bark = new THREE.Color(P.charcoal).lerp(new THREE.Color(P.russetDeep), 0.3);
     const barkWarm = new THREE.Color(P.warmGray);
-    const olive = new THREE.Color(P.olive);
-    const russet = new THREE.Color(P.russet);
-    const russetDeep = new THREE.Color(P.russetDeep);
-    // October bur oak: warm olive-russet, NOT charcoal — round-2's first
-    // pass read as boulders. Committed autumn hues, lifted luminance; the
-    // fog + cool ambient will still silhouette them against the dawn sky.
-    // Green-olive canopies (the noon frame's second hue family; e3-5's
-    // treeline is green against straw): variants 0/1 commit to canopy
-    // green, variant 2 keeps the russet-october outlier.
-    const base = new THREE.Color(P.canopyGreen);
-    if (variant === 0) base.lerp(new THREE.Color(P.oliveMid), 0.3);
-    else if (variant === 1) base.lerp(new THREE.Color(P.olive), 0.35);
-    else base.copy(russetDeep).lerp(new THREE.Color(P.canopyGreen), 0.45);
-    const top = base.clone().lerp(new THREE.Color(P.khaki), 0.5).multiplyScalar(1.22);
+    // OCTOBER CANOPIES (round-4 verdict: "gray faceted boulders on sticks").
+    // Three committed autumn families straight from the palette — golden-
+    // olive, deep olive, russet — each authored as a TWO-TONE: a warm lit
+    // hue for up/sun-leaning facets, a cool shade hue for the belly. The
+    // flora material then turns that split with the actual sun per TOD
+    // (warm/cool multipliers + low-sun rim, foliage weighted 1.7x).
+    const base = new THREE.Color();
+    const lit = new THREE.Color();
+    const shade = new THREE.Color();
+    const fleck = new THREE.Color();
+    let fleckP: number;
+    if (variant === 0) {
+      // Golden-olive: the straw-gold family lifted into the canopy.
+      base.setHex(P.khaki).lerp(new THREE.Color(P.oliveMid), 0.45);
+      lit.copy(base).lerp(new THREE.Color(P.grassGold), 0.6).multiplyScalar(1.22);
+      shade.copy(base).lerp(new THREE.Color(P.oliveDeep), 0.4).multiplyScalar(0.96);
+      fleck.setHex(P.russet);
+      fleckP = 0.08;
+    } else if (variant === 1) {
+      // Deep olive holdout — the green counterweight in the grove. Shade
+      // stays OLIVE, not oliveDeep-black (item 5: at dawn the shade side of
+      // this variant was the near-black boulder on the sunlit side of a
+      // sunrise — dark belongs only against the light).
+      base.setHex(P.oliveMid).lerp(new THREE.Color(P.canopyGreen), 0.4);
+      lit.copy(base).lerp(new THREE.Color(P.khaki), 0.6).multiplyScalar(1.2);
+      shade.copy(base).lerp(new THREE.Color(P.oliveDeep), 0.22).multiplyScalar(1.0);
+      fleck.setHex(P.russet);
+      fleckP = 0.05;
+    } else {
+      // Russet october — the committed red-brown outlier, shade lifted off
+      // oxblood-black for the same sunlit-side reason.
+      base.setHex(P.russet).lerp(new THREE.Color(P.russetDeep), 0.35);
+      lit.copy(base).lerp(new THREE.Color(P.strawLight), 0.42).multiplyScalar(1.18);
+      shade.copy(base).lerp(new THREE.Color(P.oxblood), 0.22).multiplyScalar(1.0);
+      fleck.setHex(P.khaki);
+      fleckP = 0.1;
+    }
 
     const barkFace = (out: THREE.Color, cy: number): void => {
       out.copy(bark).lerp(barkWarm, rng() * 0.45)
         .multiplyScalar(0.8 + Math.min(Math.max(cy, 0) / 3, 1) * 0.25);
     };
     const leafFace = (out: THREE.Color, _cy: number, ny: number): void => {
-      out.copy(base).lerp(olive, rng() * 0.25);
-      if (rng() < 0.1) out.lerp(russet, 0.22); // quiet autumn flecks, not neon
-      out.lerp(top, Math.max(ny, 0) * (0.45 + rng() * 0.25));
-      // Committed underside shade (item 3): canopies hold a dark belly the
-      // way noon-open's clouds already shade — that IS the tree's shadow.
-      if (ny < -0.15) out.multiplyScalar(0.6);
-      out.multiplyScalar(1.0 + rng() * 0.18);
+      // Authored sun-side/shade-side split by facet lean: up-facing facets
+      // take the warm lit hue, the belly holds the cool shade hue.
+      const t = THREE.MathUtils.clamp(ny * 0.8 + 0.55, 0, 1);
+      out.copy(shade).lerp(lit, t * (0.72 + rng() * 0.28));
+      if (rng() < fleckP) out.lerp(fleck, 0.3); // quiet autumn flecks
+      // Committed dark belly — that IS the tree's own shadow.
+      if (ny < -0.25) out.multiplyScalar(0.68);
+      out.multiplyScalar(0.94 + rng() * 0.16);
     };
 
     const trunkH = 3.7 + rng() * 0.5;
@@ -356,6 +484,9 @@ export class FloraSystem implements Subsystem {
       limb.dispose();
     }
 
+    // Canopy mass: authored core blobs + offset FRINGE LOBES that break the
+    // ball outline, each a subdivided icosahedron with deterministic lumpy
+    // displacement — the silhouette reads massed leaf clumps, not boulder.
     const blobs: number[][] =
       variant === 0
         ? [
@@ -364,6 +495,9 @@ export class FloraSystem implements Subsystem {
             [2.1, 5.3, -0.5, 2.1, 1.7, 1.9],
             [0.6, 7.3, 0.5, 1.7, 1.4, 1.6],
             [-1.0, 4.2, -1.7, 1.5, 1.2, 1.5],
+            [3.3, 6.4, 0.9, 1.2, 1.0, 1.1],
+            [-2.9, 6.8, -0.8, 1.1, 0.9, 1.0],
+            [1.7, 4.0, 1.9, 1.2, 0.9, 1.1],
           ]
         : variant === 1
           ? [
@@ -371,15 +505,22 @@ export class FloraSystem implements Subsystem {
               [1.6, 5.2, 0.6, 1.8, 1.6, 1.7],
               [-1.9, 5.9, -0.3, 1.6, 1.5, 1.5],
               [0.3, 8.0, -0.2, 1.4, 1.2, 1.3],
+              [2.8, 6.9, -0.5, 1.0, 0.85, 0.95],
+              [-2.6, 4.6, 1.2, 1.2, 0.9, 1.1],
+              [-0.9, 8.9, 0.5, 0.9, 0.75, 0.85],
             ]
           : [
               [-1.4, 5.3, 0, 2.5, 1.9, 2.3],
               [1.9, 5.8, 0.2, 2.2, 1.7, 2.0],
               [0.3, 6.9, -0.4, 1.8, 1.4, 1.7],
               [3.4, 4.7, -0.3, 1.3, 1.1, 1.2],
+              [-3.2, 6.2, -0.6, 1.1, 0.85, 1.0],
+              [4.4, 5.7, 0.4, 0.95, 0.8, 0.9],
+              [1.0, 8.1, 0.9, 1.0, 0.8, 0.95],
             ];
     for (const [bx, by, bz, sx, sy, sz] of blobs) {
-      const blob = new THREE.IcosahedronGeometry(1, 0);
+      const blob = new THREE.IcosahedronGeometry(1, 1);
+      lumpy(blob, 0.14 + rng() * 0.05, rng() * 9);
       a.add(
         blob,
         xform(
@@ -388,6 +529,7 @@ export class FloraSystem implements Subsystem {
           sx, sy, sz,
         ),
         leafFace,
+        1.7,
       );
       blob.dispose();
     }
@@ -413,7 +555,8 @@ export class FloraSystem implements Subsystem {
     for (let i = 0; i < n; i++) {
       const ang = (i / n) * Math.PI * 2 + rng();
       const d = rng() * 1.3;
-      const blob = new THREE.IcosahedronGeometry(1, 0);
+      const blob = new THREE.IcosahedronGeometry(1, 1);
+      lumpy(blob, 0.15, rng() * 9);
       a.add(
         blob,
         xform(
@@ -422,6 +565,7 @@ export class FloraSystem implements Subsystem {
           0.85 + rng() * 0.65, 0.5 + rng() * 0.35, 0.85 + rng() * 0.65,
         ),
         face,
+        1.15,
       );
       blob.dispose();
     }
@@ -553,11 +697,14 @@ export class FloraSystem implements Subsystem {
   private buildSnag(seed: number, h: number, girth: number, nBranch: number): THREE.BufferGeometry {
     const rng = mulberry32(seed);
     const a = new Asm();
-    const bark = new THREE.Color(P.warmGray).lerp(new THREE.Color(P.stoneGray), 0.35);
-    const silver = new THREE.Color(P.stoneGray).lerp(new THREE.Color(P.cream), 0.2);
+    // Item 11: the hero snag read as unshaded paper — the bake drops a half
+    // stop and the facet jitter widens hard, so driftwood carries visible
+    // plank-to-plank value breaks that the sun's warm/cool turn then splits.
+    const bark = new THREE.Color(P.warmGray).lerp(new THREE.Color(P.stoneGray), 0.25).multiplyScalar(0.85);
+    const silver = new THREE.Color(P.stoneGray).lerp(new THREE.Color(P.cream), 0.15);
     const face = (out: THREE.Color, cy: number): void => {
-      out.copy(bark).lerp(silver, THREE.MathUtils.clamp(cy / h, 0, 1) * (0.35 + 0.2 * rng()));
-      out.multiplyScalar(0.82 + rng() * 0.2);
+      out.copy(bark).lerp(silver, THREE.MathUtils.clamp(cy / h, 0, 1) * (0.3 + 0.2 * rng()));
+      out.multiplyScalar(0.6 + rng() * 0.45);
     };
     // Swept trunk: segment bases chain; lean accumulates in the +x plane
     // (the mesh's rotation.y stages which way the sweep faces on-site).
@@ -679,7 +826,8 @@ export class FloraSystem implements Subsystem {
     for (let i = 0; i < 3; i++) {
       const ang = rng() * Math.PI * 2;
       const d = rng() * 1.4;
-      const blob = new THREE.IcosahedronGeometry(1, 0);
+      const blob = new THREE.IcosahedronGeometry(1, 1);
+      lumpy(blob, 0.15, rng() * 9);
       a.add(
         blob,
         xform(
@@ -688,6 +836,7 @@ export class FloraSystem implements Subsystem {
           0.7 + rng() * 0.5, 0.45 + rng() * 0.25, 0.7 + rng() * 0.5,
         ),
         brushFace,
+        1.2,
       );
       blob.dispose();
     }
@@ -954,7 +1103,9 @@ export class FloraSystem implements Subsystem {
     const postC = new THREE.Color(P.warmGray).lerp(new THREE.Color(P.stoneGray), 0.5);
     const wireC = new THREE.Color(P.charcoal).multiplyScalar(0.7);
     const postFace = (out: THREE.Color, _cy: number, ny: number): void => {
-      out.copy(postC).multiplyScalar(0.85 + rng() * 0.35 + Math.max(ny, 0) * 0.15);
+      // Wide plank-to-plank jitter: at dawn the warm/cool material split
+      // needs value structure to bite on (item 11).
+      out.copy(postC).multiplyScalar(0.68 + rng() * 0.5 + Math.max(ny, 0) * 0.15);
     };
     const wireFace = (out: THREE.Color): void => {
       out.copy(wireC);
@@ -1018,7 +1169,19 @@ export class FloraSystem implements Subsystem {
   private buildRocks(high: boolean, ctx: Ctx): void {
     const rng = mulberry32(9137);
     const count = high ? 28 : 16;
-    const geo = new THREE.DodecahedronGeometry(1, 0);
+    // Through Asm, not raw: the shared material declares vertexColors and
+    // aTone, and a geometry missing those attributes samples (0,0,0) —
+    // the raw dodecahedron was rendering black-albedo rocks that only the
+    // emissive whisper lifted. Neutral per-face jitter; instance color tints.
+    const asm = new Asm();
+    const dod = new THREE.DodecahedronGeometry(1, 0);
+    asm.add(dod, null, (out) => {
+      // Mid-dark neutral: the per-instance stone/warm tint carries the hue;
+      // brighter bakes read bone-pale against a low sun.
+      out.setScalar(0.6 + rng() * 0.2);
+    });
+    dod.dispose();
+    const geo = asm.build();
     this.geos.push(geo);
     const mesh = new THREE.InstancedMesh(geo, this.mat!, count);
     const stone = new THREE.Color(P.stoneGray);
