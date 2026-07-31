@@ -73,12 +73,41 @@ describe('shipped public/art assets', () => {
     expect(field).toMatch(/DOG_FRAME_HEEL\s*=\s*5/);
     expect(field).toMatch(/DOG_FRAME_RETRIEVE\s*=\s*6/);
     expect(field).toMatch(/applyDogPose/);
-    // Config-driven tiles: shuffled open variants + cover stamped into the RT.
+    // Field look: path B plates for SP + legacy tile path still present.
     expect(field).toMatch(/FIELD_TILESETS/);
+    expect(field).toMatch(/FIELD_PLATES/);
+    expect(field).toMatch(/drawPaintedField/);
+    expect(field).toMatch(/plate-southern-plains-open/);
+    expect(field).toMatch(/cover-clumps/);
+    // Legacy tile cover stamp path kept for non-plate regions / fallback.
     expect(field).toMatch(/drawFrame\(cfg\.key,\s*cfg\.cover/);
     expect(field).toMatch(/cfg\.open\[Math\.floor/);
     expect(field).toMatch(/updateWindLean/);
     expect(field).toMatch(/fadeOut/);
+  });
+
+  it('path B plate + authored Quail Fields mockup kit ship in public/art', () => {
+    expect(existsSync(art('plate-southern-plains-open.png'))).toBe(true);
+    expect(existsSync(art('mockup-field-props.png'))).toBe(true);
+    expect(existsSync(art('mockup-cover-beds.png'))).toBe(true);
+    const plate = pngSize(art('plate-southern-plains-open.png'));
+    expect(plate.w).toBeGreaterThanOrEqual(128);
+    expect(plate.h).toBe(plate.w);
+    const props = pngSize(art('mockup-field-props.png'));
+    expect(props.w).toBe(432); // 6×72
+    expect(props.h).toBe(72);
+    const beds = pngSize(art('mockup-cover-beds.png'));
+    expect(beds.w).toBe(320); // 4×80
+    expect(beds.h).toBe(64);
+  });
+
+  it('FieldScene uses authored layouts for fixed coverts', () => {
+    const field = readFileSync(resolve(__dirname, '../src/scenes/FieldScene.ts'), 'utf8');
+    expect(field).toMatch(/authoredLayoutFor/);
+    expect(field).toMatch(/drawAuthoredField/);
+    const layouts = readFileSync(resolve(__dirname, '../src/game/fieldLayouts.ts'), 'utf8');
+    expect(layouts).toMatch(/quail-fields/);
+    expect(layouts).toMatch(/AUTHORED_LAYOUTS/);
   });
 
   it('FlushScene keeps shell eject + hit-pause feel', () => {

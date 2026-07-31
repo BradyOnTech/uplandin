@@ -39,6 +39,10 @@ import { devDogLevel } from '../game/dev';
 import { Dog, WHISTLE_RANGE, type DogState } from '../game/dog';
 import { VIEWPORT } from '../game/field';
 import { inCoverFringe, inRaggedCoverCore } from '../game/fieldDraw';
+import {
+  authoredLayoutFor,
+  type AuthoredFieldLayout,
+} from '../game/fieldLayouts';
 import { dist, moveToward, mulberry32, windArrow } from '../game/math';
 import { gearTierFor, twoDogUnlocked, unlocksAtLevel } from '../game/progression';
 import type { QuickConfig } from '../game/quick';
@@ -129,25 +133,46 @@ const FACING_EXIT_SIN = 0.7;
 // End-hunt control (top-right corner, screen coords).
 const END_HUNT_BTN = { x: 428, y: 18, w: 88, h: 18 };
 /**
- * Per-region tiles. v3 SP strip: frames 0–5 multi-tone open (shuffled),
- * 6 cover clump, 7 two-track. Props live on field-props (32×32 cells).
+ * Path B (painted/cutout): continuous open plate + cover clump stamps + props.
+ * Sim patch rects stay the cover truth for dog AI; art only follows them.
+ */
+interface RegionPlate {
+  /** Seamless open-ground texture (tiled across the world). */
+  plateKey: string;
+  /** Tall-grass / cattail clump sheet for stamping into ragged cover cores. */
+  coverKey: string;
+  coverFrames: number[];
+  coverCell: { w: number; h: number };
+  props?: { key: string; frames: number[] };
+}
+/**
+ * Legacy tile strips (still used by prairie-pothole until it gets a plate).
+ * SP open frames kept for tests / fallback if the plate texture is missing.
  */
 interface RegionTiles {
   key: string;
   open: number[];
   cover: number;
-  /** Optional mid-tone open frame used as cover fringe. */
   fringe?: number;
   landmark?: { key: string; frame: number };
-  /** Prop sheet key + frame indices for oak / shrub / cattail. */
   props?: { key: string; frames: number[] };
 }
+const FIELD_PLATES: Record<string, RegionPlate> = {
+  'southern-plains': {
+    plateKey: 'plate-southern-plains-open',
+    coverKey: 'cover-clumps',
+    coverFrames: [0, 1, 2, 3],
+    coverCell: { w: 80, h: 56 },
+    props: { key: 'field-props', frames: [0, 1, 2, 3] },
+  },
+};
 const FIELD_TILESETS: Record<string, RegionTiles> = {
+  // Fallback if plate art missing; also documents the old open-tile path.
   'southern-plains': {
     key: 'tiles-southern-plains-v3',
     open: [0, 1, 2, 3, 4, 5],
     cover: 6,
-    fringe: 2, // slightly olive open variant as soft fringe
+    fringe: 2,
     props: { key: 'field-props', frames: [0, 1, 2, 3] },
   },
   'prairie-pothole': {
@@ -157,7 +182,8 @@ const FIELD_TILESETS: Record<string, RegionTiles> = {
     props: { key: 'field-props', frames: [2, 3] },
   },
 };
-const PROP_CELL = 32;
+/** Prop cutouts: 64px for mockup-scale oaks (shrubs/cattails share the sheet). */
+const PROP_CELL = 64;
 
 // Whistle button zone (bottom-right corner, screen coords). Taps here don't move the hunter.
 const WHISTLE_BTN = { x: 452, y: 246, w: 48, h: 20 };
@@ -260,9 +286,24 @@ export class FieldScene extends Phaser.Scene {
       frameWidth: 16,
       frameHeight: 16,
     });
+    // Path B: continuous prairie plate + cover cutout stamps (Southern Plains).
+    this.load.image('plate-southern-plains-open', 'art/plate-southern-plains-open.png');
+    this.load.spritesheet('cover-clumps', 'art/cover-clumps.png', {
+      frameWidth: 80,
+      frameHeight: 56,
+    });
     this.load.spritesheet('field-props', 'art/field-props.png', {
       frameWidth: PROP_CELL,
       frameHeight: PROP_CELL,
+    });
+    // Fixed Quail Fields kit: mockup-cropped props + beds (authored layout).
+    this.load.spritesheet('mockup-field-props', 'art/mockup-field-props.png', {
+      frameWidth: 72,
+      frameHeight: 72,
+    });
+    this.load.spritesheet('mockup-cover-beds', 'art/mockup-cover-beds.png', {
+      frameWidth: 80,
+      frameHeight: 64,
     });
     this.load.spritesheet('gsp-field', 'art/gsp-sheet-alpha.png', {
       frameWidth: 32,
@@ -490,10 +531,12 @@ export class FieldScene extends Phaser.Scene {
     this.hunterFacing = 'down';
     this.hunterSideLeft = false;
     this.dogFacing = this.dogs.map(() => 'side');
-    // Rustle blades take the same tones as the organic cover render.
-    const rustleTiled = !!FIELD_TILESETS[regionOfArea(this.area.id).id];
+    // Rustle blades take the same tones as painted/tile cover (not bare grass).
+    const rid = regionOfArea(this.area.id).id;
+    const rustleCover =
+      !!FIELD_PLATES[rid] || !!FIELD_TILESETS[rid];
     // Light shade leads: kicked blades must read against the dark thicket.
-    this.rustleColors = rustleTiled
+    this.rustleColors = rustleCover
       ? [0x8a8248, 0x6e6832, 0x545026]
       : [scaleColor(this.area.cover, 1.55), scaleColor(this.area.cover, 1.3), this.area.cover];
 
@@ -1355,30 +1398,203 @@ export class FieldScene extends Phaser.Scene {
 
   private drawField(): void {
     const w = this.area.world;
-    // Landmark scatter comes from a stable per-area seed so the covert
-    // looks the same every visit.
+    // Landmark scatter seed: stable per-area for non-authored regions.
     const seed = [...this.area.id].reduce((a, c) => a + c.charCodeAt(0), 0);
     const rng = mulberry32(seed);
 
-    const cfg = FIELD_TILESETS[regionOfArea(this.area.id).id];
-    const tiled = !!cfg && this.textures.exists(cfg.key);
-    if (!tiled) {
-      this.add.graphics().fillStyle(this.area.grass).fillRect(w.x, w.y, w.w, w.h);
+    // Fixed one-covert layouts (Quail Fields): designed placement, same every hunt.
+    // Birds still randomize among AreaConfig.patches — only the *look* is authored.
+    const authored = authoredLayoutFor(this.area.id);
+    if (authored && this.textures.exists(authored.propKey)) {
+      this.drawAuthoredField(authored);
+      return;
     }
-    // Multi-tone open + ragged cover + fringe all live in one RT.
-    this.drawOrganicCover(rng, tiled);
-    this.scatterProps(rng, tiled);
+
+    const regionId = regionOfArea(this.area.id).id;
+    const plate = FIELD_PLATES[regionId];
+    const tileCfg = FIELD_TILESETS[regionId];
+    const usePlate =
+      !!plate &&
+      this.textures.exists(plate.plateKey) &&
+      this.textures.exists(plate.coverKey);
+    const tiled = !usePlate && !!tileCfg && this.textures.exists(tileCfg.key);
+
+    if (usePlate && plate) {
+      this.drawPaintedField(rng, plate);
+      this.scatterProps(rng, plate.props);
+    } else {
+      if (!tiled) {
+        this.add.graphics().fillStyle(this.area.grass).fillRect(w.x, w.y, w.w, w.h);
+      }
+      this.drawOrganicCover(rng, tiled);
+      this.scatterProps(rng, tileCfg?.props);
+    }
   }
 
   /**
-   * Mockup-like props: bur oaks, russet/olive shrubs, cattail clumps.
-   * Seeded scatter; Y-sorted with actors so dogs walk in front of trunks.
+   * One fixed covert: open plate + hand-listed cover beds + props.
+   * Edit `src/game/fieldLayouts.ts` to move trees/beds — no scatter soup.
    */
-  private scatterProps(rng: () => number, tiled: boolean): void {
+  private drawAuthoredField(layout: AuthoredFieldLayout): void {
     const w = this.area.world;
-    const cfg = FIELD_TILESETS[regionOfArea(this.area.id).id];
-    if (!tiled || !cfg?.props || !this.textures.exists(cfg.props.key)) {
-      // Fallback: a few brown squares if props missing.
+    const regionId = regionOfArea(this.area.id).id;
+    const plateKey = FIELD_PLATES[regionId]?.plateKey ?? 'plate-southern-plains-open';
+
+    if (this.textures.exists(plateKey)) {
+      const ground = this.add.tileSprite(w.x, w.y, w.w, w.h, plateKey);
+      ground.setOrigin(0, 0);
+      ground.setDepth(-20);
+    } else {
+      this.add.graphics().fillStyle(this.area.grass).fillRect(w.x, w.y, w.w, w.h);
+    }
+
+    const rt = this.add.renderTexture(w.x, w.y, w.w, w.h).setOrigin(0, 0);
+    rt.setDepth(-10);
+    const hasBeds = this.textures.exists(layout.coverKey);
+    const { w: dw, h: dh } = layout.coverCell;
+
+    for (const bed of layout.coverBeds) {
+      // Soft olive under each bed so it reads as cover, not a sticker.
+      const wash = this.make.graphics({}, false);
+      const sc = bed.scale ?? 1;
+      wash.fillStyle(0x3d4a1e, 0.32);
+      wash.fillEllipse(bed.x - w.x, bed.y - w.y, 34 * sc, 20 * sc);
+      rt.draw(wash);
+      wash.destroy();
+
+      if (!hasBeds) continue;
+      const frame = bed.frame ?? 0;
+      // Scale via optional draw size: Phaser drawFrame is 1:1; approximate with
+      // multiple offsets only when scale≈1. For scale≠1 use an Image instead.
+      if (Math.abs(sc - 1) < 0.08) {
+        rt.drawFrame(
+          layout.coverKey,
+          frame,
+          Math.round(bed.x - w.x - dw / 2),
+          Math.round(bed.y - w.y - dh * 0.9),
+        );
+      } else {
+        const img = this.add.image(bed.x, bed.y, layout.coverKey, frame);
+        img.setOrigin(0.5, 0.9);
+        img.setScale(sc);
+        img.setDepth(-9);
+      }
+    }
+
+    // Authored props (oaks/shrubs/cattails) — Y-sorted with dogs/hunter.
+    if (this.textures.exists(layout.propKey)) {
+      for (const p of layout.props) {
+        const img = this.add.image(p.x, p.y, layout.propKey, p.frame);
+        img.setOrigin(0.5, 1);
+        img.setScale(p.scale ?? 1);
+        if (p.flipX) img.setFlipX(true);
+        this.landmarkSprites.push(img);
+      }
+    }
+  }
+
+  /**
+   * Path B open ground: seamless prairie plate.
+   * Cover: a few large cattail/grass *islands* per patch (not a green rain carpet).
+   * Sim patch rects stay the dog-AI truth; art only follows them loosely.
+   */
+  private drawPaintedField(rng: () => number, plate: RegionPlate): void {
+    const w = this.area.world;
+    const ground = this.add.tileSprite(w.x, w.y, w.w, w.h, plate.plateKey);
+    ground.setOrigin(0, 0);
+    ground.setDepth(-20);
+
+    const rt = this.add.renderTexture(w.x, w.y, w.w, w.h).setOrigin(0, 0);
+    rt.setDepth(-10);
+    const g = this.make.graphics({}, false);
+    const hasClumps = this.textures.exists(plate.coverKey);
+    const dw = plate.coverCell.w;
+    const dh = plate.coverCell.h;
+
+    for (const p of this.area.patches) {
+      // 2–4 island centers inside the patch — mockup beds, not a filled AABB.
+      const islandN = Math.max(2, Math.min(4, Math.round((p.w * p.h) / 4500)));
+      const islands: { x: number; y: number }[] = [];
+      let tries = 0;
+      while (islands.length < islandN && tries < islandN * 12) {
+        tries++;
+        const ix = p.x + p.w * (0.2 + rng() * 0.6);
+        const iy = p.y + p.h * (0.25 + rng() * 0.55);
+        if (!inRaggedCoverCore(ix, iy, p) && rng() < 0.55) continue;
+        // Keep islands apart so beds stay distinct.
+        if (islands.some((o) => Math.hypot(o.x - ix, o.y - iy) < 36)) continue;
+        islands.push({ x: ix, y: iy });
+      }
+      if (islands.length === 0) {
+        islands.push({ x: p.x + p.w * 0.5, y: p.y + p.h * 0.55 });
+      }
+
+      for (const isl of islands) {
+        // Soft olive wash only under the bed (not the whole patch).
+        const wash = this.make.graphics({}, false);
+        const rw = 28 + rng() * 18;
+        const rh = 18 + rng() * 12;
+        wash.fillStyle(0x3d4a1e, 0.35);
+        wash.fillEllipse(isl.x - w.x, isl.y - w.y, rw, rh);
+        wash.fillStyle(0x545026, 0.2);
+        wash.fillEllipse(isl.x - w.x, isl.y - w.y + 4, rw * 0.7, rh * 0.55);
+        rt.draw(wash);
+        wash.destroy();
+
+        // 2–4 clump stamps per island — readable beds, not a hash field.
+        if (hasClumps) {
+          const stamps = 2 + Math.floor(rng() * 3);
+          for (let i = 0; i < stamps; i++) {
+            const ox = (rng() - 0.5) * 22;
+            const oy = (rng() - 0.5) * 14;
+            const frame = plate.coverFrames[Math.floor(rng() * plate.coverFrames.length)] ?? 0;
+            rt.drawFrame(
+              plate.coverKey,
+              frame,
+              Math.round(isl.x - w.x - dw / 2 + ox),
+              Math.round(isl.y - w.y - dh * 0.92 + oy),
+            );
+          }
+        }
+      }
+
+      // Tiny accent only — never a blade carpet (that caused the green rain).
+      for (const isl of islands) {
+        const accents = 3 + Math.floor(rng() * 4);
+        for (let i = 0; i < accents; i++) {
+          const bx = Math.round(isl.x - w.x + (rng() - 0.5) * 28);
+          const by = Math.round(isl.y - w.y + (rng() - 0.5) * 12);
+          const hgt = 4 + Math.floor(rng() * 5);
+          g.fillStyle([0x3a3a1e, 0x545026, 0x6e6832][Math.floor(rng() * 3)], 0.9);
+          g.fillRect(bx, by - hgt, 1, hgt);
+          if (rng() < 0.35) g.fillStyle(0x2a2814, 1).fillRect(bx, by - hgt - 2, 1, 2);
+        }
+      }
+    }
+
+    // Very sparse open-ground flecks — plate carries the prairie look.
+    const openTufts = Math.round((w.w * w.h) / 6000);
+    for (let i = 0; i < openTufts; i++) {
+      const x = Math.floor(rng() * w.w);
+      const y = Math.floor(rng() * w.h);
+      if (this.area.patches.some((p) => inRaggedCoverCore(x + w.x, y + w.y, p))) continue;
+      g.fillStyle(rng() < 0.5 ? 0xb89858 : 0x887038, 0.55).fillRect(x, y - (2 + Math.floor(rng() * 2)), 1, 2);
+    }
+
+    rt.draw(g);
+    g.destroy();
+  }
+
+  /**
+   * Mockup hierarchy: few large oaks, sparse shrubs, cattails only near cover.
+   * Leave open lanes for the white dog.
+   */
+  private scatterProps(
+    rng: () => number,
+    props: { key: string; frames: number[] } | undefined,
+  ): void {
+    const w = this.area.world;
+    if (!props || !this.textures.exists(props.key)) {
       const g = this.add.graphics();
       g.fillStyle(0x6b4a2a);
       const n = Math.round((w.w * w.h) / 28_000);
@@ -1387,47 +1603,50 @@ export class FieldScene extends Phaser.Scene {
       }
       return;
     }
-    // Mockup density: oaks along rim, shrubs mid-field, cattails near cover.
-    // Leave open lanes so the white dog stays readable.
-    const oakN = Math.max(5, Math.round((w.w * w.h) / 38_000));
-    const shrubN = Math.max(14, Math.round((w.w * w.h) / 14_000));
-    const cattailN = Math.max(8, Math.round((w.w * w.h) / 22_000));
+    // Sparse like the mockup: big trees dominate, shrubs are accents.
+    const oakN = Math.max(4, Math.round((w.w * w.h) / 70_000));
+    const shrubN = Math.max(5, Math.round((w.w * w.h) / 45_000));
+    const cattailN = Math.max(3, Math.round((w.w * w.h) / 55_000));
     const place = (
       frame: number,
       n: number,
       scaleLo: number,
       scaleHi: number,
       prefer: 'open' | 'fringe' | 'any' = 'any',
+      minSep = 40,
     ) => {
+      const placedPts: { x: number; y: number }[] = [];
       let placed = 0;
       let tries = 0;
-      while (placed < n && tries < n * 8) {
+      while (placed < n && tries < n * 14) {
         tries++;
-        const x = w.x + 20 + rng() * (w.w - 40);
-        const y = w.y + 20 + rng() * (w.h - 40);
+        const x = w.x + 28 + rng() * (w.w - 56);
+        const y = w.y + 28 + rng() * (w.h - 56);
         const inCore = this.area.patches.some((p) => inRaggedCoverCore(x, y, p));
         const inFringe = this.area.patches.some((p) => inCoverFringe(x, y, p));
-        if (inCore && rng() < 0.7) continue;
-        if (prefer === 'open' && (inCore || inFringe) && rng() < 0.55) continue;
-        if (prefer === 'fringe' && !inFringe && !inCore && rng() < 0.5) continue;
-        const img = this.add.image(x, y, cfg.props!.key, frame);
+        if (inCore && rng() < 0.85) continue;
+        if (prefer === 'open' && (inCore || inFringe) && rng() < 0.7) continue;
+        if (prefer === 'fringe' && !inFringe && !inCore && rng() < 0.55) continue;
+        if (placedPts.some((o) => Math.hypot(o.x - x, o.y - y) < minSep)) continue;
+        const img = this.add.image(x, y, props.key, frame);
         img.setOrigin(0.5, 1);
         img.setScale(scaleLo + rng() * (scaleHi - scaleLo));
         this.landmarkSprites.push(img);
+        placedPts.push({ x, y });
         placed++;
       }
     };
-    const frames = cfg.props.frames;
-    if (frames[0] !== undefined) place(frames[0], oakN, 1.05, 1.55, 'open'); // oak
-    if (frames[1] !== undefined) place(frames[1], Math.ceil(shrubN * 0.55), 0.9, 1.3, 'any'); // russet
-    if (frames[2] !== undefined) place(frames[2], Math.ceil(shrubN * 0.45), 0.85, 1.25, 'any'); // olive
-    if (frames[3] !== undefined) place(frames[3], cattailN, 0.95, 1.4, 'fringe'); // cattail
+    const frames = props.frames;
+    // 64px props: oaks large, shrubs secondary, cattails near cover beds.
+    if (frames[0] !== undefined) place(frames[0], oakN, 1.15, 1.65, 'open', 72);
+    if (frames[1] !== undefined) place(frames[1], Math.ceil(shrubN * 0.55), 0.7, 1.0, 'any', 48);
+    if (frames[2] !== undefined) place(frames[2], Math.ceil(shrubN * 0.45), 0.65, 0.95, 'any', 48);
+    if (frames[3] !== undefined) place(frames[3], cattailN, 0.95, 1.25, 'fringe', 40);
   }
 
   /**
-   * Pokémon/mockup field plate: multi-tone open tiles, ragged dark cover
-   * cores (sim rects unchanged), mid-tone fringe, sparse tuft accents.
-   * Cover stays darker than open for the dog AI.
+   * Legacy tile path: multi-tone open frames + ragged cover tile stamps.
+   * Kept for regions without a painted plate (and as SP fallback).
    */
   private drawOrganicCover(rng: () => number, tiled: boolean): void {
     const w = this.area.world;
@@ -1440,10 +1659,6 @@ export class FieldScene extends Phaser.Scene {
     const rust = [0x8f4a26, 0xa85c30];
     const cfg = FIELD_TILESETS[regionOfArea(this.area.id).id];
 
-    // Open multi-tone plate: low-contrast shuffled variants (mean delta ~1)
-    // with sparse flecks. No grid-aligned path bias / sin cell assignment —
-    // that stamped 16px wallpaper. After tiles, stamp irregular world-space
-    // flecks (not on the 16 grid) so any residual tile period dissolves.
     if (tiled && cfg) {
       for (let gy = 0; gy < Math.ceil(w.h / 16); gy++) {
         for (let gx = 0; gx < Math.ceil(w.w / 16); gx++) {
@@ -1451,20 +1666,9 @@ export class FieldScene extends Phaser.Scene {
           rt.drawFrame(cfg.key, frame, gx * 16, gy * 16);
         }
       }
-      const openFlecks = this.make.graphics({}, false);
-      const nFleck = Math.round((w.w * w.h) / 90);
-      for (let i = 0; i < nFleck; i++) {
-        const x = Math.floor(rng() * w.w);
-        const y = Math.floor(rng() * w.h);
-        // Soft ±step only — continuous prairie, not a speck lattice.
-        openFlecks.fillStyle(rng() < 0.5 ? 0xc0a060 : 0xac8c4c, 0.55).fillRect(x, y, 1, 1);
-      }
-      rt.draw(openFlecks);
-      openFlecks.destroy();
     }
 
     for (const p of this.area.patches) {
-      // Fringe first (mid-tone), then dark ragged core on top.
       if (tiled && cfg) {
         const pad = 16;
         const x0 = Math.floor((p.x - pad) / 16) * 16;
@@ -1490,8 +1694,6 @@ export class FieldScene extends Phaser.Scene {
         }
       }
 
-      // Dense thatch on core + fringe — mockup reads as tall grass islands, not
-      // painted rectangles. Keep blade strokes 1px for GBA crispness.
       const pad = 14;
       const tufts = Math.round((p.w * p.h) / 14);
       for (let i = 0; i < tufts; i++) {
@@ -1510,7 +1712,6 @@ export class FieldScene extends Phaser.Scene {
           if (rng() < 0.28) g.fillStyle(seedHead, 1).fillRect(bx, y - h - 2, 1, 2);
         }
       }
-      // Sumac / russet dots for mockup color accents inside cover.
       const shrubs = Math.max(2, Math.round((p.w * p.h) / 3200));
       for (let i = 0; i < shrubs; i++) {
         const sx = Math.round(p.x + rng() * p.w) - w.x;
@@ -1520,7 +1721,6 @@ export class FieldScene extends Phaser.Scene {
       }
     }
 
-    // Open-ground micro-tufts — straw flecks like the mockup's dry prairie.
     const openTone = tiled ? 0xb89858 : scaleColor(this.area.grass, 1.15);
     const openDark = tiled ? 0x887038 : scaleColor(this.area.grass, 0.85);
     const openTufts = Math.round((w.w * w.h) / 1400);

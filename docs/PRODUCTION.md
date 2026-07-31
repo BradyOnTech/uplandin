@@ -186,6 +186,10 @@ on; hunter footfalls cover-vs-open; whistle/minimap olive panels; winded tint
 - [x] **Shotgun** rest → mount → lag-aim (`gunAim.ts` + `shotgun-side.png`)
 - [x] **Field look (Pokémon/mockup)** — multi-tone open v3, ragged cover + fringe
   (`fieldDraw.ts`), prop sheet (oak/shrub/cattail) Y-sorted scatter
+- [x] **Path B field art (SP)** — continuous open plate + cover-clump cutouts +
+  props; sim patches unchanged for dog work (`FIELD_PLATES` / `drawPaintedField`)
+- [x] **Fixed Quail Fields** — mockup-cropped props/beds + `fieldLayouts.ts`
+  authored placement; birds still randomize among patches (see `docs/FIELD-ART-DIRECTOR.md`)
 
 **Do not** add deep pathfinding or multi-pass AI until 2.1–2.2 feel good.
 
