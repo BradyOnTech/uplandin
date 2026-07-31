@@ -29,9 +29,11 @@ import type { TerrainSystem } from './terrain';
  *    (mauve-gray at dawn, violet at lastlight), sun-colored rim at the
  *    golden hours. Albedo is strawPale — never #fff.
  *  - GROUNDING: dog meshes never render into the shadow map (the grazing-
- *    sun splat read as a burn mark); one soft sun-aligned contact ellipse
- *    (multiply-blended, stretched by sun elevation) grounds the torso.
- *    Feet plant analytically — the root sinks by the lowest standing
+ *    sun splat read as a burn mark); one soft contact ellipse (multiply-
+ *    blended, terrain-draped per vertex, body-parented, leaned/stretched
+ *    along the sun azimuth) grounds the torso. Feet plant EXACTLY — paw
+ *    markers are measured through the full transform chain against the
+ *    terrain under each paw, and the root sinks by the lowest standing
  *    paw's clearance. Grass opens around the dog via partingPoint().
  *  - LOCOMOTION: distance-driven gait (the 2D lesson — legs turn exactly
  *    as fast as the ground moves): the stride phase advances per meter
@@ -290,6 +292,9 @@ export class DogSystem implements Subsystem {
   /** FL, FR, HL, HR — upper pivots at shoulder/hip, lower at knee/hock. */
   private legU: THREE.Group[] = [];
   private legL: THREE.Group[] = [];
+  /** Paw-tip markers (lower-leg local) — exact planting + capture audit. */
+  private pawTips: THREE.Object3D[] = [];
+  private pawV = new THREE.Vector3();
 
   private frozen = false;
   /** Sun-answer uniforms shared by the one coat material. */
@@ -307,15 +312,20 @@ export class DogSystem implements Subsystem {
   private shadowGrp = new THREE.Group();
   private shadowGeo?: THREE.CircleGeometry;
   private shadowMat?: THREE.ShaderMaterial;
+  /** Unit-disc rest positions (xz) — the per-frame conform reads these. */
+  private shadowBase?: Float32Array;
   /** World-space shadow direction (away from the sun), set per TOD. */
   private shadowDirX = 0;
   private shadowDirZ = -1;
-  private shadowYaw = 0;
+  /** Center shift away from the sun / elongation along it (per TOD). */
+  private shadowLean = 0.06;
+  private shadowStretch = 0.2;
 
   // Smoothed pose state.
   private yaw = 0;
   private roll = 0;
   private slopePitch = 0;
+  private slopeRoll = 0;
   private bodyPitch = 0;
   private bob = 0;
   private neckPitch = 0;
@@ -328,6 +338,8 @@ export class DogSystem implements Subsystem {
   private lAng = [0, 0, 0, 0];
   private phase = 0;
   private yawRate = 0;
+  /** Cover-parting radius fed to grass — widens on point (bug 4). */
+  private partR = 1.3;
 
   // Preallocated scratch.
   private posW = { x: 0, z: 0 };
@@ -406,26 +418,31 @@ export class DogSystem implements Subsystem {
       // backlit money shot lives on this one warm edge.
       this.tone.uRimColor.value.setHex(spec.sunColor);
       this.tone.uRimK.value = (silh ? 0.3 : 0.12) + lowSun * 1.25;
-      // Contact ellipse answers the sun: aligned to the azimuth, stretched
-      // as the sun drops, its darkening tinted by the hour's shadow role.
+      // Contact ellipse answers the sun via CENTER LEAN + ELONGATION along
+      // the shadow azimuth; the disc itself stays parented to the dog's
+      // transform (mechanic round, bug 1: the old free-floating flat disc
+      // buried itself under curved terrain and only a detached downhill
+      // sliver survived — the blob read a body-length off the dog).
       this.shadowDirX = -Math.sin(az);
       this.shadowDirZ = -Math.cos(az);
-      this.shadowYaw = Math.atan2(this.shadowDirX, this.shadowDirZ);
-      // Scale values are RADII of the unit disc: half-width across the
-      // shadow, half-length along it (iteration 2: the first pass scaled
-      // by full length and painted a 2.6 m stain under the dawn dog).
-      const len = THREE.MathUtils.clamp(0.35 / Math.tan(Math.max(el, 0.06)), 0.5, 0.95);
-      this.shadowGrp.scale.set(0.4, 1, len);
+      this.shadowLean = 0.05 + 0.22 * lowSun;
+      this.shadowStretch = 0.15 + 1.0 * lowSun;
       const su = this.shadowMat!.uniforms;
       (su.uTint.value as THREE.Color).setHex(spec.grassShadow).multiplyScalar(0.45);
       su.uK.value = silh ? 0.14 : 0.46 + lowSun * 0.1;
     };
 
-    // Contact ellipse build: a unit disc in the xz plane, multiply-blended
-    // radial falloff — it darkens whatever it hovers over (soil, skirts,
-    // blades) the way a soft blob shadow should, and costs one draw call.
+    // Contact ellipse build: a unit disc, multiply-blended radial falloff —
+    // it darkens whatever it hovers over (soil, skirts, blades) the way a
+    // soft blob shadow should, and costs one draw call. The disc is
+    // TERRAIN-CONFORMED per frame (29 verts draped onto heightAt) and its
+    // footprint follows the BODY yaw — a per-torso blob that sits under the
+    // dog in every pose, TOD and heading, instead of a flat free disc that
+    // z-buries under any terrain bulge. Falloff radius rides the uvs (the
+    // positions now carry the drape, not the unit disc).
     this.shadowGeo = new THREE.CircleGeometry(1, 28);
     this.shadowGeo.rotateX(-Math.PI / 2);
+    this.shadowBase = new Float32Array(this.shadowGeo.attributes.position.array);
     this.shadowMat = new THREE.ShaderMaterial({
       uniforms: {
         uTint: { value: new THREE.Color(P.shadowNeutral) },
@@ -434,7 +451,7 @@ export class DogSystem implements Subsystem {
       vertexShader:
         'varying vec2 vXY;\n' +
         'void main() {\n' +
-        '\tvXY = position.xz;\n' +
+        '\tvXY = uv * 2.0 - 1.0;\n' +
         '\tgl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );\n' +
         '}',
       fragmentShader:
@@ -447,8 +464,9 @@ export class DogSystem implements Subsystem {
       transparent: true,
       depthWrite: false,
     });
-    this.shadowGrp.add(new THREE.Mesh(this.shadowGeo, this.shadowMat));
-    this.shadowGrp.rotation.order = 'YXZ';
+    const shadowMesh = new THREE.Mesh(this.shadowGeo, this.shadowMat);
+    shadowMesh.frustumCulled = false; // bounds change per frame; one quad fan
+    this.shadowGrp.add(shadowMesh);
     ctx.scene.add(this.shadowGrp);
 
     applyTod(ctx.timeOfDay);
@@ -458,6 +476,43 @@ export class DogSystem implements Subsystem {
 
     this.root.add(this.body);
     ctx.scene.add(this.root);
+
+    // CAPTURE AUDIT (mechanic round): under ?capture=1 the dog publishes a
+    // read-only measurement handle — terrain queries plus live paw/shadow
+    // world positions — so tools3d scripts can MEASURE planting and shadow
+    // registration instead of trusting claims. Tooling-only; allocations
+    // here never run in gameplay frames.
+    if (this.frozen) {
+      (window as unknown as { __dogAudit?: unknown }).__dogAudit = {
+        heightAt: (wx: number, wz: number) => this.terrain.heightAt(wx, wz),
+        slopeAt: (wx: number, wz: number) => {
+          const s = 0.6;
+          const dx = this.terrain.heightAt(wx + s, wz) - this.terrain.heightAt(wx - s, wz);
+          const dz = this.terrain.heightAt(wx, wz + s) - this.terrain.heightAt(wx, wz - s);
+          return Math.hypot(dx, dz) / (2 * s);
+        },
+        state: () => {
+          this.root.updateMatrixWorld(true);
+          const paws = this.pawTips.map((tip, i) => {
+            tip.getWorldPosition(this.pawV);
+            const g = this.terrain.heightAt(this.pawV.x, this.pawV.z);
+            return { i, x: this.pawV.x, y: this.pawV.y, z: this.pawV.z, gap: this.pawV.y - g };
+          });
+          return {
+            root: { x: this.root.position.x, y: this.root.position.y, z: this.root.position.z },
+            yaw: this.yaw,
+            state: this.hunt.dog().state,
+            gait: this.hunt.dog().gait,
+            shadow: {
+              x: this.shadowGrp.position.x,
+              y: this.shadowGrp.position.y,
+              z: this.shadowGrp.position.z,
+            },
+            paws,
+          };
+        },
+      };
+    }
     // First placement so frame 0 isn't a dog at the origin.
     this.update(ctx, 1 / 60);
   }
@@ -470,7 +525,7 @@ export class DogSystem implements Subsystem {
   partingPoint(out: { x: number; z: number; r: number }): void {
     out.x = this.lastX;
     out.z = this.lastZ;
-    out.r = 0.9;
+    out.r = this.partR;
   }
 
   /* ------------------------------- build ------------------------------- */
@@ -667,6 +722,9 @@ export class DogSystem implements Subsystem {
       this.tail.add(this.mesh(b.build(), high));
     }
     this.tail.position.set(TAIL_PIVOT[0], TAIL_PIVOT[1], TAIL_PIVOT[2]);
+    // The flag reads at gameplay range or it doesn't exist: +18% so the
+    // raised tip clears the cover line the parting can't duck (bug 4).
+    this.tail.scale.setScalar(1.18);
     this.body.add(this.tail);
 
     // LEGS — two segments each, origin at the joint, geometry down -y.
@@ -679,16 +737,20 @@ export class DogSystem implements Subsystem {
         const b = new PartBuilder();
         if (fore) {
           // Thick forequarters (round 7): a real forearm mass under the
-          // widened chest, tapering to the wrist.
+          // widened chest, tapering to the wrist. Top extended up into the
+          // chest mass (bug 2: at full swing the old 0.03 stub cleared the
+          // torso underside and the shoulder read dislocated).
           b.boxY(
-            { x: 0, y: 0.03, z: -0.006, hw: 0.04, hd: 0.064 },
+            { x: 0, y: 0.09, z: -0.006, hw: 0.042, hd: 0.068 },
             { x: 0, y: -0.195, z: 0.004, hw: 0.021, hd: 0.027 },
             coat,
           );
         } else {
-          // Haunch: broad thigh mass tapering to the stifle.
+          // Haunch: broad thigh mass tapering to the stifle. Top buried
+          // deep in the hip ring so the joint stays SOCKETED through the
+          // whole gait cycle (bug 2: the hind detached at max swing).
           b.boxY(
-            { x: 0, y: 0.04, z: -0.01, hw: 0.036, hd: 0.085 },
+            { x: 0, y: 0.11, z: -0.012, hw: 0.04, hd: 0.095 },
             { x: 0, y: -0.205, z: 0.01, hw: 0.02, hd: 0.03 },
             coat,
           );
@@ -697,7 +759,12 @@ export class DogSystem implements Subsystem {
       }
       {
         const b = new PartBuilder();
-        const len = fore ? 0.2 : 0.21;
+        // Hind cannon lengthened 0.21 -> 0.28 (mechanic round, bug 3): with
+        // the fore nearly straight at stance, the angulated hind could only
+        // reach 0.365 of the 0.409 m drop — the exact planting solver
+        // proved both hinds hovering 8 cm on point once the fore stopped
+        // being buried to hide it. Dogs' hind legs run longer than fore.
+        const len = fore ? 0.2 : 0.28;
         b.boxY(
           { x: 0, y: 0, z: 0, hw: 0.017, hd: 0.024 },
           { x: 0, y: -len + 0.03, z: -0.004, hw: 0.013, hd: 0.018 },
@@ -721,6 +788,12 @@ export class DogSystem implements Subsystem {
       this.body.add(upper);
       this.legU.push(upper);
       this.legL.push(lower);
+      // Paw-tip marker at the sole of the paw block: the planting solver
+      // and the capture audit both measure THIS point against terrain.
+      const tip = new THREE.Object3D();
+      tip.position.set(0, -(fore ? 0.2 : 0.28), 0.014);
+      lower.add(tip);
+      this.pawTips.push(tip);
     }
   }
 
@@ -791,6 +864,18 @@ export class DogSystem implements Subsystem {
       0.6,
     );
     this.slopePitch = approach(this.slopePitch, THREE.MathUtils.clamp(slope, -0.4, 0.4), 8, dt, snap);
+    // Lateral slope roll (mechanic round, bug 3): on a cross-slope the body
+    // banks with the ground, so downhill-side paws can actually reach it —
+    // without this the rigid-level body left daylight under the low side on
+    // every cross-slope heading. Local +x is the dog's RIGHT flank; positive
+    // rotation.z tips it up, so the roll target tracks (hRight - hLeft).
+    const rxs = Math.cos(this.yaw) * 0.22;
+    const rzs = -Math.sin(this.yaw) * 0.22;
+    const lat = Math.atan2(
+      this.terrain.heightAt(x + rxs, z + rzs) - this.terrain.heightAt(x - rxs, z - rzs),
+      0.44,
+    );
+    this.slopeRoll = approach(this.slopeRoll, THREE.MathUtils.clamp(lat, -0.35, 0.35), 8, dt, snap);
 
     /* ---------------- pose targets by sim state/gait ---------------- */
     const time = snap ? 0 : ctx.time;
@@ -813,11 +898,14 @@ export class DogSystem implements Subsystem {
       // dropped ~12 degrees toward the bird, tail a rigid raised flag.
       // Intensity lives in the lean, not in a mannequin standing tall.
       rate = 14;
-      tBob = -0.042; // crouch: the body sinks into the stalk it froze from
+      // Crouch eased (mechanic round, bug 4): -0.042 sank the topline and
+      // flag below the cover line at gameplay framing; the lean now lives
+      // in the pitch, not in a squat.
+      tBob = -0.006;
       tPitch = 0.075; // nose-down pitch — weight on the forehand
       tRoll = 0;
       tNeck = 0.48; // dropped ~12 deg past round 6's level drive
-      tTailP = 1.32; // the raised flag — high, rigid, unmistakable
+      tTailP = 1.45; // the raised flag — near-vertical, proud of the grass
       tTailY = 0;
       tEar = 0.06;
       // Head locked on the bird's actual position — muzzle drives DOWN the
@@ -835,10 +923,23 @@ export class DogSystem implements Subsystem {
       } else {
         tHeadP = 0.08 - tNeck * 0.55; // honoring: muzzle down the line
       }
-      // Left fore lifted high, folded tight under the wrist — the gap of
-      // daylight under the chest is half the pose's read.
-      tU[0] = -1.35;
-      tL[0] = 2.1;
+      // Left fore lifted FORWARD-UP with the carpus folded BACK under the
+      // wrist — canine forelegs fold knee-back-then-forward. (Bug 2: the
+      // old -1.35 swung the humerus 77 deg BACKWARD and the +2.1 fold then
+      // wrapped the paw up past vertical — a backwards-bending pretzel.)
+      // uAng > 0 swings the leg toward the nose; lAng > 0 folds the paw
+      // back under it. The gap of daylight under the chest is half the
+      // pose's read.
+      tU[0] = 0.95;
+      tL[0] = 1.9;
+      // Hinds stretched back and extended — the driving stance of a real
+      // intense point, and the reach that PLANTS them: the nose-down pitch
+      // lifts the rear ~2 cm, and the neutral angulation left both hind
+      // paws hovering exactly that far off the grade (probe-measured).
+      tU[2] = -0.35;
+      tU[3] = -0.35;
+      tL[2] = 0.22;
+      tL[3] = 0.22;
     } else if (gait === 'still') {
       if (sd.scentCheck) {
         // First-scent freeze: mid-stride statue, head snapped up the cone.
@@ -913,6 +1014,10 @@ export class DogSystem implements Subsystem {
     this.tailPitch = approach(this.tailPitch, tTailP, rate, dt, snap);
     this.tailYaw = approach(this.tailYaw, tTailY, rate, dt, snap);
     this.earFlop = approach(this.earFlop, tEar, rate, dt, snap);
+    // Cover parting: wider on point so the frozen silhouette stands in a
+    // real window instead of white-shard soup (bug 4); grass polls this
+    // via partingPoint() every frame.
+    this.partR = approach(this.partR, pointing ? 2.2 : 1.3, 6, dt, snap);
     for (let i = 0; i < 4; i++) {
       this.uAng[i] = approach(this.uAng[i], tU[i], rate + 4, dt, snap);
       this.lAng[i] = approach(this.lAng[i], tL[i], rate + 4, dt, snap);
@@ -920,35 +1025,14 @@ export class DogSystem implements Subsystem {
       this.legL[i].rotation.x = this.lAng[i];
     }
 
-    // FEET PLANTED (round 7, item 2): analytic paw clearance — for each
-    // standing leg, how far its paw hangs above local ground in body space
-    // (two cosines per leg, no IK) — and the root sinks by the smallest,
-    // so the longest-extended paw touches terrain instead of hovering.
-    let clearance = Infinity;
-    for (let i = 0; i < 4; i++) {
-      if (pointing && i === 0) continue; // the lifted foreleg never plants
-      const fore = i < 2;
-      const pawY =
-        (fore ? FORE_Y : HIND_Y) -
-        (fore ? 0.195 : 0.205) * Math.cos(this.uAng[i]) -
-        (fore ? 0.2 : 0.21) * Math.cos(this.lAng[i] - this.uAng[i]);
-      if (pawY < clearance) clearance = pawY;
-    }
-    clearance = THREE.MathUtils.clamp(clearance, -0.04, 0.1);
-
-    this.root.position.set(x, gy - clearance, z);
+    // Full pose FIRST, then measure: planting reads the real paw markers
+    // through the real transform chain, so bob, crouch, body pitch, slope
+    // pitch/roll and folded joints all count. (Mechanic round, bug 3: the
+    // old two-cosine estimate ignored every body transform — on point it
+    // buried the standing fore 5 cm and floated both hinds.)
+    this.root.position.set(x, gy, z);
     this.root.rotation.order = 'YXZ';
-    this.root.rotation.set(this.slopePitch, this.yaw, 0);
-    // Contact ellipse: sun-aligned in world space (never yawing with the
-    // body), pitched to the terrain along the shadow direction.
-    const shx = this.shadowDirX * 0.6;
-    const shz = this.shadowDirZ * 0.6;
-    const shSlope = Math.atan2(
-      this.terrain.heightAt(x - shx, z - shz) - this.terrain.heightAt(x + shx, z + shz),
-      1.2,
-    );
-    this.shadowGrp.position.set(x, gy + 0.03, z);
-    this.shadowGrp.rotation.set(shSlope, this.shadowYaw, 0);
+    this.root.rotation.set(this.slopePitch, this.yaw, this.slopeRoll);
     this.body.position.y = this.bob;
     this.body.rotation.set(this.bodyPitch, 0, this.roll);
     this.neck.rotation.x = this.neckPitch;
@@ -956,6 +1040,49 @@ export class DogSystem implements Subsystem {
     this.tail.rotation.set(this.tailPitch, this.tailYaw, 0);
     this.earL.rotation.x = this.earFlop;
     this.earR.rotation.x = this.earFlop;
+
+    // FEET PLANTED: exact per-paw world clearance against the terrain UNDER
+    // EACH PAW (not under the root), and the root sinks so the lowest
+    // standing paw touches. A pure y-shift afterwards keeps it exact.
+    let sink = Infinity;
+    for (let i = 0; i < 4; i++) {
+      if (pointing && i === 0) continue; // the lifted foreleg never plants
+      this.pawTips[i].getWorldPosition(this.pawV);
+      const gap = this.pawV.y - this.terrain.heightAt(this.pawV.x, this.pawV.z);
+      if (gap < sink) sink = gap;
+    }
+    sink = THREE.MathUtils.clamp(sink, -0.07, 0.14);
+    this.root.position.y = gy - sink;
+
+    // Contact ellipse: draped onto the terrain vertex-by-vertex under the
+    // torso — parented to the dog's x/z and yaw so it survives rotation and
+    // every heading; the sun only leans the center and stretches the long
+    // axis. (Bug 1: the old flat world-space disc z-buried under any
+    // terrain bulge and read as a detached blob a body-length away.)
+    const scx = x + this.shadowDirX * this.shadowLean;
+    const scz = z + this.shadowDirZ * this.shadowLean;
+    const scy = gy + 0.02;
+    this.shadowGrp.position.set(scx, scy, scz);
+    const cosY = Math.cos(this.yaw);
+    const sinY = Math.sin(this.yaw);
+    const base = this.shadowBase!;
+    const posAttr = this.shadowGeo!.attributes.position as THREE.BufferAttribute;
+    const arr = posAttr.array as Float32Array;
+    for (let i = 0; i < base.length; i += 3) {
+      // Body-aligned footprint (half-width 0.42, half-length 0.62)...
+      const sx = base[i] * 0.42;
+      const sz = base[i + 2] * 0.62;
+      let dxw = sx * cosY + sz * sinY;
+      let dzw = -sx * sinY + sz * cosY;
+      // ...sheared along the shadow azimuth as the sun drops.
+      const along = dxw * this.shadowDirX + dzw * this.shadowDirZ;
+      dxw += this.shadowDirX * along * this.shadowStretch;
+      dzw += this.shadowDirZ * along * this.shadowStretch;
+      arr[i] = dxw;
+      arr[i + 1] = this.terrain.heightAt(scx + dxw, scz + dzw) + 0.04 - scy;
+      arr[i + 2] = dzw;
+    }
+    posAttr.needsUpdate = true;
   }
 
   dispose(ctx: Ctx): void {

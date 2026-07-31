@@ -46,6 +46,11 @@ const SHOTS = {
   // reads side-on — level topline, raised flag, folded foreleg — with the
   // sunrise still in the top of the wide frame.
   'dawn-point': { tod: 'dawn', sim: 'point', base: [0, 40, 180, 4], maxTicks: 30000, dist: 2.2, spin: -1.35, pitch: -18 },
+  // THE GAMEPLAY READ (dog-mechanic round): true hunter-follow framing —
+  // the fixed 1.62 m eye, 14 m back, three-quarter off the dog-bird line.
+  // This is the frame the player actually hunts from; the point silhouette
+  // (raised flag, level topline, lifted fore) must read INSTANTLY here.
+  'gameplay-point': { tod: 'dawn', sim: 'point', base: [0, 40, 180, 4], maxTicks: 30000, dist: 12, spin: -1.3, pitch: -6 },
   // Debug poses (not part of the standard set — request via --shots).
   'debug-shadow': [26, 82, 180, -6, 'dawn'],
   'debug-noon-shadow': [36, 62, 180, -10, 'noon'],
@@ -68,6 +73,10 @@ const SHOTS = {
   'debug-dog-macro-side': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.0, spin: 1.55, pitch: -30 },
   'debug-dog-macro-front': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.0, spin: 2.7, pitch: -30 },
   'debug-dog-macro-point': { tod: 'morning', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.1, spin: -1.55, pitch: -24 },
+  // Feet-planting witness: mid-stride on visibly SLOPED ground (grade read
+  // off window.__dogAudit.slopeAt), framed low and side-on so daylight
+  // under a paw — or a buried shin — is unmissable.
+  'debug-dog-slope': { tod: 'noon', sim: 'slope', maxTicks: 24000, base: [0, 40, 180, 4], dist: 3.2, spin: 1.55, pitch: -14 },
 };
 
 const args = process.argv.slice(2);
@@ -109,7 +118,14 @@ async function main() {
 
   const browser = await puppeteer.launch({
     headless: true,
-    args: ['--no-sandbox', '--enable-unsafe-swiftshader', '--use-gl=angle'],
+    // vsync decoupled: on a sleeping/locked macOS display the new headless
+    // stops issuing BeginFrames entirely — rAF never fires, __ready3d never
+    // sets, and every capture times out. Decoupling from the display clock
+    // keeps the harness alive regardless of monitor state.
+    args: [
+      '--no-sandbox', '--enable-unsafe-swiftshader', '--use-gl=angle',
+      '--disable-frame-rate-limit', '--disable-gpu-vsync',
+    ],
   });
   try {
     const page = await browser.newPage();
@@ -171,7 +187,14 @@ async function main() {
                   ? (h) =>
                       h.dog.state === 'quartering' && h.dog.gait !== 'still' && edgeDist(h) > 6 &&
                       Math.abs(h.dog.x) < 222 && Math.abs(h.dog.z) < 222
-                  : (h) => h.dog.state === 'quartering' && h.dog.gait === 'run' && inPatch(h);
+                  : mode === 'slope'
+                    // Planting witness: mid-stride on a real grade (>13%),
+                    // clear of cover so all four feet are visible.
+                    ? (h) =>
+                        h.dog.state === 'quartering' && h.dog.gait !== 'still' && edgeDist(h) > 4 &&
+                        (window.__dogAudit?.slopeAt(h.dog.x, h.dog.z) ?? 0) > 0.13 &&
+                        Math.abs(h.dog.x) < 222 && Math.abs(h.dog.z) < 222
+                    : (h) => h.dog.state === 'quartering' && h.dog.gait === 'run' && inPatch(h);
             // Skip the opening cast so the frame isn't the first stride.
             window.__api3d.stepSim(240);
             let ticks = 240;

@@ -48,7 +48,12 @@ async function main() {
   }
   const browser = await puppeteer.launch({
     headless: true,
-    args: ['--no-sandbox', '--enable-unsafe-swiftshader', '--use-gl=angle'],
+    // vsync decoupled (see capture.mjs): a sleeping display stalls new-
+    // headless BeginFrames and the audit times out waiting on __ready3d.
+    args: [
+      '--no-sandbox', '--enable-unsafe-swiftshader', '--use-gl=angle',
+      '--disable-frame-rate-limit', '--disable-gpu-vsync',
+    ],
   });
   try {
     const page = await browser.newPage();

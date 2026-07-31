@@ -330,7 +330,12 @@ export class FloraSystem implements Subsystem {
             // diffuseColor already carries the contra darkening.
             '\tfloat gFol = clamp( ( vTone - 1.0 ) / 0.7, 0.0, 1.0 );\n' +
             '\tvec3 gWh = totalEmissiveRadiance;\n' +
-            '\ttotalEmissiveRadiance = gWh * mix( 0.85, 0.3, gFol ) + gWh * diffuseColor.rgb * ( gFol * 8.0 );\n' +
+            // Mechanic-round purge: the wood/stone whisper now carries the
+            // MATERIAL's hue (0.35 + 0.85*albedo ~= 1 at mid albedo, so the
+            // lift magnitude holds). The flat ambientSky dose was the last
+            // word on every noon shade face — boulders measured slate
+            // (62,72,81) regardless of any albedo or tone change.
+            '\ttotalEmissiveRadiance = gWh * mix( 0.85, 0.3, gFol ) * ( vec3( 0.5 ) + 0.75 * diffuseColor.rgb ) + gWh * diffuseColor.rgb * ( gFol * 8.0 );\n' +
             '\ttotalEmissiveRadiance *= mix( 1.0, 0.15, gCtr );\n' +
             // Warm rim at the golden hours: a tight sun-colored EDGE on
             // glancing facets that lean toward the sun — an edge accent,
@@ -671,14 +676,26 @@ export class FloraSystem implements Subsystem {
     const a = new Asm();
     // Weathered deadfall brown: warm gray pulled toward dark russet heart-
     // wood — never the flat fence-gray that read as a placeholder plank.
-    const wood = new THREE.Color(P.warmGray).lerp(new THREE.Color(P.russetDeep), 0.32);
-    const silver = new THREE.Color(P.stoneGray).lerp(new THREE.Color(P.warmGray), 0.35);
+    // Debug-prop purge (mechanic round): at noon the old mix — heavy
+    // stoneGray silvering over a barely-russet base, then the shader's
+    // violet shade-side cool — rendered the whole barrel LAVENDER; the
+    // debug-trail foreground log read as a magenta placeholder plank.
+    // Deeper russet base, silvering halved and confined to the top, wider
+    // facet jitter so the barrel carries wood-value structure at 5 m.
+    // Driftwood, not rouge: mostly warmGray with a russet heart — the 0.72
+    // russet push of the first purge pass measured (120,83,83) on screen,
+    // redder but still rose. The violet lived in the shader cool (aTone
+    // below), not the albedo.
+    const wood = new THREE.Color(P.warmGray).lerp(new THREE.Color(P.russetDeep), 0.4).multiplyScalar(0.86);
+    wood.b *= 0.62; // blue skylight adds it right back; brown needs G >> B
+    const silver = new THREE.Color(P.warmGray).lerp(new THREE.Color(P.stoneGray), 0.3);
+    silver.b *= 0.75;
     const bark = new THREE.Color(P.charcoal).lerp(new THREE.Color(P.russetDeep), 0.35);
     const cut = new THREE.Color(P.khaki).lerp(new THREE.Color(P.stoneGray), 0.4);
     const face = (out: THREE.Color, _cy: number, ny: number): void => {
-      out.copy(wood).lerp(silver, Math.max(ny, 0) * (0.45 + rng() * 0.25));
+      out.copy(wood).lerp(silver, Math.max(ny, 0) * (0.18 + rng() * 0.12));
       if (ny < -0.3) out.multiplyScalar(0.55);
-      out.multiplyScalar(0.88 + rng() * 0.24);
+      out.multiplyScalar(0.74 + rng() * 0.38);
     };
     const barkFace = (out: THREE.Color): void => {
       out.copy(bark).multiplyScalar(0.8 + rng() * 0.3);
@@ -686,18 +703,20 @@ export class FloraSystem implements Subsystem {
     const cutFace = (out: THREE.Color): void => {
       out.copy(cut).multiplyScalar(0.9 + rng() * 0.2);
     };
+    // aTone 0.62 on every deadfall facet: half the violet shade-cool —
+    // on bare pale ground the full dose is what tipped the barrel mauve.
     const len = 4.5 + rng() * 2.5;
     const r0 = 0.17;
     const r1 = 0.29;
     const trunk = new THREE.CylinderGeometry(r0, r1, len, 8, 1, true);
     trunk.rotateZ(Math.PI / 2); // lie along +x
-    a.add(trunk, xform(0, 0.24, 0, 0.35 + rng() * 0.5, 0, 0, 1, 0.82, 1), face);
+    a.add(trunk, xform(0, 0.24, 0, 0.35 + rng() * 0.5, 0, 0, 1, 0.82, 1), face, 0.62);
     trunk.dispose();
     // Pale cut/broken end discs — sawn-wood value break at both ends.
     for (const [ex, er] of [[len / 2, r0], [-len / 2, r1]] as const) {
       const disc = new THREE.CircleGeometry(er * 0.94, 8);
       disc.rotateY(ex > 0 ? Math.PI / 2 : -Math.PI / 2);
-      a.add(disc, xform(ex, 0.24, 0, 0, 0, 0, 1, 0.82, 1), cutFace);
+      a.add(disc, xform(ex, 0.24, 0, 0, 0, 0, 1, 0.82, 1), cutFace, 0.62);
       disc.dispose();
     }
     // Bark ridge strips: thin darker runs along the length at varied rolls
@@ -708,7 +727,7 @@ export class FloraSystem implements Subsystem {
       const sl = len * (0.35 + rng() * 0.4);
       const strip = new THREE.BoxGeometry(sl, 0.045, 0.1 + rng() * 0.06);
       strip.translate((rng() - 0.5) * len * 0.35, Math.sin(roll) * rr, Math.cos(roll) * rr * 0.82);
-      a.add(strip, xform(0, 0.24, 0, 0, 0, 0, 1, 1, 1), barkFace);
+      a.add(strip, xform(0, 0.24, 0, 0, 0, 0, 1, 1, 1), barkFace, 0.62);
       strip.dispose();
     }
     for (let i = 0; i < 2; i++) {
@@ -718,7 +737,7 @@ export class FloraSystem implements Subsystem {
       br.rotateZ(0.5 + rng() * 1.6);
       br.rotateX((rng() - 0.5) * 1.2);
       br.translate((rng() - 0.5) * len * 0.7, 0.3, 0);
-      a.add(br, null, face);
+      a.add(br, null, face, 0.62);
       br.dispose();
     }
     return a.build();
@@ -1169,7 +1188,9 @@ export class FloraSystem implements Subsystem {
     // Logs are the classic slope floaters: a 5-7 m barrel seated on its
     // center sample held daylight under the downhill half. footR 2.6
     // rings the whole span; the sink deepens to settle the barrel.
-    this.instance(ctx, geo, spots, 0.1, high, rng, 2.3, 0.33, 2.6, 'log');
+    // Pool hugs the barrel (mechanic round): the old 2.3 x 0.76 apron was
+    // most of the "magenta log" — a violet multiply ribbon on pale sand.
+    this.instance(ctx, geo, spots, 0.1, high, rng, 2.0, 0.18, 2.6, 'log');
   }
 
   /** Fence lines: leaning posts + two sagging wire ribbons per span. */
@@ -1253,13 +1274,33 @@ export class FloraSystem implements Subsystem {
     // the raw dodecahedron was rendering black-albedo rocks that only the
     // emissive whisper lifted. Neutral per-face jitter; instance color tints.
     const asm = new Asm();
-    const dod = new THREE.DodecahedronGeometry(1, 0);
+    // Debug-prop purge (mechanic round): the detail-0 dodecahedron put ONE
+    // flat pentagon across two meters of foreground — an untextured pale
+    // slab / grey box in the debug frames. Subdividing once rounds the
+    // silhouette and gives ~5x the facets for the value jitter to bite on;
+    // a wider band with a warm bias kills the dead-neutral grey. The face
+    // colors draw from their OWN stream (rngGeo): face-count changes must
+    // never re-roll the placement draws below (the round-2 lesson, intra-
+    // subsystem edition).
+    const rngGeo = mulberry32(0x50caa7);
+    const dod = new THREE.DodecahedronGeometry(1, 1);
+    // aTone 0.55: fieldstone barely answers the violet shade-cool — full
+    // tone at noon multiplied every shade face toward slate blue-grey (the
+    // measured corner box read (60,70,80): B above R on bare stone).
+    // Bias hard: the noon hemisphere skylight is blue, and a neutral
+    // albedo under it measures slate (62,72,81) no matter what the tone
+    // shader does — the warm has to live in the stone itself.
     asm.add(dod, null, (out) => {
-      // Mid-dark neutral: the per-instance stone/warm tint carries the hue;
-      // brighter bakes read bone-pale against a low sun.
-      out.setScalar(0.6 + rng() * 0.2);
-    });
+      out.setScalar(0.46 + rngGeo() * 0.5);
+      out.r *= 1.34;
+      out.g *= 1.06;
+      out.b *= 0.68;
+    }, 0.55);
     dod.dispose();
+    // Draw-count compatibility: the detail-0 build consumed 36 face draws
+    // from THIS stream before any placement; burn the same 36 so every
+    // rock keeps the exact position/scale/yaw it has had since round 7.
+    for (let i = 0; i < 36; i++) rng();
     const geo = asm.build();
     this.geos.push(geo);
     const mesh = new THREE.InstancedMesh(geo, this.mat!, count);
@@ -1271,9 +1312,11 @@ export class FloraSystem implements Subsystem {
       const d = 22 + rng() * 85;
       const x = Math.sin(ang) * d;
       const z = Math.cos(ang) * d;
-      // Capped: a 1.8-scale boulder squatting shadow-side at a frame edge
-      // reads as an unlit mass at dawn (round-3 dawn-ridge left edge).
-      const sc = 0.35 + rng() * rng() * 0.95;
+      // Capped twice: a 1.8-scale boulder squatting shadow-side at a frame
+      // edge reads as an unlit mass at dawn (round-3 dawn-ridge left edge),
+      // and anything past ~0.95 fills a debug-camera corner with one giant
+      // face — the mechanic-round grey box. Same two draws either way.
+      const sc = Math.min(0.35 + rng() * rng() * 0.95, 0.95);
       if (nearHeroAxis(x, z, sc > 0.8 ? 12 : 5)) continue;
       this.ie.set(rng() * Math.PI, rng() * Math.PI, rng() * Math.PI);
       this.iq.setFromEuler(this.ie);
@@ -1283,7 +1326,9 @@ export class FloraSystem implements Subsystem {
       this.iv.set(x, this.groundedY(x, z, 1.1 * sc) + sc * 0.12, z);
       mesh.setMatrixAt(placed, this.im.compose(this.iv, this.iq, this.is));
       this.audit.push({ kind: 'rock', x, z, footR: 1.1 * sc, baseY: this.iv.y - sc * 0.45 });
-      this.ic.copy(stone).lerp(warm, rng() * 0.6).multiplyScalar(0.95 + rng() * 0.3);
+      // Warm-biased tint (purge): pure stoneGray under the shader's violet
+      // shade cool is what turned the close boulders blue-grey.
+      this.ic.copy(stone).lerp(warm, 0.3 + rng() * 0.55).multiplyScalar(0.9 + rng() * 0.3);
       mesh.setColorAt(placed, this.ic);
       this.pools.push([x, z, 1.25 * sc, 1.25 * sc, 0] as const);
       placed++;

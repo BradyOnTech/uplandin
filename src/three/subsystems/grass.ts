@@ -271,12 +271,16 @@ gWorld.y -= gPart * 0.30 * gT;
 // duck the camera gets, fed per-frame from the dog subsystem (xy = world
 // xz, z = radius). Blades open around the dog instead of clipping its
 // torso, which is what plants the pointing silhouette IN the cover.
+// Mechanic round (bug 4): push and duck DEEPENED — at gameplay framing the
+// 0.5/0.38 window still left waist-high tips crossing the white topline
+// and the point read as shard soup; blades inside the (now wider, dog-fed)
+// radius bow out further and drop below the dog's back line.
 vec2 gAway2 = gWorld.xz - uPart2.xy;
 float gDogD = length( gAway2 );
 float gPart2 = 1.0 - smoothstep( 0.0, uPart2.z, gDogD );
 gPart2 *= gPart2;
-gWorld.xz += ( gAway2 / max( gDogD, 1e-4 ) ) * gPart2 * 0.5 * gT;
-gWorld.y -= gPart2 * 0.38 * gT;
+gWorld.xz += ( gAway2 / max( gDogD, 1e-4 ) ) * gPart2 * 0.72 * gT;
+gWorld.y -= gPart2 * 0.55 * gT;
 
 // Distance collapse, confined to the LAST THIRD of draw distance: each
 // tuft shrinks smoothly to its root over a 12 m window ending at a hashed
