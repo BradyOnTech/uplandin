@@ -7,13 +7,19 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dev:3d": "vite --port 4517",
+    "build:3d": "tsc && vite build",
+    "capture:3d": "node tools3d/capture.mjs"
   },
   "dependencies": {
-    "phaser": "^3.90.0"
+    "phaser": "^3.90.0",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
+    "@types/three": "^0.185.1",
+    "puppeteer": "^24.43.1",
     "typescript": "^7.0.2",
     "vite": "^7.3.6",
     "vitest": "^4.1.10"
