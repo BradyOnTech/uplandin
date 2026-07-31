@@ -33,12 +33,19 @@ const SHOTS = {
   //   mode 'work'  → dog busy inside a cover patch (tail-up cover work)
   //   mode 'point' → dog frozen ON POINT; camera at hunter's-eye height,
   //                  ~15 m back at a three-quarter angle: the money shot.
-  'dawn-dogwork': { tod: 'dawn', sim: 'work', base: [0, 40, 180, 4], maxTicks: 12000, dist: 10, spin: 0 },
-  // Probed framing: into the sunrise from the dog's left at 5 m — the
-  // covey holds mid-patch (no edge points exist in this seed), so the
-  // camera walks in close where the bluestem opens and the white coat,
-  // tail flag and driving head carry the read against the glow.
-  'dawn-point': { tod: 'dawn', sim: 'point', base: [0, 40, 180, 4], maxTicks: 30000, dist: 5, spin: -1.9, pitch: -8 },
+  // Round 7 reframe: the shot is ABOUT the dog — 4.5 m, not 10, with a
+  // downward angle that sets the working dog against lit grass.
+  'dawn-dogwork': { tod: 'dawn', sim: 'work', base: [0, 40, 180, 4], maxTicks: 12000, dist: 2.4, spin: 0.9, pitch: -16 },
+  // Probed framing: into the sunrise from the dog's left — the covey
+  // holds mid-patch (no edge points exist in this seed), so the camera
+  // walks in CLOSE (2.9 m, round-7 reframe: the dog fills the frame now)
+  // and looks slightly down, silhouetting the white coat, flag tail and
+  // driving head against the sun-drenched bluestem instead of burying
+  // the dog in it.
+  // spin -1.35 puts the camera broadside to the dog-bird line: the point
+  // reads side-on — level topline, raised flag, folded foreleg — with the
+  // sunrise still in the top of the wide frame.
+  'dawn-point': { tod: 'dawn', sim: 'point', base: [0, 40, 180, 4], maxTicks: 30000, dist: 2.2, spin: -1.35, pitch: -18 },
   // Debug poses (not part of the standard set — request via --shots).
   'debug-shadow': [26, 82, 180, -6, 'dawn'],
   'debug-noon-shadow': [36, 62, 180, -10, 'noon'],
@@ -50,16 +57,17 @@ const SHOTS = {
   'debug-trail': [10, -29, 70, -4, 'noon'],
   // Dog inspection poses (request via --shots): the point at 5 m for
   // proportion work, and side-on at 8 m in flat light.
-  'debug-dog-close': { tod: 'dawn', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 5, spin: -0.62, pitch: -12 },
-  'debug-dog-side': { tod: 'noon', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 8, spin: -1.45, pitch: -6 },
+  'debug-dog-close': { tod: 'dawn', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 3.5, spin: -0.62, pitch: -16 },
+  'debug-dog-side': { tod: 'noon', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 4, spin: -1.45, pitch: -14 },
   'debug-dog-work-close': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 6, spin: 0.8, pitch: -8 },
   // Mid-stride on open ground — proportion/gait inspection in the clear.
   'debug-dog-open': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 4.5, spin: 1.5, pitch: -14 },
   'debug-dog-open-rear': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 4.5, spin: 0.2, pitch: -14 },
-  // Macro poses at 2.2 m for anatomy work.
-  'debug-dog-macro-side': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.2, spin: 1.55, pitch: -22 },
-  'debug-dog-macro-front': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.2, spin: 2.7, pitch: -22 },
-  'debug-dog-macro-point': { tod: 'morning', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.6, spin: -1.55, pitch: -18 },
+  // Macro poses at 2 m for anatomy work — steep pitch so the dog CENTERS
+  // and fills the frame from the fixed 1.62 m eye height.
+  'debug-dog-macro-side': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.0, spin: 1.55, pitch: -30 },
+  'debug-dog-macro-front': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.0, spin: 2.7, pitch: -30 },
+  'debug-dog-macro-point': { tod: 'morning', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.1, spin: -1.55, pitch: -24 },
 };
 
 const args = process.argv.slice(2);
@@ -157,8 +165,12 @@ async function main() {
                 // exist here to wait for.)
                 ? (h) => h.dog.state === 'pointing'
                 : mode === 'open'
-                  // Anatomy/gait inspection: mid-stride on open ground.
-                  ? (h) => h.dog.state === 'quartering' && h.dog.gait !== 'still' && edgeDist(h) > 6
+                  // Anatomy/gait inspection: mid-stride on open ground —
+                  // and INSIDE the camera's ±230 clamp with orbit room (a
+                  // dog at the plate edge pushed the macro camera 4 m out).
+                  ? (h) =>
+                      h.dog.state === 'quartering' && h.dog.gait !== 'still' && edgeDist(h) > 6 &&
+                      Math.abs(h.dog.x) < 222 && Math.abs(h.dog.z) < 222
                   : (h) => h.dog.state === 'quartering' && h.dog.gait === 'run' && inPatch(h);
             // Skip the opening cast so the frame isn't the first stride.
             window.__api3d.stepSim(240);

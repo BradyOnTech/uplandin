@@ -233,6 +233,11 @@ export class FloraSystem implements Subsystem {
   // Contact-occlusion pool specs: [x, z, rx, rz, yaw] collected while props
   // place, then baked into ONE terrain-conforming multiply-blend mesh.
   private pools: Array<readonly [number, number, number, number, number]> = [];
+  // Placement-audit records (round 7): every prop logs its base height and
+  // footprint; init's final pass measures each against the heightfield and
+  // publishes window.__floraAudit for tools3d/audit-props.mjs — floats and
+  // buried props are caught by script, not by squinting at shots.
+  private audit: Array<{ kind: string; x: number; z: number; footR: number; baseY: number }> = [];
   // Painted two-tone uniforms (item 9/11): facets turn with the sun — warm
   // toward it, cooled violet away — updated per TOD, shared by every prop.
   private tone = {
@@ -384,6 +389,37 @@ export class FloraSystem implements Subsystem {
     this.buildFence(ctx);
     this.buildRocks(high, ctx);
     this.buildContactPools(ctx);
+    this.publishAudit();
+  }
+
+  /**
+   * Measure every recorded placement against the heightfield and publish
+   * the table (window.__floraAudit is read by tools3d/audit-props.mjs).
+   * floatGap > 0 means the prop base sits ABOVE the lowest ground in its
+   * footprint — daylight under the downhill rim; sink > ~1.2 m means it
+   * drowned. Both should be empty lists after the grounding pass.
+   */
+  private publishAudit(): void {
+    const rows = this.audit.map((r) => {
+      let minG = this.terrain.heightAt(r.x, r.z);
+      let maxG = minG;
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        for (const f of [0.5, 1]) {
+          const g = this.terrain.heightAt(r.x + Math.sin(a) * r.footR * f, r.z + Math.cos(a) * r.footR * f);
+          if (g < minG) minG = g;
+          if (g > maxG) maxG = g;
+        }
+      }
+      return {
+        kind: r.kind,
+        x: Math.round(r.x * 10) / 10,
+        z: Math.round(r.z * 10) / 10,
+        floatGap: Math.round((r.baseY - minG) * 100) / 100,
+        sink: Math.round((maxG - r.baseY) * 100) / 100,
+      };
+    });
+    (window as unknown as { __floraAudit?: unknown }).__floraAudit = rows;
   }
 
   dispose(ctx: Ctx): void {
@@ -856,9 +892,30 @@ export class FloraSystem implements Subsystem {
   }
 
   /**
+   * Grounded base height for a prop with a real FOOTPRINT (round-7 float
+   * audit): the height at the center is not enough — on a swell shoulder
+   * the downhill rim of a rock/canopy/log footprint can sit half a meter
+   * below the center sample and the prop floats. Sample a ring at the
+   * footprint radius and seat the base on the LOWEST ground found; sinking
+   * the uphill side into the slope reads natural, daylight under the
+   * downhill side never does.
+   */
+  private groundedY(x: number, z: number, footR: number): number {
+    let y = this.terrain.heightAt(x, z);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const g = this.terrain.heightAt(x + Math.sin(a) * footR, z + Math.cos(a) * footR);
+      if (g < y) y = g;
+    }
+    return y;
+  }
+
+  /**
    * Instance a geometry over a placement list. Returns the mesh. poolR > 0
    * records a contact-occlusion pool per instance (radius scales with the
    * instance; poolAspect < 1 stretches it along the instance yaw for logs).
+   * footR is the prop's ground-contact footprint radius at scale 1: the
+   * base seats on the LOWEST ground within footR*sc (round-7 float fix).
    */
   private instance(
     ctx: Ctx,
@@ -869,6 +926,8 @@ export class FloraSystem implements Subsystem {
     rng: RNG,
     poolR = 0,
     poolAspect = 1,
+    footR = 1,
+    kind = 'prop',
   ): THREE.InstancedMesh {
     const mesh = new THREE.InstancedMesh(geo, this.mat!, spots.length);
     for (let i = 0; i < spots.length; i++) {
@@ -876,11 +935,12 @@ export class FloraSystem implements Subsystem {
       this.ie.set(0, yaw, 0);
       this.iq.setFromEuler(this.ie);
       this.is.set(sc, sc * (0.92 + rng() * 0.18), sc);
-      this.iv.set(x, this.groundY(x, z) - sink, z);
+      this.iv.set(x, this.groundedY(x, z, footR * sc) - sink, z);
       mesh.setMatrixAt(i, this.im.compose(this.iv, this.iq, this.is));
       this.ic.setScalar(0.92 + rng() * 0.16);
       mesh.setColorAt(i, this.ic);
       if (poolR > 0) this.pools.push([x, z, poolR * sc, poolR * sc * poolAspect, yaw] as const);
+      this.audit.push({ kind, x, z, footR: footR * sc, baseY: this.iv.y });
     }
     mesh.castShadow = castShadow;
     mesh.receiveShadow = true;
@@ -969,7 +1029,7 @@ export class FloraSystem implements Subsystem {
         if (!high && keep === 0) continue;
         spots.push([x, z, sc, rng() * Math.PI * 2] as const);
       }
-      if (spots.length) this.instance(ctx, geos[v], spots, 0.35, true, rng, 3.1);
+      if (spots.length) this.instance(ctx, geos[v], spots, 0.35, true, rng, 3.1, 1, 1.3, 'oak');
     }
   }
 
@@ -978,14 +1038,23 @@ export class FloraSystem implements Subsystem {
     const geo = this.buildOak(777, 0);
     this.geos.push(geo);
     const mesh = new THREE.Mesh(geo, this.mat!);
-    mesh.position.set(26, this.groundY(26, 96) - 0.45, 96);
+    // (20, 96), was (26, 96) — round-7 frame fix: at 26 the 2.1x canopy
+    // hung into the dawn-dogwork frame's top-right corner (az ~11-20 deg
+    // from the dog camera) with its trunk cropped out, reading as a
+    // floating contra-crushed black boulder. At 20 it clears that frame's
+    // 51-deg half-FOV entirely AND lands closer to dawn-field's true left
+    // third (screen x ~342 vs ~290; the third is 320).
+    const lx = 20;
+    const lz = 96;
+    mesh.position.set(lx, this.groundedY(lx, lz, 2.5) - 0.45, lz);
     mesh.scale.set(2.1, 1.9, 2.1);
     mesh.rotation.y = 1.2;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     ctx.scene.add(mesh);
     this.objs.push(mesh);
-    this.pools.push([26, 96, 7.0, 7.0, 0] as const);
+    this.pools.push([lx, lz, 7.0, 7.0, 0] as const);
+    this.audit.push({ kind: 'landmark', x: lx, z: lz, footR: 2.5, baseY: mesh.position.y });
   }
 
   /** The hero snag (dawn-ridge focal anchor) + the modest dawn-field snag. */
@@ -1002,13 +1071,14 @@ export class FloraSystem implements Subsystem {
       const geo = this.buildSnag(seed, h, girth, nb);
       this.geos.push(geo);
       const mesh = new THREE.Mesh(geo, this.mat!);
-      mesh.position.set(x, this.groundY(x, z) - 0.2, z);
+      mesh.position.set(x, this.groundedY(x, z, 0.8 * girth) - 0.2, z);
       mesh.rotation.y = ry;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       ctx.scene.add(mesh);
       this.objs.push(mesh);
       this.pools.push([x, z, 1.1 * girth, 1.1 * girth, 0] as const);
+      this.audit.push({ kind: 'snag', x, z, footR: 0.8 * girth, baseY: mesh.position.y });
     }
     // Ground the hero snag: boulders and low brush at its feet — an
     // anchor stands IN the field, not plunked on it like a flagpole.
@@ -1017,11 +1087,12 @@ export class FloraSystem implements Subsystem {
     const bx = -84.5;
     const bz = 0.5;
     const baseMesh = new THREE.Mesh(base, this.mat!);
-    baseMesh.position.set(bx, this.groundY(bx, bz) - 0.15, bz);
+    baseMesh.position.set(bx, this.groundedY(bx, bz, 2.6) - 0.15, bz);
     baseMesh.castShadow = true;
     baseMesh.receiveShadow = true;
     ctx.scene.add(baseMesh);
     this.objs.push(baseMesh);
+    this.audit.push({ kind: 'snag-base', x: bx, z: bz, footR: 2.6, baseY: baseMesh.position.y });
   }
 
   private buildShrubs(high: boolean, ctx: Ctx): void {
@@ -1036,7 +1107,7 @@ export class FloraSystem implements Subsystem {
         0.8 + rng() * 0.7, rng() * Math.PI * 2,
       ] as const);
     }
-    this.instance(ctx, geo, spots, 0.25, high, rng, 1.8);
+    this.instance(ctx, geo, spots, 0.25, high, rng, 1.8, 1, 1.9, 'shrub');
   }
 
   /**
@@ -1076,7 +1147,7 @@ export class FloraSystem implements Subsystem {
         ] as const);
       }
     }
-    if (spots.length) this.instance(ctx, geo, spots, 0.12, false, rng);
+    if (spots.length) this.instance(ctx, geo, spots, 0.12, false, rng, 0, 1, 1.4, 'cattail');
   }
 
   private buildDeadfall(high: boolean, ctx: Ctx): void {
@@ -1095,7 +1166,10 @@ export class FloraSystem implements Subsystem {
       if (nearHeroAxis(x, z, 14)) continue;
       spots.push([x, z, 0.8 + rng() * 0.5, rng() * Math.PI * 2] as const);
     }
-    this.instance(ctx, geo, spots, 0.06, high, rng, 2.3, 0.33);
+    // Logs are the classic slope floaters: a 5-7 m barrel seated on its
+    // center sample held daylight under the downhill half. footR 2.6
+    // rings the whole span; the sink deepens to settle the barrel.
+    this.instance(ctx, geo, spots, 0.1, high, rng, 2.3, 0.33, 2.6, 'log');
   }
 
   /** Fence lines: leaning posts + two sagging wire ribbons per span. */
@@ -1134,6 +1208,7 @@ export class FloraSystem implements Subsystem {
           postFace,
         );
         this.pools.push([x, z, 0.42, 0.42, 0] as const);
+        this.audit.push({ kind: 'post', x, z, footR: 0.3, baseY: y - 0.05 });
         if (i > 0) {
           for (const wh of [1.06, 0.68]) {
             // Three segments per span with a parabolic sag hint.
@@ -1203,8 +1278,11 @@ export class FloraSystem implements Subsystem {
       this.ie.set(rng() * Math.PI, rng() * Math.PI, rng() * Math.PI);
       this.iq.setFromEuler(this.ie);
       this.is.set(sc * (0.8 + rng() * 0.5), sc * (0.5 + rng() * 0.4), sc);
-      this.iv.set(x, this.groundY(x, z) + sc * 0.15, z);
+      // Seated on the footprint's LOW ground (round-7 float fix): a rock
+      // centered on a swell shoulder used to hover over its downhill rim.
+      this.iv.set(x, this.groundedY(x, z, 1.1 * sc) + sc * 0.12, z);
       mesh.setMatrixAt(placed, this.im.compose(this.iv, this.iq, this.is));
+      this.audit.push({ kind: 'rock', x, z, footR: 1.1 * sc, baseY: this.iv.y - sc * 0.45 });
       this.ic.copy(stone).lerp(warm, rng() * 0.6).multiplyScalar(0.95 + rng() * 0.3);
       mesh.setColorAt(placed, this.ic);
       this.pools.push([x, z, 1.25 * sc, 1.25 * sc, 0] as const);

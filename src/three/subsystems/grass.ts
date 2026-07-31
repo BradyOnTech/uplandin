@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
 import { P, TOD, type TimeOfDay } from '../palette';
+import type { DogSystem } from './dog';
 import type { Hunt3DSystem } from './hunt3d';
 import type { TerrainSystem } from './terrain';
 
@@ -213,6 +214,7 @@ uniform float uTime;
 uniform vec2 uWindDir;
 uniform float uWindAmp;
 uniform float uPartRadius;
+uniform vec3 uPart2;
 uniform vec2 uFade;
 uniform vec3 uHaze;
 uniform vec2 uHazeRange;
@@ -264,6 +266,17 @@ float gPart = 1.0 - smoothstep( 0.0, uPartRadius, gCamD );
 gPart *= gPart;
 gWorld.xz += ( gAway / max( gCamD, 1e-4 ) ) * gPart * 0.55 * gT;
 gWorld.y -= gPart * 0.30 * gT;
+
+// Second parting point (round 7): the DOG's body radius — same push-and-
+// duck the camera gets, fed per-frame from the dog subsystem (xy = world
+// xz, z = radius). Blades open around the dog instead of clipping its
+// torso, which is what plants the pointing silhouette IN the cover.
+vec2 gAway2 = gWorld.xz - uPart2.xy;
+float gDogD = length( gAway2 );
+float gPart2 = 1.0 - smoothstep( 0.0, uPart2.z, gDogD );
+gPart2 *= gPart2;
+gWorld.xz += ( gAway2 / max( gDogD, 1e-4 ) ) * gPart2 * 0.5 * gT;
+gWorld.y -= gPart2 * 0.38 * gT;
 
 // Distance collapse, confined to the LAST THIRD of draw distance: each
 // tuft shrinks smoothly to its root over a 12 m window ending at a hashed
@@ -327,12 +340,6 @@ vColor.rgb *= 1.0 - gBack * mix( 0.62, 0.28, gT );
 float gTip = gT * gT;
 float gRim = min( ( gLit * 0.35 * uLitRimK + gBack * 1.3 ) * ( gTip * gTip ) * uRimStrength, 1.1 );
 
-// Silhouette-hour luminance ceiling: no facet may out-shine the afterglow.
-// Effectively off in daylight (uLumCap >= 4); at lastlight it clamps the
-// pale seed heads / cut tips that sparkled inside the black foreground.
-float gLum = dot( vColor.rgb, vec3( 0.299, 0.587, 0.114 ) );
-vColor.rgb *= min( 1.0, uLumCap / max( gLum, 1e-4 ) );
-
 // Cool-mass tint (round 5): the sky's ambient carried into every blade the
 // sun lobe does not claim — the lastlight field is a violet shadow mass
 // with a warm wedge, not a gray carpet. Complement of the terrain's lobe.
@@ -352,6 +359,15 @@ vColor.rgb = mix( vColor.rgb, uSunHaze, gWarm );
 // straight at the glow. Near tufts drop ~35% in value and take the
 // vault's hue; the warm pool keeps the far wedge under the afterglow.
 vColor.rgb = mix( vColor.rgb, uCoolTint * ( 0.55 + 0.35 * gT ), uCoolNear * ( 1.0 - smoothstep( 12.0, 40.0, gInstD ) ) );
+
+// Silhouette-hour luminance ceiling — applied AFTER the warm wedge and
+// cool-mass mixes (round 7, item 3): the wedge used to re-lighten tufts
+// the cap had already tamed, scattering pink confetti across the violet
+// mass. Capping last pins every foreground blade within a whisper of the
+// soil beneath — warm HUE survives under the afterglow, extra VALUE does
+// not. Effectively off in daylight (uLumCap >= 4).
+float gLum = dot( vColor.rgb, vec3( 0.299, 0.587, 0.114 ) );
+vColor.rgb *= min( 1.0, uLumCap / max( gLum, 1e-4 ) );
 
 // Aerial perspective: across the far field the albedo dissolves fully into
 // the TOD haze, so silhouettes melt into atmosphere instead of burning to
@@ -378,6 +394,7 @@ interface GrassUniforms {
   uWindDir: { value: THREE.Vector2 };
   uWindAmp: { value: number };
   uPartRadius: { value: number };
+  uPart2: { value: THREE.Vector3 };
   uFade: { value: THREE.Vector2 };
   uHaze: { value: THREE.Color };
   uHazeRange: { value: THREE.Vector2 };
@@ -451,10 +468,12 @@ class GeoBuilder {
     const ty = my + Math.cos(lean2) * h * (1 - mT);
     const tz = mz + oz * Math.sin(lean2) * h * (1 - mT);
     const mw = w * 0.6;
+    // Clamped at 1.0: baked blade color never exceeds true albedo (the
+    // over-unity tips were the specular-error whites of the spear look).
     const col = (t: number): [number, number, number] => [
-      (rootC[0] + (tipC[0] - rootC[0]) * t) * bright,
-      (rootC[1] + (tipC[1] - rootC[1]) * t) * bright,
-      (rootC[2] + (tipC[2] - rootC[2]) * t) * bright,
+      Math.min(1, (rootC[0] + (tipC[0] - rootC[0]) * t) * bright),
+      Math.min(1, (rootC[1] + (tipC[1] - rootC[1]) * t) * bright),
+      Math.min(1, (rootC[2] + (tipC[2] - rootC[2]) * t) * bright),
     ];
     const [r0r, r0g, r0b] = col(0);
     const [mr, mg, mb] = col(mT);
@@ -473,11 +492,15 @@ class GeoBuilder {
   }
 
   /**
-   * Thin cereal/bunchgrass stem: a tapered quad strip rising from the root
-   * with an optional kink at fraction `kT` of its length. kT >= 1 gives a
-   * single straight clipped stem (wheat stubble); a small kink arcs a
-   * bunchgrass tip outward; kink ~1.5-2.2 rad folds the top clean over —
-   * a broken-over stalk with its head hanging. Blunt ends, never a spike.
+   * Thin cereal/bunchgrass stem. kT >= 1 gives a single straight clipped
+   * stem (wheat stubble). Otherwise the stem is an ARC: three chained
+   * quads whose direction eases from `tilt` at the root into `tilt + kink`
+   * at the tip — the round-7 spear fix. A shaft that rises straight and
+   * then elbows once reads as a thorn at every distance; grass bends in a
+   * curve, stiff at the root, softening through the top. `kT` hints where
+   * the bend gathers (lower = the arc starts earlier). kink ~1.5-2.2 rad
+   * still folds a broken straggler clean over. Blunt ends, never a spike.
+   * Baked color is clamped at 1.0 — no specular-error whites at the tips.
    */
   stem(
     rx: number,
@@ -498,41 +521,62 @@ class GeoBuilder {
     const sx = Math.cos(ang);
     const sz = -Math.sin(ang);
     const col = (t: number): [number, number, number] => [
-      (rootC[0] + (tipC[0] - rootC[0]) * t) * bright,
-      (rootC[1] + (tipC[1] - rootC[1]) * t) * bright,
-      (rootC[2] + (tipC[2] - rootC[2]) * t) * bright,
+      Math.min(1, (rootC[0] + (tipC[0] - rootC[0]) * t) * bright),
+      Math.min(1, (rootC[1] + (tipC[1] - rootC[1]) * t) * bright),
+      Math.min(1, (rootC[2] + (tipC[2] - rootC[2]) * t) * bright),
     ];
-    const single = kT >= 1;
-    const mT = single ? 1 : kT;
-    const l1 = h * mT;
-    const mx = rx + ox * Math.sin(tilt) * l1;
-    const my = Math.cos(tilt) * l1;
-    const mz = rz + oz * Math.sin(tilt) * l1;
-    const wm = w * (single ? 0.55 : 0.78);
-    const [r0r, r0g, r0b] = col(0);
-    const [mr, mg, mb] = col(mT);
-    // Base quad: root width -> mid width.
-    this.vert(rx - (sx * w) / 2, 0, rz - (sz * w) / 2, 0, phase, r0r, r0g, r0b);
-    this.vert(rx + (sx * w) / 2, 0, rz + (sz * w) / 2, 0, phase, r0r, r0g, r0b);
-    this.vert(mx + (sx * wm) / 2, my, mz + (sz * wm) / 2, mT, phase, mr, mg, mb);
-    this.vert(rx - (sx * w) / 2, 0, rz - (sz * w) / 2, 0, phase, r0r, r0g, r0b);
-    this.vert(mx + (sx * wm) / 2, my, mz + (sz * wm) / 2, mT, phase, mr, mg, mb);
-    this.vert(mx - (sx * wm) / 2, my, mz - (sz * wm) / 2, mT, phase, mr, mg, mb);
-    if (single) return;
-    // Kinked top segment: mid width -> blunt tip.
-    const t2 = tilt + kink;
-    const l2 = h * (1 - kT);
-    const tx = mx + ox * Math.sin(t2) * l2;
-    const ty = my + Math.cos(t2) * l2;
-    const tz = mz + oz * Math.sin(t2) * l2;
-    const wt = w * 0.42;
-    const [tr, tg, tb] = col(1);
-    this.vert(mx - (sx * wm) / 2, my, mz - (sz * wm) / 2, mT, phase, mr, mg, mb);
-    this.vert(mx + (sx * wm) / 2, my, mz + (sz * wm) / 2, mT, phase, mr, mg, mb);
-    this.vert(tx + (sx * wt) / 2, ty, tz + (sz * wt) / 2, 1, phase, tr, tg, tb);
-    this.vert(mx - (sx * wm) / 2, my, mz - (sz * wm) / 2, mT, phase, mr, mg, mb);
-    this.vert(tx + (sx * wt) / 2, ty, tz + (sz * wt) / 2, 1, phase, tr, tg, tb);
-    this.vert(tx - (sx * wt) / 2, ty, tz - (sz * wt) / 2, 1, phase, tr, tg, tb);
+    if (kT >= 1) {
+      // Single straight clipped stem (harvested stubble) — a short quad.
+      const mx = rx + ox * Math.sin(tilt) * h;
+      const my = Math.cos(tilt) * h;
+      const mz = rz + oz * Math.sin(tilt) * h;
+      const wm = w * 0.55;
+      const [r0r, r0g, r0b] = col(0);
+      const [mr, mg, mb] = col(1);
+      this.vert(rx - (sx * w) / 2, 0, rz - (sz * w) / 2, 0, phase, r0r, r0g, r0b);
+      this.vert(rx + (sx * w) / 2, 0, rz + (sz * w) / 2, 0, phase, r0r, r0g, r0b);
+      this.vert(mx + (sx * wm) / 2, my, mz + (sz * wm) / 2, 1, phase, mr, mg, mb);
+      this.vert(rx - (sx * w) / 2, 0, rz - (sz * w) / 2, 0, phase, r0r, r0g, r0b);
+      this.vert(mx + (sx * wm) / 2, my, mz + (sz * wm) / 2, 1, phase, mr, mg, mb);
+      this.vert(mx - (sx * wm) / 2, my, mz - (sz * wm) / 2, 1, phase, mr, mg, mb);
+      return;
+    }
+    // Arcing stem: direction angle eases into the full kink with a power
+    // curve anchored by kT — segment ends land at ~[7%, 50%, 100%] of the
+    // bend for the default kT band, a real arc instead of an elbow.
+    const nodes = [0, 0.45, 0.75, 1] as const;
+    const widths = [1, 0.78, 0.56, 0.4] as const;
+    const bendAt = (t: number): number => {
+      const b = Math.max(0, (t - kT * 0.55) / (1 - kT * 0.55));
+      return Math.pow(b, 1.5);
+    };
+    let cx = rx;
+    let cy = 0;
+    let cz = rz;
+    let [pr, pg, pb] = col(0);
+    for (let s = 0; s < 3; s++) {
+      const t0 = nodes[s];
+      const t1 = nodes[s + 1];
+      const th = tilt + kink * bendAt(t1);
+      const nx = cx + ox * Math.sin(th) * h * (t1 - t0);
+      const ny = cy + Math.cos(th) * h * (t1 - t0);
+      const nz = cz + oz * Math.sin(th) * h * (t1 - t0);
+      const w0 = w * widths[s];
+      const w1 = w * widths[s + 1];
+      const [nr, ng, nb] = col(t1);
+      this.vert(cx - (sx * w0) / 2, cy, cz - (sz * w0) / 2, t0, phase, pr, pg, pb);
+      this.vert(cx + (sx * w0) / 2, cy, cz + (sz * w0) / 2, t0, phase, pr, pg, pb);
+      this.vert(nx + (sx * w1) / 2, ny, nz + (sz * w1) / 2, t1, phase, nr, ng, nb);
+      this.vert(cx - (sx * w0) / 2, cy, cz - (sz * w0) / 2, t0, phase, pr, pg, pb);
+      this.vert(nx + (sx * w1) / 2, ny, nz + (sz * w1) / 2, t1, phase, nr, ng, nb);
+      this.vert(nx - (sx * w1) / 2, ny, nz - (sz * w1) / 2, t1, phase, nr, ng, nb);
+      cx = nx;
+      cy = ny;
+      cz = nz;
+      pr = nr;
+      pg = ng;
+      pb = nb;
+    }
   }
 
   /**
@@ -562,7 +606,14 @@ class GeoBuilder {
     }
   }
 
-  /** Seed-head stalk: thin stem quad topped with a pale diamond head. */
+  /**
+   * Seed-head stalk, round-7 spear fix. The old build was a dead-straight
+   * pole capped with an upright 4 cm diamond baked over-unity — at dawn a
+   * rank of them read as soldiers with lances. Now the stem is a three-
+   * segment ARC that gathers a nod in its top fifth, and the head is a
+   * slim husk aligned WITH the nodding tip direction — wheat bowing its
+   * head, clamped well under white: a straw catch-light, never a star.
+   */
   stalk(rx: number, rz: number, ang: number, lean: number, h: number, rng: () => number): void {
     const ox = Math.sin(ang);
     const oz = Math.cos(ang);
@@ -570,31 +621,72 @@ class GeoBuilder {
     const sz = -Math.sin(ang);
     const w = 0.03;
     const phase = rng();
-    const topT = 0.72;
-    const tx = rx + ox * Math.sin(lean) * h;
-    const ty = Math.cos(lean) * h;
-    const tz = rz + oz * Math.sin(lean) * h;
     const stemR: [number, number, number] = [0.5, 0.46, 0.34];
-    const stemT: [number, number, number] = [1.0, 0.92, 0.66];
-    // Stem quad (root width → 60%).
-    this.vert(rx - (sx * w) / 2, 0, rz - (sz * w) / 2, 0, phase, stemR[0], stemR[1], stemR[2]);
-    this.vert(rx + (sx * w) / 2, 0, rz + (sz * w) / 2, 0, phase, stemR[0], stemR[1], stemR[2]);
-    this.vert(tx + (sx * w * 0.3), ty, tz + (sz * w * 0.3), topT, phase, stemT[0], stemT[1], stemT[2]);
-    this.vert(rx - (sx * w) / 2, 0, rz - (sz * w) / 2, 0, phase, stemR[0], stemR[1], stemR[2]);
-    this.vert(tx + (sx * w * 0.3), ty, tz + (sz * w * 0.3), topT, phase, stemT[0], stemT[1], stemT[2]);
-    this.vert(tx - (sx * w * 0.3), ty, tz - (sz * w * 0.3), topT, phase, stemT[0], stemT[1], stemT[2]);
-    // Diamond seed head — the pale catch-light silhouette at the skyline.
-    const hh = 0.16 * (0.85 + rng() * 0.3);
-    const hw = 0.042;
-    // Dimmed a third of a stop: seed heads read as catch-lights, not stars.
-    const head: [number, number, number] = [1.16, 1.08, 0.86];
-    const headLo: [number, number, number] = [0.98, 0.9, 0.68];
-    this.vert(tx, ty - hh * 0.25, tz, topT, phase, headLo[0], headLo[1], headLo[2]);
-    this.vert(tx + sx * hw, ty + hh * 0.35, tz + sz * hw, 0.86, phase, head[0], head[1], head[2]);
-    this.vert(tx, ty + hh, tz, 1, phase, head[0], head[1], head[2]);
-    this.vert(tx, ty - hh * 0.25, tz, topT, phase, headLo[0], headLo[1], headLo[2]);
-    this.vert(tx, ty + hh, tz, 1, phase, head[0], head[1], head[2]);
-    this.vert(tx - sx * hw, ty + hh * 0.35, tz - sz * hw, 0.86, phase, head[0], head[1], head[2]);
+    const stemT: [number, number, number] = [0.9, 0.83, 0.58];
+    const nod = 0.35 + rng() * 0.5;
+    const nodes = [0, 0.5, 0.8, 1] as const;
+    const widths = [1, 0.75, 0.55, 0.42] as const;
+    const angleAt = (t: number): number =>
+      lean + nod * Math.pow(Math.max(0, (t - 0.5) / 0.5), 1.6);
+    const col = (t: number): [number, number, number] => [
+      stemR[0] + (stemT[0] - stemR[0]) * t,
+      stemR[1] + (stemT[1] - stemR[1]) * t,
+      stemR[2] + (stemT[2] - stemR[2]) * t,
+    ];
+    let cx = rx;
+    let cy = 0;
+    let cz = rz;
+    let [pr, pg, pb] = col(0);
+    for (let s = 0; s < 3; s++) {
+      const t0 = nodes[s];
+      const t1 = nodes[s + 1];
+      const th = angleAt(t1);
+      const nx = cx + ox * Math.sin(th) * h * (t1 - t0);
+      const ny = cy + Math.cos(th) * h * (t1 - t0);
+      const nz = cz + oz * Math.sin(th) * h * (t1 - t0);
+      const w0 = w * widths[s];
+      const w1 = w * widths[s + 1];
+      // uv.y compressed to 0.72 over the stem so the head keeps the old
+      // tip range (wind mobility and shader tip terms stay unchanged).
+      const [nr, ng, nb] = col(t1);
+      this.vert(cx - (sx * w0) / 2, cy, cz - (sz * w0) / 2, t0 * 0.72, phase, pr, pg, pb);
+      this.vert(cx + (sx * w0) / 2, cy, cz + (sz * w0) / 2, t0 * 0.72, phase, pr, pg, pb);
+      this.vert(nx + (sx * w1) / 2, ny, nz + (sz * w1) / 2, t1 * 0.72, phase, nr, ng, nb);
+      this.vert(cx - (sx * w0) / 2, cy, cz - (sz * w0) / 2, t0 * 0.72, phase, pr, pg, pb);
+      this.vert(nx + (sx * w1) / 2, ny, nz + (sz * w1) / 2, t1 * 0.72, phase, nr, ng, nb);
+      this.vert(nx - (sx * w1) / 2, ny, nz - (sz * w1) / 2, t1 * 0.72, phase, nr, ng, nb);
+      cx = nx;
+      cy = ny;
+      cz = nz;
+      pr = nr;
+      pg = ng;
+      pb = nb;
+    }
+    // Nodding husk: a slim lozenge riding the tip DIRECTION, not the
+    // vertical — its long axis continues the arc.
+    const thT = angleAt(1);
+    const dx = ox * Math.sin(thT);
+    const dy = Math.cos(thT);
+    const dz = oz * Math.sin(thT);
+    const hh = 0.12 * (0.85 + rng() * 0.3);
+    const hw = 0.028;
+    const head: [number, number, number] = [0.9, 0.83, 0.6];
+    const headLo: [number, number, number] = [0.76, 0.7, 0.5];
+    const bx = cx - dx * hh * 0.25;
+    const by = cy - dy * hh * 0.25;
+    const bz = cz - dz * hh * 0.25;
+    const mxx = cx + dx * hh * 0.35;
+    const mxy = cy + dy * hh * 0.35;
+    const mxz = cz + dz * hh * 0.35;
+    const txx = cx + dx * hh;
+    const txy = cy + dy * hh;
+    const txz = cz + dz * hh;
+    this.vert(bx, by, bz, 0.72, phase, headLo[0], headLo[1], headLo[2]);
+    this.vert(mxx + sx * hw, mxy, mxz + sz * hw, 0.86, phase, head[0], head[1], head[2]);
+    this.vert(txx, txy, txz, 1, phase, head[0], head[1], head[2]);
+    this.vert(bx, by, bz, 0.72, phase, headLo[0], headLo[1], headLo[2]);
+    this.vert(txx, txy, txz, 1, phase, head[0], head[1], head[2]);
+    this.vert(mxx - sx * hw, mxy, mxz - sz * hw, 0.86, phase, head[0], head[1], head[2]);
   }
 
   build(): THREE.BufferGeometry {
@@ -643,6 +735,9 @@ export class GrassSystem implements Subsystem {
   private offsets: Array<readonly [number, number]> = [];
   private lastCellX = Number.NaN;
   private lastCellZ = Number.NaN;
+  /** Lazily-resolved dog system (undefined = not looked up yet). */
+  private dogRef: DogSystem | null | undefined;
+  private dogPart = { x: 0, z: 0, r: 1e-4 };
 
   // Preallocated scratch — nothing allocated per frame, and rebuilds reuse.
   private m = new THREE.Matrix4();
@@ -763,6 +858,21 @@ export class GrassSystem implements Subsystem {
   update(ctx: Ctx): void {
     this.openUniforms.uTime.value = ctx.time;
     this.coverUniforms.uTime.value = ctx.time;
+    // Dog parting point (round 7): the dog subsystem's documented
+    // partingPoint() getter feeds the second parting uniform — resolved
+    // lazily via ctx.get (never an import; null if the dog isn't running).
+    if (this.dogRef === undefined) {
+      try {
+        this.dogRef = ctx.get<DogSystem>('dog');
+      } catch {
+        this.dogRef = null;
+      }
+    }
+    if (this.dogRef) {
+      this.dogRef.partingPoint(this.dogPart);
+      this.openUniforms.uPart2.value.set(this.dogPart.x, this.dogPart.z, this.dogPart.r);
+      this.coverUniforms.uPart2.value.set(this.dogPart.x, this.dogPart.z, this.dogPart.r);
+    }
     const cx = Math.floor(ctx.camera.position.x / TILE);
     const cz = Math.floor(ctx.camera.position.z / TILE);
     if (cx !== this.lastCellX || cz !== this.lastCellZ) this.rebuild(ctx);
@@ -838,13 +948,16 @@ export class GrassSystem implements Subsystem {
     {
       const b = new GeoBuilder();
       const rootC = [0.44, 0.4, 0.3] as const;
-      const tipC = [1.18, 1.06, 0.72] as const;
+      // Straw tips, never over-unity — the pale sheaf reads dry grass, not
+      // a fan of lit spears (round-7 spear fix).
+      const tipC = [0.96, 0.88, 0.62] as const;
       const n = 7 + Math.floor(rng() * 2);
       for (let i = 0; i < n; i++) {
         const ang = rng() * Math.PI * 2;
         const r0 = rng() * 0.055;
+        // Deeper arc (0.65-1.2 rad, was 0.3-0.75): bluestem tips nod over.
         b.stem(Math.sin(ang) * r0, Math.cos(ang) * r0, ang, 0.04 + rng() * 0.16,
-          0.5 + rng() * 0.38, 0.026, 0.66, 0.3 + rng() * 0.45,
+          0.5 + rng() * 0.38, 0.026, 0.6, 0.65 + rng() * 0.55,
           rootC, tipC, 0.9 + rng() * 0.25, rng());
       }
       for (let i = 0; i < 2; i++) {
@@ -862,7 +975,7 @@ export class GrassSystem implements Subsystem {
     {
       const b = new GeoBuilder();
       const rootC = [0.42, 0.46, 0.3] as const;
-      const tipC = [0.95, 1.06, 0.62] as const;
+      const tipC = [0.88, 0.98, 0.58] as const;
       for (let i = 0; i < 6; i++) {
         const ang = ((i + rng() * 0.9) / 6) * Math.PI * 2;
         const r0 = 0.03 + rng() * 0.05;
@@ -884,7 +997,7 @@ export class GrassSystem implements Subsystem {
     {
       const b = new GeoBuilder();
       const rootC = [0.4, 0.37, 0.28] as const;
-      const tipC = [1.1, 1.02, 0.7] as const;
+      const tipC = [0.98, 0.91, 0.64] as const;
       const baseYaw = rng() * Math.PI;
       for (let p = 0; p < 2; p++) {
         const pa = baseYaw + p * (Math.PI / 2 + (rng() - 0.5) * 0.5);
@@ -913,13 +1026,15 @@ export class GrassSystem implements Subsystem {
     {
       const b = new GeoBuilder();
       const rootC = [0.36, 0.37, 0.28] as const;
-      const tipC = [1.05, 0.98, 0.68] as const;
+      const tipC = [0.94, 0.87, 0.6] as const;
       for (let i = 0; i < 7; i++) {
         const ang = rng() * Math.PI * 2;
         const r0 = Math.sqrt(rng()) * 0.1;
         const tilt = 0.05 + (r0 / 0.1) * 0.22 + rng() * 0.08;
+        // The fountain commits (0.9-1.6 rad, was 0.5-1.1): every stem arcs
+        // over — cover a dog would push into, not a bed of pikes.
         b.stem(Math.sin(ang) * r0, Math.cos(ang) * r0, ang, tilt,
-          0.5 + rng() * 0.45, 0.034, 0.62, 0.5 + rng() * 0.6,
+          0.5 + rng() * 0.45, 0.034, 0.55, 0.9 + rng() * 0.7,
           rootC, tipC, 0.86 + rng() * 0.26, rng());
       }
       b.stalk(0.04, 0.01, rng() * Math.PI * 2, 0.04 + rng() * 0.07, 1.0 + rng() * 0.3, rng);
@@ -934,6 +1049,9 @@ export class GrassSystem implements Subsystem {
       uWindDir: { value: new THREE.Vector2(0.74, 0.67).normalize() },
       uWindAmp: { value: windAmp },
       uPartRadius: { value: 1.2 },
+      // Dog parting point: xy = world xz, z = radius (epsilon until the
+      // dog subsystem reports in — smoothstep needs a nonzero edge).
+      uPart2: { value: new THREE.Vector3(0, 0, 1e-4) },
       uFade: { value: new THREE.Vector2(fadeNear, fadeFar) },
       uHaze: { value: new THREE.Color(P.grassHazeDawn) },
       // Haze completes just before the collapse window ends, so shrinking

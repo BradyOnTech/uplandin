@@ -15,12 +15,24 @@ import type { TerrainSystem } from './terrain';
  * FieldScene consumed them; this file only decides what the truth looks
  * like.
  *
- *  - BODY: hex-lofted torso (deep chest, waist tuck, haunch), boxed neck/
- *    head/muzzle, hanging setter ears, saber tail with a feathering fin,
- *    four two-segment legs. White coat off the palette's pale role with
- *    dark head patches and a sparse belton ticking suggestion (a few
- *    surface flecks — suggestion, not noise). ~0.55 m at the shoulder,
- *    ~430 tris, 14 draw calls.
+ *  - BODY: hex-lofted torso (deep chest, thick forequarters, waist tuck,
+ *    haunch), boxed neck sunk wide into the chest, dropped triangular ear
+ *    flaps (the #1 dog identifier — the silhouette survives front and 3/4
+ *    angles), rigid flag tail with notched feathering facets, four
+ *    two-segment legs. White coat off the palette's pale role with dark
+ *    head patches and a sparse belton ticking suggestion. ~0.55 m at the
+ *    shoulder, ~490 tris, 15 draw calls.
+ *  - LIGHTING: the coat takes the WORLD's light (round-7 mandate — the
+ *    fullbright emissive cheat made the dog ignore every TOD): Lambert
+ *    under the scene sun/hemisphere plus the flora facet recipe — warm
+ *    sun-side lift, shade facets multiplied toward the TOD shadow tint
+ *    (mauve-gray at dawn, violet at lastlight), sun-colored rim at the
+ *    golden hours. Albedo is strawPale — never #fff.
+ *  - GROUNDING: dog meshes never render into the shadow map (the grazing-
+ *    sun splat read as a burn mark); one soft sun-aligned contact ellipse
+ *    (multiply-blended, stretched by sun elevation) grounds the torso.
+ *    Feet plant analytically — the root sinks by the lowest standing
+ *    paw's clearance. Grass opens around the dog via partingPoint().
  *  - LOCOMOTION: distance-driven gait (the 2D lesson — legs turn exactly
  *    as fast as the ground moves): the stride phase advances per meter
  *    traveled, never per second, so the dog never moonwalks. Diagonal
@@ -189,13 +201,19 @@ const NECK_PIVOT: V3 = [0, 0.46, 0.2];
 const NECK_TOP: V3 = [0, 0.15, 0.11]; // head joint in neck-local space
 const TAIL_PIVOT: V3 = [0, 0.465, -0.33];
 
-/** Torso loft sections, rear→front: rump, hip, waist tuck, heart girth, prosternum. */
+/**
+ * Torso loft sections, rear→front: rump, hip, waist tuck, heart girth,
+ * shoulder/prosternum. Round 7: the chest DEEPENED and the forequarters
+ * THICKENED — the off-profile mandate. The heart girth is the widest,
+ * deepest ring on the dog and the prosternum stays broad so a front or
+ * three-quarter view reads chest mass, not a spindle.
+ */
 const TORSO_SECTS: SectZ[] = [
   { x: 0, y: 0.44, z: -0.33, hw: 0.055, hh: 0.075 },
-  { x: 0, y: 0.43, z: -0.24, hw: 0.082, hh: 0.108 },
-  { x: 0, y: 0.445, z: -0.06, hw: 0.072, hh: 0.098 },
-  { x: 0, y: 0.425, z: 0.12, hw: 0.094, hh: 0.132 },
-  { x: 0, y: 0.42, z: 0.24, hw: 0.078, hh: 0.122 },
+  { x: 0, y: 0.43, z: -0.24, hw: 0.084, hh: 0.11 },
+  { x: 0, y: 0.445, z: -0.06, hw: 0.074, hh: 0.1 },
+  { x: 0, y: 0.42, z: 0.13, hw: 0.108, hh: 0.148 },
+  { x: 0, y: 0.415, z: 0.27, hw: 0.088, hh: 0.13 },
 ];
 
 /** Gait cycle tuning. Stride = meters of ground per full leg cycle. */
@@ -279,10 +297,20 @@ export class DogSystem implements Subsystem {
     uSunDirW: { value: new THREE.Vector3(0, 1, 0) },
     uWarmK: { value: 0 },
     uCoolK: { value: 0 },
+    uCoolTint: { value: new THREE.Color(P.shadowNeutral) },
     uRimColor: { value: new THREE.Color(0) },
     uRimK: { value: 0 },
   };
   private creamScratch = new THREE.Color(P.cream);
+
+  // Contact-shadow ellipse (the grounding — dog meshes never cast).
+  private shadowGrp = new THREE.Group();
+  private shadowGeo?: THREE.CircleGeometry;
+  private shadowMat?: THREE.ShaderMaterial;
+  /** World-space shadow direction (away from the sun), set per TOD. */
+  private shadowDirX = 0;
+  private shadowDirZ = -1;
+  private shadowYaw = 0;
 
   // Smoothed pose state.
   private yaw = 0;
@@ -315,10 +343,13 @@ export class DogSystem implements Subsystem {
     const high = ctx.quality === 'high';
 
     this.mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-    // Sun answer (the flora recipe, sized for a white coat): sun-facing
-    // facets take a warm lift, shade facets cool gently — a white dog under
-    // a blue sky vault otherwise renders slate-blue head to tail, and the
-    // coat must read WHITE at a glance in every light.
+    // ROUND 7, item 1 — the coat takes the WORLD's light. The flora facet
+    // recipe sized for a white coat: sun-facing facets take a warm lift,
+    // shade facets multiply toward the hour's SHADOW TINT (mauve-gray at
+    // dawn, violet at lastlight — the same palette roles the grass cores
+    // breathe), and a sun-colored rim keeps the lit edge alive at the
+    // golden hours. The Lambert base under the scene sun/hemisphere does
+    // the actual modeling — no more fullbright emissive cheat.
     const tone = this.tone;
     this.mat.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, tone);
@@ -326,50 +357,100 @@ export class DogSystem implements Subsystem {
         .replace(
           '#include <common>',
           '#include <common>\nuniform vec3 uSunDirW;\nuniform float uWarmK;\nuniform float uCoolK;\n' +
-            'uniform vec3 uRimColor;\nuniform float uRimK;',
+            'uniform vec3 uCoolTint;\nuniform vec3 uRimColor;\nuniform float uRimK;',
         )
         .replace(
           '#include <normal_fragment_begin>',
           '#include <normal_fragment_begin>\n' +
             '\tvec3 gWN = normalize( ( vec4( normal, 0.0 ) * viewMatrix ).xyz );\n' +
             '\tvec3 gVW = normalize( ( vec4( normalize( vViewPosition ), 0.0 ) * viewMatrix ).xyz );\n' +
+            // Committed plateau split at the terminator (the flora round-6
+            // lesson): one lit face, one shade face, a few degrees of
+            // anti-aliased transition between them.
             '\tfloat gSplit = smoothstep( -0.15, 0.3, dot( gWN, uSunDirW ) );\n' +
-            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 1.24, 1.1, 0.9 ), gSplit * uWarmK );\n' +
-            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 0.86, 0.85, 0.94 ), ( 1.0 - gSplit ) * uCoolK );',
+            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 1.26, 1.1, 0.88 ), gSplit * uWarmK );\n' +
+            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), uCoolTint, ( 1.0 - gSplit ) * uCoolK );',
         )
         .replace(
           '#include <emissivemap_fragment>',
           '#include <emissivemap_fragment>\n' +
             // Low-sun rim: the hot edge on glancing sun-facing facets that
             // keeps the white coat alive when the camera faces the sunrise.
-            '\tfloat gRim = pow( 1.0 - abs( dot( gWN, gVW ) ), 3.0 ) * clamp( dot( gWN, uSunDirW ) * 0.7 + 0.3, 0.0, 1.0 );\n' +
+            '\tfloat gRim = pow( 1.0 - abs( dot( gWN, gVW ) ), 2.5 ) * clamp( dot( gWN, uSunDirW ) * 0.7 + 0.3, 0.0, 1.0 );\n' +
             '\ttotalEmissiveRadiance += uRimColor * ( gRim * uRimK );',
         );
     };
-    // Warm-leaning ambient whisper so the shade side never goes unlit
-    // blue-black; crushed at the silhouette hour so the dog stays a
-    // silhouette against the afterglow.
     const applyTod = (tod: TimeOfDay): void => {
       const spec = TOD[tod];
-      // The A-Short-Hike character cheat: the hero coat carries its own
-      // warm fill so the dog reads WHITE in every daylight, never the
-      // pewter-lavender a white albedo turns under a mauve sky vault. The
-      // fill leans on the haze role of the hour (they are pale AND warm by
-      // construction) and rises exactly when the sun drops — the low-sun
-      // hours are when the hemisphere goes coolest.
       const silh = spec.grassLumCap < 1;
       const lowSun = THREE.MathUtils.clamp(1 - (spec.sunElevation - 2) / 13, 0, 1);
-      this.mat!.emissive.setHex(spec.fogColor).lerp(this.creamScratch, 0.35);
-      this.mat!.emissiveIntensity = silh ? 0.05 : 0.2 + lowSun * 0.3;
+      // Sky-fill whisper: enough that the coat never renders slate-blue
+      // under the vault (iteration-2 measure: an ambientSky fill turned
+      // the noon dog pewter), never enough to go fullbright again. The
+      // fill leans on the hour's HAZE role — pale and warm by palette
+      // construction — at roughly half round-6's fullbright dose.
+      this.mat!.emissive.setHex(spec.fogColor).lerp(this.creamScratch, 0.4);
+      this.mat!.emissiveIntensity = silh ? 0.04 : 0.11;
       const el = THREE.MathUtils.degToRad(spec.sunElevation);
       const az = THREE.MathUtils.degToRad(spec.sunAzimuth);
       this.tone.uSunDirW.value.set(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
-      this.tone.uWarmK.value = 0.35 + spec.floraWarm * 0.55;
-      this.tone.uCoolK.value = silh ? 0.2 : 0.22;
-      // Rim rides the hour's sun color, strongest at the golden hours.
+      this.tone.uWarmK.value = 0.3 + spec.floraWarm * 0.5;
+      // Shade facets take the hour's shadow tint — the same role the grass
+      // roots multiply toward, so dog and field sit in ONE light. The tint
+      // is deepened (x0.78) because the palette shadow roles are pale
+      // multipliers sized for grass roots; on the bright coat they need
+      // real darkening to read as the mauve-gray shade mass at all.
+      this.tone.uCoolTint.value.setHex(spec.grassShadow).multiplyScalar(0.78);
+      this.tone.uCoolK.value = silh ? 0.6 : 0.3 + lowSun * 0.35;
+      // Rim rides the hour's sun color — HOT at the golden hours: the
+      // backlit money shot lives on this one warm edge.
       this.tone.uRimColor.value.setHex(spec.sunColor);
-      this.tone.uRimK.value = (silh ? 0.25 : 0.12) + lowSun * 0.75;
+      this.tone.uRimK.value = (silh ? 0.3 : 0.12) + lowSun * 1.25;
+      // Contact ellipse answers the sun: aligned to the azimuth, stretched
+      // as the sun drops, its darkening tinted by the hour's shadow role.
+      this.shadowDirX = -Math.sin(az);
+      this.shadowDirZ = -Math.cos(az);
+      this.shadowYaw = Math.atan2(this.shadowDirX, this.shadowDirZ);
+      // Scale values are RADII of the unit disc: half-width across the
+      // shadow, half-length along it (iteration 2: the first pass scaled
+      // by full length and painted a 2.6 m stain under the dawn dog).
+      const len = THREE.MathUtils.clamp(0.35 / Math.tan(Math.max(el, 0.06)), 0.5, 0.95);
+      this.shadowGrp.scale.set(0.4, 1, len);
+      const su = this.shadowMat!.uniforms;
+      (su.uTint.value as THREE.Color).setHex(spec.grassShadow).multiplyScalar(0.45);
+      su.uK.value = silh ? 0.14 : 0.46 + lowSun * 0.1;
     };
+
+    // Contact ellipse build: a unit disc in the xz plane, multiply-blended
+    // radial falloff — it darkens whatever it hovers over (soil, skirts,
+    // blades) the way a soft blob shadow should, and costs one draw call.
+    this.shadowGeo = new THREE.CircleGeometry(1, 28);
+    this.shadowGeo.rotateX(-Math.PI / 2);
+    this.shadowMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTint: { value: new THREE.Color(P.shadowNeutral) },
+        uK: { value: 0.4 },
+      },
+      vertexShader:
+        'varying vec2 vXY;\n' +
+        'void main() {\n' +
+        '\tvXY = position.xz;\n' +
+        '\tgl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );\n' +
+        '}',
+      fragmentShader:
+        'uniform vec3 uTint;\nuniform float uK;\nvarying vec2 vXY;\n' +
+        'void main() {\n' +
+        '\tfloat gFall = 1.0 - smoothstep( 0.3, 1.0, length( vXY ) );\n' +
+        '\tgl_FragColor = vec4( mix( vec3( 1.0 ), uTint, gFall * uK ), 1.0 );\n' +
+        '}',
+      blending: THREE.MultiplyBlending,
+      transparent: true,
+      depthWrite: false,
+    });
+    this.shadowGrp.add(new THREE.Mesh(this.shadowGeo, this.shadowMat));
+    this.shadowGrp.rotation.order = 'YXZ';
+    ctx.scene.add(this.shadowGrp);
+
     applyTod(ctx.timeOfDay);
     ctx.events.addEventListener('tod', ((e: CustomEvent) => applyTod(e.detail)) as EventListener);
 
@@ -381,12 +462,26 @@ export class DogSystem implements Subsystem {
     this.update(ctx, 1 / 60);
   }
 
+  /**
+   * GROUNDING CONTRACT — grass reads this via ctx.get('dog') and opens a
+   * second parting point around it (the same mechanism that parts blades
+   * for the camera). World meters; r is the body-parting radius.
+   */
+  partingPoint(out: { x: number; z: number; r: number }): void {
+    out.x = this.lastX;
+    out.z = this.lastZ;
+    out.r = 0.9;
+  }
+
   /* ------------------------------- build ------------------------------- */
 
-  private mesh(geo: THREE.BufferGeometry, high: boolean): THREE.Mesh {
+  private mesh(geo: THREE.BufferGeometry, _high: boolean): THREE.Mesh {
     this.geos.push(geo);
     const m = new THREE.Mesh(geo, this.mat!);
-    m.castShadow = high;
+    // NEVER into the shadow map (round 7, item 2): at a grazing dawn sun
+    // the segmented body smeared into a noisy splat that read as a burn
+    // mark. The contact ellipse is the dog's grounding on every tier.
+    m.castShadow = false;
     m.receiveShadow = false;
     return m;
   }
@@ -456,12 +551,14 @@ export class DogSystem implements Subsystem {
     }
 
     // NECK — raked ~40° forward-up, baked into geometry (group stays at
-    // identity when standing so the pivot math reads clean).
+    // identity when standing so the pivot math reads clean). Round 7: the
+    // base sits WIDE and DEEP inside the chest so neck and forequarters
+    // read as one connected mass from every angle, never a stick on a box.
     {
       const b = new PartBuilder();
       b.boxZ(
-        { x: 0, y: -0.04, z: -0.045, hw: 0.052, hh: 0.082 },
-        { x: 0, y: NECK_TOP[1] - 0.015, z: NECK_TOP[2] + 0.015, hw: 0.037, hh: 0.05 },
+        { x: 0, y: -0.075, z: -0.075, hw: 0.068, hh: 0.105 },
+        { x: 0, y: NECK_TOP[1] - 0.015, z: NECK_TOP[2] + 0.015, hw: 0.04, hh: 0.054 },
         { side: coat, bottom: coatDim },
       );
       const m = this.mesh(b.build(), high);
@@ -506,46 +603,67 @@ export class DogSystem implements Subsystem {
     this.head.position.set(NECK_TOP[0], NECK_TOP[1], NECK_TOP[2]);
     this.neck.add(this.head);
 
-    // EARS — long, low-set, hanging flat: the setter signature. Separate
-    // meshes so they bounce with the gait.
+    // EARS — dropped TRIANGULAR flaps (round 7, item 3: ears are the #1
+    // dog identifier). Wide-based, flared off the skull so the silhouette
+    // reads dog from the front and three-quarter, not just perfect side
+    // view. Two facets each with a slight fold; double-sided quads.
     for (const side of [-1, 1]) {
       const b = new PartBuilder();
-      b.boxY(
-        { x: 0, y: 0, z: 0, hw: 0.009, hd: 0.04 },
-        { x: side * 0.014, y: -0.148, z: 0.012, hw: 0.005, hd: 0.028 },
+      // Base edge hugs the skull top; the flap widens to the fold then
+      // tapers to a blunt hanging tip, drifting outward as it drops.
+      b.quad2(
+        [0, 0.004, -0.032], [0, 0.004, 0.032],
+        [side * 0.012, -0.078, 0.04], [side * 0.012, -0.078, -0.04],
+        patch,
+      );
+      b.quad2(
+        [side * 0.012, -0.078, -0.04], [side * 0.012, -0.078, 0.04],
+        [side * 0.022, -0.132, 0.011], [side * 0.022, -0.132, -0.011],
         patch,
       );
       const grp = side < 0 ? this.earL : this.earR;
       grp.add(this.mesh(b.build(), high));
-      grp.position.set(side * 0.05, 0.03, 0.018);
-      grp.rotation.z = side * -0.3; // flare off the skull
+      grp.position.set(side * 0.046, 0.042, 0.012);
+      grp.rotation.z = side * -0.52; // flare off the skull — reads front-on
+      grp.rotation.y = side * 0.18;
       this.head.add(grp);
     }
 
-    // TAIL — straight saber with a feathering fin below: level at the
-    // trot, STRAIGHT UP on point (the fin then flags behind it).
+    // TAIL — round 7, item 4: a RIGID FLAG. Straight tapered bone, and the
+    // feathering rebuilt as three notched facets with sawtooth gaps along
+    // the trailing edge — raised on point it reads as the flag over the
+    // grass, the read a handler steers by.
     {
       const b = new PartBuilder();
+      // Straight bone, root -> tip, no saber droop: the flag pole.
       b.boxZ(
-        { x: 0, y: -0.008, z: -0.2, hw: 0.016, hh: 0.018 },
-        { x: 0, y: 0, z: 0, hw: 0.024, hh: 0.03 },
+        { x: 0, y: 0, z: -0.34, hw: 0.008, hh: 0.01 },
+        { x: 0, y: 0, z: 0, hw: 0.024, hh: 0.028 },
         { side: coat },
       );
-      b.boxZ(
-        { x: 0, y: -0.024, z: -0.36, hw: 0.007, hh: 0.009 },
-        { x: 0, y: -0.008, z: -0.2, hw: 0.016, hh: 0.018 },
-        { side: coat },
-      );
-      // Feather fin: ragged white flag hanging off the underside — on
-      // point the tail stands and this flags behind it.
-      b.quad2(
-        [0, -0.016, -0.05], [0, -0.026, -0.17], [0, -0.095, -0.14], [0, -0.075, -0.045],
-        coat,
-      );
-      b.quad2(
-        [0, -0.026, -0.17], [0, -0.036, -0.29], [0, -0.08, -0.235], [0, -0.095, -0.14],
-        coatDim,
-      );
+      // Three feathering facets off the underside, each ending in a notch
+      // (the sawtooth trailing edge of real setter feathering), emitted as
+      // TWO layers in a shallow V so the flag keeps presence when the
+      // camera lines up with its plane — a single fin vanished edge-on in
+      // the dawn-point frame. Alternating coat/coatDim per lock.
+      for (const lx of [-0.009, 0.009]) {
+        const yb = lx < 0 ? 0 : -0.008; // layered locks, not a mirror
+        b.quad2(
+          [lx, -0.018, -0.04], [lx, -0.022, -0.125],
+          [lx * 2.2, -0.108 + yb, -0.088], [lx * 2.2, -0.09 + yb, -0.03],
+          coat,
+        );
+        b.quad2(
+          [lx, -0.024, -0.13], [lx, -0.028, -0.225],
+          [lx * 2.2, -0.102 + yb, -0.188], [lx * 2.2, -0.114 + yb, -0.114],
+          coatDim,
+        );
+        b.quad2(
+          [lx, -0.03, -0.23], [lx, -0.036, -0.325],
+          [lx * 2.2, -0.08 + yb, -0.282], [lx * 2.2, -0.094 + yb, -0.208],
+          coat,
+        );
+      }
       this.tail.add(this.mesh(b.build(), high));
     }
     this.tail.position.set(TAIL_PIVOT[0], TAIL_PIVOT[1], TAIL_PIVOT[2]);
@@ -560,9 +678,11 @@ export class DogSystem implements Subsystem {
       {
         const b = new PartBuilder();
         if (fore) {
+          // Thick forequarters (round 7): a real forearm mass under the
+          // widened chest, tapering to the wrist.
           b.boxY(
-            { x: 0, y: 0.02, z: 0, hw: 0.032, hd: 0.05 },
-            { x: 0, y: -0.195, z: 0.004, hw: 0.02, hd: 0.026 },
+            { x: 0, y: 0.03, z: -0.006, hw: 0.04, hd: 0.064 },
+            { x: 0, y: -0.195, z: 0.004, hw: 0.021, hd: 0.027 },
             coat,
           );
         } else {
@@ -688,30 +808,32 @@ export class DogSystem implements Subsystem {
     let rate = 10;
 
     if (pointing) {
-      // THE POINT. Rigid, horizontal, tail at twelve o'clock, head nailed
-      // to the bird, left foreleg lifted and folded — intensity itself.
+      // THE POINT, round-7 refined: the whole dog LEANS at the scent —
+      // crouched a hair, weight rolled onto the forehand, head and neck
+      // dropped ~12 degrees toward the bird, tail a rigid raised flag.
+      // Intensity lives in the lean, not in a mannequin standing tall.
       rate = 14;
-      tBob = -0.028;
-      tPitch = 0.05;
+      tBob = -0.042; // crouch: the body sinks into the stalk it froze from
+      tPitch = 0.075; // nose-down pitch — weight on the forehand
       tRoll = 0;
-      tNeck = 0.34; // neck drops from the proud rake toward a level drive
-      tTailP = 1.62; // twelve o'clock, unmistakable at any camera slope
+      tNeck = 0.48; // dropped ~12 deg past round 6's level drive
+      tTailP = 1.32; // the raised flag — high, rigid, unmistakable
       tTailY = 0;
       tEar = 0.06;
-      // Head locked on the bird's actual position — muzzle stays near
-      // level (the classic intensity), only a modest dip onto the line.
+      // Head locked on the bird's actual position — muzzle drives DOWN the
+      // scent line (the dropped-head intensity of a real pointing setter).
       if (hasBird) {
         const bdx = this.birdW.x - x;
         const bdz = this.birdW.z - z;
         const horiz = Math.hypot(bdx, bdz);
-        const headH = gy + 0.52; // head height once the pose settles
+        const headH = gy + 0.46; // head height once the dropped pose settles
         const birdY = this.terrain.heightAt(this.birdW.x, this.birdW.z) + 0.12;
         tHeadY = THREE.MathUtils.clamp(wrapAngle(Math.atan2(bdx, bdz) - this.yaw), -0.6, 0.6);
         tHeadP =
-          THREE.MathUtils.clamp(Math.atan2(headH - birdY, Math.max(horiz, 0.5)) * 0.55, -0.1, 0.3) -
+          THREE.MathUtils.clamp(Math.atan2(headH - birdY, Math.max(horiz, 0.5)) * 0.7, -0.05, 0.4) -
           tNeck * 0.55;
       } else {
-        tHeadP = -tNeck * 0.55; // honoring: level muzzle down the line
+        tHeadP = 0.08 - tNeck * 0.55; // honoring: muzzle down the line
       }
       // Left fore lifted high, folded tight under the wrist — the gap of
       // daylight under the chest is half the pose's read.
@@ -798,9 +920,35 @@ export class DogSystem implements Subsystem {
       this.legL[i].rotation.x = this.lAng[i];
     }
 
-    this.root.position.set(x, gy, z);
+    // FEET PLANTED (round 7, item 2): analytic paw clearance — for each
+    // standing leg, how far its paw hangs above local ground in body space
+    // (two cosines per leg, no IK) — and the root sinks by the smallest,
+    // so the longest-extended paw touches terrain instead of hovering.
+    let clearance = Infinity;
+    for (let i = 0; i < 4; i++) {
+      if (pointing && i === 0) continue; // the lifted foreleg never plants
+      const fore = i < 2;
+      const pawY =
+        (fore ? FORE_Y : HIND_Y) -
+        (fore ? 0.195 : 0.205) * Math.cos(this.uAng[i]) -
+        (fore ? 0.2 : 0.21) * Math.cos(this.lAng[i] - this.uAng[i]);
+      if (pawY < clearance) clearance = pawY;
+    }
+    clearance = THREE.MathUtils.clamp(clearance, -0.04, 0.1);
+
+    this.root.position.set(x, gy - clearance, z);
     this.root.rotation.order = 'YXZ';
     this.root.rotation.set(this.slopePitch, this.yaw, 0);
+    // Contact ellipse: sun-aligned in world space (never yawing with the
+    // body), pitched to the terrain along the shadow direction.
+    const shx = this.shadowDirX * 0.6;
+    const shz = this.shadowDirZ * 0.6;
+    const shSlope = Math.atan2(
+      this.terrain.heightAt(x - shx, z - shz) - this.terrain.heightAt(x + shx, z + shz),
+      1.2,
+    );
+    this.shadowGrp.position.set(x, gy + 0.03, z);
+    this.shadowGrp.rotation.set(shSlope, this.shadowYaw, 0);
     this.body.position.y = this.bob;
     this.body.rotation.set(this.bodyPitch, 0, this.roll);
     this.neck.rotation.x = this.neckPitch;
@@ -812,9 +960,14 @@ export class DogSystem implements Subsystem {
 
   dispose(ctx: Ctx): void {
     ctx.scene.remove(this.root);
+    ctx.scene.remove(this.shadowGrp);
     for (const g of this.geos) g.dispose();
     this.geos.length = 0;
     this.mat?.dispose();
     this.mat = undefined;
+    this.shadowGeo?.dispose();
+    this.shadowGeo = undefined;
+    this.shadowMat?.dispose();
+    this.shadowMat = undefined;
   }
 }
