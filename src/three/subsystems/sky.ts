@@ -125,13 +125,20 @@ void main() {
   // flat plates at 0.85/0.92/1.0). Quantize the thickness-above field into
   // a lit face, a mid plate, and a shaded belly; smoothsteps kept tight so
   // edges are anti-aliased, never gradients.
-  float cAboveRaw = cloudField(ae + vec2(0.0, 0.05));
-  float plateMid = smoothstep(0.34, 0.40, cAboveRaw);
-  float plateDeep = smoothstep(0.62, 0.68, cAboveRaw);
+  float cAboveRaw = cloudField(ae + vec2(0.0, 0.055));
+  float plateMid = smoothstep(0.32, 0.38, cAboveRaw);
+  float plateDeep = smoothstep(0.60, 0.66, cAboveRaw);
+  // Round 6 (item 4): the underside shade answers the SUN'S HEIGHT. At the
+  // golden hours a near-horizontal key side-lights the deck — crowns burn
+  // warm while bellies drop further and pull cool toward the vault; at
+  // noon the bellies stay the flat neutral gray plate. cLow=0 reproduces
+  // the round-5 noon look exactly.
+  float cLow = 1.0 - smoothstep(0.08, 0.45, uSunDir.y);
+  vec3 cShade = uCloudShade * mix(vec3(1.0), vec3(0.72, 0.76, 0.98), cLow);
   // Lit faces ride ABOVE 1.0 pre-tonemap so ACES blows them toward the
   // reference's paper-white crowns (measured ref p50 V=1.0, ours 0.84).
-  vec3 cCol = mix(uCloudLit * 1.28, mix(uCloudLit, uCloudShade, 0.4), plateMid);
-  cCol = mix(cCol, uCloudShade, plateDeep);
+  vec3 cCol = mix(uCloudLit * mix(1.28, 1.36, cLow), mix(uCloudLit, cShade, mix(0.45, 0.68, cLow)), plateMid);
+  cCol = mix(cCol, cShade, plateDeep);
   col = mix(col, cCol, cm);
 
   float g2 = pow(d, 42.0) * uGlowStrength;

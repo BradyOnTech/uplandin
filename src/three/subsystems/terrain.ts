@@ -59,6 +59,8 @@ uniform float uSunEmit;
 uniform vec2 uSunRange;
 uniform vec3 uCoolTint;
 uniform float uCoolK;
+uniform float uCloudShK;
+uniform float uCloudT;
 varying vec3 vWPos;
 `;
 
@@ -72,13 +74,25 @@ vec2 gTo = vWPos.xz - cameraPosition.xz;
 float gD = length( gTo );
 float gAz = clamp( dot( gTo / max( gD, 1e-3 ), uSunXZ ), 0.0, 1.0 );
 float gAz4 = gAz * gAz * gAz * gAz;
-float gLobe = ( gAz * gAz * 0.6 + gAz4 * gAz4 * 0.7 ) * smoothstep( uSunRange.x, uSunRange.y, gD ) * uSunK;
-gLobe = min( gLobe, 0.85 );
+// Round 6 (item 5): the tight bloom under the disc is its own term so the
+// emissive can ride it alone — a bright warm wedge pooling on the ground
+// directly below the sun, falling off toward the camera with the same
+// distance ramp, instead of one broad wash that never reads as A wedge.
+float gDist = smoothstep( uSunRange.x, uSunRange.y, gD );
+float gBloom = gAz4 * gAz4 * gDist * uSunK;
+float gLobe = min( gAz * gAz * 0.6 * gDist * uSunK + gBloom * 0.7, 0.85 );
 // Albedo takes only HALF the lobe (a hue grade, not red paint); the
 // emissive bloom below carries the heat of the wedge.
 diffuseColor.rgb = mix( diffuseColor.rgb, uSunTint, gLobe * 0.55 );
 float gCool = uCoolK * ( 1.0 - min( gLobe * 2.2, 1.0 ) );
 diffuseColor.rgb = mix( diffuseColor.rgb, uCoolTint, gCool );
+// Round-6 drifting cloud shade (verdict item 1's cheap option): a slow
+// scrolling soft mask — two crossed sines make ~35-55 m dapples that
+// drift with the wind. GrassSystem runs the IDENTICAL formula off the
+// same clock so tufts and ground darken as one mass. Full-cover noon
+// only (uCloudShK gates by cloudAmount and sun height in applyTod).
+float gCs = sin( vWPos.x * 0.085 + uCloudT ) * sin( vWPos.z * 0.058 + 1.7 + uCloudT * 0.73 );
+diffuseColor.rgb *= 1.0 - 0.2 * smoothstep( 0.3, 0.75, gCs ) * uCloudShK;
 `;
 
 export class TerrainSystem implements Subsystem {
@@ -102,6 +116,8 @@ export class TerrainSystem implements Subsystem {
     uSunRange: { value: new THREE.Vector2(10, 80) },
     uCoolTint: { value: new THREE.Color() },
     uCoolK: { value: 0 },
+    uCloudShK: { value: 0 },
+    uCloudT: { value: 0 },
   };
 
   /** One ground material for plate + skirt, with the sun-drench injection. */
@@ -121,7 +137,7 @@ export class TerrainSystem implements Subsystem {
         .replace('#include <color_fragment>', '#include <color_fragment>\n' + DRENCH_FRAG)
         .replace(
           '#include <emissivemap_fragment>',
-          '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += uSunTint * ( gLobe * uSunEmit );',
+          '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += uSunTint * ( ( gLobe + gBloom * 0.9 ) * uSunEmit );',
         );
     };
     return mat;
@@ -137,6 +153,12 @@ export class TerrainSystem implements Subsystem {
     this.drench.uSunRange.value.set(spec.groundSunNear, spec.groundSunFar);
     this.drench.uCoolTint.value.setHex(spec.groundCoolTint);
     this.drench.uCoolK.value = spec.groundCoolK;
+    // Cloud dapples only under a committed cumulus deck with the sun high
+    // enough that a cloud's shadow lands near the cloud (golden hours
+    // throw them out of frame anyway — and their long prop shadows are
+    // the hero there).
+    this.drench.uCloudShK.value =
+      spec.cloudAmount * THREE.MathUtils.clamp((spec.sunElevation - 15) / 20, 0, 1);
   }
 
   heightAt(x: number, z: number): number {
@@ -334,6 +356,11 @@ export class TerrainSystem implements Subsystem {
     const mesh = new THREE.Mesh(geo, this.groundMat!);
     ctx.scene.add(mesh);
     this.skirt = mesh;
+  }
+
+  /** One uniform write per frame: the cloud-shade mask drifts with time. */
+  update(ctx: Ctx): void {
+    this.drench.uCloudT.value = ctx.time * 0.14;
   }
 
   // Rocks and snags moved to the flora subsystem (src/three/subsystems/

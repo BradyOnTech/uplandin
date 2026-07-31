@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
 import { P, TOD, type TimeOfDay } from '../palette';
+import type { Hunt3DSystem } from './hunt3d';
 import type { TerrainSystem } from './terrain';
 
 /*
@@ -33,6 +34,16 @@ import type { TerrainSystem } from './terrain';
  *  - Wind in the vertex shader: two traveling waves times a slow gust
  *    field; the camera parts blades inside ~1.2 m so quads never clip the
  *    eye.
+ *  - THE COVER IS THE SIM'S COVER: patches come from hunt3d (the game's
+ *    area.patches mapped to world meters) — the visibly dense cover is
+ *    exactly where the birds hide and the dog hunts. Density tiers:
+ *    DENSE waist-high tussocks inside a patch, a MEDIUM fringe ring of
+ *    taller boosted tufts around it, SPARSE open field, BARE fertility
+ *    breaks — plus 2-3 GAME TRAILS: narrow worn low-density paths
+ *    connecting the nearest patches, deterministic from the fixed layout.
+ *    Near-camera cover density rides the roaming tiles (V_COVER variant);
+ *    a sparse large-crown static layer per patch carries the 50-105 m
+ *    dark-mass read.
  *
  * Per-frame work is two uniform writes and a cell check. All placement
  * happens at init or on a 20 m cell crossing (one ring of tiles, a few ms).
@@ -60,8 +71,12 @@ interface QualityCfg {
   /** Per-instance collapse thresholds hash into [near, far] — last third. */
   openFadeNear: number;
   openFadeFar: number;
-  /** Cover tufts per m² inside a patch. */
-  coverDensity: number;
+  /** Lattice spacing (m) between tussock sites inside cover (tile fill). */
+  coverStep: number;
+  /** Instance capacity per tile for the V_COVER tussocks. */
+  capCover: number;
+  /** Static far-read tussocks per m² of patch footprint (sparse, big). */
+  coverFarDensity: number;
   coverFadeNear: number;
   coverFadeFar: number;
   /**
@@ -91,7 +106,9 @@ const CFG: Record<'high' | 'lite', QualityCfg> = {
     capTuft: 1650,
     openFadeNear: 40,
     openFadeFar: 58,
-    coverDensity: 1.5,
+    coverStep: 1.0,
+    capCover: 460,
+    coverFarDensity: 0.06,
     coverFadeNear: 70,
     coverFadeFar: 105,
     castShadow: true,
@@ -109,7 +126,9 @@ const CFG: Record<'high' | 'lite', QualityCfg> = {
     capTuft: 680,
     openFadeNear: 26,
     openFadeFar: 40,
-    coverDensity: 1.8,
+    coverStep: 1.2,
+    capCover: 320,
+    coverFarDensity: 0.045,
     coverFadeNear: 55,
     coverFadeFar: 85,
     castShadow: false,
@@ -156,15 +175,27 @@ interface CoverPatch {
   ph2: number;
 }
 
+/** One game-trail segment: a worn line between two cover patches. */
+interface TrailSeg {
+  ax: number;
+  az: number;
+  /** Full segment vector a -> b. */
+  dx: number;
+  dz: number;
+  len2: number;
+}
+
 /**
  * Tuft variants: 0 = stubble row, 1 = seed-head stalk, 2 = low forb,
- * 3 = the body tuft — the multi-blade bunch the whole field is made of.
+ * 3 = the body tuft — the multi-blade bunch the whole field is made of,
+ * 4 = the cover tussock — near-camera dense fill inside sim patches.
  */
 const V_OPEN = 0;
 const V_STALK = 1;
 const V_FORB = 2;
 const V_TUFT = 3;
-const N_VARIANTS = 4;
+const V_COVER = 4;
+const N_VARIANTS = 5;
 
 interface Tile {
   meshes: THREE.InstancedMesh[];
@@ -198,7 +229,9 @@ uniform float uLumCap;
 uniform float uLitRimK;
 uniform vec3 uCoolTint;
 uniform float uCoolK;
+uniform float uCoolNear;
 uniform vec2 uSunRange;
+uniform float uCloudShK;
 varying float vRim;
 `;
 
@@ -262,13 +295,37 @@ vColor.rgb *= 1.0 + gLit * uDirStrength * 0.22 * ( 0.3 + 0.7 * gT );
 // that sells a low sun. gT*gT confines the glow to the top of the blade.
 vec3 gViewDir = normalize( gWorld.xyz - cameraPosition );
 float gBack = clamp( dot( gViewDir, uSunDir3 ), 0.0, 1.0 );
-gBack = gBack * gBack * uBack;
-vColor.rgb *= 1.0 - gBack * 0.38 * ( 1.0 - gT );
+// Horizontal-alignment silhouette term (round 6, item 5): the 3D dot
+// misses FOREGROUND blades in an into-sun frame — the camera looks DOWN
+// at them while the sun sits at the horizon, so the dot never closes.
+// A blade whose azimuth from the camera is within ~20 deg of the sun's
+// (pow 8 gate) is between camera and sun regardless of pitch: it shows
+// its shade side. uBack still gates the whole term off outside the
+// golden hours.
+vec2 gToS = gRoot.xz - cameraPosition.xz;
+float gAzS = clamp( dot( gToS / max( length( gToS ), 1e-3 ), uSunXZ ), 0.0, 1.0 );
+float gAzS4 = gAzS * gAzS * gAzS * gAzS;
+// The gate WIDENS with proximity: a blade 4 m out still stands against the
+// sun's whole glare region at 30 deg off-axis, while a far blade must sit
+// tight under the disc. Silhouette hour keeps only the tight 3D term
+// (uLitRimK is already 0 there) — the lastlight field is dark enough.
+float gAzGate = mix( gAzS * gAzS * uLitRimK, gAzS4 * gAzS4, smoothstep( 5.0, 24.0, gInstD ) );
+gBack = max( gBack * gBack, gAzGate * 0.9 ) * uBack;
+// Round 6 (into-sun truth): a blade between camera and a low sun shows its
+// SHADE side full-height — roots crush hard, tips keep more so the warm
+// emissive rim stays the one bright edge. 0.38-on-roots-only left pale
+// cream tufts floating in the dawn-into-sun frame.
+vColor.rgb *= 1.0 - gBack * mix( 0.62, 0.28, gT );
 // Backlight rim rides an EMISSIVE varying (albedo tints go black at dusk —
 // translucent tips must glow at silhouette hour, not just recolor). The
 // gLit term is NOT view-dependent, so uLitRimK gates it off at silhouette
 // hour — after sunset only true backlight (between camera and sun) rims.
-float gRim = min( ( gLit * 0.35 * uLitRimK + gBack * 1.7 ) * ( gT * gT ) * uRimStrength, 1.5 );
+// Round 6: the rim is an EDGE, not a wash — gT^4 confines the glow to the
+// last fifth of the blade (the gT^2 version painted the whole upper blade
+// additive-white into a low sun, which is why into-sun frames read pale
+// cream no matter how dark the albedo went), and the cap drops with it.
+float gTip = gT * gT;
+float gRim = min( ( gLit * 0.35 * uLitRimK + gBack * 1.3 ) * ( gTip * gTip ) * uRimStrength, 1.1 );
 
 // Silhouette-hour luminance ceiling: no facet may out-shine the afterglow.
 // Effectively off in daylight (uLumCap >= 4); at lastlight it clamps the
@@ -286,8 +343,15 @@ vColor.rgb = mix( vColor.rgb, uCoolTint * ( 0.5 + 0.5 * gT ), uCoolK * ( 1.0 - g
 // runs, at all distances — without this the wedge dies wherever tufts
 // cover the ground (the lastlight orange pool, the dawn sun-side grade).
 float gAzC4 = gAzC * gAzC * gAzC * gAzC;
-float gWarm = gAzC4 * smoothstep( uSunRange.x, uSunRange.y, gInstD ) * uSunHazeK * 0.5;
+float gWarm = gAzC4 * smoothstep( uSunRange.x, uSunRange.y, gInstD ) * uSunHazeK * 0.62;
 vColor.rgb = mix( vColor.rgb, uSunHaze, gWarm );
+// Round 6 (item 2), applied AFTER the warm wedge so it wins the near
+// field: at silhouette hour the FOREGROUND tufts join the violet shadow
+// mass even on the sunward axis — the azimuth gates above kept the
+// lastlight camera's whole bottom half pale russet because it looks
+// straight at the glow. Near tufts drop ~35% in value and take the
+// vault's hue; the warm pool keeps the far wedge under the afterglow.
+vColor.rgb = mix( vColor.rgb, uCoolTint * ( 0.55 + 0.35 * gT ), uCoolNear * ( 1.0 - smoothstep( 12.0, 40.0, gInstD ) ) );
 
 // Aerial perspective: across the far field the albedo dissolves fully into
 // the TOD haze, so silhouettes melt into atmosphere instead of burning to
@@ -299,6 +363,10 @@ float gAzl = clamp( dot( gToCam / max( length( gToCam ), 1e-3 ), uSunXZ ), 0.0, 
 vec3 gHazeCol = mix( uHaze, uSunHaze, gAzl * gAzl * uSunHazeK );
 float gHaze = smoothstep( uHazeRange.x, uHazeRange.y, gInstD );
 vColor.rgb = mix( vColor.rgb, gHazeCol, gHaze );
+// Drifting cloud shade (round 6): the IDENTICAL mask the terrain runs,
+// same clock — tufts and the ground under them darken as one dapple.
+float gCs = sin( gRoot.x * 0.085 + uTime * 0.14 ) * sin( gRoot.z * 0.058 + 1.7 + uTime * 0.14 * 0.73 );
+vColor.rgb *= 1.0 - 0.2 * smoothstep( 0.3, 0.75, gCs ) * uCloudShK;
 vRim = gRim * ( 1.0 - gHaze );
 
 vec4 mvPosition = viewMatrix * gWorld;
@@ -326,7 +394,9 @@ interface GrassUniforms {
   uLumCap: { value: number };
   uCoolTint: { value: THREE.Color };
   uCoolK: { value: number };
+  uCoolNear: { value: number };
   uSunRange: { value: THREE.Vector2 };
+  uCloudShK: { value: number };
   uLitRimK: { value: number };
   [key: string]: { value: unknown };
 }
@@ -547,6 +617,7 @@ export class GrassSystem implements Subsystem {
 
   private cfg!: QualityCfg;
   private terrain!: TerrainSystem;
+  private hunt!: Hunt3DSystem;
   // Clump structure: knots of dense grass and genuinely bare dirt patches —
   // the anti-lawn. Fertility (macro+meso) decides WHERE grass grows at all;
   // the fine knot field decides where it bunches 2–3 tufts tight.
@@ -564,6 +635,7 @@ export class GrassSystem implements Subsystem {
 
   private patches: CoverPatch[] = [];
   private patchMeshes: THREE.InstancedMesh[] = [];
+  private trails: TrailSeg[] = [];
 
   private pool: Tile[] = [];
   private free: Tile[] = [];
@@ -603,6 +675,7 @@ export class GrassSystem implements Subsystem {
   init(ctx: Ctx): void {
     this.cfg = CFG[ctx.quality];
     this.terrain = ctx.get<TerrainSystem>('terrain');
+    this.hunt = ctx.get<Hunt3DSystem>('hunt3d');
 
     this.buildVariantGeos(mulberry32(0x9e1d77), this.cfg.bladeWide);
 
@@ -621,21 +694,25 @@ export class GrassSystem implements Subsystem {
         if (d <= this.cfg.radius + TILE * 0.5) this.offsets.push([dx, dz] as const);
       }
     }
-    const caps = [this.cfg.capOpen, this.cfg.capStalk, this.cfg.capForb, this.cfg.capTuft];
+    const caps = [this.cfg.capOpen, this.cfg.capStalk, this.cfg.capForb, this.cfg.capTuft, this.cfg.capCover];
     for (let i = 0; i < this.offsets.length; i++) {
       const mkMesh = (vi: number): THREE.InstancedMesh => {
-        const mesh = new THREE.InstancedMesh(this.variantGeos[vi], this.openMat, caps[vi]);
+        const geo = vi === V_COVER ? this.coverGeo : this.variantGeos[vi];
+        const mesh = new THREE.InstancedMesh(geo, this.openMat, caps[vi]);
         mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(caps[vi] * 3), 3);
         mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
         mesh.count = 0;
         mesh.visible = false;
-        // High tier: stubble and stalks render into the shadow map, so
-        // clumps ground themselves with real contact shadows and the low
-        // key streaks them along the sun azimuth. The body-tuft MASS never
-        // casts (its instance count would double the depth pass for a
-        // shadow texture the baked skirts already fake) — nor do forbs.
-        mesh.castShadow = this.cfg.castShadow && vi !== V_TUFT && vi !== V_FORB;
+        // High tier: ONLY the sparse tall seed-head stalks render into the
+        // shadow map (long readable streaks along the sun azimuth). The
+        // round-6 shadow audit found the dense stubble casters were the
+        // reason "nothing occludes light": at a 6-degree dawn every 20 cm
+        // stem throws a 2-3 m shadow and thousands of them merge into one
+        // wall-to-wall shadow blanket with a hard edge at the caster
+        // radius — tree/fence/rock shadows had zero contrast against it.
+        // Contact grounding for the mass stays with the baked soil skirts.
+        mesh.castShadow = this.cfg.castShadow && vi === V_STALK;
         // Tree/prop shadows fall across the grass (sampled at the root
         // position — no swim): the cast-shadow corroboration item 2 asks for.
         mesh.receiveShadow = true;
@@ -644,7 +721,7 @@ export class GrassSystem implements Subsystem {
         return mesh;
       };
       const tile: Tile = {
-        meshes: [mkMesh(V_OPEN), mkMesh(V_STALK), mkMesh(V_FORB), mkMesh(V_TUFT)],
+        meshes: [mkMesh(V_OPEN), mkMesh(V_STALK), mkMesh(V_FORB), mkMesh(V_TUFT), mkMesh(V_COVER)],
         tx: 0,
         tz: 0,
       };
@@ -706,6 +783,8 @@ export class GrassSystem implements Subsystem {
     this.free.length = 0;
     this.active.clear();
     this.patchMeshes.length = 0;
+    this.patches.length = 0;
+    this.trails.length = 0;
     for (const g of this.variantGeos) g.dispose();
     this.variantGeos.length = 0;
     this.coverGeo.dispose();
@@ -875,7 +954,9 @@ export class GrassSystem implements Subsystem {
       uLitRimK: { value: 1 },
       uCoolTint: { value: new THREE.Color(P.duskGroundViolet) },
       uCoolK: { value: 0 },
+      uCoolNear: { value: 0 },
       uSunRange: { value: new THREE.Vector2(10, 80) },
+      uCloudShK: { value: 0 },
     };
   }
 
@@ -925,7 +1006,13 @@ export class GrassSystem implements Subsystem {
       // Cool-mass: unlit blades carry the sky's ambient (lastlight violet).
       u.uCoolTint.value.setHex(spec.groundCoolTint);
       u.uCoolK.value = spec.groundCoolK;
+      // Silhouette-hour foreground override (round 6, item 2): the bottom
+      // third of the lastlight frame is the violet shadow mass, not tan.
+      u.uCoolNear.value = spec.grassLumCap < 1 ? 0.72 : 0;
       u.uSunRange.value.set(spec.groundSunNear, spec.groundSunFar);
+      // Cloud dapples: same gate as the terrain (full deck + high sun).
+      u.uCloudShK.value =
+        spec.cloudAmount * THREE.MathUtils.clamp((spec.sunElevation - 15) / 20, 0, 1);
     }
   }
 
@@ -978,39 +1065,38 @@ export class GrassSystem implements Subsystem {
     this.c.lerp(this.strawPale, hNorm * 0.2);
   }
 
-  /** ~6 ragged cover patches; first two parked where the shot set looks. */
+  /**
+   * The SIM's cover patches, mapped to world meters by hunt3d — the visible
+   * cover is exactly where the birds hide and the dog hunts. Each axis-
+   * aligned sim rect becomes a ragged ellipse (radii 1.3x the half extents
+   * so the dense core blankets the rect; softened harmonics keep the edge
+   * organic without carving deep into where a bird might sit). Patches
+   * whose ellipse never reaches the terrain plate are skipped — their
+   * birds live beyond the world edge this phase.
+   *
+   * The static mesh built here is the FAR read only: sparse, large-crown
+   * tussocks that keep a patch reading as a dark huntable mass from ~50 m
+   * out to the 105 m cover fade. Full waist-high density near the camera
+   * comes from the roaming tiles' V_COVER variant (fillTile).
+   */
   private buildPatches(ctx: Ctx): void {
-    // Local placement stream (per-subsystem RNG contract).
+    // Local stream for the ragged-edge phases (per-subsystem RNG contract).
     const prng = mulberry32(0xc0f3e1);
-    const mk = (cx: number, cz: number, rx: number, rz: number): CoverPatch => {
-      const rot = prng() * Math.PI;
-      return {
-        cx,
-        cz,
-        rx,
-        rz,
-        cos: Math.cos(rot),
-        sin: Math.sin(rot),
-        ph1: prng() * Math.PI * 2,
-        ph2: prng() * Math.PI * 2,
-      };
-    };
-    // Two patches on the hero sight lines (dawn-field looks +z from z=40;
-    // evening/lastlight look -x), the rest scattered in a ring. Kept inside
-    // ~120 m of the origin so no stray patch burns on a far swell.
-    this.patches.push(mk(12, 78, 18, 12));
-    this.patches.push(mk(-52, 28, 16, 11));
-    for (let i = 0; i < 4; i++) {
-      const a = prng() * Math.PI * 2;
-      const d = 40 + prng() * 80;
-      const cx = THREE.MathUtils.clamp(Math.sin(a) * d, -160, 160);
-      const cz = THREE.MathUtils.clamp(Math.cos(a) * d, -160, 160);
-      this.patches.push(mk(cx, cz, 10 + prng() * 12, 7 + prng() * 9));
+    for (const wp of this.hunt.coverPatches()) {
+      const rx = wp.hx * 1.3;
+      const rz = wp.hz * 1.3;
+      // Two phase draws ALWAYS consumed so a patch list change upstream
+      // (or the plate clip below) never re-rolls every other edge.
+      const ph1 = prng() * Math.PI * 2;
+      const ph2 = prng() * Math.PI * 2;
+      if (Math.abs(wp.cx) - rx * 1.4 > WORLD_LIMIT || Math.abs(wp.cz) - rz * 1.4 > WORLD_LIMIT) continue;
+      this.patches.push({ cx: wp.cx, cz: wp.cz, rx, rz, cos: 1, sin: 0, ph1, ph2 });
     }
+    this.buildTrails();
 
     for (const p of this.patches) {
       const ext = Math.max(p.rx, p.rz) * 1.45;
-      const attempts = Math.ceil(this.cfg.coverDensity * (2 * ext) * (2 * ext));
+      const attempts = Math.ceil(this.cfg.coverFarDensity * (2 * ext) * (2 * ext));
       const mats: THREE.Matrix4[] = [];
       const cols: THREE.Color[] = [];
       const rng = mulberry32(hashTile(Math.round(p.cx * 7), Math.round(p.cz * 7)));
@@ -1020,10 +1106,15 @@ export class GrassSystem implements Subsystem {
         if (Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT) continue;
         const s = this.coverAt(x, z);
         if (rng() > s * 1.25) continue;
+        // Game trails wear through the far layer too.
+        const tr = this.trailAt(x, z);
+        if (tr > 0 && rng() < tr * 0.9) continue;
         const y = this.terrain.heightAt(x, z) - 0.05;
         this.e.set(0, rng() * Math.PI * 2, 0);
         this.q.setFromEuler(this.e);
-        const sxz = 0.8 + rng() * 0.5;
+        // Large crowns: each far tussock stands for several near ones, so
+        // the sparse layer still closes into a mass at 60+ m.
+        const sxz = (0.8 + rng() * 0.5) * 1.25;
         this.s.set(sxz, 0.85 + rng() * 0.4, sxz);
         this.v.set(x, y, z);
         mats.push(new THREE.Matrix4().compose(this.v, this.q, this.s));
@@ -1042,13 +1133,101 @@ export class GrassSystem implements Subsystem {
         mesh.setMatrixAt(i, mats[i]);
         mesh.setColorAt(i, cols[i]);
       }
-      mesh.castShadow = this.cfg.castShadow;
+      // Tussock patches never cast (round-6 shadow audit): at grazing dawn
+      // elevation their dense 1 m fountains merged into a solid shadow
+      // smear across the hero frames — the same blanket the stubble made.
+      mesh.castShadow = false;
       mesh.receiveShadow = true;
       mesh.matrixAutoUpdate = false;
       mesh.computeBoundingSphere();
       ctx.scene.add(mesh);
       this.patchMeshes.push(mesh);
     }
+  }
+
+  /** Ellipse boundary distance from center along a unit direction. */
+  private ellipseRadiusToward(p: CoverPatch, dx: number, dz: number): number {
+    const lx = dx * p.cos + dz * p.sin;
+    const lz = -dx * p.sin + dz * p.cos;
+    return 1 / Math.sqrt((lx / p.rx) ** 2 + (lz / p.rz) ** 2 || 1e-6);
+  }
+
+  /**
+   * GAME TRAILS: 2-3 narrow worn paths connecting the patches nearest the
+   * world origin, each running from just inside one patch's fringe to just
+   * inside the next — where birds and deer actually travel between cover.
+   * Deterministic: the patch layout is fixed by the area, so the trails
+   * are too. trailAt() thins every planting layer along them.
+   */
+  private buildTrails(): void {
+    // Patches nearest the world origin hunt for a partner each: the
+    // closest patch they do NOT overlap (the quail-fields scatter piles
+    // several patches into one block — a trail between overlapping cover
+    // would be an invisible stub inside it). The gap between edges is
+    // where the worn line crosses open ground.
+    const order = this.patches
+      .map((_, i) => i)
+      .sort(
+        (a, b) =>
+          Math.hypot(this.patches[a].cx, this.patches[a].cz) -
+          Math.hypot(this.patches[b].cx, this.patches[b].cz),
+      );
+    const used = new Set<string>();
+    for (const ia of order) {
+      if (this.trails.length >= 3) break;
+      const a = this.patches[ia];
+      let bestJ = -1;
+      let bestGap = Infinity;
+      for (const ib of order) {
+        if (ib === ia || used.has(`${Math.min(ia, ib)}-${Math.max(ia, ib)}`)) continue;
+        const b = this.patches[ib];
+        const dist = Math.hypot(b.cx - a.cx, b.cz - a.cz) || 1;
+        const dx = (b.cx - a.cx) / dist;
+        const dz = (b.cz - a.cz) / dist;
+        const gap = dist - this.ellipseRadiusToward(a, dx, dz) - this.ellipseRadiusToward(b, -dx, -dz);
+        // Needs real open ground between the edges to read as a trail.
+        if (gap >= 4 && gap < bestGap) {
+          bestGap = gap;
+          bestJ = ib;
+        }
+      }
+      if (bestJ < 0) continue;
+      used.add(`${Math.min(ia, bestJ)}-${Math.max(ia, bestJ)}`);
+      const b = this.patches[bestJ];
+      let dx = b.cx - a.cx;
+      let dz = b.cz - a.cz;
+      const len = Math.hypot(dx, dz) || 1;
+      dx /= len;
+      dz /= len;
+      // Start/end pulled 30% inside each patch edge: the trail visibly
+      // enters the cover, the way a worn run disappears into ragweed.
+      const ra = this.ellipseRadiusToward(a, dx, dz) * 0.7;
+      const rb = this.ellipseRadiusToward(b, -dx, -dz) * 0.7;
+      const ax = a.cx + dx * ra;
+      const az = a.cz + dz * ra;
+      const sx = b.cx - dx * rb - ax;
+      const sz = b.cz - dz * rb - az;
+      this.trails.push({ ax, az, dx: sx, dz: sz, len2: sx * sx + sz * sz || 1 });
+    }
+  }
+
+  /** Trail wear at a point: 1 on the centerline, 0 beyond ~1.2 m. */
+  private trailAt(x: number, z: number): number {
+    let best = 0;
+    for (let i = 0; i < this.trails.length; i++) {
+      const t = this.trails[i];
+      const px = x - t.ax;
+      const pz = z - t.az;
+      let u = (px * t.dx + pz * t.dz) / t.len2;
+      u = u < 0 ? 0 : u > 1 ? 1 : u;
+      const ex = px - t.dx * u;
+      const ez = pz - t.dz * u;
+      const d2 = ex * ex + ez * ez;
+      if (d2 > 1.96) continue; // beyond 1.4 m of the line
+      const w = 1 - THREE.MathUtils.smoothstep(Math.sqrt(d2), 0.5, 1.4);
+      if (w > best) best = w;
+    }
+    return best;
   }
 
   /** Re-point the roaming tile grid at the camera's current cell. */
@@ -1101,12 +1280,15 @@ export class GrassSystem implements Subsystem {
         const dx = (tile.tx + 0.5) * TILE - cx;
         const dz = (tile.tz + 0.5) * TILE - cz;
         const near = dx * dx + dz * dz < 40 * 40;
-        tile.meshes[V_OPEN].castShadow = near;
+        tile.meshes[V_OPEN].castShadow = false; // blanket culprit — never casts
         tile.meshes[V_STALK].castShadow = near;
         tile.meshes[V_FORB].castShadow = false;
         // The body mass never casts — its skirts fake contact shadows and
         // its instance count would double the depth pass for nothing.
         tile.meshes[V_TUFT].castShadow = false;
+        // Tussocks never cast (round-6 audit: dense fountains at grazing
+        // dawn elevation merge into a solid shadow smear).
+        tile.meshes[V_COVER].castShadow = false;
       }
     }
   }
@@ -1132,6 +1314,12 @@ export class GrassSystem implements Subsystem {
     const lim = Math.max(Math.abs(px), Math.abs(pz));
     if (lim > WORLD_LIMIT) return false;
     if (lim > WORLD_LIMIT - 12 && rng() < (lim - (WORLD_LIMIT - 12)) / 12) return false;
+    // Game trails: a worn line keeps only scattered, trampled runts.
+    const trail = this.trailAt(px, pz);
+    if (trail > 0) {
+      if (rng() < trail * 0.93) return false;
+      vigor *= 1 - 0.55 * trail;
+    }
     const y = this.terrain.heightAt(px, pz) - 0.04;
     // Stubble rows share ONE field direction (drilled, harvested land);
     // everything else scatters its yaw freely.
@@ -1182,8 +1370,8 @@ export class GrassSystem implements Subsystem {
     tile.tx = tx;
     tile.tz = tz;
     const rng = mulberry32(hashTile(tx, tz));
-    const counts = [0, 0, 0, 0];
-    const caps = [this.cfg.capOpen, this.cfg.capStalk, this.cfg.capForb, this.cfg.capTuft];
+    const counts = [0, 0, 0, 0, 0];
+    const caps = [this.cfg.capOpen, this.cfg.capStalk, this.cfg.capForb, this.cfg.capTuft, this.cfg.capCover];
 
     // THE BODY: continuous tuft mass on a fine jittered grid. ~85% of
     // sites grow (the Firewatch meadow coverage the fw-* stills hold);
@@ -1196,8 +1384,21 @@ export class GrassSystem implements Subsystem {
         const x = tx * TILE + (gx + 0.08 + rng() * 0.84) * tStep;
         const z = tz * TILE + (gz + 0.08 + rng() * 0.84) * tStep;
         if (Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT) continue;
-        // Inside cover patches the tall tussocks carry the mass instead.
-        if (rng() < 0.8 * THREE.MathUtils.smoothstep(this.coverAt(x, z), 0.12, 0.6)) continue;
+        // Inside cover the MEADOW KEEPS RUNNING (coverage is the whole
+        // ballgame — round 5, item 1): only a third of body tufts yield
+        // their spot to tussocks. Cover reads dense/dark by the fringe
+        // boost below + tussocks ON TOP of grass, never grass replaced
+        // by dirt-and-reeds.
+        const cs = this.coverAt(x, z);
+        if (rng() < 0.35 * THREE.MathUtils.smoothstep(cs, 0.12, 0.6)) continue;
+        // MEDIUM tier — the fringe ring: body tufts around a patch stand
+        // taller and rankier, so cover grades patch -> fringe -> open the
+        // way real edge habitat does (and the eye reads where to hunt).
+        // The boost PEAKS at the ring and relaxes toward the heart — the
+        // interior stays a gold meadow the tussocks darken, not a reed bed.
+        const fringe =
+          THREE.MathUtils.smoothstep(cs, 0.04, 0.5) *
+          (1 - 0.6 * THREE.MathUtils.smoothstep(cs, 0.55, 0.95));
         const macro = this.clumpNoise(x * 0.055 + 40, z * 0.055 + 40);
         const meso = this.clumpNoise(x * 0.16 + 700, z * 0.16 + 700);
         const fertile = macro * 0.62 + meso * 0.38;
@@ -1219,16 +1420,31 @@ export class GrassSystem implements Subsystem {
         const drift = this.clumpNoise(x * 0.09 + 5100, z * 0.09 + 5100);
         if (drift < 0.3 && rng() < 0.22) continue;
         // Vigor floors at ~0.69x: bald-zone runts stay SHORT, not invisible.
+        // Fringe tufts take a rank-growth boost (up to +45% height).
         const vigor =
           (0.8 + 0.45 * THREE.MathUtils.clamp((fertile - 0.3) / 0.3, -0.28, 1)) *
-          (0.85 + rng() * 0.35);
-        this.placeTuft(tile, counts, caps, V_TUFT, x, z, vigor, rng);
+          (0.85 + rng() * 0.35) *
+          (1 + 0.32 * fringe);
+        if (this.placeTuft(tile, counts, caps, V_TUFT, x, z, vigor, rng) && fringe > 0.1) {
+          // Fringe hue: rank edge growth leans olive toward the patch.
+          const mesh = tile.meshes[V_TUFT];
+          this.c.lerp(this.grassOlive, fringe * 0.35);
+          mesh.setColorAt(counts[V_TUFT] - 1, this.c);
+        }
         if (drift > 0.52 && rng() < 0.5) {
           const a2 = rng() * Math.PI * 2;
           const d2 = 0.3 + rng() * 0.3;
           this.placeTuft(tile, counts, caps, V_TUFT,
             x + Math.sin(a2) * d2, z + Math.cos(a2) * d2,
             vigor * (0.7 + rng() * 0.4), rng);
+        }
+        // The fringe thickens: an extra tuft crowds in along the edge band.
+        if (fringe > 0.15 && fringe < 0.9 && rng() < 0.35 * fringe) {
+          const a3 = rng() * Math.PI * 2;
+          const d3 = 0.25 + rng() * 0.3;
+          this.placeTuft(tile, counts, caps, V_TUFT,
+            x + Math.sin(a3) * d3, z + Math.cos(a3) * d3,
+            vigor * (0.75 + rng() * 0.35), rng);
         }
       }
     }
@@ -1240,10 +1456,10 @@ export class GrassSystem implements Subsystem {
         const x = tx * TILE + (gx + 0.1 + rng() * 0.8) * cStep;
         const z = tz * TILE + (gz + 0.1 + rng() * 0.8) * cStep;
         if (Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT) continue;
-        // Cover boundary is FEATHERED: open stubble thins out across the
-        // patch fringe instead of stopping on the 0.35 contour line, and
-        // cover keeps a little open straw mixed in.
-        if (rng() < 0.85 * THREE.MathUtils.smoothstep(this.coverAt(x, z), 0.12, 0.6)) continue;
+        // Cover boundary is FEATHERED: open stubble thins across the patch
+        // fringe instead of stopping on a contour — and the patch interior
+        // keeps a real understory (birds hide in structure, not on dirt).
+        if (rng() < 0.45 * THREE.MathUtils.smoothstep(this.coverAt(x, z), 0.12, 0.6)) continue;
 
         // Fertility: macro meadows (~14 m) + meso patchiness (~5 m).
         const macro = this.clumpNoise(x * 0.055 + 40, z * 0.055 + 40);
@@ -1298,7 +1514,7 @@ export class GrassSystem implements Subsystem {
         const x = tx * TILE + (gx + 0.1 + rng() * 0.8) * gStep;
         const z = tz * TILE + (gz + 0.1 + rng() * 0.8) * gStep;
         if (Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT) continue;
-        if (rng() < 0.85 * THREE.MathUtils.smoothstep(this.coverAt(x, z), 0.12, 0.6)) continue;
+        if (rng() < 0.4 * THREE.MathUtils.smoothstep(this.coverAt(x, z), 0.12, 0.6)) continue;
         const macro = this.clumpNoise(x * 0.055 + 40, z * 0.055 + 40);
         const meso = this.clumpNoise(x * 0.16 + 700, z * 0.16 + 700);
         const fertile = macro * 0.62 + meso * 0.38;
@@ -1307,6 +1523,49 @@ export class GrassSystem implements Subsystem {
         this.placeTuft(tile, counts, caps, vi, x, z, 0.35 + rng() * 0.3, rng);
       }
     }
+
+    // DENSE tier — waist-high tussocks filling the sim's cover patches at
+    // full density near the camera (the static per-patch layer is only the
+    // sparse far read). Acceptance ramps with cover strength so the patch
+    // heart packs solid while the rim stays ragged; game trails wear
+    // narrow walkable lines straight through.
+    const cvStep = this.cfg.coverStep;
+    const cvCells = Math.floor(TILE / cvStep);
+    const coverMesh = tile.meshes[V_COVER];
+    for (let gx = 0; gx < cvCells; gx++) {
+      for (let gz = 0; gz < cvCells; gz++) {
+        if (counts[V_COVER] >= caps[V_COVER]) break;
+        const x = tx * TILE + (gx + 0.1 + rng() * 0.8) * cvStep;
+        const z = tz * TILE + (gz + 0.1 + rng() * 0.8) * cvStep;
+        if (Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT) continue;
+        const s = this.coverAt(x, z);
+        if (s < 0.08) continue;
+        if (rng() > THREE.MathUtils.smoothstep(s, 0.08, 0.7)) continue;
+        const trail = this.trailAt(x, z);
+        if (trail > 0 && rng() < trail * 0.95) continue;
+        const y = this.terrain.heightAt(x, z) - 0.05;
+        this.e.set(0, rng() * Math.PI * 2, 0);
+        this.q.setFromEuler(this.e);
+        const sxz = (0.78 + rng() * 0.5) * (1 - 0.3 * trail);
+        // Height rides cover strength: fringe tussocks knee-high, the
+        // heart waist-high — the tier step a hunter reads at a glance.
+        const sy = (0.68 + 0.42 * s) * (0.85 + rng() * 0.35) * (1 - 0.4 * trail);
+        this.s.set(sxz, sy, sxz);
+        this.v.set(x, y, z);
+        this.m.compose(this.v, this.q, this.s);
+        // Deeper olive than the far layer: near-camera tussocks are the
+        // DENSE tier's paint — visibly darker ground a dog gets sent into
+        // (kept a stop above round-1's charred hedge; haze still wins far).
+        this.c.copy(this.khaki).lerp(this.oliveMid, 0.4 + rng() * 0.4);
+        this.c.lerp(this.olive, s * (0.3 + rng() * 0.2));
+        if (rng() < 0.12) this.c.lerp(this.oliveDeep, 0.2);
+        this.c.multiplyScalar(0.98 + rng() * 0.26);
+        coverMesh.setMatrixAt(counts[V_COVER], this.m);
+        coverMesh.setColorAt(counts[V_COVER], this.c);
+        counts[V_COVER]++;
+      }
+    }
+
     for (let vi = 0; vi < N_VARIANTS; vi++) {
       const mesh = tile.meshes[vi];
       mesh.count = counts[vi];

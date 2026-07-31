@@ -27,9 +27,39 @@ const SHOTS = {
   'noon-open': [20, 10, 200, 4, 'noon'],
   'evening-field': [0, 40, 85, 3, 'evening'],
   'lastlight': [10, 20, 90, 5, 'lastlight'],
+  // Sim-posed: advances the (capture-frozen) hunt sim from the fixed seed
+  // until the dog reaches the wanted read, then frames it. Deterministic —
+  // stepping-until-a-predicate is a pure function of the seed.
+  //   mode 'work'  → dog busy inside a cover patch (tail-up cover work)
+  //   mode 'point' → dog frozen ON POINT; camera at hunter's-eye height,
+  //                  ~15 m back at a three-quarter angle: the money shot.
+  'dawn-dogwork': { tod: 'dawn', sim: 'work', base: [0, 40, 180, 4], maxTicks: 12000, dist: 10, spin: 0 },
+  // Probed framing: into the sunrise from the dog's left at 5 m — the
+  // covey holds mid-patch (no edge points exist in this seed), so the
+  // camera walks in close where the bluestem opens and the white coat,
+  // tail flag and driving head carry the read against the glow.
+  'dawn-point': { tod: 'dawn', sim: 'point', base: [0, 40, 180, 4], maxTicks: 30000, dist: 5, spin: -1.9, pitch: -8 },
   // Debug poses (not part of the standard set — request via --shots).
   'debug-shadow': [26, 82, 180, -6, 'dawn'],
   'debug-noon-shadow': [36, 62, 180, -10, 'noon'],
+  // Open ground looking at the SW edge of the sim's patch-9 cover block:
+  // the density-tier ladder (bare break -> sparse open -> fringe -> dense)
+  // and the 9->25 game trail all sit in this frame.
+  'debug-cover-edge': [2, -8, 222, 2, 'noon'],
+  // Sighting straight down the long 25->4 game trail across the open.
+  'debug-trail': [10, -29, 70, -4, 'noon'],
+  // Dog inspection poses (request via --shots): the point at 5 m for
+  // proportion work, and side-on at 8 m in flat light.
+  'debug-dog-close': { tod: 'dawn', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 5, spin: -0.62, pitch: -12 },
+  'debug-dog-side': { tod: 'noon', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 8, spin: -1.45, pitch: -6 },
+  'debug-dog-work-close': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 6, spin: 0.8, pitch: -8 },
+  // Mid-stride on open ground — proportion/gait inspection in the clear.
+  'debug-dog-open': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 4.5, spin: 1.5, pitch: -14 },
+  'debug-dog-open-rear': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 4.5, spin: 0.2, pitch: -14 },
+  // Macro poses at 2.2 m for anatomy work.
+  'debug-dog-macro-side': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.2, spin: 1.55, pitch: -22 },
+  'debug-dog-macro-front': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.2, spin: 2.7, pitch: -22 },
+  'debug-dog-macro-point': { tod: 'morning', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.6, spin: -1.55, pitch: -18 },
 };
 
 const args = process.argv.slice(2);
@@ -84,17 +114,98 @@ async function main() {
         failed++;
         continue;
       }
-      const [x, z, yaw, pitch, tod] = spec;
+      const tod = Array.isArray(spec) ? spec[4] : spec.tod;
       await page.goto(`${url}/index3d.html?capture=1&tod=${tod}`, { waitUntil: 'domcontentloaded' });
       await page.waitForFunction('window.__ready3d === true', { timeout: 30000 });
-      await page.evaluate(
-        (px, pz, pyaw, ppitch, ptod) => {
-          window.__api3d.setTod(ptod);
-          window.__api3d.setPose(px, pz, pyaw, ppitch);
-          window.__api3d.renderOnce();
-        },
-        x, z, yaw, pitch, tod,
-      );
+      if (Array.isArray(spec)) {
+        const [x, z, yaw, pitch] = spec;
+        await page.evaluate(
+          (px, pz, pyaw, ppitch, ptod) => {
+            window.__api3d.setTod(ptod);
+            window.__api3d.setPose(px, pz, pyaw, ppitch);
+            window.__api3d.renderOnce();
+          },
+          x, z, yaw, pitch, tod,
+        );
+      } else {
+        // Sim-posed shot: park the hunter, advance the frozen sim from the
+        // fixed seed until the dog reaches the wanted read (pure function
+        // of the seed), then frame it from `dist` meters at a `spin`-rad
+        // three-quarter angle off the line to the cover it faces.
+        const simInfo = await page.evaluate(
+          (base, mode, maxTicks, dist, spin, camPitch, ptod) => {
+            window.__api3d.setTod(ptod);
+            window.__api3d.setPose(...base);
+            const hunt = () => window.__api3d.hunt();
+            const inPatch = (h) =>
+              h.patches.some((p) => Math.abs(h.dog.x - p.cx) < p.hx && Math.abs(h.dog.z - p.cz) < p.hz);
+            // Distance from the dog to the nearest patch EDGE (negative = inside).
+            const edgeDist = (h) => {
+              let best = Infinity;
+              for (const p of h.patches) {
+                const ex = Math.abs(h.dog.x - p.cx) - p.hx;
+                const ez = Math.abs(h.dog.z - p.cz) - p.hz;
+                best = Math.min(best, Math.max(ex, ez));
+              }
+              return best;
+            };
+            const want =
+              mode === 'point'
+                // The point. (Probed: this seed's covey holds mid-patch, so
+                // the dog stands IN the bluestem — white coat, tail flag and
+                // head over the grass carry the read; edge points don't
+                // exist here to wait for.)
+                ? (h) => h.dog.state === 'pointing'
+                : mode === 'open'
+                  // Anatomy/gait inspection: mid-stride on open ground.
+                  ? (h) => h.dog.state === 'quartering' && h.dog.gait !== 'still' && edgeDist(h) > 6
+                  : (h) => h.dog.state === 'quartering' && h.dog.gait === 'run' && inPatch(h);
+            // Skip the opening cast so the frame isn't the first stride.
+            window.__api3d.stepSim(240);
+            let ticks = 240;
+            let h = hunt();
+            while (!want(h) && ticks < maxTicks) {
+              window.__api3d.stepSim(15);
+              ticks += 15;
+              h = hunt();
+            }
+            let nearest = h.patches[0];
+            let bd = Infinity;
+            for (const p of h.patches) {
+              const d = Math.hypot(p.cx - h.dog.x, p.cz - h.dog.z);
+              if (d < bd) { bd = d; nearest = p; }
+            }
+            // Back direction: away from the cover the dog faces, rotated by
+            // `spin` so the pose reads three-quarter, never dead-on rear.
+            let dx = h.dog.x - nearest.cx;
+            let dz = h.dog.z - nearest.cz;
+            const l = Math.hypot(dx, dz) || 1;
+            dx /= l; dz /= l;
+            const ca = Math.cos(spin);
+            const sa = Math.sin(spin);
+            const rx = dx * ca - dz * sa;
+            const rz = dx * sa + dz * ca;
+            const camX = Math.max(-230, Math.min(230, h.dog.x + rx * dist));
+            const camZ = Math.max(-230, Math.min(230, h.dog.z + rz * dist));
+            const vx = h.dog.x - camX;
+            const vz = h.dog.z - camZ;
+            const yawDeg = (Math.atan2(-vx, -vz) * 180) / Math.PI;
+            window.__api3d.setPose(camX, camZ, yawDeg, camPitch);
+            window.__api3d.renderOnce();
+            return { dog: h.dog, ticks, reached: want(h), cam: { x: camX, z: camZ, yawDeg }, simMs: h.simMs };
+          },
+          spec.base, spec.sim, spec.maxTicks, spec.dist, spec.spin ?? 0, spec.pitch ?? 0, tod,
+        );
+        if (!simInfo.reached) {
+          console.error(`  sim: ${name} never reached mode '${spec.sim}' in ${spec.maxTicks} ticks`);
+          failed++;
+        }
+        console.log(
+          `  sim: dog ${simInfo.dog.state}/${simInfo.dog.gait} at (${simInfo.dog.x.toFixed(1)}, ${simInfo.dog.z.toFixed(1)}), ` +
+          `cam (${simInfo.cam.x.toFixed(1)}, ${simInfo.cam.z.toFixed(1)}) yaw ${simInfo.cam.yawDeg.toFixed(0)}, ` +
+          `sim ${simInfo.simMs.avg.toFixed(3)}ms avg / ${simInfo.simMs.max.toFixed(2)}ms max per tick`,
+        );
+      }
       await new Promise((r) => setTimeout(r, 400)); // settle a few frames
       const file = `${outDir}/${name}.png`;
       await page.screenshot({ path: file });

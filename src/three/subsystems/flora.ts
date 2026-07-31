@@ -291,15 +291,19 @@ export class FloraSystem implements Subsystem {
             '\tfloat gCtr = pow( gCtrBase, 6.0 ) * uContraK;\n' +
             '\tfloat gWarmGate = 1.0 - pow( gCtrBase, 3.0 ) * min( uContraK * 1.2, 1.0 );\n' +
             '\tfloat gSF = dot( gWN, uSunDirW );\n' +
-            // Wrapped warm lobe (item 7): the sun's hue reaches ~30 deg past
-            // the terminator, so a canopy's camera side at dawn still takes
-            // SOME of the key's color instead of dropping straight to the
-            // cool shade tone — the lit/shade split reads painted, not
-            // binary. The shade multiplier is also lifted off near-black.
-            '\tfloat gWarm = min( clamp( gSF * 0.8 + 0.22, 0.0, 1.0 ) * uWarmK * vTone, 1.25 ) * gWarmGate;\n' +
-            '\tfloat gCool = min( clamp( -gSF, 0.0, 1.0 ) * uCoolK * min( vTone, 1.1 ), 1.0 );\n' +
-            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 1.32, 1.12, 0.82 ), gWarm );\n' +
-            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 0.68, 0.70, 0.84 ), gCool );\n' +
+            // Round-6 canopy two-tone (item 3): a PLATEAU split at the
+            // terminator, not a wrapped gradient — every canopy blob shows
+            // one committed lit face toward the sun and one committed shade
+            // face away, the painted A-Short-Hike read. The old wrap
+            // (gSF*0.8+0.22) put SOME warm on ~85% of the sphere, which is
+            // why the split never survived tone mapping. The transition
+            // stays a few degrees wide so facet edges anti-alias, and the
+            // shade multiplier stays lifted off near-black (round-4 lesson).
+            '\tfloat gSplit = smoothstep( -0.18, 0.26, gSF );\n' +
+            '\tfloat gWarm = min( gSplit * uWarmK * vTone, 1.25 ) * gWarmGate;\n' +
+            '\tfloat gCool = min( ( 1.0 - gSplit ) * uCoolK * min( vTone, 1.1 ), 1.0 );\n' +
+            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 1.38, 1.14, 0.80 ), gWarm );\n' +
+            '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), vec3( 0.60, 0.64, 0.85 ), gCool );\n' +
             // Light truth into a low sun: a fragment the camera sees against
             // the sun shows its shade side — pull its albedo hard toward
             // dark silhouette, and let the warm sun-facing glancing facets
