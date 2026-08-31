@@ -365,12 +365,15 @@ function wrapAngle(a: number): number {
 }
 
 export class DogSystem implements Subsystem {
-  readonly id = 'dog';
+  readonly id: string;
 
   constructor(
     private readonly visualBreed: VisualDogBreed,
     private readonly coatId: string,
-  ) {}
+    private readonly slot = 0,
+  ) {
+    this.id = slot === 0 ? 'dog' : `dog-${slot + 1}`;
+  }
 
   private hunt!: Hunt3DSystem;
   private terrain!: TerrainSystem;
@@ -842,7 +845,7 @@ export class DogSystem implements Subsystem {
     // world positions — so tools3d scripts can MEASURE planting and shadow
     // registration instead of trusting claims. Tooling-only; allocations
     // here never run in gameplay frames.
-    if (this.frozen) {
+    if (this.frozen && this.slot === 0) {
       const isolationVisibility = new Map<THREE.Object3D, boolean>();
       const normalBackground = ctx.scene.background;
       const reviewBackground = new THREE.Color(0x363a3a);
@@ -949,13 +952,13 @@ export class DogSystem implements Subsystem {
           return {
             root: { x: this.root.position.x, y: this.root.position.y, z: this.root.position.z },
             yaw: this.yaw,
-            state: this.hunt.dog().state,
-            gait: this.hunt.dog().gait,
+            state: this.hunt.dog(this.slot).state,
+            gait: this.hunt.dog(this.slot).gait,
             scent: {
-              stage: this.hunt.dog().scentStage,
-              progress: this.hunt.dog().scentProgress,
+              stage: this.hunt.dog(this.slot).scentStage,
+              progress: this.hunt.dog(this.slot).scentProgress,
             },
-            breed: this.hunt.dog().profile.breed.id,
+            breed: this.hunt.dog(this.slot).profile.breed.id,
             gallop: {
               cycle: this.locomotion.cycle,
               flight: this.flight,
@@ -1781,12 +1784,12 @@ export class DogSystem implements Subsystem {
   /* ------------------------------- update ------------------------------ */
 
   update(ctx: Ctx, dt: number): void {
-    const sd = this.hunt.dog();
+    const sd = this.hunt.dog(this.slot);
     // Capture advances the frozen sim in large explicit batches; its render
     // loop must show the exact latest snapshot. Live play interpolates the
     // adjacent 30 Hz snapshots using the engine alpha.
-    if (this.frozen) this.hunt.dogWorld(this.posW);
-    else this.hunt.dogRenderWorld(ctx.fixedAlpha, this.posW);
+    if (this.frozen) this.hunt.dogWorld(this.posW, this.slot);
+    else this.hunt.dogRenderWorld(ctx.fixedAlpha, this.posW, this.slot);
     const x = this.posW.x;
     const z = this.posW.z;
     const gy = this.terrain.heightAt(x, z);

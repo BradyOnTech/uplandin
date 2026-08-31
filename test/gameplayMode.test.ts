@@ -6,6 +6,7 @@ import {
   GAMEPLAY_MODE_KEY,
   loadGameplayMode,
   parseHuntLaunch,
+  parseDropPointId,
   resolveThreeHuntProfile,
   saveGameplayMode,
 } from '../src/game/gameplayMode';
@@ -40,6 +41,19 @@ describe('gameplay mode and shared hunt launch', () => {
     expect(parseHuntLaunch('?play=career&area=grouse-woods')).toEqual({ kind: 'career', areaId: 'grouse-woods' });
     expect(parseHuntLaunch('?play=quick')).toEqual({ kind: 'quick' });
     expect(parseHuntLaunch('?breed=gsp')).toBeNull();
+    expect(build3DHuntHref({ kind: 'quick' }, 'west-track'))
+      .toBe('./index3d.html?play=quick&drop=west-track');
+    expect(parseDropPointId('?play=quick&drop=west-track')).toBe('west-track');
+  });
+
+  it('starts a 3D launch at the selected drop point', () => {
+    const setup = createThreeHuntSetup(
+      '?play=career&area=quail-fields&drop=west-track',
+      mulberry32(22),
+      memoryStorage(),
+    );
+    expect(setup.hunt.dropPointId).toBe('west-track');
+    expect(setup.hunt.hunterPos).toEqual(setup.area.dropPoints[1].position);
   });
 
   it('boots 3D career hunts with the active dog, area, level, and career gun', () => {
@@ -55,6 +69,7 @@ describe('gameplay mode and shared hunt launch', () => {
     expect(setup.level).toBe(6);
     expect(setup.kennelDog?.name).toBe('Sage');
     expect(setup.hunt.gunId).toBe('over-under');
+    expect(setup.gearTier).toBe(0);
   });
 
   it('boots 3D quick hunts from the same persisted setup', () => {
@@ -69,6 +84,18 @@ describe('gameplay mode and shared hunt launch', () => {
     expect(setup.hunt.windStrength).toBe('strong');
     expect(setup.hunt.condition).toBe('frost');
     expect(setup.hunt.quick?.gearTier).toBe(2);
+    expect(setup.gearTier).toBe(2);
+    expect(setup.brace).toBeNull();
+  });
+
+  it('resolves the configured Quick Hunt bracemate for the 3D adapter', () => {
+    const storage = memoryStorage();
+    saveQuickConfig({
+      breedId: 'gsp', level: 5, areaId: 'quail-fields', wind: 'calm',
+      gunId: 'remington-870', gearTier: 1, breed2Id: 'english-setter', weather: 'mild',
+    }, storage);
+    const profile = resolveThreeHuntProfile('?play=quick', storage);
+    expect(profile.brace).toMatchObject({ breedId: 'english-setter', level: 5 });
   });
 
   it('keeps the standalone 3D review fallback on the English Setter', () => {

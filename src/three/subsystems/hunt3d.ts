@@ -1,11 +1,15 @@
-import type { AreaConfig } from '../../game/areas';
+import { getDropPoint, type AreaConfig, type DropPoint } from '../../game/areas';
+import { playWhistle } from '../../audio';
+import { circleBack } from '../../game/birds';
 import { BREEDS, getBreed, type BreedMotion } from '../../game/breeds';
 import { loadCareer, saveCareer } from '../../game/career';
 import { Dog, type DogGait, type DogState } from '../../game/dog';
+import { conditionMults } from '../../game/conditions';
 import { createThreeHuntSetup } from '../../game/gameplayMode';
 import { settleCareerHunt, type CareerHuntResult } from '../../game/huntResults';
 import {
   HuntSimulation,
+  HUNT_SHOT_RANGE,
   type HuntDogMotion,
   type RiseResolution,
   type HuntSimulationEvent,
@@ -13,9 +17,12 @@ import {
 import { dist, mulberry32 } from '../../game/math';
 import type { HuntState } from '../../game/state';
 import type { Vec2 } from '../../game/types';
+import { endHuntEarly } from '../../game/state';
+import { windMults } from '../../game/wind';
 import type { Ctx, Subsystem } from '../engine';
 import { huntPaceMultiplier } from '../dogs/huntMotion';
 import type { BirdsSystem } from './birds';
+import type { PlayerSystem } from './player';
 
 /*
  * HUNT3D subsystem: the bridge that makes this world THE GAME's world.
@@ -56,9 +63,6 @@ const DEFAULT_DOG_BREED = 'english-setter';
 const LIVE_DOG_AHEAD_M = 5;
 const LIVE_DOG_LEFT_M = 2;
 const LIVE_DOG_RELEASE_MOVE_PX = 1;
-/** Put one real fixed-seed covey down the opening lane, not beside the gun. */
-const LIVE_OPENING_COVEY_AHEAD_M = 50;
-const LIVE_OPENING_COVEY_SIDE_M = 7;
 /** 2D's 75 px/s reads as 69 m/s under the 3D yard mapping. */
 const LIVE_DOG_MOVEMENT_SCALE = 0.05;
 /**
@@ -131,7 +135,7 @@ export class Hunt3DSystem implements Subsystem {
 
   private area!: AreaConfig;
   private hunt!: HuntState;
-  private simDog!: Dog;
+  private simDogs: Dog[] = [];
   private patchesW: WorldPatch[] = [];
   /** Sim-px coords of the world origin (sim world center). */
   private simCx = 0;
@@ -145,7 +149,7 @@ export class Hunt3DSystem implements Subsystem {
   private liveDogAnchor: Vec2 = { x: 0, y: 0 };
   private simulation!: HuntSimulation;
   /** Adapter-only pace/range mapping passed through the shared sim seam. */
-  private liveDogMotion: HuntDogMotion = {};
+  private liveDogMotions: HuntDogMotion[] = [];
   private simMsLast = 0;
   private simMsMax = 0;
   private simMsTotal = 0;
@@ -156,71 +160,72 @@ export class Hunt3DSystem implements Subsystem {
   /** The most recent covey rise: ids + the walk-in distance that earned it. */
   private lastFlush: { ids: number[]; distPx: number } | null = null;
   /** Adjacent authoritative snapshots for smooth render interpolation. */
-  private dogPrevX = 0;
-  private dogPrevY = 0;
-  private dogCurrX = 0;
-  private dogCurrY = 0;
-  private dogSnapshotReady = false;
+  private dogSnapshots: Array<{
+    prevX: number;
+    prevY: number;
+    currX: number;
+    currY: number;
+    ready: boolean;
+  }> = [];
   /** Slow deterministic acceleration/deceleration while actively searching. */
-  private pacePhase = 0;
+  private pacePhases: number[] = [];
   /** Career settlement is idempotent even if the HUD renders many frames. */
-  private careerDogId: string | null = null;
+  private careerDogIds: Array<string | null> = [];
   private careerResult: CareerHuntResult | null = null;
   private careerSettled = false;
+  private gearTier = 0;
 
   init(ctx: Ctx): void {
     this.frozen = new URLSearchParams(location.search).has('capture');
 
     const setup = createThreeHuntSetup(location.search, mulberry32(HUNT_SEED));
-    this.careerDogId = setup.launch?.kind === 'career' ? setup.kennelDog?.id ?? null : null;
+    this.gearTier = setup.gearTier;
+    this.careerDogIds = setup.launch?.kind === 'career'
+      ? [setup.kennelDog?.id ?? null, setup.brace?.kennelDog?.id ?? null]
+      : [];
     this.area = setup.area;
-    this.simCx = this.area.world.x + this.area.world.w / 2;
-    this.simCy = this.area.world.y + this.area.world.h / 2;
-
-    // Fixed RNG keeps captures reproducible. Career and Quick Hunt options
-    // themselves come from the same saves/config used by FieldScene.
     this.hunt = setup.hunt;
-    if (!this.frozen) {
-      // createHunt scatters a sparse population across a kilometre-scale 2D
-      // covert. The 3D camera has no overhead map and previously mapped to
-      // the unrelated field center, leaving the nearest bird ~190 m off a
-      // normal walking lane. Translate (never mutate) the shared simulation
-      // so its first real covey sits ahead and slightly quartering from the
-      // player's authored start. All subsequent movement, scent, pointing,
-      // cover and bird state remain the shared simulation's responsibility.
-      const openingBird = this.hunt.birds.find((bird) => bird.state === 'hidden');
-      if (openingBird) {
-        const yaw = ctx.camera.rotation.y;
-        const forwardX = -Math.sin(yaw);
-        const forwardZ = -Math.cos(yaw);
-        const rightX = Math.cos(yaw);
-        const rightZ = -Math.sin(yaw);
-        const targetWorldX =
-          ctx.camera.position.x + forwardX * LIVE_OPENING_COVEY_AHEAD_M + rightX * LIVE_OPENING_COVEY_SIDE_M;
-        const targetWorldZ =
-          ctx.camera.position.z + forwardZ * LIVE_OPENING_COVEY_AHEAD_M + rightZ * LIVE_OPENING_COVEY_SIDE_M;
-        this.simCx = openingBird.pos.x - targetWorldX / SIM_PX_TO_M;
-        this.simCy = openingBird.pos.y - targetWorldZ / SIM_PX_TO_M;
-      }
-    }
-    const liveBreed = setup.breed;
-    this.simDog = new Dog(
-      { ...this.hunt.dogsPos[0] },
-      { breed: liveBreed, level: setup.level, ageMult: setup.ageMultiplier },
-      mulberry32(DOG_SEED),
-      this.area.world,
+    // Pin the selected truck to the authored camera start. Unlike the old
+    // opening-covey translation, this mapping preserves every landmark,
+    // trail, cover patch, dog and bird in one coherent shared geography.
+    const drop = getDropPoint(this.area, this.hunt.dropPointId);
+    ctx.get<PlayerSystem>('player').setHuntHeading(ctx, drop.heading);
+    this.simCx = drop.position.x - ctx.camera.position.x / SIM_PX_TO_M;
+    this.simCy = drop.position.y - ctx.camera.position.z / SIM_PX_TO_M;
+    const dogProfiles = [
+      { breed: setup.breed, level: setup.level, ageMultiplier: setup.ageMultiplier },
+      ...(setup.brace
+        ? [{
+            breed: getBreed(setup.brace.breedId),
+            level: setup.brace.level,
+            ageMultiplier: setup.brace.ageMultiplier,
+          }]
+        : []),
+    ];
+    this.simDogs = dogProfiles.map((profile, slot) =>
+      new Dog(
+        { ...this.hunt.dogsPos[slot] },
+        { breed: profile.breed, level: profile.level, ageMult: profile.ageMultiplier },
+        mulberry32((DOG_SEED + slot * 0x9e3779b9) >>> 0),
+        this.area.world,
+      ),
     );
-    this.dogPrevX = this.dogCurrX = this.simDog.pos.x;
-    this.dogPrevY = this.dogCurrY = this.simDog.pos.y;
-
-    this.liveDogMotion = {
-      movementScale: this.frozen ? 1 : liveMovementScaleForGait(this.simDog.gait),
+    this.dogSnapshots = this.simDogs.map((dog) => ({
+      prevX: dog.pos.x,
+      prevY: dog.pos.y,
+      currX: dog.pos.x,
+      currY: dog.pos.y,
+      ready: false,
+    }));
+    this.pacePhases = this.simDogs.map(() => 0);
+    this.liveDogMotions = this.simDogs.map((dog) => ({
+      movementScale: this.frozen ? 1 : liveMovementScaleForGait(dog.gait),
       rangeRadius: this.frozen ? undefined : LIVE_DOG_RANGE_M / SIM_PX_TO_M,
       workAnchor: this.frozen ? undefined : this.liveDogAnchor,
-    };
+    }));
     this.simulation = new HuntSimulation({
       hunt: this.hunt,
-      dogs: [this.simDog],
+      dogs: this.simDogs,
       area: this.area,
       rng: this.flushRng,
     });
@@ -281,15 +286,19 @@ export class Hunt3DSystem implements Subsystem {
     if (!this.frozen && !this.liveSpawnSynced) {
       const leftX = -Math.cos(yaw);
       const leftZ = Math.sin(yaw);
-      this.simDog.pos.x = this.hunt.hunterPos.x +
-        (forwardX * LIVE_DOG_AHEAD_M + leftX * LIVE_DOG_LEFT_M) / SIM_PX_TO_M;
-      this.simDog.pos.y = this.hunt.hunterPos.y +
-        (forwardZ * LIVE_DOG_AHEAD_M + leftZ * LIVE_DOG_LEFT_M) / SIM_PX_TO_M;
-      this.simDog.state = 'heel';
-      this.simDog.gait = 'still';
-      // Stand three-quarter at heel so the marked head/ear is readable,
-      // rather than presenting a featureless white rump to the player.
-      this.simDog.heading = Math.atan2(forwardZ, forwardX) + LIVE_DOG_INTRO_ANGLE;
+      for (let slot = 0; slot < this.simDogs.length; slot++) {
+        const dog = this.simDogs[slot];
+        const side = slot === 0 ? 1 : -1;
+        dog.pos.x = this.hunt.hunterPos.x +
+          (forwardX * LIVE_DOG_AHEAD_M + leftX * LIVE_DOG_LEFT_M * side) / SIM_PX_TO_M;
+        dog.pos.y = this.hunt.hunterPos.y +
+          (forwardZ * LIVE_DOG_AHEAD_M + leftZ * LIVE_DOG_LEFT_M * side) / SIM_PX_TO_M;
+        dog.state = 'heel';
+        dog.gait = 'still';
+        // Stand three-quarter at heel so the marked head/ear is readable,
+        // rather than presenting a featureless white rump to the player.
+        dog.heading = Math.atan2(forwardZ, forwardX) + LIVE_DOG_INTRO_ANGLE * side;
+      }
       this.liveIntroHolding = true;
       this.liveIntroHunter.x = this.hunt.hunterPos.x;
       this.liveIntroHunter.y = this.hunt.hunterPos.y;
@@ -300,7 +309,7 @@ export class Hunt3DSystem implements Subsystem {
       const playerStartedWalking =
         dist(this.hunt.hunterPos, this.liveIntroHunter) >= LIVE_DOG_RELEASE_MOVE_PX;
       if (playerStartedWalking) {
-        this.simDog.castOff();
+        for (const dog of this.simDogs) dog.castOff();
         this.liveIntroHolding = false;
       }
     }
@@ -308,9 +317,12 @@ export class Hunt3DSystem implements Subsystem {
     // Preserve the previous authoritative snapshot before the sim writes
     // the next one. The first live placement snaps both ends so the dog
     // cannot interpolate in from its distant authored 2D spawn.
-    if (this.dogSnapshotReady && !snappedSpawn) {
-      this.dogPrevX = this.dogCurrX;
-      this.dogPrevY = this.dogCurrY;
+    if (!snappedSpawn) {
+      for (const snapshot of this.dogSnapshots) {
+        if (!snapshot.ready) continue;
+        snapshot.prevX = snapshot.currX;
+        snapshot.prevY = snapshot.currY;
+      }
     }
 
     // Exactly the FieldScene consumption order: birds move, then the dog.
@@ -318,28 +330,41 @@ export class Hunt3DSystem implements Subsystem {
     // multiplier supplies acceleration/deceleration within a cast rather
     // than making a hunting dog run at one mechanical velocity forever.
     if (!this.frozen) {
-      this.pacePhase += (dtMs / 1000) * Math.PI * 2 * this.simDog.profile.breed.motion.surgeHz;
-      this.liveDogMotion.movementScale = liveMovementScaleForDog(
-        this.simDog.gait,
-        this.simDog.state,
-        this.simDog.profile.breed.motion,
-        this.pacePhase,
-      );
+      for (let slot = 0; slot < this.simDogs.length; slot++) {
+        const dog = this.simDogs[slot];
+        this.pacePhases[slot] += (dtMs / 1000) * Math.PI * 2 * dog.profile.breed.motion.surgeHz;
+        this.liveDogMotions[slot].movementScale = liveMovementScaleForDog(
+          dog.gait,
+          dog.state,
+          dog.profile.breed.motion,
+          this.pacePhases[slot],
+        );
+      }
     }
+    const player = ctx.get<PlayerSystem>('player');
+    const recall = player.consumeRecall();
+    if (recall) playWhistle();
     const events = this.simulation.update(dtMs, {
       hunterPos: this.hunt.hunterPos,
-      dogMotion: [this.liveDogMotion],
+      hunterRunning: player.isRunning(),
+      recall,
+      whistleRange: this.gearTier >= 3 ? Infinity : undefined,
+      dogMotion: this.liveDogMotions,
     });
     this.recordEvents(events);
-    this.dogCurrX = this.simDog.pos.x;
-    this.dogCurrY = this.simDog.pos.y;
-    if (!this.dogSnapshotReady || snappedSpawn) {
-      this.dogPrevX = this.dogCurrX;
-      this.dogPrevY = this.dogCurrY;
-      this.dogSnapshotReady = true;
+    for (let slot = 0; slot < this.simDogs.length; slot++) {
+      const dog = this.simDogs[slot];
+      const snapshot = this.dogSnapshots[slot];
+      snapshot.currX = dog.pos.x;
+      snapshot.currY = dog.pos.y;
+      if (!snapshot.ready || snappedSpawn) {
+        snapshot.prevX = snapshot.currX;
+        snapshot.prevY = snapshot.currY;
+        snapshot.ready = true;
+      }
+      this.hunt.dogsPos[slot].x = dog.pos.x;
+      this.hunt.dogsPos[slot].y = dog.pos.y;
     }
-    this.hunt.dogsPos[0].x = this.simDog.pos.x;
-    this.hunt.dogsPos[0].y = this.simDog.pos.y;
 
     const ms = performance.now() - t0;
     this.simMsLast = ms;
@@ -355,6 +380,20 @@ export class Hunt3DSystem implements Subsystem {
   private recordEvents(events: readonly HuntSimulationEvent[]): void {
     for (const event of events) {
       if (event.type !== 'covey-flushed') continue;
+      if (event.hunterDistance > HUNT_SHOT_RANGE) {
+        const relanded = circleBack(
+          this.hunt.birds,
+          event.birdIds,
+          this.area.world,
+          this.flushRng,
+          windMults(this.hunt.windStrength).nerve * conditionMults(this.hunt.condition).nerve,
+        );
+        if (relanded.length === 0) {
+          for (const birdId of event.birdIds) this.simulation.resolveBird(birdId, 'escaped');
+        }
+        this.simulation.finishRise({ relight: false });
+        continue;
+      }
       this.lastFlush = { ids: event.birdIds, distPx: event.hunterDistance };
     }
   }
@@ -375,11 +414,13 @@ export class Hunt3DSystem implements Subsystem {
    * or null if there is no live point (or the point broke on the way in).
    */
   triggerFlush(ctx: Ctx): { ids: number[]; distPx: number } | null {
-    if (this.simDog.state !== 'pointing' || this.simDog.pointedBirdId === null) return null;
+    const pointingSlot = this.simDogs.findIndex((dog) => dog.state === 'pointing' && dog.pointedBirdId !== null);
+    if (pointingSlot < 0) return null;
+    const pointingDog = this.simDogs[pointingSlot];
     const birds = this.hunt.birds;
     let bird: (typeof birds)[number] | undefined;
     for (const b of birds) {
-      if (b.id === this.simDog.pointedBirdId) {
+      if (b.id === pointingDog.pointedBirdId) {
         bird = b;
         break;
       }
@@ -401,10 +442,10 @@ export class Hunt3DSystem implements Subsystem {
       ctx.camera.position.z = (ny - this.simCy) * SIM_PX_TO_M;
       this.tick(ctx, 1000 / 30);
       if (this.lastFlush !== previousFlush) return this.lastFlush;
-      if (this.simDog.state !== 'pointing' || bird.state !== 'hidden') return null;
+      if (pointingDog.state !== 'pointing' || bird.state !== 'hidden') return null;
     }
     if (dist(this.hunt.hunterPos, bird.pos) > FLUSH_RADIUS_PX) return null;
-    const event = this.simulation.flushBird(bird.id, 'proximity', 0);
+    const event = this.simulation.flushBird(bird.id, 'proximity', pointingSlot);
     if (event) this.recordEvents([event]);
     return this.lastFlush;
   }
@@ -414,19 +455,32 @@ export class Hunt3DSystem implements Subsystem {
     return this.simulation.resolveBird(birdId, outcome);
   }
 
+  /** Convert a presentation-space ground contact into the shared fall. */
+  recordFallWorld(birdId: number, worldX: number, worldZ: number): boolean {
+    const position = this.worldToSim(worldX, worldZ, { x: 0, y: 0 });
+    return this.simulation.recordFall(birdId, position);
+  }
+
   finishRise(): RiseResolution | null {
     return this.simulation.finishRise();
+  }
+
+  /** Write off unresolved birds so either renderer can complete a hunt early. */
+  endHunt(): number {
+    return endHuntEarly(this.hunt);
   }
 
   /** Persist one completed 3D career hunt through the shared result module. */
   settleCareer(): CareerHuntResult | null {
     if (this.careerSettled) return this.careerResult;
     this.careerSettled = true;
-    if (!this.careerDogId) return null;
+    if (this.careerDogIds.length === 0 || this.careerDogIds.every((id) => id === null)) return null;
     const career = loadCareer();
-    const dog = career.kennel.find((candidate) => candidate.id === this.careerDogId) ?? null;
-    if (!dog) return null;
-    this.careerResult = settleCareerHunt(career, this.hunt, [dog]);
+    const dogs = this.careerDogIds.map((id) =>
+      id ? career.kennel.find((candidate) => candidate.id === id) ?? null : null,
+    );
+    if (!dogs[0]) return null;
+    this.careerResult = settleCareerHunt(career, this.hunt, dogs);
     saveCareer(this.careerResult.career);
     return this.careerResult;
   }
@@ -443,9 +497,23 @@ export class Hunt3DSystem implements Subsystem {
     return this.hunt;
   }
 
+  areaConfig(): AreaConfig {
+    return this.area;
+  }
+
+  dropPoint(): DropPoint {
+    return getDropPoint(this.area, this.hunt.dropPointId);
+  }
+
   /** The sim dog — position/state/gait are truth for the dog renderer. */
-  dog(): Dog {
-    return this.simDog;
+  dog(slot = 0): Dog {
+    const dog = this.simDogs[slot];
+    if (!dog) throw new Error(`hunt3d: dog slot ${slot} is not active`);
+    return dog;
+  }
+
+  dogCount(): number {
+    return this.simDogs.length;
   }
 
   /** Every cover patch of the covert, in world meters (axis-aligned). */
@@ -468,15 +536,18 @@ export class Hunt3DSystem implements Subsystem {
   }
 
   /** The sim dog's position in world meters. Writes into `out`. */
-  dogWorld<T extends { x: number; z: number }>(out: T): T {
-    return this.simToWorld(this.simDog.pos.x, this.simDog.pos.y, out);
+  dogWorld<T extends { x: number; z: number }>(out: T, slot = 0): T {
+    const dog = this.dog(slot);
+    return this.simToWorld(dog.pos.x, dog.pos.y, out);
   }
 
   /** Previous/current fixed snapshots interpolated for render presentation. */
-  dogRenderWorld<T extends { x: number; z: number }>(alpha: number, out: T): T {
+  dogRenderWorld<T extends { x: number; z: number }>(alpha: number, out: T, slot = 0): T {
+    const snapshot = this.dogSnapshots[slot];
+    if (!snapshot) throw new Error(`hunt3d: dog snapshot ${slot} is not active`);
     const t = Math.max(0, Math.min(1, alpha));
-    const sx = this.dogPrevX + (this.dogCurrX - this.dogPrevX) * t;
-    const sy = this.dogPrevY + (this.dogCurrY - this.dogPrevY) * t;
+    const sx = snapshot.prevX + (snapshot.currX - snapshot.prevX) * t;
+    const sy = snapshot.prevY + (snapshot.currY - snapshot.prevY) * t;
     return this.simToWorld(sx, sy, out);
   }
 

@@ -7,6 +7,7 @@ import { KennelScene } from './scenes/KennelScene';
 import { MapScene } from './scenes/MapScene';
 import { QuickScene } from './scenes/QuickScene';
 import { TitleScene } from './scenes/TitleScene';
+import { DropScene } from './scenes/DropScene';
 
 /** Internal resolution — deliberately tiny, scaled up with nearest-neighbor for the retro look. */
 export const GAME_WIDTH = 480;
@@ -23,7 +24,7 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [TitleScene, BreedScene, MapScene, KennelScene, QuickScene, AreaScene, FieldScene, FlushScene],
+  scene: [TitleScene, BreedScene, MapScene, KennelScene, QuickScene, AreaScene, DropScene, FieldScene, FlushScene],
 };
 
 // Vite HMR can re-evaluate this module (any update it can't accept in place

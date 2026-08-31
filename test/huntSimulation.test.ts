@@ -92,4 +92,14 @@ describe('HuntSimulation shared orchestration', () => {
     expect(hunt.dogWork[0].downedOverPoint).toBe(2);
     expect(simulation.finishRise()).toBeNull();
   });
+
+  it('records the landed fall as the retrieve target only for a downed bird', () => {
+    const { bird, simulation } = pointedSimulation(10);
+    simulation.update(1000 / 30, { hunterPos: { x: 290, y: 300 } });
+    expect(simulation.recordFall(bird.id, { x: 420, y: 360 })).toBe(false);
+
+    expect(simulation.resolveBird(bird.id, 'downed')).toBe(true);
+    expect(simulation.recordFall(bird.id, { x: 420, y: 360 })).toBe(true);
+    expect(bird.pos).toEqual({ x: 420, y: 360 });
+  });
 });

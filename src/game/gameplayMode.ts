@@ -2,11 +2,13 @@ import { getArea, type AreaConfig } from './areas';
 import { BREEDS, getBreed, type BreedConfig } from './breeds';
 import {
   activeDog,
+  braceDog,
   dogAge,
   loadCareer,
   type KennelDog,
   type StorageLike,
 } from './career';
+import { gearTierFor, twoDogUnlocked } from './progression';
 import { loadQuickConfig, type QuickConfig } from './quick';
 import {
   ageMult,
@@ -56,10 +58,15 @@ export type HuntLaunch =
   | { kind: 'career'; areaId: string }
   | { kind: 'quick' };
 
-export function build3DHuntHref(launch: HuntLaunch): string {
+export function build3DHuntHref(launch: HuntLaunch, dropPointId?: string): string {
   const params = new URLSearchParams({ play: launch.kind });
   if (launch.kind === 'career') params.set('area', launch.areaId);
+  if (dropPointId) params.set('drop', dropPointId);
   return `./index3d.html?${params.toString()}`;
+}
+
+export function parseDropPointId(search: string): string | undefined {
+  return new URLSearchParams(search).get('drop') ?? undefined;
 }
 
 export function parseHuntLaunch(search: string): HuntLaunch | null {
@@ -78,6 +85,13 @@ export interface ThreeHuntProfile {
   ageMultiplier: number;
   kennelDog: KennelDog | null;
   quick: QuickConfig | null;
+  gearTier: number;
+  brace: {
+    breedId: string;
+    level: number;
+    ageMultiplier: number;
+    kennelDog: KennelDog | null;
+  } | null;
 }
 
 /** Resolve the same selected dog/setup regardless of which renderer boots. */
@@ -94,18 +108,32 @@ export function resolveThreeHuntProfile(
       ageMultiplier: 1,
       kennelDog: null,
       quick,
+      gearTier: quick.gearTier,
+      brace: quick.breed2Id === 'none'
+        ? null
+        : { breedId: quick.breed2Id, level: quick.level, ageMultiplier: 1, kennelDog: null },
     };
   }
   if (launch?.kind === 'career') {
     const career = loadCareer(storage);
     const kennelDog = activeDog(career);
     if (kennelDog) {
+      const mate = twoDogUnlocked(career.hunter.level) ? braceDog(career) : null;
       return {
         breedId: kennelDog.breedId,
         level: kennelDog.level,
         ageMultiplier: ageMult(dogAge(career, kennelDog)),
         kennelDog,
         quick: null,
+        gearTier: gearTierFor(career.hunter.level),
+        brace: mate
+          ? {
+              breedId: mate.breedId,
+              level: mate.level,
+              ageMultiplier: ageMult(dogAge(career, mate)),
+              kennelDog: mate,
+            }
+          : null,
       };
     }
   }
@@ -121,6 +149,8 @@ export function resolveThreeHuntProfile(
     ageMultiplier: 1,
     kennelDog: null,
     quick: null,
+    gearTier: 3,
+    brace: null,
   };
 }
 
@@ -142,6 +172,7 @@ export function createThreeHuntSetup(
 ): ThreeHuntSetup {
   const launch = parseHuntLaunch(search);
   const profile = resolveThreeHuntProfile(search, storage);
+  const dropPointId = parseDropPointId(search);
 
   if (launch?.kind === 'quick') {
     const quick = profile.quick ?? loadQuickConfig(storage);
@@ -150,6 +181,7 @@ export function createThreeHuntSetup(
       wind: quick.wind === 'random' ? undefined : quick.wind,
       gunId: quick.gunId,
       condition: quick.weather === 'random' ? undefined : quick.weather,
+      dropPointId,
     });
     hunt.quick = quick;
     return { ...profile, launch, area, hunt, breed: getBreed(profile.breedId) };
@@ -164,6 +196,7 @@ export function createThreeHuntSetup(
       mix: openMix(area, career.date.week),
       youngShare: youngShare(career.date.week),
       educatedMult: educatedNerveMult(career.date.week),
+      dropPointId,
     });
     return { ...profile, launch, area, hunt, breed: getBreed(profile.breedId) };
   }
@@ -171,6 +204,6 @@ export function createThreeHuntSetup(
   // Standalone review/capture keeps the old deterministic showcase setup.
   const params = new URLSearchParams(search);
   const area = getArea(params.get('area') ?? 'quail-fields');
-  const hunt = createHunt(area, rng, { wind: 'breezy', condition: 'frost' });
+  const hunt = createHunt(area, rng, { wind: 'breezy', condition: 'frost', dropPointId });
   return { ...profile, launch, area, hunt, breed: getBreed(profile.breedId) };
 }

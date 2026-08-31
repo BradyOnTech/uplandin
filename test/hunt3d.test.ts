@@ -8,11 +8,26 @@ import {
   liveMovementScaleForGait,
 } from '../src/three/subsystems/hunt3d';
 import { pickBirdAlongRay } from '../src/three/subsystems/birds';
+import { saveQuickConfig } from '../src/game/quick';
+import type { StorageLike } from '../src/game/career';
 
 function liveCtx(x = 0, z = 40): Ctx {
-  return {
+  const ctx = {
     camera: { position: { x, z }, rotation: { y: Math.PI } },
   } as unknown as Ctx;
+  const player = {
+    isRunning: () => false,
+    consumeRecall: () => false,
+    setHuntHeading: (_ctx: Ctx, heading: number) => { ctx.camera.rotation.y = -heading - Math.PI / 2; },
+  };
+  const birds = { isRiseActive: () => false };
+  (ctx as unknown as { get: (id: string) => unknown }).get = (id) => id === 'player' ? player : birds;
+  return ctx;
+}
+
+function walkForward(ctx: Ctx, distance: number): void {
+  ctx.camera.position.x += -Math.sin(ctx.camera.rotation.y) * distance;
+  ctx.camera.position.z += -Math.cos(ctx.camera.rotation.y) * distance;
 }
 
 describe('Hunt3DSystem live start', () => {
@@ -37,7 +52,7 @@ describe('Hunt3DSystem live start', () => {
     for (let i = 0; i < 300; i++) hunt.fixedUpdate(ctx, 1000 / 30);
     expect(hunt.dog().state).toBe('heel');
 
-    ctx.camera.position.z += 2;
+    walkForward(ctx, 2);
     hunt.fixedUpdate(ctx, 1000 / 30);
     // The opening covey may already be on the edge of the Setter's wind-
     // stretched nose; either open search or the first scent beat is a valid
@@ -56,7 +71,7 @@ describe('Hunt3DSystem live start', () => {
     // out of frame almost immediately; the live 3D cast should keep working
     // the lane ahead of the moving hunter.
     for (let i = 0; i < 150; i++) {
-      ctx.camera.position.z += 2.2 / 30;
+      walkForward(ctx, 2.2 / 30);
       hunt.fixedUpdate(ctx, 1000 / 30);
     }
 
@@ -81,12 +96,12 @@ describe('Hunt3DSystem live start', () => {
     // This drives the exact live bridge: camera → hunter → work anchor →
     // shared Dog scent logic. A player should not need debug knowledge of
     // hidden bird coordinates to see the game's central sequence.
-    ctx.camera.position.z += 2;
+    walkForward(ctx, 2);
     let sawScent = false;
     let sawPoint = false;
     let maxDogHandlerM = 0;
     for (let i = 0; i < 30 * 30; i++) {
-      ctx.camera.position.z += 2.2 / 30;
+      walkForward(ctx, 2.2 / 30);
       hunt.fixedUpdate(ctx, 1000 / 30);
       const dog = hunt.dog();
       const dogW = hunt.dogWorld({ x: 0, z: 0 });
@@ -111,9 +126,9 @@ describe('Hunt3DSystem live start', () => {
     hunt.init(ctx);
     hunt.fixedUpdate(ctx, 1000 / 30);
 
-    ctx.camera.position.z += 2;
+    walkForward(ctx, 2);
     for (let i = 0; i < 30 * 30 && hunt.dog().state !== 'pointing'; i++) {
-      ctx.camera.position.z += 2.2 / 30;
+      walkForward(ctx, 2.2 / 30);
       hunt.fixedUpdate(ctx, 1000 / 30);
     }
     expect(hunt.dog().state).toBe('pointing');
@@ -143,6 +158,43 @@ describe('Hunt3DSystem live start', () => {
     expect(hunt.huntState().downed).toBe(1);
   });
 
+  it('retrieves from the rendered landing point and credits the dog', () => {
+    vi.stubGlobal('location', { search: '?breed=english-setter' });
+    const ctx = liveCtx();
+    const hunt = new Hunt3DSystem();
+    hunt.init(ctx);
+    hunt.fixedUpdate(ctx, 1000 / 30);
+
+    const dog = hunt.dog();
+    const bird = hunt.huntState().birds[0];
+    hunt.huntState().birds.splice(1);
+    bird.state = 'hidden';
+    bird.pos = { ...dog.pos, x: dog.pos.x + 10 };
+    dog.state = 'pointing';
+    dog.pointedBirdId = bird.id;
+    const flush = hunt.triggerFlush(ctx);
+    expect(flush?.ids).toContain(bird.id);
+    expect(hunt.resolveBird(bird.id, 'downed')).toBe(true);
+
+    const landing = { x: ctx.camera.position.x + 18, z: ctx.camera.position.z + 4 };
+    expect(hunt.recordFallWorld(bird.id, landing.x, landing.z)).toBe(true);
+    const landedSim = hunt.worldToSim(landing.x, landing.z, { x: 0, y: 0 });
+    expect(bird.pos.x).toBeCloseTo(landedSim.x, 8);
+    expect(bird.pos.y).toBeCloseTo(landedSim.y, 8);
+    hunt.finishRise();
+
+    let sawRetrieving = false;
+    const birdState = () => hunt.huntState().birds[0].state;
+    const dogState = () => hunt.dog().state;
+    for (let i = 0; i < 1200 && birdState() !== 'retrieved'; i++) {
+      hunt.step(ctx, 1);
+      sawRetrieving ||= dogState() === 'retrieving';
+    }
+    expect(sawRetrieving).toBe(true);
+    expect(birdState()).toBe('retrieved');
+    expect(hunt.huntState().dogWork[0].retrieves).toBe(1);
+  });
+
   it('interpolates adjacent fixed dog snapshots for the render frame', () => {
     vi.stubGlobal('location', { search: '' });
     const ctx = liveCtx();
@@ -150,7 +202,7 @@ describe('Hunt3DSystem live start', () => {
     hunt.init(ctx);
     hunt.fixedUpdate(ctx, 1000 / 30);
 
-    ctx.camera.position.z += 2;
+    walkForward(ctx, 2);
     hunt.fixedUpdate(ctx, 1000 / 30);
     const previous = hunt.dogRenderWorld(0, { x: 0, z: 0 });
     const current = hunt.dogRenderWorld(1, { x: 0, z: 0 });
@@ -187,6 +239,25 @@ describe('Hunt3DSystem live start', () => {
       liveMovementScaleForGait('trot'),
     );
     expect(liveMovementScaleForDog('run', 'recalled', motion, Math.PI / 2)).toBe(base);
+  });
+
+  it('boots both dogs from a Quick Hunt brace', () => {
+    const data: Record<string, string> = {};
+    const storage: StorageLike = {
+      getItem: (key) => data[key] ?? null,
+      setItem: (key, value) => { data[key] = value; },
+    };
+    saveQuickConfig({
+      breedId: 'gsp', level: 5, areaId: 'quail-fields', wind: 'calm',
+      gunId: 'remington-870', gearTier: 2, breed2Id: 'english-setter', weather: 'mild',
+    }, storage);
+    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('location', { search: '?play=quick' });
+    const hunt = new Hunt3DSystem();
+    hunt.init(liveCtx());
+    expect(hunt.dogCount()).toBe(2);
+    expect(hunt.dog(0).profile.breed.id).toBe('gsp');
+    expect(hunt.dog(1).profile.breed.id).toBe('english-setter');
   });
 });
 

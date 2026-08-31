@@ -319,6 +319,7 @@ export class FieldScene extends Phaser.Scene {
     dogs?: Dog[];
     quick?: QuickConfig;
     simulation?: HuntSimulation;
+    dropPointId?: string;
   }): void {
     // Quick Hunt: the picked setup rides inside HuntState so it survives the
     // trip through FlushScene. Career mode reads the kennel as usual.
@@ -338,6 +339,7 @@ export class FieldScene extends Phaser.Scene {
               wind: this.quick.wind !== 'random' ? this.quick.wind : undefined,
               gunId: this.quick.gunId,
               condition: this.quick.weather !== 'random' ? this.quick.weather : undefined,
+              dropPointId: data.dropPointId,
             }
           : {
               // Career: the calendar shapes the hunt — what's open, how the
@@ -347,6 +349,7 @@ export class FieldScene extends Phaser.Scene {
               mix: openMix(this.area, career.date.week),
               youngShare: youngShare(career.date.week),
               educatedMult: educatedNerveMult(career.date.week),
+              dropPointId: data.dropPointId,
             },
       );
     if (this.quick) this.hunt.quick = this.quick;
@@ -408,6 +411,7 @@ export class FieldScene extends Phaser.Scene {
     this.makeTextures();
     this.landmarkSprites = [];
     this.drawField();
+    this.drawSharedLandmarks();
     // Weather you can see: tint + falling snow/rain pinned to the camera,
     // above the world (depth 13) and below the HUD (15).
     addWeatherFx(this, this.hunt.condition, true, 13);
@@ -1319,6 +1323,53 @@ export class FieldScene extends Phaser.Scene {
       this.drawOrganicCover(rng, tiled);
       this.scatterProps(rng, tileCfg?.props);
     }
+  }
+
+  /** Truck and named map landmarks share exact simulation coordinates. */
+  private drawSharedLandmarks(): void {
+    const make = (key: string, draw: (g: Phaser.GameObjects.Graphics) => void) => {
+      if (this.textures.exists(key)) return;
+      const g = this.add.graphics();
+      draw(g);
+      g.generateTexture(key, 28, 22);
+      g.destroy();
+    };
+    make('map-truck', (g) => {
+      g.fillStyle(0x263d34).fillRect(4, 6, 20, 10).fillRect(7, 2, 10, 7);
+      g.fillStyle(0x141714).fillCircle(8, 17, 3).fillCircle(20, 17, 3);
+      g.fillStyle(0xa8c4c2).fillRect(9, 4, 6, 4);
+    });
+    make('map-gate', (g) => {
+      g.fillStyle(0x6d5134).fillRect(3, 2, 3, 20).fillRect(22, 2, 3, 20)
+        .fillRect(3, 7, 22, 2).fillRect(3, 15, 22, 2);
+    });
+    make('map-windmill', (g) => {
+      g.lineStyle(2, 0xaaa99a).lineBetween(14, 7, 14, 22);
+      for (let i = 0; i < 8; i++) g.lineBetween(14, 7, 14 + Math.cos(i * Math.PI / 4) * 7, 7 + Math.sin(i * Math.PI / 4) * 7);
+    });
+    make('map-barn', (g) => {
+      g.fillStyle(0x7f3828).fillRect(4, 8, 20, 14);
+      g.fillStyle(0x3e332e).fillTriangle(2, 9, 14, 1, 26, 9);
+    });
+    make('map-pond', (g) => g.fillStyle(0x4d8292, 0.85).fillEllipse(14, 13, 26, 13));
+    make('map-fence', (g) => {
+      g.fillStyle(0x6d5134).fillRect(2, 4, 2, 18).fillRect(24, 4, 2, 18)
+        .fillRect(2, 9, 24, 2).fillRect(2, 16, 24, 2);
+    });
+
+    for (const landmark of this.area.landmarks) {
+      const image = this.add.image(landmark.position.x, landmark.position.y, `map-${landmark.kind}`)
+        .setOrigin(0.5, landmark.kind === 'pond' ? 0.5 : 1);
+      this.landmarkSprites.push(image);
+    }
+    const drop = this.area.dropPoints.find((point) => point.id === this.hunt.dropPointId)
+      ?? this.area.dropPoints[0];
+    const truck = this.add.image(
+      drop.position.x - Math.cos(drop.heading) * 6,
+      drop.position.y - Math.sin(drop.heading) * 6,
+      'map-truck',
+    ).setOrigin(0.5, 0.8).setRotation(drop.heading + Math.PI / 2);
+    this.landmarkSprites.push(truck);
   }
 
   /**

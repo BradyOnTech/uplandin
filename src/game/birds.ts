@@ -54,6 +54,10 @@ export interface SpawnConfig {
   nerveMult?: number;
   /** Share of birds that are naive young-of-year (early season). */
   youngShare?: number;
+  /** Places where loaded guns and wild birds do not mix (trucks, buildings). */
+  exclusionZones?: { center: Vec2; radius: number }[];
+  /** First piece of cover on the walk-in route; only the opening covey uses it. */
+  openingAnchor?: Vec2;
 }
 
 export const YOUNG_NERVE_MULT = 1.3; // a young bird sits longer
@@ -75,6 +79,30 @@ export function spawnBirds(cfg: SpawnConfig, rng: RNG = Math.random): Bird[] {
   const birds: Bird[] = [];
   let coveyId = 0;
   let remaining = cfg.birdCount;
+  const outsideExclusions = (point: Vec2) =>
+    !(cfg.exclusionZones ?? []).some((zone) => dist(point, zone.center) < zone.radius);
+  const safeAnchor = (patch: Rect): Vec2 => {
+    let point = randomPointIn(patch, rng);
+    for (let attempt = 0; attempt < 31 && !outsideExclusions(point); attempt++) {
+      point = randomPointIn(patch, rng);
+    }
+    return point;
+  };
+  const pushOutsideExclusions = (point: Vec2): Vec2 => {
+    let result = point;
+    for (const zone of cfg.exclusionZones ?? []) {
+      const dx = result.x - zone.center.x;
+      const dy = result.y - zone.center.y;
+      const d = Math.hypot(dx, dy);
+      if (d >= zone.radius) continue;
+      const angle = d > 0 ? Math.atan2(dy, dx) : rng() * Math.PI * 2;
+      result = {
+        x: clamp(zone.center.x + Math.cos(angle) * (zone.radius + 1), bounds.x + 4, bounds.x + bounds.w - 4),
+        y: clamp(zone.center.y + Math.sin(angle) * (zone.radius + 1), bounds.y + 4, bounds.y + bounds.h - 4),
+      };
+    }
+    return result;
+  };
   while (remaining > 0) {
     const species = rollSpecies(coveyMix, rng());
     const size = Math.min(
@@ -82,7 +110,9 @@ export function spawnBirds(cfg: SpawnConfig, rng: RNG = Math.random): Bird[] {
       species.coveyMin + Math.floor(rng() * (species.coveyMax - species.coveyMin + 1)),
     );
     const patch = cfg.patches[Math.floor(rng() * cfg.patches.length)];
-    const anchor = randomPointIn(patch, rng);
+    const anchor = coveyId === 0 && cfg.openingAnchor && outsideExclusions(cfg.openingAnchor)
+      ? cfg.openingAnchor
+      : safeAnchor(patch);
     for (let i = 0; i < size; i++) {
       const young = rng() < (cfg.youngShare ?? 0);
       // Young birds haven't learned to run from a dog yet.
@@ -92,10 +122,10 @@ export function spawnBirds(cfg: SpawnConfig, rng: RNG = Math.random): Bird[] {
         id: nextBirdId++,
         coveyId,
         speciesId: species.id,
-        pos: {
+        pos: pushOutsideExclusions({
           x: clamp(anchor.x + (rng() * 2 - 1) * COVEY_JITTER, bounds.x + 4, bounds.x + bounds.w - 4),
           y: clamp(anchor.y + (rng() * 2 - 1) * COVEY_JITTER, bounds.y + 4, bounds.y + bounds.h - 4),
-        },
+        }),
         state: 'hidden',
         sex: species.henRule ? (rng() < 0.5 ? 'hen' : 'rooster') : undefined,
         young: young || undefined,

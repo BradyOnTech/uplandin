@@ -26,6 +26,7 @@ export class PlayerSystem implements Subsystem {
   private vel = new THREE.Vector3();
   private bobPhase = 0;
   private captureMode = false;
+  private recallPending = false;
   private dir = new THREE.Vector3();
   private right = new THREE.Vector3();
 
@@ -42,9 +43,30 @@ export class PlayerSystem implements Subsystem {
         this.yaw -= e.movementX * 0.0022;
         this.pitch = THREE.MathUtils.clamp(this.pitch - e.movementY * 0.0022, -1.4, 1.4);
       });
-      window.addEventListener('keydown', (e) => this.keys.add(e.code));
+      window.addEventListener('keydown', (e) => {
+        this.keys.add(e.code);
+        if (e.code === 'KeyQ' && !e.repeat) this.recallPending = true;
+      });
       window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     }
+    this.place(ctx);
+  }
+
+  /** Shared hunt intent derived from the first-person input adapter. */
+  isRunning(): boolean {
+    const moving = this.keys.has('KeyW') || this.keys.has('KeyA') || this.keys.has('KeyS') || this.keys.has('KeyD');
+    return moving && (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'));
+  }
+
+  consumeRecall(): boolean {
+    const pending = this.recallPending;
+    this.recallPending = false;
+    return pending;
+  }
+
+  /** Face a shared map heading: +x east, +y/world-z south. */
+  setHuntHeading(ctx: Ctx, heading: number): void {
+    this.yaw = -heading - Math.PI / 2;
     this.place(ctx);
   }
 

@@ -260,6 +260,21 @@ export class HuntSimulation {
   }
 
   /**
+   * Record the authoritative place where a downed bird came to rest.
+   *
+   * Shooting adapters own flight and collision presentation, but the shared
+   * simulation owns the fall that the dog retrieves. Keeping this handoff at
+   * the simulation seam prevents a renderer-only carcass position from
+   * disagreeing with Dog.update().
+   */
+  recordFall(birdId: number, position: Vec2): boolean {
+    const bird = this.hunt.birds.find((candidate) => candidate.id === birdId);
+    if (!bird || bird.state !== 'downed') return false;
+    bird.pos = { ...position };
+    return true;
+  }
+
+  /**
    * Close the current rise once its presentation has settled. Scoring and
    * relights belong here so both shooting adapters produce identical hunt
    * outcomes even though one is a scene cut and the other stays in-world.

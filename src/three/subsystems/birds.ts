@@ -10,7 +10,7 @@ import {
   levelStep,
   type FlushBias,
 } from '../../game/shot';
-import { getSpecies, type SpeciesConfig } from '../../game/species';
+import { getSpecies, SPECIES, type SpeciesConfig } from '../../game/species';
 import type { Ctx, Subsystem } from '../engine';
 import { P, TOD, type TimeOfDay } from '../palette';
 import type { Hunt3DSystem } from './hunt3d';
@@ -139,6 +139,38 @@ const GROUNDED_SCALE = 2.1;
 /** Tip-to-tip wingspan of the UNSCALED model (m) — telemetry only. */
 const SPAN_M = 0.308;
 
+export type BirdFamily = 'quail' | 'pheasant' | 'grouse' | 'woodcock';
+
+export interface BirdShape {
+  family: BirdFamily;
+  bodyLength: number;
+  bodyWidth: number;
+  bodyDepth: number;
+  wingSpan: number;
+  wingChord: number;
+  tailLength: number;
+  tailWidth: number;
+  billLength: number;
+}
+
+export const BIRD_SHAPES: Record<BirdFamily, BirdShape> = {
+  quail: { family: 'quail', bodyLength: 1, bodyWidth: 1, bodyDepth: 1, wingSpan: 1, wingChord: 1, tailLength: 1, tailWidth: 1, billLength: 1 },
+  pheasant: { family: 'pheasant', bodyLength: 1.32, bodyWidth: 1.13, bodyDepth: 1.05, wingSpan: 1.28, wingChord: 1.1, tailLength: 4.2, tailWidth: 0.7, billLength: 1.15 },
+  grouse: { family: 'grouse', bodyLength: 1.16, bodyWidth: 1.34, bodyDepth: 1.24, wingSpan: 1.42, wingChord: 1.34, tailLength: 1.7, tailWidth: 1.85, billLength: 1 },
+  woodcock: { family: 'woodcock', bodyLength: 1.05, bodyWidth: 1.04, bodyDepth: 1.13, wingSpan: 1.08, wingChord: 0.9, tailLength: 0.72, tailWidth: 0.85, billLength: 3.6 },
+};
+
+export function birdFamilyFor(speciesId: string): BirdFamily {
+  if (speciesId === 'ringneck') return 'pheasant';
+  if (speciesId === 'woodcock') return 'woodcock';
+  if (['ruffed-grouse', 'sharptail', 'prairie-chicken', 'blue-grouse'].includes(speciesId)) return 'grouse';
+  return 'quail';
+}
+
+export function birdVisualScale(species: SpeciesConfig): number {
+  return Math.sqrt((species.size ?? 0.62) / 0.62);
+}
+
 /** Forward carry along the escape bearing (m/s): what 2D said with
  *  depth-shrink. Ramps up as wings bite so range ALWAYS grows. */
 const FWD_MIN = 3.5;
@@ -240,8 +272,21 @@ interface Slot {
   wobbleMult: number;
   gliding: boolean;
   root: THREE.Group;
+  body: THREE.Mesh;
+  wingLMesh: THREE.Mesh;
+  wingRMesh: THREE.Mesh;
   wingL: THREE.Group;
   wingR: THREE.Group;
+  visualScale: number;
+  spanM: number;
+}
+
+interface BirdGeometrySet {
+  body: THREE.BufferGeometry;
+  wingL: THREE.BufferGeometry;
+  wingR: THREE.BufferGeometry;
+  shape: BirdShape;
+  spanM: number;
 }
 
 /* ------------------------------ geometry ------------------------------ */
@@ -310,6 +355,7 @@ export class BirdsSystem implements Subsystem {
 
   private mat?: THREE.MeshLambertMaterial;
   private geos: THREE.BufferGeometry[] = [];
+  private speciesGeos = new Map<string, BirdGeometrySet>();
   private slots: Slot[] = [];
 
   /** Sun-answer uniforms (the dog's facet recipe — diffuse only, sized
@@ -421,6 +467,26 @@ export class BirdsSystem implements Subsystem {
     this.buildDebris(ctx);
     this.buildFeathers(ctx);
 
+    // Tooling-only family gallery: a frozen, live-material bird at honest
+    // shooting distance. Useful for silhouette review without needing a
+    // particular species to survive the dog/nerve loop long enough to point.
+    const previewSpecies = new URLSearchParams(location.search).get('birdPreview');
+    if (this.frozen && previewSpecies && SPECIES.some((species) => species.id === previewSpecies)) {
+      const slot = this.slots[0];
+      const species = getSpecies(previewSpecies);
+      this.applySpeciesAppearance(slot, species, previewSpecies === 'ringneck' ? 'rooster' : undefined);
+      slot.simId = -999;
+      slot.status = 'flying';
+      slot.x = 0;
+      slot.z = 30;
+      slot.y = this.terrain.heightAt(slot.x, slot.z) + 3;
+      slot.vxW = 1;
+      slot.vyW = 0;
+      slot.vzW = 0;
+      slot.airMs = 450;
+      slot.root.visible = true;
+    }
+
     // CAPTURE AUDIT (moment round): read-only measurement handle so the
     // harness can gate the rise on a REAL covey (9-13 birds, not the
     // 4-bird family the first point happens to find) and frame off the
@@ -472,38 +538,20 @@ export class BirdsSystem implements Subsystem {
 
   private buildPool(ctx: Ctx): void {
     const rng = mulberry32(BIRD_ART_SEED);
-    // Bobwhite roles off the locked palette (moment round, item 1): DARK
-    // russet topside over a pale buff belly — the two-tone that reads
-    // gamebird whether the sky silhouettes the back or the sun finds the
-    // underside. Wings run the same law: dark russet above, buff below.
-    // Iteration 2: the pure russet ramp read CARDINAL-red under the warm
-    // dawn key — the topside pulls toward warmGray/soil (a bobwhite's
-    // back is grayed red-BROWN) and the underside steps off pale cream.
-    const back = new THREE.Color(P.russetDeep).lerp(new THREE.Color(P.warmGray), 0.45);
-    const backDim = back.clone().multiplyScalar(0.8);
-    const belly = new THREE.Color(P.strawLight).lerp(new THREE.Color(P.strawPale), 0.55);
-    const cap = new THREE.Color(P.oxblood).lerp(new THREE.Color(P.charcoal), 0.3);
-    const throat = new THREE.Color(P.strawPale);
-    const wingTop = new THREE.Color(P.russetDeep).lerp(new THREE.Color(P.warmGray), 0.55);
-    const wingTopDim = wingTop.clone().multiplyScalar(0.85);
-    const wingUnder = belly.clone().multiplyScalar(0.78);
-    const tailC = new THREE.Color(P.warmGray).multiplyScalar(0.62);
-
-    const bodyGeo = this.buildBodyGeo(back, backDim, belly, cap, throat, tailC);
-    const wingGeoL = this.buildWingGeo(-1, wingTop, wingTopDim, wingUnder);
-    const wingGeoR = this.buildWingGeo(1, wingTop, wingTopDim, wingUnder);
-    this.geos.push(bodyGeo, wingGeoL, wingGeoR);
+    for (const species of SPECIES) this.buildSpeciesGeometry(species, false);
+    this.buildSpeciesGeometry(getSpecies('ringneck'), true);
+    const fallback = this.speciesGeos.get('bobwhite')!;
 
     for (let i = 0; i < POOL; i++) {
       const root = new THREE.Group();
-      const body = new THREE.Mesh(bodyGeo, this.mat!);
+      const body = new THREE.Mesh(fallback.body, this.mat!);
       body.castShadow = false;
       body.receiveShadow = false;
       root.add(body);
       const wingL = new THREE.Group();
       const wingR = new THREE.Group();
-      const wl = new THREE.Mesh(wingGeoL, this.mat!);
-      const wr = new THREE.Mesh(wingGeoR, this.mat!);
+      const wl = new THREE.Mesh(fallback.wingL, this.mat!);
+      const wr = new THREE.Mesh(fallback.wingR, this.mat!);
       wl.castShadow = wl.receiveShadow = false;
       wr.castShadow = wr.receiveShadow = false;
       wingL.add(wl);
@@ -535,10 +583,60 @@ export class BirdsSystem implements Subsystem {
         wobbleMult: 1,
         gliding: false,
         root,
+        body,
+        wingLMesh: wl,
+        wingRMesh: wr,
         wingL,
         wingR,
+        visualScale: 1,
+        spanM: SPAN_M,
       });
     }
+  }
+
+  private buildSpeciesGeometry(species: SpeciesConfig, hen: boolean): void {
+    const shape = BIRD_SHAPES[birdFamilyFor(species.id)];
+    const muted = hen ? 0.68 : 1;
+    const back = new THREE.Color(species.palette.body).lerp(new THREE.Color(P.warmGray), hen ? 0.5 : 0.16);
+    const backDim = back.clone().multiplyScalar(0.76);
+    const belly = back.clone().lerp(new THREE.Color(P.strawPale), 0.48).multiplyScalar(muted);
+    const cap = new THREE.Color(hen ? species.palette.body : species.palette.head).multiplyScalar(muted);
+    const throat = cap.clone().lerp(new THREE.Color(P.strawPale), hen ? 0.3 : 0.58);
+    const tail = new THREE.Color(species.palette.tail).multiplyScalar(muted);
+    const wingTop = back.clone().multiplyScalar(0.9);
+    const wingTopDim = wingTop.clone().multiplyScalar(0.8);
+    const wingUnder = belly.clone().multiplyScalar(0.78);
+    const body = this.buildBodyGeo(back, backDim, belly, cap, throat, tail, shape);
+    const wingL = this.buildWingGeo(-1, wingTop, wingTopDim, wingUnder, shape);
+    const wingR = this.buildWingGeo(1, wingTop, wingTopDim, wingUnder, shape);
+    this.geos.push(body, wingL, wingR);
+    const spanM = 2 * (0.03 * shape.bodyWidth + 0.124 * shape.wingSpan);
+    this.speciesGeos.set(`${species.id}${hen ? ':hen' : ''}`, { body, wingL, wingR, shape, spanM });
+  }
+
+  private applySpeciesAppearance(
+    slot: Slot,
+    species: SpeciesConfig,
+    sex?: 'hen' | 'rooster',
+  ): void {
+    const geometry = this.speciesGeos.get(`${species.id}${sex === 'hen' ? ':hen' : ''}`)
+      ?? this.speciesGeos.get(species.id)!;
+    slot.species = species;
+    slot.body.geometry = geometry.body;
+    slot.wingLMesh.geometry = geometry.wingL;
+    slot.wingRMesh.geometry = geometry.wingR;
+    slot.wingL.position.set(
+      -0.03 * geometry.shape.bodyWidth,
+      0.016 * geometry.shape.bodyDepth,
+      0.028 * geometry.shape.bodyLength,
+    );
+    slot.wingR.position.set(
+      0.03 * geometry.shape.bodyWidth,
+      0.016 * geometry.shape.bodyDepth,
+      0.028 * geometry.shape.bodyLength,
+    );
+    slot.visualScale = birdVisualScale(species);
+    slot.spanM = geometry.spanM;
   }
 
   /** Hex-lofted body + stub tail fan, one geometry (one draw call). */
@@ -549,12 +647,17 @@ export class BirdsSystem implements Subsystem {
     cap: THREE.Color,
     throat: THREE.Color,
     tailC: THREE.Color,
+    shape: BirdShape,
   ): THREE.BufferGeometry {
     const b = new SoupBuilder();
     const rings: V3[][] = BODY_SECTS.map((s) => {
       const r: V3[] = new Array(6);
       for (let i = 0; i < 6; i++) {
-        r[i] = [Math.cos(HEX_ANG[i]) * s.hw, s.y + Math.sin(HEX_ANG[i]) * s.hh, s.z];
+        r[i] = [
+          Math.cos(HEX_ANG[i]) * s.hw * shape.bodyWidth,
+          (s.y + Math.sin(HEX_ANG[i]) * s.hh) * shape.bodyDepth,
+          s.z * shape.bodyLength,
+        ];
       }
       return r;
     });
@@ -578,8 +681,8 @@ export class BirdsSystem implements Subsystem {
       }
     }
     // Caps: tail-root point and the beak.
-    const capRear: V3 = [0, 0.008, -0.092];
-    const capFront: V3 = [0, 0.02, 0.118];
+    const capRear: V3 = [0, 0.008 * shape.bodyDepth, -0.092 * shape.bodyLength];
+    const capFront: V3 = [0, 0.02 * shape.bodyDepth, 0.118 * shape.bodyLength + 0.045 * (shape.billLength - 1)];
     const first = rings[0];
     const last = rings[rings.length - 1];
     for (let j = 0; j < 6; j++) {
@@ -589,8 +692,11 @@ export class BirdsSystem implements Subsystem {
     }
     // Stub tail: two short fan panels — bobwhite barely has one, and the
     // SHORT tail is half of what separates quail from songbird in the sky.
-    b.quad2([-0.018, 0.01, -0.07], [0.004, 0.012, -0.072], [0.002, 0.0, -0.118], [-0.02, -0.002, -0.112], tailC);
-    b.quad2([-0.004, 0.012, -0.072], [0.018, 0.01, -0.07], [0.02, -0.002, -0.112], [-0.002, 0.0, -0.118], tailC);
+    const tailRoot = -0.07 * shape.bodyLength;
+    const tailTip = tailRoot - 0.048 * shape.tailLength;
+    const tw = shape.tailWidth;
+    b.quad2([-0.018 * tw, 0.01, tailRoot], [0.004 * tw, 0.012, tailRoot], [0.002 * tw, 0.0, tailTip], [-0.02 * tw, -0.002, tailTip * 0.96], tailC);
+    b.quad2([-0.004 * tw, 0.012, tailRoot], [0.018 * tw, 0.01, tailRoot], [0.02 * tw, -0.002, tailTip * 0.96], [-0.002 * tw, 0.0, tailTip], tailC);
     return b.build();
   }
 
@@ -607,12 +713,14 @@ export class BirdsSystem implements Subsystem {
     top: THREE.Color,
     topDim: THREE.Color,
     under: THREE.Color,
+    shape: BirdShape,
   ): THREE.BufferGeometry {
     const b = new SoupBuilder();
     const s = side;
+    const v = (p: V3): V3 => [p[0] * shape.wingSpan, p[1], p[2] * shape.wingChord];
     const panel = (a: V3, p2: V3, c: V3, d: V3, up: THREE.Color): void => {
-      b.quad(a, p2, c, d, up); // top winding — dark russet
-      b.quad(d, c, p2, a, under); // underside winding — pale buff
+      b.quad(v(a), v(p2), v(c), v(d), up); // top winding — dark russet
+      b.quad(v(d), v(c), v(p2), v(a), under); // underside winding — pale buff
     };
     // Inner panel: shoulder edge hugs the body, trailing edge full-chord.
     panel(
@@ -777,6 +885,7 @@ export class BirdsSystem implements Subsystem {
         if (s.y <= g + 0.06) {
           s.y = g + 0.06;
           s.status = 'grounded';
+          this.hunt.recordFallWorld(s.simId, s.x, s.z);
           playThud();
         }
         continue;
@@ -972,6 +1081,7 @@ export class BirdsSystem implements Subsystem {
     pos: { x: number; y: number };
     young?: boolean;
     speciesId: string;
+    sex?: 'hen' | 'rooster';
   }[]): void {
     this.lastLaunchMs = this.riseMs;
     // Shuffled lanes per wave (Fisher-Yates on the rise stream).
@@ -1022,7 +1132,7 @@ export class BirdsSystem implements Subsystem {
       slot.vel.x = v.x;
       slot.vel.y = v.y;
       slot.simId = id;
-      slot.species = species;
+      this.applySpeciesAppearance(slot, species, sim.sex);
       slot.sxPx = SCREEN_CX + (lane - 1) * SLOT_SPREAD_PX;
       slot.exitDir = 0;
       // FlushScene's launch placement, translated onto the fan's right
@@ -1130,7 +1240,7 @@ export class BirdsSystem implements Subsystem {
       if (s.status === 'flying' || s.status === 'falling' || s.status === 'waiting') {
         out.push({
           simId: s.simId, x: s.x, y: s.y, z: s.z, airMs: s.airMs, status: s.status,
-          sizeM: SPAN_M * RISE_SCALE,
+          sizeM: s.spanM * RISE_SCALE * s.visualScale,
         });
       }
     }
@@ -1176,7 +1286,7 @@ export class BirdsSystem implements Subsystem {
       s.root.visible = visible;
       if (!visible) continue;
       s.root.position.set(s.x, s.y, s.z);
-      s.root.scale.setScalar(s.status === 'grounded' ? GROUNDED_SCALE : RISE_SCALE);
+      s.root.scale.setScalar((s.status === 'grounded' ? GROUNDED_SCALE : RISE_SCALE) * s.visualScale);
       if (s.status === 'grounded') {
         // Folded bird remains marked in the grass until the dog picks it up.
         s.root.rotation.set(0, s.root.rotation.y, 1.2);

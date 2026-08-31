@@ -149,6 +149,15 @@ describe('spawnBirds', () => {
     expect(roosters.some((b) => b.runs)).toBe(true); // 75% runners
     expect(woodcock.every((b) => !b.runs)).toBe(true); // 0% runners
   });
+
+  it('keeps every covey outside configured safety zones', () => {
+    const birds = spawnBirds({
+      ...CFG,
+      birdCount: 40,
+      exclusionZones: [{ center: { x: 120, y: 95 }, radius: 80 }],
+    }, lcg(14));
+    expect(birds.every((bird) => dist(bird.pos, { x: 120, y: 95 }) >= 80)).toBe(true);
+  });
 });
 
 function bird(over: Partial<Bird>): Bird {

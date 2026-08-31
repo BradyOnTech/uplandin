@@ -1,4 +1,4 @@
-import { areaBirdCount, type AreaConfig } from './areas';
+import { areaBirdCount, getDropPoint, type AreaConfig } from './areas';
 import { spawnBirds, type Bird } from './birds';
 import { conditionMults, rollCondition, type Condition } from './conditions';
 import type { QuickConfig } from './quick';
@@ -23,6 +23,7 @@ export function emptyDogWork(): DogWork {
 
 export interface HuntState {
   areaId: string;
+  dropPointId: string;
   birds: Bird[];
   /** Start/current positions per dog slot (a brace is two dogs). */
   dogsPos: Vec2[];
@@ -47,6 +48,7 @@ export interface HuntState {
 }
 
 export interface HuntOptions {
+  dropPointId?: string;
   wind?: WindStrength;
   gunId?: string;
   condition?: Condition;
@@ -64,8 +66,26 @@ export function createHunt(area: AreaConfig, rng: RNG = Math.random, opts: HuntO
   const w = area.world;
   const windStrength = opts.wind ?? rollWindStrength(rng);
   const condition = opts.condition ?? rollCondition(rng, opts.conditionBias ?? area.conditionBias);
+  const drop = getDropPoint(area, opts.dropPointId);
+  const side = { x: -Math.sin(drop.heading), y: Math.cos(drop.heading) };
+  const forward = { x: Math.cos(drop.heading), y: Math.sin(drop.heading) };
+  const openingTarget = {
+    x: drop.position.x + forward.x * 62,
+    y: drop.position.y + forward.y * 62,
+  };
+  const openingPatch = area.patches.reduce((best, patch) => {
+    const distance = Math.hypot(patch.x + patch.w / 2 - openingTarget.x, patch.y + patch.h / 2 - openingTarget.y);
+    return distance < best.distance ? { patch, distance } : best;
+  }, { patch: area.patches[0], distance: Infinity }).patch;
+  const openingAnchor = openingPatch
+    ? {
+        x: Math.max(openingPatch.x + 6, Math.min(openingPatch.x + openingPatch.w - 6, openingTarget.x)),
+        y: Math.max(openingPatch.y + 6, Math.min(openingPatch.y + openingPatch.h - 6, openingTarget.y)),
+      }
+    : openingTarget;
   return {
     areaId: area.id,
+    dropPointId: drop.id,
     birds: spawnBirds(
       {
         patches: area.patches,
@@ -74,14 +94,16 @@ export function createHunt(area: AreaConfig, rng: RNG = Math.random, opts: HuntO
         bounds: w,
         nerveMult: windMults(windStrength).nerve * conditionMults(condition).nerve * (opts.educatedMult ?? 1),
         youngShare: opts.youngShare,
+        exclusionZones: area.dropPoints.map((point) => ({ center: point.position, radius: point.safetyRadius })),
+        openingAnchor,
       },
       rng,
     ),
     dogsPos: [
-      { x: w.x + w.w / 2 - 30, y: w.y + w.h - 30 },
-      { x: w.x + w.w / 2 + 30, y: w.y + w.h - 30 },
+      { x: drop.position.x + forward.x * 8 + side.x * 5, y: drop.position.y + forward.y * 8 + side.y * 5 },
+      { x: drop.position.x + forward.x * 8 - side.x * 5, y: drop.position.y + forward.y * 8 - side.y * 5 },
     ],
-    hunterPos: { x: w.x + w.w / 2, y: w.y + w.h - 20 },
+    hunterPos: { ...drop.position },
     wind: rng() * Math.PI * 2,
     windStrength,
     condition,

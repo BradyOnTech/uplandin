@@ -54,6 +54,20 @@
         font: 600 12px system-ui, sans-serif;
         cursor: pointer;
       }
+      #end-hunt {
+        position: fixed;
+        z-index: 2;
+        right: 14px;
+        bottom: 52px;
+        padding: 7px 11px;
+        border: 1px solid rgba(244, 239, 227, 0.35);
+        border-radius: 6px;
+        color: #f4efe3;
+        background: rgba(20, 27, 17, 0.78);
+        font: 600 12px system-ui, sans-serif;
+        cursor: pointer;
+      }
+      #end-hunt:disabled { opacity: 0.45; cursor: default; }
       #reticle {
         position: fixed;
         z-index: 3;
@@ -132,7 +146,7 @@
         cursor: pointer;
       }
       #hunt-summary button + button { margin-left: 8px; }
-      body.capture #controls, body.capture #field-menu { display: none; }
+      body.capture #controls, body.capture #field-menu, body.capture #end-hunt { display: none; }
     </style>
   </head>
   <body>
@@ -141,8 +155,9 @@
       <label>Dog breed <select id="dog-breed"></select></label>
       <label><span id="dog-coat-label">Dog coat</span><select id="dog-coat"></select></label>
     </aside>
-    <div id="controls">WASD move · mouse look<br>RMB mount · LMB shoot</div>
+    <div id="controls">WASD move · Shift run · Q whistle<br>RMB mount · LMB shoot</div>
     <button id="field-menu" type="button">Main menu</button>
+    <button id="end-hunt" type="button">End hunt</button>
     <div id="hunt-hud" aria-live="polite">
       <div id="hunt-tally">birds hidden 0 · bag 0 · lost 0</div>
       <div id="hunt-phase">HUNTING</div>

@@ -6,6 +6,7 @@ import { birdsRemaining, createHunt, endHuntEarly, huntComplete, type HuntState 
 function huntWith(states: Bird['state'][]): HuntState {
   return {
     areaId: 'test-area',
+    dropPointId: 'test-drop',
     birds: states.map((state, i) => ({
       id: i + 1,
       coveyId: 0,
@@ -75,9 +76,34 @@ describe('hunt bookkeeping', () => {
   it('createHunt builds a hunt from the area config', () => {
     const hunt = createHunt(AREAS[0]);
     expect(hunt.areaId).toBe(AREAS[0].id);
+    expect(hunt.dropPointId).toBe(AREAS[0].dropPoints[0].id);
     expect(hunt.birds).toHaveLength(areaBirdCount(AREAS[0]));
     expect(hunt.downed).toBe(0);
     expect(hunt.escaped).toBe(0);
+  });
+
+  it('starts from the selected truck and keeps birds outside every safety zone', () => {
+    const area = AREAS[0];
+    const drop = area.dropPoints[1];
+    const hunt = createHunt(area, Math.random, { dropPointId: drop.id });
+    expect(hunt.hunterPos).toEqual(drop.position);
+    for (const bird of hunt.birds) {
+      for (const point of area.dropPoints) {
+        expect(Math.hypot(bird.pos.x - point.position.x, bird.pos.y - point.position.y))
+          .toBeGreaterThanOrEqual(point.safetyRadius);
+      }
+    }
+  });
+
+  it('puts the opening covey in cover along the selected walk-in', () => {
+    const area = AREAS[0];
+    const hunt = createHunt(area, Math.random, { dropPointId: 'south-gate' });
+    const first = hunt.birds[0];
+    expect(area.patches.some((patch) =>
+      first.pos.x >= patch.x - 10 && first.pos.x <= patch.x + patch.w + 10 &&
+      first.pos.y >= patch.y - 10 && first.pos.y <= patch.y + patch.h + 10,
+    )).toBe(true);
+    expect(Math.hypot(first.pos.x - hunt.hunterPos.x, first.pos.y - hunt.hunterPos.y)).toBeGreaterThan(48);
   });
 
   it('weather override sticks, and frost birds hold longer than mild ones', () => {

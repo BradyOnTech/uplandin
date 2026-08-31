@@ -15,6 +15,7 @@ export class HuntHudSystem implements Subsystem {
   private phase: HTMLElement | null = null;
   private summary: HTMLElement | null = null;
   private summaryCopy: HTMLElement | null = null;
+  private endButton: HTMLButtonElement | null = null;
   private frozen = false;
   private summaryShown = false;
   private lastTally = '';
@@ -30,11 +31,15 @@ export class HuntHudSystem implements Subsystem {
     this.phase = document.getElementById('hunt-phase');
     this.summary = document.getElementById('hunt-summary');
     this.summaryCopy = document.getElementById('hunt-summary-copy');
+    this.endButton = document.getElementById('end-hunt') as HTMLButtonElement | null;
     if (this.panel) this.panel.hidden = this.frozen;
     if (this.summary) this.summary.hidden = true;
     document.getElementById('hunt-again')?.addEventListener('click', () => location.reload());
     document.getElementById('hunt-menu')?.addEventListener('click', () => location.assign('./index.html'));
     document.getElementById('field-menu')?.addEventListener('click', () => location.assign('./index.html'));
+    this.endButton?.addEventListener('click', () => {
+      if (!this.birds.isRiseActive()) this.hunt.endHunt();
+    });
   }
 
   update(_ctx: Ctx, _dt: number): void {
@@ -57,13 +62,14 @@ export class HuntHudSystem implements Subsystem {
       this.lastTally = tally;
     }
 
-    const dog = this.hunt.dog();
+    const dogs = Array.from({ length: this.hunt.dogCount() }, (_, slot) => this.hunt.dog(slot));
     const rise = this.birds.isRiseActive();
+    if (this.endButton) this.endButton.disabled = rise;
     const phase = rise
       ? `COVEY RISE · shells ${this.gun.shellsRemaining()}`
-      : dog.state === 'retrieving'
+      : dogs.some((candidate) => candidate.state === 'retrieving')
         ? 'DOG RETRIEVING'
-        : dog.state === 'pointing'
+        : dogs.some((candidate) => candidate.state === 'pointing')
           ? 'ON POINT · WALK IN'
           : hunt.doubles > 0
             ? `${hunt.doubles} DOUBLE${hunt.doubles > 1 ? 'S' : ''} · HUNTING`
@@ -79,14 +85,15 @@ export class HuntHudSystem implements Subsystem {
       const careerResult = this.hunt.settleCareer();
       if (document.pointerLockElement) void document.exitPointerLock();
       if (this.summaryCopy) {
-        const dogWork = hunt.dogWork[0];
+        const dogWork = hunt.dogWork.slice(0, this.hunt.dogCount());
+        const pointFlushes = dogWork.reduce((sum, work) => sum + work.pointFlushes, 0);
         const total = hunt.birds.length;
         const base =
           `${hunt.downed} of ${total} down · ${retrieved} retrieved · ${hunt.escaped} lost` +
           `${hunt.doubles > 0 ? ` · ${hunt.doubles} double${hunt.doubles > 1 ? 's' : ''}` : ''}` +
-          ` · ${dogWork.pointFlushes} point${dogWork.pointFlushes === 1 ? '' : 's'} held`;
+          ` · ${pointFlushes} point${pointFlushes === 1 ? '' : 's'} held`;
         const career = careerResult
-          ? ` · ${careerResult.dogAwards[0]?.name ?? 'dog'} +${careerResult.dogAwards[0]?.gained ?? 0} XP` +
+          ? ` · ${careerResult.dogAwards.map((award) => `${award.name} +${award.gained} XP`).join(' · ')}` +
             ` · hunter +${careerResult.hunterGained} XP · ${careerResult.weeks} week${careerResult.weeks === 1 ? '' : 's'} passed`
           : '';
         this.summaryCopy.textContent = base + career;

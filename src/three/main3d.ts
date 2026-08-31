@@ -10,6 +10,7 @@ import { DogSystem } from './subsystems/dog';
 import { BirdsSystem } from './subsystems/birds';
 import { GunSystem } from './subsystems/gun';
 import { HuntHudSystem } from './subsystems/huntHud';
+import { LandmarksSystem } from './subsystems/landmarks';
 import {
   ENGLISH_SETTER_COATS,
   resolveEnglishSetterCoat,
@@ -30,7 +31,8 @@ const params = new URLSearchParams(location.search);
 const quality = params.get('quality') === 'lite' ? 'lite' : 'high';
 const launch = parseHuntLaunch(location.search);
 const launchProfile = resolveThreeHuntProfile(location.search);
-const visualBreed = launchProfile.breedId === 'gsp' ? 'gsp' : 'english-setter';
+const visualBreedFor = (breedId: string) => breedId === 'gsp' ? 'gsp' : 'english-setter';
+const visualBreed = visualBreedFor(launchProfile.breedId);
 const coatId = visualBreed === 'gsp'
   ? resolveGspCoat(params.get('coat'))
   : resolveEnglishSetterCoat(params.get('coat'));
@@ -46,7 +48,13 @@ engine.register(new PlayerSystem());
 engine.register(new Hunt3DSystem());
 engine.register(new GrassSystem());
 engine.register(new FloraSystem());
+engine.register(new LandmarksSystem());
 engine.register(new DogSystem(visualBreed, coatId));
+if (launchProfile.brace) {
+  const braceVisualBreed = visualBreedFor(launchProfile.brace.breedId);
+  const braceCoat = braceVisualBreed === 'gsp' ? resolveGspCoat(null) : resolveEnglishSetterCoat(null);
+  engine.register(new DogSystem(braceVisualBreed, braceCoat, 1));
+}
 engine.register(new BirdsSystem());
 engine.register(new GunSystem());
 engine.register(new HuntHudSystem());

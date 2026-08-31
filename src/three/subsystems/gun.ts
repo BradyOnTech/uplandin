@@ -714,7 +714,14 @@ export class GunSystem implements Subsystem {
     let tAimYaw = 0;
     let tAimPitch = 0;
     if (m > 0.5) {
-      const sd = this.hunt.dog();
+      let sd = this.hunt.dog();
+      for (let slot = 0; slot < this.hunt.dogCount(); slot++) {
+        const candidate = this.hunt.dog(slot);
+        if (candidate.state === 'pointing' && candidate.pointedBirdId !== null) {
+          sd = candidate;
+          break;
+        }
+      }
       if ((sd.state === 'pointing' || sd.state === 'honoring') && sd.pointedBirdId !== null) {
         const birds = this.hunt.huntState().birds;
         for (let i = 0; i < birds.length; i++) {

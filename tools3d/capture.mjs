@@ -196,6 +196,7 @@ const baseUrl = get('--url', 'http://localhost:4517');
 const outDir = resolve(get('--out', 'docs/3d/shots'));
 const coat = get('--coat', 'orange-belton');
 const breed = get('--breed', 'english-setter');
+const area = get('--area', 'quail-fields');
 const wanted = get(
   '--shots',
   Object.keys(SHOTS).filter((n) => !n.startsWith('debug-')).join(','),
@@ -250,7 +251,7 @@ async function main() {
       }
       const tod = Array.isArray(spec) ? spec[4] : spec.tod;
       await page.goto(
-        `${url}/index3d.html?capture=1&tod=${tod}&coat=${encodeURIComponent(coat)}&breed=${encodeURIComponent(breed)}`,
+        `${url}/index3d.html?capture=1&tod=${tod}&coat=${encodeURIComponent(coat)}&breed=${encodeURIComponent(breed)}&area=${encodeURIComponent(area)}`,
         { waitUntil: 'domcontentloaded' },
       );
       await page.waitForFunction('window.__ready3d === true', { timeout: 30000 });
