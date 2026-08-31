@@ -14,6 +14,14 @@ import {
 } from '../game/quick';
 import { getSpecies } from '../game/species';
 import { launchHunt } from './launchHunt';
+import {
+  MENU,
+  addMenuBackdrop,
+  addMenuPanel,
+  addRuleHeading,
+  preloadMenuArt,
+  setMenuFocus,
+} from './menuUi';
 import { pixelText, type PixelText } from './pixelFont';
 
 interface PickerRow {
@@ -23,157 +31,192 @@ interface PickerRow {
   step: (dir: 1 | -1) => void;
 }
 
-/**
- * Quick Hunt setup: everything unlocked, pick the exact hunt you want.
- * Career progression is untouched — this is free play (and the fastest way
- * to test any dog against any birds in any wind).
- */
+interface RowView {
+  box: Phaser.GameObjects.Rectangle;
+  value: PixelText;
+  hint: PixelText;
+}
+
 export class QuickScene extends Phaser.Scene {
   private cfg!: QuickConfig;
-  private valueTexts: PixelText[] = [];
-  private hintTexts: PixelText[] = [];
   private rows: PickerRow[] = [];
+  private views: RowView[] = [];
+  private focusIndex = 0;
+  private backBox!: Phaser.GameObjects.Rectangle;
+  private huntBox!: Phaser.GameObjects.Rectangle;
 
   constructor() {
     super('QuickScene');
   }
 
+  preload(): void {
+    preloadMenuArt(this);
+  }
+
   create(): void {
     this.cfg = loadQuickConfig();
-    this.valueTexts = [];
-    this.hintTexts = [];
+    this.views = [];
+    this.focusIndex = 0;
 
-    this.add.rectangle(240, 135, 480, 270, 0x14201c);
-    pixelText(this, 240, 14, 'quick hunt', 2, '#ffd23f')
-      .setOrigin(0.5);
-    pixelText(this, 240, 29, 'everything unlocked · nothing saved to your career', 1, '#9fb896')
-      .setOrigin(0.5);
+    addMenuBackdrop(this, 0.3);
+    pixelText(this, 240, 21, 'QUICK HUNT', 3, MENU.cream).setOrigin(0.5);
+    pixelText(this, 240, 45, '— EVERYTHING UNLOCKED. NOTHING SAVED. —', 1, MENU.sage).setOrigin(0.5);
+    addMenuPanel(this, 240, 160, 458, 204, 0.96);
 
-    this.rows = [
+    this.rows = this.makeRows();
+    addRuleHeading(this, 129, 65, 'COMPANIONS', 202);
+    addRuleHeading(this, 351, 65, 'HUNT CONDITIONS', 202);
+
+    const layouts = [
+      { x: 129, y: 84 }, { x: 129, y: 114 }, { x: 129, y: 144 },
+      { x: 351, y: 84 }, { x: 351, y: 114 }, { x: 351, y: 144 },
+      { x: 129, y: 190 }, { x: 351, y: 190 },
+    ];
+    layouts.forEach((layout, i) => this.buildRow(this.rows[i], layout.x, layout.y, i));
+
+    addRuleHeading(this, 240, 169, 'LOADOUT', 424);
+    this.backBox = this.add.rectangle(78, 232, 108, 25, MENU.panelAlt, 0.98)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerover', () => { this.focusIndex = 8; this.refresh(); })
+      .on('pointerdown', () => this.back());
+    pixelText(this, 78, 232, 'ESC  BACK', 1, MENU.cream).setOrigin(0.5);
+
+    this.huntBox = this.add.rectangle(365, 232, 174, 27, MENU.olive, 1)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerover', () => { this.focusIndex = 9; this.refresh(); })
+      .on('pointerdown', () => this.hunt());
+    pixelText(this, 365, 232, 'HUNT', 2, MENU.cream).setOrigin(0.5);
+    pixelText(this, 240, 254, '↑↓ CHOOSE · ←→ CHANGE · ENTER SELECT', 1, MENU.muted).setOrigin(0.5);
+
+    this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        this.back();
+      } else if (event.key === 'ArrowUp') {
+        this.focusIndex = (this.focusIndex + 9) % 10;
+        playBlip();
+        this.refresh();
+      } else if (event.key === 'ArrowDown') {
+        this.focusIndex = (this.focusIndex + 1) % 10;
+        playBlip();
+        this.refresh();
+      } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        if (this.focusIndex < this.rows.length) {
+          this.changeRow(this.focusIndex, event.key === 'ArrowLeft' ? -1 : 1);
+        } else {
+          this.focusIndex = this.focusIndex === 8 ? 9 : 8;
+          playBlip();
+          this.refresh();
+        }
+      } else if (event.key === 'Enter' || event.key === ' ') {
+        if (this.focusIndex < this.rows.length) this.changeRow(this.focusIndex, 1);
+        else if (this.focusIndex === 8) this.back();
+        else this.hunt();
+      }
+    });
+
+    this.refresh();
+  }
+
+  private makeRows(): PickerRow[] {
+    return [
       {
-        label: 'dog',
+        label: 'DOG',
         value: () => getBreed(this.cfg.breedId).name,
         hint: () => getBreed(this.cfg.breedId).blurb,
-        step: (dir) => {
-          this.cfg.breedId = cycleId(BREEDS.map((b) => b.id), this.cfg.breedId, dir);
-        },
+        step: (dir) => { this.cfg.breedId = cycleId(BREEDS.map((b) => b.id), this.cfg.breedId, dir); },
       },
       {
-        label: 'dog 2',
-        value: () => (this.cfg.breed2Id === 'none' ? 'none — hunt solo' : getBreed(this.cfg.breed2Id).name),
-        hint: () => (this.cfg.breed2Id === 'none' ? '' : 'a brace: the second dog honors the point'),
+        label: 'DOG 2',
+        value: () => this.cfg.breed2Id === 'none' ? 'NONE — HUNT SOLO' : getBreed(this.cfg.breed2Id).name,
+        hint: () => this.cfg.breed2Id === 'none' ? '' : 'SECOND DOG HONORS THE POINT',
         step: (dir) => {
           this.cfg.breed2Id = cycleId(['none', ...BREEDS.map((b) => b.id)], this.cfg.breed2Id, dir);
         },
       },
       {
-        label: 'level',
-        value: () => {
-          const pips = '#'.repeat(this.cfg.level) + '-'.repeat(LEVEL_CAP - this.cfg.level);
-          return `${this.cfg.level}  [${pips}]`;
-        },
-        hint: () => (this.cfg.level <= 2 ? 'puppy chaos' : this.cfg.level >= 9 ? 'finished dog' : ''),
-        step: (dir) => {
-          this.cfg.level = ((this.cfg.level - 1 + dir + LEVEL_CAP) % LEVEL_CAP) + 1;
-        },
+        label: 'LEVEL',
+        value: () => `${this.cfg.level}  [${'#'.repeat(this.cfg.level)}${'-'.repeat(LEVEL_CAP - this.cfg.level)}]`,
+        hint: () => this.cfg.level <= 2 ? 'PUPPY CHAOS' : this.cfg.level >= 9 ? 'FINISHED DOG' : '',
+        step: (dir) => { this.cfg.level = ((this.cfg.level - 1 + dir + LEVEL_CAP) % LEVEL_CAP) + 1; },
       },
       {
-        label: 'covert',
+        label: 'COVERT',
         value: () => getArea(this.cfg.areaId).name,
-        hint: () =>
-          getArea(this.cfg.areaId)
-            .speciesMix.map((s) => getSpecies(s.speciesId).name)
-            .join(' · '),
-        step: (dir) => {
-          this.cfg.areaId = cycleId(AREAS.map((a) => a.id), this.cfg.areaId, dir);
-        },
+        hint: () => getArea(this.cfg.areaId).speciesMix
+          .slice(0, 2)
+          .map((mix) => getSpecies(mix.speciesId).name)
+          .join(' · '),
+        step: (dir) => { this.cfg.areaId = cycleId(AREAS.map((a) => a.id), this.cfg.areaId, dir); },
       },
       {
-        label: 'wind',
+        label: 'WIND',
         value: () => this.cfg.wind,
-        step: (dir) => {
-          this.cfg.wind = cycleId(WIND_CHOICES, this.cfg.wind, dir);
-        },
+        step: (dir) => { this.cfg.wind = cycleId(WIND_CHOICES, this.cfg.wind, dir); },
       },
       {
-        label: 'weather',
+        label: 'WEATHER',
         value: () => this.cfg.weather,
-        step: (dir) => {
-          this.cfg.weather = cycleId(WEATHER_CHOICES, this.cfg.weather, dir);
-        },
+        step: (dir) => { this.cfg.weather = cycleId(WEATHER_CHOICES, this.cfg.weather, dir); },
       },
       {
-        label: 'gun',
+        label: 'GUN',
         value: () => getGun(this.cfg.gunId).name,
         hint: () => getGun(this.cfg.gunId).blurb,
-        step: (dir) => {
-          this.cfg.gunId = cycleId(GUNS.map((g) => g.id), this.cfg.gunId, dir);
-        },
+        step: (dir) => { this.cfg.gunId = cycleId(GUNS.map((gun) => gun.id), this.cfg.gunId, dir); },
       },
       {
-        label: 'gear',
+        label: 'GEAR',
         value: () => GEAR_NAMES[this.cfg.gearTier],
         step: (dir) => {
           this.cfg.gearTier = (this.cfg.gearTier + dir + GEAR_NAMES.length) % GEAR_NAMES.length;
         },
       },
     ];
+  }
 
-    this.rows.forEach((row, i) => {
-      const y = 44 + i * 22;
-      pixelText(this, 70, y - 5, row.label, 1, '#9fb896');
-      const arrow = (x: number, glyph: string, dir: 1 | -1) => {
-        this.add
-          .rectangle(x, y, 26, 18, 0x101410, 0.85)
-          .setInteractive()
-          .on('pointerdown', () => {
-            unlockAudio();
-            playBlip();
-            row.step(dir);
-            this.refresh();
-          });
-        pixelText(this, x, y, glyph, 1, '#dfe9d8')
-          .setOrigin(0.5);
-      };
-      arrow(160, '<', -1);
-      const value = pixelText(this, 280, y - 6, '', 1, '#ffffff')
-        .setOrigin(0.5, 0);
-      const hint = pixelText(this, 280, y + 5, '', 1, '#c9dcc0')
-        .setOrigin(0.5, 0);
-      this.valueTexts.push(value);
-      this.hintTexts.push(hint);
-      arrow(400, '>', 1);
-    });
+  private buildRow(row: PickerRow, x: number, y: number, index: number): void {
+    const box = this.add.rectangle(x, y, 210, 27, MENU.panelAlt, 0.98)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerover', () => { this.focusIndex = index; this.refresh(); })
+      .on('pointerdown', (pointer: Phaser.Input.Pointer) => this.changeRow(index, pointer.x < x ? -1 : 1));
+    pixelText(this, x - 97, y, row.label, 1, MENU.sage).setOrigin(0, 0.5);
+    pixelText(this, x - 48, y, '<', 1, MENU.cream).setOrigin(0.5);
+    pixelText(this, x + 96, y, '>', 1, MENU.cream).setOrigin(0.5);
+    const value = pixelText(this, x + 20, y - 6, '', 1, MENU.cream).setOrigin(0.5, 0);
+    value.setMaxWidth(132);
+    const hint = pixelText(this, x + 20, y + 6, '', 1, MENU.sage).setOrigin(0.5, 0).setScale(0.72);
+    hint.setMaxWidth(180);
+    this.views.push({ box, value, hint });
+  }
 
-    const go = this.add
-      .rectangle(240, 250, 150, 24, 0x3d7429)
-      .setInteractive()
-      .on('pointerdown', () => {
-        unlockAudio();
-        playBlip();
-        saveQuickConfig(this.cfg);
-        launchHunt(this, { kind: 'quick' }, { quick: { ...this.cfg } });
-      });
-    go.setStrokeStyle(1, 0x9fd88f);
-    pixelText(this, 240, 250, 'hunt', 1, '#ffffff')
-      .setOrigin(0.5);
-
-    const back = pixelText(this, 10, 252, '< title', 1, '#9fb896')
-      .setInteractive();
-    back.on('pointerdown', () => {
-      unlockAudio();
-      playBlip();
-      saveQuickConfig(this.cfg);
-      this.scene.start('TitleScene');
-    });
-
+  private changeRow(index: number, dir: 1 | -1): void {
+    unlockAudio();
+    playBlip();
+    this.rows[index].step(dir);
     this.refresh();
   }
 
   private refresh(): void {
     this.rows.forEach((row, i) => {
-      this.valueTexts[i].setText(row.value());
-      this.hintTexts[i].setText(row.hint?.() ?? '');
+      this.views[i].value.setText(row.value());
+      this.views[i].hint.setText(row.hint?.() ?? '');
+      setMenuFocus(this.views[i].box, this.focusIndex === i);
     });
+    setMenuFocus(this.backBox, this.focusIndex === 8);
+    setMenuFocus(this.huntBox, this.focusIndex === 9, true);
+  }
+
+  private back(): void {
+    unlockAudio();
+    playBlip();
+    saveQuickConfig(this.cfg);
+    this.scene.start('TitleScene');
+  }
+
+  private hunt(): void {
+    unlockAudio();
+    playBlip();
+    saveQuickConfig(this.cfg);
+    launchHunt(this, { kind: 'quick' }, { quick: { ...this.cfg } });
   }
 }

@@ -3,135 +3,286 @@ import { playBlip, unlockAudio } from '../audio';
 import { BREEDS, DOG_NAMES, type BreedConfig } from '../game/breeds';
 import { addDogToKennel, loadCareer, saveCareer, setActiveDog } from '../game/career';
 import { pixelText, type PixelText } from './pixelFont';
+import {
+  MENU,
+  addDogPreview,
+  addFooterHint,
+  addMenuBackdrop,
+  addMenuPanel,
+  addRuleHeading,
+  addStepHeader,
+  learningPace,
+  preloadMenuArt,
+  setMenuFocus,
+} from './menuUi';
 
-const pips = (v: number) => '#'.repeat(v) + '-'.repeat(5 - v);
+interface PendingDog {
+  breedId: string;
+  name: string;
+}
 
-/**
- * Pick a breed, name the puppy. Runs on first launch (empty kennel) and
- * again whenever the kennel raises a new pup — the new dog becomes active.
- */
+interface BreedSceneData {
+  fromKennel?: boolean;
+  /** Returned by the Home Ground screen when the player backs up a step. */
+  resume?: PendingDog;
+}
+
+interface BreedListRow {
+  box: Phaser.GameObjects.Rectangle;
+  name: PixelText;
+}
+
+const VISIBLE_BREEDS = 6;
+
+function statPips(value: number): string {
+  return `${'#'.repeat(value)}${'-'.repeat(5 - value)}`;
+}
+
+/** Career creation: choose a breed, name the puppy, then choose home ground. */
 export class BreedScene extends Phaser.Scene {
   private fromKennel = false;
-  private selected: BreedConfig | null = null;
-  private selectedCell: Phaser.GameObjects.Rectangle | null = null;
-  private confirmText!: PixelText;
-  private chooseBtn!: Phaser.GameObjects.Rectangle;
-  private chooseLabel!: PixelText;
-  private gridObjects: Phaser.GameObjects.GameObject[] = [];
-  private panelObjects: Phaser.GameObjects.GameObject[] = [];
+  private phase: 'breed' | 'name' = 'breed';
+  private selectedIndex = 0;
+  private listStart = 0;
   private puppyName = '';
+  private listRows: BreedListRow[] = [];
+  private dogPreview?: Phaser.GameObjects.Image;
+  private detailName?: PixelText;
+  private detailBlurb?: PixelText;
+  private statLines: PixelText[] = [];
+  private paceText?: PixelText;
+  private chooseBox?: Phaser.GameObjects.Rectangle;
 
   constructor() {
     super('BreedScene');
   }
 
-  create(data: { fromKennel?: boolean } = {}): void {
+  preload(): void {
+    preloadMenuArt(this);
+  }
+
+  create(data: BreedSceneData = {}): void {
     this.fromKennel = data.fromKennel ?? false;
-    this.selected = null;
-    this.selectedCell = null;
-    this.gridObjects = [];
-    this.panelObjects = [];
+    this.selectedIndex = data.resume
+      ? Math.max(0, BREEDS.findIndex((breed) => breed.id === data.resume?.breedId))
+      : 0;
+    this.listStart = Math.max(0, Math.min(this.selectedIndex, BREEDS.length - VISIBLE_BREEDS));
+    this.puppyName = data.resume?.name ?? '';
+    this.phase = data.resume ? 'name' : 'breed';
 
-    const g = this.add.graphics();
-    g.fillStyle(0x1c2b18).fillRect(0, 0, 480, 270);
-    const header = pixelText(this, 240, 14, this.fromKennel ? 'choose your next bird dog' : 'choose your first bird dog', 2, '#ffd23f')
+    this.input.keyboard?.on('keydown', (event: KeyboardEvent) => this.handleKey(event));
+    if (this.phase === 'name') this.renderNameScreen();
+    else this.renderBreedScreen();
+  }
+
+  private selectedBreed(): BreedConfig {
+    return BREEDS[this.selectedIndex];
+  }
+
+  private renderBreedScreen(): void {
+    this.phase = 'breed';
+    this.children.removeAll(true);
+    this.listRows = [];
+    this.statLines = [];
+
+    addMenuBackdrop(this, 0.31);
+    addStepHeader(this, 1);
+    pixelText(this, 240, 46, this.fromKennel ? 'CHOOSE YOUR NEXT BIRD DOG' : 'CHOOSE YOUR FIRST BIRD DOG', 2, MENU.cream)
       .setOrigin(0.5);
-    this.gridObjects.push(header);
+    pixelText(this, 240, 62, 'EVERY BREED CAN HUNT. PICK THE PARTNER THAT FITS YOUR STYLE.', 1, MENU.sage)
+      .setOrigin(0.5);
+    addMenuPanel(this, 240, 162, 458, 190, 0.96);
+    addRuleHeading(this, 121, 76, 'BREEDS', 204);
+    addRuleHeading(this, 351, 76, 'YOUR PARTNER', 218);
 
-    BREEDS.forEach((breed, i) => {
-      const col = i < 6 ? 0 : 1;
-      const row = i < 6 ? i : i - 6;
-      const x = col === 0 ? 126 : 366;
-      const y = 52 + row * 34;
-      const cell = this.add.rectangle(x, y, 232, 30, 0x2a3d24).setInteractive();
-      const s = breed.stats;
-      const name = pixelText(this, x - 110, y - 13, breed.name, 1, '#ffffff');
-      const stats1 = pixelText(this, x - 110, y - 2, `N${pips(s.nose)} Sp${pips(s.speed)} R${pips(s.range)}`, 1, '#9fb896');
-      const stats2 = pixelText(this, x - 110, y + 8, `St${pips(s.steadiness)} Sa${pips(s.stamina)}`, 1, '#9fb896');
-      cell.on('pointerdown', () => {
+    for (let slot = 0; slot < VISIBLE_BREEDS; slot++) {
+      const y = 91 + slot * 21;
+      const box = this.add.rectangle(121, y, 204, 21, MENU.panelAlt, 0.98)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerover', () => {
+          const index = this.listStart + slot;
+          if (index < BREEDS.length) {
+            this.selectedIndex = index;
+            this.refreshBreedScreen();
+          }
+        })
+        .on('pointerdown', () => {
+          unlockAudio();
+          playBlip();
+          const index = this.listStart + slot;
+          if (index < BREEDS.length) {
+            this.selectedIndex = index;
+            this.refreshBreedScreen();
+          }
+        });
+      const name = pixelText(this, 25, y, '', 1, MENU.cream).setOrigin(0, 0.5);
+      this.listRows.push({ box, name });
+    }
+
+    this.dogPreview = this.add.image(351, 131, 'menu-dog-gsp', 4).setScale(1.9).setOrigin(0.5, 0.65);
+    this.detailName = pixelText(this, 351, 91, '', 1, MENU.cream).setOrigin(0.5);
+    this.detailName.setMaxWidth(210);
+    this.detailBlurb = pixelText(this, 351, 102, '', 1, MENU.sage).setOrigin(0.5);
+    this.statLines = ['NOSE', 'SPEED', 'RANGE', 'STEADINESS', 'STAMINA'].map((label, i) =>
+      pixelText(this, 278, 151 + i * 10, `${label.padEnd(12)} -----`, 1, MENU.cream),
+    );
+    this.paceText = pixelText(this, 351, 204, '', 1, MENU.amberText).setOrigin(0.5);
+
+    this.chooseBox = this.add.rectangle(351, 226, 210, 25, MENU.olive, 1)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.openNameScreen());
+    pixelText(this, 351, 226, 'CHOOSE THIS BREED  >', 1, MENU.cream).setOrigin(0.5);
+
+    this.add.rectangle(68, 226, 96, 23, MENU.panelAlt, 0.98)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.goBack());
+    pixelText(this, 68, 226, 'ESC  BACK', 1, MENU.cream).setOrigin(0.5);
+    addFooterHint(this, '↑↓ BROWSE · PAGE UP/DOWN SCROLL · ENTER CHOOSE');
+    this.refreshBreedScreen();
+  }
+
+  private refreshBreedScreen(): void {
+    if (this.selectedIndex < this.listStart) this.listStart = this.selectedIndex;
+    if (this.selectedIndex >= this.listStart + VISIBLE_BREEDS) {
+      this.listStart = this.selectedIndex - VISIBLE_BREEDS + 1;
+    }
+
+    this.listRows.forEach((row, slot) => {
+      const index = this.listStart + slot;
+      const breed = BREEDS[index];
+      row.box.setVisible(Boolean(breed));
+      row.name.setVisible(Boolean(breed));
+      if (!breed) return;
+      row.name.setText(`${index === this.selectedIndex ? '>' : ' '} ${breed.name}`);
+      setMenuFocus(row.box, index === this.selectedIndex, index === this.selectedIndex);
+    });
+
+    const breed = this.selectedBreed();
+    const setter = breed.id === 'english-setter' || breed.id === 'irish-setter';
+    this.dogPreview?.setTexture(setter ? 'menu-dog-setter' : 'menu-dog-gsp', 4);
+    this.detailName?.setText(breed.name.toUpperCase());
+    this.detailBlurb?.setText(breed.blurb.toUpperCase());
+    const stats = breed.stats;
+    const values = [stats.nose, stats.speed, stats.range, stats.steadiness, stats.stamina];
+    const labels = ['NOSE', 'SPEED', 'RANGE', 'STEADINESS', 'STAMINA'];
+    this.statLines.forEach((line, i) => line.setText(`${labels[i].padEnd(12)} ${statPips(values[i])}`));
+    this.paceText?.setText(learningPace(breed));
+    if (this.chooseBox) setMenuFocus(this.chooseBox, true, true);
+  }
+
+  private openNameScreen(): void {
+    unlockAudio();
+    playBlip();
+    if (!this.puppyName) this.rollName();
+    this.renderNameScreen();
+  }
+
+  private renderNameScreen(): void {
+    this.phase = 'name';
+    this.children.removeAll(true);
+    const breed = this.selectedBreed();
+
+    addMenuBackdrop(this, 0.31);
+    addStepHeader(this, 2, 1);
+    pixelText(this, 240, 47, 'NAME YOUR PUPPY', 2, MENU.cream).setOrigin(0.5);
+    pixelText(this, 240, 63, 'THE NAME YOU WILL CALL ACROSS A THOUSAND ACRES.', 1, MENU.sage)
+      .setOrigin(0.5);
+    addMenuPanel(this, 240, 163, 458, 190, 0.96);
+
+    addRuleHeading(this, 129, 79, breed.name.toUpperCase(), 208);
+    addDogPreview(this, breed, 129, 151, 4.25);
+    pixelText(this, 129, 204, breed.blurb.toUpperCase(), 1, MENU.sage).setOrigin(0.5);
+
+    addRuleHeading(this, 351, 79, 'YOUR PUPPY', 208);
+    this.add.rectangle(351, 122, 202, 45, MENU.ink, 0.94).setStrokeStyle(1, MENU.amber);
+    const nameText = pixelText(this, 351, 122, this.puppyName.toUpperCase(), 3, MENU.cream).setOrigin(0.5);
+    nameText.setMaxWidth(190);
+    pixelText(this, 351, 150, 'SHORT NAMES CARRY FAR.', 1, MENU.sage).setOrigin(0.5);
+
+    const reroll = this.add.rectangle(351, 176, 160, 23, MENU.panelAlt, 0.98)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => {
         unlockAudio();
         playBlip();
-        this.select(breed, cell);
+        this.rollName();
+        nameText.setText(this.puppyName.toUpperCase());
       });
-      this.gridObjects.push(cell, name, stats1, stats2);
-    });
+    pixelText(this, 351, 176, '*  NEW NAME', 1, MENU.cream).setOrigin(0.5);
 
-    this.confirmText = pixelText(this, 240, 246, 'tap a breed', 1, '#dfe9d8')
+    this.add.rectangle(351, 218, 202, 27, MENU.olive, 1)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.confirmName());
+    pixelText(this, 351, 218, this.fromKennel ? 'WELCOME TO THE KENNEL  >' : 'CONTINUE TO HOME GROUND  >', 1, MENU.cream)
       .setOrigin(0.5);
-    this.chooseBtn = this.add.rectangle(420, 246, 104, 20, 0x101410, 0.85).setInteractive();
-    this.chooseLabel = pixelText(this, 420, 246, 'choose', 1, '#ffd23f')
-      .setOrigin(0.5);
-    this.chooseBtn.on('pointerdown', () => {
-      if (!this.selected) return;
-      unlockAudio();
-      playBlip();
-      this.showNamePanel();
-    });
-    this.gridObjects.push(this.confirmText, this.chooseBtn, this.chooseLabel);
 
-    this.buildNamePanel();
+    this.add.rectangle(68, 226, 96, 23, MENU.panelAlt, 0.98)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => {
+        unlockAudio();
+        playBlip();
+        this.renderBreedScreen();
+      });
+    pixelText(this, 68, 226, 'ESC  BACK', 1, MENU.cream).setOrigin(0.5);
+    addFooterHint(this, 'R NEW NAME · ENTER CONTINUE');
+    setMenuFocus(reroll, false);
   }
 
-  private select(breed: BreedConfig, cell: Phaser.GameObjects.Rectangle): void {
-    this.selectedCell?.setFillStyle(0x2a3d24);
-    this.selected = breed;
-    this.selectedCell = cell;
-    cell.setFillStyle(0x4a6b34);
-    this.confirmText.setText(`${breed.name} — ${breed.blurb}`);
+  private rollName(): void {
+    const current = this.puppyName;
+    const alternatives = DOG_NAMES.filter((name) => name !== current);
+    this.puppyName = alternatives[Math.floor(Math.random() * alternatives.length)] ?? DOG_NAMES[0];
   }
 
-  private buildNamePanel(): void {
-    const title = pixelText(this, 240, 84, 'name your puppy', 2, '#ffd23f')
-      .setOrigin(0.5)
-      .setVisible(false);
-    const nameText = pixelText(this, 240, 122, '', 2, '#ffffff')
-      .setOrigin(0.5)
-      .setVisible(false);
-    const reroll = this.add.rectangle(178, 172, 110, 22, 0x101410, 0.85).setInteractive().setVisible(false);
-    const rerollLabel = pixelText(this, 178, 172, 'new name', 1, '#dfe9d8')
-      .setOrigin(0.5)
-      .setVisible(false);
-    const start = this.add.rectangle(306, 172, 110, 22, 0x4a6b34, 1).setInteractive().setVisible(false);
-    const startLabel = pixelText(this, 306, 172, 'start hunting', 1, '#ffffff')
-      .setOrigin(0.5)
-      .setVisible(false);
-
-    reroll.on('pointerdown', () => {
-      unlockAudio();
-      playBlip();
-      this.puppyName = DOG_NAMES[Math.floor(Math.random() * DOG_NAMES.length)];
-      nameText.setText(this.puppyName);
-    });
-    start.on('pointerdown', () => {
-      if (!this.selected) return;
-      unlockAudio();
-      playBlip();
-      const { career, dog } = addDogToKennel(loadCareer(), this.puppyName, this.selected.id);
-      // A fresh pup always rides along next.
-      const saved = setActiveDog(career, dog.id);
-      saveCareer(saved);
-      // A brand-new career picks its home ground before the first hunt.
-      if (this.fromKennel) this.scene.start('KennelScene');
-      else this.scene.start('MapScene', saved.homeRegionId === null ? { chooseHome: true } : {});
-    });
-
-    this.panelObjects.push(title, nameText, reroll, rerollLabel, start, startLabel);
-    this.setGroupVisible(this.panelObjects, false);
-  }
-
-  /** Toggle visibility AND interactivity (hidden buttons must not take taps). */
-  private setGroupVisible(objs: Phaser.GameObjects.GameObject[], visible: boolean): void {
-    for (const o of objs) {
-      (o as unknown as { setVisible: (v: boolean) => void }).setVisible(visible);
-      const input = (o as unknown as { input?: { enabled: boolean } }).input;
-      if (input) input.enabled = visible;
+  private confirmName(): void {
+    unlockAudio();
+    playBlip();
+    const pending: PendingDog = { breedId: this.selectedBreed().id, name: this.puppyName };
+    if (!this.fromKennel) {
+      // Career creation remains transactional until the final setup step.
+      this.scene.start('MapScene', { chooseHome: true, newDog: pending });
+      return;
     }
+
+    const { career, dog } = addDogToKennel(loadCareer(), pending.name, pending.breedId);
+    saveCareer(setActiveDog(career, dog.id));
+    this.scene.start('KennelScene');
   }
 
-  private showNamePanel(): void {
-    this.setGroupVisible(this.gridObjects, false);
-    this.puppyName = DOG_NAMES[Math.floor(Math.random() * DOG_NAMES.length)];
-    (this.panelObjects[1] as PixelText).setText(this.puppyName);
-    this.setGroupVisible(this.panelObjects, true);
+  private goBack(): void {
+    unlockAudio();
+    playBlip();
+    this.scene.start(this.fromKennel ? 'KennelScene' : 'TitleScene');
+  }
+
+  private handleKey(event: KeyboardEvent): void {
+    if (this.phase === 'name') {
+      if (event.key === 'Escape') {
+        playBlip();
+        this.renderBreedScreen();
+      } else if (event.key.toLowerCase() === 'r') {
+        this.rollName();
+        this.renderNameScreen();
+        playBlip();
+      } else if (event.key === 'Enter' || event.key === ' ') {
+        this.confirmName();
+      }
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      this.goBack();
+    } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      const dir = event.key === 'ArrowUp' ? -1 : 1;
+      this.selectedIndex = (this.selectedIndex + dir + BREEDS.length) % BREEDS.length;
+      playBlip();
+      this.refreshBreedScreen();
+    } else if (event.key === 'PageUp' || event.key === 'PageDown') {
+      const dir = event.key === 'PageUp' ? -VISIBLE_BREEDS : VISIBLE_BREEDS;
+      this.selectedIndex = Phaser.Math.Clamp(this.selectedIndex + dir, 0, BREEDS.length - 1);
+      playBlip();
+      this.refreshBreedScreen();
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      this.openNameScreen();
+    }
   }
 }
