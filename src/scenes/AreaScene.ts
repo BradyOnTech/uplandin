@@ -13,6 +13,7 @@ import {
   weekLabel,
 } from '../game/season';
 import { getSpecies } from '../game/species';
+import { launchHunt } from './launchHunt';
 import { pixelText } from './pixelFont';
 
 export class AreaScene extends Phaser.Scene {
@@ -67,7 +68,7 @@ export class AreaScene extends Phaser.Scene {
         card.setInteractive().on('pointerdown', () => {
           unlockAudio();
           playBlip();
-          this.scene.start('FieldScene', { areaId: area.id });
+          launchHunt(this, { kind: 'career', areaId: area.id }, { areaId: area.id });
         });
       } else {
         pixelText(this, 66, y + 17, `season opens ${weekLabel(areaOpenerWeek(area))}`, 1, '#c9a15c');

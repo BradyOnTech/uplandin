@@ -13,6 +13,7 @@ import {
   type QuickConfig,
 } from '../game/quick';
 import { getSpecies } from '../game/species';
+import { launchHunt } from './launchHunt';
 import { pixelText, type PixelText } from './pixelFont';
 
 interface PickerRow {
@@ -151,7 +152,7 @@ export class QuickScene extends Phaser.Scene {
         unlockAudio();
         playBlip();
         saveQuickConfig(this.cfg);
-        this.scene.start('FieldScene', { quick: { ...this.cfg } });
+        launchHunt(this, { kind: 'quick' }, { quick: { ...this.cfg } });
       });
     go.setStrokeStyle(1, 0x9fd88f);
     pixelText(this, 240, 250, 'hunt', 1, '#ffffff')
