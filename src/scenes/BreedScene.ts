@@ -46,7 +46,7 @@ export class BreedScene extends Phaser.Scene {
   private listStart = 0;
   private puppyName = '';
   private listRows: BreedListRow[] = [];
-  private dogPreview?: Phaser.GameObjects.Image;
+  private dogPreview?: Phaser.GameObjects.Container;
   private detailName?: PixelText;
   private detailBlurb?: PixelText;
   private statLines: PixelText[] = [];
@@ -119,7 +119,6 @@ export class BreedScene extends Phaser.Scene {
       this.listRows.push({ box, name });
     }
 
-    this.dogPreview = this.add.image(351, 131, 'menu-dog-gsp', 4).setScale(1.9).setOrigin(0.5, 0.65);
     this.detailName = pixelText(this, 351, 91, '', 1, MENU.cream).setOrigin(0.5);
     this.detailName.setMaxWidth(210);
     this.detailBlurb = pixelText(this, 351, 102, '', 1, MENU.sage).setOrigin(0.5);
@@ -158,8 +157,8 @@ export class BreedScene extends Phaser.Scene {
     });
 
     const breed = this.selectedBreed();
-    const setter = breed.id === 'english-setter' || breed.id === 'irish-setter';
-    this.dogPreview?.setTexture(setter ? 'menu-dog-setter' : 'menu-dog-gsp', 4);
+    this.dogPreview?.destroy(true);
+    this.dogPreview = addDogPreview(this, breed, 351, 127, 1.55);
     this.detailName?.setText(breed.name.toUpperCase());
     this.detailBlurb?.setText(breed.blurb.toUpperCase());
     const stats = breed.stats;
@@ -190,7 +189,7 @@ export class BreedScene extends Phaser.Scene {
     addMenuPanel(this, 240, 163, 458, 190, 0.96);
 
     addRuleHeading(this, 129, 79, breed.name.toUpperCase(), 208);
-    addDogPreview(this, breed, 129, 151, 4.25);
+    addDogPreview(this, breed, 129, 151, 3.6);
     pixelText(this, 129, 204, breed.blurb.toUpperCase(), 1, MENU.sage).setOrigin(0.5);
 
     addRuleHeading(this, 351, 79, 'YOUR PUPPY', 208);

@@ -46,6 +46,23 @@ const US_OUTLINE: [number, number][] = [
   [118, 180], [95, 172], [62, 138], [55, 108], [68, 96],
 ];
 
+interface RegionMapTheme {
+  ground: number;
+  contour: number;
+  accent: number;
+  detail: number;
+}
+
+const REGION_MAP_THEMES: Record<string, RegionMapTheme> = {
+  'southern-plains': { ground: 0x88723d, contour: 0xb59a55, accent: 0xd1ad55, detail: 0x4f4b2a },
+  'prairie-pothole': { ground: 0x58694b, contour: 0x78915c, accent: 0x3c7185, detail: 0xb58a42 },
+  'north-woods': { ground: 0x263c32, contour: 0x45604a, accent: 0x172c25, detail: 0x718064 },
+  'great-basin': { ground: 0x836647, contour: 0xad875a, accent: 0x5f4935, detail: 0xd0a66d },
+  'sonoran-desert': { ground: 0xa45d37, contour: 0xd0834f, accent: 0x633b2d, detail: 0x5b6a32 },
+  'high-rockies': { ground: 0x506779, contour: 0x8094a2, accent: 0xdce4df, detail: 0x2f4d48 },
+  'pacific-valleys': { ground: 0x8a763d, contour: 0xc5a556, accent: 0x4d6335, detail: 0x527a82 },
+};
+
 /**
  * The travel map — and the season plan. The header carries the date; home
  * hunts cost a week, trips two. Regions show what's open now; when January
@@ -243,14 +260,79 @@ export class MapScene extends Phaser.Scene {
       const [px, py] = mapPoint(x, y);
       return new Phaser.Geom.Point(px, py);
     });
-    mapGraphics.fillStyle(0x4f5a39, 0.9).fillPoints(outline, true);
-    mapGraphics.lineStyle(1, MENU.line, 1).strokePoints(outline, true);
-    // A few restrained terrain bands make the selection read as a map at
-    // this resolution without competing with the region pins.
-    mapGraphics.lineStyle(1, 0x87906c, 0.35);
-    mapGraphics.lineBetween(63, 117, 205, 108);
-    mapGraphics.lineBetween(73, 151, 220, 147);
-    mapGraphics.lineBetween(103, 187, 213, 174);
+    const drawRegionMap = (region: RegionConfig) => {
+      const theme = REGION_MAP_THEMES[region.id] ?? REGION_MAP_THEMES['southern-plains'];
+      mapGraphics.clear();
+      mapGraphics.fillStyle(theme.ground, 0.96).fillPoints(outline, true);
+      mapGraphics.lineStyle(1, theme.contour, 0.72);
+      mapGraphics.lineBetween(63, 117, 205, 108);
+      mapGraphics.lineBetween(73, 151, 220, 147);
+      mapGraphics.lineBetween(103, 187, 213, 174);
+
+      if (region.id === 'southern-plains') {
+        mapGraphics.lineStyle(1, theme.accent, 0.9);
+        for (let x = 82; x <= 206; x += 14) {
+          const y = 128 + ((x / 14) % 3) * 14;
+          mapGraphics.lineBetween(x, y, x + 6, y - 3);
+          mapGraphics.lineBetween(x + 4, y, x + 8, y - 6);
+        }
+        mapGraphics.lineStyle(1, 0xe0d2a4, 0.8).strokeCircle(166, 122, 7);
+        mapGraphics.lineBetween(166, 129, 166, 150);
+        mapGraphics.lineBetween(157, 150, 175, 150);
+      } else if (region.id === 'prairie-pothole') {
+        mapGraphics.fillStyle(theme.accent, 0.92);
+        mapGraphics.fillEllipse(105, 137, 36, 13);
+        mapGraphics.fillEllipse(174, 160, 46, 16);
+        mapGraphics.lineStyle(1, theme.detail, 1);
+        for (const x of [88, 94, 120, 153, 160, 195]) {
+          mapGraphics.lineBetween(x, 128, x, 143);
+          mapGraphics.lineBetween(x, 129, x + 3, 125);
+        }
+      } else if (region.id === 'north-woods') {
+        mapGraphics.fillStyle(theme.accent, 0.96);
+        for (const [x, y, s] of [[84, 144, 12], [105, 122, 15], [132, 154, 17], [160, 119, 14], [190, 145, 18]] as const) {
+          mapGraphics.fillTriangle(x, y - s, x - s / 2, y + s / 2, x + s / 2, y + s / 2);
+          mapGraphics.fillRect(x - 1, y + s / 2, 2, 5);
+        }
+        mapGraphics.lineStyle(2, theme.detail, 0.8).lineBetween(83, 177, 206, 120);
+      } else if (region.id === 'great-basin') {
+        mapGraphics.lineStyle(3, theme.accent, 0.9);
+        mapGraphics.lineBetween(78, 139, 116, 127);
+        mapGraphics.lineBetween(116, 127, 148, 134);
+        mapGraphics.lineBetween(148, 134, 207, 117);
+        mapGraphics.lineStyle(2, theme.detail, 0.85);
+        mapGraphics.lineBetween(84, 154, 126, 145);
+        mapGraphics.lineBetween(138, 165, 204, 148);
+        mapGraphics.fillStyle(theme.accent, 1).fillRect(110, 169, 9, 5).fillRect(187, 174, 12, 6);
+      } else if (region.id === 'sonoran-desert') {
+        mapGraphics.fillStyle(theme.accent, 0.95);
+        mapGraphics.fillTriangle(70, 161, 112, 119, 149, 161);
+        mapGraphics.fillTriangle(121, 166, 177, 126, 219, 166);
+        mapGraphics.fillStyle(theme.detail, 1);
+        for (const [x, y] of [[92, 164], [156, 151], [196, 171]] as const) {
+          mapGraphics.fillRect(x, y - 18, 4, 22);
+          mapGraphics.fillRect(x - 5, y - 11, 6, 4);
+          mapGraphics.fillRect(x + 3, y - 15, 6, 4);
+        }
+      } else if (region.id === 'high-rockies') {
+        mapGraphics.fillStyle(theme.detail, 1);
+        mapGraphics.fillTriangle(68, 175, 116, 108, 157, 175);
+        mapGraphics.fillTriangle(120, 178, 176, 101, 224, 178);
+        mapGraphics.fillStyle(theme.accent, 1);
+        mapGraphics.fillTriangle(99, 132, 116, 108, 130, 132);
+        mapGraphics.fillTriangle(156, 128, 176, 101, 192, 128);
+      } else {
+        // Pacific valleys: oak crowns and a cool river through golden hills.
+        mapGraphics.lineStyle(4, theme.detail, 0.9);
+        mapGraphics.beginPath().moveTo(83, 111).lineTo(119, 139).lineTo(146, 150).lineTo(203, 183).strokePath();
+        mapGraphics.fillStyle(theme.accent, 1);
+        for (const [x, y, r] of [[92, 159, 7], [125, 128, 8], [163, 171, 7], [199, 141, 9]] as const) {
+          mapGraphics.fillCircle(x, y, r);
+          mapGraphics.fillRect(x - 1, y + r - 1, 3, 8);
+        }
+      }
+      mapGraphics.lineStyle(1, MENU.line, 1).strokePoints(outline, true);
+    };
 
     const pins = REGIONS.map((region, index) => {
       const [x, y] = mapPoint(region.map.x, region.map.y);
@@ -314,6 +396,7 @@ export class MapScene extends Phaser.Scene {
 
     const refresh = () => {
       const region = REGIONS[selectedIndex];
+      drawRegionMap(region);
       pins.forEach(({ dot }, index) => {
         const selected = index === selectedIndex;
         dot.setRadius(selected ? 5 : 3.5);
