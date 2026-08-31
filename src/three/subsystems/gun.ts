@@ -50,6 +50,9 @@ import type { TerrainSystem } from './terrain';
 
 /** Mount time (s): cheek-weld rise, inside the 150-250 ms law. */
 const MOUNT_S = 0.18;
+/** Opening the action plus loading each missing shell. */
+const RELOAD_OPEN_S = 0.55;
+const RELOAD_PER_SHELL_S = 0.38;
 /** Recoil spring: stiffness/damping (underdamped — kick then recover). */
 const RECOIL_K = 180;
 const RECOIL_C = 16;
@@ -227,6 +230,9 @@ export class GunSystem implements Subsystem {
   private shells = 0;
   private lastShotMs = -Infinity;
   private lastRiseSequence = 0;
+  private reloadElapsed = 0;
+  private reloadDuration = 0;
+  private keydownHandler?: (event: KeyboardEvent) => void;
   private reticle: HTMLElement | null = null;
   private shotCallout: HTMLElement | null = null;
   private shotCalloutUntil = 0;
@@ -347,6 +353,10 @@ export class GunSystem implements Subsystem {
         if (e.button === 2) this.aim = false;
       });
       window.addEventListener('contextmenu', (e) => e.preventDefault());
+      this.keydownHandler = (event) => {
+        if (event.key.toLowerCase() === 'r') this.beginReload();
+      };
+      window.addEventListener('keydown', this.keydownHandler);
     } else {
       // CAPTURE HARNESS HANDLE (dog pattern: tooling only, never gameplay):
       // stage states, measure the mount clock and the recoil spring with
@@ -438,8 +448,40 @@ export class GunSystem implements Subsystem {
     return this.shells;
   }
 
+  shellCapacity(): number {
+    return this.gun.shells;
+  }
+
+  isReloading(): boolean {
+    return this.reloadDuration > 0;
+  }
+
+  reloadProgress(): number {
+    return this.reloadDuration > 0
+      ? THREE.MathUtils.clamp(this.reloadElapsed / this.reloadDuration, 0, 1)
+      : 0;
+  }
+
+  private beginReload(): boolean {
+    if (this.isReloading() || this.shells >= this.gun.shells) return false;
+    this.aim = false;
+    this.reloadElapsed = 0;
+    this.reloadDuration = RELOAD_OPEN_S + (this.gun.shells - this.shells) * RELOAD_PER_SHELL_S;
+    if (this.shotCallout) {
+      this.shotCallout.textContent = 'RELOADING';
+      this.shotCallout.classList.add('miss');
+      this.shotCallout.hidden = false;
+      this.shotCalloutUntil = Infinity;
+    }
+    return true;
+  }
+
   private fire(ctx: Ctx): void {
-    if (!this.birds.isRiseActive() || this.shells <= 0) return;
+    if (!this.birds.isRiseActive() || this.isReloading()) return;
+    if (this.shells <= 0) {
+      this.beginReload();
+      return;
+    }
     const nowMs = ctx.time * 1000;
     if (nowMs - this.lastShotMs < this.gun.cooldownMs) return;
     this.lastShotMs = nowMs;
@@ -664,8 +706,22 @@ export class GunSystem implements Subsystem {
     const riseSequence = this.birds.riseSequence();
     if (riseSequence !== this.lastRiseSequence) {
       this.lastRiseSequence = riseSequence;
-      this.shells = this.gun.shells;
       this.lastShotMs = -Infinity;
+    }
+    if (this.isReloading()) {
+      this.reloadElapsed += dt;
+      if (this.reloadElapsed >= this.reloadDuration) {
+        this.shells = this.gun.shells;
+        this.reloadElapsed = 0;
+        this.reloadDuration = 0;
+        this.lastShotMs = -Infinity;
+        if (this.shotCallout) {
+          this.shotCallout.textContent = 'LOADED';
+          this.shotCallout.classList.remove('miss');
+          this.shotCallout.hidden = false;
+          this.shotCalloutUntil = ctx.time + 0.55;
+        }
+      }
     }
     if (this.reticle) {
       this.reticle.hidden = this.frozen || !this.birds.isRiseActive() || this.mountT < 0.35;
@@ -676,6 +732,8 @@ export class GunSystem implements Subsystem {
 
     this.advance(dt);
     const m = ease(this.mountT);
+    const reloadP = this.reloadProgress();
+    const reloadArc = Math.sin(reloadP * Math.PI);
 
     // Distance-driven walk bob (never per-second): stride phase advances
     // per meter of camera travel; teleports (capture setPose) are ignored.
@@ -757,20 +815,23 @@ export class GunSystem implements Subsystem {
       CARRY_POS.x * carryK + MOUNT_POS.x * m + Math.sin(this.stridePhase) * 0.005 * bobAmp,
       CARRY_POS.y * carryK + MOUNT_POS.y * m +
         Math.sin(this.stridePhase * 2) * 0.007 * bobAmp +
-        breath * 0.0025 * (1 - 0.6 * m),
+        breath * 0.0025 * (1 - 0.6 * m) - reloadArc * 0.075,
       CARRY_POS.z * carryK + MOUNT_POS.z * m + this.recZ,
     );
     this.rig.rotation.order = 'YXZ';
     this.rig.rotation.set(
       CARRY_ROT.x * carryK + MOUNT_ROT.x * m +
-        this.swayPitch + breath * 0.0012 + settle + this.recP + this.aimPitch * m,
+        this.swayPitch + breath * 0.0012 + settle + this.recP + this.aimPitch * m + reloadArc * 0.42,
       CARRY_ROT.y * carryK + MOUNT_ROT.y * m + this.swayYaw + this.aimYaw * m,
-      CARRY_ROT.z * carryK + MOUNT_ROT.z * m + Math.sin(this.stridePhase) * 0.012 * bobAmp,
+      CARRY_ROT.z * carryK + MOUNT_ROT.z * m +
+        Math.sin(this.stridePhase) * 0.012 * bobAmp + reloadArc * 0.16,
     );
   }
 
   dispose(ctx: Ctx): void {
     ctx.scene.remove(this.root);
+    if (this.keydownHandler) window.removeEventListener('keydown', this.keydownHandler);
+    this.keydownHandler = undefined;
     if (this.todHandler) ctx.events.removeEventListener('tod', this.todHandler);
     this.todHandler = undefined;
     this.geo?.dispose();

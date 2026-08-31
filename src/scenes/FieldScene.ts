@@ -512,13 +512,14 @@ export class FieldScene extends Phaser.Scene {
 
     // Field birds: downed always visible; hidden only with B (debug).
     this.birdMarkers = this.hunt.birds.map((b) => {
-      const key = b.state === 'downed' ? 'bird-downed' : 'bird-hidden';
-      return this.add.sprite(b.pos.x, b.pos.y, key).setVisible(b.state === 'downed').setDepth(8);
+      const grounded = b.state === 'downed' || b.state === 'carried';
+      const key = grounded ? 'bird-downed' : 'bird-hidden';
+      return this.add.sprite(b.pos.x, b.pos.y, key).setVisible(grounded).setDepth(8);
     });
     this.input.keyboard?.on('keydown-B', () => {
       this.birdMarkers.forEach((m, i) => {
         const bird = this.hunt.birds[i];
-        if (bird.state === 'downed') {
+        if (bird.state === 'downed' || bird.state === 'carried') {
           m.setVisible(true);
           return;
         }
@@ -773,8 +774,12 @@ export class FieldScene extends Phaser.Scene {
     this.birdMarkers.forEach((m, i) => {
       const bird = this.hunt.birds[i];
       m.setPosition(bird.pos.x, bird.pos.y);
-      if (bird.state === 'downed') {
-        m.setTexture('bird-downed').setVisible(true).setDepth(8 + bird.pos.y * 0.01);
+      if (bird.state === 'downed' || bird.state === 'carried') {
+        const carried = bird.state === 'carried';
+        m.setTexture('bird-downed')
+          .setPosition(bird.pos.x, bird.pos.y - (carried ? 4 : 0))
+          .setVisible(true)
+          .setDepth((carried ? 10.2 : 8) + bird.pos.y * 0.01);
       } else if (bird.state === 'hidden') {
         m.setTexture('bird-hidden');
         // leave visibility as B-key toggled

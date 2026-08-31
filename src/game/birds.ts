@@ -3,7 +3,7 @@ import { clamp, dist } from './math';
 import { getSpecies, rollSpecies, type SpeciesShare } from './species';
 import type { RNG, Vec2 } from './types';
 
-export type BirdState = 'hidden' | 'flushed' | 'downed' | 'escaped' | 'retrieved';
+export type BirdState = 'hidden' | 'flushed' | 'downed' | 'carried' | 'escaped' | 'retrieved';
 
 export interface Bird {
   id: number;

@@ -184,14 +184,21 @@ describe('Hunt3DSystem live start', () => {
     hunt.finishRise();
 
     let sawRetrieving = false;
+    let sawCarrying = false;
     const birdState = () => hunt.huntState().birds[0].state;
     const dogState = () => hunt.dog().state;
     for (let i = 0; i < 1200 && birdState() !== 'retrieved'; i++) {
       hunt.step(ctx, 1);
       sawRetrieving ||= dogState() === 'retrieving';
+      sawCarrying ||= birdState() === 'carried' && hunt.dog().carryingBirdId === bird.id;
     }
     expect(sawRetrieving).toBe(true);
+    expect(sawCarrying).toBe(true);
     expect(birdState()).toBe('retrieved');
+    expect(Math.hypot(
+      hunt.dog().pos.x - hunt.huntState().hunterPos.x,
+      hunt.dog().pos.y - hunt.huntState().hunterPos.y,
+    )).toBeLessThanOrEqual(6);
     expect(hunt.huntState().dogWork[0].retrieves).toBe(1);
   });
 

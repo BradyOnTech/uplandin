@@ -52,7 +52,7 @@ export class HuntHudSystem implements Subsystem {
     for (const bird of hunt.birds) {
       if (bird.state === 'hidden') hidden++;
       else if (bird.state === 'flushed') flushed++;
-      else if (bird.state === 'downed') downOnGround++;
+      else if (bird.state === 'downed' || bird.state === 'carried') downOnGround++;
       else if (bird.state === 'retrieved') retrieved++;
     }
 
@@ -64,13 +64,21 @@ export class HuntHudSystem implements Subsystem {
 
     const dogs = Array.from({ length: this.hunt.dogCount() }, (_, slot) => this.hunt.dog(slot));
     const rise = this.birds.isRiseActive();
-    if (this.endButton) this.endButton.disabled = rise;
-    const phase = rise
-      ? `COVEY RISE · shells ${this.gun.shellsRemaining()}`
+    if (this.endButton) this.endButton.disabled = rise || downOnGround > 0;
+    const shells = this.gun.shellsRemaining();
+    const capacity = this.gun.shellCapacity();
+    const phase = this.gun.isReloading()
+      ? `RELOADING · ${shells}/${capacity}`
+      : rise
+        ? `COVEY RISE · shells ${shells}/${capacity}${shells === 0 ? ' · R RELOAD' : ''}`
       : dogs.some((candidate) => candidate.state === 'retrieving')
-        ? 'DOG RETRIEVING'
+        ? dogs.some((candidate) => candidate.carryingBirdId !== null)
+          ? 'DOG RETURNING WITH BIRD'
+          : 'DOG HUNTING DEAD'
         : dogs.some((candidate) => candidate.state === 'pointing')
           ? 'ON POINT · WALK IN'
+          : shells < capacity
+            ? `SHELLS ${shells}/${capacity} · R RELOAD`
           : hunt.doubles > 0
             ? `${hunt.doubles} DOUBLE${hunt.doubles > 1 ? 'S' : ''} · HUNTING`
             : 'HUNTING';

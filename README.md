@@ -51,7 +51,8 @@ Dev helpers: `?doglevel=N` on the URL runs career hunts at that dog level
   hunter-anchored quartering out to the breed's range.
 - **Two-dog braces** (hunter lv 7): the second dog **honors** its
   packmate's point — or, if it's young and soft, steals it. Per-dog XP
-  credit; the retrieve goes to whoever reaches the fall first.
+  credit; the retrieve goes to whoever reaches the fall first, carries it
+  back, and delivers it to hand.
 - **Aging on the calendar**: growing pup, prime seasons 2–7, then a soft
   speed/stamina decline. The nose holds. No forced retirement.
 

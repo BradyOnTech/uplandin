@@ -120,15 +120,15 @@ export function birdsRemaining(hunt: HuntState): number {
   return hunt.birds.filter((b) => b.state === 'hidden').length;
 }
 
-/** A hunt is over once no bird is still hidden or mid-flush. */
+/** A hunt is over once every bird is lost or delivered to hand. */
 export function huntComplete(hunt: HuntState): boolean {
-  return hunt.birds.every((b) => b.state !== 'hidden' && b.state !== 'flushed');
+  return hunt.birds.every((b) => b.state === 'escaped' || b.state === 'retrieved');
 }
 
 /**
  * Player elects to quit the field early: every still-hidden or mid-flush bird
  * becomes escaped (and counts as lost). Mutates `hunt` in place and returns
- * how many birds were written off. Already downed/retrieved birds are kept.
+ * how many birds were written off. Already downed/carried/retrieved birds are kept.
  */
 export function endHuntEarly(hunt: HuntState): number {
   let writtenOff = 0;

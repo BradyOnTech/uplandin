@@ -130,6 +130,8 @@ declare global {
       triggerFlush(): { ids: number[]; distPx: number } | null;
       /** Airborne rise birds, world meters — capture telemetry. */
       birds(): { simId: number; x: number; y: number; z: number; airMs: number; status: string }[];
+      /** Capture/test hook: route a staged hit through sim and presentation. */
+      downBird(simId: number): boolean;
       groundedBirds(): number[];
       /** Sim snapshot in world meters — capture poses shots off this. */
       hunt(): {
@@ -140,6 +142,7 @@ declare global {
           gait: string;
           scentStage: string;
           scentProgress: number;
+          carryingBirdId: number | null;
         };
         hunter: { x: number; y: number; z: number };
         tally: { downed: number; retrieved: number; escaped: number; hidden: number; flushed: number };
@@ -171,6 +174,11 @@ engine.start().then(() => {
     stepRise: (ticks) => engine.ctx.get<BirdsSystem>('birds').step(engine.ctx, ticks),
     triggerFlush: () => engine.ctx.get<Hunt3DSystem>('hunt3d').triggerFlush(engine.ctx),
     birds: () => engine.ctx.get<BirdsSystem>('birds').airborne(),
+    downBird: (simId) => {
+      const hunt = engine.ctx.get<Hunt3DSystem>('hunt3d');
+      const birds = engine.ctx.get<BirdsSystem>('birds');
+      return hunt.resolveBird(simId, 'downed') && birds.downBird(simId);
+    },
     groundedBirds: () => engine.ctx.get<BirdsSystem>('birds').groundedIds(),
     gun: () => {
       const gun = engine.ctx.get<GunSystem>('gun');
@@ -188,6 +196,7 @@ engine.start().then(() => {
           gait: h.dog().gait,
           scentStage: h.dog().scentStage,
           scentProgress: h.dog().scentProgress,
+          carryingBirdId: h.dog().carryingBirdId,
         },
         hunter: { x: hunterW.x, y: engine.ctx.camera.position.y, z: hunterW.z },
         tally: {

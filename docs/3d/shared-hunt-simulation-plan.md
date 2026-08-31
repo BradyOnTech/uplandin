@@ -9,7 +9,8 @@ The shared seam now exists at `src/game/huntSimulation.ts` and both
 - cover, wind, weather, recall and packmate-honor inputs
 - dog bumps, birds scenting the dog, sprint spooks and pointed-bird nerve
 - proximity flushes, point credit and dog steadiness on the rise
-- retrieve credit plus authoritative downed/escaped shot outcomes
+- pickup, carry-to-handler and delivery credit plus authoritative
+  downed/escaped shot outcomes
 - rendered-fall coordinates written back before shared retrieve behavior
 - rise finalization: doubles, downed-over-point credit and survivor relights
 
@@ -31,11 +32,12 @@ shotgun pattern:
 - right mouse mounts the gun
 - a contextual reticle appears during the rise
 - left mouse fires, honoring shared shell count, cooldown and spread
+- R runs a timed, visible reload; shells persist between rises
 - hits fold the rendered bird and mark the shared bird downed
 - birds leaving the rise resolve escaped through the shared simulation
 - hit birds shed a brief feather burst, fall, and remain grounded
-- the dog enters the shared retrieve behavior after the rise; the grounded
-  render disappears only when the shared bird becomes `retrieved`
+- the dog hunts the fall, picks it up, visibly carries it to the handler and
+  earns retrieve credit only on delivery; the render disappears after handoff
 - a live HUD reports hidden birds, bag, losses, rise/shell status and retrieve
   state, followed by a career-aware end-of-hunt summary
 - sprint pressure, whistle/gear reach, early end-hunt, and two-dog braces use

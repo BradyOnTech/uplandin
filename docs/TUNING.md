@@ -30,8 +30,16 @@ remains a literal 40-yard gate. Shift supplies sprint pressure, Q supplies
 recall, and gear tier 3 removes whistle range.
 
 Rendered 3D flight is presentation-owned, but `recordFall()` writes the final
-world landing point back into the shared bird before the dog retrieves. Never
-move a downed mesh without updating that contract.
+world landing point back into the shared bird before the dog retrieves. The
+shared retrieve then advances `downed → carried → retrieved`: pickup/search
+timing lives in `dog.ts`, the carried bird follows the returning dog in both
+renderers, and credit is awarded only after delivery at the hunter. Never move
+a downed or carried mesh without updating that contract.
+
+The 3D gun keeps shells between rises. R starts a visible timed reload;
+`RELOAD_OPEN_S` and `RELOAD_PER_SHELL_S` in `three/subsystems/gun.ts` control
+the action-open and per-shell timing. Do not restore ammo from rise events—the
+HUD and gun animation are driven by the same reload state.
 
 `birds.ts` in the 3D adapter owns `BIRD_SHAPES`: family body/wing/tail/bill
 proportions. `birdVisualScale()` layers species `size` over those proportions;

@@ -156,6 +156,22 @@ describe('Dog', () => {
     expect(dog.state).toBe('quartering');
   });
 
+  it('credits a retrieve only after carrying the bird back to the hunter', () => {
+    const hunter = { x: 100, y: 100 };
+    const dog = makeDog(hunter.x, hunter.y);
+    const bird = birdAt(160, 100, { id: 7, coveyId: 0, state: 'downed' });
+    let sawCarried = false;
+
+    for (let i = 0; i < 400 && bird.state !== 'retrieved'; i++) {
+      dog.update(50, [bird], { hunterPos: hunter });
+      sawCarried ||= bird.state === 'carried' && dog.carryingBirdId === bird.id;
+    }
+
+    expect(sawCarried).toBe(true);
+    expect(bird.state).toBe('retrieved');
+    expect(dist(dog.pos, hunter)).toBeLessThanOrEqual(6);
+  });
+
   it('fetches a downed bird before working fresh scent', () => {
     const dog = makeDog(100, 100);
     const downedBird = birdAt(160, 100, { id: 7, coveyId: 0, state: 'downed' });

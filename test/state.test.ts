@@ -48,8 +48,9 @@ describe('hunt bookkeeping', () => {
     expect(huntComplete(huntWith(['flushed']))).toBe(false);
   });
 
-  it('is complete when every bird is resolved', () => {
-    expect(huntComplete(huntWith(['downed', 'escaped']))).toBe(true);
+  it('waits for downed and carried birds to be delivered', () => {
+    expect(huntComplete(huntWith(['downed', 'escaped']))).toBe(false);
+    expect(huntComplete(huntWith(['carried', 'escaped']))).toBe(false);
     expect(huntComplete(huntWith(['retrieved', 'escaped']))).toBe(true);
   });
 
@@ -63,12 +64,14 @@ describe('hunt bookkeeping', () => {
     expect(hunt.birds[1].state).toBe('escaped');
     expect(hunt.birds[2].state).toBe('downed');
     expect(hunt.birds[3].state).toBe('retrieved');
+    expect(huntComplete(hunt)).toBe(false);
+    hunt.birds[2].state = 'retrieved';
     expect(huntComplete(hunt)).toBe(true);
     expect(birdsRemaining(hunt)).toBe(0);
   });
 
   it('endHuntEarly is a no-op when the hunt is already complete', () => {
-    const hunt = huntWith(['downed', 'escaped']);
+    const hunt = huntWith(['retrieved', 'escaped']);
     expect(endHuntEarly(hunt)).toBe(0);
     expect(hunt.escaped).toBe(0);
   });

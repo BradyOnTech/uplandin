@@ -417,6 +417,7 @@ export class BirdsSystem implements Subsystem {
 
   // Preallocated scratch.
   private w2 = { x: 0, z: 0 };
+  private carryW = { x: 0, z: 0 };
 
   init(ctx: Ctx): void {
     this.frozen = new URLSearchParams(location.search).has('capture');
@@ -1279,12 +1280,42 @@ export class BirdsSystem implements Subsystem {
 
   /* ------------------------------ render ----------------------------- */
 
-  update(_ctx: Ctx, _dt: number): void {
+  update(ctx: Ctx, _dt: number): void {
+    const simBirds = this.hunt.huntState().birds;
     for (let i = 0; i < POOL; i++) {
       const s = this.slots[i];
       const visible = s.status === 'flying' || s.status === 'falling' || s.status === 'grounded';
       s.root.visible = visible;
       if (!visible) continue;
+      const simBird = s.status === 'grounded'
+        ? simBirds.find((candidate) => candidate.id === s.simId)
+        : undefined;
+      if (simBird?.state === 'carried') {
+        let carrierSlot = -1;
+        for (let slot = 0; slot < this.hunt.dogCount(); slot++) {
+          if (this.hunt.dog(slot).carryingBirdId === simBird.id) {
+            carrierSlot = slot;
+            break;
+          }
+        }
+        if (carrierSlot >= 0) {
+          const dog = this.hunt.dog(carrierSlot);
+          if (this.frozen) this.hunt.dogWorld(this.carryW, carrierSlot);
+          else this.hunt.dogRenderWorld(ctx.fixedAlpha, this.carryW, carrierSlot);
+          const dogYaw = Math.atan2(Math.cos(dog.heading), Math.sin(dog.heading));
+          s.root.position.set(
+            this.carryW.x + Math.cos(dog.heading) * 0.32,
+            this.terrain.heightAt(this.carryW.x, this.carryW.z) + 0.58,
+            this.carryW.z + Math.sin(dog.heading) * 0.32,
+          );
+          s.root.scale.setScalar(GROUNDED_SCALE * s.visualScale);
+          // Carry the bird crosswise in the mouth, wings folded.
+          s.root.rotation.set(0.12, dogYaw + Math.PI / 2, 0.42);
+          s.wingL.rotation.set(0, 0.9, -1.35);
+          s.wingR.rotation.set(0, -0.9, 1.35);
+          continue;
+        }
+      }
       s.root.position.set(s.x, s.y, s.z);
       s.root.scale.setScalar((s.status === 'grounded' ? GROUNDED_SCALE : RISE_SCALE) * s.visualScale);
       if (s.status === 'grounded') {

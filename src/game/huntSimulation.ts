@@ -286,7 +286,9 @@ export class HuntSimulation {
     const escapedIds: number[] = [];
     for (const id of rise.birdIds) {
       const bird = this.hunt.birds.find((candidate) => candidate.id === id);
-      if (bird?.state === 'downed' || bird?.state === 'retrieved') downedIds.push(id);
+      if (bird?.state === 'downed' || bird?.state === 'carried' || bird?.state === 'retrieved') {
+        downedIds.push(id);
+      }
       else if (bird?.state === 'escaped') escapedIds.push(id);
     }
 

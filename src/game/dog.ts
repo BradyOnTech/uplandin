@@ -59,6 +59,7 @@ const EDGE_TURN_RATE = 2.4; // rad/s pulled back toward the middle of the field
 const AVOID_HUNTER_RADIUS = 28; // won't point a bird sitting right on the hunter
 const RETRIEVE_RANGE = 6; // close enough to pick a downed bird up
 const RETRIEVE_HOLD_MS = 700; // mouthing the bird takes a moment
+const RETRIEVE_DELIVERY_HOLD_MS = 350; // settle at hand before casting off
 const SEARCH_HOLD_MS = 2200; // extra time hunting for a fall it didn't mark
 const RECALL_SPEED = 115; // px/s coming back to the whistle
 const RECALL_ARRIVE = 10; // close enough to the hunter to count as arrived
@@ -275,6 +276,8 @@ export class Dog {
   private rng: RNG;
   private weavePhase = 0;
   private retrieveTargetId: number | null = null;
+  /** Bird reserved by this dog and visibly carried back to the handler. */
+  carryingBirdId: number | null = null;
   private retrieveHoldMs = 0;
   private creepPlanned = false;
   private creepStepsLeft = 0;
@@ -450,28 +453,69 @@ export class Dog {
 
     if (this.state === 'retrieving') {
       const target = birds.find((b) => b.id === this.retrieveTargetId);
-      if (!target || target.state !== 'downed') {
+      if (!target || (target.state !== 'downed' && target.state !== 'carried')) {
         this.state = 'quartering';
         this.retrieveTargetId = null;
+        this.carryingBirdId = null;
         this.retrieveHoldMs = 0;
         return;
       }
-      if (dist(this.pos, target.pos) > RETRIEVE_RANGE) {
-        this.gait = 'trot';
-        this.retrieveHoldMs = 0;
-        this.heading = Math.atan2(target.pos.y - this.pos.y, target.pos.x - this.pos.x);
-        this.advance(this.heading, this.trackSpeed * movementDt);
-      } else {
+
+      if (target.state === 'downed') {
+        if (dist(this.pos, target.pos) > RETRIEVE_RANGE) {
+          this.gait = 'trot';
+          this.retrieveHoldMs = 0;
+          this.heading = Math.atan2(target.pos.y - this.pos.y, target.pos.x - this.pos.x);
+          this.advance(this.heading, this.trackSpeed * movementDt);
+        } else {
+          this.gait = 'still';
+          this.retrieveHoldMs += dtMs;
+          const holdNeeded = RETRIEVE_HOLD_MS +
+            (this.needsSearch ? SEARCH_HOLD_MS * (env.searchMult ?? 1) : 0);
+          if (this.retrieveHoldMs >= holdNeeded) {
+            this.needsSearch = false;
+            this.retrieveHoldMs = 0;
+            // Direct Dog users without a handler preserve the old fetch-only
+            // contract. Both shipped hunt adapters always provide hunterPos
+            // and therefore run the complete carry-and-deliver sequence.
+            if (!env.hunterPos) {
+              target.state = 'retrieved';
+              this.state = 'quartering';
+              this.retrieveTargetId = null;
+            } else {
+              target.state = 'carried';
+              this.carryingBirdId = target.id;
+              target.pos.x = this.pos.x;
+              target.pos.y = this.pos.y;
+            }
+          }
+        }
+        return;
+      }
+
+      // The bird stays authoritative and reserved while carried. Updating
+      // its shared position lets both renderers put the fall in the mouth.
+      target.pos.x = this.pos.x;
+      target.pos.y = this.pos.y;
+      if (!env.hunterPos || dist(this.pos, env.hunterPos) <= RETRIEVE_RANGE) {
         this.gait = 'still';
         this.retrieveHoldMs += dtMs;
-        const holdNeeded = RETRIEVE_HOLD_MS + (this.needsSearch ? SEARCH_HOLD_MS * (env.searchMult ?? 1) : 0);
-        if (this.retrieveHoldMs >= holdNeeded) {
+        if (this.retrieveHoldMs >= RETRIEVE_DELIVERY_HOLD_MS) {
           target.state = 'retrieved';
-          this.needsSearch = false;
+          target.pos.x = env.hunterPos?.x ?? this.pos.x;
+          target.pos.y = env.hunterPos?.y ?? this.pos.y;
           this.state = 'quartering';
           this.retrieveTargetId = null;
+          this.carryingBirdId = null;
           this.retrieveHoldMs = 0;
         }
+      } else {
+        this.gait = 'trot';
+        this.retrieveHoldMs = 0;
+        this.heading = Math.atan2(env.hunterPos.y - this.pos.y, env.hunterPos.x - this.pos.x);
+        this.advance(this.heading, this.trackSpeed * 0.85 * movementDt);
+        target.pos.x = this.pos.x;
+        target.pos.y = this.pos.y;
       }
       return;
     }
@@ -482,6 +526,7 @@ export class Dog {
       this.state = 'retrieving';
       this.resetScentApproach();
       this.retrieveTargetId = downed.id;
+      this.carryingBirdId = null;
       this.retrieveHoldMs = 0;
       return;
     }
