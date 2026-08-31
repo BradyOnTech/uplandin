@@ -1,0 +1,30 @@
+{
+  "collection": "core_3d",
+  "queries": [
+    {
+      "query": "English Setter canine quadruped anatomy ribcage loin hock tail",
+      "matches": [],
+      "conclusion": "The bundled corpus has no canine or quadruped anatomy record. Breed morphology must come from admitted image evidence and the official breed standard."
+    },
+    {
+      "query": "organic continuous body loft tapered sweep articulated limbs",
+      "matches": [
+        {
+          "recordId": "core.topology-intent",
+          "use": "Classify the torso, neck and skull as organic low-poly meshes rather than hard-surface blocks."
+        }
+      ]
+    },
+    {
+      "query": "flat color marking vertex region fur coat feathering",
+      "matches": [],
+      "conclusion": "No useful fur/marking recipe was returned. Use the project's existing vertex-color geometry and palette contract instead of inventing a texture path."
+    }
+  ],
+  "externalDomainEvidence": [
+    {
+      "source": "https://images.akc.org/pdf/breeds/standards/EnglishSetter.pdf",
+      "use": "Head planes, ear set, chest depth, topline, tuck, hind angulation, feather placement, blue-belton marking distribution and adult scale."
+    }
+  ]
+}

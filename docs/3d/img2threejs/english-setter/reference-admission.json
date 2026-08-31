@@ -1,0 +1,18 @@
+{
+  "admitted": true,
+  "reasons": [],
+  "provenance": {
+    "viewpoint": "side-profile",
+    "sourcePath": "docs/3d/reference/english-setter/standing-profile.jpg",
+    "width": 960,
+    "height": 628,
+    "foregroundCoverage": 0.3847,
+    "largestComponentFraction": 1.0,
+    "pHash": 12425116075367999152,
+    "duplicateOfHash": null
+  },
+  "semanticVerdict": {
+    "status": "pass",
+    "notes": "One isolated English Setter with a strong side silhouette. Organic detail is conditional on accepted low-poly stylization; hidden width is supported by secondary references and bilateral inference."
+  }
+}

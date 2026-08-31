@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { playCackle, playShot, playThud, playThunder, playTwitter, unlockAudio } from '../audio';
 import { getArea } from '../game/areas';
-import { relightSurvivors, YOUNG_FLIGHT_MULT, type Bird } from '../game/birds';
+import { YOUNG_FLIGHT_MULT, type Bird } from '../game/birds';
 import type { Dog } from '../game/dog';
 import { slopeFlightMult, type SlopeApproach } from '../game/fieldcraft';
 import { getGun, type GunConfig } from '../game/guns';
@@ -19,8 +19,8 @@ import {
 import { escapeVelocityFan, exitDirFor, flushBias, glideStep, hitTest, levelStep } from '../game/shot';
 import { getSpecies, type SpeciesConfig } from '../game/species';
 import type { HuntState } from '../game/state';
+import { HuntSimulation } from '../game/huntSimulation';
 import type { Vec2 } from '../game/types';
-import { windMults } from '../game/wind';
 import { addWeatherFx } from './weatherFx';
 import { pixelText, type PixelText } from './pixelFont';
 
@@ -119,7 +119,7 @@ export class FlushScene extends Phaser.Scene {
   private birds: FlyingBird[] = [];
   private resolved = false;
   private dogs: Dog[] = [];
-  private pointingSlot: number | null = null;
+  private simulation!: HuntSimulation;
 
   private crosshair!: Phaser.GameObjects.Sprite;
   private gun!: GunConfig;
@@ -173,12 +173,20 @@ export class FlushScene extends Phaser.Scene {
     birdIds: number[];
     flushDistance?: number;
     dogs?: Dog[];
+    simulation?: HuntSimulation;
     pointingSlot?: number | null;
     slopeApproach?: SlopeApproach | null;
   }): void {
     this.hunt = data.hunt;
     this.dogs = data.dogs ?? [];
-    this.pointingSlot = data.pointingSlot ?? null;
+    this.simulation =
+      data.simulation ??
+      new HuntSimulation({
+        hunt: this.hunt,
+        dogs: this.dogs,
+        area: getArea(this.hunt.areaId),
+        rng: Math.random,
+      });
     this.gun = getGun(this.hunt.gunId);
     this.shells = this.gun.shells;
     this.lastShotAt = -Infinity;
@@ -509,16 +517,14 @@ export class FlushScene extends Phaser.Scene {
     }
     if (best) {
       best.status = 'falling';
-      best.fieldBird.state = 'downed';
+      this.simulation.resolveBird(best.id, 'downed');
       // Sheet birds fold up on the shot.
       if (best.sprite.texture.key === birdSheetKey(best.fieldBird, best.species)) {
         best.sprite.stop();
         best.sprite.setFrame(2);
       }
       this.spawnFeathers(best.sprite.x, best.sprite.y);
-      this.hunt.downed++;
       if (best.fieldBird.sex === 'hen') {
-        this.hunt.henDowns++;
         pixelText(this, best.sprite.x, best.sprite.y - 12, "HEN! that's a fine", 1, '#ff6a5a')
           .setOrigin(0.5)
           .setDepth(DEPTH_UI);
@@ -529,8 +535,7 @@ export class FlushScene extends Phaser.Scene {
   private escapeBird(b: FlyingBird): void {
     b.status = 'done';
     b.sprite.setVisible(false);
-    b.fieldBird.state = 'escaped';
-    this.hunt.escaped++;
+    this.simulation.resolveBird(b.id, 'escaped');
   }
 
   private finish(): void {
@@ -539,23 +544,8 @@ export class FlushScene extends Phaser.Scene {
 
     const total = this.birds.length;
     const downedHere = this.birds.filter((b) => b.fieldBird.state === 'downed').length;
-    // Birds downed over a dog's point earn that dog XP at the summary.
-    if (this.pointingSlot !== null) this.hunt.dogWork[this.pointingSlot].downedOverPoint += downedHere;
-    // Two on one rise: the classic double, bonus hunter XP.
-    if (downedHere >= 2) this.hunt.doubles++;
-
-    // Hunt the singles: survivors of the rise relight nearby, holding tight.
-    const escapedIds = this.birds.filter((b) => b.fieldBird.state === 'escaped').map((b) => b.id);
-    const area = getArea(this.hunt.areaId);
-    const relit = relightSurvivors(
-      this.hunt.birds,
-      escapedIds,
-      area.world,
-      Math.random,
-      windMults(this.hunt.windStrength).nerve,
-      area.patches,
-    );
-    this.hunt.escaped -= relit.length;
+    const resolution = this.simulation.finishRise();
+    const relitCount = resolution?.relitIds.length ?? 0;
 
     if (downedHere === 0) {
       this.hud.setText(total > 1 ? 'they all got away...' : 'it got away...');
@@ -564,14 +554,18 @@ export class FlushScene extends Phaser.Scene {
     } else {
       this.hud.setText('nice shot!');
     }
-    if (relit.length > 0) {
-      pixelText(this, 4, 16, `${relit.length} single${relit.length > 1 ? 's' : ''} put down in the grass — hunt 'em up`, 1, '#c9dcc0')
+    if (relitCount > 0) {
+      pixelText(this, 4, 16, `${relitCount} single${relitCount > 1 ? 's' : ''} put down in the grass — hunt 'em up`, 1, '#c9dcc0')
         .setDepth(DEPTH_UI);
     }
 
     this.time.delayedCall(1500, () => {
       this.input.setDefaultCursor('default');
-      this.scene.start('FieldScene', { hunt: this.hunt, dogs: this.dogs });
+      this.scene.start('FieldScene', {
+        hunt: this.hunt,
+        dogs: this.dogs,
+        simulation: this.simulation,
+      });
     });
   }
 

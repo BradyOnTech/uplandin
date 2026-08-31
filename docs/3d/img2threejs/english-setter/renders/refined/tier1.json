@@ -1,0 +1,19 @@
+{
+  "passed": false,
+  "checks": {
+    "silhouetteIoU": 0.3044,
+    "aspectRatioDelta": 0.3813,
+    "scaleDelta": 0.3543,
+    "bilateralSymmetryError": 0.2047
+  },
+  "failures": [
+    "silhouette IoU 0.304 is below threshold 0.85",
+    "aspect-ratio delta 0.381 exceeds threshold 0.05",
+    "scale delta 0.354 exceeds threshold 0.08"
+  ],
+  "maskWarnings": [],
+  "renderHash": "a3855e557c8b2354",
+  "passId": "blockout",
+  "mapStrippedRender": "review-dog-neutral-profile-aligned.png",
+  "interpretation": "Hard-gate failure retained. The source is a fully feathered standing show dog; the target is a deliberately sparse 386-triangle field-game actor. The img2threejs photo-versus-procedural caveat applies, but this result still correctly identifies the remaining coat-volume and neutral-silhouette gap."
+}

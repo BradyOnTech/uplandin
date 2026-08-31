@@ -9,6 +9,16 @@ import { FloraSystem } from './subsystems/flora';
 import { DogSystem } from './subsystems/dog';
 import { BirdsSystem } from './subsystems/birds';
 import { GunSystem } from './subsystems/gun';
+import { HuntHudSystem } from './subsystems/huntHud';
+import {
+  ENGLISH_SETTER_COATS,
+  resolveEnglishSetterCoat,
+} from './dogs/englishSetter';
+import {
+  GSP_COATS,
+  resolveGspCoat,
+} from './dogs/germanShorthairedPointer';
+import { parseHuntLaunch, resolveThreeHuntProfile } from '../game/gameplayMode';
 
 /*
  * Uplandin 3D entry. Boot order = subsystem registration order; the
@@ -18,20 +28,79 @@ import { GunSystem } from './subsystems/gun';
 
 const params = new URLSearchParams(location.search);
 const quality = params.get('quality') === 'lite' ? 'lite' : 'high';
+const launch = parseHuntLaunch(location.search);
+const launchProfile = resolveThreeHuntProfile(location.search);
+const visualBreed = launchProfile.breedId === 'gsp' ? 'gsp' : 'english-setter';
+const coatId = visualBreed === 'gsp'
+  ? resolveGspCoat(params.get('coat'))
+  : resolveEnglishSetterCoat(params.get('coat'));
 
 const canvas = document.getElementById('game3d') as HTMLCanvasElement;
 const engine = new Engine(canvas, quality);
 
 engine.register(new SkySystem());
 engine.register(new TerrainSystem());
-// hunt3d before grass: grass reads the sim's cover patches at init.
-engine.register(new Hunt3DSystem());
+// Player first: hunt3d frames the opening covey from the player's authored
+// spawn heading. It still precedes grass, which reads the hunt's cover map.
 engine.register(new PlayerSystem());
+engine.register(new Hunt3DSystem());
 engine.register(new GrassSystem());
 engine.register(new FloraSystem());
-engine.register(new DogSystem());
+engine.register(new DogSystem(visualBreed, coatId));
 engine.register(new BirdsSystem());
 engine.register(new GunSystem());
+engine.register(new HuntHudSystem());
+
+// Lightweight review control for the standalone 3D build. Changing coats
+// reloads the page because geometry colors are authored once at init; capture
+// mode remains clean and deterministic.
+const breedPicker = document.getElementById('dog-breed') as HTMLSelectElement | null;
+const coatPicker = document.getElementById('dog-coat') as HTMLSelectElement | null;
+const coatLabel = document.getElementById('dog-coat-label');
+const coatPanel = document.getElementById('dog-appearance') as HTMLElement | null;
+const controls = document.getElementById('controls') as HTMLElement | null;
+if (controls) controls.hidden = params.has('capture');
+if (coatPicker && coatPanel) {
+  coatPanel.hidden = params.has('capture') || launch !== null;
+  if (breedPicker) {
+    const visualBreeds = [
+      { id: 'english-setter', label: 'English Setter' },
+      { id: 'gsp', label: 'German Shorthaired Pointer' },
+    ];
+    for (const breed of visualBreeds) {
+      const option = document.createElement('option');
+      option.value = breed.id;
+      option.textContent = breed.label;
+      option.selected = breed.id === visualBreed;
+      breedPicker.append(option);
+    }
+    breedPicker.addEventListener('change', () => {
+      const next = new URL(location.href);
+      next.searchParams.set('breed', breedPicker.value);
+      next.searchParams.delete('coat');
+      location.assign(next);
+    });
+  }
+  if (coatLabel) coatLabel.textContent = visualBreed === 'gsp' ? 'GSP coat' : 'English Setter coat';
+  const coats = visualBreed === 'gsp' ? GSP_COATS : ENGLISH_SETTER_COATS;
+  for (const coat of coats) {
+    const option = document.createElement('option');
+    option.value = coat.id;
+    option.textContent = coat.label;
+    option.selected = coat.id === coatId;
+    coatPicker.append(option);
+  }
+  coatPicker.addEventListener('change', () => {
+    const next = new URL(location.href);
+    next.searchParams.set(
+      'coat',
+      visualBreed === 'gsp'
+        ? resolveGspCoat(coatPicker.value)
+        : resolveEnglishSetterCoat(coatPicker.value),
+    );
+    location.assign(next);
+  });
+}
 
 declare global {
   interface Window {
@@ -53,13 +122,23 @@ declare global {
       triggerFlush(): { ids: number[]; distPx: number } | null;
       /** Airborne rise birds, world meters — capture telemetry. */
       birds(): { simId: number; x: number; y: number; z: number; airMs: number; status: string }[];
+      groundedBirds(): number[];
       /** Sim snapshot in world meters — capture poses shots off this. */
       hunt(): {
-        dog: { x: number; z: number; state: string; gait: string };
-        hunter: { x: number; z: number };
+        dog: {
+          x: number;
+          z: number;
+          state: string;
+          gait: string;
+          scentStage: string;
+          scentProgress: number;
+        };
+        hunter: { x: number; y: number; z: number };
+        tally: { downed: number; retrieved: number; escaped: number; hidden: number; flushed: number };
         patches: readonly WorldPatch[];
         simMs: { last: number; max: number; avg: number };
       };
+      gun(): { mount: number; shells: number };
     };
   }
 }
@@ -84,13 +163,32 @@ engine.start().then(() => {
     stepRise: (ticks) => engine.ctx.get<BirdsSystem>('birds').step(engine.ctx, ticks),
     triggerFlush: () => engine.ctx.get<Hunt3DSystem>('hunt3d').triggerFlush(engine.ctx),
     birds: () => engine.ctx.get<BirdsSystem>('birds').airborne(),
+    groundedBirds: () => engine.ctx.get<BirdsSystem>('birds').groundedIds(),
+    gun: () => {
+      const gun = engine.ctx.get<GunSystem>('gun');
+      return { mount: gun.mountProgress(), shells: gun.shellsRemaining() };
+    },
     hunt: () => {
       const h = engine.ctx.get<Hunt3DSystem>('hunt3d');
       const dogW = h.dogWorld({ x: 0, z: 0 });
       const hunterW = h.simToWorld(h.huntState().hunterPos.x, h.huntState().hunterPos.y, { x: 0, z: 0 });
       return {
-        dog: { x: dogW.x, z: dogW.z, state: h.dog().state, gait: h.dog().gait },
-        hunter: hunterW,
+        dog: {
+          x: dogW.x,
+          z: dogW.z,
+          state: h.dog().state,
+          gait: h.dog().gait,
+          scentStage: h.dog().scentStage,
+          scentProgress: h.dog().scentProgress,
+        },
+        hunter: { x: hunterW.x, y: engine.ctx.camera.position.y, z: hunterW.z },
+        tally: {
+          downed: h.huntState().downed,
+          retrieved: h.huntState().birds.filter((bird) => bird.state === 'retrieved').length,
+          escaped: h.huntState().escaped,
+          hidden: h.huntState().birds.filter((bird) => bird.state === 'hidden').length,
+          flushed: h.huntState().birds.filter((bird) => bird.state === 'flushed').length,
+        },
         patches: h.coverPatches(),
         simMs: h.simMs(),
       };

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { unlockAudio } from '../../audio';
 import type { Ctx, Subsystem } from '../engine';
 import type { TerrainSystem } from './terrain';
 
@@ -17,7 +18,10 @@ export class PlayerSystem implements Subsystem {
   readonly id = 'player';
   private keys = new Set<string>();
   private yaw = Math.PI; // face -z: into the field
-  private pitch = 0;
+  // A slight natural downward gaze keeps the close-working dog and the
+  // cover immediately ahead in frame on first load. Mouse look remains
+  // fully free after pointer lock.
+  private pitch = -0.26;
   private pos = new THREE.Vector3(0, 0, 40);
   private vel = new THREE.Vector3();
   private bobPhase = 0;
@@ -29,7 +33,10 @@ export class PlayerSystem implements Subsystem {
     this.captureMode = new URLSearchParams(location.search).has('capture');
     const canvas = ctx.renderer.domElement;
     if (!this.captureMode) {
-      canvas.addEventListener('click', () => canvas.requestPointerLock());
+      canvas.addEventListener('click', () => {
+        unlockAudio();
+        canvas.requestPointerLock();
+      });
       window.addEventListener('mousemove', (e) => {
         if (document.pointerLockElement !== canvas) return;
         this.yaw -= e.movementX * 0.0022;

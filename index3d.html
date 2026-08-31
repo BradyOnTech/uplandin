@@ -6,11 +6,155 @@
     <title>Uplandin 3D</title>
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; background: #1e2316; }
+      [hidden] { display: none !important; }
       canvas { display: block; width: 100%; height: 100%; }
+      #dog-appearance {
+        position: fixed;
+        z-index: 2;
+        top: 14px;
+        right: 14px;
+        padding: 9px 11px;
+        border: 1px solid rgba(244, 239, 227, 0.3);
+        border-radius: 7px;
+        color: #f4efe3;
+        background: rgba(20, 27, 17, 0.82);
+        font: 12px/1.2 system-ui, sans-serif;
+        backdrop-filter: blur(5px);
+      }
+      #dog-appearance label { display: grid; gap: 5px; }
+      #dog-appearance select {
+        min-width: 145px;
+        color: #1e2316;
+        background: #f4efe3;
+        font: inherit;
+      }
+      #controls {
+        position: fixed;
+        z-index: 2;
+        left: 14px;
+        bottom: 14px;
+        padding: 8px 10px;
+        border: 1px solid rgba(244, 239, 227, 0.25);
+        border-radius: 7px;
+        color: rgba(244, 239, 227, 0.9);
+        background: rgba(20, 27, 17, 0.72);
+        font: 12px/1.35 system-ui, sans-serif;
+        pointer-events: none;
+      }
+      #field-menu {
+        position: fixed;
+        z-index: 2;
+        right: 14px;
+        bottom: 14px;
+        padding: 7px 11px;
+        border: 1px solid rgba(244, 239, 227, 0.35);
+        border-radius: 6px;
+        color: #f4efe3;
+        background: rgba(20, 27, 17, 0.78);
+        font: 600 12px system-ui, sans-serif;
+        cursor: pointer;
+      }
+      #reticle {
+        position: fixed;
+        z-index: 3;
+        left: 50%;
+        top: 50%;
+        width: 14px;
+        height: 14px;
+        margin: -7px 0 0 -7px;
+        border: 1px solid rgba(255, 245, 214, 0.9);
+        border-radius: 50%;
+        box-shadow: 0 0 5px rgba(26, 31, 20, 0.8);
+        pointer-events: none;
+      }
+      #reticle::after {
+        content: '';
+        position: absolute;
+        left: 5px;
+        top: 5px;
+        width: 2px;
+        height: 2px;
+        border-radius: 50%;
+        background: #fff5d6;
+      }
+      #hunt-hud {
+        position: fixed;
+        z-index: 2;
+        top: 14px;
+        left: 14px;
+        min-width: 190px;
+        padding: 9px 11px;
+        border: 1px solid rgba(244, 239, 227, 0.28);
+        border-radius: 7px;
+        color: #f4efe3;
+        background: rgba(20, 27, 17, 0.78);
+        font: 12px/1.4 system-ui, sans-serif;
+        pointer-events: none;
+      }
+      #hunt-phase { color: #ffd78a; font-weight: 700; letter-spacing: 0.04em; }
+      #shot-callout {
+        position: fixed;
+        z-index: 4;
+        left: 50%;
+        top: 39%;
+        transform: translate(-50%, -50%);
+        color: #fff5d6;
+        font: 700 20px/1 system-ui, sans-serif;
+        letter-spacing: 0.08em;
+        text-shadow: 0 2px 5px #141b11;
+        pointer-events: none;
+      }
+      #shot-callout.miss { color: #d7c9ae; font-size: 14px; }
+      #hunt-summary {
+        position: fixed;
+        z-index: 5;
+        left: 50%;
+        top: 50%;
+        width: min(360px, calc(100vw - 40px));
+        transform: translate(-50%, -50%);
+        padding: 24px;
+        border: 1px solid rgba(255, 215, 138, 0.55);
+        border-radius: 10px;
+        color: #f4efe3;
+        background: rgba(16, 21, 14, 0.94);
+        text-align: center;
+        font: 14px/1.55 system-ui, sans-serif;
+      }
+      #hunt-summary h2 { margin: 0 0 10px; color: #ffd78a; letter-spacing: 0.08em; }
+      #hunt-summary button {
+        margin-top: 16px;
+        padding: 8px 16px;
+        border: 1px solid #d9b25f;
+        border-radius: 5px;
+        color: #1e2316;
+        background: #ffd78a;
+        font: 600 13px system-ui, sans-serif;
+        cursor: pointer;
+      }
+      #hunt-summary button + button { margin-left: 8px; }
+      body.capture #controls, body.capture #field-menu { display: none; }
     </style>
   </head>
   <body>
     <canvas id="game3d"></canvas>
+    <aside id="dog-appearance" aria-label="Dog appearance">
+      <label>Dog breed <select id="dog-breed"></select></label>
+      <label><span id="dog-coat-label">Dog coat</span><select id="dog-coat"></select></label>
+    </aside>
+    <div id="controls">WASD move · mouse look<br>RMB mount · LMB shoot</div>
+    <button id="field-menu" type="button">Main menu</button>
+    <div id="hunt-hud" aria-live="polite">
+      <div id="hunt-tally">birds hidden 0 · bag 0 · lost 0</div>
+      <div id="hunt-phase">HUNTING</div>
+    </div>
+    <div id="reticle" hidden aria-hidden="true"></div>
+    <div id="shot-callout" hidden aria-live="assertive"></div>
+    <section id="hunt-summary" hidden aria-label="Hunt summary">
+      <h2>HUNT COMPLETE</h2>
+      <div id="hunt-summary-copy"></div>
+      <button id="hunt-again" type="button">Hunt again</button>
+      <button id="hunt-menu" type="button">Main menu</button>
+    </section>
     <script type="module" src="/src/three/main3d.ts"></script>
   </body>
 </html>

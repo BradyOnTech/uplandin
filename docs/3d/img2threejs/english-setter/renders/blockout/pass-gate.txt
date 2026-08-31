@@ -1,0 +1,3 @@
+STATUS pass=blockout completed=0 blocked=blockout requires a deterministic render and comparison review next=forge/stage3_build/orchestrate_passes.py check /Users/bradya/Documents/code/uplandin/docs/3d/img2threejs/english-setter/english-setter-sculpt-spec.json
+FAIL
+Tier 1 diagnostics have not passed for this render — run diagnose_render.py first

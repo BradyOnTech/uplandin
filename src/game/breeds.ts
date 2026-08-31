@@ -14,11 +14,34 @@ export interface BreedStats {
   stamina: number;
 }
 
+/**
+ * Presentation character for a breed's movement. Ground speed remains a
+ * gameplay stat; these values describe how that speed is carried so two
+ * equally quick dogs do not animate like the same animal with a new coat.
+ */
+export interface BreedMotion {
+  /** Gallop stride length relative to the shared adult bird-dog rig. */
+  runStride: number;
+  /** Fractional live pace variation while actively quartering. */
+  huntSurge: number;
+  /** Slow acceleration/deceleration cycles per second. */
+  surgeHz: number;
+  /** Flexible search carriage: 0 deliberate/rigid, 1 loose/snappy. */
+  searchLooseness: number;
+  /** Head freedom while casting, relative to the body bend. */
+  headFreedom: number;
+  /** Tail counterbalance while casting. */
+  tailAction: number;
+  /** Vertical body/loin action relative to the shared gait (1 = baseline). */
+  verticalMotion: number;
+}
+
 export interface BreedConfig {
   id: string;
   name: string;
   blurb: string;
   stats: BreedStats;
+  motion: BreedMotion;
   /** XP gain multiplier — some breeds mature fast, some slow. */
   xpRate: number;
 }
@@ -31,6 +54,7 @@ export const BREEDS: BreedConfig[] = [
     name: 'German Shorthaired Pointer',
     blurb: 'the all-rounder',
     stats: { nose: 4, speed: 4, range: 3, steadiness: 4, stamina: 4 },
+    motion: { runStride: 1.02, huntSurge: 0.09, surgeHz: 0.42, searchLooseness: 0.68, headFreedom: 0.7, tailAction: 0.65, verticalMotion: 0.74 },
     xpRate: 1,
   },
   {
@@ -38,6 +62,7 @@ export const BREEDS: BreedConfig[] = [
     name: 'English Pointer',
     blurb: 'the Ferrari — big, fast, stylish',
     stats: { nose: 4, speed: 5, range: 5, steadiness: 4, stamina: 3 },
+    motion: { runStride: 1.08, huntSurge: 0.16, surgeHz: 0.48, searchLooseness: 0.86, headFreedom: 0.75, tailAction: 0.72, verticalMotion: 0.9 },
     xpRate: 1,
   },
   {
@@ -45,6 +70,7 @@ export const BREEDS: BreedConfig[] = [
     name: 'English Setter',
     blurb: 'methodical and rock-steady',
     stats: { nose: 4, speed: 3, range: 5, steadiness: 5, stamina: 3 },
+    motion: { runStride: 1, huntSurge: 0.08, surgeHz: 0.34, searchLooseness: 0.7, headFreedom: 0.82, tailAction: 0.86, verticalMotion: 1 },
     xpRate: 1,
   },
   {
@@ -52,6 +78,7 @@ export const BREEDS: BreedConfig[] = [
     name: 'German Wirehaired Pointer',
     blurb: 'rugged coat, great nose',
     stats: { nose: 5, speed: 3, range: 3, steadiness: 4, stamina: 5 },
+    motion: { runStride: 0.98, huntSurge: 0.06, surgeHz: 0.32, searchLooseness: 0.52, headFreedom: 0.66, tailAction: 0.52, verticalMotion: 0.78 },
     xpRate: 0.9,
   },
   {
@@ -59,6 +86,7 @@ export const BREEDS: BreedConfig[] = [
     name: 'Vizsla',
     blurb: 'close-working, quick to learn',
     stats: { nose: 3, speed: 4, range: 2, steadiness: 3, stamina: 3 },
+    motion: { runStride: 1.01, huntSurge: 0.13, surgeHz: 0.5, searchLooseness: 0.82, headFreedom: 0.78, tailAction: 0.75, verticalMotion: 0.88 },
     xpRate: 1.2,
   },
   {
@@ -66,6 +94,7 @@ export const BREEDS: BreedConfig[] = [
     name: 'Pudelpointer',
     blurb: 'nose and retrieve drive',
     stats: { nose: 5, speed: 3, range: 3, steadiness: 4, stamina: 4 },
+    motion: { runStride: 0.99, huntSurge: 0.07, surgeHz: 0.35, searchLooseness: 0.55, headFreedom: 0.7, tailAction: 0.56, verticalMotion: 0.8 },
     xpRate: 1,
   },
   {
@@ -73,6 +102,7 @@ export const BREEDS: BreedConfig[] = [
     name: 'American Brittany',
     blurb: 'snappy, works the middle distance',
     stats: { nose: 3, speed: 4, range: 3, steadiness: 3, stamina: 4 },
+    motion: { runStride: 0.92, huntSurge: 0.15, surgeHz: 0.58, searchLooseness: 0.95, headFreedom: 0.88, tailAction: 0.9, verticalMotion: 0.96 },
     xpRate: 1.1,
   },
   {
@@ -80,6 +110,7 @@ export const BREEDS: BreedConfig[] = [
     name: 'French Brittany',
     blurb: 'closer and steadier than its cousin',
     stats: { nose: 4, speed: 3, range: 2, steadiness: 4, stamina: 4 },
+    motion: { runStride: 0.9, huntSurge: 0.1, surgeHz: 0.52, searchLooseness: 0.78, headFreedom: 0.82, tailAction: 0.82, verticalMotion: 0.9 },
     xpRate: 1,
   },
   {
@@ -87,6 +118,7 @@ export const BREEDS: BreedConfig[] = [
     name: 'Deutsch-Drahthaar',
     blurb: 'premium nose, stubborn student',
     stats: { nose: 5, speed: 3, range: 3, steadiness: 4, stamina: 4 },
+    motion: { runStride: 0.99, huntSurge: 0.05, surgeHz: 0.3, searchLooseness: 0.48, headFreedom: 0.62, tailAction: 0.48, verticalMotion: 0.76 },
     xpRate: 0.8,
   },
   {
@@ -94,6 +126,7 @@ export const BREEDS: BreedConfig[] = [
     name: 'Wirehaired Pointing Griffon',
     blurb: 'deliberate, glued to you, honest',
     stats: { nose: 5, speed: 2, range: 2, steadiness: 5, stamina: 4 },
+    motion: { runStride: 0.95, huntSurge: 0.04, surgeHz: 0.28, searchLooseness: 0.38, headFreedom: 0.58, tailAction: 0.44, verticalMotion: 0.72 },
     xpRate: 0.9,
   },
   {
@@ -101,6 +134,7 @@ export const BREEDS: BreedConfig[] = [
     name: 'Irish Setter',
     blurb: 'flashy and fast, peaks early',
     stats: { nose: 4, speed: 5, range: 4, steadiness: 2, stamina: 2 },
+    motion: { runStride: 1.05, huntSurge: 0.18, surgeHz: 0.54, searchLooseness: 1, headFreedom: 0.9, tailAction: 1, verticalMotion: 1.08 },
     xpRate: 1.2,
   },
 ];

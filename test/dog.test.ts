@@ -10,6 +10,7 @@ import {
   perimeterPoint,
   QUARTER_RANGE,
   SCENT_RADIUS,
+  scentApproachStyle,
   scentRange,
   WHISTLE_RANGE,
   type DogEnv,
@@ -24,6 +25,7 @@ const testBreed: BreedConfig = {
   name: 'Test',
   blurb: '',
   stats: { nose: 2, speed: 2, range: 2, steadiness: 2, stamina: 2 },
+  motion: { runStride: 1, huntSurge: 0, surgeHz: 0.4, searchLooseness: 0.5, headFreedom: 0.5, tailAction: 0.5, verticalMotion: 1 },
   xpRate: 1,
 };
 
@@ -567,7 +569,7 @@ describe('Dog', () => {
       expect(sawRun).toBe(true);
     });
 
-    it('freezes on first scent then tracks', () => {
+    it('freezes on first scent then locates and tracks', () => {
       const dog = makeDog(100, 100, 10, () => 0.5);
       const bird = birdAt(100 + SCENT_RADIUS - 10, 100);
       dog.update(50, [bird]);
@@ -582,7 +584,41 @@ describe('Dog', () => {
       // After the freeze, it tracks forward.
       for (let i = 0; i < 20; i++) dog.update(50, [bird]);
       expect(dog.scentCheck).toBe(false);
-      expect(dog.gait === 'track' || dog.state === 'pointing').toBe(true);
+      expect(dog.gait === 'trot' || dog.gait === 'track' || dog.state === 'pointing').toBe(true);
+    });
+
+    it('shows every shared scent beat before declaring the point', () => {
+      const dog = makeDog(100, 100, 10, () => 0.5);
+      const bird = birdAt(100 + SCENT_RADIUS - 10, 100);
+      const stages: string[] = [];
+      for (let i = 0; i < 200 && dog.state !== 'pointing'; i++) {
+        dog.update(25, [bird]);
+        if (stages.at(-1) !== dog.scentStage) stages.push(dog.scentStage);
+      }
+      expect(stages).toEqual(['checking', 'locating', 'stalking', 'locking', 'none']);
+      expect(dog.state).toBe('pointing');
+    });
+
+    it('abandons a scent sequence cleanly when the bird is truly lost', () => {
+      const dog = makeDog(100, 100, 10, () => 0.5);
+      const bird = birdAt(130, 100);
+      dog.update(50, [bird]);
+      expect(dog.scentStage).toBe('checking');
+      bird.pos.x = 400;
+      dog.update(50, [bird]);
+      expect(dog.state).toBe('quartering');
+      expect(dog.scentStage).toBe('none');
+      expect(dog.scentProgress).toBe(0);
+    });
+
+    it('derives distinct approach character from existing breed profiles', () => {
+      const setter = scentApproachStyle(getBreed('english-setter'), 8);
+      const gsp = scentApproachStyle(getBreed('gsp'), 8);
+      const pointer = scentApproachStyle(getBreed('english-pointer'), 8);
+      expect(setter.checkMs).toBeGreaterThan(gsp.checkMs);
+      expect(pointer.locateMs).toBeLessThan(gsp.locateMs);
+      expect(pointer.locateArc).toBeGreaterThan(gsp.locateArc);
+      expect(setter.lockMs).toBeGreaterThan(gsp.lockMs);
     });
   });
 

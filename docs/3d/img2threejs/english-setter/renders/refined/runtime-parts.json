@@ -1,0 +1,28 @@
+{
+  "model": "english-setter-live",
+  "parts": [
+    { "name": "torso", "kind": "part", "module": "dog", "triangles": 98 },
+    { "name": "neck", "kind": "part", "module": "dog", "triangles": 12 },
+    { "name": "head", "kind": "part", "module": "dog", "triangles": 52 },
+    { "name": "ear-l", "kind": "part", "module": "dog", "triangles": 8 },
+    { "name": "ear-r", "kind": "part", "module": "dog", "triangles": 8 },
+    { "name": "tail-root", "kind": "part", "module": "dog", "triangles": 12 },
+    { "name": "tail-flag", "kind": "part", "module": "dog", "triangles": 36 },
+    { "name": "fore-leg-l", "kind": "part", "module": "dog", "triangles": 12 },
+    { "name": "fore-lower-l", "kind": "part", "module": "dog", "triangles": 24 },
+    { "name": "fore-leg-r", "kind": "part", "module": "dog", "triangles": 12 },
+    { "name": "fore-lower-r", "kind": "part", "module": "dog", "triangles": 24 },
+    { "name": "hind-leg-l", "kind": "part", "module": "dog", "triangles": 20 },
+    { "name": "hind-lower-l", "kind": "part", "module": "dog", "triangles": 24 },
+    { "name": "hind-leg-r", "kind": "part", "module": "dog", "triangles": 20 },
+    { "name": "hind-lower-r", "kind": "part", "module": "dog", "triangles": 24 }
+  ],
+  "unnamedMeshes": 0,
+  "integralMeshes": 8,
+  "integralComponents": {
+    "torso": ["shoulder-girdle", "pelvis", "belly-feather", "belton-flecks"],
+    "head": ["muzzle", "nose", "eye-l", "eye-r"],
+    "hind-leg-l": ["hind-feather-l"],
+    "hind-leg-r": ["hind-feather-r"]
+  }
+}

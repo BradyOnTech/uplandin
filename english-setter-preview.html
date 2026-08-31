@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>English Setter reconstruction preview</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #c9d5d0; }
+      canvas { display: block; width: 100%; height: 100%; }
+      aside {
+        position: fixed; left: 16px; top: 14px; color: #293027;
+        font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+        background: rgb(235 226 204 / 82%); border: 1px solid rgb(41 48 39 / 18%);
+        padding: 8px 10px; pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="setter-preview"></canvas>
+    <aside>img2threejs blockout · view=<span id="view-label">three-quarter</span></aside>
+    <script type="module" src="/src/three/englishSetterPreview.ts"></script>
+  </body>
+</html>

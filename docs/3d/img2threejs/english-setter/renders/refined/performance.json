@@ -1,0 +1,14 @@
+{
+  "source": "window.__dogAudit.modelStats()",
+  "modelTriangles": 386,
+  "modelDrawCalls": 15,
+  "unnamedMeshes": 0,
+  "pointingStancePawGapsMeters": [0.0, 0.0217, 0.0219],
+  "capture": "gameplay-point.png",
+  "captureSceneTriangles": 646327,
+  "captureSceneDrawCalls": 85,
+  "notes": [
+    "The lifted left forepaw is intentionally excluded from the pointing-stance planting gate.",
+    "Runtime mesh statistics come from the live dog hierarchy, not from scene-total subtraction."
+  ]
+}

@@ -1,0 +1,14 @@
+[
+  {
+    "id": "long-head-drop-ear",
+    "score": 0.32,
+    "visible": true,
+    "notes": "Long-head intent is present, but skull, muzzle and dark ear separate into stacked ellipsoids."
+  },
+  {
+    "id": "brisket-tuck-topline",
+    "score": 0.46,
+    "visible": true,
+    "notes": "Level topline is present; the torso remains a barrel with no setter brisket-to-tuck transition."
+  }
+]

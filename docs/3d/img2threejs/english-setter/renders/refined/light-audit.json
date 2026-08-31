@@ -1,0 +1,20 @@
+{
+  "result": "pass",
+  "passedAngles": 8,
+  "totalAngles": 8,
+  "thresholds": {
+    "maximumSeparableShadeSunRatio": 0.8,
+    "maximumClippedCoatPercent": 2.0,
+    "minimumGrassContrastAt270": 0.2335
+  },
+  "angles": [
+    { "azimuth": 0, "sun": 0.646, "shade": 0.502, "ratio": 0.777, "clipPercent": 0.0, "grassContrast": 0.4352 },
+    { "azimuth": 45, "sun": 0.706, "shade": 0.569, "ratio": null, "clipPercent": 0.0, "grassContrast": 0.5069 },
+    { "azimuth": 90, "sun": 0.640, "shade": 0.647, "ratio": null, "clipPercent": 0.0, "grassContrast": 0.5161 },
+    { "azimuth": 135, "sun": 0.667, "shade": 0.436, "ratio": 0.654, "clipPercent": 0.0, "grassContrast": 0.4313 },
+    { "azimuth": 180, "sun": 0.527, "shade": 0.339, "ratio": 0.643, "clipPercent": 0.0, "grassContrast": 0.2717 },
+    { "azimuth": 225, "sun": 0.558, "shade": 0.367, "ratio": null, "clipPercent": 0.0, "grassContrast": 0.2793 },
+    { "azimuth": 270, "sun": 0.366, "shade": 0.477, "ratio": null, "clipPercent": 0.0, "grassContrast": 0.2760 },
+    { "azimuth": 315, "sun": 0.489, "shade": 0.330, "ratio": 0.675, "clipPercent": 0.0, "grassContrast": 0.2781 }
+  ]
+}

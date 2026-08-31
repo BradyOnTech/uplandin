@@ -1,0 +1,11 @@
+{
+  "referenceAreaFraction": 0.07465470679012345,
+  "angles": [
+    { "path": "review-dog-front.png", "areaFraction": 0.04107445987654321, "ratio": 0.5501925014857497, "degenerate": false },
+    { "path": "review-dog-rear.png", "areaFraction": 0.039245756172839506, "ratio": 0.5256970104131676, "degenerate": false },
+    { "path": "review-dog-three-quarter.png", "areaFraction": 0.06848765432098765, "ratio": 0.9173923154440453, "degenerate": false }
+  ],
+  "degenerate": false,
+  "collapseRatio": 0.15,
+  "result": "pass"
+}

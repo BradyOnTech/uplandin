@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "errors": [],
+  "warnings": [
+    "suitability is pass but risks are present; confirm they are acceptable"
+  ],
+  "summary": {
+    "targetName": "Blue-belton English Setter",
+    "suitability": "pass",
+    "components": 27,
+    "materials": 4
+  }
+}

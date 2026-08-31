@@ -10,6 +10,7 @@
  *   node tools3d/capture.mjs --url http://localhost:5173
  *   node tools3d/capture.mjs --shots dawn-field,evening-ridge
  *   node tools3d/capture.mjs --out docs/3d/shots
+ *   node tools3d/capture.mjs --breed english-pointer
  *
  * If no server answers, it boots its own `vite --port 4517` and kills it
  * after. Exit code is non-zero if any shot fails — this is a build gate.
@@ -90,27 +91,72 @@ const SHOTS = {
   'debug-trail': [10, -29, 70, -4, 'noon'],
   // Dog inspection poses (request via --shots): the point at 5 m for
   // proportion work, and side-on at 8 m in flat light.
-  'debug-dog-close': { tod: 'dawn', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 3.5, spin: -0.62, pitch: -16 },
-  'debug-dog-side': { tod: 'noon', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 4, spin: -1.45, pitch: -14 },
-  'debug-dog-work-close': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 6, spin: 0.8, pitch: -8 },
+  'debug-dog-close': { tod: 'dawn', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 3.5, spin: -0.62, pitch: -16, hideGun: true },
+  'debug-dog-side': { tod: 'noon', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 4, spin: -1.45, pitch: -14, hideGun: true },
+  'debug-dog-work-close': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 6, spin: 0.8, pitch: -8, hideGun: true },
+  // One broadside run cycle, phase-locked through the capture audit. These
+  // four frames are the locomotion acceptance sheet: rear contact, extended
+  // suspension, fore contact, and gathered suspension.
+  'review-gallop-rear-contact': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['gallop', 0.125] },
+  'review-gallop-extended': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['gallop', 0.48] },
+  'review-gallop-fore-contact': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['gallop', 0.55] },
+  'review-gallop-gathered': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['gallop', 0.93] },
+  // Three-beat working canter: trailing hind, diagonal pair, lead fore,
+  // then suspension. This is the Setter's ordinary cover-search pace.
+  'review-canter-trailing-hind': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['canter', 0.05] },
+  'review-canter-diagonal': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['canter', 0.31] },
+  'review-canter-lead-fore': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['canter', 0.58] },
+  'review-canter-suspension': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['canter', 0.9] },
+  // Shared search-to-point acceptance sequence. These freeze the real 2D
+  // Dog simulation at the middle of each scent beat; the 3D subsystem only
+  // presents that authoritative state.
+  'review-scent-checking': { tod: 'noon', sim: 'scent-checking', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.2, spin: 1.55, pitch: -27, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true },
+  'review-scent-locating': { tod: 'noon', sim: 'scent-locating', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.2, spin: 1.55, pitch: -27, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true },
+  'review-scent-stalking': { tod: 'noon', sim: 'scent-stalking', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.2, spin: 1.55, pitch: -27, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true },
+  'review-scent-locking': { tod: 'noon', sim: 'scent-locking', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.2, spin: 1.55, pitch: -27, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true },
+  // Opposite diagonal supports at the trot. These guard against the old
+  // four-leg pendulum read even when no reference video is available.
+  'review-trot-diagonal-a': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['trot', 0.1] },
+  'review-trot-diagonal-b': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['trot', 0.6] },
   // Mid-stride on open ground — proportion/gait inspection in the clear.
-  'debug-dog-open': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 4.5, spin: 1.5, pitch: -14 },
+  'debug-dog-open': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 4.5, spin: 1.5, pitch: -14, hideGun: true },
   // Same open-ground pose at DAWN: the low-sun contact-shadow stretch
   // (1/tan(elevation)) is only measurable in the clear. camAz pins the
   // camera BROADSIDE to the dawn shadow axis (sun az 52 -> shadow az 232;
   // a spin-relative camera landed nearly down-axis and foreshortened the
   // whole rake out of frame).
-  'debug-dog-open-dawn': { tod: 'dawn', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 5, camAz: 322, pitch: -16 },
-  'debug-dog-open-rear': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 4.5, spin: 0.2, pitch: -14 },
+  'debug-dog-open-dawn': { tod: 'dawn', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 5, camAz: 322, pitch: -16, hideGun: true },
+  'debug-dog-open-rear': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 4.5, spin: 0.2, pitch: -14, hideGun: true },
   // Macro poses at 2 m for anatomy work — steep pitch so the dog CENTERS
   // and fills the frame from the fixed 1.62 m eye height.
-  'debug-dog-macro-side': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.0, spin: 1.55, pitch: -30 },
-  'debug-dog-macro-front': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.0, spin: 2.7, pitch: -30 },
-  'debug-dog-macro-point': { tod: 'morning', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.1, spin: -1.55, pitch: -24 },
+  'debug-dog-macro-side': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.0, spin: 1.55, pitch: -30, fov: 40, hideGun: true },
+  'debug-dog-macro-front': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.0, spin: 2.7, pitch: -30, fov: 40, hideGun: true },
+  'debug-dog-macro-point': { tod: 'morning', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.1, spin: -1.55, pitch: -24, fov: 40, hideGun: true },
+  // img2threejs review turntable: the SAME live pointing dog and lighting,
+  // isolated from grass/viewmodel so silhouette and orbit diagnostics
+  // measure the animal rather than the scene. Absolute camera azimuths
+  // are keyed to this deterministic point's 316-degree nose bearing.
+  'review-dog-side': { tod: 'morning', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.1, camAz: 226, pitch: -30, fov: 32, hideGun: true, isolateDog: true },
+  'review-dog-front': { tod: 'morning', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.1, camAz: 316, pitch: -24, fov: 32, hideGun: true, isolateDog: true },
+  'review-dog-rear': { tod: 'morning', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.1, camAz: 136, pitch: -32, fov: 32, hideGun: true, isolateDog: true },
+  'review-dog-three-quarter': { tod: 'morning', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.1, camAz: 271, pitch: -30, fov: 32, hideGun: true, isolateDog: true },
+  // Neutral/level-tail review set for comparison with the standing-profile
+  // reference. All four shots freeze the same deterministic open-ground
+  // trot frame; only the orbit spin changes.
+  'review-dog-neutral-side': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.05, spin: 1.55, pitch: -48, fov: 40, hideGun: true, isolateDog: true, neutralDog: true },
+  'review-dog-neutral-front': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.45, spin: 2.7, pitch: -30, fov: 32, hideGun: true, isolateDog: true },
+  'review-dog-neutral-rear': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.45, spin: 0.2, pitch: -30, fov: 32, hideGun: true, isolateDog: true },
+  'review-dog-neutral-three-quarter': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.45, spin: 0.9, pitch: -30, fov: 32, hideGun: true, isolateDog: true },
+  // Lower-lens neutral conformation sheet for short-coated breeds. The
+  // Setter macro is intentionally steep; this one keeps the GSP wedge,
+  // tuck, docked tail, and ground clearance legible in true profile.
+  'review-gsp-neutral-side': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.0, spin: 1.55, pitch: -25, fov: 34, hideGun: true, isolateDog: true, neutralDog: true },
+  'review-gsp-neutral-front': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.0, spin: 2.7, pitch: -25, fov: 34, hideGun: true, isolateDog: true, neutralDog: true },
+  'review-gsp-neutral-three-quarter': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.0, spin: 0.9, pitch: -25, fov: 34, hideGun: true, isolateDog: true, neutralDog: true },
   // Feet-planting witness: mid-stride on visibly SLOPED ground (grade read
   // off window.__dogAudit.slopeAt), framed low and side-on so daylight
   // under a paw — or a buried shin — is unmissable.
-  'debug-dog-slope': { tod: 'noon', sim: 'slope', maxTicks: 24000, base: [0, 40, 180, 4], dist: 3.2, spin: 1.55, pitch: -14 },
+  'debug-dog-slope': { tod: 'noon', sim: 'slope', maxTicks: 24000, base: [0, 40, 180, 4], dist: 3.2, spin: 1.55, pitch: -14, hideGun: true },
   // DOG LIGHT AUDIT (moment round, item 5): a ring of 8 dawn captures at
   // 45-degree steps around the locked point. The coat must sit in the
   // scene at EVERY angle — sun-side modeled, shade-side breathing the
@@ -148,6 +194,8 @@ const get = (flag, dflt) => {
 };
 const baseUrl = get('--url', 'http://localhost:4517');
 const outDir = resolve(get('--out', 'docs/3d/shots'));
+const coat = get('--coat', 'orange-belton');
+const breed = get('--breed', 'english-setter');
 const wanted = get(
   '--shots',
   Object.keys(SHOTS).filter((n) => !n.startsWith('debug-')).join(','),
@@ -201,7 +249,10 @@ async function main() {
         continue;
       }
       const tod = Array.isArray(spec) ? spec[4] : spec.tod;
-      await page.goto(`${url}/index3d.html?capture=1&tod=${tod}`, { waitUntil: 'domcontentloaded' });
+      await page.goto(
+        `${url}/index3d.html?capture=1&tod=${tod}&coat=${encodeURIComponent(coat)}&breed=${encodeURIComponent(breed)}`,
+        { waitUntil: 'domcontentloaded' },
+      );
       await page.waitForFunction('window.__ready3d === true', { timeout: 30000 });
       if (Array.isArray(spec)) {
         const [x, z, yaw, pitch] = spec;
@@ -423,7 +474,7 @@ async function main() {
         // of the seed), then frame it from `dist` meters at a `spin`-rad
         // three-quarter angle off the line to the cover it faces.
         const simInfo = await page.evaluate(
-          (base, mode, maxTicks, dist, spin, camPitch, ptod, fov, camAz) => {
+          (base, mode, maxTicks, dist, spin, camPitch, ptod, fov, camAz, broadsideDog) => {
             window.__api3d.setTod(ptod);
             window.__api3d.setPose(...base);
             const hunt = () => window.__api3d.hunt();
@@ -474,8 +525,16 @@ async function main() {
               locked = planted;
               return planted;
             };
+            const scentTarget = {
+              'scent-checking': ['checking', 0.35],
+              'scent-locating': ['locating', 0.45],
+              'scent-stalking': ['stalking', 0.35],
+              'scent-locking': ['locking', 0.55],
+            }[mode];
             const want =
-              mode === 'point'
+              scentTarget
+                ? (h) => h.dog.scentStage === scentTarget[0] && h.dog.scentProgress >= scentTarget[1]
+                : mode === 'point'
                 // The LOCKED point. (Probed: this seed's covey holds
                 // mid-patch, so the dog stands IN the bluestem — white
                 // coat, tail flag and head over the grass carry the read.)
@@ -495,13 +554,16 @@ async function main() {
                         (window.__dogAudit?.slopeAt(h.dog.x, h.dog.z) ?? 0) > 0.13 &&
                         Math.abs(h.dog.x) < 222 && Math.abs(h.dog.z) < 222
                     : (h) => h.dog.state === 'quartering' && h.dog.gait === 'run' && inPatch(h);
-            // Skip the opening cast so the frame isn't the first stride.
-            window.__api3d.stepSim(240);
-            let ticks = 240;
+            // Ordinary reviews skip the opening cast. Scent beats are short,
+            // so probe them one authoritative tick at a time from frame 0.
+            const initialTicks = scentTarget ? 0 : 240;
+            if (initialTicks > 0) window.__api3d.stepSim(initialTicks);
+            let ticks = initialTicks;
             let h = hunt();
             while (!want(h) && ticks < maxTicks) {
-              window.__api3d.stepSim(15);
-              ticks += 15;
+              const step = scentTarget ? 1 : 15;
+              window.__api3d.stepSim(step);
+              ticks += step;
               h = hunt();
             }
             let nearest = h.patches[0];
@@ -517,7 +579,20 @@ async function main() {
             // re-rolls with whatever cover the dog stopped near).
             let rx;
             let rz;
-            if (camAz !== null) {
+            let frameX = h.dog.x;
+            let frameZ = h.dog.z;
+            if (broadsideDog && window.__dogAudit) {
+              window.__api3d.renderOnce();
+              const rendered = window.__dogAudit.state();
+              const dogYaw = rendered.yaw;
+              rx = Math.cos(dogYaw);
+              rz = -Math.sin(dogYaw);
+              // Frame the interpolated render root, not the latest sim
+              // snapshot. Capture can advance thousands of fixed ticks
+              // before rendering, so those positions need not coincide.
+              frameX = rendered.root.x;
+              frameZ = rendered.root.z;
+            } else if (camAz !== null) {
               const azr = (camAz * Math.PI) / 180;
               rx = Math.sin(azr);
               rz = Math.cos(azr);
@@ -531,10 +606,12 @@ async function main() {
               rx = dx * ca - dz * sa;
               rz = dx * sa + dz * ca;
             }
-            const camX = Math.max(-230, Math.min(230, h.dog.x + rx * dist));
-            const camZ = Math.max(-230, Math.min(230, h.dog.z + rz * dist));
-            const vx = h.dog.x - camX;
-            const vz = h.dog.z - camZ;
+            const wantedCamX = frameX + rx * dist;
+            const wantedCamZ = frameZ + rz * dist;
+            const camX = broadsideDog ? wantedCamX : Math.max(-230, Math.min(230, wantedCamX));
+            const camZ = broadsideDog ? wantedCamZ : Math.max(-230, Math.min(230, wantedCamZ));
+            const vx = frameX - camX;
+            const vz = frameZ - camZ;
             const yawDeg = (Math.atan2(-vx, -vz) * 180) / Math.PI;
             window.__api3d.setPose(camX, camZ, yawDeg, camPitch);
             // Capture-only lens for framed reads (gameplay-point): reduced
@@ -547,7 +624,7 @@ async function main() {
               cam: { x: camX, z: camZ, yawDeg }, simMs: h.simMs,
             };
           },
-          spec.base, spec.sim, spec.maxTicks, spec.dist, spec.spin ?? 0, spec.pitch ?? 0, tod, spec.fov ?? 0, spec.camAz ?? null,
+          spec.base, spec.sim, spec.maxTicks, spec.dist, spec.spin ?? 0, spec.pitch ?? 0, tod, spec.fov ?? 0, spec.camAz ?? null, spec.broadsideDog ?? false,
         );
         if (!simInfo.reached) {
           console.error(`  sim: ${name} never reached mode '${spec.sim}' in ${spec.maxTicks} ticks`);
@@ -613,6 +690,36 @@ async function main() {
             `cost +${gunInfo.delta.calls} calls / +${gunInfo.delta.tris} tris`,
           );
         }
+      }
+      if (spec.hideGun) {
+        await page.evaluate(() => {
+          window.__gunAudit?.setVisible(false);
+          window.__api3d.renderOnce();
+        });
+      }
+      if (spec.isolateDog) {
+        await page.evaluate(() => {
+          window.__dogAudit?.setIsolated(true);
+          window.__api3d.renderOnce();
+        });
+      }
+      if (spec.neutralDog) {
+        await page.evaluate(() => {
+          window.__dogAudit?.setReviewNeutral(true);
+          window.__api3d.renderOnce();
+        });
+      }
+      if (spec.gallopPhase !== undefined) {
+        await page.evaluate((cycle) => {
+          window.__dogAudit?.setGallopPhase(cycle);
+          window.__api3d.renderOnce();
+        }, spec.gallopPhase);
+      }
+      if (spec.gaitPhase !== undefined) {
+        await page.evaluate(([gait, cycle]) => {
+          window.__dogAudit?.setLocomotionPhase(gait, cycle);
+          window.__api3d.renderOnce();
+        }, spec.gaitPhase);
       }
       await new Promise((r) => setTimeout(r, 400)); // settle a few frames
       const file = `${outDir}/${name}.png`;

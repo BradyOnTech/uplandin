@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { playFlush, playThud } from '../../audio';
 import { YOUNG_FLIGHT_MULT } from '../../game/birds';
 import { mulberry32 } from '../../game/math';
 import {
@@ -134,6 +135,7 @@ const LAUNCH_JITTER_PX = 16;
  * the mandated mass. Still a fraction of the 2D license.
  */
 const RISE_SCALE = 3.3;
+const GROUNDED_SCALE = 2.1;
 /** Tip-to-tip wingspan of the UNSCALED model (m) — telemetry only. */
 const SPAN_M = 0.308;
 
@@ -173,7 +175,48 @@ const TUMBLE_RAD_PER_S = (540 * Math.PI) / 180;
 const DEBRIS_N = 24;
 const DEBRIS_LIFE_MS = 900;
 
-type SlotStatus = 'idle' | 'waiting' | 'flying' | 'falling' | 'done';
+type SlotStatus = 'idle' | 'waiting' | 'flying' | 'falling' | 'grounded' | 'done';
+
+export interface RayBirdTarget {
+  simId: number;
+  x: number;
+  y: number;
+  z: number;
+  status: string;
+}
+
+/** Pure center-pattern hit selection used by the live gun and tests. */
+export function pickBirdAlongRay(
+  targets: readonly RayBirdTarget[],
+  origin: { x: number; y: number; z: number },
+  direction: { x: number; y: number; z: number },
+  spreadRad = 0.04,
+): number | null {
+  let bestId: number | null = null;
+  let bestAlong = Infinity;
+  const directionLength = Math.hypot(direction.x, direction.y, direction.z) || 1;
+  const dx = direction.x / directionLength;
+  const dy = direction.y / directionLength;
+  const dz = direction.z / directionLength;
+  for (const target of targets) {
+    if (target.status !== 'flying') continue;
+    const rx = target.x - origin.x;
+    const ry = target.y - origin.y;
+    const rz = target.z - origin.z;
+    const along = rx * dx + ry * dy + rz * dz;
+    if (along <= 0 || along >= bestAlong) continue;
+    const distanceSq = rx * rx + ry * ry + rz * rz;
+    const perpendicular = Math.sqrt(Math.max(0, distanceSq - along * along));
+    // The low-poly birds are deliberately presentation-scaled; this radius
+    // gives their visible body/wings a fair close-range shotgun pattern.
+    const patternRadius = Math.max(0.48, along * Math.tan(spreadRad));
+    if (perpendicular <= patternRadius) {
+      bestId = target.simId;
+      bestAlong = along;
+    }
+  }
+  return bestId;
+}
 
 interface Slot {
   status: SlotStatus;
@@ -318,6 +361,14 @@ export class BirdsSystem implements Subsystem {
   private debrisOz = 0;
   private debrisMs = -1;
 
+  /* ------------------------- hit feather burst ------------------------ */
+  private featherGeo?: THREE.BufferGeometry;
+  private featherMat?: THREE.PointsMaterial;
+  private featherPoints?: THREE.Points;
+  private featherPos = new Float32Array(14 * 3);
+  private featherVel = new Float32Array(14 * 3);
+  private featherMs = -1;
+
   // Preallocated scratch.
   private w2 = { x: 0, z: 0 };
 
@@ -368,6 +419,7 @@ export class BirdsSystem implements Subsystem {
 
     this.buildPool(ctx);
     this.buildDebris(ctx);
+    this.buildFeathers(ctx);
 
     // CAPTURE AUDIT (moment round): read-only measurement handle so the
     // harness can gate the rise on a REAL covey (9-13 birds, not the
@@ -629,6 +681,41 @@ export class BirdsSystem implements Subsystem {
     ctx.scene.add(this.debrisMesh);
   }
 
+  private buildFeathers(ctx: Ctx): void {
+    this.featherGeo = new THREE.BufferGeometry();
+    this.featherGeo.setAttribute('position', new THREE.BufferAttribute(this.featherPos, 3));
+    this.featherMat = new THREE.PointsMaterial({
+      color: P.strawPale,
+      size: 0.085,
+      sizeAttenuation: true,
+      transparent: true,
+      opacity: 0.95,
+      depthWrite: false,
+    });
+    this.featherPoints = new THREE.Points(this.featherGeo, this.featherMat);
+    this.featherPoints.frustumCulled = false;
+    this.featherPoints.visible = false;
+    ctx.scene.add(this.featherPoints);
+  }
+
+  private burstFeathers(slot: Slot): void {
+    for (let i = 0; i < this.featherPos.length / 3; i++) {
+      const j = i * 3;
+      this.featherPos[j] = slot.x;
+      this.featherPos[j + 1] = slot.y;
+      this.featherPos[j + 2] = slot.z;
+      const azimuth = this.riseRng() * Math.PI * 2;
+      const speed = 0.7 + this.riseRng() * 1.8;
+      this.featherVel[j] = Math.cos(azimuth) * speed;
+      this.featherVel[j + 1] = 0.5 + this.riseRng() * 1.7;
+      this.featherVel[j + 2] = Math.sin(azimuth) * speed;
+    }
+    this.featherMs = 0;
+    if (this.featherPoints) this.featherPoints.visible = true;
+    const position = this.featherGeo?.getAttribute('position') as THREE.BufferAttribute | undefined;
+    if (position) position.needsUpdate = true;
+  }
+
   /* ----------------------------- sim tick ---------------------------- */
 
   fixedUpdate(ctx: Ctx, dtMs: number): void {
@@ -657,13 +744,24 @@ export class BirdsSystem implements Subsystem {
       this.qTail++;
       if (!this.riseActive) newRise = true;
     }
-    if (newRise) this.stageRise(simBirds);
+    if (newRise) {
+      this.stageRise(simBirds);
+      if (!this.frozen) playFlush();
+    }
 
     // 2. Fly what's flying.
     let anyAloft = false;
     for (let i = 0; i < POOL; i++) {
       const s = this.slots[i];
       if (s.status === 'idle' || s.status === 'done') continue;
+      if (s.status === 'grounded') {
+        const bird = simBirds.find((candidate) => candidate.id === s.simId);
+        if (!bird || bird.state === 'retrieved' || bird.state === 'escaped') {
+          s.status = 'done';
+          s.root.visible = false;
+        }
+        continue;
+      }
       if (s.status === 'waiting') {
         anyAloft = true; // a pending sleeper blocks the next wave, as in 2D
         s.delayMs -= dtMs;
@@ -678,8 +776,8 @@ export class BirdsSystem implements Subsystem {
         const g = this.terrain.heightAt(s.x, s.z);
         if (s.y <= g + 0.06) {
           s.y = g + 0.06;
-          s.status = 'done';
-          s.root.visible = false;
+          s.status = 'grounded';
+          playThud();
         }
         continue;
       }
@@ -747,6 +845,7 @@ export class BirdsSystem implements Subsystem {
           // decides escape/relight; we never write bird state.
           s.status = 'done';
           s.root.visible = false;
+          this.hunt.resolveBird(s.simId, 'escaped');
           continue;
         }
       }
@@ -755,6 +854,7 @@ export class BirdsSystem implements Subsystem {
       if (rx * rx + rz * rz > GONE_RANGE * GONE_RANGE || s.airMs > MAX_AIR_MS) {
         s.status = 'done';
         s.root.visible = false;
+        this.hunt.resolveBird(s.simId, 'escaped');
       }
     }
 
@@ -768,13 +868,32 @@ export class BirdsSystem implements Subsystem {
       for (let i = 0; i < POOL; i++) {
         if (this.slots[i].status === 'falling') quiet = false;
       }
-      if (quiet) this.riseActive = false; // the sky settled
+      if (quiet) {
+        this.riseActive = false; // the sky settled
+        this.hunt.finishRise();
+      }
     }
 
     // 4. Debris clock.
     if (this.debrisMs >= 0) {
       this.debrisMs += dtMs;
       if (this.debrisMs > DEBRIS_LIFE_MS) this.debrisMs = -1;
+    }
+    if (this.featherMs >= 0) {
+      this.featherMs += dtMs;
+      for (let i = 0; i < this.featherPos.length; i += 3) {
+        this.featherVel[i + 1] -= 3.2 * dt;
+        this.featherPos[i] += this.featherVel[i] * dt;
+        this.featherPos[i + 1] += this.featherVel[i + 1] * dt;
+        this.featherPos[i + 2] += this.featherVel[i + 2] * dt;
+      }
+      const position = this.featherGeo?.getAttribute('position') as THREE.BufferAttribute | undefined;
+      if (position) position.needsUpdate = true;
+      if (this.featherMat) this.featherMat.opacity = Math.max(0, 1 - this.featherMs / 900);
+      if (this.featherMs >= 900) {
+        this.featherMs = -1;
+        if (this.featherPoints) this.featherPoints.visible = false;
+      }
     }
   }
 
@@ -974,10 +1093,28 @@ export class BirdsSystem implements Subsystem {
       const s = this.slots[i];
       if (s.simId === simId && s.status === 'flying') {
         s.status = 'falling';
+        this.burstFeathers(s);
         return true;
       }
     }
     return false;
+  }
+
+  /** Select the first live target inside the camera-centered shot pattern. */
+  shootRay(
+    origin: { x: number; y: number; z: number },
+    direction: { x: number; y: number; z: number },
+    spreadRad = 0.04,
+  ): number | null {
+    return pickBirdAlongRay(this.slots, origin, direction, spreadRad);
+  }
+
+  riseSequence(): number {
+    return this.riseSeq;
+  }
+
+  isRiseActive(): boolean {
+    return this.riseActive;
   }
 
   /** Capture telemetry: airborne birds (world m). Allocates — tooling only.
@@ -998,6 +1135,15 @@ export class BirdsSystem implements Subsystem {
       }
     }
     return out;
+  }
+
+  /** Tooling/HUD telemetry: shot birds still lying in the cover. */
+  groundedIds(): number[] {
+    const ids: number[] = [];
+    for (let i = 0; i < POOL; i++) {
+      if (this.slots[i].status === 'grounded') ids.push(this.slots[i].simId);
+    }
+    return ids;
   }
 
   /**
@@ -1026,10 +1172,18 @@ export class BirdsSystem implements Subsystem {
   update(_ctx: Ctx, _dt: number): void {
     for (let i = 0; i < POOL; i++) {
       const s = this.slots[i];
-      const visible = s.status === 'flying' || s.status === 'falling';
+      const visible = s.status === 'flying' || s.status === 'falling' || s.status === 'grounded';
       s.root.visible = visible;
       if (!visible) continue;
       s.root.position.set(s.x, s.y, s.z);
+      s.root.scale.setScalar(s.status === 'grounded' ? GROUNDED_SCALE : RISE_SCALE);
+      if (s.status === 'grounded') {
+        // Folded bird remains marked in the grass until the dog picks it up.
+        s.root.rotation.set(0, s.root.rotation.y, 1.2);
+        s.wingL.rotation.set(0, 0.9, -1.35);
+        s.wingR.rotation.set(0, -0.9, 1.35);
+        continue;
+      }
       if (s.status === 'falling') {
         // Folded frame: wings pinned to the body, tumbling — dead weight.
         s.root.rotation.set(s.airMs * 0.001 * TUMBLE_RAD_PER_S, s.root.rotation.y, 0.5);
@@ -1101,7 +1255,10 @@ export class BirdsSystem implements Subsystem {
     for (const s of this.slots) ctx.scene.remove(s.root);
     this.slots.length = 0;
     if (this.debrisMesh) ctx.scene.remove(this.debrisMesh);
+    if (this.featherPoints) ctx.scene.remove(this.featherPoints);
     this.debrisGeo?.dispose();
+    this.featherGeo?.dispose();
+    this.featherMat?.dispose();
     this.debrisGeo = undefined;
     for (const g of this.geos) g.dispose();
     this.geos.length = 0;

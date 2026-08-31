@@ -1,6 +1,9 @@
 import * as THREE from 'three';
+import { playShot, unlockAudio } from '../../audio';
+import { getGun, type GunConfig } from '../../game/guns';
 import type { Ctx, Subsystem } from '../engine';
 import { P, TOD, type TimeOfDay } from '../palette';
+import type { BirdsSystem } from './birds';
 import type { Hunt3DSystem } from './hunt3d';
 import type { TerrainSystem } from './terrain';
 
@@ -187,7 +190,9 @@ export class GunSystem implements Subsystem {
   readonly id = 'gun';
 
   private hunt!: Hunt3DSystem;
+  private birds!: BirdsSystem;
   private terrain!: TerrainSystem;
+  private gun!: GunConfig;
   private mat?: THREE.MeshLambertMaterial;
   private geo?: THREE.BufferGeometry;
   private root = new THREE.Group();
@@ -219,6 +224,12 @@ export class GunSystem implements Subsystem {
   private hasLastYaw = false;
   private aimYaw = 0;
   private aimPitch = 0;
+  private shells = 0;
+  private lastShotMs = -Infinity;
+  private lastRiseSequence = 0;
+  private reticle: HTMLElement | null = null;
+  private shotCallout: HTMLElement | null = null;
+  private shotCalloutUntil = 0;
 
   // Preallocated scratch.
   private prevCam = new THREE.Vector3();
@@ -243,7 +254,12 @@ export class GunSystem implements Subsystem {
   init(ctx: Ctx): void {
     this.frozen = new URLSearchParams(location.search).has('capture');
     this.hunt = ctx.get<Hunt3DSystem>('hunt3d');
+    this.birds = ctx.get<BirdsSystem>('birds');
     this.terrain = ctx.get<TerrainSystem>('terrain');
+    this.gun = getGun(this.hunt.huntState().gunId);
+    this.shells = this.gun.shells;
+    this.reticle = document.getElementById('reticle');
+    this.shotCallout = document.getElementById('shot-callout');
 
     this.mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     const tone = this.tone;
@@ -321,11 +337,11 @@ export class GunSystem implements Subsystem {
 
     if (!this.frozen) {
       // AIM INTENT: right mouse held = mount; released = dismount.
-      // Left click while mounted exercises the recoil hook (motion only —
-      // the fx round owns the actual shot).
+      // The 3D rise stays in the field: mount with RMB, put the camera's
+      // center pattern on a bird, then fire with LMB.
       window.addEventListener('mousedown', (e) => {
         if (e.button === 2) this.aim = true;
-        else if (e.button === 0 && this.mountT > 0.7) this.kick(1);
+        else if (e.button === 0 && this.mountT > 0.7) this.fire(ctx);
       });
       window.addEventListener('mouseup', (e) => {
         if (e.button === 2) this.aim = false;
@@ -416,6 +432,38 @@ export class GunSystem implements Subsystem {
   /** Mount progress 0..1 (eased) — hud/fx read the sight picture off it. */
   mountProgress(): number {
     return ease(this.mountT);
+  }
+
+  shellsRemaining(): number {
+    return this.shells;
+  }
+
+  private fire(ctx: Ctx): void {
+    if (!this.birds.isRiseActive() || this.shells <= 0) return;
+    const nowMs = ctx.time * 1000;
+    if (nowMs - this.lastShotMs < this.gun.cooldownMs) return;
+    this.lastShotMs = nowMs;
+    this.shells--;
+    this.kick(1);
+    unlockAudio();
+    playShot();
+
+    ctx.camera.getWorldDirection(this.fwd);
+    const birdId = this.birds.shootRay(
+      ctx.camera.position,
+      this.fwd,
+      this.gun.spread / 400,
+    );
+    const hit = birdId !== null && this.hunt.resolveBird(birdId, 'downed');
+    if (hit && birdId !== null) {
+      this.birds.downBird(birdId);
+    }
+    if (this.shotCallout) {
+      this.shotCallout.textContent = hit ? 'HIT!' : 'MISS';
+      this.shotCallout.classList.toggle('miss', !hit);
+      this.shotCallout.hidden = false;
+      this.shotCalloutUntil = ctx.time + (hit ? 0.8 : 0.55);
+    }
   }
 
   /* ------------------------------- build ------------------------------- */
@@ -613,6 +661,19 @@ export class GunSystem implements Subsystem {
     const cam = ctx.camera;
     const snap = this.frozen;
 
+    const riseSequence = this.birds.riseSequence();
+    if (riseSequence !== this.lastRiseSequence) {
+      this.lastRiseSequence = riseSequence;
+      this.shells = this.gun.shells;
+      this.lastShotMs = -Infinity;
+    }
+    if (this.reticle) {
+      this.reticle.hidden = this.frozen || !this.birds.isRiseActive() || this.mountT < 0.35;
+    }
+    if (this.shotCallout && !this.shotCallout.hidden && ctx.time >= this.shotCalloutUntil) {
+      this.shotCallout.hidden = true;
+    }
+
     this.advance(dt);
     const m = ease(this.mountT);
 
@@ -709,5 +770,7 @@ export class GunSystem implements Subsystem {
     this.geo = undefined;
     this.mat?.dispose();
     this.mat = undefined;
+    if (this.reticle) this.reticle.hidden = true;
+    if (this.shotCallout) this.shotCallout.hidden = true;
   }
 }

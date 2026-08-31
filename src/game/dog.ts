@@ -27,6 +27,23 @@ export type DogState =
 /** Field presentation gait — set each tick by `update`, read by FieldScene. */
 export type DogGait = 'run' | 'trot' | 'track' | 'still';
 
+/**
+ * The readable beats between open search and a finished point. This stays
+ * inside the shared simulation so 2D and 3D present the same dog, timing,
+ * bird target and outcome instead of running separate animation scripts.
+ */
+export type DogScentStage = 'none' | 'checking' | 'locating' | 'stalking' | 'locking';
+
+export interface ScentApproachStyle {
+  checkMs: number;
+  locateMs: number;
+  locateArc: number;
+  locateCycles: number;
+  locatePace: number;
+  stalkPace: number;
+  lockMs: number;
+}
+
 export const DOG_SPEED = 75; // base px/s while quartering, before breed multipliers
 export const TRACKING_SPEED = 90; // base px/s once it has the scent
 export const SCENT_RADIUS = 45; // base scent range, before nose multipliers
@@ -54,6 +71,30 @@ const BREAKING_SPEED = 110;
 const BREAKING_MS = 2500;
 const BREAK_BUMP_RADIUS = 12;
 const ANCHOR_TURN_RATE = 2.2; // rad/s pulled back toward the hunter past quartering range
+const POINT_SETTLE_RANGE = POINT_RANGE + 1.5;
+const SCENT_MEMORY_MULT = 1.35;
+
+/**
+ * Derive approach character from the breed facts we already tune. A steady,
+ * mature dog takes a more deliberate check and settle; a loose, animated
+ * searcher locates with quicker, wider casts. The interface stays small—new
+ * breeds receive a coherent sequence from their existing profile.
+ */
+export function scentApproachStyle(breed: BreedConfig, level: number): ScentApproachStyle {
+  const looseness = breed.motion.searchLooseness;
+  const headFreedom = breed.motion.headFreedom;
+  const maturity = clamp((level - 1) / 9, 0, 1);
+  const steady = breed.stats.steadiness;
+  return {
+    checkMs: clamp(250 + steady * 28 + headFreedom * 45 - maturity * 45, 240, 440),
+    locateMs: clamp(430 + (1 - looseness) * 300 + steady * 18 - maturity * 55, 420, 760),
+    locateArc: 0.3 + looseness * 0.32,
+    locateCycles: 1.05 + looseness * 0.75,
+    locatePace: 0.46 + looseness * 0.12,
+    stalkPace: 0.42 + (1 - looseness) * 0.12,
+    lockMs: clamp(155 + steady * 27 - maturity * 25, 170, 300),
+  };
+}
 
 // Cover work: a bird dog doesn't scramble open ground — it hunts objectives.
 // Pick a likely patch, cast to it, work it until it feels checked, move on.
@@ -159,6 +200,12 @@ export function castAimPoint(
 /** Environment the dog is hunting in for this tick. */
 export interface DogEnv {
   hunterPos?: Vec2;
+  /** Presentation-space pace multiplier; AI clocks still advance in real time. */
+  movementScale?: number;
+  /** Optional working radius override in sim pixels. */
+  rangeRadius?: number;
+  /** Optional cast center, distinct from the hunter used by recall/scent rules. */
+  workAnchor?: Vec2;
   /** Direction the wind blows TOWARD (radians, screen coords). Undefined = calm. */
   windAngle?: number;
   /** Wind-strength multiplier on scent reach (strong wind carries scent farther). */
@@ -220,6 +267,10 @@ export class Dog {
   gait: DogGait = 'run';
   /** True for a brief beat when scent first hits — head up, freeze a step. */
   scentCheck = false;
+  /** Current shared search-to-point beat, consumed by both presentations. */
+  scentStage: DogScentStage = 'none';
+  /** Normalized progress through the current beat (distance-based for stalk). */
+  scentProgress = 0;
 
   private rng: RNG;
   private weavePhase = 0;
@@ -242,7 +293,10 @@ export class Dog {
   /** Patch index → ms until the dog considers it worth re-checking. */
   private checkedCovers = new Map<number, number>();
   /** ms left of the first-scent freeze. */
-  private scentCheckMs = 0;
+  private scentStageMs = 0;
+  private scentStageTotalMs = 0;
+  private scentTargetId: number | null = null;
+  private scentArcSign = 1;
 
   constructor(
     public pos: Vec2,
@@ -304,6 +358,7 @@ export class Dog {
 
   update(dtMs: number, birds: Bird[], env: DogEnv = {}): void {
     const dt = dtMs / 1000;
+    const movementDt = dt * (env.movementScale ?? 1);
     // Default presentation; branches below overwrite for cast/track/still.
     this.gait = 'run';
     this.scentCheck = false;
@@ -312,6 +367,7 @@ export class Dog {
     const hearsWhistle = !env.hunterPos || dist(this.pos, env.hunterPos) <= (env.whistleRange ?? WHISTLE_RANGE);
     if (env.recall && hearsWhistle && (this.state === 'quartering' || this.state === 'tracking')) {
       this.state = 'recalled';
+      this.resetScentApproach();
     }
 
     if (this.state === 'recalled') {
@@ -322,7 +378,7 @@ export class Dog {
         return;
       }
       this.heading = Math.atan2(env.hunterPos.y - this.pos.y, env.hunterPos.x - this.pos.x);
-      this.advance(this.heading, RECALL_SPEED * dt);
+      this.advance(this.heading, RECALL_SPEED * movementDt);
       return;
     }
 
@@ -332,7 +388,7 @@ export class Dog {
       if (env.hunterPos && dist(this.pos, env.hunterPos) > HEEL_FOLLOW) {
         this.gait = 'trot';
         this.heading = Math.atan2(env.hunterPos.y - this.pos.y, env.hunterPos.x - this.pos.x);
-        this.advance(this.heading, RECALL_SPEED * 0.8 * dt);
+        this.advance(this.heading, RECALL_SPEED * 0.8 * movementDt);
       }
       return;
     }
@@ -362,8 +418,8 @@ export class Dog {
         this.state = 'quartering';
         return;
       }
-      this.steerOffEdges(dt);
-      this.advance(this.heading, BREAKING_SPEED * dt);
+      this.steerOffEdges(movementDt);
+      this.advance(this.heading, BREAKING_SPEED * movementDt);
       // A chasing dog bumps everything it runs past.
       const bumped = this.nearestBirdWithin(birds, 'hidden', BREAK_BUMP_RADIUS);
       if (bumped) this.bumpedBirdId = bumped.id;
@@ -378,11 +434,13 @@ export class Dog {
         this.state = 'quartering';
         this.pointedBirdId = null;
         this.resetCreep();
+        this.resetScentApproach();
       } else if (dist(this.pos, pointed.pos) > POINT_RANGE * 2) {
         // A running bird broke the point — road it.
         this.state = 'tracking';
         this.pointedBirdId = null;
         this.resetCreep();
+        this.beginScentApproach(pointed, 'stalking');
         this.gait = 'track';
       } else {
         this.creep(dtMs, pointed);
@@ -402,7 +460,7 @@ export class Dog {
         this.gait = 'trot';
         this.retrieveHoldMs = 0;
         this.heading = Math.atan2(target.pos.y - this.pos.y, target.pos.x - this.pos.x);
-        this.advance(this.heading, this.trackSpeed * dt);
+        this.advance(this.heading, this.trackSpeed * movementDt);
       } else {
         this.gait = 'still';
         this.retrieveHoldMs += dtMs;
@@ -422,6 +480,7 @@ export class Dog {
     const downed = this.nearestBird(birds, 'downed');
     if (downed) {
       this.state = 'retrieving';
+      this.resetScentApproach();
       this.retrieveTargetId = downed.id;
       this.retrieveHoldMs = 0;
       return;
@@ -437,38 +496,96 @@ export class Dog {
       }
       if (this.willHonor) {
         this.state = 'honoring';
+        this.resetScentApproach();
         this.pointedBirdId = null;
         this.heading = Math.atan2(env.honorPoint.y - this.pos.y, env.honorPoint.x - this.pos.x);
         return;
       }
     }
 
-    const bird = this.nearestHiddenBird(birds, env);
+    const smelledBird = this.nearestHiddenBird(birds, env);
+    // Once a dog has made game, hold that scent for a modest margin. This
+    // prevents a running bird or one lateral locating step from flickering
+    // the sequence back to open search, while still allowing a truly lost
+    // bird to break the approach.
+    const rememberedBird = this.scentTargetId === null
+      ? null
+      : birds.find((candidate) => candidate.id === this.scentTargetId && candidate.state === 'hidden') ?? null;
+    const rememberedInRange = rememberedBird !== null &&
+      dist(this.pos, rememberedBird.pos) <=
+        this.scentDistance(rememberedBird.pos.x - this.pos.x, rememberedBird.pos.y - this.pos.y, env) *
+          SCENT_MEMORY_MULT;
+    const bird = rememberedInRange ? rememberedBird : smelledBird;
     if (bird) {
-      // First contact with scent: freeze a beat, head locked on the line —
-      // the "dog makes game" moment the handler reads from the gallery.
-      if (this.state !== 'tracking' && this.scentCheckMs <= 0) {
-        this.scentCheckMs = 320;
+      if (this.state !== 'tracking' || this.scentTargetId !== bird.id || this.scentStage === 'none') {
+        this.beginScentApproach(bird, 'checking');
       }
       this.state = 'tracking';
       this.work(dtMs * (env.drainMult ?? 1));
-      this.heading = Math.atan2(bird.pos.y - this.pos.y, bird.pos.x - this.pos.x);
-      if (this.scentCheckMs > 0) {
-        this.scentCheckMs -= dtMs;
+      const style = scentApproachStyle(this.profile.breed, this.profile.level);
+      const direct = Math.atan2(bird.pos.y - this.pos.y, bird.pos.x - this.pos.x);
+      const birdDistance = dist(this.pos, bird.pos);
+
+      if (this.scentStage === 'checking') {
+        // First contact: freeze a beat and face the scent cone. The original
+        // scentCheck flag remains for audio and existing 2D art.
+        this.heading = turnToward(this.heading, direct, 6 * dt);
+        this.tickTimedScentStage(dtMs);
         this.scentCheck = true;
         this.gait = 'still';
-        if (this.scentCheckMs > 0) return;
+        if (this.scentStageMs > 0) return;
+        this.startScentStage('locating', style.locateMs);
+        return;
       }
-      this.gait = 'track';
-      this.advance(this.heading, this.trackSpeed * dt);
-      if (dist(this.pos, bird.pos) <= POINT_RANGE) {
-        this.state = 'pointing';
-        this.pointedBirdId = bird.id;
+
+      if (this.scentStage === 'locating') {
+        // Tightening lateral casts identify the exact source instead of a
+        // straight-line charge. The arc collapses as confidence builds.
+        this.tickTimedScentStage(dtMs);
+        const tighten = 1 - this.scentProgress;
+        const wave = Math.sin(this.scentProgress * Math.PI * 2 * style.locateCycles);
+        const offset = wave * style.locateArc * tighten * this.scentArcSign;
+        this.heading = turnToward(this.heading, direct + offset, 4.8 * dt);
+        this.gait = 'trot';
+        this.advanceTowardPoint(this.heading, birdDistance, this.trackSpeed * style.locatePace * movementDt);
+        if (this.scentStageMs <= 0 || dist(this.pos, bird.pos) <= POINT_SETTLE_RANGE + 5) {
+          this.startScentStage('stalking', 0);
+        }
+        return;
+      }
+
+      if (this.scentStage === 'stalking') {
+        // Low, increasingly careful road-in. Progress is distance-based so
+        // movementScale can slow 3D presentation without desynchronizing it.
+        const d = dist(this.pos, bird.pos);
+        this.scentProgress = clamp(1 - (d - POINT_SETTLE_RANGE) / Math.max(1, SCENT_RADIUS - POINT_SETTLE_RANGE), 0, 1);
+        this.heading = turnToward(this.heading, direct, (2.8 + this.scentProgress * 2.2) * dt);
+        this.gait = 'track';
+        this.advanceTowardPoint(this.heading, d, this.trackSpeed * style.stalkPace * movementDt);
+        if (dist(this.pos, bird.pos) <= POINT_SETTLE_RANGE + 1e-6) {
+          this.startScentStage('locking', style.lockMs);
+          this.gait = 'still';
+        }
+        return;
+      }
+
+      if (this.scentStage === 'locking') {
+        // Settle the body and lift the pointing forefoot before declaring the
+        // point. Bird nerve does not begin draining until this finishes.
+        this.heading = turnToward(this.heading, direct, 7 * dt);
+        this.tickTimedScentStage(dtMs);
         this.gait = 'still';
+        if (this.scentStageMs <= 0) {
+          this.resetScentApproach();
+          this.heading = direct;
+          this.state = 'pointing';
+          this.pointedBirdId = bird.id;
+          this.gait = 'still';
+        }
+        return;
       }
-      return;
     }
-    this.scentCheckMs = 0;
+    this.resetScentApproach();
 
     // Quartering: hunt objectives, not open ground. With cover in reach the
     // dog casts to a patch and works it until it feels checked; only a
@@ -492,12 +609,17 @@ export class Dog {
       // Casting: purposeful trot to the aim point (center, or downwind edge
       // when the dog knows wind), only a hint of weave.
       this.gait = 'trot';
-      this.weavePhase += dt * WEAVE_RATE;
+      this.weavePhase += movementDt * WEAVE_RATE;
       const aimPt = castAimPoint(patch, env.windAngle, windCraftTier(this.profile.level));
       const aim = Math.atan2(aimPt.y - this.pos.y, aimPt.x - this.pos.x);
-      this.heading = turnToward(this.heading, aim, COVER_TURN_RATE * dt);
-      this.steerToAnchor(dt, env.hunterPos);
-      this.advance(this.heading + Math.sin(this.weavePhase) * 0.15, this.speed * CAST_SPEED_MULT * dt);
+      this.heading = turnToward(this.heading, aim, COVER_TURN_RATE * movementDt);
+      // Range correction answers real time so a presentation pace scale
+      // cannot also make the dog take seconds to turn back into view.
+      this.steerToAnchor(dt, env.workAnchor ?? env.hunterPos, env.rangeRadius);
+      this.advance(
+        this.heading + Math.sin(this.weavePhase) * 0.15,
+        this.speed * CAST_SPEED_MULT * movementDt,
+      );
       return;
     }
 
@@ -520,31 +642,76 @@ export class Dog {
         if (!onRim) {
           this.coverEdgeT = nearestPerimeterT(patch, this.pos);
         } else {
-          this.coverEdgeT = (this.coverEdgeT + dt * COVER_EDGE_LAP_RATE) % 1;
+          this.coverEdgeT = (this.coverEdgeT + movementDt * COVER_EDGE_LAP_RATE) % 1;
         }
         const edgePt = perimeterPoint(patch, this.coverEdgeT);
         const aim = Math.atan2(edgePt.y - this.pos.y, edgePt.x - this.pos.x);
-        this.heading = turnToward(this.heading, aim, COVER_TURN_RATE * 2.4 * dt);
-        this.advance(this.heading, this.speed * (onRim ? 1 : 1.15) * dt);
+        this.heading = turnToward(this.heading, aim, COVER_TURN_RATE * 2.4 * movementDt);
+        this.advance(this.heading, this.speed * (onRim ? 1 : 1.15) * movementDt);
         return;
       }
       // Interior comb: tight serpentine with a soft pull toward the core
       // (pups spend almost all their budget here).
-      this.weavePhase += dt * WEAVE_RATE * COVER_WEAVE_MULT;
+      this.weavePhase += movementDt * WEAVE_RATE * COVER_WEAVE_MULT;
       const toCore = Math.atan2(rectCy(patch) - this.pos.y, rectCx(patch) - this.pos.x);
-      this.heading = turnToward(this.heading, toCore, 0.9 * dt);
-      this.steerInsideRect(dt, patch);
-      this.advance(this.heading + Math.sin(this.weavePhase) * this.weave, this.speed * dt);
+      this.heading = turnToward(this.heading, toCore, 0.9 * movementDt);
+      this.steerInsideRect(movementDt, patch);
+      this.advance(this.heading + Math.sin(this.weavePhase) * this.weave, this.speed * movementDt);
       return;
     }
 
     // No cover worth checking: the classic open-ground sweep.
     this.gait = 'run';
-    this.weavePhase += dt * WEAVE_RATE;
-    this.steerOffEdges(dt);
-    this.steerToAnchor(dt, env.hunterPos);
+    this.weavePhase += movementDt * WEAVE_RATE;
+    this.steerOffEdges(movementDt);
+    this.steerToAnchor(dt, env.workAnchor ?? env.hunterPos, env.rangeRadius);
     const weave = Math.sin(this.weavePhase) * this.weave;
-    this.advance(this.heading + weave, this.speed * dt);
+    this.advance(this.heading + weave, this.speed * movementDt);
+  }
+
+  private beginScentApproach(bird: Bird, stage: Exclude<DogScentStage, 'none'>): void {
+    const style = scentApproachStyle(this.profile.breed, this.profile.level);
+    this.scentTargetId = bird.id;
+    // Alternate the opening cast without consuming the gameplay RNG stream
+    // used by creep, break and honor rolls.
+    this.scentArcSign *= -1;
+    const duration = stage === 'checking'
+      ? style.checkMs
+      : stage === 'locating'
+        ? style.locateMs
+        : stage === 'locking'
+          ? style.lockMs
+          : 0;
+    this.startScentStage(stage, duration);
+  }
+
+  private startScentStage(stage: Exclude<DogScentStage, 'none'>, durationMs: number): void {
+    this.scentStage = stage;
+    this.scentStageMs = durationMs;
+    this.scentStageTotalMs = durationMs;
+    this.scentProgress = 0;
+  }
+
+  private tickTimedScentStage(dtMs: number): void {
+    this.scentStageMs = Math.max(0, this.scentStageMs - dtMs);
+    this.scentProgress = this.scentStageTotalMs <= 0
+      ? 1
+      : clamp(1 - this.scentStageMs / this.scentStageTotalMs, 0, 1);
+  }
+
+  private resetScentApproach(): void {
+    this.scentStage = 'none';
+    this.scentProgress = 0;
+    this.scentStageMs = 0;
+    this.scentStageTotalMs = 0;
+    this.scentTargetId = null;
+    this.scentCheck = false;
+  }
+
+  /** Advance without crossing the distance where the dog must settle. */
+  private advanceTowardPoint(heading: number, distance: number, requested: number): void {
+    const available = Math.max(0, distance - POINT_SETTLE_RANGE);
+    this.advance(heading, Math.min(requested, available));
   }
 
   /** Checked patches become interesting again as their cooldown runs out. */
@@ -563,12 +730,13 @@ export class Dog {
    */
   private chooseCover(env: DogEnv): Rect | null {
     const patches = env.patches ?? [];
+    const anchor = env.workAnchor ?? env.hunterPos;
     // Drop the objective if the hunter has moved on past range of it.
     if (
       this.coverIdx !== null &&
-      env.hunterPos &&
-      dist({ x: rectCx(patches[this.coverIdx]), y: rectCy(patches[this.coverIdx]) }, env.hunterPos) >
-        this.rangeRadius * 1.2
+      anchor &&
+      dist({ x: rectCx(patches[this.coverIdx]), y: rectCy(patches[this.coverIdx]) }, anchor) >
+        (env.rangeRadius ?? this.rangeRadius) * 1.2
     ) {
       this.coverIdx = null;
     }
@@ -579,7 +747,7 @@ export class Dog {
     for (let i = 0; i < patches.length; i++) {
       if (this.checkedCovers.has(i)) continue;
       const c = { x: rectCx(patches[i]), y: rectCy(patches[i]) };
-      if (env.hunterPos && dist(c, env.hunterPos) > this.rangeRadius) continue;
+      if (anchor && dist(c, anchor) > (env.rangeRadius ?? this.rangeRadius)) continue;
       const d = dist(this.pos, c);
       if (d < bestDist) {
         best = i;
@@ -618,12 +786,12 @@ export class Dog {
   }
 
   /** Past its Range from the hunter, the dog swings back — harder the farther it is. */
-  private steerToAnchor(dt: number, anchor?: Vec2): void {
+  private steerToAnchor(dt: number, anchor?: Vec2, rangeRadius = this.rangeRadius): void {
     if (!anchor) return;
     const d = dist(this.pos, anchor);
-    if (d <= this.rangeRadius) return;
+    if (d <= rangeRadius) return;
     const toward = Math.atan2(anchor.y - this.pos.y, anchor.x - this.pos.x);
-    const urgency = Math.min(2.5, 1 + (d - this.rangeRadius) / 50);
+    const urgency = Math.min(2.5, 1 + (d - rangeRadius) / 50);
     this.heading = turnToward(this.heading, toward, ANCHOR_TURN_RATE * urgency * dt);
   }
 

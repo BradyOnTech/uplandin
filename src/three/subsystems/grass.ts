@@ -284,6 +284,19 @@ gPart2 *= gPart2;
 gWorld.xz += ( gAway2 / max( gDogD, 1e-4 ) ) * gPart2 * 0.72 * gT;
 gWorld.y -= gPart2 * 0.55 * gT;
 
+// Handler sightline: a narrow, shallow duck between the camera and the
+// working dog. Tall foreground stems used to hide the entire 0.65 m animal
+// even while it was only 12 m ahead; this preserves the dense field while
+// keeping the game's most important subject readable through the cover.
+vec2 gSight = uPart2.xy - cameraPosition.xz;
+float gSightLen2 = max( dot( gSight, gSight ), 1e-4 );
+float gSightT = clamp( dot( gRoot.xz - cameraPosition.xz, gSight ) / gSightLen2, 0.0, 1.0 );
+vec2 gSightCtr = cameraPosition.xz + gSight * gSightT;
+float gSightD = length( gRoot.xz - gSightCtr );
+float gSightEnds = smoothstep( 0.02, 0.16, gSightT ) * ( 1.0 - smoothstep( 0.86, 0.99, gSightT ) );
+float gSightPart = ( 1.0 - smoothstep( 0.25, 0.95, gSightD ) ) * gSightEnds;
+gWorld.y -= gSightPart * 0.38 * gT;
+
 // Rise-burst parting (moment round): the covey EXPLODES out of this spot —
 // blades blow outward and DOWN, harder than the dog's push, and the radius
 // itself carries a pop-then-shake envelope fed per-frame from the birds

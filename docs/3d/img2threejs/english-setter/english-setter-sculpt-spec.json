@@ -1,0 +1,4227 @@
+{
+  "targetName": "Blue-belton English Setter",
+  "targetId": "blue-belton-english-setter",
+  "schemaVersion": "2.1",
+  "sourceImage": "docs/3d/reference/english-setter/standing-profile.jpg",
+  "suitability": "pass",
+  "scores": {
+    "object_isolation": 3,
+    "silhouette_readability": 3,
+    "depth_inference": 3,
+    "primitive_decomposition": 3,
+    "material_procedurality": 3,
+    "occlusion_risk": 2,
+    "interaction_fit": 3
+  },
+  "terminologyProfile": {
+    "domain": "real-time procedural Three.js quadruped",
+    "geometryTerms": [
+      "loft",
+      "ellipsoid",
+      "taper",
+      "socket overlap",
+      "pivot hierarchy",
+      "silhouette"
+    ],
+    "materialTerms": [
+      "flat-shaded vertex color",
+      "albedo zone",
+      "roughness",
+      "palette role"
+    ],
+    "lightingTerms": [
+      "key light",
+      "fill light",
+      "rim light",
+      "contact shadow",
+      "tone mapping"
+    ],
+    "descriptionRule": "Use measured game-space dimensions and named canine landmarks; do not substitute humanoid anatomy or photo textures."
+  },
+  "preSpecAssessment": {
+    "objectClass": {
+      "primaryType": "English Setter quadruped game actor",
+      "primaryDomain": "object",
+      "formLanguage": [
+        "organic",
+        "breed-specific",
+        "faceted low-poly"
+      ],
+      "structureKind": [
+        "articulated assembly",
+        "continuous organic volumes",
+        "bilateral hierarchy"
+      ],
+      "motionPotential": [
+        "articulated",
+        "runtime posed",
+        "terrain planted"
+      ],
+      "materialFamilies": [
+        "opaque flat-shaded coat",
+        "pigmented facial accents"
+      ],
+      "notes": "The generic route is intentional: img2threejs v1.5.1 provides only a humanoid character template."
+    },
+    "complexity": {
+      "tier": "complex",
+      "scores": {
+        "silhouetteComplexity": 3,
+        "componentCount": 3,
+        "hierarchyDepth": 3,
+        "repetitionDensity": 1,
+        "materialLayerCount": 2,
+        "localDetailDensity": 2,
+        "occlusionRisk": 1,
+        "actionReadinessNeed": 3
+      },
+      "estimatedCounts": {
+        "macroComponents": 7,
+        "mesoComponents": 18,
+        "microFeatureGroups": 12,
+        "materialLayers": 4,
+        "repetitionSystems": 1
+      },
+      "reasoning": [
+        "Breed identity depends on a long head, dropped ears, deep brisket, moderate tuck, angled hocks and straight feathered tail.",
+        "Gameplay needs independent ear, neck, head, tail and eight leg-segment pivots plus four exact paw markers.",
+        "Blue-belton markings must remain sparse and authored rather than becoming uniform procedural noise."
+      ]
+    },
+    "specDepthDecision": {
+      "requiredDepth": "complex",
+      "minimumComponentLevels": [
+        "macro",
+        "meso",
+        "micro"
+      ],
+      "needsRepetitionSystems": true,
+      "needsMaterialLocalOverrides": true,
+      "needsMultipleReviewViews": true,
+      "needsActionReadyHierarchy": true,
+      "rationale": "The current runtime already poses a multi-level quadruped hierarchy, so a shallower replacement would be a regression."
+    },
+    "unknownsToResolveBeforeImplementation": [],
+    "resolvedUnknowns": [
+      "Far-side width and rear spacing use bilateral symmetry checked against the three-quarter references.",
+      "The clean orange-belton profile supplies geometry while the admitted blue-belton references supply color zones.",
+      "Loose coat motion is represented by rigid, low-count feather masses at gameplay scale.",
+      "Toe anatomy is intentionally collapsed into four paw blocks below the gameplay pixel threshold."
+    ],
+    "detailInventory": {
+      "scanMethod": "component-zones",
+      "targetMinDetails": 10,
+      "details": [
+        {
+          "id": "head-parallel-planes",
+          "kind": "contour",
+          "mapsTo": {
+            "type": "component.localFeatures",
+            "ref": "head/head-planes"
+          }
+        },
+        {
+          "id": "square-muzzle-flews",
+          "kind": "contour",
+          "mapsTo": {
+            "type": "component.localFeatures",
+            "ref": "head/flews"
+          }
+        },
+        {
+          "id": "low-dropped-ear",
+          "kind": "contour",
+          "mapsTo": {
+            "type": "component.localFeatures",
+            "ref": "ear-l/ear-drop"
+          }
+        },
+        {
+          "id": "neck-shoulder-flow",
+          "kind": "contour",
+          "mapsTo": {
+            "type": "component.localFeatures",
+            "ref": "neck/shoulder-flow"
+          }
+        },
+        {
+          "id": "deep-brisket",
+          "kind": "contour",
+          "mapsTo": {
+            "type": "component.localFeatures",
+            "ref": "torso/brisket"
+          }
+        },
+        {
+          "id": "straight-foreleg",
+          "kind": "contour",
+          "mapsTo": {
+            "type": "component.localFeatures",
+            "ref": "fore-leg-l/straight-fore"
+          }
+        },
+        {
+          "id": "moderate-tuck",
+          "kind": "contour",
+          "mapsTo": {
+            "type": "component.localFeatures",
+            "ref": "torso/tuck"
+          }
+        },
+        {
+          "id": "belly-feather-notches",
+          "kind": "contour",
+          "mapsTo": {
+            "type": "component.localFeatures",
+            "ref": "belly-feather/belly-notches"
+          }
+        },
+        {
+          "id": "angled-hock",
+          "kind": "contour",
+          "mapsTo": {
+            "type": "component.localFeatures",
+            "ref": "hind-leg-l/hock-angle"
+          }
+        },
+        {
+          "id": "rear-feather-locks",
+          "kind": "contour",
+          "mapsTo": {
+            "type": "component.localFeatures",
+            "ref": "hind-feather-l/thigh-feather"
+          }
+        },
+        {
+          "id": "straight-tail-flag",
+          "kind": "contour",
+          "mapsTo": {
+            "type": "component.localFeatures",
+            "ref": "tail-flag/tail-fringe"
+          }
+        },
+        {
+          "id": "blue-belton-regions",
+          "kind": "linework",
+          "mapsTo": {
+            "type": "material.localOverrides",
+            "ref": "coat/belton-markings"
+          }
+        }
+      ]
+    },
+    "anatomy": {
+      "applies": false,
+      "note": "The bundled anatomy schema is humanoid-specific; canine measurements are expressed by the component dimensions and attachment endpoints."
+    }
+  },
+  "qualityContract": {
+    "qualityBar": "complex runtime-stylized",
+    "definitionOfDone": [
+      "The animal reads as an English Setter from side, front-three-quarter and rear-three-quarter views at gameplay and macro distance.",
+      "The hierarchy preserves gait, point, retrieve, terrain planting, deterministic capture and disposal contracts.",
+      "The high tier remains at or below 4000 triangles and approximately 15 dog draw calls using only the locked Uplandin palette."
+    ],
+    "minimumSpecDepth": {
+      "macroComponents": 7,
+      "mesoComponents": 18,
+      "microFeatureGroups": 10,
+      "materialLayers": 4,
+      "repetitionSystems": 1,
+      "reviewViewpoints": 8
+    },
+    "featureGroups": [
+      {
+        "id": "setter-silhouette",
+        "name": "Setter silhouette and proportions",
+        "required": true,
+        "qualityCriteria": [
+          "Long level body, long lean head, deep brisket, moderate tuck and straight tail read before materials."
+        ],
+        "evidenceRefs": [
+          "profile"
+        ],
+        "failureModes": [
+          "generic short-muzzled dog",
+          "barrel torso without tuck",
+          "saber tail"
+        ]
+      },
+      {
+        "id": "setter-articulation",
+        "name": "Canine articulation and attachments",
+        "required": true,
+        "qualityCriteria": [
+          "All limb, ear and tail children have semantic pivots and overlap their parent masses."
+        ],
+        "evidenceRefs": [
+          "profile",
+          "working-three-quarter"
+        ],
+        "failureModes": [
+          "floating joints",
+          "straight hind chain without hock",
+          "paw markers displaced from soles"
+        ]
+      },
+      {
+        "id": "setter-coat-language",
+        "name": "Blue-belton coat and feather language",
+        "required": true,
+        "qualityCriteria": [
+          "Pale ground coat, charcoal head and ears, sparse flank ticking and notched feather silhouettes remain readable without textures."
+        ],
+        "evidenceRefs": [
+          "working-three-quarter",
+          "head-three-quarter"
+        ],
+        "failureModes": [
+          "uniform dalmatian spots",
+          "photo texture conflicts with art direction",
+          "feathering hides anatomy"
+        ]
+      },
+      {
+        "id": "setter-game-readiness",
+        "name": "Game-scale lighting and performance",
+        "required": true,
+        "qualityCriteria": [
+          "All eight light-ring views read without clipping and the high tier stays within the triangle and draw-call budget."
+        ],
+        "evidenceRefs": [
+          "profile"
+        ],
+        "failureModes": [
+          "lee-side silhouette disappears",
+          "white coat clips",
+          "model exceeds budget"
+        ]
+      }
+    ],
+    "visualDeltaChecks": [
+      "side silhouette",
+      "front width",
+      "rear hock spacing",
+      "tail line",
+      "head-to-body ratio",
+      "blue-belton region placement"
+    ],
+    "antiShallowSpecRules": [
+      "No humanoid substitution.",
+      "No photo projection or texture maps.",
+      "No fused leg hierarchy.",
+      "No floating child joint; keep at least 0.02m overlap."
+    ],
+    "mustNotDo": [
+      "Do not change simulation behavior.",
+      "Do not introduce random per-run markings.",
+      "Do not exceed the current high-tier gameplay budget without a measured benefit."
+    ]
+  },
+  "qualityTargets": {
+    "targetFidelity": 0.78,
+    "mustMatch": [
+      "breed silhouette",
+      "head and ear character",
+      "deep chest and tuck",
+      "angled hind chain",
+      "straight feathered tail",
+      "blue-belton color zones"
+    ],
+    "niceToHave": [
+      "individual toe separation",
+      "soft coat motion"
+    ],
+    "fpsTarget": 60,
+    "reviewViewpoints": [
+      "left-profile",
+      "right-profile",
+      "front",
+      "rear",
+      "front-three-quarter-left",
+      "front-three-quarter-right",
+      "rear-three-quarter-left",
+      "rear-three-quarter-right"
+    ]
+  },
+  "coordinateFrame": {
+    "front": "+Z points from chest through muzzle",
+    "up": "+Y",
+    "right": "+X is the animal's anatomical left in the img2threejs right-handed convention",
+    "scaleReference": "Standing back height about 0.55m in Uplandin game space; paw soles at local Y=0."
+  },
+  "silhouette": {
+    "boundingShape": "long rectangular trunk on four lean columns, with forward-up neck and long horizontal tail",
+    "aspectRatios": [
+      "nose-to-tail-body:back-height = 2.25",
+      "head-length:back-height = 0.48",
+      "chest-depth:back-height = 0.54"
+    ],
+    "symmetry": "bilateral except authored coat markings and alternating feather facets",
+    "dominantCurves": [
+      "level topline",
+      "deep brisket into moderate tuck",
+      "laid-back neck into long skull",
+      "pelvis through stifle and hock"
+    ],
+    "negativeSpaces": [
+      "between forelegs",
+      "under abdominal tuck",
+      "between rear pasterns",
+      "beneath straight tail flag"
+    ],
+    "landmarks": [
+      "occiput",
+      "nose tip",
+      "withers",
+      "elbow-depth brisket",
+      "stifle",
+      "hock",
+      "tail tip"
+    ]
+  },
+  "viewEvidence": [
+    {
+      "id": "profile",
+      "view": "left profile",
+      "imageRegion": {
+        "x": 0,
+        "y": 0,
+        "width": 1,
+        "height": 1,
+        "units": "normalized"
+      },
+      "observations": [
+        "clean breed silhouette",
+        "leg and tail proportions"
+      ],
+      "confidence": 0.96
+    },
+    {
+      "id": "working-three-quarter",
+      "view": "working front three-quarter",
+      "imageRegion": {
+        "x": 0,
+        "y": 0,
+        "width": 1,
+        "height": 1,
+        "units": "normalized"
+      },
+      "observations": [
+        "blue-belton body zones",
+        "body width",
+        "working coat"
+      ],
+      "confidence": 0.86
+    },
+    {
+      "id": "head-three-quarter",
+      "view": "head three-quarter",
+      "imageRegion": {
+        "x": 0,
+        "y": 0,
+        "width": 1,
+        "height": 1,
+        "units": "normalized"
+      },
+      "observations": [
+        "long muzzle",
+        "low ear root",
+        "facial patches"
+      ],
+      "confidence": 0.92
+    },
+    {
+      "id": "resting-three-quarter",
+      "view": "rear three-quarter",
+      "imageRegion": {
+        "x": 0,
+        "y": 0,
+        "width": 1,
+        "height": 1,
+        "units": "normalized"
+      },
+      "observations": [
+        "rear width",
+        "feather placement",
+        "tail section"
+      ],
+      "confidence": 0.78
+    },
+    {
+      "id": "user-working-three-quarter",
+      "view": "front three-quarter active stance",
+      "imageRegion": {
+        "x": 0,
+        "y": 0,
+        "width": 1,
+        "height": 1,
+        "units": "normalized"
+      },
+      "observations": [
+        "chest width",
+        "foreleg alignment",
+        "rear angulation",
+        "raised tail rig range"
+      ],
+      "confidence": 0.94
+    }
+  ],
+  "featureReviewTargets": [
+    {
+      "id": "long-head-drop-ear",
+      "name": "Long setter head and dropped ear system",
+      "tier": "critical",
+      "passIds": [
+        "blockout",
+        "structural-pass",
+        "form-refinement"
+      ],
+      "minimumScore": 0.8,
+      "mustPass": true,
+      "componentRefs": [
+        "neck",
+        "head",
+        "muzzle",
+        "ear-l",
+        "ear-r"
+      ],
+      "evidenceRefs": [
+        "profile",
+        "head-three-quarter"
+      ]
+    },
+    {
+      "id": "brisket-tuck-topline",
+      "name": "Deep brisket, moderate tuck and level topline",
+      "tier": "critical",
+      "passIds": [
+        "blockout",
+        "form-refinement"
+      ],
+      "minimumScore": 0.8,
+      "mustPass": true,
+      "componentRefs": [
+        "torso",
+        "shoulder-girdle",
+        "pelvis"
+      ],
+      "evidenceRefs": [
+        "profile"
+      ]
+    },
+    {
+      "id": "hock-and-paws",
+      "name": "Straight forelegs, angled hocks and planted paws",
+      "tier": "critical",
+      "passIds": [
+        "structural-pass",
+        "interaction-pass"
+      ],
+      "minimumScore": 0.8,
+      "mustPass": true,
+      "componentRefs": [
+        "fore-leg-l",
+        "fore-leg-r",
+        "hind-leg-l",
+        "hind-leg-r",
+        "fore-paw-l",
+        "fore-paw-r",
+        "hind-paw-l",
+        "hind-paw-r"
+      ],
+      "evidenceRefs": [
+        "profile",
+        "working-three-quarter",
+        "user-working-three-quarter"
+      ]
+    },
+    {
+      "id": "tail-flag",
+      "name": "Straight tail carriage and notched flag",
+      "tier": "important",
+      "passIds": [
+        "form-refinement",
+        "interaction-pass"
+      ],
+      "minimumScore": 0.7,
+      "mustPass": false,
+      "componentRefs": [
+        "tail-root",
+        "tail-flag"
+      ],
+      "evidenceRefs": [
+        "profile"
+      ]
+    },
+    {
+      "id": "belton-feathering",
+      "name": "Blue-belton regions and setter feathering",
+      "tier": "important",
+      "passIds": [
+        "material-pass",
+        "surface-pass",
+        "lighting-pass"
+      ],
+      "minimumScore": 0.68,
+      "mustPass": false,
+      "componentRefs": [
+        "torso",
+        "ear-l",
+        "ear-r",
+        "belly-feather",
+        "hind-feather-l",
+        "tail-flag"
+      ],
+      "evidenceRefs": [
+        "working-three-quarter",
+        "head-three-quarter"
+      ]
+    }
+  ],
+  "selfCorrectLoop": {
+    "enabled": true,
+    "visualAcceptance": {
+      "reviewer": "ai-vision",
+      "threshold": 0.7,
+      "comparisonArtifactRequired": true,
+      "layerScoresRequired": true,
+      "codePixelDiffIsAcceptanceAuthority": false,
+      "scoringRule": "Inspect a same-view reference/render comparison; diagnostic metrics cannot approve a pass.",
+      "requiredLayerScores": [
+        "silhouetteProportion",
+        "componentStructure",
+        "formDetail",
+        "materialSurface",
+        "lightingCamera"
+      ],
+      "featureReviewPolicy": {
+        "enabled": true,
+        "reviewUnit": "semantic-subsystem",
+        "maxCriticalFeaturesPerPass": 5,
+        "maxImportantFeaturesPerPass": 3,
+        "criticalDefaultThreshold": 0.8,
+        "importantAverageThreshold": 0.65,
+        "adaptiveEscalation": true,
+        "singleImagePairOnly": true,
+        "selectionRule": "Review only the identity-defining systems visible in the shared pair."
+      }
+    },
+    "reviewAfterPasses": [
+      "blockout",
+      "structural-pass",
+      "form-refinement",
+      "material-pass",
+      "surface-pass",
+      "lighting-pass",
+      "interaction-pass",
+      "optimization-pass"
+    ],
+    "allowedActions": [
+      "continue",
+      "refine-spec",
+      "refine-code",
+      "request-input",
+      "stop"
+    ],
+    "specRefineTriggers": [
+      "wrong canine proportion",
+      "missing breed feature",
+      "incorrect parent socket"
+    ],
+    "codeRefineTriggers": [
+      "render differs from admitted reference",
+      "paw gap regression",
+      "performance budget exceeded"
+    ],
+    "stopCriteria": [
+      "target fidelity reached",
+      "remaining improvement requires manual sculpting or new reference"
+    ],
+    "screenshotPolicy": {
+      "requiredForPasses": [
+        "blockout",
+        "structural-pass",
+        "form-refinement",
+        "material-pass",
+        "surface-pass",
+        "lighting-pass",
+        "interaction-pass"
+      ],
+      "preferredCapture": "deterministic Playwright capture",
+      "fallbackCapture": "in-app browser screenshot",
+      "minimumEvidence": "Same-view reference, render, comparison sheet, layer scores and critique.",
+      "reviewPairRule": "Use the closest available profile or three-quarter camera.",
+      "acceptanceAuthority": "AI visual review backed by deterministic audits."
+    }
+  },
+  "sculptPipeline": {
+    "passGateMode": "locked-sequential",
+    "passOrder": [
+      "blockout",
+      "structural-pass",
+      "form-refinement",
+      "material-pass",
+      "surface-pass",
+      "lighting-pass",
+      "interaction-pass",
+      "optimization-pass"
+    ],
+    "currentPass": "blockout",
+    "completedPasses": [],
+    "lastCompletedPass": "",
+    "blockedReason": "",
+    "nextRequiredEvidence": [
+      "Profile and three-quarter breed read pass without markings.",
+      "No macro joint gap exceeds 0.005m.",
+      "browser render screenshot from your agent's browser/screenshot tool",
+      "side-by-side reference/render comparison sheet for AI vision review",
+      "banded interior difference vs the reference baseline (forge/stage4_review/interior_difference.py --from/--to per region)",
+      "AI vision score at or above the visual acceptance threshold",
+      "all critical semantic feature scores from the shared image pair at or above their thresholds",
+      "self-correction review appended with action=continue before the next pass"
+    ]
+  },
+  "actionReadiness": {
+    "contract": "Every movable canine segment is a stable named Object3D pivot and every paw exposes an exact sole marker.",
+    "defaultRigType": "procedural articulated quadruped",
+    "rootMotionNode": "torso",
+    "requiredComponentFields": [
+      "id",
+      "parent",
+      "transform",
+      "attachment",
+      "actionProfile.animationRole",
+      "actionProfile.pivot"
+    ],
+    "transformChannels": [
+      "translate",
+      "rotate",
+      "scale",
+      "bend",
+      "visibility",
+      "material-state"
+    ],
+    "authoringRules": [
+      "Do not fuse independently animated segments.",
+      "Place pivots at anatomical roots.",
+      "Overlap adjacent organic masses by at least 0.02m.",
+      "Keep paw-tip markers on the sole."
+    ],
+    "destructionPolicy": {
+      "defaultBreakable": false,
+      "fractureGroupNaming": "not applicable to living actor",
+      "debrisStrategy": "none"
+    }
+  },
+  "componentTree": [
+    {
+      "id": "torso",
+      "name": "Ribcage and loin torso",
+      "level": "macro",
+      "role": "root",
+      "importance": 1,
+      "confidence": 0.96,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "The profile shows one uninterrupted ribcage-to-loin volume with a deep keel and rising abdomen.",
+      "geometryDescriptor": {
+        "topologyIntent": "seven-ring asymmetric loft with deep front section and narrowed loin"
+      },
+      "parent": null,
+      "attachment": null,
+      "dimensions": {
+        "width": 0.28,
+        "height": 0.3,
+        "depth": 0.65,
+        "units": "m",
+        "confidence": 0.9
+      },
+      "transform": {
+        "position": [
+          0,
+          0.45,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "root",
+        "pivot": {
+          "mode": "center-of-mass",
+          "localPosition": [
+            0,
+            0,
+            0
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "confidence": 0.95
+        },
+        "collider": {
+          "type": "capsule",
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            0.28,
+            0.3,
+            0.62
+          ],
+          "isTrigger": false
+        }
+      },
+      "material": "coat",
+      "materialLayers": [
+        "coat",
+        "coat-shadow",
+        "patch"
+      ],
+      "localFeatures": [
+        {
+          "id": "brisket",
+          "type": "contour",
+          "geometryEffect": "front keel reaches elbow depth"
+        },
+        {
+          "id": "tuck",
+          "type": "contour",
+          "geometryEffect": "abdomen rises behind ribcage"
+        }
+      ],
+      "evidenceRefs": [
+        "profile",
+        "working-three-quarter"
+      ],
+      "fidelityTier": "blockout",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(235, 226, 204, 1)",
+        "secondaryAlbedo": "rgba(53, 48, 43, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.78
+      }
+    },
+    {
+      "id": "neck",
+      "name": "Laid-back neck",
+      "level": "macro",
+      "role": "neck-mass",
+      "importance": 0.9,
+      "confidence": 0.9,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "A long tapered neck broadens into the withers without a visible seam.",
+      "geometryDescriptor": {
+        "topologyIntent": "tapered forward-raked loft"
+      },
+      "parent": "torso",
+      "attachment": {
+        "parentId": "torso",
+        "parentSocket": "withers",
+        "localStart": [
+          0,
+          0,
+          0
+        ],
+        "localEnd": [
+          0,
+          0.27,
+          0.14
+        ],
+        "contactType": "embedded organic joint",
+        "overlap": 0.05,
+        "gapTolerance": 0.005,
+        "evidenceRefs": [
+          "profile"
+        ]
+      },
+      "dimensions": {
+        "width": 0.18,
+        "height": 0.34,
+        "depth": 0.23,
+        "units": "m",
+        "confidence": 0.88
+      },
+      "transform": {
+        "position": [
+          0,
+          0.16,
+          0.25
+        ],
+        "rotation": [
+          -0.55,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "neck",
+        "pivot": {
+          "mode": "socket",
+          "localPosition": [
+            0,
+            -0.14,
+            -0.06
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "confidence": 0.9
+        }
+      },
+      "material": "coat",
+      "localFeatures": [
+        {
+          "id": "shoulder-flow",
+          "type": "contour",
+          "geometryEffect": "wide buried neck root"
+        }
+      ],
+      "evidenceRefs": [
+        "profile"
+      ],
+      "fidelityTier": "blockout",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(235, 226, 204, 1)",
+        "secondaryAlbedo": "rgba(211, 201, 180, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.78
+      }
+    },
+    {
+      "id": "head",
+      "name": "Long lean setter skull",
+      "level": "macro",
+      "role": "skull",
+      "importance": 1,
+      "confidence": 0.95,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "The skull is a long narrow organic volume with near-parallel roof and jaw planes.",
+      "geometryDescriptor": {
+        "topologyIntent": "faceted long-skull loft with restrained stop"
+      },
+      "parent": "neck",
+      "attachment": {
+        "parentId": "neck",
+        "parentSocket": "poll",
+        "localStart": [
+          0,
+          0,
+          0
+        ],
+        "localEnd": [
+          0,
+          0,
+          0.18
+        ],
+        "contactType": "embedded organic joint",
+        "overlap": 0.035,
+        "gapTolerance": 0.004,
+        "evidenceRefs": [
+          "profile",
+          "head-three-quarter"
+        ]
+      },
+      "dimensions": {
+        "width": 0.15,
+        "height": 0.14,
+        "depth": 0.27,
+        "units": "m",
+        "confidence": 0.93
+      },
+      "transform": {
+        "position": [
+          0,
+          0.19,
+          0.08
+        ],
+        "rotation": [
+          0.48,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "head",
+        "pivot": {
+          "mode": "poll",
+          "localPosition": [
+            0,
+            0,
+            -0.11
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "confidence": 0.92
+        }
+      },
+      "material": "coat",
+      "materialLayers": [
+        "coat",
+        "patch"
+      ],
+      "localFeatures": [
+        {
+          "id": "head-planes",
+          "type": "contour",
+          "geometryEffect": "parallel skull and muzzle planes"
+        },
+        {
+          "id": "flews",
+          "type": "contour",
+          "geometryEffect": "square pendant lower lip step"
+        }
+      ],
+      "evidenceRefs": [
+        "profile",
+        "head-three-quarter"
+      ],
+      "fidelityTier": "blockout",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(235, 226, 204, 1)",
+        "secondaryAlbedo": "rgba(53, 48, 43, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.8
+      }
+    },
+    {
+      "id": "shoulder-girdle",
+      "name": "Forechest and shoulder girdle",
+      "level": "macro",
+      "role": "body-mass",
+      "importance": 0.88,
+      "confidence": 0.88,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "The forequarters project ahead of the legs and carry the deepest body section.",
+      "geometryDescriptor": {
+        "topologyIntent": "broad chest volume embedded in torso"
+      },
+      "parent": "torso",
+      "attachment": {
+        "parentId": "torso",
+        "parentSocket": "forechest",
+        "localStart": [
+          0,
+          0,
+          -0.1
+        ],
+        "localEnd": [
+          0,
+          0,
+          0.12
+        ],
+        "contactType": "embedded organic joint",
+        "overlap": 0.06,
+        "gapTolerance": 0.004
+      },
+      "dimensions": {
+        "width": 0.31,
+        "height": 0.31,
+        "depth": 0.25,
+        "units": "m",
+        "confidence": 0.86
+      },
+      "transform": {
+        "position": [
+          0,
+          -0.01,
+          0.23
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "body-part",
+        "pivot": {
+          "mode": "center",
+          "localPosition": [
+            0,
+            0,
+            0
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "confidence": 0.85
+        }
+      },
+      "material": "coat",
+      "evidenceRefs": [
+        "profile",
+        "working-three-quarter"
+      ],
+      "fidelityTier": "blockout",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(235, 226, 204, 1)",
+        "secondaryAlbedo": "rgba(211, 201, 180, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.78
+      }
+    },
+    {
+      "id": "pelvis",
+      "name": "Rounded pelvis and rump",
+      "level": "macro",
+      "role": "body-mass",
+      "importance": 0.86,
+      "confidence": 0.88,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "The loin widens into a rounded rump that anchors both thigh sockets and tail root.",
+      "geometryDescriptor": {
+        "topologyIntent": "compact pelvis loft embedded in rear torso"
+      },
+      "parent": "torso",
+      "attachment": {
+        "parentId": "torso",
+        "parentSocket": "loin",
+        "localStart": [
+          0,
+          0,
+          0.08
+        ],
+        "localEnd": [
+          0,
+          0,
+          -0.12
+        ],
+        "contactType": "embedded organic joint",
+        "overlap": 0.06,
+        "gapTolerance": 0.004
+      },
+      "dimensions": {
+        "width": 0.29,
+        "height": 0.26,
+        "depth": 0.28,
+        "units": "m",
+        "confidence": 0.88
+      },
+      "transform": {
+        "position": [
+          0,
+          0.02,
+          -0.25
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "body-part",
+        "pivot": {
+          "mode": "center",
+          "localPosition": [
+            0,
+            0,
+            0
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "confidence": 0.85
+        }
+      },
+      "material": "coat",
+      "evidenceRefs": [
+        "profile",
+        "resting-three-quarter"
+      ],
+      "fidelityTier": "blockout",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(235, 226, 204, 1)",
+        "secondaryAlbedo": "rgba(53, 48, 43, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.78
+      }
+    },
+    {
+      "id": "tail-root",
+      "name": "Tail root",
+      "level": "macro",
+      "role": "tail",
+      "importance": 0.8,
+      "confidence": 0.92,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "The proximal tail is rump-thick and curves smoothly out of the topline.",
+      "geometryDescriptor": {
+        "topologyIntent": "short tapered root mass"
+      },
+      "parent": "pelvis",
+      "attachment": {
+        "parentId": "pelvis",
+        "parentSocket": "tail-base",
+        "localStart": [
+          0,
+          0,
+          0
+        ],
+        "localEnd": [
+          0,
+          0,
+          -0.15
+        ],
+        "contactType": "embedded ball joint",
+        "overlap": 0.035,
+        "gapTolerance": 0.003,
+        "evidenceRefs": [
+          "profile"
+        ]
+      },
+      "dimensions": {
+        "width": 0.075,
+        "height": 0.085,
+        "depth": 0.22,
+        "units": "m",
+        "confidence": 0.9
+      },
+      "transform": {
+        "position": [
+          0,
+          0.08,
+          -0.16
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "tail-root",
+        "pivot": {
+          "mode": "socket",
+          "localPosition": [
+            0,
+            0,
+            0.09
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "confidence": 0.94
+        }
+      },
+      "material": "coat",
+      "evidenceRefs": [
+        "profile"
+      ],
+      "fidelityTier": "blockout",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(235, 226, 204, 1)",
+        "secondaryAlbedo": "rgba(211, 201, 180, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.78
+      }
+    },
+    {
+      "id": "tail-flag",
+      "name": "Straight feathered tail flag",
+      "level": "macro",
+      "role": "tail",
+      "importance": 0.9,
+      "confidence": 0.95,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "A straight tapered bone with a deep notched underside fringe defines the rear silhouette.",
+      "geometryDescriptor": {
+        "topologyIntent": "tapered shaft plus paired rigid feather facets"
+      },
+      "parent": "tail-root",
+      "attachment": {
+        "parentId": "tail-root",
+        "parentSocket": "tail-mid",
+        "localStart": [
+          0,
+          0,
+          0
+        ],
+        "localEnd": [
+          0,
+          0,
+          -0.34
+        ],
+        "contactType": "hinged organic joint",
+        "overlap": 0.03,
+        "gapTolerance": 0.003,
+        "evidenceRefs": [
+          "profile"
+        ]
+      },
+      "dimensions": {
+        "width": 0.065,
+        "height": 0.09,
+        "depth": 0.37,
+        "units": "m",
+        "confidence": 0.93
+      },
+      "transform": {
+        "position": [
+          0,
+          0,
+          -0.18
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "tail-flag",
+        "pivot": {
+          "mode": "root",
+          "localPosition": [
+            0,
+            0,
+            0.17
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "confidence": 0.94
+        }
+      },
+      "material": "coat",
+      "localFeatures": [
+        {
+          "id": "tail-fringe",
+          "type": "contour",
+          "geometryEffect": "three descending notched underside locks"
+        }
+      ],
+      "evidenceRefs": [
+        "profile"
+      ],
+      "fidelityTier": "blockout",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(235, 226, 204, 1)",
+        "secondaryAlbedo": "rgba(211, 201, 180, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.78
+      }
+    },
+    {
+      "id": "muzzle",
+      "name": "Long square muzzle",
+      "level": "meso",
+      "role": "facial-volume",
+      "importance": 0.95,
+      "confidence": 0.94,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "The muzzle is long, deep and only slightly tapered, with a squared end rather than a pointed snout.",
+      "geometryDescriptor": {
+        "topologyIntent": "four-section squared organic loft"
+      },
+      "parent": "head",
+      "attachment": {
+        "parentId": "head",
+        "parentSocket": "stop",
+        "localStart": [
+          0,
+          0,
+          0
+        ],
+        "localEnd": [
+          0,
+          0,
+          0.18
+        ],
+        "contactType": "embedded organic joint",
+        "overlap": 0.035,
+        "gapTolerance": 0.003
+      },
+      "dimensions": {
+        "width": 0.105,
+        "height": 0.09,
+        "depth": 0.21,
+        "units": "m",
+        "confidence": 0.92
+      },
+      "transform": {
+        "position": [
+          0,
+          -0.02,
+          0.18
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "face-part",
+        "pivot": {
+          "mode": "center",
+          "localPosition": [
+            0,
+            0,
+            0
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "confidence": 0.85
+        }
+      },
+      "material": "coat",
+      "evidenceRefs": [
+        "profile",
+        "head-three-quarter"
+      ],
+      "fidelityTier": "structural-pass",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(235, 226, 204, 1)",
+        "secondaryAlbedo": "rgba(211, 201, 180, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.78
+      }
+    },
+    {
+      "id": "nose",
+      "name": "Nose leather",
+      "level": "meso",
+      "role": "facial-accent",
+      "importance": 0.78,
+      "confidence": 0.94,
+      "primitive": "ellipsoid",
+      "topologyClass": "assembled-solid",
+      "topologyRationale": "A distinct dark rounded wedge caps the muzzle and remains visible from profile and three-quarter views.",
+      "geometryDescriptor": {
+        "topologyIntent": "faceted soft wedge"
+      },
+      "parent": "muzzle",
+      "attachment": {
+        "parentId": "muzzle",
+        "parentSocket": "nose-base",
+        "localStart": [
+          0,
+          0,
+          -0.02
+        ],
+        "localEnd": [
+          0,
+          0,
+          0.03
+        ],
+        "contactType": "embedded tissue seam",
+        "overlap": 0.02,
+        "gapTolerance": 0.002
+      },
+      "dimensions": {
+        "width": 0.075,
+        "height": 0.055,
+        "depth": 0.055,
+        "units": "m",
+        "confidence": 0.92
+      },
+      "transform": {
+        "position": [
+          0,
+          0.01,
+          0.125
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "face-part",
+        "pivot": {
+          "mode": "center",
+          "localPosition": [
+            0,
+            0,
+            0
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "confidence": 0.85
+        }
+      },
+      "material": "nose-eye",
+      "evidenceRefs": [
+        "profile",
+        "head-three-quarter"
+      ],
+      "fidelityTier": "structural-pass",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(24, 24, 23, 1)",
+        "secondaryAlbedo": "rgba(52, 48, 43, 1)",
+        "materialClass": "skin",
+        "materialClassConfidence": 0.86
+      }
+    },
+    {
+      "id": "ear-l",
+      "name": "Left dropped ear appendage",
+      "level": "meso",
+      "role": "appendage",
+      "importance": 0.92,
+      "confidence": 0.91,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "The low-set ear is a thin but volumetric folded flap with a rounded feathered tip.",
+      "geometryDescriptor": {
+        "topologyIntent": "two-lobe flattened organic loft"
+      },
+      "parent": "head",
+      "attachment": {
+        "parentId": "head",
+        "parentSocket": "ear-left",
+        "localStart": [
+          0,
+          0.02,
+          0.03
+        ],
+        "localEnd": [
+          0.02,
+          -0.14,
+          0
+        ],
+        "contactType": "folded soft-tissue joint",
+        "overlap": 0.025,
+        "gapTolerance": 0.003,
+        "evidenceRefs": [
+          "head-three-quarter"
+        ]
+      },
+      "dimensions": {
+        "width": 0.065,
+        "height": 0.18,
+        "depth": 0.11,
+        "units": "m",
+        "confidence": 0.9
+      },
+      "transform": {
+        "position": [
+          0.09,
+          -0.035,
+          -0.01
+        ],
+        "rotation": [
+          0.12,
+          -0.18,
+          0.22
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "ear",
+        "pivot": {
+          "mode": "root",
+          "localPosition": [
+            0,
+            0.08,
+            0
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "confidence": 0.9
+        }
+      },
+      "material": "patch",
+      "localFeatures": [
+        {
+          "id": "ear-drop",
+          "type": "contour",
+          "geometryEffect": "low root and blunt hanging tip"
+        }
+      ],
+      "evidenceRefs": [
+        "profile",
+        "head-three-quarter"
+      ],
+      "fidelityTier": "structural-pass",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(53, 48, 43, 1)",
+        "secondaryAlbedo": "rgba(88, 75, 66, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.78
+      }
+    },
+    {
+      "id": "ear-r",
+      "name": "Right dropped ear appendage",
+      "level": "meso",
+      "role": "appendage",
+      "importance": 0.92,
+      "confidence": 0.84,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "Bilateral evidence supports a mirrored low-set folded ear with controlled asymmetry in pose.",
+      "geometryDescriptor": {
+        "topologyIntent": "mirrored two-lobe flattened organic loft"
+      },
+      "parent": "head",
+      "attachment": {
+        "parentId": "head",
+        "parentSocket": "ear-right",
+        "localStart": [
+          0,
+          0.02,
+          0.03
+        ],
+        "localEnd": [
+          -0.02,
+          -0.14,
+          0
+        ],
+        "contactType": "folded soft-tissue joint",
+        "overlap": 0.025,
+        "gapTolerance": 0.003,
+        "evidenceRefs": [
+          "working-three-quarter"
+        ]
+      },
+      "dimensions": {
+        "width": 0.065,
+        "height": 0.18,
+        "depth": 0.11,
+        "units": "m",
+        "confidence": 0.84
+      },
+      "transform": {
+        "position": [
+          -0.09,
+          -0.035,
+          -0.01
+        ],
+        "rotation": [
+          0.12,
+          0.18,
+          -0.22
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "ear",
+        "pivot": {
+          "mode": "root",
+          "localPosition": [
+            0,
+            0.08,
+            0
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "confidence": 0.84
+        }
+      },
+      "material": "patch",
+      "evidenceRefs": [
+        "working-three-quarter",
+        "head-three-quarter"
+      ],
+      "fidelityTier": "structural-pass",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(53, 48, 43, 1)",
+        "secondaryAlbedo": "rgba(88, 75, 66, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.78
+      }
+    },
+    {
+      "id": "eye-l",
+      "name": "Left eye bead",
+      "level": "meso",
+      "role": "eye-bead",
+      "importance": 0.65,
+      "confidence": 0.88,
+      "primitive": "sphere",
+      "topologyClass": "assembled-solid",
+      "topologyRationale": "A very small dark convex bead is sufficient at the intended game scale.",
+      "geometryDescriptor": {
+        "topologyIntent": "low-segment sphere"
+      },
+      "parent": "head",
+      "attachment": {
+        "parentId": "head",
+        "parentSocket": "eye-left",
+        "localStart": [
+          0,
+          0,
+          0
+        ],
+        "localEnd": [
+          0,
+          0,
+          0.01
+        ],
+        "contactType": "embedded surface feature",
+        "overlap": 0.004,
+        "gapTolerance": 0.001
+      },
+      "dimensions": {
+        "width": 0.018,
+        "height": 0.018,
+        "depth": 0.018,
+        "units": "m",
+        "confidence": 0.86
+      },
+      "transform": {
+        "position": [
+          0.067,
+          0.025,
+          0.09
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "face-part",
+        "pivot": {
+          "mode": "center",
+          "localPosition": [
+            0,
+            0,
+            0
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "confidence": 0.8
+        }
+      },
+      "material": "nose-eye",
+      "evidenceRefs": [
+        "head-three-quarter"
+      ],
+      "fidelityTier": "structural-pass",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(24, 24, 23, 1)",
+        "secondaryAlbedo": "rgba(82, 64, 45, 1)",
+        "materialClass": "glass",
+        "materialClassConfidence": 0.68
+      }
+    },
+    {
+      "id": "eye-r",
+      "name": "Right eye bead",
+      "level": "meso",
+      "role": "eye-bead",
+      "importance": 0.65,
+      "confidence": 0.76,
+      "primitive": "sphere",
+      "topologyClass": "assembled-solid",
+      "topologyRationale": "Bilateral anatomy places a matching small dark bead on the far side.",
+      "geometryDescriptor": {
+        "topologyIntent": "low-segment sphere"
+      },
+      "parent": "head",
+      "attachment": {
+        "parentId": "head",
+        "parentSocket": "eye-right",
+        "localStart": [
+          0,
+          0,
+          0
+        ],
+        "localEnd": [
+          0,
+          0,
+          0.01
+        ],
+        "contactType": "embedded surface feature",
+        "overlap": 0.004,
+        "gapTolerance": 0.001
+      },
+      "dimensions": {
+        "width": 0.018,
+        "height": 0.018,
+        "depth": 0.018,
+        "units": "m",
+        "confidence": 0.76
+      },
+      "transform": {
+        "position": [
+          -0.067,
+          0.025,
+          0.09
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "face-part",
+        "pivot": {
+          "mode": "center",
+          "localPosition": [
+            0,
+            0,
+            0
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "confidence": 0.76
+        }
+      },
+      "material": "nose-eye",
+      "evidenceRefs": [
+        "working-three-quarter"
+      ],
+      "fidelityTier": "structural-pass",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(24, 24, 23, 1)",
+        "secondaryAlbedo": "rgba(82, 64, 45, 1)",
+        "materialClass": "glass",
+        "materialClassConfidence": 0.68
+      }
+    },
+    {
+      "id": "fore-leg-l",
+      "name": "Left fore leg upper limb",
+      "level": "meso",
+      "role": "limb",
+      "importance": 0.88,
+      "confidence": 0.93,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "A straight load-bearing upper foreleg descends from the deep shoulder mass.",
+      "geometryDescriptor": {
+        "topologyIntent": "vertical tapered limb loft"
+      },
+      "parent": "shoulder-girdle",
+      "attachment": {
+        "parentId": "shoulder-girdle",
+        "parentSocket": "fore-left",
+        "localStart": [
+          0,
+          0.1,
+          0
+        ],
+        "localEnd": [
+          0,
+          -0.22,
+          0
+        ],
+        "contactType": "embedded shoulder joint",
+        "overlap": 0.05,
+        "gapTolerance": 0.003,
+        "evidenceRefs": [
+          "profile"
+        ]
+      },
+      "dimensions": {
+        "width": 0.09,
+        "height": 0.31,
+        "depth": 0.11,
+        "units": "m",
+        "confidence": 0.9
+      },
+      "transform": {
+        "position": [
+          0.1,
+          -0.23,
+          0.03
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "fore-upper",
+        "pivot": {
+          "mode": "root",
+          "localPosition": [
+            0,
+            0.14,
+            0
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "confidence": 0.94
+        }
+      },
+      "material": "coat",
+      "localFeatures": [
+        {
+          "id": "straight-fore",
+          "type": "contour",
+          "geometryEffect": "near-vertical shoulder-to-wrist column"
+        }
+      ],
+      "evidenceRefs": [
+        "profile"
+      ],
+      "fidelityTier": "structural-pass",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(235, 226, 204, 1)",
+        "secondaryAlbedo": "rgba(211, 201, 180, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.78
+      }
+    },
+    {
+      "id": "fore-leg-r",
+      "name": "Right fore leg upper limb",
+      "level": "meso",
+      "role": "limb",
+      "importance": 0.88,
+      "confidence": 0.84,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "Bilateral anatomy supports a matching straight foreleg with slight stance offset.",
+      "geometryDescriptor": {
+        "topologyIntent": "mirrored vertical tapered limb loft"
+      },
+      "parent": "shoulder-girdle",
+      "attachment": {
+        "parentId": "shoulder-girdle",
+        "parentSocket": "fore-right",
+        "localStart": [
+          0,
+          0.1,
+          0
+        ],
+        "localEnd": [
+          0,
+          -0.22,
+          0
+        ],
+        "contactType": "embedded shoulder joint",
+        "overlap": 0.05,
+        "gapTolerance": 0.003,
+        "evidenceRefs": [
+          "working-three-quarter"
+        ]
+      },
+      "dimensions": {
+        "width": 0.09,
+        "height": 0.31,
+        "depth": 0.11,
+        "units": "m",
+        "confidence": 0.84
+      },
+      "transform": {
+        "position": [
+          -0.1,
+          -0.23,
+          0.03
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "fore-upper",
+        "pivot": {
+          "mode": "root",
+          "localPosition": [
+            0,
+            0.14,
+            0
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "confidence": 0.86
+        }
+      },
+      "material": "coat",
+      "evidenceRefs": [
+        "working-three-quarter"
+      ],
+      "fidelityTier": "structural-pass",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(235, 226, 204, 1)",
+        "secondaryAlbedo": "rgba(211, 201, 180, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.78
+      }
+    },
+    {
+      "id": "fore-lower-l",
+      "name": "Left fore lower limb",
+      "level": "meso",
+      "role": "limb",
+      "importance": 0.82,
+      "confidence": 0.92,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "The lower foreleg stays lean and nearly vertical with a short sloped pastern.",
+      "geometryDescriptor": {
+        "topologyIntent": "lean tapered limb loft"
+      },
+      "parent": "fore-leg-l",
+      "attachment": {
+        "parentId": "fore-leg-l",
+        "parentSocket": "fore-knee-left",
+        "localStart": [
+          0,
+          0.04,
+          0
+        ],
+        "localEnd": [
+          0,
+          -0.2,
+          0
+        ],
+        "contactType": "hinged knee joint",
+        "overlap": 0.025,
+        "gapTolerance": 0.002
+      },
+      "dimensions": {
+        "width": 0.065,
+        "height": 0.23,
+        "depth": 0.075,
+        "units": "m",
+        "confidence": 0.9
+      },
+      "transform": {
+        "position": [
+          0,
+          -0.24,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "fore-lower",
+        "pivot": {
+          "mode": "root",
+          "localPosition": [
+            0,
+            0.1,
+            0
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "confidence": 0.94
+        }
+      },
+      "material": "coat-shadow",
+      "evidenceRefs": [
+        "profile"
+      ],
+      "fidelityTier": "structural-pass",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(211, 201, 180, 1)",
+        "secondaryAlbedo": "rgba(183, 172, 153, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.76
+      }
+    },
+    {
+      "id": "fore-lower-r",
+      "name": "Right fore lower limb",
+      "level": "meso",
+      "role": "limb",
+      "importance": 0.82,
+      "confidence": 0.82,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "The far lower foreleg mirrors the same lean column with a controlled stance offset.",
+      "geometryDescriptor": {
+        "topologyIntent": "mirrored lean tapered limb loft"
+      },
+      "parent": "fore-leg-r",
+      "attachment": {
+        "parentId": "fore-leg-r",
+        "parentSocket": "fore-knee-right",
+        "localStart": [
+          0,
+          0.04,
+          0
+        ],
+        "localEnd": [
+          0,
+          -0.2,
+          0
+        ],
+        "contactType": "hinged knee joint",
+        "overlap": 0.025,
+        "gapTolerance": 0.002
+      },
+      "dimensions": {
+        "width": 0.065,
+        "height": 0.23,
+        "depth": 0.075,
+        "units": "m",
+        "confidence": 0.82
+      },
+      "transform": {
+        "position": [
+          0,
+          -0.24,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "fore-lower",
+        "pivot": {
+          "mode": "root",
+          "localPosition": [
+            0,
+            0.1,
+            0
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "confidence": 0.84
+        }
+      },
+      "material": "coat-shadow",
+      "evidenceRefs": [
+        "working-three-quarter"
+      ],
+      "fidelityTier": "structural-pass",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(211, 201, 180, 1)",
+        "secondaryAlbedo": "rgba(183, 172, 153, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.76
+      }
+    },
+    {
+      "id": "fore-paw-l",
+      "name": "Left fore paw",
+      "level": "meso",
+      "role": "paw",
+      "importance": 0.7,
+      "confidence": 0.9,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "A compact forward-extended paw block anchors the exact sole marker.",
+      "geometryDescriptor": {
+        "topologyIntent": "flattened forward oval"
+      },
+      "parent": "fore-lower-l",
+      "attachment": {
+        "parentId": "fore-lower-l",
+        "parentSocket": "fore-wrist-left",
+        "localStart": [
+          0,
+          0.02,
+          -0.02
+        ],
+        "localEnd": [
+          0,
+          -0.03,
+          0.06
+        ],
+        "contactType": "embedded pastern joint",
+        "overlap": 0.02,
+        "gapTolerance": 0.001
+      },
+      "dimensions": {
+        "width": 0.08,
+        "height": 0.05,
+        "depth": 0.13,
+        "units": "m",
+        "confidence": 0.88
+      },
+      "transform": {
+        "position": [
+          0,
+          -0.135,
+          0.04
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "paw-tip",
+        "pivot": {
+          "mode": "sole",
+          "localPosition": [
+            0,
+            -0.025,
+            0.02
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "confidence": 0.95
+        }
+      },
+      "material": "coat-shadow",
+      "evidenceRefs": [
+        "profile"
+      ],
+      "fidelityTier": "structural-pass",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(183, 172, 153, 1)",
+        "secondaryAlbedo": "rgba(211, 201, 180, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.76
+      }
+    },
+    {
+      "id": "fore-paw-r",
+      "name": "Right fore paw",
+      "level": "meso",
+      "role": "paw",
+      "importance": 0.7,
+      "confidence": 0.8,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "The far paw mirrors the compact forward sole while retaining an independent marker.",
+      "geometryDescriptor": {
+        "topologyIntent": "mirrored flattened forward oval"
+      },
+      "parent": "fore-lower-r",
+      "attachment": {
+        "parentId": "fore-lower-r",
+        "parentSocket": "fore-wrist-right",
+        "localStart": [
+          0,
+          0.02,
+          -0.02
+        ],
+        "localEnd": [
+          0,
+          -0.03,
+          0.06
+        ],
+        "contactType": "embedded pastern joint",
+        "overlap": 0.02,
+        "gapTolerance": 0.001
+      },
+      "dimensions": {
+        "width": 0.08,
+        "height": 0.05,
+        "depth": 0.13,
+        "units": "m",
+        "confidence": 0.8
+      },
+      "transform": {
+        "position": [
+          0,
+          -0.135,
+          0.04
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "paw-tip",
+        "pivot": {
+          "mode": "sole",
+          "localPosition": [
+            0,
+            -0.025,
+            0.02
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "confidence": 0.84
+        }
+      },
+      "material": "coat-shadow",
+      "evidenceRefs": [
+        "working-three-quarter"
+      ],
+      "fidelityTier": "structural-pass",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(183, 172, 153, 1)",
+        "secondaryAlbedo": "rgba(211, 201, 180, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.76
+      }
+    },
+    {
+      "id": "hind-leg-l",
+      "name": "Left hind upper limb",
+      "level": "meso",
+      "role": "limb",
+      "importance": 0.9,
+      "confidence": 0.93,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "A broad thigh turns forward toward the stifle instead of dropping as a straight rear column.",
+      "geometryDescriptor": {
+        "topologyIntent": "broad tapered thigh loft"
+      },
+      "parent": "pelvis",
+      "attachment": {
+        "parentId": "pelvis",
+        "parentSocket": "hip-left",
+        "localStart": [
+          0,
+          0.1,
+          0
+        ],
+        "localEnd": [
+          0,
+          -0.23,
+          0.06
+        ],
+        "contactType": "embedded hip joint",
+        "overlap": 0.055,
+        "gapTolerance": 0.003,
+        "evidenceRefs": [
+          "profile"
+        ]
+      },
+      "dimensions": {
+        "width": 0.105,
+        "height": 0.33,
+        "depth": 0.16,
+        "units": "m",
+        "confidence": 0.9
+      },
+      "transform": {
+        "position": [
+          0.1,
+          -0.22,
+          -0.01
+        ],
+        "rotation": [
+          0.28,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "hind-upper",
+        "pivot": {
+          "mode": "root",
+          "localPosition": [
+            0,
+            0.14,
+            -0.03
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "confidence": 0.94
+        }
+      },
+      "material": "coat",
+      "localFeatures": [
+        {
+          "id": "hock-angle",
+          "type": "contour",
+          "geometryEffect": "forward stifle then rearward hock chain"
+        }
+      ],
+      "evidenceRefs": [
+        "profile"
+      ],
+      "fidelityTier": "structural-pass",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(235, 226, 204, 1)",
+        "secondaryAlbedo": "rgba(211, 201, 180, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.78
+      }
+    },
+    {
+      "id": "hind-leg-r",
+      "name": "Right hind upper limb",
+      "level": "meso",
+      "role": "limb",
+      "importance": 0.9,
+      "confidence": 0.82,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "Bilateral anatomy supports the same broad thigh and forward stifle on the far side.",
+      "geometryDescriptor": {
+        "topologyIntent": "mirrored broad tapered thigh loft"
+      },
+      "parent": "pelvis",
+      "attachment": {
+        "parentId": "pelvis",
+        "parentSocket": "hip-right",
+        "localStart": [
+          0,
+          0.1,
+          0
+        ],
+        "localEnd": [
+          0,
+          -0.23,
+          0.06
+        ],
+        "contactType": "embedded hip joint",
+        "overlap": 0.055,
+        "gapTolerance": 0.003,
+        "evidenceRefs": [
+          "resting-three-quarter"
+        ]
+      },
+      "dimensions": {
+        "width": 0.105,
+        "height": 0.33,
+        "depth": 0.16,
+        "units": "m",
+        "confidence": 0.82
+      },
+      "transform": {
+        "position": [
+          -0.1,
+          -0.22,
+          -0.01
+        ],
+        "rotation": [
+          0.28,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "hind-upper",
+        "pivot": {
+          "mode": "root",
+          "localPosition": [
+            0,
+            0.14,
+            -0.03
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "confidence": 0.84
+        }
+      },
+      "material": "coat",
+      "evidenceRefs": [
+        "resting-three-quarter"
+      ],
+      "fidelityTier": "structural-pass",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(235, 226, 204, 1)",
+        "secondaryAlbedo": "rgba(211, 201, 180, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.78
+      }
+    },
+    {
+      "id": "hind-lower-l",
+      "name": "Left hind lower limb",
+      "level": "meso",
+      "role": "limb",
+      "importance": 0.85,
+      "confidence": 0.92,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "The long lean rear cannon returns from the hock to a near-vertical pastern.",
+      "geometryDescriptor": {
+        "topologyIntent": "long tapered cannon loft"
+      },
+      "parent": "hind-leg-l",
+      "attachment": {
+        "parentId": "hind-leg-l",
+        "parentSocket": "hock-left",
+        "localStart": [
+          0,
+          0.04,
+          0.04
+        ],
+        "localEnd": [
+          0,
+          -0.27,
+          0
+        ],
+        "contactType": "hinged hock joint",
+        "overlap": 0.025,
+        "gapTolerance": 0.002
+      },
+      "dimensions": {
+        "width": 0.065,
+        "height": 0.3,
+        "depth": 0.075,
+        "units": "m",
+        "confidence": 0.9
+      },
+      "transform": {
+        "position": [
+          0,
+          -0.26,
+          0.06
+        ],
+        "rotation": [
+          -0.22,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "hind-lower",
+        "pivot": {
+          "mode": "root",
+          "localPosition": [
+            0,
+            0.13,
+            -0.02
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "confidence": 0.94
+        }
+      },
+      "material": "coat-shadow",
+      "evidenceRefs": [
+        "profile"
+      ],
+      "fidelityTier": "structural-pass",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(211, 201, 180, 1)",
+        "secondaryAlbedo": "rgba(183, 172, 153, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.76
+      }
+    },
+    {
+      "id": "hind-lower-r",
+      "name": "Right hind lower limb",
+      "level": "meso",
+      "role": "limb",
+      "importance": 0.85,
+      "confidence": 0.8,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "The far rear cannon mirrors the hock return and remains independently plantable.",
+      "geometryDescriptor": {
+        "topologyIntent": "mirrored long tapered cannon loft"
+      },
+      "parent": "hind-leg-r",
+      "attachment": {
+        "parentId": "hind-leg-r",
+        "parentSocket": "hock-right",
+        "localStart": [
+          0,
+          0.04,
+          0.04
+        ],
+        "localEnd": [
+          0,
+          -0.27,
+          0
+        ],
+        "contactType": "hinged hock joint",
+        "overlap": 0.025,
+        "gapTolerance": 0.002
+      },
+      "dimensions": {
+        "width": 0.065,
+        "height": 0.3,
+        "depth": 0.075,
+        "units": "m",
+        "confidence": 0.8
+      },
+      "transform": {
+        "position": [
+          0,
+          -0.26,
+          0.06
+        ],
+        "rotation": [
+          -0.22,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "hind-lower",
+        "pivot": {
+          "mode": "root",
+          "localPosition": [
+            0,
+            0.13,
+            -0.02
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "confidence": 0.82
+        }
+      },
+      "material": "coat-shadow",
+      "evidenceRefs": [
+        "resting-three-quarter"
+      ],
+      "fidelityTier": "structural-pass",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(211, 201, 180, 1)",
+        "secondaryAlbedo": "rgba(183, 172, 153, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.76
+      }
+    },
+    {
+      "id": "hind-paw-l",
+      "name": "Left hind paw",
+      "level": "meso",
+      "role": "paw",
+      "importance": 0.72,
+      "confidence": 0.9,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "A compact forward paw ends the longer rear chain and anchors its sole marker.",
+      "geometryDescriptor": {
+        "topologyIntent": "flattened forward oval"
+      },
+      "parent": "hind-lower-l",
+      "attachment": {
+        "parentId": "hind-lower-l",
+        "parentSocket": "hind-wrist-left",
+        "localStart": [
+          0,
+          0.02,
+          -0.02
+        ],
+        "localEnd": [
+          0,
+          -0.03,
+          0.06
+        ],
+        "contactType": "embedded pastern joint",
+        "overlap": 0.02,
+        "gapTolerance": 0.001
+      },
+      "dimensions": {
+        "width": 0.082,
+        "height": 0.05,
+        "depth": 0.14,
+        "units": "m",
+        "confidence": 0.88
+      },
+      "transform": {
+        "position": [
+          0,
+          -0.17,
+          0.05
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "paw-tip",
+        "pivot": {
+          "mode": "sole",
+          "localPosition": [
+            0,
+            -0.025,
+            0.02
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "confidence": 0.95
+        }
+      },
+      "material": "coat-shadow",
+      "evidenceRefs": [
+        "profile"
+      ],
+      "fidelityTier": "structural-pass",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(183, 172, 153, 1)",
+        "secondaryAlbedo": "rgba(211, 201, 180, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.76
+      }
+    },
+    {
+      "id": "hind-paw-r",
+      "name": "Right hind paw",
+      "level": "meso",
+      "role": "paw",
+      "importance": 0.72,
+      "confidence": 0.8,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "The far rear paw preserves the same forward footprint and independent sole marker.",
+      "geometryDescriptor": {
+        "topologyIntent": "mirrored flattened forward oval"
+      },
+      "parent": "hind-lower-r",
+      "attachment": {
+        "parentId": "hind-lower-r",
+        "parentSocket": "hind-wrist-right",
+        "localStart": [
+          0,
+          0.02,
+          -0.02
+        ],
+        "localEnd": [
+          0,
+          -0.03,
+          0.06
+        ],
+        "contactType": "embedded pastern joint",
+        "overlap": 0.02,
+        "gapTolerance": 0.001
+      },
+      "dimensions": {
+        "width": 0.082,
+        "height": 0.05,
+        "depth": 0.14,
+        "units": "m",
+        "confidence": 0.8
+      },
+      "transform": {
+        "position": [
+          0,
+          -0.17,
+          0.05
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "paw-tip",
+        "pivot": {
+          "mode": "sole",
+          "localPosition": [
+            0,
+            -0.025,
+            0.02
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "confidence": 0.84
+        }
+      },
+      "material": "coat-shadow",
+      "evidenceRefs": [
+        "resting-three-quarter"
+      ],
+      "fidelityTier": "structural-pass",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(183, 172, 153, 1)",
+        "secondaryAlbedo": "rgba(211, 201, 180, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.76
+      }
+    },
+    {
+      "id": "belly-feather",
+      "name": "Notched belly feather mass",
+      "level": "micro",
+      "role": "coat-detail",
+      "importance": 0.62,
+      "confidence": 0.84,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "A few rigid low-poly locks interrupt the underside silhouette without hiding the tuck.",
+      "geometryDescriptor": {
+        "topologyIntent": "three shallow pointed underside facets"
+      },
+      "parent": "torso",
+      "attachment": {
+        "parentId": "torso",
+        "parentSocket": "belly-line",
+        "localStart": [
+          0,
+          0,
+          0.12
+        ],
+        "localEnd": [
+          0,
+          -0.08,
+          -0.08
+        ],
+        "contactType": "embedded coat mass",
+        "overlap": 0.02,
+        "gapTolerance": 0.002
+      },
+      "dimensions": {
+        "width": 0.18,
+        "height": 0.09,
+        "depth": 0.24,
+        "units": "m",
+        "confidence": 0.82
+      },
+      "transform": {
+        "position": [
+          0,
+          -0.16,
+          -0.02
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "coat-detail",
+        "pivot": {
+          "mode": "parented",
+          "localPosition": [
+            0,
+            0,
+            0
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "confidence": 0.8
+        }
+      },
+      "material": "coat-shadow",
+      "localFeatures": [
+        {
+          "id": "belly-notches",
+          "type": "contour",
+          "geometryEffect": "three hard-edged downward locks"
+        }
+      ],
+      "evidenceRefs": [
+        "profile"
+      ],
+      "fidelityTier": "form-refinement",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(211, 201, 180, 1)",
+        "secondaryAlbedo": "rgba(235, 226, 204, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.76
+      }
+    },
+    {
+      "id": "hind-feather-l",
+      "name": "Left rear thigh feather mass",
+      "level": "micro",
+      "role": "coat-detail",
+      "importance": 0.64,
+      "confidence": 0.82,
+      "primitive": "ellipsoid",
+      "topologyClass": "continuous-sculpt",
+      "topologyRationale": "Notched locks hang behind the broad thigh while leaving the hock outline clear.",
+      "geometryDescriptor": {
+        "topologyIntent": "paired pointed trailing facets"
+      },
+      "parent": "hind-leg-l",
+      "attachment": {
+        "parentId": "hind-leg-l",
+        "parentSocket": "thigh-rear",
+        "localStart": [
+          0,
+          0.08,
+          -0.02
+        ],
+        "localEnd": [
+          0,
+          -0.12,
+          -0.08
+        ],
+        "contactType": "embedded coat mass",
+        "overlap": 0.02,
+        "gapTolerance": 0.002
+      },
+      "dimensions": {
+        "width": 0.075,
+        "height": 0.18,
+        "depth": 0.12,
+        "units": "m",
+        "confidence": 0.8
+      },
+      "transform": {
+        "position": [
+          0,
+          -0.05,
+          -0.08
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "coat-detail",
+        "pivot": {
+          "mode": "parented",
+          "localPosition": [
+            0,
+            0,
+            0
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "confidence": 0.78
+        }
+      },
+      "material": "coat-shadow",
+      "localFeatures": [
+        {
+          "id": "thigh-feather",
+          "type": "contour",
+          "geometryEffect": "two notched trailing locks"
+        }
+      ],
+      "evidenceRefs": [
+        "profile",
+        "resting-three-quarter"
+      ],
+      "fidelityTier": "form-refinement",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(211, 201, 180, 1)",
+        "secondaryAlbedo": "rgba(235, 226, 204, 1)",
+        "materialClass": "fabric",
+        "materialClassConfidence": 0.76
+      }
+    }
+  ],
+  "materials": [
+    {
+      "id": "coat",
+      "name": "Warm pale ground coat",
+      "type": "standard",
+      "shaderModel": "Shared Uplandin dog vertex shader",
+      "flatShading": true,
+      "baseColor": "#EBE2CC",
+      "albedo": {
+        "dominant": "#EBE2CC",
+        "secondary": [
+          "#D3C9B4",
+          "#352F2A"
+        ]
+      },
+      "colorVariation": {
+        "palette": [
+          "#EBE2CC",
+          "#D3C9B4",
+          "#352F2A"
+        ],
+        "pattern": "authored vertex-color regions",
+        "amplitude": 0.18
+      },
+      "roughness": {
+        "base": 0.82,
+        "variation": 0.08
+      },
+      "metalness": 0,
+      "ambientOcclusion": {
+        "contactShadowBias": 0.3,
+        "notes": "geometry intersections only"
+      },
+      "localOverrides": [
+        {
+          "id": "belton-markings",
+          "where": "head, ears, one hip saddle and eleven deterministic flank flecks",
+          "change": "charcoal/oxblood palette role",
+          "strength": 0.88,
+          "evidenceRefs": [
+            "working-three-quarter",
+            "head-three-quarter"
+          ]
+        }
+      ],
+      "textureless": {
+        "declared": true,
+        "evidence": [
+          "ARCHITECTURE-3D.md requires zero photo textures and palette-only flat shading"
+        ]
+      }
+    },
+    {
+      "id": "coat-shadow",
+      "name": "Lower coat value step",
+      "type": "standard",
+      "shaderModel": "Shared Uplandin dog vertex shader",
+      "flatShading": true,
+      "baseColor": "#B7AC99",
+      "albedo": {
+        "dominant": "#B7AC99",
+        "secondary": [
+          "#D3C9B4"
+        ]
+      },
+      "colorVariation": {
+        "palette": [
+          "#B7AC99",
+          "#D3C9B4"
+        ],
+        "pattern": "anatomical value zoning",
+        "amplitude": 0.1
+      },
+      "roughness": {
+        "base": 0.86,
+        "variation": 0.05
+      },
+      "metalness": 0,
+      "localOverrides": [
+        {
+          "id": "lower-limb-step",
+          "where": "lower legs, paws and feather undersides",
+          "change": "darker warm value for articulation",
+          "strength": 0.22,
+          "evidenceRefs": [
+            "profile"
+          ]
+        }
+      ],
+      "textureless": {
+        "declared": true,
+        "evidence": [
+          "Lower-leg separation is a vertex-color value role, not surface texture"
+        ]
+      }
+    },
+    {
+      "id": "patch",
+      "name": "Charcoal blue-belton patch",
+      "type": "standard",
+      "shaderModel": "Shared Uplandin dog vertex shader",
+      "flatShading": true,
+      "baseColor": "#352F2A",
+      "albedo": {
+        "dominant": "#352F2A",
+        "secondary": [
+          "#584B42"
+        ]
+      },
+      "colorVariation": {
+        "palette": [
+          "#352F2A",
+          "#584B42"
+        ],
+        "pattern": "authored region boundaries",
+        "amplitude": 0.12
+      },
+      "roughness": {
+        "base": 0.8,
+        "variation": 0.06
+      },
+      "metalness": 0,
+      "localOverrides": [
+        {
+          "id": "ear-cheek-patches",
+          "where": "both ears and eye/cheek zones",
+          "change": "dark blue-belton mass",
+          "strength": 0.9,
+          "evidenceRefs": [
+            "head-three-quarter"
+          ]
+        }
+      ],
+      "textureless": {
+        "declared": true,
+        "evidence": [
+          "Blue-belton identity is expressed with authored geometry and vertex colors"
+        ]
+      }
+    },
+    {
+      "id": "nose-eye",
+      "name": "Nose and eye accent",
+      "type": "standard",
+      "shaderModel": "Shared Uplandin dog vertex shader",
+      "flatShading": true,
+      "baseColor": "#181817",
+      "albedo": {
+        "dominant": "#181817",
+        "secondary": [
+          "#52402D"
+        ]
+      },
+      "colorVariation": {
+        "palette": [
+          "#181817",
+          "#52402D"
+        ],
+        "pattern": "semantic accent zones",
+        "amplitude": 0.08
+      },
+      "roughness": {
+        "base": 0.3,
+        "variation": 0.08
+      },
+      "metalness": 0,
+      "localOverrides": [
+        {
+          "id": "nose-soft-gloss",
+          "where": "nose crown and eye beads",
+          "change": "slightly lower roughness through lighting response",
+          "strength": 0.18,
+          "evidenceRefs": [
+            "head-three-quarter"
+          ]
+        }
+      ],
+      "textureless": {
+        "declared": true,
+        "evidence": [
+          "At game scale the accent reads through geometry and shared lighting, not a texture map"
+        ]
+      }
+    }
+  ],
+  "repetitionSystems": [
+    {
+      "id": "belton-flecks",
+      "name": "Sparse deterministic flank flecks",
+      "componentRef": "torso",
+      "realization": "vertex-color quads",
+      "buildsGeometry": true,
+      "geometry": {
+        "primitive": "plane-card",
+        "count": 11,
+        "distribution": "seeded irregular bilateral flank placement"
+      },
+      "instances": 11,
+      "evidenceRefs": [
+        "working-three-quarter"
+      ],
+      "notes": "One draw call with the torso mesh; never randomize per run."
+    }
+  ],
+  "buildPasses": [
+    {
+      "id": "blockout",
+      "goal": "Match the setter macro silhouette.",
+      "componentRefs": [
+        "torso",
+        "neck",
+        "head",
+        "shoulder-girdle",
+        "pelvis",
+        "tail-root",
+        "tail-flag",
+        "muzzle",
+        "ear-l",
+        "ear-r",
+        "fore-leg-l",
+        "fore-leg-r",
+        "fore-lower-l",
+        "fore-lower-r",
+        "fore-paw-l",
+        "fore-paw-r",
+        "hind-leg-l",
+        "hind-leg-r",
+        "hind-lower-l",
+        "hind-lower-r",
+        "hind-paw-l",
+        "hind-paw-r"
+      ],
+      "acceptance": [
+        "Profile and three-quarter breed read pass without markings.",
+        "No macro joint gap exceeds 0.005m."
+      ]
+    },
+    {
+      "id": "structural-pass",
+      "goal": "Build the semantic canine pivot hierarchy.",
+      "componentRefs": [
+        "muzzle",
+        "nose",
+        "ear-l",
+        "ear-r",
+        "eye-l",
+        "eye-r",
+        "fore-leg-l",
+        "fore-leg-r",
+        "fore-lower-l",
+        "fore-lower-r",
+        "fore-paw-l",
+        "fore-paw-r",
+        "hind-leg-l",
+        "hind-leg-r",
+        "hind-lower-l",
+        "hind-lower-r",
+        "hind-paw-l",
+        "hind-paw-r"
+      ],
+      "acceptance": [
+        "All child masses overlap their sockets by at least 0.02m.",
+        "Four sole markers remain exact under animation."
+      ]
+    },
+    {
+      "id": "form-refinement",
+      "goal": "Add breed-defining head, brisket, tuck, hock and feather contours.",
+      "componentRefs": [
+        "head",
+        "torso",
+        "fore-leg-l",
+        "hind-leg-l",
+        "belly-feather",
+        "hind-feather-l",
+        "tail-flag"
+      ],
+      "acceptance": [
+        "At least ten inventoried details map to visible geometry or material behavior."
+      ]
+    },
+    {
+      "id": "material-pass",
+      "goal": "Apply the locked blue-belton palette roles.",
+      "componentRefs": [
+        "torso",
+        "head",
+        "ear-l",
+        "ear-r",
+        "nose",
+        "eye-l",
+        "eye-r"
+      ],
+      "acceptance": [
+        "No photo textures are present.",
+        "Markings are deterministic and sparse."
+      ]
+    },
+    {
+      "id": "surface-pass",
+      "goal": "Verify faceted surface response without texture maps.",
+      "componentRefs": [
+        "torso",
+        "head",
+        "tail-flag",
+        "belly-feather",
+        "hind-feather-l"
+      ],
+      "acceptance": [
+        "Facets explain form under grazing light.",
+        "No surface noise competes with silhouette."
+      ]
+    },
+    {
+      "id": "lighting-pass",
+      "goal": "Preserve the pale dog across the existing eight-angle light audit.",
+      "componentRefs": [
+        "torso",
+        "head",
+        "tail-flag"
+      ],
+      "acceptance": [
+        "Eight of eight ring views pass.",
+        "White clipping and lee-side contrast do not regress from baseline."
+      ]
+    },
+    {
+      "id": "interaction-pass",
+      "goal": "Verify gait, point, retrieve and terrain-planting compatibility.",
+      "componentRefs": [
+        "neck",
+        "head",
+        "ear-l",
+        "ear-r",
+        "tail-root",
+        "tail-flag",
+        "fore-leg-l",
+        "fore-leg-r",
+        "hind-leg-l",
+        "hind-leg-r"
+      ],
+      "acceptance": [
+        "Point pose paw gaps stay at or below baseline tolerance.",
+        "All runtime pivots and disposal paths remain valid."
+      ]
+    },
+    {
+      "id": "optimization-pass",
+      "goal": "Protect the existing runtime budget.",
+      "componentRefs": [
+        "torso"
+      ],
+      "acceptance": [
+        "High tier is at most 4000 triangles and approximately 15 dog draw calls.",
+        "Low tier remains available as the current fallback."
+      ]
+    }
+  ],
+  "lookDevTargets": {
+    "qualityPriority": "runtime-stylized-fidelity",
+    "materialPass": {
+      "albedoPaletteRequired": true,
+      "roughnessVariationRequired": true,
+      "normalOrBumpRequired": false,
+      "localOverridesRequired": true,
+      "texturePolicy": "textureless palette-only vertex color",
+      "mustAvoid": [
+        "photo projection",
+        "uniform random spotting",
+        "per-run variation",
+        "non-palette colors"
+      ]
+    },
+    "lightingPass": {
+      "requiredTerms": [
+        "key light",
+        "fill light",
+        "rim light",
+        "exposure",
+        "tone mapping",
+        "background",
+        "contact shadow"
+      ],
+      "mustAvoid": [
+        "ambient-only lighting",
+        "white clipping",
+        "flat lee-side value"
+      ]
+    },
+    "screenshotReview": [
+      "Compare profile silhouette.",
+      "Compare front and rear width.",
+      "Compare blue-belton region placement.",
+      "Run the deterministic eight-angle light audit."
+    ]
+  },
+  "lightingFromPhoto": [
+    "Key light: retain the existing directional sun-paint response; inspect pale coat clipping under the brightest ring angle.",
+    "Fill and rim light: retain Uplandin hemisphere/sky fill and shader rim so the lee-side ear, tail and hocks remain legible.",
+    "Exposure and ACES tone mapping stay owned by the current scene; the procedural contact shadow remains the grounding authority."
+  ],
+  "visualEvidence": [
+    {
+      "timestamp": "2026-08-30T21:37:38.175176+00:00",
+      "passId": "blockout",
+      "estimatedFidelity": 0.43,
+      "aiVisionScore": 0.43,
+      "visualAcceptanceThreshold": 0.7,
+      "layerScores": {
+        "silhouetteProportion": 0.38,
+        "componentStructure": 0.52,
+        "formDetail": 0.25,
+        "materialSurface": 0.35,
+        "lightingCamera": 0.72
+      },
+      "featureReviews": [
+        {
+          "id": "long-head-drop-ear",
+          "score": 0.32,
+          "visible": true,
+          "notes": "Long-head intent is present, but skull, muzzle and dark ear separate into stacked ellipsoids."
+        },
+        {
+          "id": "brisket-tuck-topline",
+          "score": 0.46,
+          "visible": true,
+          "notes": "Level topline is present; the torso remains a barrel with no setter brisket-to-tuck transition."
+        }
+      ],
+      "referenceScreenshot": "/Users/bradya/Documents/code/uplandin/docs/3d/reference/english-setter/standing-profile.jpg",
+      "renderScreenshot": "/Users/bradya/Documents/code/uplandin/docs/3d/img2threejs/english-setter/renders/blockout/side.png",
+      "comparisonImage": "/Users/bradya/Documents/code/uplandin/docs/3d/img2threejs/english-setter/renders/blockout/comparison-profile.png",
+      "cameraView": "side",
+      "notes": "Photo-versus-procedural Tier-1 IoU is advisory here, but its aspect and scale failures agree with visual inspection.",
+      "aiVisionNotes": "The same-view sheet reads as a generic mannequin dog rather than an English Setter. The failure is implementation-level: the authored component inventory is adequate, but the generator maps organic components to uniformly smooth ellipsoids and does not achieve the specified loft contours."
+    },
+    {
+      "timestamp": "2026-08-30T21:57:59.752325+00:00",
+      "passId": "blockout",
+      "estimatedFidelity": 0.75,
+      "aiVisionScore": 0.75,
+      "visualAcceptanceThreshold": 0.7,
+      "layerScores": {
+        "silhouetteProportion": 0.72,
+        "componentStructure": 0.86,
+        "formDetail": 0.72,
+        "materialSurface": 0.7,
+        "lightingCamera": 0.82
+      },
+      "featureReviews": [
+        {
+          "id": "long-head-drop-ear",
+          "score": 0.78,
+          "visible": true,
+          "notes": "The longer squared muzzle, substantial skull, and low dark ear read clearly; the skull remains intentionally blocky."
+        },
+        {
+          "id": "brisket-tuck-topline",
+          "score": 0.75,
+          "visible": true,
+          "notes": "Level topline, deep forechest, and rising abdomen are present, though the show dog's coat mass is intentionally absent."
+        },
+        {
+          "id": "flag-tail-feather",
+          "score": 0.74,
+          "visible": true,
+          "notes": "The tail is articulated at base and mid-flag with shallow two-sided feather locks; close views remain visibly stylized."
+        },
+        {
+          "id": "limb-angulation-furnishings",
+          "score": 0.72,
+          "visible": true,
+          "notes": "Fore and hind chains articulate and plant correctly; sparse rigid furnishings replace fur cards to preserve the game budget."
+        }
+      ],
+      "referenceScreenshot": "docs/3d/reference/english-setter/standing-profile.jpg",
+      "renderScreenshot": "docs/3d/img2threejs/english-setter/renders/refined/review-dog-neutral-profile-aligned.png",
+      "comparisonImage": "docs/3d/img2threejs/english-setter/renders/refined/comparison-profile.png",
+      "cameraView": "side-profile-neutral",
+      "notes": "Photo and render are aspect-aligned for inspection. Tier-1 remains a hard fail and is not overridden; the repo's documented photo-versus-procedural caveat applies. Stop records a bounded game-ready approximation, not a strict reference reconstruction pass.",
+      "aiVisionNotes": "The integrated model now reads as an English Setter in Uplandin's deliberately sparse low-poly language. The long head, drop ears, topline, brisket-to-tuck transition, flag tail, and angulated limbs are coherent and animated. The dominant remaining mismatch is not topology failure but the intentional absence of the reference dog's dense show coat and soft feather volume."
+    }
+  ],
+  "reviewHistory": [
+    {
+      "timestamp": "2026-08-30T21:37:38.175176+00:00",
+      "passId": "blockout",
+      "estimatedFidelity": 0.43,
+      "aiVisionScore": 0.43,
+      "visualAcceptanceThreshold": 0.7,
+      "layerScores": {
+        "silhouetteProportion": 0.38,
+        "componentStructure": 0.52,
+        "formDetail": 0.25,
+        "materialSurface": 0.35,
+        "lightingCamera": 0.72
+      },
+      "featureReviews": [
+        {
+          "id": "long-head-drop-ear",
+          "score": 0.32,
+          "visible": true,
+          "notes": "Long-head intent is present, but skull, muzzle and dark ear separate into stacked ellipsoids."
+        },
+        {
+          "id": "brisket-tuck-topline",
+          "score": 0.46,
+          "visible": true,
+          "notes": "Level topline is present; the torso remains a barrel with no setter brisket-to-tuck transition."
+        }
+      ],
+      "action": "refine-code",
+      "summary": "Generated primitive blockout proves the pipeline but is not breed-accurate or within runtime budget.",
+      "matched": [
+        "recognizable four-legged dog silhouette",
+        "non-degenerate volume in all four orbit views",
+        "level trunk and straight tail intent are present"
+      ],
+      "mismatches": [
+        "head and muzzle read as disconnected horizontal lobes",
+        "neck is too vertical and heavy",
+        "ribcage lacks deep brisket and tuck",
+        "hind chain lacks convincing stifle-to-hock angulation",
+        "6336 triangles and 22 draw calls exceed the target"
+      ],
+      "specFixes": [],
+      "codeFixes": [
+        "replace generic ellipsoids with low-ring canine lofts",
+        "embed head and ear roots into the neck/skull",
+        "author brisket tuck and hock contours in geometry",
+        "merge static coat geometry and retain semantic pivot groups",
+        "keep the existing lite dog as fallback"
+      ],
+      "evidence": [
+        "/Users/bradya/Documents/code/uplandin/docs/3d/img2threejs/english-setter/renders/blockout/side.png",
+        "/Users/bradya/Documents/code/uplandin/docs/3d/img2threejs/english-setter/renders/blockout/comparison-profile.png",
+        "/Users/bradya/Documents/code/uplandin/docs/3d/img2threejs/english-setter/renders/blockout/multi-angle.json",
+        "/Users/bradya/Documents/code/uplandin/docs/3d/img2threejs/english-setter/renders/blockout/tier1.json"
+      ],
+      "mapStrippedRender": "/Users/bradya/Documents/code/uplandin/docs/3d/img2threejs/english-setter/renders/blockout/side.png",
+      "reviewViewpoints": [
+        "side",
+        "three-quarter",
+        "front",
+        "rear-three-quarter"
+      ],
+      "visualEvidence": {
+        "referenceScreenshot": "/Users/bradya/Documents/code/uplandin/docs/3d/reference/english-setter/standing-profile.jpg",
+        "renderScreenshot": "/Users/bradya/Documents/code/uplandin/docs/3d/img2threejs/english-setter/renders/blockout/side.png",
+        "comparisonImage": "/Users/bradya/Documents/code/uplandin/docs/3d/img2threejs/english-setter/renders/blockout/comparison-profile.png",
+        "cameraView": "side",
+        "notes": "Photo-versus-procedural Tier-1 IoU is advisory here, but its aspect and scale failures agree with visual inspection.",
+        "aiVisionNotes": "The same-view sheet reads as a generic mannequin dog rather than an English Setter. The failure is implementation-level: the authored component inventory is adequate, but the generator maps organic components to uniformly smooth ellipsoids and does not achieve the specified loft contours."
+      }
+    },
+    {
+      "timestamp": "2026-08-30T21:57:59.752325+00:00",
+      "passId": "blockout",
+      "estimatedFidelity": 0.75,
+      "aiVisionScore": 0.75,
+      "visualAcceptanceThreshold": 0.7,
+      "layerScores": {
+        "silhouetteProportion": 0.72,
+        "componentStructure": 0.86,
+        "formDetail": 0.72,
+        "materialSurface": 0.7,
+        "lightingCamera": 0.82
+      },
+      "featureReviews": [
+        {
+          "id": "long-head-drop-ear",
+          "score": 0.78,
+          "visible": true,
+          "notes": "The longer squared muzzle, substantial skull, and low dark ear read clearly; the skull remains intentionally blocky."
+        },
+        {
+          "id": "brisket-tuck-topline",
+          "score": 0.75,
+          "visible": true,
+          "notes": "Level topline, deep forechest, and rising abdomen are present, though the show dog's coat mass is intentionally absent."
+        },
+        {
+          "id": "flag-tail-feather",
+          "score": 0.74,
+          "visible": true,
+          "notes": "The tail is articulated at base and mid-flag with shallow two-sided feather locks; close views remain visibly stylized."
+        },
+        {
+          "id": "limb-angulation-furnishings",
+          "score": 0.72,
+          "visible": true,
+          "notes": "Fore and hind chains articulate and plant correctly; sparse rigid furnishings replace fur cards to preserve the game budget."
+        }
+      ],
+      "action": "stop",
+      "summary": "Breed-specific low-poly game target reached; remaining show-coat silhouette gap requires a higher-detail/manual art route.",
+      "matched": [
+        "long squared head and low drop ears",
+        "level topline with deeper brisket and rising tuck",
+        "articulated flag tail and canine limb chain",
+        "palette-locked blue-belton read",
+        "386 triangles and 15 draw calls",
+        "three planted stance paws within 0-2.2 cm",
+        "non-degenerate front rear and three-quarter volume"
+      ],
+      "mismatches": [
+        "coat and furnishings are much sparser than the fully feathered reference",
+        "neutral silhouette remains leaner and longer than the show dog",
+        "rigid tail and thigh locks read as stylized facets at macro distance",
+        "specified shoulder pelvis muzzle nose and paws are deliberately fused into parent meshes"
+      ],
+      "specFixes": [],
+      "codeFixes": [
+        "If a higher-fidelity asset is later authorized, add a separate fur-card/high-detail LOD",
+        "replace rigid feather locks with authored alpha-card furnishings",
+        "split fused conformation regions only if clickable/explodable tooling becomes a product requirement"
+      ],
+      "evidence": [
+        "docs/3d/img2threejs/english-setter/renders/refined/comparison-profile.png",
+        "docs/3d/img2threejs/english-setter/renders/refined/multi-angle.json",
+        "docs/3d/img2threejs/english-setter/renders/refined/performance.json",
+        "docs/3d/img2threejs/english-setter/renders/refined/light-audit.json",
+        "docs/3d/img2threejs/english-setter/renders/refined/part-coverage.json"
+      ],
+      "outOfSequence": true,
+      "mapStrippedRender": "docs/3d/img2threejs/english-setter/renders/refined/review-dog-neutral-profile-aligned.png",
+      "reviewViewpoints": [
+        "neutral-side",
+        "point-side",
+        "point-front",
+        "point-rear",
+        "point-three-quarter",
+        "gameplay-point"
+      ],
+      "visualEvidence": {
+        "referenceScreenshot": "docs/3d/reference/english-setter/standing-profile.jpg",
+        "renderScreenshot": "docs/3d/img2threejs/english-setter/renders/refined/review-dog-neutral-profile-aligned.png",
+        "comparisonImage": "docs/3d/img2threejs/english-setter/renders/refined/comparison-profile.png",
+        "cameraView": "side-profile-neutral",
+        "notes": "Photo and render are aspect-aligned for inspection. Tier-1 remains a hard fail and is not overridden; the repo's documented photo-versus-procedural caveat applies. Stop records a bounded game-ready approximation, not a strict reference reconstruction pass.",
+        "aiVisionNotes": "The integrated model now reads as an English Setter in Uplandin's deliberately sparse low-poly language. The long head, drop ears, topline, brisket-to-tuck transition, flag tail, and angulated limbs are coherent and animated. The dominant remaining mismatch is not topology failure but the intentional absence of the reference dog's dense show coat and soft feather volume."
+      }
+    }
+  ],
+  "lodPlan": [
+    {
+      "tier": "high",
+      "distance": 0,
+      "strategy": "breed-specific lofts, feather facets and deterministic belton markings"
+    },
+    {
+      "tier": "lite",
+      "distance": 22,
+      "strategy": "retain the current low-tier procedural fallback and the same semantic pivots"
+    }
+  ],
+  "performanceBudget": {
+    "qualityPriority": "gameplay-first",
+    "targetTriangles": 4000,
+    "maxDrawCalls": 16,
+    "textureSize": 0,
+    "fpsTarget": 60,
+    "optimizationPolicy": "Do not trade deterministic paw planting or breed silhouette for hidden micro detail."
+  },
+  "proceduralStrategy": [
+    "Generate the seven-part macro blockout through img2threejs to test the admitted spec.",
+    "Replace generic ellipsoids with low-ring canine lofts while preserving generated semantic node names.",
+    "Add eight leg segments, four paw blocks, two ear flaps and two tail pivots as independently animated groups.",
+    "Encode coat zones and sparse flecks in vertex colors using the existing deterministic art seed.",
+    "Run visual, light, paw-gap, triangle, draw-call, build and unit-test gates before integration."
+  ],
+  "animationAnchors": [
+    "torso root",
+    "neck root",
+    "head poll",
+    "ear roots",
+    "four shoulder/hip roots",
+    "four knee/hock roots",
+    "four paw soles",
+    "tail root",
+    "tail flag root"
+  ],
+  "destructionAnchors": [],
+  "assumptions": [
+    "The existing 0.55m gameplay scale is authoritative over breed inches.",
+    "Bilateral geometry plus admitted three-quarter views is sufficient for hidden-side reconstruction.",
+    "Rigid faceted feather locks are appropriate to the project style."
+  ],
+  "risks": [
+    "A procedural low-poly build will improve breed silhouette, not reproduce individual coat hair.",
+    "The img2threejs generator is an intake and blockout aid here because v1.5.1 has no quadruped template."
+  ],
+  "localSpecSearch": {
+    "collection": "core_3d",
+    "query": "English Setter canine quadruped anatomy low-poly articulated game animal",
+    "index": {
+      "status": "hit",
+      "reason": "current"
+    },
+    "matches": [
+      {
+        "record_id": "core.topology-intent",
+        "file_path": "grimoire/glossary/3d_vocabulary.md",
+        "heading": "Geometry And Topology",
+        "score": 10.2877,
+        "snippets": [
+          "Topology intent distinguishes organic deformed geometry from hard-surface blockout."
+        ],
+        "source_refs": [
+          {
+            "path": "grimoire/glossary/3d_vocabulary.md",
+            "heading": "Geometry And Topology"
+          }
+        ]
+      }
+    ],
+    "noCanineTemplateFound": true
+  },
+  "tier1Results": [
+    {
+      "passed": false,
+      "checks": {
+        "silhouetteIoU": 0.1214,
+        "aspectRatioDelta": 0.5065,
+        "scaleDelta": 0.2861,
+        "bilateralSymmetryError": 0.0807,
+        "colorDelta": {
+          "checked": 27,
+          "maxDeltaE": 20.62,
+          "perComponent": [
+            {
+              "componentId": null,
+              "deltaE": 12.52
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.52
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.52
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.52
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.52
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.52
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.52
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.52
+            },
+            {
+              "componentId": null,
+              "deltaE": 20.62
+            },
+            {
+              "componentId": null,
+              "deltaE": 8.81
+            },
+            {
+              "componentId": null,
+              "deltaE": 8.81
+            },
+            {
+              "componentId": null,
+              "deltaE": 20.62
+            },
+            {
+              "componentId": null,
+              "deltaE": 20.62
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.52
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.52
+            },
+            {
+              "componentId": null,
+              "deltaE": 7.32
+            },
+            {
+              "componentId": null,
+              "deltaE": 7.32
+            },
+            {
+              "componentId": null,
+              "deltaE": 5.57
+            },
+            {
+              "componentId": null,
+              "deltaE": 5.57
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.52
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.52
+            },
+            {
+              "componentId": null,
+              "deltaE": 7.32
+            },
+            {
+              "componentId": null,
+              "deltaE": 7.32
+            },
+            {
+              "componentId": null,
+              "deltaE": 5.57
+            },
+            {
+              "componentId": null,
+              "deltaE": 5.57
+            },
+            {
+              "componentId": null,
+              "deltaE": 7.32
+            },
+            {
+              "componentId": null,
+              "deltaE": 7.32
+            }
+          ],
+          "gated": false
+        }
+      },
+      "failures": [
+        "silhouette IoU 0.121 is below threshold 0.85",
+        "aspect-ratio delta 0.506 exceeds threshold 0.05",
+        "scale delta 0.286 exceeds threshold 0.08",
+        "blockout requires --map-stripped-render evidence"
+      ],
+      "maskWarnings": [
+        "render: 3.9% of foreground cells lie outside the largest connected blob and were excluded from the bounding box; if the subject really has separated parts in this projection, they are not being measured"
+      ],
+      "renderHash": "8f6db9385a746fe0",
+      "passId": "blockout"
+    },
+    {
+      "passed": false,
+      "checks": {
+        "silhouetteIoU": 0.3842,
+        "aspectRatioDelta": 0.0046,
+        "scaleDelta": 0.0804,
+        "bilateralSymmetryError": 0.0,
+        "colorDelta": {
+          "checked": 27,
+          "maxDeltaE": 32.45,
+          "perComponent": [
+            {
+              "componentId": null,
+              "deltaE": 32.45
+            },
+            {
+              "componentId": null,
+              "deltaE": 32.45
+            },
+            {
+              "componentId": null,
+              "deltaE": 32.45
+            },
+            {
+              "componentId": null,
+              "deltaE": 32.45
+            },
+            {
+              "componentId": null,
+              "deltaE": 32.45
+            },
+            {
+              "componentId": null,
+              "deltaE": 32.45
+            },
+            {
+              "componentId": null,
+              "deltaE": 32.45
+            },
+            {
+              "componentId": null,
+              "deltaE": 32.45
+            },
+            {
+              "componentId": null,
+              "deltaE": 29.28
+            },
+            {
+              "componentId": null,
+              "deltaE": 21.96
+            },
+            {
+              "componentId": null,
+              "deltaE": 21.96
+            },
+            {
+              "componentId": null,
+              "deltaE": 29.28
+            },
+            {
+              "componentId": null,
+              "deltaE": 29.28
+            },
+            {
+              "componentId": null,
+              "deltaE": 32.45
+            },
+            {
+              "componentId": null,
+              "deltaE": 32.45
+            },
+            {
+              "componentId": null,
+              "deltaE": 23.76
+            },
+            {
+              "componentId": null,
+              "deltaE": 23.76
+            },
+            {
+              "componentId": null,
+              "deltaE": 13.78
+            },
+            {
+              "componentId": null,
+              "deltaE": 13.78
+            },
+            {
+              "componentId": null,
+              "deltaE": 32.45
+            },
+            {
+              "componentId": null,
+              "deltaE": 32.45
+            },
+            {
+              "componentId": null,
+              "deltaE": 23.76
+            },
+            {
+              "componentId": null,
+              "deltaE": 23.76
+            },
+            {
+              "componentId": null,
+              "deltaE": 13.78
+            },
+            {
+              "componentId": null,
+              "deltaE": 13.78
+            },
+            {
+              "componentId": null,
+              "deltaE": 23.76
+            },
+            {
+              "componentId": null,
+              "deltaE": 23.76
+            }
+          ],
+          "gated": false
+        }
+      },
+      "failures": [
+        "silhouette IoU 0.384 is below threshold 0.85",
+        "scale delta 0.080 exceeds threshold 0.08"
+      ],
+      "maskWarnings": [
+        "render: image is not clearly isolated from background; using most pixels as material evidence"
+      ],
+      "renderHash": "70ab75af156c7700",
+      "passId": "blockout",
+      "mapStrippedRender": "docs/3d/img2threejs/english-setter/renders/refined/side-dog-profile.png"
+    },
+    {
+      "passed": false,
+      "checks": {
+        "silhouetteIoU": 0.1813,
+        "aspectRatioDelta": 0.2681,
+        "scaleDelta": 0.7071,
+        "bilateralSymmetryError": 0.0692,
+        "colorDelta": {
+          "checked": 27,
+          "maxDeltaE": 23.0,
+          "perComponent": [
+            {
+              "componentId": null,
+              "deltaE": 15.22
+            },
+            {
+              "componentId": null,
+              "deltaE": 15.22
+            },
+            {
+              "componentId": null,
+              "deltaE": 15.22
+            },
+            {
+              "componentId": null,
+              "deltaE": 15.22
+            },
+            {
+              "componentId": null,
+              "deltaE": 15.22
+            },
+            {
+              "componentId": null,
+              "deltaE": 15.22
+            },
+            {
+              "componentId": null,
+              "deltaE": 15.22
+            },
+            {
+              "componentId": null,
+              "deltaE": 15.22
+            },
+            {
+              "componentId": null,
+              "deltaE": 23.0
+            },
+            {
+              "componentId": null,
+              "deltaE": 11.31
+            },
+            {
+              "componentId": null,
+              "deltaE": 11.31
+            },
+            {
+              "componentId": null,
+              "deltaE": 23.0
+            },
+            {
+              "componentId": null,
+              "deltaE": 23.0
+            },
+            {
+              "componentId": null,
+              "deltaE": 15.22
+            },
+            {
+              "componentId": null,
+              "deltaE": 15.22
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.47
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.47
+            },
+            {
+              "componentId": null,
+              "deltaE": 15.22
+            },
+            {
+              "componentId": null,
+              "deltaE": 15.22
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.47
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.47
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            }
+          ],
+          "gated": false
+        }
+      },
+      "failures": [
+        "silhouette IoU 0.181 is below threshold 0.85",
+        "aspect-ratio delta 0.268 exceeds threshold 0.05",
+        "scale delta 0.707 exceeds threshold 0.08"
+      ],
+      "maskWarnings": [],
+      "renderHash": "8941ab32250984f3",
+      "passId": "blockout",
+      "mapStrippedRender": "docs/3d/img2threejs/english-setter/renders/refined/review-dog-side-profile.png"
+    },
+    {
+      "passed": false,
+      "checks": {
+        "silhouetteIoU": 0.3044,
+        "aspectRatioDelta": 0.3813,
+        "scaleDelta": 0.3543,
+        "bilateralSymmetryError": 0.2047,
+        "colorDelta": {
+          "checked": 27,
+          "maxDeltaE": 30.88,
+          "perComponent": [
+            {
+              "componentId": null,
+              "deltaE": 13.64
+            },
+            {
+              "componentId": null,
+              "deltaE": 13.64
+            },
+            {
+              "componentId": null,
+              "deltaE": 13.64
+            },
+            {
+              "componentId": null,
+              "deltaE": 13.64
+            },
+            {
+              "componentId": null,
+              "deltaE": 13.64
+            },
+            {
+              "componentId": null,
+              "deltaE": 13.64
+            },
+            {
+              "componentId": null,
+              "deltaE": 13.64
+            },
+            {
+              "componentId": null,
+              "deltaE": 13.64
+            },
+            {
+              "componentId": null,
+              "deltaE": 30.88
+            },
+            {
+              "componentId": null,
+              "deltaE": 18.4
+            },
+            {
+              "componentId": null,
+              "deltaE": 18.4
+            },
+            {
+              "componentId": null,
+              "deltaE": 30.88
+            },
+            {
+              "componentId": null,
+              "deltaE": 30.88
+            },
+            {
+              "componentId": null,
+              "deltaE": 13.64
+            },
+            {
+              "componentId": null,
+              "deltaE": 13.64
+            },
+            {
+              "componentId": null,
+              "deltaE": 5.5
+            },
+            {
+              "componentId": null,
+              "deltaE": 5.5
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.97
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.97
+            },
+            {
+              "componentId": null,
+              "deltaE": 13.64
+            },
+            {
+              "componentId": null,
+              "deltaE": 13.64
+            },
+            {
+              "componentId": null,
+              "deltaE": 5.5
+            },
+            {
+              "componentId": null,
+              "deltaE": 5.5
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.97
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.97
+            },
+            {
+              "componentId": null,
+              "deltaE": 5.5
+            },
+            {
+              "componentId": null,
+              "deltaE": 5.5
+            }
+          ],
+          "gated": false
+        }
+      },
+      "failures": [
+        "silhouette IoU 0.304 is below threshold 0.85",
+        "aspect-ratio delta 0.381 exceeds threshold 0.05",
+        "scale delta 0.354 exceeds threshold 0.08"
+      ],
+      "maskWarnings": [],
+      "renderHash": "a3855e557c8b2354",
+      "passId": "blockout",
+      "mapStrippedRender": "docs/3d/img2threejs/english-setter/renders/refined/review-dog-neutral-profile-aligned.png"
+    }
+  ]
+}

@@ -29,11 +29,29 @@ describe('breed configs', () => {
       const total = Object.values(b.stats).reduce((a, c) => a + c, 0);
       expect(total).toBeLessThanOrEqual(21); // no strictly-dominant breed
       expect(b.xpRate).toBeGreaterThan(0);
+      expect(b.motion.runStride).toBeGreaterThanOrEqual(0.85);
+      expect(b.motion.runStride).toBeLessThanOrEqual(1.15);
+      expect(b.motion.huntSurge).toBeGreaterThanOrEqual(0);
+      expect(b.motion.huntSurge).toBeLessThanOrEqual(0.2);
+      expect(b.motion.surgeHz).toBeGreaterThan(0);
+      expect(b.motion.searchLooseness).toBeGreaterThanOrEqual(0);
+      expect(b.motion.searchLooseness).toBeLessThanOrEqual(1);
+      expect(b.motion.verticalMotion).toBeGreaterThanOrEqual(0.65);
+      expect(b.motion.verticalMotion).toBeLessThanOrEqual(1.15);
     }
   });
 
   it('covers all 11 planned breeds', () => {
     expect(BREEDS).toHaveLength(11);
+  });
+
+  it('keeps the English Pointer faster and more explosive than the Setter', () => {
+    const pointer = getBreed('english-pointer');
+    const setter = getBreed('english-setter');
+    expect(pointer.stats.speed).toBeGreaterThan(setter.stats.speed);
+    expect(pointer.motion.runStride).toBeGreaterThan(setter.motion.runStride);
+    expect(pointer.motion.huntSurge).toBeGreaterThan(setter.motion.huntSurge);
+    expect(getBreed('gsp').motion.verticalMotion).toBeLessThan(setter.motion.verticalMotion);
   });
 });
 

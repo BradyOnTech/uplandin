@@ -1,0 +1,143 @@
+{
+  "sourceImage": "docs/3d/reference/english-setter/standing-profile.jpg",
+  "zonesDir": "docs/3d/img2threejs/english-setter/detail-zones",
+  "detailInventory": {
+    "scanMethod": "component-zones",
+    "targetMinDetails": 10,
+    "details": [
+      {
+        "id": "head-parallel-planes",
+        "kind": "contour",
+        "description": "Skull roof, muzzle roof and jaw line read as long near-parallel planes in profile.",
+        "region": { "x": 0.0, "y": 0.08, "width": 0.3, "height": 0.5, "units": "normalized" },
+        "scale": "meso",
+        "affects": "head silhouette and breed identity",
+        "mapsTo": { "type": "component.localFeatures", "ref": "head/head-planes" },
+        "evidenceRef": "detail-zones/head-neck.png",
+        "confidence": 0.95
+      },
+      {
+        "id": "square-muzzle-flews",
+        "kind": "contour",
+        "description": "Long deep muzzle ends in a dark nose and a pendant squared lower-flew step.",
+        "region": { "x": 0.0, "y": 0.08, "width": 0.18, "height": 0.28, "units": "normalized" },
+        "scale": "meso",
+        "affects": "muzzle volume and lower profile",
+        "mapsTo": { "type": "component.localFeatures", "ref": "head/flews" },
+        "evidenceRef": "detail-zones/head-neck.png",
+        "confidence": 0.92
+      },
+      {
+        "id": "low-dropped-ear",
+        "kind": "contour",
+        "description": "Ear root sits low and rearward; the flap hangs close with a rounded feathered tip.",
+        "region": { "x": 0.12, "y": 0.08, "width": 0.16, "height": 0.32, "units": "normalized" },
+        "scale": "meso",
+        "affects": "front and three-quarter silhouette",
+        "mapsTo": { "type": "component.localFeatures", "ref": "ear-l/ear-drop" },
+        "evidenceRef": "detail-zones/head-neck.png",
+        "confidence": 0.9
+      },
+      {
+        "id": "neck-shoulder-flow",
+        "kind": "contour",
+        "description": "Long tapered neck widens into a laid-back shoulder without a cylindrical neck-on-box break.",
+        "region": { "x": 0.16, "y": 0.18, "width": 0.22, "height": 0.45, "units": "normalized" },
+        "scale": "macro",
+        "affects": "neck, withers and forequarter continuity",
+        "mapsTo": { "type": "component.localFeatures", "ref": "neck/shoulder-flow" },
+        "evidenceRef": "detail-zones/head-neck.png",
+        "confidence": 0.88
+      },
+      {
+        "id": "deep-brisket",
+        "kind": "contour",
+        "description": "Forechest projects slightly and the brisket drops to the elbow before sweeping into the abdomen.",
+        "region": { "x": 0.18, "y": 0.28, "width": 0.28, "height": 0.52, "units": "normalized" },
+        "scale": "macro",
+        "affects": "chest depth and negative space behind forelegs",
+        "mapsTo": { "type": "component.localFeatures", "ref": "torso/brisket" },
+        "evidenceRef": "detail-zones/forequarters.png",
+        "confidence": 0.94
+      },
+      {
+        "id": "straight-foreleg",
+        "kind": "contour",
+        "description": "Standing foreleg forms a straight load-bearing column with a short slightly sloped pastern.",
+        "region": { "x": 0.25, "y": 0.48, "width": 0.16, "height": 0.48, "units": "normalized" },
+        "scale": "meso",
+        "affects": "foreleg articulation and planting",
+        "mapsTo": { "type": "component.localFeatures", "ref": "fore-leg-l/straight-fore" },
+        "evidenceRef": "detail-zones/forequarters.png",
+        "confidence": 0.92
+      },
+      {
+        "id": "moderate-tuck",
+        "kind": "contour",
+        "description": "Long ribcage narrows through a moderate abdominal tuck before the rounded pelvis.",
+        "region": { "x": 0.45, "y": 0.42, "width": 0.28, "height": 0.32, "units": "normalized" },
+        "scale": "macro",
+        "affects": "torso-to-loin silhouette",
+        "mapsTo": { "type": "component.localFeatures", "ref": "torso/tuck" },
+        "evidenceRef": "detail-zones/torso.png",
+        "confidence": 0.9
+      },
+      {
+        "id": "belly-feather-notches",
+        "kind": "contour",
+        "description": "A small number of downward hard-edged feather locks interrupt the belly line without hiding the tuck.",
+        "region": { "x": 0.38, "y": 0.55, "width": 0.4, "height": 0.24, "units": "normalized" },
+        "scale": "micro",
+        "affects": "underside silhouette and setter coat identity",
+        "mapsTo": { "type": "component.localFeatures", "ref": "belly-feather/belly-notches" },
+        "evidenceRef": "detail-zones/torso.png",
+        "confidence": 0.86
+      },
+      {
+        "id": "angled-hock",
+        "kind": "contour",
+        "description": "Broad thigh turns through a forward stifle and rearward hock into a near-vertical rear pastern.",
+        "region": { "x": 0.66, "y": 0.44, "width": 0.22, "height": 0.5, "units": "normalized" },
+        "scale": "meso",
+        "affects": "hindquarter silhouette and gait mechanics",
+        "mapsTo": { "type": "component.localFeatures", "ref": "hind-leg-l/hock-angle" },
+        "evidenceRef": "detail-zones/hindquarters.png",
+        "confidence": 0.9
+      },
+      {
+        "id": "rear-feather-locks",
+        "kind": "contour",
+        "description": "Notched feather masses hang from the rear thigh while leaving the hock readable.",
+        "region": { "x": 0.64, "y": 0.42, "width": 0.2, "height": 0.4, "units": "normalized" },
+        "scale": "micro",
+        "affects": "rear silhouette",
+        "mapsTo": { "type": "component.localFeatures", "ref": "hind-feather-l/thigh-feather" },
+        "evidenceRef": "detail-zones/hindquarters.png",
+        "confidence": 0.84
+      },
+      {
+        "id": "straight-tail-flag",
+        "kind": "contour",
+        "description": "Tail continues the topline as a straight tapered shaft with a deep underside fringe and fine tip.",
+        "region": { "x": 0.8, "y": 0.22, "width": 0.2, "height": 0.45, "units": "normalized" },
+        "scale": "meso",
+        "affects": "tail length, carriage and point-pose silhouette",
+        "mapsTo": { "type": "component.localFeatures", "ref": "tail-flag/tail-fringe" },
+        "evidenceRef": "detail-zones/tail.png",
+        "confidence": 0.94
+      },
+      {
+        "id": "blue-belton-regions",
+        "kind": "linework",
+        "description": "Charcoal head/ear masses, broken flank flecks and sparse body ticks sit on a pale ground coat.",
+        "region": { "x": 0.0, "y": 0.08, "width": 1.0, "height": 0.85, "units": "normalized" },
+        "scale": "micro",
+        "affects": "vertex-color marking regions",
+        "mapsTo": { "type": "material.localOverrides", "ref": "coat/belton-markings" },
+        "evidenceRef": "../../reference/english-setter/working-blue-belton.jpg",
+        "confidence": 0.87
+      }
+    ]
+  },
+  "authoringInstruction": "All details are linked to concrete component local features or the coat marking override in the sculpt spec."
+}

@@ -1,0 +1,160 @@
+{
+  "model": "english-setter-live",
+  "specifiedComponents": 26,
+  "builtParts": 15,
+  "errors": 8,
+  "warnings": 12,
+  "result": "fail",
+  "findings": [
+    {
+      "check": "component-missing",
+      "severity": "error",
+      "subject": "shoulder-girdle",
+      "detail": "specified component 'shoulder-girdle' has no matching part in the built model, and its parent 'torso' is missing too"
+    },
+    {
+      "check": "component-missing",
+      "severity": "error",
+      "subject": "pelvis",
+      "detail": "specified component 'pelvis' has no matching part in the built model, and its parent 'torso' is missing too"
+    },
+    {
+      "check": "component-missing",
+      "severity": "error",
+      "subject": "muzzle",
+      "detail": "specified component 'muzzle' has no matching part in the built model, and its parent 'head' is missing too"
+    },
+    {
+      "check": "component-missing",
+      "severity": "error",
+      "subject": "nose",
+      "detail": "specified component 'nose' has no matching part in the built model, and its parent 'muzzle' is missing too"
+    },
+    {
+      "check": "component-missing",
+      "severity": "error",
+      "subject": "fore-paw-l",
+      "detail": "specified component 'fore-paw-l' has no matching part in the built model, and its parent 'fore-lower-l' is missing too"
+    },
+    {
+      "check": "component-missing",
+      "severity": "error",
+      "subject": "fore-paw-r",
+      "detail": "specified component 'fore-paw-r' has no matching part in the built model, and its parent 'fore-lower-r' is missing too"
+    },
+    {
+      "check": "component-missing",
+      "severity": "error",
+      "subject": "hind-paw-l",
+      "detail": "specified component 'hind-paw-l' has no matching part in the built model, and its parent 'hind-lower-l' is missing too"
+    },
+    {
+      "check": "component-missing",
+      "severity": "error",
+      "subject": "hind-paw-r",
+      "detail": "specified component 'hind-paw-r' has no matching part in the built model, and its parent 'hind-lower-r' is missing too"
+    },
+    {
+      "check": "detail-dangling",
+      "severity": "warning",
+      "subject": "head-parallel-planes",
+      "detail": "mapsTo 'head/head-planes' matches no component, localFeature or localOverride"
+    },
+    {
+      "check": "detail-dangling",
+      "severity": "warning",
+      "subject": "square-muzzle-flews",
+      "detail": "mapsTo 'head/flews' matches no component, localFeature or localOverride"
+    },
+    {
+      "check": "detail-dangling",
+      "severity": "warning",
+      "subject": "low-dropped-ear",
+      "detail": "mapsTo 'ear-l/ear-drop' matches no component, localFeature or localOverride"
+    },
+    {
+      "check": "detail-dangling",
+      "severity": "warning",
+      "subject": "neck-shoulder-flow",
+      "detail": "mapsTo 'neck/shoulder-flow' matches no component, localFeature or localOverride"
+    },
+    {
+      "check": "detail-dangling",
+      "severity": "warning",
+      "subject": "deep-brisket",
+      "detail": "mapsTo 'torso/brisket' matches no component, localFeature or localOverride"
+    },
+    {
+      "check": "detail-dangling",
+      "severity": "warning",
+      "subject": "straight-foreleg",
+      "detail": "mapsTo 'fore-leg-l/straight-fore' matches no component, localFeature or localOverride"
+    },
+    {
+      "check": "detail-dangling",
+      "severity": "warning",
+      "subject": "moderate-tuck",
+      "detail": "mapsTo 'torso/tuck' matches no component, localFeature or localOverride"
+    },
+    {
+      "check": "detail-dangling",
+      "severity": "warning",
+      "subject": "belly-feather-notches",
+      "detail": "mapsTo 'belly-feather/belly-notches' matches no component, localFeature or localOverride"
+    },
+    {
+      "check": "detail-dangling",
+      "severity": "warning",
+      "subject": "angled-hock",
+      "detail": "mapsTo 'hind-leg-l/hock-angle' matches no component, localFeature or localOverride"
+    },
+    {
+      "check": "detail-dangling",
+      "severity": "warning",
+      "subject": "rear-feather-locks",
+      "detail": "mapsTo 'hind-feather-l/thigh-feather' matches no component, localFeature or localOverride"
+    },
+    {
+      "check": "detail-dangling",
+      "severity": "warning",
+      "subject": "straight-tail-flag",
+      "detail": "mapsTo 'tail-flag/tail-fringe' matches no component, localFeature or localOverride"
+    },
+    {
+      "check": "detail-dangling",
+      "severity": "warning",
+      "subject": "blue-belton-regions",
+      "detail": "mapsTo 'coat/belton-markings' matches no component, localFeature or localOverride"
+    },
+    {
+      "check": "component-folded",
+      "severity": "info",
+      "subject": "eye-l",
+      "detail": "no mesh of its own \u2014 folded into 'head', which is built. Correct for relief; a real gap only if this needed to be separable."
+    },
+    {
+      "check": "component-folded",
+      "severity": "info",
+      "subject": "eye-r",
+      "detail": "no mesh of its own \u2014 folded into 'head', which is built. Correct for relief; a real gap only if this needed to be separable."
+    },
+    {
+      "check": "component-folded",
+      "severity": "info",
+      "subject": "belly-feather",
+      "detail": "no mesh of its own \u2014 folded into 'torso', which is built. Correct for relief; a real gap only if this needed to be separable."
+    },
+    {
+      "check": "component-folded",
+      "severity": "info",
+      "subject": "hind-feather-l",
+      "detail": "no mesh of its own \u2014 folded into 'hind-leg-l', which is built. Correct for relief; a real gap only if this needed to be separable."
+    },
+    {
+      "check": "part-not-specified",
+      "severity": "info",
+      "subject": "torso",
+      "detail": "built part has no matching component in the spec (fine for detail groups; a sign of spec drift for anything larger)"
+    }
+  ]
+}

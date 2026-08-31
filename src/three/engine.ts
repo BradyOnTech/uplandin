@@ -28,6 +28,8 @@ export interface Ctx {
   timeOfDay: TimeOfDay;
   /** Seconds since boot (render clock). */
   time: number;
+  /** Fraction from the previous fixed snapshot to the current one. */
+  fixedAlpha: number;
   get<T extends Subsystem>(id: string): T;
 }
 
@@ -79,6 +81,7 @@ export class Engine {
       quality,
       timeOfDay: 'dawn',
       time: 0,
+      fixedAlpha: 1,
       get<T extends Subsystem>(id: string): T {
         const s = self.byId.get(id);
         if (!s) throw new Error(`subsystem not registered: ${id}`);
@@ -116,6 +119,10 @@ export class Engine {
         this.accum -= FIXED_MS;
         for (const s of this.systems) s.fixedUpdate?.(this.ctx, FIXED_MS);
       }
+      // Presentation systems interpolate the authoritative 30 Hz snapshots
+      // at the display refresh rate. Without this, a 60/120 Hz screen shows
+      // the dog holding for one or three frames between every sim step.
+      this.ctx.fixedAlpha = this.accum / FIXED_MS;
       for (const s of this.systems) s.update?.(this.ctx, dt);
       this.ctx.renderer.render(this.ctx.scene, this.ctx.camera);
       requestAnimationFrame(frame);
@@ -125,6 +132,8 @@ export class Engine {
 
   /** Render exactly one frame now (capture tooling). */
   renderOnce(): void {
+    // Capture tooling asks for the exact latest deterministic sim snapshot.
+    this.ctx.fixedAlpha = 1;
     for (const s of this.systems) s.update?.(this.ctx, 1 / 60);
     this.ctx.renderer.render(this.ctx.scene, this.ctx.camera);
   }
