@@ -13,6 +13,33 @@ Two laws worth re-reading before tuning (from docs/DESIGN.md):
 - **Skill loads the dice, it never replaces them.** Player skill should
   shift distributions, not collapse them.
 
+## Shared drop points and 3D adapter
+
+`areas.ts` owns `dropPoints`, `trails`, `landmarks`, and the deterministic
+entry-cover rectangles. `DropPoint.safetyRadius` (48 yd today) feeds bird
+spawn exclusion directly; tune it there, not in a renderer. `state.ts` places
+the hunter at the selected drop, dogs 8 px into the covert and 5 px to either
+side, and the first covey at the closest entry cover to a point 62 px ahead.
+
+`hunt3d.ts` maps 1 sim px to `SIM_PX_TO_M` (0.9144 m), pinning the selected
+drop to the first-person camera start. Live dog presentation scales are
+`LIVE_DOG_MOVEMENT_SCALE` (run), `LIVE_DOG_TROT_SCALE`,
+`LIVE_DOG_TRACK_SCALE`, and `LIVE_DOG_STALK_SCALE`; `LIVE_DOG_RANGE_M` keeps
+the readable cast near the first-person player. The shared 40 px shot range
+remains a literal 40-yard gate. Shift supplies sprint pressure, Q supplies
+recall, and gear tier 3 removes whistle range.
+
+Rendered 3D flight is presentation-owned, but `recordFall()` writes the final
+world landing point back into the shared bird before the dog retrieves. Never
+move a downed mesh without updating that contract.
+
+`birds.ts` in the 3D adapter owns `BIRD_SHAPES`: family body/wing/tail/bill
+proportions. `birdVisualScale()` layers species `size` over those proportions;
+`RISE_SCALE` and `GROUNDED_SCALE` are the global readability tribute. Tune a
+family silhouette first, species scale second, global presentation scale last.
+For a frozen side-on review at ten meters, open 3D capture mode with
+`?capture=1&birdPreview=ringneck` (or any species id).
+
 ---
 
 ## The flush pipeline (how one rise is computed)

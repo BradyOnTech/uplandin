@@ -10,6 +10,7 @@ The shared seam now exists at `src/game/huntSimulation.ts` and both
 - dog bumps, birds scenting the dog, sprint spooks and pointed-bird nerve
 - proximity flushes, point credit and dog steadiness on the rise
 - retrieve credit plus authoritative downed/escaped shot outcomes
+- rendered-fall coordinates written back before shared retrieve behavior
 - rise finalization: doubles, downed-over-point credit and survivor relights
 
 The 2D `FlushScene` and the open-world 3D gun both resolve birds through the
@@ -36,7 +37,9 @@ shotgun pattern:
 - the dog enters the shared retrieve behavior after the rise; the grounded
   render disappears only when the shared bird becomes `retrieved`
 - a live HUD reports hidden birds, bag, losses, rise/shell status and retrieve
-  state, followed by a standalone end-of-hunt summary
+  state, followed by a career-aware end-of-hunt summary
+- sprint pressure, whistle/gear reach, early end-hunt, and two-dog braces use
+  the same shared inputs and work tallies as 2D
 
 The 2D adapter keeps its scene cut because that presentation is purpose-built
 for a readable 480×270 shooting gallery. The rule outcome is shared; the
@@ -60,9 +63,10 @@ The 3D hunt correctly reuses substantial 2D gameplay code today:
 - weather and wind multipliers
 - shot/flight math used by the 3D covey-rise presentation
 
-The live bird-finding bug was not missing dog logic. It was a world-adapter
-error: the sparse shared covert was mapped independently of the 3D player, so
-the nearest hidden bird was about 193 m from a normal walking lane.
+The original live bird-finding bug was a world-adapter error. It is now fixed
+structurally: the selected shared drop point is pinned to the 3D camera, all
+cover/landmarks retain their relative coordinates, and the same mapped entry
+cover supplies the opening covey in both renderers.
 
 ## Original gap assessment
 

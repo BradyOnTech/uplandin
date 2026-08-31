@@ -1,14 +1,15 @@
 # Uplandin
 
 A retro upland bird-hunting game. You raise a bird dog and work real coverts
-across a pixel continental US: top-down field view while the dog quarters and
-points, a Duck Hunt-style shooting view when a bird flushes in range. Built
-with TypeScript, Phaser 3, and Vite. Installable as a PWA: serve the
+across a continental US in either the original pixel presentation or an
+open-world low-poly 3D presentation. Both renderers run the same hunt, dog,
+bird, scoring, career, and progression simulation. Built with TypeScript,
+Phaser 3, Three.js, and Vite. Installable as a PWA: serve the
 production build over HTTPS, open it on your phone, and "Add to Home
 Screen" — it runs fullscreen landscape and boots from cache offline.
 
-**Status: the full design plan is shipped** — tranches T0 through T7, ~170
-unit tests green. The living spec is [docs/DESIGN.md](docs/DESIGN.md); this
+**Status: the full design plan plus shared 2D/3D hunting is shipped.** The
+living spec is [docs/DESIGN.md](docs/DESIGN.md); this
 README is the summary.
 
 ## Playing
@@ -27,6 +28,11 @@ Two modes from the title screen:
 - **Quick Hunt** — everything unlocked, nothing saved: pick any breed, level,
   covert, wind, weather, gun, gear, and an optional second dog. Doubles as
   the testing surface.
+
+The title screen also remembers a **2D / 3D** hunt preference. After choosing
+a covert, a shared terrain map shows cover, trails, landmarks, and two truck
+drop points. The selected truck, heading, dog spawn, and bird-free safety zone
+are the same in either renderer.
 
 Dev helpers: `?doglevel=N` on the URL runs career hunts at that dog level
 (save untouched); press `B` in the field to peek at hidden birds;
@@ -60,11 +66,17 @@ Dev helpers: `?doglevel=N` on the URL runs career hunts at that dog level
   twitter, grouse thunder.
 - **Season-aware birds**: naive young-of-year in September, educated
   survivors by December.
+- **Low-poly 3D families**: quail/partridge, long-tailed pheasant, broad
+  grouse/prairie chicken, and long-billed woodcock rigs. Species keep their
+  own size, palette, flight speed, wingbeat, glide, and grounded pose.
 
 ### The hunt
 - Per-area worlds bigger than the screen, seeded cover so every covert is
   the same ground each visit, camera on the hunter, sprint (loud), bird
   nerve vs. your walk-in.
+- Shared drop-point geography: park at a named gate/track, unload beside the
+  truck, and hunt into a mapped first piece of cover. Birds never spawn in
+  any vehicle safety zone.
 - **Wind** (direction + strength) shaping dog scent and bird spook, and
   **weather** (frost/hot/rain/snow) trading scent, holds, stamina, and
   marking.
@@ -97,8 +109,11 @@ Dev helpers: `?doglevel=N` on the URL runs career hunts at that dog level
   in named constants — **[docs/TUNING.md](docs/TUNING.md) maps every knob**,
   including the full flush-pipeline walkthrough. Covered by the Vitest
   suite in `test/`.
-- `src/scenes/` — thin Phaser scenes (title, breed, map, kennel, quick
-  setup, field, flush) that render and route input.
+- `src/scenes/` — thin Phaser scenes (title, breed, map, drop selection,
+  kennel, quick setup, field, flush) that render and route input.
+- `src/three/` — the Three.js adapter and low-poly presentation. Its player,
+  dog team, birds, gun, terrain, landmarks, and HUD consume the same shared
+  hunt state; a rendered fall is written back before retrieval begins.
 - 480×270 internal resolution, pixel-scaled; procedural WebAudio sound.
   Art arrives incrementally (`public/art/` + fallback maps in the scenes);
   the UI font is generated at boot from glyph data in `scenes/pixelFont.ts`.

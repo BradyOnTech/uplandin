@@ -1,8 +1,9 @@
 # Uplandin — Design Plan
 
 A retro upland bird-hunting game: you and your bird dog work real coverts across
-the country. Top-down field view while the dog hunts; Duck Hunt-style shooting
-view when a bird flushes in range. TypeScript + Phaser 3 + Vite, installable PWA.
+the country. Choose the pixel 2D presentation or open-world low-poly 3D; both
+are adapters over the same hunt. TypeScript + Phaser 3 + Three.js + Vite,
+installable PWA.
 
 This is the living spec. Sections are marked **[built]** or **[planned]**.
 Check items off (and adjust them) as tranches ship.
@@ -25,10 +26,11 @@ Check items off (and adjust them) as tranches ship.
 
 ## Core loop **[built]**
 
-1. Field view (top-down): dog quarters, scents, points. Tap to walk the hunter.
-2. Dog on point → bird nerve drains → walk in before the bird flushes wild.
-3. Bird flushes with hunter in range → shooting view: 2 shells, lead the bird.
-4. Dog retrieves downed birds. Hunt ends → summary → career records.
+1. Choose a named truck drop from a terrain map showing cover, trails, and landmarks.
+2. Field view (top-down or first-person 3D): dog quarters, scents, points.
+3. Dog on point → bird nerve drains → walk in before the bird flushes wild.
+4. Bird flushes with hunter in range → mount the gun, lead the bird.
+5. Dog retrieves downed birds. Hunt ends → summary → career records.
 
 ## Field layer
 
@@ -49,6 +51,11 @@ Check items off (and adjust them) as tranches ship.
   distance, silent on point. **[built]**
 - Bird stocking is density-per-area (`stocking` per 100k px²) so bigger
   worlds don't feel empty. **[built]**
+- Every area carries shared `dropPoints`, `trails`, and `landmarks`. The
+  pre-hunt map is generated from those same configs. Both renderers place the
+  hunter and brace beside the selected truck, face into the covert, and keep
+  birds outside every 48-yard vehicle safety zone. A mapped entry-cover patch
+  gives each walk-in a plausible first objective. **[built]**
 
 ## The dog
 
@@ -118,6 +125,13 @@ woodcock, sharptail, Hungarian partridge, chukar (fast runner; the flattest,
 fastest flush in the game — the downhill escape), greater prairie chicken,
 blue grouse (holder), and California, Gambel's, scaled (runner), Montezuma
 (tightest sitter, never runs), and mountain quail.
+
+The 3D presentation uses four modular code-native families on the existing
+flight rig: quail/partridge, pheasant, grouse/prairie chicken, and woodcock.
+Family geometry changes body proportions, wing planform, tail and bill; then
+species data supplies scale, palette, wingbeat and flight behavior. Ringneck
+hens use a muted color variant. Img2threejs remains an escalation path for an
+anatomical outlier only if visual review shows the modular silhouette is weak.
 
 Archetypes:
 
@@ -249,6 +263,9 @@ stays timeless.
   1–10, covert, and wind; everything unlocked, nothing saved to the career.
   Last quick setup is remembered. Doubles as the permanent testing surface.
 - Title screen, area select, career totals **[built]**.
+- Persistent 2D/3D renderer selection plus shared pre-hunt drop-point map
+  **[built]**. Renderer choice changes presentation only; career and Quick
+  Hunt setup remain one save and one simulation.
 - Continental-US travel map (`MapScene` → region area select) **[built]**:
   all 7 regions open (11 areas); home ground is free, the rest need the
   truck (hunter lv 2) — and the calendar decides what's in season.

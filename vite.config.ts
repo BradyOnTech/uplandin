@@ -9,7 +9,6 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         three: resolve(__dirname, 'index3d.html'),
-        setter: resolve(__dirname, 'english-setter-preview.html'),
       },
     },
   },

@@ -4,14 +4,31 @@
  * the background and apply on the next launch. Bump the version to force
  * a clean sweep of old caches.
  */
-const CACHE = 'uplandin-v1';
-const PRECACHE = ['./', './index.html', './manifest.webmanifest'];
+const CACHE = 'uplandin-v2';
+const PAGES = ['./index.html', './index3d.html'];
+const PRECACHE = ['./', './manifest.webmanifest'];
+
+async function precacheBuild() {
+  const cache = await caches.open(CACHE);
+  await cache.addAll(PRECACHE);
+  for (const page of PAGES) {
+    const response = await fetch(page);
+    if (!response.ok) throw new Error(`precache failed: ${page}`);
+    await cache.put(page, response.clone());
+    const html = await response.text();
+    const assets = [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
+      .map((match) => new URL(match[1], response.url))
+      .filter((url) => url.origin === location.origin);
+    await Promise.all(assets.map(async (url) => {
+      const asset = await fetch(url);
+      if (asset.ok) await cache.put(url, asset);
+    }));
+  }
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE)
-      .then((cache) => cache.addAll(PRECACHE))
+    precacheBuild()
       .then(() => self.skipWaiting()),
   );
 });
