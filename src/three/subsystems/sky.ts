@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { LandscapeModel } from '../../game/landscape';
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
 import { TOD, type TimeOfDay } from '../palette';
@@ -333,6 +334,61 @@ const RIDGE_SEGS = [1536, 1536, 640, 512] as const;
 const RIDGE_BOTTOM = -40;
 const TREE_COUNT = 190; // conifers around a serrated ring (~8-10 m spacing)
 
+interface RidgeProfile {
+  layers: typeof RIDGE_LAYERS;
+  features: ReadonlyArray<ReadonlyArray<RidgeFeature>>;
+  segments: readonly number[];
+  treeCount: number;
+  /** Fraction of hunter elevation carried into the distant skyline. */
+  verticalFollow?: number;
+}
+
+const DEFAULT_RIDGES: RidgeProfile = {
+  layers: RIDGE_LAYERS,
+  features: RIDGE_FEATURES,
+  segments: RIDGE_SEGS,
+  treeCount: TREE_COUNT,
+};
+
+const CHUKAR_RIDGES: RidgeProfile = {
+  layers: [
+    { radius: 255, base: 1, amp: 32, far: 0, fogMix: 0.02, hazeAmt: 0.3, jag: 0.08, freqs: [3, 7, 17], noiseScale: 0.72, land: true },
+    { radius: 350, base: 15, amp: 52, far: 0.12, fogMix: 0.08, hazeAmt: 0.5, jag: 0.12, freqs: [3, 8, 21], noiseScale: 0.78 },
+    { radius: 515, base: 27, amp: 76, far: 0.52, fogMix: 0.15, hazeAmt: 0.76, jag: 0.18, freqs: [4, 9, 23], noiseScale: 0.62 },
+    { radius: 735, base: 40, amp: 105, far: 0.72, fogMix: 0.22, hazeAmt: 0.94, jag: 0.2, freqs: [3, 7, 19], noiseScale: 0.55 },
+  ],
+  features: [
+    [{ c: -28, h: 0.75, sl: 28, sr: 38 }, { c: 78, h: 0.62, sl: 32, sr: 25 }, { c: 168, h: 0.58, sl: 30, sr: 34 }],
+    [{ c: -34, h: 0.85, sl: 25, sr: 34 }, { c: 52, h: 0.72, sl: 28, sr: 36 }, { c: 146, h: 0.68, sl: 26, sr: 32 }],
+    [{ c: -58, h: 0.72, sl: 30, sr: 44 }, { c: 38, h: 0.64, sl: 35, sr: 28 }, { c: 138, h: 0.7, sl: 32, sr: 42 }],
+    [{ c: -80, h: 0.62, sl: 42, sr: 55 }, { c: 20, h: 0.7, sl: 45, sr: 58 }, { c: 126, h: 0.65, sl: 40, sr: 52 }],
+  ],
+  segments: [1024, 896, 640, 512],
+  treeCount: 0,
+  verticalFollow: 0.72,
+};
+
+const PHEASANT_RIDGES: RidgeProfile = {
+  layers: [
+    { radius: 260, base: -1.5, amp: 4, far: 0, fogMix: 0.02, hazeAmt: 0.3, jag: 0.02, freqs: [3, 8, 19], noiseScale: 0.5, land: true },
+    { radius: 390, base: 2, amp: 6, far: 0.22, fogMix: 0.12, hazeAmt: 0.58, jag: 0.03, freqs: [2, 7, 17], noiseScale: 0.48 },
+    { radius: 560, base: 4, amp: 9, far: 0.62, fogMix: 0.2, hazeAmt: 0.78, jag: 0.04, freqs: [3, 6, 15], noiseScale: 0.42 },
+  ],
+  features: [
+    [{ c: -20, h: 0.5, sl: 55, sr: 65 }, { c: 118, h: 0.4, sl: 60, sr: 50 }],
+    [{ c: 25, h: 0.44, sl: 62, sr: 70 }, { c: 160, h: 0.38, sl: 58, sr: 66 }],
+    [{ c: -75, h: 0.48, sl: 70, sr: 82 }, { c: 75, h: 0.42, sl: 74, sr: 65 }],
+  ],
+  segments: [768, 640, 512],
+  treeCount: 0,
+};
+
+function ridgeProfileFor(landscape?: LandscapeModel): RidgeProfile {
+  if (landscape?.area.id === 'chukar-ridge') return CHUKAR_RIDGES;
+  if (landscape?.area.id === 'pheasant-coverts') return PHEASANT_RIDGES;
+  return DEFAULT_RIDGES;
+}
+
 /** Deterministic integer hash -> [0,1). */
 function hash01(i: number, seed: number): number {
   let h = (Math.imul(i, 374761393) + Math.imul(seed | 0, 668265263)) | 0;
@@ -372,6 +428,11 @@ export class SkySystem implements Subsystem {
   private keyDir = new THREE.Vector3(0, 1, 0);
   private fillDir = new THREE.Vector3(0, 1, 0);
   private fwd = new THREE.Vector3();
+  private readonly ridgeProfile: RidgeProfile;
+
+  constructor(landscape?: LandscapeModel) {
+    this.ridgeProfile = ridgeProfileFor(landscape);
+  }
 
   init(ctx: Ctx): void {
     this.mat = new THREE.ShaderMaterial({
@@ -466,9 +527,9 @@ export class SkySystem implements Subsystem {
    */
   private buildRidges(ctx: Ctx): void {
     const rng = mulberry32(0x51d9e5);
-    for (let l = 0; l < RIDGE_LAYERS.length; l++) {
-      const layer = RIDGE_LAYERS[l];
-      const SEG = RIDGE_SEGS[l];
+    for (let l = 0; l < this.ridgeProfile.layers.length; l++) {
+      const layer = this.ridgeProfile.layers[l];
+      const SEG = this.ridgeProfile.segments[l];
       const [f1, f2, f3] = layer.freqs;
       const s1 = (rng() * 0x7fffffff) | 0;
       const s2 = (rng() * 0x7fffffff) | 0;
@@ -477,7 +538,7 @@ export class SkySystem implements Subsystem {
       // Authored features with a whisper of deterministic jitter so the
       // profile never reads mathematically placed.
       const peaks: Array<{ c: number; h: number; sl: number; sr: number }> = [];
-      for (const f of RIDGE_FEATURES[l]) {
+      for (const f of this.ridgeProfile.features[l]) {
         peaks.push({
           c: THREE.MathUtils.degToRad(f.c + (rng() - 0.5) * 3),
           h: layer.amp * f.h * (0.94 + rng() * 0.12),
@@ -529,10 +590,11 @@ export class SkySystem implements Subsystem {
         let treeFrac = 0;
         let treeBase = 0;
         if (layer.trees) {
-          const u = (theta / (Math.PI * 2)) * TREE_COUNT + treePhase * TREE_COUNT;
+          const treeCount = this.ridgeProfile.treeCount;
+          const u = (theta / (Math.PI * 2)) * treeCount + treePhase * treeCount;
           const ui = Math.floor(u);
           const f = u - ui;
-          const uiw = ((ui % TREE_COUNT) + TREE_COUNT) % TREE_COUNT; // seam-safe
+          const uiw = treeCount > 0 ? ((ui % treeCount) + treeCount) % treeCount : 0; // seam-safe
           const cluster = ringNoise(theta, 11, sCluster);
           if (cluster > 0.36 && hash01(uiw, sTree) > 0.12) {
             const wvar = 0.5 + 0.85 * hash01(uiw, sTreeW);
@@ -674,11 +736,11 @@ export class SkySystem implements Subsystem {
     const sunFlatLen = Math.hypot(sx, sz) || 1;
     for (let l = 0; l < this.ridgeMats.length; l++) {
       const ru = this.ridgeMats[l].uniforms;
-      if (RIDGE_LAYERS[l].land) {
+      if (this.ridgeProfile.layers[l].land) {
         // THE BENCH: its own hue (TOD.landform), sunk into the scene fog at
         // its radius so it reads as a mass IN the field's atmosphere — the
         // haze step between the fence line and the ridge stack.
-        const d = RIDGE_LAYERS[l].radius;
+        const d = this.ridgeProfile.layers[l].radius;
         const ff = 1 - Math.exp(-(spec.fogDensity * d) * (spec.fogDensity * d));
         this.ridgeBase.setHex(spec.landform);
         (ru.uCol.value as THREE.Color)
@@ -689,16 +751,16 @@ export class SkySystem implements Subsystem {
         this.ridgeFar.setHex(spec.ridgeFar);
         (ru.uCol.value as THREE.Color)
           .copy(this.ridgeBase)
-          .lerp(this.ridgeFar, RIDGE_LAYERS[l].far)
-          .lerp(this.fogCol, RIDGE_LAYERS[l].fogMix);
+          .lerp(this.ridgeFar, this.ridgeProfile.layers[l].far)
+          .lerp(this.fogCol, this.ridgeProfile.layers[l].fogMix);
       }
       (ru.uHaze.value as THREE.Color).copy(this.hazeCol);
       (ru.uSpill.value as THREE.Color).setHex(spec.hotBand);
-      ru.uSpillStrength.value = spec.hotStrength * 0.55 * (1 - 0.55 * RIDGE_LAYERS[l].far);
+      ru.uSpillStrength.value = spec.hotStrength * 0.55 * (1 - 0.55 * this.ridgeProfile.layers[l].far);
       (ru.uSunXZ.value as THREE.Vector2).set(sx / sunFlatLen, sz / sunFlatLen);
       // Per-TOD haze boost: stronger amount AND slower vertical decay, so
       // dusk ranges melt into the afterglow instead of cutting navy wedges.
-      const layer = RIDGE_LAYERS[l];
+      const layer = this.ridgeProfile.layers[l];
       ru.uHazeAmt.value = Math.min(0.95, layer.hazeAmt * spec.ridgeHazeBoost);
       ru.uHazeK.value = 3.0 / ((layer.base + 0.5 * layer.amp) * spec.ridgeHazeBoost);
     }
@@ -711,7 +773,11 @@ export class SkySystem implements Subsystem {
     // The dome and ridge rings ride the camera so the horizon never recedes.
     this.dome.position.copy(ctx.camera.position);
     for (let l = 0; l < this.ridges.length; l++) {
-      this.ridges[l].position.set(ctx.camera.position.x, 0, ctx.camera.position.z);
+      this.ridges[l].position.set(
+        ctx.camera.position.x,
+        ctx.camera.position.y * (this.ridgeProfile.verticalFollow ?? 0),
+        ctx.camera.position.z,
+      );
     }
     // Light rig follows the camera: the shadow frustum is centered a bit
     // ahead of the view so midground casters (groves at 60-120 m on the

@@ -48,14 +48,13 @@ const coatId = visualBreed === 'gsp'
 const canvas = document.getElementById('game3d') as HTMLCanvasElement;
 const engine = new Engine(canvas, quality);
 
-engine.register(new SkySystem());
+engine.register(new SkySystem(landscape));
 engine.register(new TerrainSystem(landscape));
 // Player first: hunt3d frames the opening covey from the player's authored
 // spawn heading. It still precedes grass, which reads the hunt's cover map.
 engine.register(new PlayerSystem());
 engine.register(new Hunt3DSystem(landscape));
-engine.register(landscapeVisuals.cover);
-engine.register(landscapeVisuals.flora);
+for (const system of landscapeVisuals.systems) engine.register(system);
 engine.register(new LandmarksSystem());
 engine.register(new DogSystem(visualBreed, coatId));
 if (launchProfile.brace) {

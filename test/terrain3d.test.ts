@@ -66,9 +66,9 @@ describe('shared property landscape', () => {
     let prairieSlope = 0;
 
     for (const [x, z] of points) {
-      const sample = chukar.surfaceAtWorld(x, z, { height: 0, slope: 0, rockiness: 0, vegetation: 0 });
-      const repeat = rebuilt.surfaceAtWorld(x, z, { height: 0, slope: 0, rockiness: 0, vegetation: 0 });
-      const flat = prairie.surfaceAtWorld(x, z, { height: 0, slope: 0, rockiness: 0, vegetation: 0 });
+      const sample = chukar.surfaceAtWorld(x, z, { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 });
+      const repeat = rebuilt.surfaceAtWorld(x, z, { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 });
+      const flat = prairie.surfaceAtWorld(x, z, { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 });
       expect(sample).toEqual(repeat);
       expect(sample.rockiness).toBeGreaterThanOrEqual(0);
       expect(sample.rockiness).toBeLessThanOrEqual(1);
@@ -88,8 +88,32 @@ describe('shared property landscape', () => {
     const property = { x: 610, y: 355 };
     const southWorld = south.propertyToWorld(property.x, property.y, { x: 0, z: 0 });
     const westWorld = west.propertyToWorld(property.x, property.y, { x: 0, z: 0 });
-    const a = south.surfaceAtWorld(southWorld.x, southWorld.z, { height: 0, slope: 0, rockiness: 0, vegetation: 0 });
-    const b = west.surfaceAtWorld(westWorld.x, westWorld.z, { height: 0, slope: 0, rockiness: 0, vegetation: 0 });
+    const a = south.surfaceAtWorld(southWorld.x, southWorld.z, { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 });
+    const b = west.surfaceAtWorld(westWorld.x, westWorld.z, { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 });
     expect(a).toEqual(b);
+  });
+
+  it('authors prairie potholes as shared wet basins at mapped landmarks', () => {
+    const area = getArea('pheasant-coverts');
+    const south = new LandscapeModel(area, 'south-gate');
+    const west = new LandscapeModel(area, 'west-track');
+    const slough = area.landmarks.find((landmark) => landmark.id === 'south-slough');
+    expect(slough).toBeDefined();
+    if (!slough) return;
+
+    const atCenter = south.surfaceAtProperty(slough.position.x, slough.position.y, {
+      height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0,
+    });
+    const shoulder = south.surfaceAtProperty(slough.position.x + 70, slough.position.y, {
+      height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0,
+    });
+    const westWorld = west.propertyToWorld(slough.position.x, slough.position.y, { x: 0, z: 0 });
+    const throughWestDrop = west.surfaceAtWorld(westWorld.x, westWorld.z, {
+      height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0,
+    });
+
+    expect(atCenter.moisture).toBeGreaterThan(0.9);
+    expect(atCenter.height).toBeLessThan(shoulder.height - 1.5);
+    expect(throughWestDrop).toEqual(atCenter);
   });
 });

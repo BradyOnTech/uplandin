@@ -10,12 +10,20 @@ const MAT = {
   metal: new THREE.MeshStandardMaterial({ color: 0x9a9a8b, roughness: 0.85, flatShading: true }),
   wall: new THREE.MeshStandardMaterial({ color: 0x7f3828, roughness: 1, flatShading: true }),
   roof: new THREE.MeshStandardMaterial({ color: 0x3e332e, roughness: 1, flatShading: true }),
+  barnWood: new THREE.MeshStandardMaterial({ color: 0x6a645a, roughness: 1, flatShading: true, emissive: 0x39352f, emissiveIntensity: 0.16 }),
+  barnWoodLight: new THREE.MeshStandardMaterial({ color: 0x817666, roughness: 1, flatShading: true, emissive: 0x463f36, emissiveIntensity: 0.18 }),
+  barnVoid: new THREE.MeshBasicMaterial({ color: 0x171816 }),
   water: new THREE.MeshStandardMaterial({ color: 0x4d8292, roughness: 0.4, transparent: true, opacity: 0.82 }),
   truck: new THREE.MeshStandardMaterial({ color: 0x345044, roughness: 0.9, flatShading: true }),
   tire: new THREE.MeshStandardMaterial({ color: 0x171916, roughness: 1 }),
 };
 
-function box(parent: THREE.Object3D, size: [number, number, number], pos: [number, number, number], material = MAT.wood): THREE.Mesh {
+function box(
+  parent: THREE.Object3D,
+  size: [number, number, number],
+  pos: [number, number, number],
+  material: THREE.Material = MAT.wood,
+): THREE.Mesh {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
   mesh.position.set(...pos);
   mesh.castShadow = true;
@@ -56,12 +64,17 @@ export class LandmarksSystem implements Subsystem {
       return root;
     }
     if (landmark.kind === 'barn') {
-      box(root, [7, 3.8, 5], [0, 1.9, 0], MAT.wall);
-      const roof = new THREE.Mesh(new THREE.ConeGeometry(4.6, 2.2, 4), MAT.roof);
-      roof.position.y = 4.7;
-      roof.rotation.y = Math.PI / 4;
-      roof.castShadow = true;
-      root.add(roof);
+      box(root, [14, 4.1, 5.8], [0, 2.05, 0], MAT.barnWood);
+      for (let i = -6; i <= 6; i++) {
+        box(root, [0.08, 4, 0.08], [i, 2.06, 2.94], i % 3 === 0 ? MAT.barnWoodLight : MAT.barnWood);
+      }
+      const leftRoof = box(root, [14.7, 0.24, 3.8], [0, 4.85, -1.55], MAT.roof);
+      leftRoof.rotation.x = -0.48;
+      const rightRoof = box(root, [14.7, 0.24, 3.8], [0, 4.85, 1.55], MAT.roof);
+      rightRoof.rotation.x = 0.48;
+      box(root, [2.5, 3, 0.1], [0, 1.5, 2.96], MAT.barnVoid);
+      box(root, [1.25, 1.15, 0.1], [-4.6, 2.4, 2.96], MAT.barnVoid);
+      box(root, [1.25, 1.15, 0.1], [4.6, 2.4, 2.96], MAT.barnVoid);
       return root;
     }
     if (landmark.kind === 'windmill') {

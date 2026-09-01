@@ -128,14 +128,43 @@ export class DropScene extends Phaser.Scene {
       gfx.lineBetween(MAP.x, y, MAP.x + MAP.w, y);
     }
 
+    // Authored habitat footprints: the same landmark anchors that carve the
+    // 3D basins become real water shapes on the survey map. This is the
+    // player's pre-hunt read of where the cattail edges actually are.
+    if (area.terrain.kind === 'wetland') {
+      for (const landmark of area.landmarks) {
+        const p = this.project(landmark.position.x, landmark.position.y);
+        if (landmark.kind === 'pond') {
+          const major = landmark.id !== 'area-feature';
+          const radiusX = major ? 10 : 7;
+          const radiusY = major ? 5.5 : 3.8;
+          gfx.fillStyle(0x243a34, 0.36).fillEllipse(p.x, p.y, radiusX * 2.35, radiusY * 2.5);
+          gfx.fillStyle(0x628f98, 0.78).fillEllipse(p.x, p.y, radiusX * 2, radiusY * 2);
+          gfx.lineStyle(1, 0xb9dbdc, 0.38).strokeEllipse(p.x, p.y, radiusX * 2, radiusY * 2);
+        } else if (landmark.kind === 'barn') {
+          gfx.fillStyle(0x2b2924, 0.9).fillRect(p.x - 5.5, p.y - 2.1, 11, 4.2);
+          gfx.lineStyle(1, 0xd7caa9, 0.45).strokeRect(p.x - 5.5, p.y - 2.1, 11, 4.2);
+        } else if (landmark.kind === 'fence') {
+          gfx.lineStyle(2.2, 0x161b18, 0.42).lineBetween(p.x - 22, p.y - 4, p.x + 22, p.y + 4);
+          gfx.lineStyle(0.8, 0xd7caa9, 0.62).lineBetween(p.x - 22, p.y - 4, p.x + 22, p.y + 4);
+        }
+      }
+    }
+
     // Cover is gameplay cover: these shapes are where scent and birds really live.
     for (const patch of area.patches) {
       const p = this.project(patch.x, patch.y);
       const width = Math.max(3, patch.w / area.world.w * MAP.w);
       const height = Math.max(2, patch.h / area.world.h * MAP.h);
-      gfx.fillStyle(0x08100b, 0.2).fillRoundedRect(p.x + 1, p.y + 1, width, height, 2);
-      gfx.fillStyle(mapCover, 0.88).fillRoundedRect(p.x, p.y, width, height, 2);
-      gfx.lineStyle(1, 0xe1d2a8, 0.12).strokeRoundedRect(p.x, p.y, width, height, 2);
+      if (area.terrain.kind === 'wetland') {
+        gfx.fillStyle(0x08100b, 0.18).fillEllipse(p.x + width / 2 + 1, p.y + height / 2 + 1, width, height);
+        gfx.fillStyle(mapCover, 0.7).fillEllipse(p.x + width / 2, p.y + height / 2, width, height);
+        gfx.lineStyle(1, 0xe1d2a8, 0.1).strokeEllipse(p.x + width / 2, p.y + height / 2, width, height);
+      } else {
+        gfx.fillStyle(0x08100b, 0.2).fillRoundedRect(p.x + 1, p.y + 1, width, height, 2);
+        gfx.fillStyle(mapCover, 0.88).fillRoundedRect(p.x, p.y, width, height, 2);
+        gfx.lineStyle(1, 0xe1d2a8, 0.12).strokeRoundedRect(p.x, p.y, width, height, 2);
+      }
     }
 
     // Tracks get a dark casing and cream center so they remain legible over cover.

@@ -47,6 +47,8 @@ interface LandformAdapter {
     z: number,
     height: number,
     slope: number,
+    gradeX: number,
+    gradeZ: number,
     noise: Noise2D,
     out: GroundSample,
   ): void;
@@ -56,10 +58,15 @@ export interface GroundSample {
   height: number;
   /** Rise over run at the query point. */
   slope: number;
+  /** Signed east/west and north/south rise over run. */
+  gradeX: number;
+  gradeZ: number;
   /** 0 = soil/grass, 1 = exposed face or concentrated scree. */
   rockiness: number;
   /** 0 = barren, 1 = strongest local plant establishment. */
   vegetation: number;
+  /** 0 = dry ground, 1 = pond/slough edge. */
+  moisture: number;
 }
 
 const ROLLING_LANDFORM: LandformAdapter = {
@@ -74,11 +81,12 @@ const ROLLING_LANDFORM: LandformAdapter = {
       + profile.baseHeight
       + grade;
   },
-  surfaceAt(x, z, _height, slope, noise, out) {
+  surfaceAt(x, z, _height, slope, _gradeX, _gradeZ, noise, out) {
     const fertility = noise(x * 0.055 + 40, z * 0.055 + 40) * 0.62
       + noise(x * 0.16 + 700, z * 0.16 + 700) * 0.38;
     out.rockiness = Math.max(0, Math.min(1, (slope - 0.42) * 1.8));
     out.vegetation = Math.max(0, Math.min(1, fertility - out.rockiness * 0.65));
+    out.moisture = Math.max(0, Math.min(1, 0.18 + (0.46 - fertility) * 0.45));
   },
 };
 
@@ -93,18 +101,20 @@ const RIMROCK_LANDFORM: LandformAdapter = {
     const u = x * 0.86 + z * 0.5;
     const v = -x * 0.5 + z * 0.86;
     const broad = (noise(u * 0.0025 + 170, v * 0.0025 + 170) - 0.5)
-      * profile.broadRelief * 1.9;
+      * profile.broadRelief * 2.35;
     const folds = (noise(u * 0.007 + 940, v * 0.004 + 940) - 0.5)
-      * profile.rollingRelief * 2.25;
+      * profile.rollingRelief * 2.75;
     const ribs = Math.pow(Math.abs(noise(u * 0.016 + 2700, v * 0.007 + 2700) - 0.5) * 2, 1.7)
       * profile.detailRelief * 2.1;
-    const grade = x * profile.gradeX * 0.12
-      + (z - HUNT_WORLD_ANCHOR.z) * profile.gradeZ * 0.12;
+    const grade = x * profile.gradeX * 0.17
+      + (z - HUNT_WORLD_ANCHOR.z) * profile.gradeZ * 0.17;
     const channel = u - 82 + Math.sin(v * 0.012) * 24;
-    const drainage = -19 * Math.exp(-(channel * channel) / (2 * 42 * 42));
-    return profile.baseHeight + broad + folds + ribs + grade + drainage;
+    const drainage = -34 * Math.exp(-(channel * channel) / (2 * 48 * 48));
+    const foldedBench = Math.sin(u * 0.011 + noise(v * 0.006 + 50, u * 0.004 + 50) * 2.8)
+      * profile.rollingRelief * 0.52;
+    return profile.baseHeight + broad + folds + ribs + grade + drainage + foldedBench;
   },
-  surfaceAt(x, z, height, slope, noise, out) {
+  surfaceAt(x, z, height, slope, _gradeX, _gradeZ, noise, out) {
     const geology = noise(x * 0.021 + 6100, z * 0.021 + 6100);
     const fractured = noise(x * 0.075 + 8300, z * 0.075 + 8300);
     const strata = 0.5 + Math.sin(height * 0.38 + geology * 3.4) * 0.5;
@@ -119,10 +129,51 @@ const RIMROCK_LANDFORM: LandformAdapter = {
     out.vegetation = Math.max(0, Math.min(1,
       0.22 + establishment * 0.78 - out.rockiness * 0.82 - Math.max(0, slope - 0.52) * 0.5,
     ));
+    out.moisture = Math.max(0, Math.min(1, 0.08 + (1 - establishment) * 0.16 - slope * 0.08));
   },
 };
 
-function landformFor(profile: AreaTerrainProfile): LandformAdapter {
+function pheasantLandform(area: AreaConfig): LandformAdapter {
+  const canonical = getDropPoint(area);
+  const ponds = area.landmarks
+    .filter((landmark) => landmark.kind === 'pond')
+    .map((landmark) => ({
+      x: (landmark.position.x - canonical.position.x) * PROPERTY_PX_TO_M + HUNT_WORLD_ANCHOR.x,
+      z: (landmark.position.y - canonical.position.y) * PROPERTY_PX_TO_M + HUNT_WORLD_ANCHOR.z,
+      rx: landmark.id === 'area-feature' ? 34 : 43,
+      rz: landmark.id === 'area-feature' ? 23 : 29,
+    }));
+  const wetnessAt = (x: number, z: number): number => {
+    let wetness = 0;
+    for (const pond of ponds) {
+      const d = Math.hypot((x - pond.x) / pond.rx, (z - pond.z) / pond.rz);
+      wetness = Math.max(wetness, Math.exp(-Math.pow(d, 3.2)));
+    }
+    return wetness;
+  };
+  return {
+    heightAt(x, z, profile, noise) {
+      const broad = (noise(x * 0.0024 + 170, z * 0.0024 + 170) - 0.5) * profile.broadRelief * 0.75;
+      const swales = (noise(x * 0.007 + 940, z * 0.005 + 940) - 0.5) * profile.rollingRelief * 0.8;
+      const hummocks = (noise(x * 0.035 + 2700, z * 0.035 + 2700) - 0.5) * profile.detailRelief * 0.75;
+      const dropDistance = Math.hypot(x, z - HUNT_WORLD_ANCHOR.z);
+      const dropRise = 2.4 * Math.exp(-(dropDistance * dropDistance) / (2 * 52 * 52));
+      return profile.baseHeight + broad + swales + hummocks + dropRise - wetnessAt(x, z) * 3.2;
+    },
+    surfaceAt(x, z, _height, slope, _gradeX, _gradeZ, noise, out) {
+      const wet = Math.max(wetnessAt(x, z), noise(x * 0.018 + 4400, z * 0.018 + 4400) * 0.28);
+      const fertility = noise(x * 0.028 + 360, z * 0.028 + 360) * 0.58
+        + noise(x * 0.095 + 1900, z * 0.095 + 1900) * 0.42;
+      out.rockiness = Math.max(0, Math.min(1, (slope - 0.26) * 0.5));
+      out.vegetation = Math.max(0, Math.min(1, 0.48 + fertility * 0.48 + wet * 0.28));
+      out.moisture = Math.max(0, Math.min(1, wet));
+    },
+  };
+}
+
+function landformFor(area: AreaConfig): LandformAdapter {
+  if (area.id === 'pheasant-coverts') return pheasantLandform(area);
+  const profile = area.terrain;
   return profile.kind === 'rimrock' ? RIMROCK_LANDFORM : ROLLING_LANDFORM;
 }
 
@@ -145,7 +196,7 @@ export class LandscapeModel {
     this.dropPoint = getDropPoint(area, dropPointId);
     this.canonicalDrop = getDropPoint(area);
     this.noise = makeNoise(area.terrain.seed);
-    this.landform = landformFor(area.terrain);
+    this.landform = landformFor(area);
   }
 
   /** Shared property pixels -> hunt-local world meters. Writes into out. */
@@ -213,7 +264,9 @@ export class LandscapeModel {
     ) / (step * 2);
     out.height = height;
     out.slope = Math.hypot(dx, dz);
-    this.landform.surfaceAt(x, z, height, out.slope, this.noise, out);
+    out.gradeX = dx;
+    out.gradeZ = dz;
+    this.landform.surfaceAt(x, z, height, out.slope, dx, dz, this.noise, out);
     return out;
   }
 }

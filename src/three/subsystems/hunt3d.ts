@@ -4,7 +4,7 @@ import { circleBack } from '../../game/birds';
 import { BREEDS, getBreed, type BreedMotion } from '../../game/breeds';
 import { loadCareer, saveCareer } from '../../game/career';
 import { Dog, type DogGait, type DogState } from '../../game/dog';
-import { conditionMults } from '../../game/conditions';
+import { conditionMults, type Condition } from '../../game/conditions';
 import { createThreeHuntSetup } from '../../game/gameplayMode';
 import { settleCareerHunt, type CareerHuntResult } from '../../game/huntResults';
 import {
@@ -501,6 +501,10 @@ export class Hunt3DSystem implements Subsystem {
 
   areaConfig(): AreaConfig {
     return this.area;
+  }
+
+  condition(): Condition {
+    return this.hunt.condition;
   }
 
   dropPoint(): DropPoint {

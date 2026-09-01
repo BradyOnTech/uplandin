@@ -62,7 +62,26 @@ uniform vec3 uCoolTint;
 uniform float uCoolK;
 uniform float uCloudShK;
 uniform float uCloudT;
+uniform vec3 uDetailDark;
+uniform vec3 uDetailLight;
+uniform float uDetailK;
+uniform float uStoneK;
+uniform float uWetK;
+uniform float uWetLine;
 varying vec3 vWPos;
+
+float groundHash(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+float groundNoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(groundHash(i), groundHash(i + vec2(1.0, 0.0)), f.x),
+             mix(groundHash(i + vec2(0.0, 1.0)), groundHash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
 `;
 
 // Round 5: the lobe is two-term — a broad wash plus a TIGHT bloom wedge
@@ -71,6 +90,17 @@ varying vec3 vWPos;
 // complement: everything the lobe does NOT claim grades toward the sky's
 // ambient (the lastlight violet shadow mass; ~0 in daylight).
 const DRENCH_FRAG = /* glsl */ `
+float gFine = groundNoise(vWPos.xz * 0.72);
+float gMeso = groundNoise(vWPos.xz * 0.105 + vec2(18.0, 41.0));
+float gMacro = groundNoise(vWPos.xz * 0.026 + vec2(73.0, 12.0));
+float gFibers = 0.5 + 0.5 * sin(vWPos.x * 2.4 + groundNoise(vWPos.xz * 0.18) * 5.0);
+float gDetail = clamp(gFine * 0.42 + gMeso * 0.38 + gMacro * 0.2, 0.0, 1.0);
+diffuseColor.rgb = mix(diffuseColor.rgb, mix(uDetailDark, uDetailLight, gDetail), uDetailK * (0.16 + 0.24 * gMeso));
+diffuseColor.rgb *= 0.91 + gFine * 0.16 + gFibers * 0.035 * uDetailK;
+float gStone = smoothstep(0.64, 0.9, gMeso * 0.72 + gFine * 0.28) * uStoneK;
+diffuseColor.rgb = mix(diffuseColor.rgb, uDetailLight, gStone * 0.22);
+float gWet = smoothstep(uWetLine + 1.4, uWetLine - 1.2, vWPos.y) * uWetK;
+diffuseColor.rgb = mix(diffuseColor.rgb, uDetailDark * vec3(0.72, 0.82, 0.78), gWet * (0.2 + gMeso * 0.16));
 vec2 gTo = vWPos.xz - cameraPosition.xz;
 float gD = length( gTo );
 float gAz = clamp( dot( gTo / max( gD, 1e-3 ), uSunXZ ), 0.0, 1.0 );
@@ -108,7 +138,7 @@ export class TerrainSystem implements Subsystem {
   private mesh?: THREE.Mesh;
   private skirt?: THREE.Mesh;
   private groundMat?: THREE.MeshLambertMaterial;
-  private surface: GroundSample = { height: 0, slope: 0, rockiness: 0, vegetation: 0 };
+  private surface: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
   // Drench uniforms (preallocated; shared by plate and skirt material).
   private drench = {
     uSunXZ: { value: new THREE.Vector2(1, 0) },
@@ -120,10 +150,28 @@ export class TerrainSystem implements Subsystem {
     uCoolK: { value: 0 },
     uCloudShK: { value: 0 },
     uCloudT: { value: 0 },
+    uDetailDark: { value: new THREE.Color(0x625038) },
+    uDetailLight: { value: new THREE.Color(0xb9a475) },
+    uDetailK: { value: 0.14 },
+    uStoneK: { value: 0 },
+    uWetK: { value: 0 },
+    uWetLine: { value: 0 },
   };
 
   constructor(private readonly landscape: LandscapeModel) {
     this.noise = makeNoise(landscape.area.terrain.seed);
+    if (landscape.area.id === 'chukar-ridge') {
+      this.drench.uDetailDark.value.setHex(0x584637);
+      this.drench.uDetailLight.value.setHex(0xc1aa7e);
+      this.drench.uDetailK.value = 0.48;
+      this.drench.uStoneK.value = 0.72;
+    } else if (landscape.area.id === 'pheasant-coverts') {
+      this.drench.uDetailDark.value.setHex(0x554625);
+      this.drench.uDetailLight.value.setHex(0xc8ae74);
+      this.drench.uDetailK.value = 0.52;
+      this.drench.uWetK.value = 0.78;
+      this.drench.uWetLine.value = landscape.area.terrain.baseHeight - 0.9;
+    }
   }
 
   /** Grass samples the identical paint field so ground and tufts agree. */
@@ -220,6 +268,11 @@ export class TerrainSystem implements Subsystem {
     const rimSage = new THREE.Color(P.rimrockSage);
     const rimLichen = new THREE.Color(P.rimrockLichen);
     const rimrock = this.landscape.area.terrain.kind === 'rimrock';
+    const pheasant = this.landscape.area.id === 'pheasant-coverts';
+    const prairieDry = new THREE.Color(0x9b7d48);
+    const prairiePale = new THREE.Color(0xc3aa75);
+    const prairieThatch = new THREE.Color(0x705a30);
+    const prairieWet = new THREE.Color(0x404832);
     const tmp = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
@@ -246,6 +299,24 @@ export class TerrainSystem implements Subsystem {
           tmp.lerp(rimLichen, (lichen - 0.74) * 0.85);
         }
         tmp.multiplyScalar(0.9 + geology * 0.18);
+        colors[i * 3] = tmp.r;
+        colors[i * 3 + 1] = tmp.g;
+        colors[i * 3 + 2] = tmp.b;
+        continue;
+      }
+
+      if (pheasant) {
+        const surface = this.landscape.surfaceAtWorld(x, z, this.surface);
+        const sweep = this.noise(x * 0.014 + 3100, z * 0.014 + 3100);
+        const litter = this.noise(x * 0.095 + 7400, z * 0.095 + 7400);
+        const stubble = this.noise(x * 0.31 + 12400, z * 0.12 + 12400);
+        tmp.copy(prairieDry).lerp(prairiePale, 0.12 + sweep * 0.34);
+        tmp.lerp(prairieThatch, (1 - litter) * 0.22);
+        tmp.lerp(prairieWet, surface.moisture * (0.28 + litter * 0.3));
+        if (stubble > 0.64 && surface.moisture < 0.45) {
+          tmp.lerp(prairiePale, (stubble - 0.64) * 0.34);
+        }
+        tmp.multiplyScalar(0.9 + sweep * 0.16 + litter * 0.08);
         colors[i * 3] = tmp.r;
         colors[i * 3 + 1] = tmp.g;
         colors[i * 3 + 2] = tmp.b;
@@ -363,6 +434,10 @@ export class TerrainSystem implements Subsystem {
     const rimSoil = new THREE.Color(P.rimrockSoil);
     const rimStone = new THREE.Color(P.rimrockStone);
     const rimShade = new THREE.Color(P.rimrockShade);
+    const pheasant = this.landscape.area.id === 'pheasant-coverts';
+    const prairieDry = new THREE.Color(0x927544);
+    const prairiePale = new THREE.Color(0xb99f6b);
+    const prairieWet = new THREE.Color(0x46503a);
     const tmp = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
@@ -384,6 +459,17 @@ export class TerrainSystem implements Subsystem {
         tmp.lerp(rimStone, surface.rockiness * 0.65);
         tmp.lerp(rimShade, Math.min(0.28, surface.slope * 0.14));
         tmp.multiplyScalar(0.86 + geology * 0.18);
+        colors[i * 3] = tmp.r;
+        colors[i * 3 + 1] = tmp.g;
+        colors[i * 3 + 2] = tmp.b;
+        continue;
+      }
+      if (pheasant) {
+        const surface = this.landscape.surfaceAtWorld(x, z, this.surface);
+        const sweep = this.noise(x * 0.014 + 3100, z * 0.014 + 3100);
+        tmp.copy(prairieDry).lerp(prairiePale, 0.16 + sweep * 0.38);
+        tmp.lerp(prairieWet, surface.moisture * 0.42);
+        tmp.multiplyScalar(0.88 + sweep * 0.2);
         colors[i * 3] = tmp.r;
         colors[i * 3 + 1] = tmp.g;
         colors[i * 3 + 2] = tmp.b;

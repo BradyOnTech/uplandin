@@ -42,7 +42,7 @@ export class RimrockFloraSystem implements Subsystem {
   private objects: THREE.Object3D[] = [];
   private geometries: THREE.BufferGeometry[] = [];
   private materials: THREE.Material[] = [];
-  private surface: GroundSample = { height: 0, slope: 0, rockiness: 0, vegetation: 0 };
+  private surface: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
   private matrix = new THREE.Matrix4();
   private position = new THREE.Vector3();
   private rotation = new THREE.Quaternion();
@@ -56,7 +56,7 @@ export class RimrockFloraSystem implements Subsystem {
   init(ctx: Ctx): void {
     const high = ctx.quality === 'high';
     const outcropGeometry = fracturedSlabGeometry();
-    const rockGeometry = new THREE.DodecahedronGeometry(1, 1);
+    const rockGeometry = new THREE.DodecahedronGeometry(1, 0);
     const screeGeometry = new THREE.DodecahedronGeometry(1, 0);
     const juniperGeometry = new THREE.ConeGeometry(1, 2, 7, 2);
     const trunkGeometry = new THREE.CylinderGeometry(0.16, 0.24, 1.6, 6);
@@ -65,7 +65,7 @@ export class RimrockFloraSystem implements Subsystem {
       roughness: 0.98,
       flatShading: true,
       emissive: P.rimrockStone,
-      emissiveIntensity: 0.18,
+      emissiveIntensity: 0.23,
     });
     const outcropMaterial = new THREE.MeshStandardMaterial({
       color: 0xffffff,
@@ -81,7 +81,7 @@ export class RimrockFloraSystem implements Subsystem {
     this.geometries.push(outcropGeometry, rockGeometry, screeGeometry, juniperGeometry, trunkGeometry);
     this.materials.push(rockMaterial, outcropMaterial, juniperMaterial, trunkMaterial);
 
-    const outcropCapacity = 100;
+    const outcropCapacity = high ? 220 : 110;
     const boulderCapacity = high ? 720 : 360;
     const screeCapacity = high ? 1800 : 850;
     const juniperCapacity = high ? 48 : 24;
@@ -103,15 +103,22 @@ export class RimrockFloraSystem implements Subsystem {
 
     for (let dropIndex = 0; dropIndex < this.landscape.area.dropPoints.length; dropIndex++) {
       const drop = this.landscape.area.dropPoints[dropIndex];
-      const cliffGeometry = this.buildApproachOutcrop(drop, dropIndex, stone, stoneLight, stoneShade, lichen);
-      const cliff = new THREE.Mesh(cliffGeometry, outcropMaterial);
-      cliff.castShadow = true;
-      cliff.receiveShadow = true;
-      cliff.matrixAutoUpdate = false;
-      cliff.updateMatrix();
-      ctx.scene.add(cliff);
-      this.objects.push(cliff);
-      this.geometries.push(cliffGeometry);
+      // One huntable wall and two successively softer range breaks. Chukar
+      // country is repeated geology; a single isolated hero rock reads as
+      // a prop, while these shared property anchors read as a canyon system.
+      for (let variant = 0; variant < 3; variant++) {
+        const cliffGeometry = this.buildApproachOutcrop(
+          drop, dropIndex, variant, stone, stoneLight, stoneShade, lichen,
+        );
+        const cliff = new THREE.Mesh(cliffGeometry, outcropMaterial);
+        cliff.castShadow = variant === 0;
+        cliff.receiveShadow = true;
+        cliff.matrixAutoUpdate = false;
+        cliff.updateMatrix();
+        ctx.scene.add(cliff);
+        this.objects.push(cliff);
+        this.geometries.push(cliffGeometry);
+      }
       outcropCount = this.buildApproachApron(
         drop,
         dropIndex,
@@ -151,7 +158,28 @@ export class RimrockFloraSystem implements Subsystem {
         if (Math.abs(x) > radius || Math.abs(z) > radius || Math.hypot(x, z - 40) < 10) continue;
         const surface = this.landscape.surfaceAtWorld(x, z, this.surface);
 
-        const boulderChance = 0.025 + surface.rockiness * 0.42 + Math.max(0, surface.slope - 0.38) * 0.16;
+        const macroRng = mulberry32(cellSeed(Math.floor(cellX / 7), Math.floor(cellY / 7), this.landscape.area.terrain.seed + 91));
+        const talusBand = 0.18 + macroRng() * 1.18;
+        const ledgeChance = (0.007 + Math.max(0, surface.slope - 0.16) * 0.045 + surface.rockiness * 0.025)
+          * talusBand;
+        if (outcropCount < outcropCapacity && rng() < ledgeChance) {
+          const width = 3.5 + rng() * 8.5;
+          const height = 0.45 + rng() * 1.55;
+          const depth = 1.1 + rng() * 2.6;
+          this.position.set(x, surface.height + height * 0.26, z);
+          const contourYaw = Math.atan2(surface.gradeX, surface.gradeZ) + Math.PI / 2;
+          this.euler.set((rng() - 0.5) * 0.18, contourYaw + (rng() - 0.5) * 0.36, (rng() - 0.5) * 0.12);
+          this.rotation.setFromEuler(this.euler);
+          this.scale.set(width, height, depth);
+          outcrops.setMatrixAt(outcropCount, this.matrix.compose(this.position, this.rotation, this.scale));
+          this.color.copy(stone).lerp(stoneLight, 0.22 + rng() * 0.38);
+          if (rng() < 0.34) this.color.lerp(lichen, 0.12 + rng() * 0.2);
+          outcrops.setColorAt(outcropCount, this.color);
+          outcropCount++;
+        }
+
+        const boulderChance = (0.012 + surface.rockiness * 0.34 + Math.max(0, surface.slope - 0.38) * 0.13)
+          * talusBand;
         if (boulderCount < boulderCapacity && rng() < boulderChance) {
           const size = 0.34 + rng() * rng() * 1.85 + surface.rockiness * 0.45;
           this.position.set(x, surface.height + size * 0.22, z);
@@ -170,7 +198,8 @@ export class RimrockFloraSystem implements Subsystem {
           boulderCount++;
         }
 
-        const screeChance = 0.08 + surface.rockiness * 0.7 + Math.max(0, surface.slope - 0.3) * 0.24;
+        const screeChance = (0.035 + surface.rockiness * 0.72 + Math.max(0, surface.slope - 0.3) * 0.28)
+          * talusBand;
         if (screeCount < screeCapacity && rng() < screeChance) {
           const cluster = 1 + Math.floor(rng() * (high ? 4 : 3));
           for (let i = 0; i < cluster && screeCount < screeCapacity; i++) {
@@ -221,37 +250,45 @@ export class RimrockFloraSystem implements Subsystem {
   private buildApproachOutcrop(
     drop: DropPoint,
     dropIndex: number,
+    variant: number,
     stone: THREE.Color,
     stoneLight: THREE.Color,
     stoneShade: THREE.Color,
     lichen: THREE.Color,
   ): THREE.BufferGeometry {
-    const rng = mulberry32((this.landscape.area.terrain.seed + dropIndex * 0x9e3779b9) >>> 0);
+    const rng = mulberry32((this.landscape.area.terrain.seed + dropIndex * 0x9e3779b9 + variant * 0x6d2b79f5) >>> 0);
     const forwardX = Math.cos(drop.heading);
     const forwardY = Math.sin(drop.heading);
     const rightX = -Math.sin(drop.heading);
     const rightY = Math.cos(drop.heading);
-    const centerX = drop.position.x + forwardX * 86 + rightX * (dropIndex === 0 ? 35 : -34);
-    const centerY = drop.position.y + forwardY * 86 + rightY * (dropIndex === 0 ? 35 : -34);
-    const columns = 10;
-    const rows = 4;
+    const distance = [94, 188, 262][variant];
+    const sideSign = dropIndex === 0 ? 1 : -1;
+    const side = [38 * sideSign, -82 * sideSign, 96 * sideSign][variant];
+    const span = [78, 92, 126][variant];
+    const heightScale = [1, 0.76, 0.58][variant];
+    const centerX = drop.position.x + forwardX * distance + rightX * side;
+    const centerY = drop.position.y + forwardY * distance + rightY * side;
+    const columns = variant === 0 ? 18 : 14;
+    const rows = variant === 0 ? 6 : 4;
     const front: THREE.Vector3[][] = [];
     const back: THREE.Vector3[][] = [];
     for (let column = 0; column <= columns; column++) {
       const edge = Math.abs(column - columns / 2) / (columns / 2);
-      const along = (column / columns - 0.5) * 52 + (column > 0 && column < columns ? (rng() - 0.5) * 1.2 : 0);
+      const along = (column / columns - 0.5) * span
+        + (column > 0 && column < columns ? (rng() - 0.5) * 2.8 : 0);
       const propertyX = centerX + rightX * along;
       const propertyY = centerY + rightY * along;
       this.landscape.propertyToWorld(propertyX, propertyY, this.world);
       const ground = this.landscape.heightAtWorld(this.world.x, this.world.z) - 0.6;
-      const top = 9 + (1 - edge) * 8.5 + rng() * 3.6;
-      const depth = 5.2 + rng() * 3.6;
+      const crownBreak = 0.76 + Math.floor((column % 7) / 2) * 0.08 + rng() * 0.18;
+      const top = (12 + (1 - edge) * 15 + rng() * 4.5) * heightScale * crownBreak;
+      const depth = (8 + rng() * 6) * (0.82 + heightScale * 0.18);
       const frontColumn: THREE.Vector3[] = [];
       const backColumn: THREE.Vector3[] = [];
       for (let row = 0; row <= rows; row++) {
         const rise = row / rows;
-        const fracture = row > 0 && row < rows ? (rng() - 0.5) * 0.75 : 0;
-        const face = (rng() - 0.5) * 1.25;
+        const fracture = row > 0 && row < rows ? (rng() - 0.5) * 1.5 : 0;
+        const face = (rng() - 0.5) * 2.1 + Math.sin(row * 2.3 + column) * 0.45;
         frontColumn.push(new THREE.Vector3(
           this.world.x - forwardX * face,
           ground + top * rise + fracture,
@@ -272,7 +309,7 @@ export class RimrockFloraSystem implements Subsystem {
     const pushTriangle = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, shade = 0): void => {
       positions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
       this.color.copy(stone).lerp(shade < 0 ? stoneShade : stoneLight, Math.abs(shade));
-      if (rng() < 0.16) this.color.lerp(lichen, 0.34 + rng() * 0.34);
+      if (rng() < 0.42) this.color.lerp(lichen, 0.46 + rng() * 0.34);
       this.color.multiplyScalar(0.86 + rng() * 0.24);
       for (let i = 0; i < 3; i++) colors.push(this.color.r, this.color.g, this.color.b);
     };
@@ -302,6 +339,34 @@ export class RimrockFloraSystem implements Subsystem {
         pushTriangle(front[column][row], back[column][next], front[column][next], -0.04);
       }
     }
+
+    // Dark mineral seams sit slightly proud of the face to remain legible
+    // without wireframing every facet. Vertical joints and a few broken
+    // bedding planes are the scale cues that make this a rock wall.
+    const seam = stoneShade.clone().multiplyScalar(0.58);
+    const pushSeamTriangle = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3): void => {
+      positions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+      for (let i = 0; i < 3; i++) colors.push(seam.r, seam.g, seam.b);
+    };
+    const faceNudge = new THREE.Vector3(-forwardX * 0.09, 0, -forwardY * 0.09);
+    const seamSide = new THREE.Vector3(rightX * 0.11, 0, rightY * 0.11);
+    for (let column = 2; column < columns; column += 2 + (column % 3 === 0 ? 1 : 0)) {
+      for (let row = 0; row < rows; row++) {
+        const a = front[column][row].clone().add(faceNudge);
+        const b = front[column][row + 1].clone().add(faceNudge);
+        pushSeamTriangle(a.clone().sub(seamSide), a.clone().add(seamSide), b.clone().add(seamSide));
+        pushSeamTriangle(a.clone().sub(seamSide), b.clone().add(seamSide), b.clone().sub(seamSide));
+      }
+    }
+    const seamLift = new THREE.Vector3(0, 0.105, 0);
+    for (let row = 2; row < rows; row += 2) {
+      for (let column = 0; column < columns; column++) {
+        const a = front[column][row].clone().add(faceNudge);
+        const b = front[column + 1][row].clone().add(faceNudge);
+        pushSeamTriangle(a.clone().sub(seamLift), b.clone().sub(seamLift), b.clone().add(seamLift));
+        pushSeamTriangle(a.clone().sub(seamLift), b.clone().add(seamLift), a.clone().add(seamLift));
+      }
+    }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -325,8 +390,8 @@ export class RimrockFloraSystem implements Subsystem {
     const forwardY = Math.sin(drop.heading);
     const rightX = -Math.sin(drop.heading);
     const rightY = Math.cos(drop.heading);
-    const centerX = drop.position.x + forwardX * 86 + rightX * (dropIndex === 0 ? 35 : -34);
-    const centerY = drop.position.y + forwardY * 86 + rightY * (dropIndex === 0 ? 35 : -34);
+    const centerX = drop.position.x + forwardX * 94 + rightX * (dropIndex === 0 ? 38 : -38);
+    const centerY = drop.position.y + forwardY * 94 + rightY * (dropIndex === 0 ? 38 : -38);
     let count = start;
     for (let i = 0; i < 16 && count < capacity; i++) {
       const along = (rng() - 0.5) * 50;

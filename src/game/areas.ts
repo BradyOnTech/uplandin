@@ -176,6 +176,29 @@ function geography(w: number, h: number, feature: { name: string; kind: Landmark
   };
 }
 
+function pointOffDrop(drop: DropPoint, forward: number, right: number): Vec2 {
+  return {
+    x: drop.position.x + Math.cos(drop.heading) * forward - Math.sin(drop.heading) * right,
+    y: drop.position.y + Math.sin(drop.heading) * forward + Math.cos(drop.heading) * right,
+  };
+}
+
+/** Authored prairie-pothole anchors shared by the map and both renderers. */
+function pheasantGeography(w: number, h: number) {
+  const base = geography(w, h, { name: 'Stock Pond', kind: 'pond' }, 22);
+  const [south, west] = base.dropPoints;
+  return {
+    ...base,
+    landmarks: [
+      ...base.landmarks,
+      { id: 'south-slough', name: 'South Slough', kind: 'pond', position: pointOffDrop(south, 92, 4) },
+      { id: 'west-pothole', name: 'West Pothole', kind: 'pond', position: pointOffDrop(west, 106, -8) },
+      { id: 'old-homestead', name: 'Old Homestead', kind: 'barn', position: pointOffDrop(south, 156, -72) },
+      { id: 'north-fence', name: 'North Fence', kind: 'fence', position: pointOffDrop(west, 168, 48) },
+    ] satisfies AreaLandmark[],
+  };
+}
+
 export const AREAS: AreaConfig[] = [
   // — Southern Plains —
   {
@@ -200,7 +223,7 @@ export const AREAS: AreaConfig[] = [
     cover: 0x5e5424,
     world: world(1400, 800),
     terrain: terrain('wetland', 2201),
-    ...geography(1400, 800, { name: 'Stock Pond', kind: 'pond' }, 22),
+    ...pheasantGeography(1400, 800),
     patches: [...scatterRects(world(1400, 800), { count: 30, minW: 90, maxW: 170, minH: 28, maxH: 50 }, mulberry32(22)), ...entryCover(1400, 800, 22)],
     stocking: 0.85,
     speciesMix: [

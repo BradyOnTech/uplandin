@@ -27,10 +27,10 @@ function bunchgrassGeometry(): THREE.BufferGeometry {
   const positions: number[] = [];
   for (let i = 0; i < 26; i++) {
     const angle = (i / 26) * Math.PI * 2 + (rng() - 0.5) * 0.32;
-    const height = 0.22 + rng() * 0.34;
-    const width = 0.008 + rng() * 0.012;
-    const root = 0.015 + rng() * 0.09;
-    const lean = 0.04 + rng() * 0.14;
+    const height = 0.34 + rng() * 0.42;
+    const width = 0.011 + rng() * 0.016;
+    const root = 0.04 + rng() * 0.24;
+    const lean = 0.07 + rng() * 0.23;
     const sx = Math.sin(angle);
     const sz = Math.cos(angle);
     const rx = Math.cos(angle) * width;
@@ -58,7 +58,7 @@ export class RimrockCoverSystem implements Subsystem {
   private objects: THREE.Object3D[] = [];
   private geometries: THREE.BufferGeometry[] = [];
   private materials: THREE.Material[] = [];
-  private surface: GroundSample = { height: 0, slope: 0, rockiness: 0, vegetation: 0 };
+  private surface: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
   private matrix = new THREE.Matrix4();
   private position = new THREE.Vector3();
   private rotation = new THREE.Quaternion();
@@ -72,14 +72,20 @@ export class RimrockCoverSystem implements Subsystem {
   init(ctx: Ctx): void {
     const high = ctx.quality === 'high';
     const grassGeometry = bunchgrassGeometry();
-    const sageGeometry = new THREE.DodecahedronGeometry(0.48, 1);
-    sageGeometry.scale(1, 0.62, 0.82);
+    const sageGeometry = new THREE.DodecahedronGeometry(0.48, 0);
+    sageGeometry.scale(1.15, 0.45, 0.95);
     const grassMaterial = new THREE.MeshLambertMaterial({
       color: 0xffffff,
       vertexColors: false,
       side: THREE.DoubleSide,
     });
-    const sageMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+    const sageMaterial = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 1,
+      flatShading: true,
+      emissive: P.rimrockSage,
+      emissiveIntensity: 0.12,
+    });
     this.geometries.push(grassGeometry, sageGeometry);
     this.materials.push(grassMaterial, sageMaterial);
 
@@ -109,7 +115,7 @@ export class RimrockCoverSystem implements Subsystem {
     const straw = new THREE.Color(P.straw);
     const pale = new THREE.Color(P.strawPale);
     const sageBase = new THREE.Color(P.rimrockSage);
-    const sageShade = new THREE.Color(P.oliveDeep);
+    const sageShade = new THREE.Color(P.rimrockSage).lerp(new THREE.Color(P.straw), 0.18);
     let grassCount = 0;
     let sageCount = 0;
 
@@ -127,7 +133,7 @@ export class RimrockCoverSystem implements Subsystem {
         this.landscape.propertyToWorld(propertyX, propertyY, this.world);
         const x = this.world.x;
         const z = this.world.z;
-        if (Math.abs(x) > radius || Math.abs(z) > radius || Math.hypot(x, z - 40) < 8) continue;
+        if (Math.abs(x) > radius || Math.abs(z) > radius || Math.hypot(x, z - 40) < 3.5) continue;
         const surface = this.landscape.surfaceAtWorld(x, z, this.surface);
         let cover = 0;
         for (let i = 0; i < patches.length; i++) {
@@ -161,7 +167,7 @@ export class RimrockCoverSystem implements Subsystem {
           this.rotation.setFromEuler(this.euler);
           this.scale.set(scale * (0.8 + rng() * 0.45), scale, scale * (0.75 + rng() * 0.4));
           sage.setMatrixAt(sageCount, this.matrix.compose(this.position, this.rotation, this.scale));
-          this.color.copy(sageBase).lerp(sageShade, 0.08 + rng() * 0.26).multiplyScalar(0.85 + rng() * 0.22);
+          this.color.copy(sageBase).lerp(sageShade, 0.08 + rng() * 0.26).multiplyScalar(0.98 + rng() * 0.2);
           sage.setColorAt(sageCount, this.color);
           sageCount++;
         }

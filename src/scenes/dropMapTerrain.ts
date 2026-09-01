@@ -16,6 +16,8 @@ interface ReliefStyle {
   vegetation: number;
   contour: number;
   contourMeters: number;
+  water?: number;
+  moistureK?: number;
 }
 
 const RELIEF_STYLES: Partial<Record<TerrainKind, ReliefStyle>> = {
@@ -26,6 +28,16 @@ const RELIEF_STYLES: Partial<Record<TerrainKind, ReliefStyle>> = {
     vegetation: 0x66705d,
     contour: 0xeadab7,
     contourMeters: 7,
+  },
+  wetland: {
+    low: 0x706039,
+    high: 0xb49b65,
+    rock: 0x786d55,
+    vegetation: 0x626542,
+    contour: 0xefe0bd,
+    contourMeters: 1.5,
+    water: 0x5f8990,
+    moistureK: 0.86,
   },
 };
 
@@ -124,7 +136,7 @@ export function drawPropertyRelief(
   const range = Math.max(1, maxHeight - minHeight);
   const cellW = rect.w / cols;
   const cellH = rect.h / rows;
-  const surface: GroundSample = { height: 0, slope: 0, rockiness: 0, vegetation: 0 };
+  const surface: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       const index = row * sampleW + col;
@@ -141,6 +153,9 @@ export function drawPropertyRelief(
       let color = mixColor(style.low, style.high, 0.12 + elevation * 0.76);
       color = mixColor(color, style.rock, surface.rockiness * 0.72);
       color = mixColor(color, style.vegetation, surface.vegetation * 0.18);
+      if (style.water !== undefined) {
+        color = mixColor(color, style.water, surface.moisture * (style.moistureK ?? 0.7));
+      }
       // Northwest survey light: folds read immediately without turning the
       // map into a satellite texture or changing the underlying elevation.
       const hillshade = Phaser.Math.Clamp(0.5 + (left - right) * 0.035 + (down - up) * 0.024, 0, 1);

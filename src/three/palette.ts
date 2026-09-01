@@ -103,7 +103,7 @@ export const P = {
   rimrockStoneLight: 0xb3a38c,
   rimrockShade: 0x4d4947,
   rimrockSage: 0x69715d,
-  rimrockLichen: 0x9b912f,
+  rimrockLichen: 0xb49b2f,
   // Midground canopy green — the second hue family the noon frame needs.
   canopyGreen: 0x54622a,
   // Evening anti-monochrome roles: blue-grey zenith, desaturated grass haze
