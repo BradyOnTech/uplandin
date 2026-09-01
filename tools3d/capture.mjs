@@ -11,6 +11,7 @@
  *   node tools3d/capture.mjs --shots dawn-field,evening-ridge
  *   node tools3d/capture.mjs --out docs/3d/shots
  *   node tools3d/capture.mjs --breed english-pointer
+ *   node tools3d/capture.mjs --area chukar-ridge --drop west-track
  *
  * If no server answers, it boots its own `vite --port 4517` and kills it
  * after. Exit code is non-zero if any shot fails — this is a build gate.
@@ -89,6 +90,9 @@ const SHOTS = {
   'debug-cover-edge': [2, -8, 222, 2, 'noon'],
   // Sighting straight down the long 25->4 game trail across the open.
   'debug-trail': [10, -29, 70, -4, 'noon'],
+  // Chukar Ridge acceptance: hunter-eye approach into the authored rimrock
+  // from the primary truck, with the sidehill and sparse cover in one read.
+  'debug-chukar-approach': [0, 40, -24, -2, 'morning'],
   // Dog inspection poses (request via --shots): the point at 5 m for
   // proportion work, and side-on at 8 m in flat light.
   'debug-dog-close': { tod: 'dawn', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 3.5, spin: -0.62, pitch: -16, hideGun: true },
@@ -197,6 +201,7 @@ const outDir = resolve(get('--out', 'docs/3d/shots'));
 const coat = get('--coat', 'orange-belton');
 const breed = get('--breed', 'english-setter');
 const area = get('--area', 'quail-fields');
+const drop = get('--drop', '');
 const wanted = get(
   '--shots',
   Object.keys(SHOTS).filter((n) => !n.startsWith('debug-')).join(','),
@@ -251,7 +256,7 @@ async function main() {
       }
       const tod = Array.isArray(spec) ? spec[4] : spec.tod;
       await page.goto(
-        `${url}/index3d.html?capture=1&tod=${tod}&coat=${encodeURIComponent(coat)}&breed=${encodeURIComponent(breed)}&area=${encodeURIComponent(area)}`,
+        `${url}/index3d.html?capture=1&tod=${tod}&coat=${encodeURIComponent(coat)}&breed=${encodeURIComponent(breed)}&area=${encodeURIComponent(area)}${drop ? `&drop=${encodeURIComponent(drop)}` : ''}`,
         { waitUntil: 'domcontentloaded' },
       );
       await page.waitForFunction('window.__ready3d === true', { timeout: 30000 });

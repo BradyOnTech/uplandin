@@ -56,4 +56,40 @@ describe('shared property landscape', () => {
     expect(south.heightAtWorld(HUNT_WORLD_ANCHOR.x, HUNT_WORLD_ANCHOR.z))
       .not.toBe(west.heightAtWorld(HUNT_WORLD_ANCHOR.x, HUNT_WORLD_ANCHOR.z));
   });
+
+  it('gives Great Basin properties deterministic steep, classified ground', () => {
+    const chukar = new LandscapeModel(getArea('chukar-ridge'));
+    const rebuilt = new LandscapeModel(getArea('chukar-ridge'));
+    const prairie = new LandscapeModel(getArea('quail-fields'));
+    const points = [[0, 40], [40, 0], [-60, -20], [100, -60]] as const;
+    let chukarSlope = 0;
+    let prairieSlope = 0;
+
+    for (const [x, z] of points) {
+      const sample = chukar.surfaceAtWorld(x, z, { height: 0, slope: 0, rockiness: 0, vegetation: 0 });
+      const repeat = rebuilt.surfaceAtWorld(x, z, { height: 0, slope: 0, rockiness: 0, vegetation: 0 });
+      const flat = prairie.surfaceAtWorld(x, z, { height: 0, slope: 0, rockiness: 0, vegetation: 0 });
+      expect(sample).toEqual(repeat);
+      expect(sample.rockiness).toBeGreaterThanOrEqual(0);
+      expect(sample.rockiness).toBeLessThanOrEqual(1);
+      expect(sample.vegetation).toBeGreaterThanOrEqual(0);
+      expect(sample.vegetation).toBeLessThanOrEqual(1);
+      chukarSlope += sample.slope;
+      prairieSlope += flat.slope;
+    }
+
+    expect(chukarSlope / points.length).toBeGreaterThan((prairieSlope / points.length) * 2);
+  });
+
+  it('classifies the same physical surface from either Chukar drop', () => {
+    const area = getArea('chukar-ridge');
+    const south = new LandscapeModel(area, 'south-gate');
+    const west = new LandscapeModel(area, 'west-track');
+    const property = { x: 610, y: 355 };
+    const southWorld = south.propertyToWorld(property.x, property.y, { x: 0, z: 0 });
+    const westWorld = west.propertyToWorld(property.x, property.y, { x: 0, z: 0 });
+    const a = south.surfaceAtWorld(southWorld.x, southWorld.z, { height: 0, slope: 0, rockiness: 0, vegetation: 0 });
+    const b = west.surfaceAtWorld(westWorld.x, westWorld.z, { height: 0, slope: 0, rockiness: 0, vegetation: 0 });
+    expect(a).toEqual(b);
+  });
 });

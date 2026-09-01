@@ -6,6 +6,7 @@ import { regionOfArea } from '../game/regions';
 import { getSpecies } from '../game/species';
 import { beginHunt, type HuntFieldData } from './launchHunt';
 import { configureLogicalViewport } from './logicalViewport';
+import { drawPropertyRelief } from './dropMapTerrain';
 import {
   MENU,
   addImageFrame,
@@ -109,7 +110,9 @@ export class DropScene extends Phaser.Scene {
     const mapGround = mixColor(area.grass, MENU.ink, 0.48);
     const mapCover = mixColor(area.cover, MENU.olive, 0.22);
     gfx.fillStyle(0x070c0b, 0.72).fillRoundedRect(MAP.x - 3, MAP.y - 3, MAP.w + 6, MAP.h + 6, 2);
-    gfx.fillStyle(mapGround, 0.98).fillRoundedRect(MAP.x, MAP.y, MAP.w, MAP.h, 2);
+    if (!drawPropertyRelief(gfx, area, MAP)) {
+      gfx.fillStyle(mapGround, 0.98).fillRoundedRect(MAP.x, MAP.y, MAP.w, MAP.h, 2);
+    }
     // Cartographic wash: muted survey-paper bands over the area's own palette.
     gfx.fillStyle(0xd7c38d, 0.08).fillRect(MAP.x, MAP.y, MAP.w, MAP.h / 3);
     gfx.fillStyle(0x10231d, 0.13).fillRect(MAP.x, MAP.y + MAP.h * 0.62, MAP.w, MAP.h * 0.38);

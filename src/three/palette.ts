@@ -95,6 +95,15 @@ export const P = {
   grassGold: 0xd2c157,
   grassOlive: 0x808540,
   forbGreen: 0x5f7a33,
+  // Great Basin rimrock: pale volcanic dust, weathered basalt/granite,
+  // blue-grey sage, and the yellow-green lichen that catches on faces.
+  rimrockDust: 0xb8a176,
+  rimrockSoil: 0x8f7554,
+  rimrockStone: 0x827a70,
+  rimrockStoneLight: 0xb3a38c,
+  rimrockShade: 0x4d4947,
+  rimrockSage: 0x69715d,
+  rimrockLichen: 0x9b912f,
   // Midground canopy green — the second hue family the noon frame needs.
   canopyGreen: 0x54622a,
   // Evening anti-monochrome roles: blue-grey zenith, desaturated grass haze

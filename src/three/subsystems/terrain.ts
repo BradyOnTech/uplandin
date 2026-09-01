@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { LandscapeModel } from '../../game/landscape';
+import type { GroundSample, LandscapeModel } from '../../game/landscape';
 import type { Ctx, Subsystem } from '../engine';
 import { P, TOD, type TimeOfDay } from '../palette';
 
@@ -108,6 +108,7 @@ export class TerrainSystem implements Subsystem {
   private mesh?: THREE.Mesh;
   private skirt?: THREE.Mesh;
   private groundMat?: THREE.MeshLambertMaterial;
+  private surface: GroundSample = { height: 0, slope: 0, rockiness: 0, vegetation: 0 };
   // Drench uniforms (preallocated; shared by plate and skirt material).
   private drench = {
     uSunXZ: { value: new THREE.Vector2(1, 0) },
@@ -211,12 +212,45 @@ export class TerrainSystem implements Subsystem {
     // meadow band past the fade line must be the same print the dissolving
     // tufts land on — mid-distance reads as texture, never as static.
     const sward = new THREE.Color(P.grassOlive).lerp(new THREE.Color(P.grassGold), 0.42).multiplyScalar(0.97);
+    const rimDust = new THREE.Color(P.rimrockDust);
+    const rimSoil = new THREE.Color(P.rimrockSoil);
+    const rimStone = new THREE.Color(P.rimrockStone);
+    const rimStoneLight = new THREE.Color(P.rimrockStoneLight);
+    const rimShade = new THREE.Color(P.rimrockShade);
+    const rimSage = new THREE.Color(P.rimrockSage);
+    const rimLichen = new THREE.Color(P.rimrockLichen);
+    const rimrock = this.landscape.area.terrain.kind === 'rimrock';
     const tmp = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getZ(i);
       const y = this.heightAt(x, z);
       pos.setY(i, y);
+
+      if (rimrock) {
+        const surface = this.landscape.surfaceAtWorld(x, z, this.surface);
+        const geology = this.noise(x * 0.018 + 7100, z * 0.018 + 7100);
+        const scree = this.noise(x * 0.085 + 9300, z * 0.085 + 9300);
+        const dryGrass = this.noise(x * 0.038 + 3300, z * 0.038 + 3300);
+        tmp.copy(rimSoil).lerp(rimDust, 0.3 + dryGrass * 0.42);
+        tmp.lerp(rimSage, surface.vegetation * 0.2 * (1 - surface.rockiness));
+        if (scree > 0.55) {
+          tmp.lerp(rimStoneLight, (scree - 0.55) * 0.65 * (0.35 + surface.rockiness));
+        }
+        tmp.lerp(rimStone, surface.rockiness * (0.58 + geology * 0.3));
+        if (surface.slope > 0.42) {
+          tmp.lerp(rimShade, Math.min(0.38, (surface.slope - 0.42) * 0.3));
+        }
+        const lichen = this.noise(x * 0.12 + 12100, z * 0.12 + 12100);
+        if (surface.rockiness > 0.56 && lichen > 0.74) {
+          tmp.lerp(rimLichen, (lichen - 0.74) * 0.85);
+        }
+        tmp.multiplyScalar(0.9 + geology * 0.18);
+        colors[i * 3] = tmp.r;
+        colors[i * 3 + 1] = tmp.g;
+        colors[i * 3 + 2] = tmp.b;
+        continue;
+      }
 
       // Duff base: dead-thatch straw-brown with a patchwork drift toward
       // khaki — grass-adjacent everywhere, so tufts and soil are one field.
@@ -324,6 +358,11 @@ export class TerrainSystem implements Subsystem {
     const sward = new THREE.Color(P.grassOlive).lerp(new THREE.Color(P.grassGold), 0.42).multiplyScalar(0.92);
     const oliveDeepMix = new THREE.Color(P.olive).lerp(new THREE.Color(P.grassOlive), 0.35);
     const pale = new THREE.Color(P.strawPale);
+    const rimrock = this.landscape.area.terrain.kind === 'rimrock';
+    const rimDust = new THREE.Color(P.rimrockDust);
+    const rimSoil = new THREE.Color(P.rimrockSoil);
+    const rimStone = new THREE.Color(P.rimrockStone);
+    const rimShade = new THREE.Color(P.rimrockShade);
     const tmp = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
@@ -332,8 +371,24 @@ export class TerrainSystem implements Subsystem {
       const t = THREE.MathUtils.clamp((r - SKIRT_INNER) / 150, 0, 1);
       // Follow the heightfield (half a meter under the plate) near the rim,
       // settle to a calm plain further out.
-      const y = THREE.MathUtils.lerp(this.heightAt(x, z) - 0.5, 0.8, t * t * (3 - 2 * t));
+      // Prairie settles into a calm fog plain. Rimrock must keep folding to
+      // the horizon or the canyon collapses into horizontal color bands.
+      const y = rimrock
+        ? this.heightAt(x, z) - 0.5
+        : THREE.MathUtils.lerp(this.heightAt(x, z) - 0.5, 0.8, t * t * (3 - 2 * t));
       pos.setY(i, y);
+      if (rimrock) {
+        const surface = this.landscape.surfaceAtWorld(x, z, this.surface);
+        const geology = this.noise(x * 0.018 + 7100, z * 0.018 + 7100);
+        tmp.copy(rimSoil).lerp(rimDust, 0.32 + geology * 0.38);
+        tmp.lerp(rimStone, surface.rockiness * 0.65);
+        tmp.lerp(rimShade, Math.min(0.28, surface.slope * 0.14));
+        tmp.multiplyScalar(0.86 + geology * 0.18);
+        colors[i * 3] = tmp.r;
+        colors[i * 3 + 1] = tmp.g;
+        colors[i * 3 + 2] = tmp.b;
+        continue;
+      }
       // Same duff-meadow print as the plate: sward where the fertility
       // field runs fertile, khaki/olive band mottle, meadow-scale
       // luminance drift — the horizon band mottles like the field it

@@ -4,14 +4,13 @@ import { SkySystem } from './subsystems/sky';
 import { TerrainSystem } from './subsystems/terrain';
 import { Hunt3DSystem, type WorldPatch } from './subsystems/hunt3d';
 import { PlayerSystem } from './subsystems/player';
-import { GrassSystem } from './subsystems/grass';
-import { FloraSystem } from './subsystems/flora';
 import { DogSystem } from './subsystems/dog';
 import { BirdsSystem } from './subsystems/birds';
 import { GunSystem } from './subsystems/gun';
 import { HuntHudSystem } from './subsystems/huntHud';
 import { LandmarksSystem } from './subsystems/landmarks';
 import { LandscapeModel } from '../game/landscape';
+import { createLandscapeVisuals } from './landscapeVisuals';
 import {
   ENGLISH_SETTER_COATS,
   resolveEnglishSetterCoat,
@@ -39,6 +38,7 @@ const launch = parseHuntLaunch(location.search);
 const launchProfile = resolveThreeHuntProfile(location.search);
 const launchArea = resolveThreeHuntArea(location.search);
 const landscape = new LandscapeModel(launchArea, parseDropPointId(location.search));
+const landscapeVisuals = createLandscapeVisuals(landscape);
 const visualBreedFor = (breedId: string) => breedId === 'gsp' ? 'gsp' : 'english-setter';
 const visualBreed = visualBreedFor(launchProfile.breedId);
 const coatId = visualBreed === 'gsp'
@@ -54,8 +54,8 @@ engine.register(new TerrainSystem(landscape));
 // spawn heading. It still precedes grass, which reads the hunt's cover map.
 engine.register(new PlayerSystem());
 engine.register(new Hunt3DSystem(landscape));
-engine.register(new GrassSystem());
-engine.register(new FloraSystem());
+engine.register(landscapeVisuals.cover);
+engine.register(landscapeVisuals.flora);
 engine.register(new LandmarksSystem());
 engine.register(new DogSystem(visualBreed, coatId));
 if (launchProfile.brace) {

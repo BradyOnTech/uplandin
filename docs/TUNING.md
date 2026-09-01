@@ -29,6 +29,16 @@ the readable cast near the first-person player. The shared 40 px shot range
 remains a literal 40-yard gate. Shift supplies sprint pressure, Q supplies
 recall, and gear tier 3 removes whistle range.
 
+`landscape.ts` is the renderer-neutral property model. `heightAtProperty()`
+and `surfaceAtProperty()` are stable across truck drops; the world variants
+only translate the selected drop to the local 3D origin. Terrain kinds select
+one landform adapter there, while `three/landscapeVisuals.ts` selects the
+matching cover/flora presentation. Chukar Ridge is the first complete biome
+adapter: folded Great Basin heightfield, slope/rock/vegetation classification,
+sparse bunchgrass and sage, scree, juniper, and authored approach rimrock.
+The pre-hunt map samples that same property model for its shaded relief, so a
+mapped ridge or drainage cannot move when the player chooses another truck.
+
 Rendered 3D flight is presentation-owned, but `recordFall()` writes the final
 world landing point back into the shared bird before the dog retrieves. The
 shared retrieve then advances `downed → carried → retrieved`: pickup/search
