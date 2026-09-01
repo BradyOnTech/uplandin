@@ -13,16 +13,18 @@ import {
 } from '../game/career';
 import { getGun, unlockedGuns } from '../game/guns';
 import { GEAR_NAMES, gearTierFor, TRUCK_LEVEL, truckUnlocked } from '../game/progression';
-import { regionAreas, REGIONS, type RegionConfig } from '../game/regions';
+import { regionAreas, REGIONS } from '../game/regions';
 import { areaOpenerWeek, dateLabel, seasonOver, weekLabel } from '../game/season';
 import { getSpecies } from '../game/species';
 import {
   MENU,
-  addFooterHint,
+  addImageFrame,
   addMenuBackdrop,
   addMenuPanel,
   addRuleHeading,
   addStepHeader,
+  menuCopy,
+  menuTitle,
   preloadMenuArt,
   setMenuFocus,
 } from './menuUi';
@@ -45,23 +47,6 @@ const US_OUTLINE: [number, number][] = [
   [302, 190], [262, 198], [238, 226], [222, 200], [205, 192], [150, 188],
   [118, 180], [95, 172], [62, 138], [55, 108], [68, 96],
 ];
-
-interface RegionMapTheme {
-  ground: number;
-  contour: number;
-  accent: number;
-  detail: number;
-}
-
-const REGION_MAP_THEMES: Record<string, RegionMapTheme> = {
-  'southern-plains': { ground: 0x88723d, contour: 0xb59a55, accent: 0xd1ad55, detail: 0x4f4b2a },
-  'prairie-pothole': { ground: 0x58694b, contour: 0x78915c, accent: 0x3c7185, detail: 0xb58a42 },
-  'north-woods': { ground: 0x263c32, contour: 0x45604a, accent: 0x172c25, detail: 0x718064 },
-  'great-basin': { ground: 0x836647, contour: 0xad875a, accent: 0x5f4935, detail: 0xd0a66d },
-  'sonoran-desert': { ground: 0xa45d37, contour: 0xd0834f, accent: 0x633b2d, detail: 0x5b6a32 },
-  'high-rockies': { ground: 0x506779, contour: 0x8094a2, accent: 0xdce4df, detail: 0x2f4d48 },
-  'pacific-valleys': { ground: 0x8a763d, contour: 0xc5a556, accent: 0x4d6335, detail: 0x527a82 },
-};
 
 /**
  * The travel map — and the season plan. The header carries the date; home
@@ -245,97 +230,29 @@ export class MapScene extends Phaser.Scene {
   private createHomePicker(career: ReturnType<typeof loadCareer>, pendingDog?: PendingDog): void {
     let selectedIndex = Math.max(0, REGIONS.findIndex((region) => region.id === career.homeRegionId));
 
-    addMenuBackdrop(this, 0.33);
+    addMenuBackdrop(this, 0.25);
     addStepHeader(this, 3, 2);
-    pixelText(this, 240, 46, 'CHOOSE YOUR HOME GROUND', 2, MENU.cream).setOrigin(0.5);
-    pixelText(this, 240, 62, 'HOME HUNTS TAKE ONE WEEK. ROAD TRIPS TAKE TWO.', 1, MENU.sage)
+    menuTitle(this, 240, 44, 'CHOOSE YOUR HOME GROUND', 28, 390);
+    pixelText(this, 240, 60, '—  HOME HUNTS COST 1 WEEK. TRIPS COST 2.  —', 1, MENU.sage)
       .setOrigin(0.5);
-    addMenuPanel(this, 240, 163, 458, 190, 0.96);
-    addRuleHeading(this, 128, 78, 'THE COUNTRY', 218);
-    addRuleHeading(this, 354, 78, 'YOUR SELECTION', 208);
+    addMenuPanel(this, 240, 159, 398, 192, 0.97);
+    addRuleHeading(this, 161, 75, 'REGIONS', 222);
+    addRuleHeading(this, 357, 75, 'YOUR SELECTION', 132);
 
-    const mapPoint = (x: number, y: number): [number, number] => [27 + (x - 55) * 0.65, 86 + (y - 55) * 0.69];
-    const mapGraphics = this.add.graphics();
-    const outline = US_OUTLINE.map(([x, y]) => {
-      const [px, py] = mapPoint(x, y);
-      return new Phaser.Geom.Point(px, py);
-    });
-    const drawRegionMap = (region: RegionConfig) => {
-      const theme = REGION_MAP_THEMES[region.id] ?? REGION_MAP_THEMES['southern-plains'];
-      mapGraphics.clear();
-      mapGraphics.fillStyle(theme.ground, 0.96).fillPoints(outline, true);
-      mapGraphics.lineStyle(1, theme.contour, 0.72);
-      mapGraphics.lineBetween(63, 117, 205, 108);
-      mapGraphics.lineBetween(73, 151, 220, 147);
-      mapGraphics.lineBetween(103, 187, 213, 174);
+    addImageFrame(this, 161, 146, 228, 139, MENU.lineSoft);
+    this.add.image(161, 146, 'menu-home-map').setDisplaySize(226, 137);
 
-      if (region.id === 'southern-plains') {
-        mapGraphics.lineStyle(1, theme.accent, 0.9);
-        for (let x = 82; x <= 206; x += 14) {
-          const y = 128 + ((x / 14) % 3) * 14;
-          mapGraphics.lineBetween(x, y, x + 6, y - 3);
-          mapGraphics.lineBetween(x + 4, y, x + 8, y - 6);
-        }
-        mapGraphics.lineStyle(1, 0xe0d2a4, 0.8).strokeCircle(166, 122, 7);
-        mapGraphics.lineBetween(166, 129, 166, 150);
-        mapGraphics.lineBetween(157, 150, 175, 150);
-      } else if (region.id === 'prairie-pothole') {
-        mapGraphics.fillStyle(theme.accent, 0.92);
-        mapGraphics.fillEllipse(105, 137, 36, 13);
-        mapGraphics.fillEllipse(174, 160, 46, 16);
-        mapGraphics.lineStyle(1, theme.detail, 1);
-        for (const x of [88, 94, 120, 153, 160, 195]) {
-          mapGraphics.lineBetween(x, 128, x, 143);
-          mapGraphics.lineBetween(x, 129, x + 3, 125);
-        }
-      } else if (region.id === 'north-woods') {
-        mapGraphics.fillStyle(theme.accent, 0.96);
-        for (const [x, y, s] of [[84, 144, 12], [105, 122, 15], [132, 154, 17], [160, 119, 14], [190, 145, 18]] as const) {
-          mapGraphics.fillTriangle(x, y - s, x - s / 2, y + s / 2, x + s / 2, y + s / 2);
-          mapGraphics.fillRect(x - 1, y + s / 2, 2, 5);
-        }
-        mapGraphics.lineStyle(2, theme.detail, 0.8).lineBetween(83, 177, 206, 120);
-      } else if (region.id === 'great-basin') {
-        mapGraphics.lineStyle(3, theme.accent, 0.9);
-        mapGraphics.lineBetween(78, 139, 116, 127);
-        mapGraphics.lineBetween(116, 127, 148, 134);
-        mapGraphics.lineBetween(148, 134, 207, 117);
-        mapGraphics.lineStyle(2, theme.detail, 0.85);
-        mapGraphics.lineBetween(84, 154, 126, 145);
-        mapGraphics.lineBetween(138, 165, 204, 148);
-        mapGraphics.fillStyle(theme.accent, 1).fillRect(110, 169, 9, 5).fillRect(187, 174, 12, 6);
-      } else if (region.id === 'sonoran-desert') {
-        mapGraphics.fillStyle(theme.accent, 0.95);
-        mapGraphics.fillTriangle(70, 161, 112, 119, 149, 161);
-        mapGraphics.fillTriangle(121, 166, 177, 126, 219, 166);
-        mapGraphics.fillStyle(theme.detail, 1);
-        for (const [x, y] of [[92, 164], [156, 151], [196, 171]] as const) {
-          mapGraphics.fillRect(x, y - 18, 4, 22);
-          mapGraphics.fillRect(x - 5, y - 11, 6, 4);
-          mapGraphics.fillRect(x + 3, y - 15, 6, 4);
-        }
-      } else if (region.id === 'high-rockies') {
-        mapGraphics.fillStyle(theme.detail, 1);
-        mapGraphics.fillTriangle(68, 175, 116, 108, 157, 175);
-        mapGraphics.fillTriangle(120, 178, 176, 101, 224, 178);
-        mapGraphics.fillStyle(theme.accent, 1);
-        mapGraphics.fillTriangle(99, 132, 116, 108, 130, 132);
-        mapGraphics.fillTriangle(156, 128, 176, 101, 192, 128);
-      } else {
-        // Pacific valleys: oak crowns and a cool river through golden hills.
-        mapGraphics.lineStyle(4, theme.detail, 0.9);
-        mapGraphics.beginPath().moveTo(83, 111).lineTo(119, 139).lineTo(146, 150).lineTo(203, 183).strokePath();
-        mapGraphics.fillStyle(theme.accent, 1);
-        for (const [x, y, r] of [[92, 159, 7], [125, 128, 8], [163, 171, 7], [199, 141, 9]] as const) {
-          mapGraphics.fillCircle(x, y, r);
-          mapGraphics.fillRect(x - 1, y + r - 1, 3, 8);
-        }
-      }
-      mapGraphics.lineStyle(1, MENU.line, 1).strokePoints(outline, true);
+    const pinPositions: Record<string, [number, number]> = {
+      'pacific-valleys': [69, 122],
+      'great-basin': [105, 143],
+      'sonoran-desert': [111, 184],
+      'high-rockies': [145, 126],
+      'southern-plains': [178, 183],
+      'prairie-pothole': [190, 112],
+      'north-woods': [258, 109],
     };
-
     const pins = REGIONS.map((region, index) => {
-      const [x, y] = mapPoint(region.map.x, region.map.y);
+      const [x, y] = pinPositions[region.id];
       const hit = this.add.circle(x, y, 8, 0x000000, 0.01)
         .setInteractive({ useHandCursor: true })
         .on('pointerover', () => {
@@ -349,68 +266,58 @@ export class MapScene extends Phaser.Scene {
           refresh();
         });
       const dot = this.add.circle(x, y, 4, 0xa9b982).setStrokeStyle(1, MENU.ink);
-      return { hit, dot };
+      const shortName = region.name.replace('Prairie ', '').replace('Pacific ', '').replace('Southern ', '');
+      const label = menuCopy(this, x, y + 8, shortName, MENU.cream, 5).setOrigin(0.5, 0);
+      return { hit, dot, label };
     });
 
-    const regionName = pixelText(this, 354, 94, '', 2, MENU.cream).setOrigin(0.5);
-    regionName.setMaxWidth(204);
-    const regionBlurb = pixelText(this, 354, 112, '', 1, MENU.sage).setOrigin(0.5);
-    regionBlurb.setMaxWidth(202);
-    this.add.rectangle(354, 145, 204, 45, MENU.ink, 0.87).setStrokeStyle(1, MENU.lineSoft);
-    const areaName = pixelText(this, 296, 132, '', 1, MENU.cream);
-    const opener = pixelText(this, 296, 145, '', 1, MENU.sage);
-    const birdName = pixelText(this, 296, 158, '', 1, MENU.amberText);
+    addImageFrame(this, 357, 105, 138, 52, MENU.line);
+    const regionPreview = this.add.image(357, 105, 'menu-region-southern-plains').setDisplaySize(136, 50);
+    const regionName = menuTitle(this, 357, 140, '', 16, 134);
+    const regionBlurb = menuCopy(this, 357, 153, '', MENU.sage, 6).setOrigin(0.5);
+    const areaName = menuCopy(this, 357, 166, '', MENU.cream, 7).setOrigin(0.5);
+    const opener = menuCopy(this, 357, 178, '', MENU.sage, 6).setOrigin(0.5);
+    this.add.rectangle(357, 191, 132, 17, MENU.olive, 0.7).setStrokeStyle(1, MENU.line);
+    menuCopy(this, 357, 191, 'HOME HUNT  ·  1 WEEK', MENU.cream, 7).setOrigin(0.5);
 
-    const birdIcon = this.add.graphics();
-    const dogLine = pixelText(
-      this,
-      129,
-      208,
-      pendingDog ? `${pendingDog.name}'S HOME STARTS HERE` : 'YOUR KENNEL RIDES FROM HERE',
-      1,
-      MENU.sage,
-    ).setOrigin(0.5);
-    dogLine.setMaxWidth(200);
+    const savedDog = activeDog(career);
+    const dogBreed = pendingDog ? getBreed(pendingDog.breedId) : savedDog ? getBreed(savedDog.breedId) : getBreed('gsp');
+    const dogName = pendingDog?.name ?? savedDog?.name ?? 'YOUR DOG';
+    this.add.image(303, 212, `menu-dog-thumb-${dogBreed.id}`).setDisplaySize(24, 24);
+    menuCopy(this, 319, 206, dogName, MENU.cream, 7).setOrigin(0, 0.5);
+    const dogBreedText = menuCopy(this, 319, 217, dogBreed.name, MENU.sage, 6).setOrigin(0, 0.5);
+    if (dogBreedText.width > 104) dogBreedText.setScale(104 / dogBreedText.width, 1);
 
-    const homeBox = this.add.rectangle(354, 215, 204, 27, MENU.olive, 1)
+    const homeBox = this.add.rectangle(365, 242, 126, 22, MENU.olive, 1)
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', () => confirmHome());
-    pixelText(this, 354, 215, 'MAKE THIS HOME  >', 1, MENU.cream).setOrigin(0.5);
+    pixelText(this, 365, 242, 'MAKE THIS HOME', 1, MENU.cream).setOrigin(0.5);
     setMenuFocus(homeBox, true, true);
 
-    this.add.rectangle(68, 226, 96, 23, MENU.panelAlt, 0.98)
+    this.add.rectangle(79, 242, 64, 20, MENU.panelAlt, 0.98)
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', () => goBack());
-    pixelText(this, 68, 226, 'ESC  BACK', 1, MENU.cream).setOrigin(0.5);
-    addFooterHint(this, '←→ CHOOSE REGION · ENTER MAKE HOME');
-
-    const drawBird = (region: RegionConfig) => {
-      const area = regionAreas(region)[0];
-      const species = getSpecies(area.speciesMix[0].speciesId);
-      birdIcon.clear();
-      birdIcon.fillStyle(species.palette.body, 1).fillEllipse(354, 177, 15, 8);
-      birdIcon.fillStyle(species.palette.head, 1).fillCircle(362, 174, 3);
-      birdIcon.fillStyle(species.palette.tail, 1).fillTriangle(347, 176, 339, 172, 343, 180);
-      birdIcon.lineStyle(1, 0xf2e5c5, 0.65).lineBetween(357, 181, 355, 187);
-    };
+    menuCopy(this, 79, 242, 'ESC  BACK', MENU.cream, 7).setOrigin(0.5);
+    menuCopy(this, 240, 260, '←→ CHOOSE REGION  ·  ENTER MAKE HOME', MENU.muted, 7).setOrigin(0.5);
 
     const refresh = () => {
       const region = REGIONS[selectedIndex];
-      drawRegionMap(region);
-      pins.forEach(({ dot }, index) => {
+      pins.forEach(({ dot, label }, index) => {
         const selected = index === selectedIndex;
         dot.setRadius(selected ? 5 : 3.5);
         dot.setFillStyle(selected ? MENU.amber : 0xa9b982, 1);
         dot.setStrokeStyle(selected ? 2 : 1, selected ? 0xf2e5c5 : MENU.ink);
+        label.setColor(selected ? MENU.amberText : MENU.cream);
       });
       const area = regionAreas(region)[0];
       const species = getSpecies(area.speciesMix[0].speciesId);
+      regionPreview.setTexture(`menu-region-${region.id}`);
       regionName.setText(region.name.toUpperCase());
-      regionBlurb.setText(region.blurb.toUpperCase());
-      areaName.setText(`COVERT   ${area.name.toUpperCase()}`);
-      opener.setText(`OPENER   ${weekLabel(areaOpenerWeek(area)).toUpperCase()}`);
-      birdName.setText(`PRIMARY  ${species.name.toUpperCase()}`);
-      drawBird(region);
+      regionName.setScale(1);
+      if (regionName.width > 134) regionName.setScale(134 / regionName.width);
+      regionBlurb.setText(species.name.toUpperCase());
+      areaName.setText(area.name.toUpperCase());
+      opener.setText(`OPENS ${weekLabel(areaOpenerWeek(area)).toUpperCase()}`);
     };
 
     const confirmHome = () => {

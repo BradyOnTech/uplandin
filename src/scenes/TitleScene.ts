@@ -5,10 +5,11 @@ import { loadGameplayMode, saveGameplayMode, type GameplayMode } from '../game/g
 import { pixelText, type PixelText } from './pixelFont';
 import {
   MENU,
-  addFooterHint,
   addMenuBackdrop,
   addMenuPanel,
   addRuleHeading,
+  menuCopy,
+  menuTitle,
   preloadMenuArt,
   setMenuFocus,
 } from './menuUi';
@@ -28,51 +29,53 @@ export class TitleScene extends Phaser.Scene {
     let choice = 0;
 
     addMenuBackdrop(this, 0.22);
-    pixelText(this, 240, 38, 'UPLANDIN', 5, MENU.cream).setOrigin(0.5);
-    pixelText(this, 240, 70, '— A RETRO BIRD HUNT —', 1, '#efad62').setOrigin(0.5);
+    menuTitle(this, 240, 44, 'UPLANDIN', 44, 250);
+    pixelText(this, 240, 69, '—  A RETRO BIRD HUNT  —', 1, '#efad62').setOrigin(0.5);
 
-    addMenuPanel(this, 240, 176, 286, 174, 0.95);
-    addRuleHeading(this, 240, 101, 'GAMEPLAY MODE', 246, MENU.cream);
+    addMenuPanel(this, 240, 166, 252, 174, 0.96);
+    addRuleHeading(this, 240, 94, 'GAMEPLAY MODE', 218, MENU.cream);
 
     const modeBoxes: Record<GameplayMode, Phaser.GameObjects.Rectangle> = {
-      '2d': this.add.rectangle(185, 121, 104, 27, MENU.panelAlt, 0.98).setInteractive({ useHandCursor: true }),
-      '3d': this.add.rectangle(295, 121, 104, 27, MENU.panelAlt, 0.98).setInteractive({ useHandCursor: true }),
+      '2d': this.add.rectangle(185, 113, 104, 24, MENU.panelAlt, 0.98).setInteractive({ useHandCursor: true }),
+      '3d': this.add.rectangle(295, 113, 104, 24, MENU.panelAlt, 0.98).setInteractive({ useHandCursor: true }),
     };
     const modeLabels: Record<GameplayMode, PixelText> = {
-      '2d': pixelText(this, 185, 121, '2D CLASSIC', 1, MENU.cream).setOrigin(0.5),
-      '3d': pixelText(this, 295, 121, '3D OPEN WORLD', 1, MENU.cream).setOrigin(0.5),
+      '2d': pixelText(this, 185, 113, '2D CLASSIC', 1, MENU.cream).setOrigin(0.5),
+      '3d': pixelText(this, 295, 113, '3D OPEN WORLD', 1, MENU.cream).setOrigin(0.5),
     };
 
     const stats = career.hunts > 0
       ? `${career.hunts} HUNTS · ${career.downed} DOWN · ${career.escaped} LOST`
-      : 'NO HUNTS YET — YOUR DOG IS WAITING';
-    pixelText(this, 240, 143, `★ ${stats}`, 1, MENU.sage).setOrigin(0.5);
+      : 'NO HUNTS YET · YOUR DOG IS READY';
+    pixelText(this, 240, 137, `★  ${stats}`, 1, MENU.sage).setOrigin(0.5);
 
     const entries = [
       {
-        y: 174,
+        y: 169,
         label: 'CAREER',
         sub: 'RAISE YOUR DOG. WORK THE MAP.',
         go: () => this.scene.start(career.kennel.length === 0 ? 'BreedScene' : 'MapScene'),
       },
       {
-        y: 214,
+        y: 207,
         label: 'QUICK HUNT',
         sub: 'EVERYTHING UNLOCKED. NOTHING SAVED.',
         go: () => this.scene.start('QuickScene'),
       },
     ];
     const entryBoxes = entries.map((entry, i) => {
-      const box = this.add.rectangle(240, entry.y, 246, 34, MENU.panelAlt, 0.98)
+      const box = this.add.rectangle(240, entry.y, 218, 31, MENU.panelAlt, 0.98)
         .setInteractive({ useHandCursor: true })
         .on('pointerover', () => {
           choice = i;
           refresh();
         })
         .on('pointerdown', () => activate(i));
-      pixelText(this, 134, entry.y - 7, entry.label, 2, MENU.cream).setOrigin(0, 0.5);
-      pixelText(this, 134, entry.y + 9, entry.sub, 1, MENU.sage).setOrigin(0, 0.5);
-      pixelText(this, 350, entry.y, '>', 2, MENU.amberText).setOrigin(0.5);
+      if (i === 0) this.add.image(145, entry.y, 'menu-dog-thumb-gsp').setDisplaySize(27, 27);
+      else this.add.image(145, entry.y, 'menu-bird').setDisplaySize(27, 27);
+      pixelText(this, 163, entry.y - 7, entry.label, 2, MENU.cream).setOrigin(0, 0.5);
+      menuCopy(this, 163, entry.y + 8, entry.sub, MENU.sage, 7).setOrigin(0, 0.5);
+      pixelText(this, 339, entry.y, '>', 2, MENU.amberText).setOrigin(0.5);
       return box;
     });
 
@@ -100,7 +103,8 @@ export class TitleScene extends Phaser.Scene {
       entryBoxes.forEach((box, i) => setMenuFocus(box, i === choice, false));
     };
 
-    addFooterHint(this, '←→ MODE · ↑↓ CHOOSE · ENTER SELECT');
+    this.add.graphics().lineStyle(1, MENU.lineSoft).lineBetween(131, 228, 349, 228);
+    menuCopy(this, 240, 242, '←→ MODE  ·  ↑↓ CHOOSE  ·  ENTER SELECT', MENU.muted, 7).setOrigin(0.5);
     this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
         selectMode(mode === '2d' ? '3d' : '2d');

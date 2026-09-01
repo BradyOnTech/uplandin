@@ -4,6 +4,7 @@ import { AREAS, getArea } from '../game/areas';
 import { BREEDS, getBreed, LEVEL_CAP } from '../game/breeds';
 import { getGun, GUNS } from '../game/guns';
 import { GEAR_NAMES } from '../game/progression';
+import { regionOfArea } from '../game/regions';
 import {
   cycleId,
   loadQuickConfig,
@@ -19,6 +20,8 @@ import {
   addMenuBackdrop,
   addMenuPanel,
   addRuleHeading,
+  menuCopy,
+  menuTitle,
   preloadMenuArt,
   setMenuFocus,
 } from './menuUi';
@@ -35,6 +38,29 @@ interface RowView {
   box: Phaser.GameObjects.Rectangle;
   value: PixelText;
   hint: PixelText;
+  art?: Phaser.GameObjects.Image;
+}
+
+function quickBreedName(id: string): string {
+  const names: Record<string, string> = {
+    gsp: 'GERMAN SHORTHAIR',
+    gwp: 'GERMAN WIREHAIR',
+    griffon: 'WIREHAIRED GRIFFON',
+  };
+  return names[id] ?? getBreed(id).name;
+}
+
+function quickGunName(id: string): string {
+  const names: Record<string, string> = {
+    'remington-870': 'REMINGTON 870',
+    'side-by-side': 'SIDE-BY-SIDE',
+  };
+  return names[id] ?? getGun(id).name;
+}
+
+function fitRowText(text: PixelText, maxWidth: number): void {
+  text.setScale(1);
+  if (text.width > maxWidth) text.setScale(maxWidth / text.width, 1);
 }
 
 export class QuickScene extends Phaser.Scene {
@@ -59,34 +85,34 @@ export class QuickScene extends Phaser.Scene {
     this.focusIndex = 0;
 
     addMenuBackdrop(this, 0.3);
-    pixelText(this, 240, 21, 'QUICK HUNT', 3, MENU.cream).setOrigin(0.5);
-    pixelText(this, 240, 45, '— EVERYTHING UNLOCKED. NOTHING SAVED. —', 1, MENU.sage).setOrigin(0.5);
-    addMenuPanel(this, 240, 160, 458, 204, 0.96);
+    menuTitle(this, 240, 35, 'QUICK HUNT', 38, 245);
+    pixelText(this, 240, 60, '—  EVERYTHING UNLOCKED. NOTHING SAVED.  —', 1, MENU.sage).setOrigin(0.5);
+    addMenuPanel(this, 240, 153, 370, 171, 0.97);
 
     this.rows = this.makeRows();
-    addRuleHeading(this, 129, 65, 'COMPANIONS', 202);
-    addRuleHeading(this, 351, 65, 'HUNT CONDITIONS', 202);
+    addRuleHeading(this, 147, 79, 'COMPANIONS', 170);
+    addRuleHeading(this, 333, 79, 'HUNT CONDITIONS', 170);
 
     const layouts = [
-      { x: 129, y: 84 }, { x: 129, y: 114 }, { x: 129, y: 144 },
-      { x: 351, y: 84 }, { x: 351, y: 114 }, { x: 351, y: 144 },
-      { x: 129, y: 190 }, { x: 351, y: 190 },
+      { x: 147, y: 99 }, { x: 147, y: 126 }, { x: 147, y: 153 },
+      { x: 333, y: 99 }, { x: 333, y: 126 }, { x: 333, y: 153 },
+      { x: 147, y: 193 }, { x: 333, y: 193 },
     ];
     layouts.forEach((layout, i) => this.buildRow(this.rows[i], layout.x, layout.y, i));
 
-    addRuleHeading(this, 240, 169, 'LOADOUT', 424);
-    this.backBox = this.add.rectangle(78, 232, 108, 25, MENU.panelAlt, 0.98)
+    addRuleHeading(this, 240, 172, 'LOADOUT', 356);
+    this.backBox = this.add.rectangle(105, 222, 90, 22, MENU.panelAlt, 0.98)
       .setInteractive({ useHandCursor: true })
       .on('pointerover', () => { this.focusIndex = 8; this.refresh(); })
       .on('pointerdown', () => this.back());
-    pixelText(this, 78, 232, 'ESC  BACK', 1, MENU.cream).setOrigin(0.5);
+    pixelText(this, 105, 222, 'ESC  BACK', 1, MENU.cream).setOrigin(0.5);
 
-    this.huntBox = this.add.rectangle(365, 232, 174, 27, MENU.olive, 1)
+    this.huntBox = this.add.rectangle(352, 222, 126, 24, MENU.olive, 1)
       .setInteractive({ useHandCursor: true })
       .on('pointerover', () => { this.focusIndex = 9; this.refresh(); })
       .on('pointerdown', () => this.hunt());
-    pixelText(this, 365, 232, 'HUNT', 2, MENU.cream).setOrigin(0.5);
-    pixelText(this, 240, 254, '↑↓ CHOOSE · ←→ CHANGE · ENTER SELECT', 1, MENU.muted).setOrigin(0.5);
+    pixelText(this, 352, 222, 'HUNT', 2, MENU.cream).setOrigin(0.5);
+    menuCopy(this, 240, 257, '↑↓ CHOOSE  ·  ←→ CHANGE  ·  ENTER SELECT', MENU.muted, 7).setOrigin(0.5);
 
     this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -121,13 +147,13 @@ export class QuickScene extends Phaser.Scene {
     return [
       {
         label: 'DOG',
-        value: () => getBreed(this.cfg.breedId).name,
+        value: () => quickBreedName(this.cfg.breedId),
         hint: () => getBreed(this.cfg.breedId).blurb,
         step: (dir) => { this.cfg.breedId = cycleId(BREEDS.map((b) => b.id), this.cfg.breedId, dir); },
       },
       {
         label: 'DOG 2',
-        value: () => this.cfg.breed2Id === 'none' ? 'NONE — HUNT SOLO' : getBreed(this.cfg.breed2Id).name,
+        value: () => this.cfg.breed2Id === 'none' ? 'NONE — HUNT SOLO' : quickBreedName(this.cfg.breed2Id),
         hint: () => this.cfg.breed2Id === 'none' ? '' : 'SECOND DOG HONORS THE POINT',
         step: (dir) => {
           this.cfg.breed2Id = cycleId(['none', ...BREEDS.map((b) => b.id)], this.cfg.breed2Id, dir);
@@ -160,8 +186,12 @@ export class QuickScene extends Phaser.Scene {
       },
       {
         label: 'GUN',
-        value: () => getGun(this.cfg.gunId).name,
-        hint: () => getGun(this.cfg.gunId).blurb,
+        value: () => quickGunName(this.cfg.gunId),
+        hint: () => {
+          const gun = getGun(this.cfg.gunId);
+          const action = gun.cooldownMs === 0 ? 'DOUBLE' : gun.cooldownMs <= 250 ? 'QUICK' : 'PUMP';
+          return `${gun.shells} SHELLS · ${action}`;
+        },
         step: (dir) => { this.cfg.gunId = cycleId(GUNS.map((gun) => gun.id), this.cfg.gunId, dir); },
       },
       {
@@ -175,18 +205,21 @@ export class QuickScene extends Phaser.Scene {
   }
 
   private buildRow(row: PickerRow, x: number, y: number, index: number): void {
-    const box = this.add.rectangle(x, y, 210, 27, MENU.panelAlt, 0.98)
+    const box = this.add.rectangle(x, y, 170, 24, MENU.panelAlt, 0.98)
       .setInteractive({ useHandCursor: true })
       .on('pointerover', () => { this.focusIndex = index; this.refresh(); })
       .on('pointerdown', (pointer: Phaser.Input.Pointer) => this.changeRow(index, pointer.x < x ? -1 : 1));
-    pixelText(this, x - 97, y, row.label, 1, MENU.sage).setOrigin(0, 0.5);
-    pixelText(this, x - 48, y, '<', 1, MENU.cream).setOrigin(0.5);
-    pixelText(this, x + 96, y, '>', 1, MENU.cream).setOrigin(0.5);
-    const value = pixelText(this, x + 20, y - 6, '', 1, MENU.cream).setOrigin(0.5, 0);
-    value.setMaxWidth(132);
-    const hint = pixelText(this, x + 20, y + 6, '', 1, MENU.sage).setOrigin(0.5, 0).setScale(0.72);
-    hint.setMaxWidth(180);
-    this.views.push({ box, value, hint });
+    menuCopy(this, x - 80, y, row.label, MENU.sage, 7).setOrigin(0, 0.5);
+    pixelText(this, x - 51, y, '<', 1, MENU.cream).setOrigin(0.5);
+    pixelText(this, x + 78, y, '>', 1, MENU.cream).setOrigin(0.5);
+    let art: Phaser.GameObjects.Image | undefined;
+    if (index === 0) art = this.add.image(x - 18, y, `menu-dog-thumb-${this.cfg.breedId}`).setDisplaySize(23, 23);
+    if (index === 3) art = this.add.image(x - 18, y, `menu-region-${regionOfArea(this.cfg.areaId).id}`).setDisplaySize(23, 23);
+    if (index === 6) art = this.add.image(x - 29, y - 5, 'menu-shotgun').setDisplaySize(27, 12);
+    const valueX = art ? x + 30 : x + 15;
+    const value = menuCopy(this, valueX, y - 7, '', MENU.cream, art ? 6 : 7).setOrigin(0.5, 0);
+    const hint = menuCopy(this, valueX, y + 3, '', MENU.sage, 5).setOrigin(0.5, 0);
+    this.views.push({ box, value, hint, art });
   }
 
   private changeRow(index: number, dir: 1 | -1): void {
@@ -200,6 +233,12 @@ export class QuickScene extends Phaser.Scene {
     this.rows.forEach((row, i) => {
       this.views[i].value.setText(row.value());
       this.views[i].hint.setText(row.hint?.() ?? '');
+      fitRowText(this.views[i].value, this.views[i].art ? 82 : 112);
+      fitRowText(this.views[i].hint, this.views[i].art ? 84 : 112);
+      if (i === 0) this.views[i].art?.setTexture(`menu-dog-thumb-${this.cfg.breedId}`);
+      if (i === 3) {
+        this.views[i].art?.setTexture(`menu-region-${regionOfArea(this.cfg.areaId).id}`);
+      }
       setMenuFocus(this.views[i].box, this.focusIndex === i);
     });
     setMenuFocus(this.backBox, this.focusIndex === 8);
