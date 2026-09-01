@@ -6,6 +6,21 @@ import type { Vec2 } from './types';
 
 export type LandmarkKind = 'gate' | 'windmill' | 'barn' | 'pond' | 'fence';
 
+export type TerrainKind = 'prairie' | 'wetland' | 'woods' | 'rimrock' | 'desert' | 'alpine' | 'oak-savanna';
+
+/** Stable landform recipe: a named location keeps its recognizable ground. */
+export interface AreaTerrainProfile {
+  kind: TerrainKind;
+  seed: number;
+  baseHeight: number;
+  broadRelief: number;
+  rollingRelief: number;
+  detailRelief: number;
+  /** Meters gained across 100 horizontal meters in world x/z. */
+  gradeX: number;
+  gradeZ: number;
+}
+
 export interface AreaLandmark {
   id: string;
   name: string;
@@ -46,6 +61,7 @@ export interface AreaConfig {
   cover: number;
   world: Rect;
   patches: Rect[];
+  terrain: AreaTerrainProfile;
   dropPoints: DropPoint[];
   landmarks: AreaLandmark[];
   trails: AreaTrail[];
@@ -62,31 +78,100 @@ function world(w: number, h: number): Rect {
   return { x: 0, y: 0, w, h };
 }
 
+const TERRAIN_DEFAULTS: Record<TerrainKind, Omit<AreaTerrainProfile, 'kind' | 'seed'>> = {
+  prairie: { baseHeight: 6, broadRelief: 18, rollingRelief: 6, detailRelief: 1.4, gradeX: 0, gradeZ: 0 },
+  wetland: { baseHeight: 3, broadRelief: 7, rollingRelief: 2.5, detailRelief: 0.7, gradeX: 0, gradeZ: 0 },
+  woods: { baseHeight: 5, broadRelief: 13, rollingRelief: 5, detailRelief: 1.6, gradeX: 0, gradeZ: 0 },
+  rimrock: { baseHeight: 11, broadRelief: 30, rollingRelief: 10, detailRelief: 2.4, gradeX: 0.7, gradeZ: -1.1 },
+  desert: { baseHeight: 7, broadRelief: 16, rollingRelief: 7, detailRelief: 1.8, gradeX: 0.25, gradeZ: 0.35 },
+  alpine: { baseHeight: 16, broadRelief: 34, rollingRelief: 12, detailRelief: 2.8, gradeX: 1.2, gradeZ: -0.45 },
+  'oak-savanna': { baseHeight: 7, broadRelief: 20, rollingRelief: 7, detailRelief: 1.5, gradeX: -0.25, gradeZ: 0.1 },
+};
+
+function terrain(kind: TerrainKind, seed: number): AreaTerrainProfile {
+  return { kind, seed, ...TERRAIN_DEFAULTS[kind] };
+}
+
+function geographyPoints(w: number, h: number, seed: number) {
+  // Quail Fields is the tuned onboarding covert. Preserve its proven hunt
+  // line while every additional property receives its own layout below.
+  if (seed === 11) {
+    return {
+      south: { x: w * 0.42, y: h - 42 },
+      west: { x: 42, y: h * 0.58 },
+      junction: { x: w * 0.55, y: h * 0.48 },
+      southMid: { x: w * 0.45, y: h * 0.67 },
+      westMid: { x: w * 0.27, y: h * 0.55 },
+      feature: { x: w * 0.69, y: h * 0.31 },
+    };
+  }
+  const rng = mulberry32(seed);
+  const south = { x: w * (0.34 + rng() * 0.17), y: h - (34 + rng() * 20) };
+  const west = { x: 34 + rng() * 20, y: h * (0.42 + rng() * 0.22) };
+  const junction = { x: w * (0.42 + rng() * 0.2), y: h * (0.38 + rng() * 0.2) };
+  const southMid = {
+    x: south.x * 0.58 + junction.x * 0.42 + (rng() - 0.5) * w * 0.08,
+    y: south.y * 0.58 + junction.y * 0.42,
+  };
+  const westMid = {
+    x: west.x * 0.58 + junction.x * 0.42,
+    y: west.y * 0.58 + junction.y * 0.42 + (rng() - 0.5) * h * 0.08,
+  };
+  const feature = { x: w * (0.58 + rng() * 0.25), y: h * (0.2 + rng() * 0.23) };
+  return { south, west, junction, southMid, westMid, feature };
+}
+
 /** A real first objective off each parking place, visible on the map. */
-function entryCover(w: number, h: number): Rect[] {
+function entryCover(w: number, h: number, seed: number): Rect[] {
+  if (seed === 11) {
+    return [
+      { x: w * 0.42 - 35, y: h - 128, w: 70, h: 52 },
+      { x: 76, y: h * 0.58 - 35, w: 58, h: 70 },
+    ];
+  }
+  const points = geographyPoints(w, h, seed);
+  const make = (drop: Vec2, toward: Vec2, width: number, height: number): Rect => {
+    const angle = Math.atan2(toward.y - drop.y, toward.x - drop.x);
+    const center = { x: drop.x + Math.cos(angle) * 78, y: drop.y + Math.sin(angle) * 78 };
+    return { x: center.x - width / 2, y: center.y - height / 2, w: width, h: height };
+  };
   return [
-    { x: w * 0.42 - 35, y: h - 128, w: 70, h: 52 },
-    { x: 76, y: h * 0.58 - 35, w: 58, h: 70 },
+    make(points.south, points.southMid, 70, 52),
+    make(points.west, points.westMid, 58, 70),
   ];
 }
 
 /** Shared, deterministic geography consumed by the map and both hunt renderers. */
-function geography(w: number, h: number, feature: { name: string; kind: LandmarkKind }) {
-  const south = { x: w * 0.42, y: h - 42 };
-  const west = { x: 42, y: h * 0.58 };
+function geography(w: number, h: number, feature: { name: string; kind: LandmarkKind }, seed: number) {
+  const points = geographyPoints(w, h, seed);
+  const { south, west, junction, southMid, westMid } = points;
   return {
     dropPoints: [
-      { id: 'south-gate', name: 'South Gate', position: south, heading: -Math.PI / 2, safetyRadius: 48, landmarkId: 'south-gate' },
-      { id: 'west-track', name: 'West Track', position: west, heading: 0, safetyRadius: 48, landmarkId: 'west-gate' },
+      {
+        id: 'south-gate',
+        name: 'South Gate',
+        position: south,
+        heading: seed === 11 ? -Math.PI / 2 : Math.atan2(southMid.y - south.y, southMid.x - south.x),
+        safetyRadius: 48,
+        landmarkId: 'south-gate',
+      },
+      {
+        id: 'west-track',
+        name: 'West Track',
+        position: west,
+        heading: seed === 11 ? 0 : Math.atan2(westMid.y - west.y, westMid.x - west.x),
+        safetyRadius: 48,
+        landmarkId: 'west-gate',
+      },
     ] satisfies DropPoint[],
     landmarks: [
       { id: 'south-gate', name: 'South Gate', kind: 'gate', position: { x: south.x, y: south.y + 12 } },
       { id: 'west-gate', name: 'West Gate', kind: 'gate', position: { x: west.x - 12, y: west.y } },
-      { id: 'area-feature', name: feature.name, kind: feature.kind, position: { x: w * 0.69, y: h * 0.31 } },
+      { id: 'area-feature', name: feature.name, kind: feature.kind, position: points.feature },
     ] satisfies AreaLandmark[],
     trails: [
-      { id: 'south-track', points: [south, { x: w * 0.45, y: h * 0.67 }, { x: w * 0.55, y: h * 0.48 }] },
-      { id: 'west-track', points: [west, { x: w * 0.27, y: h * 0.55 }, { x: w * 0.55, y: h * 0.48 }] },
+      { id: 'south-track', points: [south, southMid, junction] },
+      { id: 'west-track', points: [west, westMid, junction] },
     ] satisfies AreaTrail[],
   };
 }
@@ -100,8 +185,9 @@ export const AREAS: AreaConfig[] = [
     grass: 0x5a9440,
     cover: 0x3d7429,
     world: world(1200, 700),
-    ...geography(1200, 700, { name: 'Old Windmill', kind: 'windmill' }),
-    patches: [...scatterRects(world(1200, 700), { count: 26, minW: 70, maxW: 130, minH: 40, maxH: 75 }, mulberry32(11)), ...entryCover(1200, 700)],
+    terrain: terrain('prairie', 1971),
+    ...geography(1200, 700, { name: 'Old Windmill', kind: 'windmill' }, 11),
+    patches: [...scatterRects(world(1200, 700), { count: 26, minW: 70, maxW: 130, minH: 40, maxH: 75 }, mulberry32(11)), ...entryCover(1200, 700, 11)],
     stocking: 1.5,
     speciesMix: [{ speciesId: 'bobwhite', weight: 1 }],
   },
@@ -113,8 +199,9 @@ export const AREAS: AreaConfig[] = [
     grass: 0x8a7a3a,
     cover: 0x5e5424,
     world: world(1400, 800),
-    ...geography(1400, 800, { name: 'Stock Pond', kind: 'pond' }),
-    patches: [...scatterRects(world(1400, 800), { count: 30, minW: 90, maxW: 170, minH: 28, maxH: 50 }, mulberry32(22)), ...entryCover(1400, 800)],
+    terrain: terrain('wetland', 2201),
+    ...geography(1400, 800, { name: 'Stock Pond', kind: 'pond' }, 22),
+    patches: [...scatterRects(world(1400, 800), { count: 30, minW: 90, maxW: 170, minH: 28, maxH: 50 }, mulberry32(22)), ...entryCover(1400, 800, 22)],
     stocking: 0.85,
     speciesMix: [
       { speciesId: 'ringneck', weight: 0.8 },
@@ -128,8 +215,9 @@ export const AREAS: AreaConfig[] = [
     grass: 0xa08d55,
     cover: 0x7c6c3d,
     world: world(1400, 800),
-    ...geography(1400, 800, { name: 'Line Shack', kind: 'barn' }),
-    patches: [...scatterRects(world(1400, 800), { count: 22, minW: 110, maxW: 200, minH: 40, maxH: 70 }, mulberry32(44)), ...entryCover(1400, 800)],
+    terrain: terrain('prairie', 4401),
+    ...geography(1400, 800, { name: 'Line Shack', kind: 'barn' }, 44),
+    patches: [...scatterRects(world(1400, 800), { count: 22, minW: 110, maxW: 200, minH: 40, maxH: 70 }, mulberry32(44)), ...entryCover(1400, 800, 44)],
     stocking: 0.7,
     speciesMix: [
       { speciesId: 'sharptail', weight: 0.5 },
@@ -145,8 +233,9 @@ export const AREAS: AreaConfig[] = [
     grass: 0x3f6b4a,
     cover: 0x28513a,
     world: world(1000, 640),
-    ...geography(1000, 640, { name: 'Logging Gate', kind: 'gate' }),
-    patches: [...scatterRects(world(1000, 640), { count: 24, minW: 80, maxW: 150, minH: 50, maxH: 85 }, mulberry32(33)), ...entryCover(1000, 640)],
+    terrain: terrain('woods', 3301),
+    ...geography(1000, 640, { name: 'Logging Gate', kind: 'gate' }, 33),
+    patches: [...scatterRects(world(1000, 640), { count: 24, minW: 80, maxW: 150, minH: 50, maxH: 85 }, mulberry32(33)), ...entryCover(1000, 640, 33)],
     stocking: 1.1,
     speciesMix: [
       { speciesId: 'ruffed-grouse', weight: 0.75 },
@@ -160,8 +249,9 @@ export const AREAS: AreaConfig[] = [
     grass: 0x4a6b3f,
     cover: 0x2f5130,
     world: world(1000, 640),
-    ...geography(1000, 640, { name: 'Beaver Pond', kind: 'pond' }),
-    patches: [...scatterRects(world(1000, 640), { count: 28, minW: 60, maxW: 110, minH: 45, maxH: 80 }, mulberry32(55)), ...entryCover(1000, 640)],
+    terrain: terrain('wetland', 5501),
+    ...geography(1000, 640, { name: 'Beaver Pond', kind: 'pond' }, 55),
+    patches: [...scatterRects(world(1000, 640), { count: 28, minW: 60, maxW: 110, minH: 45, maxH: 80 }, mulberry32(55)), ...entryCover(1000, 640, 55)],
     stocking: 1.2,
     speciesMix: [
       { speciesId: 'woodcock', weight: 0.7 },
@@ -177,8 +267,9 @@ export const AREAS: AreaConfig[] = [
     grass: 0x9a8a60,
     cover: 0x6e6244,
     world: world(1400, 800),
-    ...geography(1400, 800, { name: 'Sheep Fence', kind: 'fence' }),
-    patches: [...scatterRects(world(1400, 800), { count: 18, minW: 100, maxW: 180, minH: 35, maxH: 60 }, mulberry32(66)), ...entryCover(1400, 800)],
+    terrain: terrain('rimrock', 6601),
+    ...geography(1400, 800, { name: 'Sheep Fence', kind: 'fence' }, 66),
+    patches: [...scatterRects(world(1400, 800), { count: 18, minW: 100, maxW: 180, minH: 35, maxH: 60 }, mulberry32(66)), ...entryCover(1400, 800, 66)],
     stocking: 0.65,
     speciesMix: [{ speciesId: 'hun', weight: 1 }],
   },
@@ -189,8 +280,9 @@ export const AREAS: AreaConfig[] = [
     grass: 0x8f7f5e,
     cover: 0x5e5340,
     world: world(1400, 800),
-    ...geography(1400, 800, { name: 'Rimrock Tank', kind: 'pond' }),
-    patches: [...scatterRects(world(1400, 800), { count: 16, minW: 90, maxW: 160, minH: 30, maxH: 55 }, mulberry32(77)), ...entryCover(1400, 800)],
+    terrain: terrain('rimrock', 7701),
+    ...geography(1400, 800, { name: 'Rimrock Tank', kind: 'pond' }, 77),
+    patches: [...scatterRects(world(1400, 800), { count: 16, minW: 90, maxW: 160, minH: 30, maxH: 55 }, mulberry32(77)), ...entryCover(1400, 800, 77)],
     stocking: 0.7,
     speciesMix: [
       { speciesId: 'chukar', weight: 0.8 },
@@ -206,8 +298,9 @@ export const AREAS: AreaConfig[] = [
     grass: 0xb89f72,
     cover: 0x77694a,
     world: world(1200, 700),
-    ...geography(1200, 700, { name: 'Windmill Tank', kind: 'windmill' }),
-    patches: [...scatterRects(world(1200, 700), { count: 22, minW: 70, maxW: 130, minH: 35, maxH: 65 }, mulberry32(88)), ...entryCover(1200, 700)],
+    terrain: terrain('desert', 8801),
+    ...geography(1200, 700, { name: 'Windmill Tank', kind: 'windmill' }, 88),
+    patches: [...scatterRects(world(1200, 700), { count: 22, minW: 70, maxW: 130, minH: 35, maxH: 65 }, mulberry32(88)), ...entryCover(1200, 700, 88)],
     stocking: 1.6,
     speciesMix: [
       { speciesId: 'gambels-quail', weight: 0.6 },
@@ -222,8 +315,9 @@ export const AREAS: AreaConfig[] = [
     grass: 0x8a8050,
     cover: 0x565c30,
     world: world(1000, 640),
-    ...geography(1000, 640, { name: 'Canyon Corral', kind: 'fence' }),
-    patches: [...scatterRects(world(1000, 640), { count: 24, minW: 65, maxW: 120, minH: 45, maxH: 75 }, mulberry32(99)), ...entryCover(1000, 640)],
+    terrain: terrain('desert', 9901),
+    ...geography(1000, 640, { name: 'Canyon Corral', kind: 'fence' }, 99),
+    patches: [...scatterRects(world(1000, 640), { count: 24, minW: 65, maxW: 120, minH: 45, maxH: 75 }, mulberry32(99)), ...entryCover(1000, 640, 99)],
     stocking: 1.3,
     speciesMix: [
       { speciesId: 'mearns-quail', weight: 0.8 },
@@ -239,8 +333,9 @@ export const AREAS: AreaConfig[] = [
     grass: 0x55704e,
     cover: 0x334a36,
     world: world(1000, 640),
-    ...geography(1000, 640, { name: 'Old Warming Hut', kind: 'barn' }),
-    patches: [...scatterRects(world(1000, 640), { count: 22, minW: 75, maxW: 140, minH: 45, maxH: 80 }, mulberry32(111)), ...entryCover(1000, 640)],
+    terrain: terrain('alpine', 11101),
+    ...geography(1000, 640, { name: 'Old Warming Hut', kind: 'barn' }, 111),
+    patches: [...scatterRects(world(1000, 640), { count: 22, minW: 75, maxW: 140, minH: 45, maxH: 80 }, mulberry32(111)), ...entryCover(1000, 640, 111)],
     stocking: 1.0,
     speciesMix: [
       { speciesId: 'blue-grouse', weight: 0.7 },
@@ -257,8 +352,9 @@ export const AREAS: AreaConfig[] = [
     grass: 0x7e8a4a,
     cover: 0x4e5c2e,
     world: world(1200, 700),
-    ...geography(1200, 700, { name: 'Pump House', kind: 'barn' }),
-    patches: [...scatterRects(world(1200, 700), { count: 24, minW: 70, maxW: 135, minH: 40, maxH: 70 }, mulberry32(122)), ...entryCover(1200, 700)],
+    terrain: terrain('oak-savanna', 12201),
+    ...geography(1200, 700, { name: 'Pump House', kind: 'barn' }, 122),
+    patches: [...scatterRects(world(1200, 700), { count: 24, minW: 70, maxW: 135, minH: 40, maxH: 70 }, mulberry32(122)), ...entryCover(1200, 700, 122)],
     stocking: 1.6,
     speciesMix: [{ speciesId: 'california-quail', weight: 1 }],
   },

@@ -161,6 +161,17 @@ export interface ThreeHuntSetup extends ThreeHuntProfile {
   breed: BreedConfig;
 }
 
+/** Resolve location identity without rolling weather, wind, or birds. */
+export function resolveThreeHuntArea(
+  search: string,
+  storage: StorageLike | null = defaultStorage(),
+): AreaConfig {
+  const launch = parseHuntLaunch(search);
+  if (launch?.kind === 'quick') return getArea(loadQuickConfig(storage).areaId);
+  if (launch?.kind === 'career') return getArea(launch.areaId);
+  return getArea(new URLSearchParams(search).get('area') ?? 'quail-fields');
+}
+
 /**
  * Deep launch seam for Three.js: URL + shared saves in, complete hunt setup
  * out. The renderer never needs to know career calendar or Quick Hunt rules.
@@ -176,7 +187,7 @@ export function createThreeHuntSetup(
 
   if (launch?.kind === 'quick') {
     const quick = profile.quick ?? loadQuickConfig(storage);
-    const area = getArea(quick.areaId);
+    const area = resolveThreeHuntArea(search, storage);
     const hunt = createHunt(area, rng, {
       wind: quick.wind === 'random' ? undefined : quick.wind,
       gunId: quick.gunId,
@@ -189,7 +200,7 @@ export function createThreeHuntSetup(
 
   if (launch?.kind === 'career') {
     const career = loadCareer(storage);
-    const area = getArea(launch.areaId);
+    const area = resolveThreeHuntArea(search, storage);
     const hunt = createHunt(area, rng, {
       gunId: career.hunter.shotgunId,
       conditionBias: seasonalBias(career.date.week, area.conditionBias),
@@ -202,8 +213,7 @@ export function createThreeHuntSetup(
   }
 
   // Standalone review/capture keeps the old deterministic showcase setup.
-  const params = new URLSearchParams(search);
-  const area = getArea(params.get('area') ?? 'quail-fields');
+  const area = resolveThreeHuntArea(search, storage);
   const hunt = createHunt(area, rng, { wind: 'breezy', condition: 'frost', dropPointId });
   return { ...profile, launch, area, hunt, breed: getBreed(profile.breedId) };
 }

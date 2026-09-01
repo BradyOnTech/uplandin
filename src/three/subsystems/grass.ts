@@ -806,6 +806,7 @@ export class GrassSystem implements Subsystem {
     this.cfg = CFG[ctx.quality];
     this.terrain = ctx.get<TerrainSystem>('terrain');
     this.hunt = ctx.get<Hunt3DSystem>('hunt3d');
+    this.groundNoise = makeNoise(this.terrain.paintSeed());
 
     this.buildVariantGeos(mulberry32(0x9e1d77), this.cfg.bladeWide);
 

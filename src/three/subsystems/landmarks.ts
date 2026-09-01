@@ -39,11 +39,7 @@ export class LandmarksSystem implements Subsystem {
     }
 
     const drop = hunt.dropPoint();
-    const behind = {
-      x: drop.position.x - Math.cos(drop.heading) * 6,
-      y: drop.position.y - Math.sin(drop.heading) * 6,
-    };
-    const world = hunt.simToWorld(behind.x, behind.y, { x: 0, z: 0 });
+    const world = hunt.truckWorld({ x: 0, z: 0 });
     const truck = this.buildTruck();
     truck.position.set(world.x, terrain.heightAt(world.x, world.z), world.z);
     truck.rotation.y = -drop.heading;

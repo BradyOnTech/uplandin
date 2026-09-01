@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { AreaTerrainProfile } from '../../game/areas';
 import type { Ctx, Subsystem } from '../engine';
 import { P, TOD, type TimeOfDay } from '../palette';
 
@@ -97,7 +98,7 @@ diffuseColor.rgb *= 1.0 - 0.2 * smoothstep( 0.3, 0.75, gCs ) * uCloudShK;
 
 export class TerrainSystem implements Subsystem {
   readonly id = 'terrain';
-  private noise = makeNoise(1971);
+  private noise: ReturnType<typeof makeNoise>;
   // The grass system's fertility field (same seed 4127, same octaves): the
   // ground tints toward trodden grass-olive wherever tufts will grow, so
   // dirt reads as patches INSIDE grass instead of grass as ornaments on
@@ -119,6 +120,15 @@ export class TerrainSystem implements Subsystem {
     uCloudShK: { value: 0 },
     uCloudT: { value: 0 },
   };
+
+  constructor(private readonly profile: AreaTerrainProfile) {
+    this.noise = makeNoise(profile.seed);
+  }
+
+  /** Grass samples the identical paint field so ground and tufts agree. */
+  paintSeed(): number {
+    return this.profile.seed;
+  }
 
   /** One ground material for plate + skirt, with the sun-drench injection. */
   private makeGroundMat(): THREE.MeshLambertMaterial {
@@ -165,7 +175,12 @@ export class TerrainSystem implements Subsystem {
     const n1 = this.noise(x * 0.006 + 100, z * 0.006 + 100); // broad swells
     const n15 = this.noise(x * 0.016 + 1300, z * 0.016 + 1300); // rolling mid
     const n2 = this.noise(x * 0.05 + 300, z * 0.05 + 300); // local roll
-    return (n1 - 0.5) * 18 + (n15 - 0.5) * 6 + (n2 - 0.5) * 1.4 + 6;
+    const grade = x / 100 * this.profile.gradeX + z / 100 * this.profile.gradeZ;
+    return (n1 - 0.5) * this.profile.broadRelief
+      + (n15 - 0.5) * this.profile.rollingRelief
+      + (n2 - 0.5) * this.profile.detailRelief
+      + this.profile.baseHeight
+      + grade;
   }
 
   init(ctx: Ctx): void {

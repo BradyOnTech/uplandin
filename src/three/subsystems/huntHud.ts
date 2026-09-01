@@ -13,6 +13,7 @@ export class HuntHudSystem implements Subsystem {
   private panel: HTMLElement | null = null;
   private tally: HTMLElement | null = null;
   private phase: HTMLElement | null = null;
+  private beacon: HTMLElement | null = null;
   private summary: HTMLElement | null = null;
   private summaryCopy: HTMLElement | null = null;
   private endButton: HTMLButtonElement | null = null;
@@ -20,6 +21,8 @@ export class HuntHudSystem implements Subsystem {
   private summaryShown = false;
   private lastTally = '';
   private lastPhase = '';
+  private lastBeacon = '';
+  private truck = { x: 0, z: 0 };
 
   init(ctx: Ctx): void {
     this.frozen = new URLSearchParams(location.search).has('capture');
@@ -29,6 +32,7 @@ export class HuntHudSystem implements Subsystem {
     this.panel = document.getElementById('hunt-hud');
     this.tally = document.getElementById('hunt-tally');
     this.phase = document.getElementById('hunt-phase');
+    this.beacon = document.getElementById('hunt-beacon');
     this.summary = document.getElementById('hunt-summary');
     this.summaryCopy = document.getElementById('hunt-summary-copy');
     this.endButton = document.getElementById('end-hunt') as HTMLButtonElement | null;
@@ -42,7 +46,7 @@ export class HuntHudSystem implements Subsystem {
     });
   }
 
-  update(_ctx: Ctx, _dt: number): void {
+  update(ctx: Ctx, _dt: number): void {
     if (this.frozen) return;
     const hunt = this.hunt.huntState();
     let hidden = 0;
@@ -85,6 +89,22 @@ export class HuntHudSystem implements Subsystem {
     if (phase !== this.lastPhase) {
       if (this.phase) this.phase.textContent = phase;
       this.lastPhase = phase;
+    }
+
+    this.hunt.truckWorld(this.truck);
+    const dx = this.truck.x - ctx.camera.position.x;
+    const dz = this.truck.z - ctx.camera.position.z;
+    const yaw = ctx.camera.rotation.y;
+    const forward = dx * -Math.sin(yaw) + dz * -Math.cos(yaw);
+    const right = dx * -Math.cos(yaw) + dz * Math.sin(yaw);
+    const bearing = Math.atan2(right, forward);
+    const arrows = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
+    const sector = (Math.round(bearing / (Math.PI / 4)) + arrows.length) % arrows.length;
+    const yards = Math.round(Math.hypot(dx, dz) / 0.9144);
+    const beacon = `TRUCK ${arrows[sector]} ${yards} YD`;
+    if (beacon !== this.lastBeacon) {
+      if (this.beacon) this.beacon.textContent = beacon;
+      this.lastBeacon = beacon;
     }
 
     const complete = hidden === 0 && flushed === 0 && downOnGround === 0 && !rise;

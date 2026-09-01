@@ -7,6 +7,23 @@ describe('areas', () => {
     expect(new Set(AREAS.map((a) => a.id)).size).toBe(AREAS.length);
   });
 
+  it('give every named location a stable, distinct terrain identity', () => {
+    expect(new Set(AREAS.map((area) => area.terrain.seed)).size).toBe(AREAS.length);
+    for (const area of AREAS) {
+      expect(area.terrain.seed).toBeGreaterThan(0);
+      expect(area.terrain.broadRelief).toBeGreaterThan(0);
+      expect(area.dropPoints.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('give locations distinct access-road and drop-point geography', () => {
+    const signatures = AREAS.map((area) => JSON.stringify({
+      drops: area.dropPoints.map((drop) => drop.position),
+      junctions: area.trails.map((trail) => trail.points.at(-1)),
+    }));
+    expect(new Set(signatures).size).toBe(AREAS.length);
+  });
+
   it('worlds are bigger than the viewport', () => {
     for (const a of AREAS) {
       expect(a.world.w).toBeGreaterThan(VIEWPORT.w);

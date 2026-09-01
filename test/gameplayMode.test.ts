@@ -7,6 +7,7 @@ import {
   loadGameplayMode,
   parseHuntLaunch,
   parseDropPointId,
+  resolveThreeHuntArea,
   resolveThreeHuntProfile,
   saveGameplayMode,
 } from '../src/game/gameplayMode';
@@ -86,6 +87,14 @@ describe('gameplay mode and shared hunt launch', () => {
     expect(setup.hunt.quick?.gearTier).toBe(2);
     expect(setup.gearTier).toBe(2);
     expect(setup.brace).toBeNull();
+    expect(resolveThreeHuntArea('?play=quick', storage).id).toBe('quail-fields');
+  });
+
+  it('resolves location identity without rolling a hunt', () => {
+    expect(resolveThreeHuntArea('?play=career&area=chukar-ridge', memoryStorage()).id)
+      .toBe('chukar-ridge');
+    expect(resolveThreeHuntArea('?area=timberline-parks', null).terrain.kind)
+      .toBe('alpine');
   });
 
   it('resolves the configured Quick Hunt bracemate for the 3D adapter', () => {

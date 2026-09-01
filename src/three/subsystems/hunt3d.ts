@@ -505,6 +505,16 @@ export class Hunt3DSystem implements Subsystem {
     return getDropPoint(this.area, this.hunt.dropPointId);
   }
 
+  /** Selected drop's parked truck, using the same offset as its renderer. */
+  truckWorld<T extends { x: number; z: number }>(out: T): T {
+    const drop = this.dropPoint();
+    return this.simToWorld(
+      drop.position.x - Math.cos(drop.heading) * 6,
+      drop.position.y - Math.sin(drop.heading) * 6,
+      out,
+    );
+  }
+
   /** The sim dog — position/state/gait are truth for the dog renderer. */
   dog(slot = 0): Dog {
     const dog = this.simDogs[slot];

@@ -19,7 +19,7 @@ import {
   GSP_COATS,
   resolveGspCoat,
 } from './dogs/germanShorthairedPointer';
-import { parseHuntLaunch, resolveThreeHuntProfile } from '../game/gameplayMode';
+import { parseHuntLaunch, resolveThreeHuntArea, resolveThreeHuntProfile } from '../game/gameplayMode';
 
 /*
  * Uplandin 3D entry. Boot order = subsystem registration order; the
@@ -31,6 +31,7 @@ const params = new URLSearchParams(location.search);
 const quality = params.get('quality') === 'lite' ? 'lite' : 'high';
 const launch = parseHuntLaunch(location.search);
 const launchProfile = resolveThreeHuntProfile(location.search);
+const launchArea = resolveThreeHuntArea(location.search);
 const visualBreedFor = (breedId: string) => breedId === 'gsp' ? 'gsp' : 'english-setter';
 const visualBreed = visualBreedFor(launchProfile.breedId);
 const coatId = visualBreed === 'gsp'
@@ -41,7 +42,7 @@ const canvas = document.getElementById('game3d') as HTMLCanvasElement;
 const engine = new Engine(canvas, quality);
 
 engine.register(new SkySystem());
-engine.register(new TerrainSystem());
+engine.register(new TerrainSystem(launchArea.terrain));
 // Player first: hunt3d frames the opening covey from the player's authored
 // spawn heading. It still precedes grass, which reads the hunt's cover map.
 engine.register(new PlayerSystem());
