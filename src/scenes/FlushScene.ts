@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { configureLogicalViewport } from './logicalViewport';
 import { playCackle, playShot, playThud, playThunder, playTwitter, unlockAudio } from '../audio';
 import { getArea } from '../game/areas';
 import { YOUNG_FLIGHT_MULT, type Bird } from '../game/birds';
@@ -177,6 +178,7 @@ export class FlushScene extends Phaser.Scene {
     pointingSlot?: number | null;
     slopeApproach?: SlopeApproach | null;
   }): void {
+    configureLogicalViewport(this, 'pixel');
     this.hunt = data.hunt;
     this.dogs = data.dogs ?? [];
     this.simulation =

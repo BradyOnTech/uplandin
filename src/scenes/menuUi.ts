@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { BREEDS, type BreedConfig } from '../game/breeds';
 import { REGIONS } from '../game/regions';
-import { pixelText, type PixelText } from './pixelFont';
+
+export type MenuText = Phaser.GameObjects.Text;
 
 /** Shared visual language for the front-end screens. */
 export const MENU = {
@@ -37,6 +38,7 @@ export function preloadMenuArt(scene: Phaser.Scene): void {
 }
 
 export function addMenuBackdrop(scene: Phaser.Scene, shade = 0.34): void {
+  setMenuArtFiltering(scene);
   if (scene.textures.exists('menu-bg')) {
     scene.add.image(240, 135, 'menu-bg').setDisplaySize(480, 270);
   } else {
@@ -81,8 +83,8 @@ export function addRuleHeading(
   label: string,
   width: number,
   color: string | number = MENU.sage,
-): PixelText {
-  const labelWidth = label.length * 6 + 18;
+): MenuText {
+  const labelWidth = label.length * 5 + 18;
   const side = Math.max(8, (width - labelWidth) / 2);
   const g = scene.add.graphics();
   g.lineStyle(1, MENU.lineSoft, 1);
@@ -91,7 +93,7 @@ export function addRuleHeading(
   g.fillStyle(MENU.line, 1);
   g.fillRect(x - width / 2 - 1, y - 1, 3, 3);
   g.fillRect(x + width / 2 - 1, y - 1, 3, 3);
-  return pixelText(scene, x, y, label, 1, color).setOrigin(0.5);
+  return menuCopy(scene, x, y, label, color, 7).setOrigin(0.5);
 }
 
 export function addStepHeader(
@@ -99,14 +101,14 @@ export function addStepHeader(
   step: 1 | 2 | 3,
   completeBefore = step - 1,
 ): void {
-  pixelText(scene, 240, 7, `— STEP ${step} OF 3 —`, 1, MENU.cream).setOrigin(0.5);
+  menuCopy(scene, 240, 7, `— STEP ${step} OF 3 —`, MENU.cream, 7).setOrigin(0.5);
   scene.add.rectangle(240, 23, 262, 18, MENU.ink, 0.88).setStrokeStyle(1, MENU.lineSoft);
   const labels = ['BREED', 'NAME', 'HOME GROUND'];
   const xs = [165, 240, 323];
   labels.forEach((label, i) => {
     const done = i < completeBefore;
     const active = i === step - 1;
-    pixelText(scene, xs[i], 23, `${label}${done ? ' ★' : ''}`, 1, active ? MENU.amberText : MENU.sage)
+    menuCopy(scene, xs[i], 23, `${label}${done ? '  ✓' : ''}`, active ? MENU.amberText : MENU.sage, 8)
       .setOrigin(0.5);
   });
 }
@@ -129,12 +131,14 @@ export function menuTitle(
     strokeThickness: 2,
     shadow: { offsetX: 1, offsetY: 2, color: '#000000', blur: 0, fill: true },
     align: 'center',
+    resolution: 3,
   }).setOrigin(0.5);
+  title.texture.setFilter(Phaser.Textures.FilterMode.LINEAR);
   if (title.width > maxWidth) title.setScale(maxWidth / title.width);
   return title;
 }
 
-/** Compact copy for dense mockup-style rows without fractional bitmap scaling. */
+/** Crisp, high-DPI front-end copy; gameplay keeps the bitmap face. */
 export function menuCopy(
   scene: Phaser.Scene,
   x: number,
@@ -142,9 +146,25 @@ export function menuCopy(
   text: string,
   color: string | number = MENU.sage,
   fontSize = 7,
-): PixelText {
-  void fontSize;
-  return pixelText(scene, x, y, text, 1, color).setLetterSpacing(-1) as PixelText;
+): MenuText {
+  const cssColor = typeof color === 'number'
+    ? `#${color.toString(16).padStart(6, '0')}`
+    : color;
+  const copy = scene.add.text(x, y, text.toUpperCase(), {
+    fontFamily: 'Trebuchet MS, Avenir Next, Arial, sans-serif',
+    fontSize: `${fontSize}px`,
+    fontStyle: 'bold',
+    color: cssColor,
+    letterSpacing: 0.15,
+    resolution: 3,
+    shadow: { offsetX: 0.5, offsetY: 0.5, color: '#000000', blur: 0, fill: true },
+  });
+  const originalSetText = copy.setText.bind(copy);
+  copy.setText = (value: string | string[]) => originalSetText(
+    Array.isArray(value) ? value.map((line) => line.toUpperCase()) : String(value).toUpperCase(),
+  );
+  copy.texture.setFilter(Phaser.Textures.FilterMode.LINEAR);
+  return copy;
 }
 
 export function setMenuFocus(
@@ -188,6 +208,20 @@ export function learningPace(breed: BreedConfig): string {
   return 'STANDARD LEARNING PACE';
 }
 
-export function addFooterHint(scene: Phaser.Scene, text: string): PixelText {
-  return pixelText(scene, 240, 260, text, 1, MENU.muted).setOrigin(0.5);
+export function addFooterHint(scene: Phaser.Scene, text: string): MenuText {
+  return menuCopy(scene, 240, 260, text, MENU.muted, 7).setOrigin(0.5);
+}
+
+function setMenuArtFiltering(scene: Phaser.Scene): void {
+  const keys = [
+    'menu-bg',
+    'menu-home-map',
+    'menu-shotgun',
+    'menu-bird',
+    ...BREEDS.flatMap((breed) => [`menu-dog-${breed.id}`, `menu-dog-thumb-${breed.id}`]),
+    ...REGIONS.map((region) => `menu-region-${region.id}`),
+  ];
+  for (const key of keys) {
+    if (scene.textures.exists(key)) scene.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
+  }
 }

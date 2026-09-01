@@ -29,6 +29,7 @@ import {
   setMenuFocus,
 } from './menuUi';
 import { pixelText } from './pixelFont';
+import { configureLogicalViewport } from './logicalViewport';
 
 interface PendingDog {
   breedId: string;
@@ -64,6 +65,7 @@ export class MapScene extends Phaser.Scene {
   }
 
   create(data: MapSceneData = {}): void {
+    configureLogicalViewport(this);
     let career = loadCareer();
     // A career without a home picks one before anything else (new careers
     // and pre-season saves alike).
@@ -233,7 +235,7 @@ export class MapScene extends Phaser.Scene {
     addMenuBackdrop(this, 0.25);
     addStepHeader(this, 3, 2);
     menuTitle(this, 240, 44, 'CHOOSE YOUR HOME GROUND', 28, 390);
-    pixelText(this, 240, 60, '—  HOME HUNTS COST 1 WEEK. TRIPS COST 2.  —', 1, MENU.sage)
+    menuCopy(this, 240, 60, '—  HOME HUNTS COST 1 WEEK. TRIPS COST 2.  —', MENU.sage, 7)
       .setOrigin(0.5);
     addMenuPanel(this, 240, 159, 398, 192, 0.97);
     addRuleHeading(this, 161, 75, 'REGIONS', 222);
@@ -291,7 +293,7 @@ export class MapScene extends Phaser.Scene {
     const homeBox = this.add.rectangle(365, 242, 126, 22, MENU.olive, 1)
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', () => confirmHome());
-    pixelText(this, 365, 242, 'MAKE THIS HOME', 1, MENU.cream).setOrigin(0.5);
+    menuCopy(this, 365, 242, 'MAKE THIS HOME', MENU.cream, 8).setOrigin(0.5);
     setMenuFocus(homeBox, true, true);
 
     this.add.rectangle(79, 242, 64, 20, MENU.panelAlt, 0.98)

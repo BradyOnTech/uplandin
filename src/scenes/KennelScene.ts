@@ -5,6 +5,7 @@ import { dogAge, loadCareer, saveCareer, setActiveDog, setBraceDog } from '../ga
 import { kennelSlots, TWO_DOG_LEVEL, twoDogUnlocked } from '../game/progression';
 import { ageLabel } from '../game/season';
 import { pixelText } from './pixelFont';
+import { configureLogicalViewport } from './logicalViewport';
 
 /**
  * The kennel: every dog you've raised. Tap one to bring it on the next
@@ -17,6 +18,7 @@ export class KennelScene extends Phaser.Scene {
   }
 
   create(): void {
+    configureLogicalViewport(this);
     const career = loadCareer();
     const slots = kennelSlots(career.hunter.level);
 

@@ -24,8 +24,9 @@ import {
   menuTitle,
   preloadMenuArt,
   setMenuFocus,
+  type MenuText,
 } from './menuUi';
-import { pixelText, type PixelText } from './pixelFont';
+import { configureLogicalViewport } from './logicalViewport';
 
 interface PickerRow {
   label: string;
@@ -36,8 +37,8 @@ interface PickerRow {
 
 interface RowView {
   box: Phaser.GameObjects.Rectangle;
-  value: PixelText;
-  hint: PixelText;
+  value: MenuText;
+  hint: MenuText;
   art?: Phaser.GameObjects.Image;
 }
 
@@ -58,7 +59,7 @@ function quickGunName(id: string): string {
   return names[id] ?? getGun(id).name;
 }
 
-function fitRowText(text: PixelText, maxWidth: number): void {
+function fitRowText(text: MenuText, maxWidth: number): void {
   text.setScale(1);
   if (text.width > maxWidth) text.setScale(maxWidth / text.width, 1);
 }
@@ -80,13 +81,14 @@ export class QuickScene extends Phaser.Scene {
   }
 
   create(): void {
+    configureLogicalViewport(this);
     this.cfg = loadQuickConfig();
     this.views = [];
     this.focusIndex = 0;
 
     addMenuBackdrop(this, 0.3);
     menuTitle(this, 240, 35, 'QUICK HUNT', 38, 245);
-    pixelText(this, 240, 60, '—  EVERYTHING UNLOCKED. NOTHING SAVED.  —', 1, MENU.sage).setOrigin(0.5);
+    menuCopy(this, 240, 60, '—  EVERYTHING UNLOCKED. NOTHING SAVED.  —', MENU.sage, 7).setOrigin(0.5);
     addMenuPanel(this, 240, 153, 370, 171, 0.97);
 
     this.rows = this.makeRows();
@@ -105,13 +107,13 @@ export class QuickScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true })
       .on('pointerover', () => { this.focusIndex = 8; this.refresh(); })
       .on('pointerdown', () => this.back());
-    pixelText(this, 105, 222, 'ESC  BACK', 1, MENU.cream).setOrigin(0.5);
+    menuCopy(this, 105, 222, 'ESC  BACK', MENU.cream, 8).setOrigin(0.5);
 
     this.huntBox = this.add.rectangle(352, 222, 126, 24, MENU.olive, 1)
       .setInteractive({ useHandCursor: true })
       .on('pointerover', () => { this.focusIndex = 9; this.refresh(); })
       .on('pointerdown', () => this.hunt());
-    pixelText(this, 352, 222, 'HUNT', 2, MENU.cream).setOrigin(0.5);
+    menuCopy(this, 352, 222, 'HUNT', MENU.cream, 15).setOrigin(0.5);
     menuCopy(this, 240, 257, '↑↓ CHOOSE  ·  ←→ CHANGE  ·  ENTER SELECT', MENU.muted, 7).setOrigin(0.5);
 
     this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
@@ -208,10 +210,11 @@ export class QuickScene extends Phaser.Scene {
     const box = this.add.rectangle(x, y, 170, 24, MENU.panelAlt, 0.98)
       .setInteractive({ useHandCursor: true })
       .on('pointerover', () => { this.focusIndex = index; this.refresh(); })
-      .on('pointerdown', (pointer: Phaser.Input.Pointer) => this.changeRow(index, pointer.x < x ? -1 : 1));
-    menuCopy(this, x - 80, y, row.label, MENU.sage, 7).setOrigin(0, 0.5);
-    pixelText(this, x - 51, y, '<', 1, MENU.cream).setOrigin(0.5);
-    pixelText(this, x + 78, y, '>', 1, MENU.cream).setOrigin(0.5);
+      .on('pointerdown', (pointer: Phaser.Input.Pointer) => this.changeRow(index, pointer.worldX < x ? -1 : 1));
+    const rowLabel = menuCopy(this, x - 80, y, row.label, MENU.sage, 7).setOrigin(0, 0.5);
+    if (rowLabel.width > 30) rowLabel.setScale(30 / rowLabel.width, 1);
+    menuCopy(this, x - 44, y, '‹', MENU.cream, 13).setOrigin(0.5);
+    menuCopy(this, x + 78, y, '›', MENU.cream, 13).setOrigin(0.5);
     let art: Phaser.GameObjects.Image | undefined;
     if (index === 0) art = this.add.image(x - 18, y, `menu-dog-thumb-${this.cfg.breedId}`).setDisplaySize(23, 23);
     if (index === 3) art = this.add.image(x - 18, y, `menu-region-${regionOfArea(this.cfg.areaId).id}`).setDisplaySize(23, 23);

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { configureLogicalViewport } from './logicalViewport';
 import {
   playBeeper,
   playBell,
@@ -321,6 +322,7 @@ export class FieldScene extends Phaser.Scene {
     simulation?: HuntSimulation;
     dropPointId?: string;
   }): void {
+    configureLogicalViewport(this, 'pixel');
     // Quick Hunt: the picked setup rides inside HuntState so it survives the
     // trip through FlushScene. Career mode reads the kennel as usual.
     this.quick = data.quick ?? data.hunt?.quick ?? null;

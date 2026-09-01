@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { playBlip, unlockAudio } from '../audio';
 import { BREEDS, DOG_NAMES, type BreedConfig } from '../game/breeds';
 import { addDogToKennel, loadCareer, saveCareer, setActiveDog } from '../game/career';
-import { pixelText, type PixelText } from './pixelFont';
+import { configureLogicalViewport } from './logicalViewport';
 import {
   MENU,
   addDogPreview,
@@ -17,6 +17,7 @@ import {
   menuTitle,
   preloadMenuArt,
   setMenuFocus,
+  type MenuText,
 } from './menuUi';
 
 interface PendingDog {
@@ -32,7 +33,7 @@ interface BreedSceneData {
 
 interface BreedListRow {
   box: Phaser.GameObjects.Rectangle;
-  name: PixelText;
+  name: MenuText;
   portrait: Phaser.GameObjects.Image;
 }
 
@@ -68,10 +69,10 @@ export class BreedScene extends Phaser.Scene {
   private puppyName = '';
   private listRows: BreedListRow[] = [];
   private dogPreview?: Phaser.GameObjects.Image;
-  private detailName?: PixelText;
-  private detailBlurb?: PixelText;
-  private statLines: PixelText[] = [];
-  private paceText?: PixelText;
+  private detailName?: MenuText;
+  private detailBlurb?: MenuText;
+  private statLines: MenuText[] = [];
+  private paceText?: MenuText;
   private chooseBox?: Phaser.GameObjects.Rectangle;
 
   constructor() {
@@ -83,6 +84,7 @@ export class BreedScene extends Phaser.Scene {
   }
 
   create(data: BreedSceneData = {}): void {
+    configureLogicalViewport(this);
     this.fromKennel = data.fromKennel ?? false;
     this.selectedIndex = data.resume
       ? Math.max(0, BREEDS.findIndex((breed) => breed.id === data.resume?.breedId))
@@ -109,7 +111,7 @@ export class BreedScene extends Phaser.Scene {
     addMenuBackdrop(this, 0.31);
     addStepHeader(this, 1);
     menuTitle(this, 240, 45, this.fromKennel ? 'CHOOSE YOUR NEXT BIRD DOG' : 'CHOOSE YOUR FIRST BIRD DOG', 27, 430);
-    pixelText(this, 240, 61, '—  BREED SHAPES HOW YOUR DOG HUNTS AND GROWS.  —', 1, MENU.sage)
+    menuCopy(this, 240, 61, '—  BREED SHAPES HOW YOUR DOG HUNTS AND GROWS.  —', MENU.sage, 7)
       .setOrigin(0.5);
     addMenuPanel(this, 240, 160, 384, 190, 0.97);
     addRuleHeading(this, 129, 77, 'BREEDS', 144);
@@ -140,8 +142,7 @@ export class BreedScene extends Phaser.Scene {
     }
 
     addImageFrame(this, 276, 136, 112, 116, MENU.line);
-    this.detailName = pixelText(this, 337, 84, '', 1, MENU.cream).setOrigin(0, 0);
-    this.detailName.setMaxWidth(88);
+    this.detailName = menuCopy(this, 337, 84, '', MENU.cream, 8).setOrigin(0, 0);
     this.detailBlurb = menuCopy(this, 337, 110, '', MENU.sage, 6).setOrigin(0, 0);
     this.statLines = ['NOSE', 'SPEED', 'RANGE', 'STEADINESS', 'STAMINA'].map((label, i) =>
       menuCopy(this, 337, 133 + i * 13, `${label.padEnd(11)} -----`, MENU.cream, 6),
@@ -151,7 +152,7 @@ export class BreedScene extends Phaser.Scene {
     this.chooseBox = this.add.rectangle(354, 237, 145, 23, MENU.olive, 1)
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', () => this.openNameScreen());
-    pixelText(this, 354, 237, 'CHOOSE THIS BREED', 1, MENU.cream).setOrigin(0.5);
+    menuCopy(this, 354, 237, 'CHOOSE THIS BREED', MENU.cream, 8).setOrigin(0.5);
 
     this.add.rectangle(84, 238, 64, 21, MENU.panelAlt, 0.98)
       .setInteractive({ useHandCursor: true })
@@ -186,6 +187,10 @@ export class BreedScene extends Phaser.Scene {
     this.dogPreview?.destroy(true);
     this.dogPreview = addDogPreview(this, breed, 276, 136, 108, 112);
     this.detailName?.setText(displayBreedName(breed.name));
+    if (this.detailName) {
+      this.detailName.setScale(1);
+      if (this.detailName.width > 88) this.detailName.setScale(88 / this.detailName.width, 1);
+    }
     this.detailBlurb?.setText(breed.blurb.toUpperCase());
     if (this.detailBlurb) {
       this.detailBlurb.setScale(1);
@@ -218,14 +223,15 @@ export class BreedScene extends Phaser.Scene {
     addMenuBackdrop(this, 0.27);
     addStepHeader(this, 2, 1);
     menuTitle(this, 240, 43, 'NAME YOUR PUPPY', 30, 300);
-    pixelText(this, 240, 60, "—  YOU'LL SHARE MANY SEASONS TOGETHER.  —", 1, MENU.sage)
+    menuCopy(this, 240, 60, "—  YOU'LL SHARE MANY SEASONS TOGETHER.  —", MENU.sage, 7)
       .setOrigin(0.5);
     addMenuPanel(this, 234, 157, 352, 184, 0.97);
 
     addImageFrame(this, 151, 130, 170, 116, MENU.amber);
     addDogPreview(this, breed, 151, 130, 168, 114);
     menuCopy(this, 151, 197, '—  YOUR FIRST PARTNER  —', MENU.sage, 7).setOrigin(0.5);
-    pixelText(this, 151, 210, breed.name.toUpperCase(), 1, MENU.cream).setOrigin(0.5).setMaxWidth(165);
+    const breedName = menuCopy(this, 151, 210, breed.name, MENU.cream, 8).setOrigin(0.5);
+    if (breedName.width > 165) breedName.setScale(165 / breedName.width, 1);
     menuCopy(this, 151, 222, breed.blurb, MENU.sage, 7).setOrigin(0.5);
 
     addRuleHeading(this, 324, 84, 'PUPPY NAME', 132);
@@ -240,12 +246,12 @@ export class BreedScene extends Phaser.Scene {
         this.rollName();
         nameText.setText(this.puppyName.toUpperCase());
       });
-    pixelText(this, 324, 166, 'NEW NAME  *', 1, MENU.cream).setOrigin(0.5);
+    menuCopy(this, 324, 166, 'NEW NAME  ↻', MENU.cream, 8).setOrigin(0.5);
 
     this.add.rectangle(324, 219, 124, 23, MENU.olive, 1)
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', () => this.confirmName());
-    pixelText(this, 324, 219, this.fromKennel ? 'WELCOME TO KENNEL' : 'CONTINUE', 1, MENU.cream)
+    menuCopy(this, 324, 219, this.fromKennel ? 'WELCOME TO KENNEL' : 'CONTINUE', MENU.cream, 8)
       .setOrigin(0.5);
 
     this.add.rectangle(91, 238, 62, 20, MENU.panelAlt, 0.98)

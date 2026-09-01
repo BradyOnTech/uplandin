@@ -8,15 +8,16 @@ import { MapScene } from './scenes/MapScene';
 import { QuickScene } from './scenes/QuickScene';
 import { TitleScene } from './scenes/TitleScene';
 import { DropScene } from './scenes/DropScene';
+import { LOGICAL_HEIGHT, LOGICAL_WIDTH, RENDER_HEIGHT, RENDER_WIDTH } from './scenes/logicalViewport';
 
-/** Internal resolution — deliberately tiny, scaled up with nearest-neighbor for the retro look. */
-export const GAME_WIDTH = 480;
-export const GAME_HEIGHT = 270;
+/** Stable world/UI coordinates; front-end scenes start with a 2× backing buffer. */
+export const GAME_WIDTH = LOGICAL_WIDTH;
+export const GAME_HEIGHT = LOGICAL_HEIGHT;
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  width: GAME_WIDTH,
-  height: GAME_HEIGHT,
+  width: RENDER_WIDTH,
+  height: RENDER_HEIGHT,
   pixelArt: true,
   roundPixels: true,
   backgroundColor: '#101410',

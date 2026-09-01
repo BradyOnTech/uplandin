@@ -5,6 +5,7 @@ import type { HuntLaunch } from '../game/gameplayMode';
 import { getSpecies } from '../game/species';
 import { beginHunt, type HuntFieldData } from './launchHunt';
 import { pixelText, type PixelText } from './pixelFont';
+import { configureLogicalViewport } from './logicalViewport';
 
 const MAP = { x: 46, y: 43, w: 388, h: 143 };
 
@@ -20,6 +21,7 @@ export class DropScene extends Phaser.Scene {
   }
 
   create(data: { launch: HuntLaunch; fieldData: HuntFieldData }): void {
+    configureLogicalViewport(this);
     const areaId = data.launch.kind === 'career'
       ? data.launch.areaId
       : data.fieldData.quick?.areaId ?? data.fieldData.areaId;

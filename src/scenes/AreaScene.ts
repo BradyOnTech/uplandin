@@ -15,6 +15,7 @@ import {
 import { getSpecies } from '../game/species';
 import { launchHunt } from './launchHunt';
 import { pixelText } from './pixelFont';
+import { configureLogicalViewport } from './logicalViewport';
 
 export class AreaScene extends Phaser.Scene {
   constructor() {
@@ -22,6 +23,7 @@ export class AreaScene extends Phaser.Scene {
   }
 
   create(data: { regionId?: string }): void {
+    configureLogicalViewport(this);
     const career = loadCareer();
     const region = getRegion(data.regionId ?? career.homeRegionId ?? career.regionsUnlocked[0]);
     const areas = regionAreas(region);

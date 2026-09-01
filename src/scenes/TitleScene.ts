@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { playBlip, unlockAudio } from '../audio';
 import { loadCareer } from '../game/career';
 import { loadGameplayMode, saveGameplayMode, type GameplayMode } from '../game/gameplayMode';
-import { pixelText, type PixelText } from './pixelFont';
+import { configureLogicalViewport } from './logicalViewport';
 import {
   MENU,
   addMenuBackdrop,
@@ -12,6 +12,7 @@ import {
   menuTitle,
   preloadMenuArt,
   setMenuFocus,
+  type MenuText,
 } from './menuUi';
 
 export class TitleScene extends Phaser.Scene {
@@ -24,13 +25,14 @@ export class TitleScene extends Phaser.Scene {
   }
 
   create(): void {
+    configureLogicalViewport(this);
     const career = loadCareer();
     let mode: GameplayMode = loadGameplayMode();
     let choice = 0;
 
     addMenuBackdrop(this, 0.22);
     menuTitle(this, 240, 44, 'UPLANDIN', 44, 250);
-    pixelText(this, 240, 69, '—  A RETRO BIRD HUNT  —', 1, '#efad62').setOrigin(0.5);
+    menuCopy(this, 240, 69, '—  A RETRO BIRD HUNT  —', '#efad62', 7).setOrigin(0.5);
 
     addMenuPanel(this, 240, 166, 252, 174, 0.96);
     addRuleHeading(this, 240, 94, 'GAMEPLAY MODE', 218, MENU.cream);
@@ -39,15 +41,15 @@ export class TitleScene extends Phaser.Scene {
       '2d': this.add.rectangle(185, 113, 104, 24, MENU.panelAlt, 0.98).setInteractive({ useHandCursor: true }),
       '3d': this.add.rectangle(295, 113, 104, 24, MENU.panelAlt, 0.98).setInteractive({ useHandCursor: true }),
     };
-    const modeLabels: Record<GameplayMode, PixelText> = {
-      '2d': pixelText(this, 185, 113, '2D CLASSIC', 1, MENU.cream).setOrigin(0.5),
-      '3d': pixelText(this, 295, 113, '3D OPEN WORLD', 1, MENU.cream).setOrigin(0.5),
+    const modeLabels: Record<GameplayMode, MenuText> = {
+      '2d': menuCopy(this, 185, 113, '2D CLASSIC', MENU.cream, 9).setOrigin(0.5),
+      '3d': menuCopy(this, 295, 113, '3D OPEN WORLD', MENU.cream, 9).setOrigin(0.5),
     };
 
     const stats = career.hunts > 0
       ? `${career.hunts} HUNTS · ${career.downed} DOWN · ${career.escaped} LOST`
       : 'NO HUNTS YET · YOUR DOG IS READY';
-    pixelText(this, 240, 137, `★  ${stats}`, 1, MENU.sage).setOrigin(0.5);
+    menuCopy(this, 240, 137, `★  ${stats}`, MENU.sage, 7).setOrigin(0.5);
 
     const entries = [
       {
@@ -73,9 +75,9 @@ export class TitleScene extends Phaser.Scene {
         .on('pointerdown', () => activate(i));
       if (i === 0) this.add.image(145, entry.y, 'menu-dog-thumb-gsp').setDisplaySize(27, 27);
       else this.add.image(145, entry.y, 'menu-bird').setDisplaySize(27, 27);
-      pixelText(this, 163, entry.y - 7, entry.label, 2, MENU.cream).setOrigin(0, 0.5);
+      menuCopy(this, 163, entry.y - 6, entry.label, MENU.cream, 12).setOrigin(0, 0.5);
       menuCopy(this, 163, entry.y + 8, entry.sub, MENU.sage, 7).setOrigin(0, 0.5);
-      pixelText(this, 339, entry.y, '>', 2, MENU.amberText).setOrigin(0.5);
+      menuCopy(this, 339, entry.y, '›', MENU.amberText, 19).setOrigin(0.5);
       return box;
     });
 
