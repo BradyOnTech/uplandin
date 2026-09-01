@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import type { AreaLandmark } from '../../game/areas';
+import { PROPERTY_PX_TO_M } from '../../game/landscape';
 import type { Ctx, Subsystem } from '../engine';
 import type { Hunt3DSystem } from './hunt3d';
-import { SIM_PX_TO_M } from './hunt3d';
 import type { TerrainSystem } from './terrain';
 
 const MAT = {
@@ -96,7 +96,7 @@ export class LandmarksSystem implements Subsystem {
         root.add(tire);
       }
     }
-    root.scale.setScalar(Math.min(1, SIM_PX_TO_M));
+    root.scale.setScalar(Math.min(1, PROPERTY_PX_TO_M));
     return root;
   }
 }

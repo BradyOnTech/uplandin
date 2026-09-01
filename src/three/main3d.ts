@@ -11,6 +11,7 @@ import { BirdsSystem } from './subsystems/birds';
 import { GunSystem } from './subsystems/gun';
 import { HuntHudSystem } from './subsystems/huntHud';
 import { LandmarksSystem } from './subsystems/landmarks';
+import { LandscapeModel } from '../game/landscape';
 import {
   ENGLISH_SETTER_COATS,
   resolveEnglishSetterCoat,
@@ -19,7 +20,12 @@ import {
   GSP_COATS,
   resolveGspCoat,
 } from './dogs/germanShorthairedPointer';
-import { parseHuntLaunch, resolveThreeHuntArea, resolveThreeHuntProfile } from '../game/gameplayMode';
+import {
+  parseDropPointId,
+  parseHuntLaunch,
+  resolveThreeHuntArea,
+  resolveThreeHuntProfile,
+} from '../game/gameplayMode';
 
 /*
  * Uplandin 3D entry. Boot order = subsystem registration order; the
@@ -32,6 +38,7 @@ const quality = params.get('quality') === 'lite' ? 'lite' : 'high';
 const launch = parseHuntLaunch(location.search);
 const launchProfile = resolveThreeHuntProfile(location.search);
 const launchArea = resolveThreeHuntArea(location.search);
+const landscape = new LandscapeModel(launchArea, parseDropPointId(location.search));
 const visualBreedFor = (breedId: string) => breedId === 'gsp' ? 'gsp' : 'english-setter';
 const visualBreed = visualBreedFor(launchProfile.breedId);
 const coatId = visualBreed === 'gsp'
@@ -42,11 +49,11 @@ const canvas = document.getElementById('game3d') as HTMLCanvasElement;
 const engine = new Engine(canvas, quality);
 
 engine.register(new SkySystem());
-engine.register(new TerrainSystem(launchArea.terrain));
+engine.register(new TerrainSystem(landscape));
 // Player first: hunt3d frames the opening covey from the player's authored
 // spawn heading. It still precedes grass, which reads the hunt's cover map.
 engine.register(new PlayerSystem());
-engine.register(new Hunt3DSystem());
+engine.register(new Hunt3DSystem(landscape));
 engine.register(new GrassSystem());
 engine.register(new FloraSystem());
 engine.register(new LandmarksSystem());

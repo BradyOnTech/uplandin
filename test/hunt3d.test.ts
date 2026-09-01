@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Ctx } from '../src/three/engine';
 import { getBreed } from '../src/game/breeds';
+import { LandscapeModel } from '../src/game/landscape';
+import { parseDropPointId, resolveThreeHuntArea } from '../src/game/gameplayMode';
 import {
   Hunt3DSystem,
   liveDogBreedId,
@@ -25,6 +27,13 @@ function liveCtx(x = 0, z = 40): Ctx {
   return ctx;
 }
 
+function liveHunt(): Hunt3DSystem {
+  const search = location.search;
+  return new Hunt3DSystem(
+    new LandscapeModel(resolveThreeHuntArea(search), parseDropPointId(search)),
+  );
+}
+
 function walkForward(ctx: Ctx, distance: number): void {
   ctx.camera.position.x += -Math.sin(ctx.camera.rotation.y) * distance;
   ctx.camera.position.z += -Math.cos(ctx.camera.rotation.y) * distance;
@@ -36,7 +45,7 @@ describe('Hunt3DSystem live start', () => {
   it('puts the dog within a visible working distance of the player on the first live tick', () => {
     vi.stubGlobal('location', { search: '' });
     const ctx = liveCtx();
-    const hunt = new Hunt3DSystem();
+    const hunt = liveHunt();
     hunt.init(ctx);
 
     hunt.fixedUpdate(ctx, 1000 / 30);
@@ -63,7 +72,7 @@ describe('Hunt3DSystem live start', () => {
   it('keeps the dog within a readable working distance after cast-off', () => {
     vi.stubGlobal('location', { search: '' });
     const ctx = liveCtx();
-    const hunt = new Hunt3DSystem();
+    const hunt = liveHunt();
     hunt.init(ctx);
 
     hunt.fixedUpdate(ctx, 1000 / 30);
@@ -88,7 +97,7 @@ describe('Hunt3DSystem live start', () => {
   it('lets a walking player naturally reach a dog search-to-point sequence', () => {
     vi.stubGlobal('location', { search: '?breed=english-setter' });
     const ctx = liveCtx();
-    const hunt = new Hunt3DSystem();
+    const hunt = liveHunt();
     hunt.init(ctx);
     hunt.fixedUpdate(ctx, 1000 / 30);
 
@@ -122,7 +131,7 @@ describe('Hunt3DSystem live start', () => {
   it('turns a natural walk-in on point into a visible covey flush', () => {
     vi.stubGlobal('location', { search: '?breed=english-setter' });
     const ctx = liveCtx();
-    const hunt = new Hunt3DSystem();
+    const hunt = liveHunt();
     hunt.init(ctx);
     hunt.fixedUpdate(ctx, 1000 / 30);
 
@@ -161,7 +170,7 @@ describe('Hunt3DSystem live start', () => {
   it('retrieves from the rendered landing point and credits the dog', () => {
     vi.stubGlobal('location', { search: '?breed=english-setter' });
     const ctx = liveCtx();
-    const hunt = new Hunt3DSystem();
+    const hunt = liveHunt();
     hunt.init(ctx);
     hunt.fixedUpdate(ctx, 1000 / 30);
 
@@ -205,7 +214,7 @@ describe('Hunt3DSystem live start', () => {
   it('interpolates adjacent fixed dog snapshots for the render frame', () => {
     vi.stubGlobal('location', { search: '' });
     const ctx = liveCtx();
-    const hunt = new Hunt3DSystem();
+    const hunt = liveHunt();
     hunt.init(ctx);
     hunt.fixedUpdate(ctx, 1000 / 30);
 
@@ -260,7 +269,7 @@ describe('Hunt3DSystem live start', () => {
     }, storage);
     vi.stubGlobal('localStorage', storage);
     vi.stubGlobal('location', { search: '?play=quick' });
-    const hunt = new Hunt3DSystem();
+    const hunt = liveHunt();
     hunt.init(liveCtx());
     expect(hunt.dogCount()).toBe(2);
     expect(hunt.dog(0).profile.breed.id).toBe('gsp');

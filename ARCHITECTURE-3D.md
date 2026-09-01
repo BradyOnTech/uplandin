@@ -83,8 +83,12 @@ allocations (verify with three.js `renderer.info` in capture output).
 ## Units & mapping
 
 1 sim px ≈ 1 yard ≈ 0.91 m. `SHOT_RANGE 40` is a literal 40-yard gun.
-Sim world rects map onto terrain-local coordinates; cover patches drive
-grass density; `heightAt(x, z)` is the one terrain query.
+Area-map positions are stable property coordinates. `LandscapeModel` is the
+single mapping seam between those shared pixels and hunt-local world meters:
+the selected drop stays at the render anchor, while every elevation sample
+continues to address the same named property. Cover patches drive grass
+density; `heightAtProperty()` is the renderer-neutral elevation query and the
+terrain subsystem exposes its world-space `heightAt(x, z)` adapter.
 
 ## Gates (run before every commit)
 

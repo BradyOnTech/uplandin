@@ -15,6 +15,7 @@ import {
   type HuntSimulationEvent,
 } from '../../game/huntSimulation';
 import { dist, mulberry32 } from '../../game/math';
+import { LandscapeModel, PROPERTY_PX_TO_M } from '../../game/landscape';
 import type { HuntState } from '../../game/state';
 import type { Vec2 } from '../../game/types';
 import { endHuntEarly } from '../../game/state';
@@ -32,8 +33,9 @@ import type { PlayerSystem } from './player';
  *     with a fixed seed, consumed read-only through the same call surfaces
  *     the 2D FieldScene used (createHunt, dog.update, updateBirds).
  *  2. The sim-px <-> world-meters mapping. 1 sim px = 1 yard = 0.9144 m,
- *     sim world center pinned to the terrain origin, sim +x -> world +x,
- *     sim +y (screen down) -> world +z. Angles carry over unchanged.
+ *     the selected drop pinned to the local render anchor, sim +x -> world
+ *     +x, sim +y (screen down) -> world +z. The LandscapeModel keeps those
+ *     local coordinates registered to one stable named property.
  *  3. Advancing the sim at the fixed 30 Hz step: player camera position
  *     maps to sim hunterPos, then updateBirds + dog.update run exactly as
  *     FieldScene ran them. The sim dog's position/state/gait are the source
@@ -47,9 +49,6 @@ import type { PlayerSystem } from './player';
  * engine loop — the harness advances it explicitly via step() (exposed as
  * __api3d.stepSim), so a captured dog pose is a pure function of the seed.
  */
-
-/** 1 sim px = 1 yard. SHOT_RANGE 40 is a literal 40-yard gun. */
-export const SIM_PX_TO_M = 0.9144;
 
 /** Fixed hunt seed: one covert, same birds, every boot (this phase). */
 const HUNT_SEED = 0x51ba11;
@@ -137,9 +136,7 @@ export class Hunt3DSystem implements Subsystem {
   private hunt!: HuntState;
   private simDogs: Dog[] = [];
   private patchesW: WorldPatch[] = [];
-  /** Sim-px coords of the world origin (sim world center). */
-  private simCx = 0;
-  private simCy = 0;
+  private coordWorld = { x: 0, z: 0 };
   /** capture mode: sim advances only through step(). */
   private frozen = false;
   /** The authored 2D spawn is ~250 m from the 3D camera start; sync once. */
@@ -175,6 +172,8 @@ export class Hunt3DSystem implements Subsystem {
   private careerSettled = false;
   private gearTier = 0;
 
+  constructor(private readonly landscape: LandscapeModel) {}
+
   init(ctx: Ctx): void {
     this.frozen = new URLSearchParams(location.search).has('capture');
 
@@ -185,13 +184,14 @@ export class Hunt3DSystem implements Subsystem {
       : [];
     this.area = setup.area;
     this.hunt = setup.hunt;
-    // Pin the selected truck to the authored camera start. Unlike the old
-    // opening-covey translation, this mapping preserves every landmark,
-    // trail, cover patch, dog and bird in one coherent shared geography.
     const drop = getDropPoint(this.area, this.hunt.dropPointId);
+    if (this.landscape.area.id !== this.area.id || this.landscape.dropPoint.id !== drop.id) {
+      throw new Error(
+        `hunt3d landscape mismatch: expected ${this.area.id}/${drop.id}, got `
+        + `${this.landscape.area.id}/${this.landscape.dropPoint.id}`,
+      );
+    }
     ctx.get<PlayerSystem>('player').setHuntHeading(ctx, drop.heading);
-    this.simCx = drop.position.x - ctx.camera.position.x / SIM_PX_TO_M;
-    this.simCy = drop.position.y - ctx.camera.position.z / SIM_PX_TO_M;
     const dogProfiles = [
       { breed: setup.breed, level: setup.level, ageMultiplier: setup.ageMultiplier },
       ...(setup.brace
@@ -220,7 +220,7 @@ export class Hunt3DSystem implements Subsystem {
     this.pacePhases = this.simDogs.map(() => 0);
     this.liveDogMotions = this.simDogs.map((dog) => ({
       movementScale: this.frozen ? 1 : liveMovementScaleForGait(dog.gait),
-      rangeRadius: this.frozen ? undefined : LIVE_DOG_RANGE_M / SIM_PX_TO_M,
+      rangeRadius: this.frozen ? undefined : LIVE_DOG_RANGE_M / PROPERTY_PX_TO_M,
       workAnchor: this.frozen ? undefined : this.liveDogAnchor,
     }));
     this.simulation = new HuntSimulation({
@@ -232,11 +232,12 @@ export class Hunt3DSystem implements Subsystem {
 
     // Cover patches in world meters, once.
     for (const p of this.area.patches) {
+      this.landscape.propertyToWorld(p.x + p.w / 2, p.y + p.h / 2, this.coordWorld);
       this.patchesW.push({
-        cx: (p.x + p.w / 2 - this.simCx) * SIM_PX_TO_M,
-        cz: (p.y + p.h / 2 - this.simCy) * SIM_PX_TO_M,
-        hx: (p.w / 2) * SIM_PX_TO_M,
-        hz: (p.h / 2) * SIM_PX_TO_M,
+        cx: this.coordWorld.x,
+        cz: this.coordWorld.z,
+        hx: (p.w / 2) * PROPERTY_PX_TO_M,
+        hz: (p.h / 2) * PROPERTY_PX_TO_M,
       });
     }
   }
@@ -270,9 +271,9 @@ export class Hunt3DSystem implements Subsystem {
     const forwardZ = -Math.cos(yaw);
     if (!this.frozen) {
       this.liveDogAnchor.x =
-        this.hunt.hunterPos.x + (forwardX * LIVE_DOG_ANCHOR_AHEAD_M) / SIM_PX_TO_M;
+        this.hunt.hunterPos.x + (forwardX * LIVE_DOG_ANCHOR_AHEAD_M) / PROPERTY_PX_TO_M;
       this.liveDogAnchor.y =
-        this.hunt.hunterPos.y + (forwardZ * LIVE_DOG_ANCHOR_AHEAD_M) / SIM_PX_TO_M;
+        this.hunt.hunterPos.y + (forwardZ * LIVE_DOG_ANCHOR_AHEAD_M) / PROPERTY_PX_TO_M;
     }
 
     // The 2D area's hunter/dog spawn lives near its bottom edge, while the
@@ -290,9 +291,9 @@ export class Hunt3DSystem implements Subsystem {
         const dog = this.simDogs[slot];
         const side = slot === 0 ? 1 : -1;
         dog.pos.x = this.hunt.hunterPos.x +
-          (forwardX * LIVE_DOG_AHEAD_M + leftX * LIVE_DOG_LEFT_M * side) / SIM_PX_TO_M;
+          (forwardX * LIVE_DOG_AHEAD_M + leftX * LIVE_DOG_LEFT_M * side) / PROPERTY_PX_TO_M;
         dog.pos.y = this.hunt.hunterPos.y +
-          (forwardZ * LIVE_DOG_AHEAD_M + leftZ * LIVE_DOG_LEFT_M * side) / SIM_PX_TO_M;
+          (forwardZ * LIVE_DOG_AHEAD_M + leftZ * LIVE_DOG_LEFT_M * side) / PROPERTY_PX_TO_M;
         dog.state = 'heel';
         dog.gait = 'still';
         // Stand three-quarter at heel so the marked head/ear is readable,
@@ -438,8 +439,9 @@ export class Hunt3DSystem implements Subsystem {
       const ny = this.hunt.hunterPos.y + (dy / d) * stepPx;
       // Move the camera (the mapped hunter); tick() reads it back into
       // hunterPos — the exact FieldScene consumption order still runs.
-      ctx.camera.position.x = (nx - this.simCx) * SIM_PX_TO_M;
-      ctx.camera.position.z = (ny - this.simCy) * SIM_PX_TO_M;
+      this.simToWorld(nx, ny, this.coordWorld);
+      ctx.camera.position.x = this.coordWorld.x;
+      ctx.camera.position.z = this.coordWorld.z;
       this.tick(ctx, 1000 / 30);
       if (this.lastFlush !== previousFlush) return this.lastFlush;
       if (pointingDog.state !== 'pointing' || bird.state !== 'hidden') return null;
@@ -533,16 +535,12 @@ export class Hunt3DSystem implements Subsystem {
 
   /** Sim px -> world meters. Writes x/z into `out`, returns it. */
   simToWorld<T extends { x: number; z: number }>(sx: number, sy: number, out: T): T {
-    out.x = (sx - this.simCx) * SIM_PX_TO_M;
-    out.z = (sy - this.simCy) * SIM_PX_TO_M;
-    return out;
+    return this.landscape.propertyToWorld(sx, sy, out);
   }
 
   /** World meters -> sim px. Writes x/y into `out`, returns it. */
   worldToSim(wx: number, wz: number, out: Vec2): Vec2 {
-    out.x = wx / SIM_PX_TO_M + this.simCx;
-    out.y = wz / SIM_PX_TO_M + this.simCy;
-    return out;
+    return this.landscape.worldToProperty(wx, wz, out);
   }
 
   /** The sim dog's position in world meters. Writes into `out`. */

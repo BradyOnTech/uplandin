@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { AreaTerrainProfile } from '../../game/areas';
+import type { LandscapeModel } from '../../game/landscape';
 import type { Ctx, Subsystem } from '../engine';
 import { P, TOD, type TimeOfDay } from '../palette';
 
@@ -121,13 +121,13 @@ export class TerrainSystem implements Subsystem {
     uCloudT: { value: 0 },
   };
 
-  constructor(private readonly profile: AreaTerrainProfile) {
-    this.noise = makeNoise(profile.seed);
+  constructor(private readonly landscape: LandscapeModel) {
+    this.noise = makeNoise(landscape.area.terrain.seed);
   }
 
   /** Grass samples the identical paint field so ground and tufts agree. */
   paintSeed(): number {
-    return this.profile.seed;
+    return this.landscape.area.terrain.seed;
   }
 
   /** One ground material for plate + skirt, with the sun-drench injection. */
@@ -172,15 +172,7 @@ export class TerrainSystem implements Subsystem {
   }
 
   heightAt(x: number, z: number): number {
-    const n1 = this.noise(x * 0.006 + 100, z * 0.006 + 100); // broad swells
-    const n15 = this.noise(x * 0.016 + 1300, z * 0.016 + 1300); // rolling mid
-    const n2 = this.noise(x * 0.05 + 300, z * 0.05 + 300); // local roll
-    const grade = x / 100 * this.profile.gradeX + z / 100 * this.profile.gradeZ;
-    return (n1 - 0.5) * this.profile.broadRelief
-      + (n15 - 0.5) * this.profile.rollingRelief
-      + (n2 - 0.5) * this.profile.detailRelief
-      + this.profile.baseHeight
-      + grade;
+    return this.landscape.heightAtWorld(x, z);
   }
 
   init(ctx: Ctx): void {
