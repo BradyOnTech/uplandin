@@ -21,6 +21,11 @@ const config: Phaser.Types.Core.GameConfig = {
   pixelArt: true,
   roundPixels: true,
   backgroundColor: '#101410',
+  render: {
+    // Menus and gameplay swap backing-buffer sizes. Always clear the whole
+    // buffer first so pixels from the previous scene cannot survive a swap.
+    clearBeforeRender: true,
+  },
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,

@@ -29,8 +29,20 @@ export function configureLogicalViewport(
   scene.scale.resize(width, height);
   scene.cameras.main
     .setViewport(0, 0, width, height)
+    .setBackgroundColor(smooth ? '#0b100e' : '#101410')
     .setZoom(zoom)
     .setRoundPixels(true)
     .centerOn(LOGICAL_WIDTH / 2, LOGICAL_HEIGHT / 2);
+
+  // Only the topmost hit area should receive a pointer event. Disabling the
+  // outgoing scene's input on shutdown also prevents a held click or stale
+  // hand cursor from leaking into the scene that replaces it.
+  scene.input.enabled = true;
+  scene.input.setTopOnly(true);
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+    scene.input.enabled = false;
+    scene.game.canvas.style.cursor = 'default';
+  });
+
   scene.game.canvas.style.imageRendering = smooth ? 'auto' : 'pixelated';
 }
