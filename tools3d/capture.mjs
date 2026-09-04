@@ -23,7 +23,11 @@ import puppeteer from 'puppeteer';
 
 const SHOTS = {
   // name: [x, z, yawDeg, pitchDeg, tod]
-  'dawn-field': [0, 40, 180, 4, 'dawn'],
+  // dawn-field stands 12 m south of the old (0,40): the landscape rework
+  // pinned the south-gate drop to (0,40) and parked the truck 5.5 m ahead
+  // of the old pose (verified: truck world (0,45.5)). Same view azimuth,
+  // so all azimuth-keyed composition (oak, peak, saddle, sun) is intact.
+  'dawn-field': [0, 52, 180, 4, 'dawn'],
   'dawn-into-sun': [0, 40, 265, 4, 'dawn'],
   'dawn-ridge': [-60, -20, 150, -2, 'dawn'],
   'noon-open': [20, 10, 200, 4, 'noon'],

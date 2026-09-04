@@ -78,13 +78,16 @@ float cloudField(vec2 ae) {
   // kept clear of the dawn-into-sun frame corner at az ~45-55 deg).
   float f = cumulus(cloudLocal(ae, vec2(0.08, 0.30), vec2(1.0, 1.0)));
   // Mass B — lower bank to the west (evening frame's right third), mirrored.
-  f = max(f, cumulus(cloudLocal(ae, vec2(-1.05, 0.17), vec2(-1.35, 1.45)) ));
+  // Frame-PoC restyle: masses B–E widened ~1.5x (lower 1/scale) so the deck
+  // reads as broad soft plates, not scattered worms. Threshold below rose to
+  // compensate, holding total coverage roughly constant.
+  f = max(f, cumulus(cloudLocal(ae, vec2(-1.05, 0.17), vec2(-1.0, 1.0)) ));
   // Mass C — small scrap near the dawn sun corridor.
-  f = max(f, cumulus(cloudLocal(ae, vec2(1.45, 0.13), vec2(1.9, 2.1))));
+  f = max(f, cumulus(cloudLocal(ae, vec2(1.45, 0.13), vec2(1.9, 1.4))));
   // Masses D/E — low distant scraps: the noon frame reads 2-3 masses at
   // different heights, which is what sells the sky's depth.
-  f = max(f, cumulus(cloudLocal(ae, vec2(0.82, 0.105), vec2(2.6, 2.9))));
-  f = max(f, cumulus(cloudLocal(ae, vec2(-0.18, 0.145), vec2(-2.2, 2.4))));
+  f = max(f, cumulus(cloudLocal(ae, vec2(0.82, 0.105), vec2(2.6, 1.9))));
+  f = max(f, cumulus(cloudLocal(ae, vec2(-0.18, 0.145), vec2(-2.2, 1.6))));
   return f;
 }
 
@@ -119,7 +122,7 @@ void main() {
   // so a low sun still burns through them instead of being pasted over.
   vec2 ae = vec2(atan(dir.x, dir.z), h);
   float cf = cloudField(ae);
-  float cm = smoothstep(0.52, 0.565, cf) * uCloudAmt * smoothstep(0.05, 0.10, h);
+  float cm = smoothstep(0.55, 0.60, cf) * uCloudAmt * smoothstep(0.05, 0.10, h);
   // Flat painted plates (round 5): fw-e3-5's cumulus is 2-3 VALUE STEPS
   // with hard undersides — not an airbrushed gradient (measured: our cloud
   // interior ramped 0.69->0.87 with 13% banding edges; the ref holds ~3

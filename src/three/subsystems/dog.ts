@@ -1502,6 +1502,25 @@ export class DogSystem implements Subsystem {
           { x: 0, y: -len + 0.018, z: -0.004, hw: 0.013, hd: 0.018 },
           legShade,
         );
+        // Setter furnishings run DOWN the leg, not just off the thigh: short
+        // mirrored locks trail the rear edge of the forearm/shank and stop
+        // above the wrist/hock so both working joints stay readable. Same
+        // zero-draw-call pattern as the thigh locks; coatDim steps them down
+        // in value so the articulation reads inside the white mass.
+        // +32 tris total (tri2 both windings), no new meshes.
+        if (!gsp) {
+          const top = fore ? -0.015 : -0.008;
+          const mid = fore ? -0.095 : -0.068;
+          const bot = fore ? -0.16 : -0.132;
+          const zTop = fore ? -0.024 : -0.019;
+          const zMid = fore ? -0.021 : -0.017;
+          for (const sx of [-1, 1]) {
+            const x = sx * 0.014;
+            const ox = sx * 0.021;
+            b.tri2([x, top, zTop], [x, mid, zMid], [ox, mid - 0.028, zMid - 0.028], coatDim);
+            b.tri2([x, mid, zMid], [x, bot, zMid + 0.003], [ox, bot - 0.02, zMid - 0.024], coatDim);
+          }
+        }
         lower.add(this.mesh(b.build(), high));
       }
       if (fore) {

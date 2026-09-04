@@ -2,6 +2,7 @@ import type { LandscapeModel } from '../game/landscape';
 import type { Subsystem } from './engine';
 import { FloraSystem } from './subsystems/flora';
 import { GrassSystem } from './subsystems/grass';
+import { PropsSystem } from './subsystems/props';
 import { RimrockCoverSystem } from './subsystems/rimrockCover';
 import { RimrockFloraSystem } from './subsystems/rimrockFlora';
 import { PheasantCoverSystem } from './subsystems/pheasantCover';
@@ -16,7 +17,7 @@ interface LandscapeVisualAdapter {
 }
 
 const PRAIRIE_VISUALS: LandscapeVisualAdapter = {
-  create: () => ({ systems: [new GrassSystem(), new FloraSystem()] }),
+  create: (landscape) => ({ systems: [new GrassSystem(), new FloraSystem(), new PropsSystem(landscape)] }),
 };
 
 const RIMROCK_VISUALS: LandscapeVisualAdapter = {

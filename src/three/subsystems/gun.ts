@@ -319,13 +319,16 @@ export class GunSystem implements Subsystem {
       this.tone.uGunSunDirW.value.set(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
       this.tone.uGunWarmK.value = 0.25 + spec.floraWarm * 0.4;
       this.tone.uGunCoolTint.value.setHex(spec.grassShadow).multiplyScalar(0.85);
+      // Viewmodel fill (frame-PoC result): real FPS guns are lit independently
+      // so dark walnut/steel never voids against a bright field. The old dose
+      // (0.008+0.012) left carry/mount reads as one black wedge at dawn.
       this.tone.uGunCoolK.value = silh ? 0.5 : 0.32 + lowSun * 0.28;
       this.tone.uGunRimColor.value.setHex(spec.sunColor);
       this.tone.uGunRimK.value = (silh ? 0.2 : 0.06) + lowSun * 0.5;
-      this.tone.uGunFillK.value = silh ? 0.006 : 0.008 + lowSun * 0.012;
+      this.tone.uGunFillK.value = silh ? 0.024 : 0.032 + lowSun * 0.048;
       // Fog-family emissive whisper so lastlight steel never voids out.
       this.mat!.emissive.setHex(spec.fogColor).lerp(this.creamScratch, 0.3);
-      this.mat!.emissiveIntensity = 0.012;
+      this.mat!.emissiveIntensity = 0.036;
     };
     applyTod(ctx.timeOfDay);
     this.todHandler = ((e: CustomEvent) => applyTod(e.detail)) as EventListener;

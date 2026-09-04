@@ -9,6 +9,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         three: resolve(__dirname, 'index3d.html'),
+        poc: resolve(__dirname, 'frame-poc.html'),
       },
     },
   },

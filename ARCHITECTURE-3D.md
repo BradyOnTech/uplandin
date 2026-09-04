@@ -62,6 +62,7 @@ A subsystem is done when the critic would hesitate in the blind A/B.
 | player | FP controls, walk, capture poses | scaffold |
 | grass | instanced wind-swayed cover + open field | — |
 | flora | trees, shrubs, cattails, deadfall props | — |
+| props | authored Kenney CC0 heroes (quail-fields), normalized at load | live |
 | dog | segmented low-poly dog, sim-driven animation | — |
 | birds | covey rises in 3D, species silhouettes | — |
 | gun | viewmodel, mount/swing, spread, recoil | — |
