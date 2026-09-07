@@ -1,0 +1,160 @@
+/* Notebook panels and field-guide dialogs share the same ink / paper system. */
+.dialog-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+  background: #061521e8;
+  backdrop-filter: blur(5px);
+}
+.dialog-scrim[hidden] { display: none; }
+.paper-dialog {
+  position: relative;
+  width: min(530px, 100%);
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+  padding: 34px 36px 28px;
+  color: #142c3b;
+  background: #dcc990;
+  border: 3px solid #071521;
+  outline: 2px solid #cd984a;
+  border-radius: 3px;
+  box-shadow: 9px 9px 0 #020b11d9, inset 0 0 0 1px #fff0ac7a;
+}
+.paper-dialog::before { content: ''; position: absolute; inset: 8px; pointer-events: none; border: 1px solid #8f6c3f4d; }
+.dialog-close { position: absolute; top: 13px; right: 13px; z-index: 1; width: 38px; height: 38px; color: #f2d894; background: #0d2839; border-color: #c3944a; box-shadow: 3px 3px 0 #071521; }
+.dialog-close svg { width: 17px; height: 17px; }
+.paper-dialog > .eyebrow { display: block; padding-right: 25px; color: #a44f36; font-size: 8px; line-height: 1.7; }
+.paper-dialog h2 { margin: 13px 0 12px; color: #102b3c; font-size: 32px; letter-spacing: .015em; line-height: .98; text-transform: uppercase; }
+.paper-dialog > p { margin-bottom: 21px; color: #536b65; font-size: 12px; line-height: 1.7; }
+.paper-dialog .fine-print { margin: 17px 0 0; color: #687e72; font-size: 9px; }
+.welcome-dialog { text-align: center; }
+.welcome-dialog > .eyebrow { padding: 0 20px; }
+.welcome-dog { display: grid; place-items: center; width: 101px; height: 101px; margin: 18px auto 0; background: #b5a16e; border: 2px solid #536c62; border-radius: 2px; box-shadow: 4px 4px 0 #0b2332; transform: rotate(-2deg); }
+.welcome-dog img { width: 81px; height: 87px; object-fit: contain; image-rendering: pixelated; }
+.welcome-dialog h2 { font-size: 30px; }
+.welcome-dialog > p { font-size: 11px; }
+.name-label { display: block; margin: 23px 0 8px; color: #6d7968; font-size: 8px; font-weight: 900; letter-spacing: .16em; text-align: left; }
+.welcome-dialog input { width: 100%; min-height: 50px; padding: 11px 14px; color: #102a3a; background: #f1dea5; border: 2px solid #536b64; border-radius: 2px; font: 900 18px/1.2 "SFMono-Regular", monospace; }
+.welcome-tips { display: flex; justify-content: space-between; gap: 8px; margin: 18px 0 23px; }
+.welcome-tips span { display: flex; flex: 1; flex-direction: column; align-items: center; gap: 7px; color: #587064; font-size: 7px; font-weight: 800; line-height: 1.4; }
+.welcome-tips span + span { border-left: 1px solid #526b5d42; }
+.welcome-tips svg { width: 20px; height: 20px; color: #a75238; }
+.dialog-emblem { display: grid; place-items: center; width: 60px; height: 60px; margin: 20px 0; color: #a65037; background: #efdda5; border: 2px solid #a65037; border-radius: 2px; transform: rotate(-3deg); }
+.dialog-emblem svg { width: 28px; height: 28px; }
+.camp-dialog .secondary { margin-top: 10px; }
+.pause-options { display: flex; gap: 9px; margin-top: 12px; }
+.pause-options > .button { flex: 1; }
+.pause-options .icon-button { width: 51px; height: 51px; color: #f2d894; background: #0d2839; }
+.pause-dialog > .text-button { margin-top: 9px; color: #9d4e35; font-size: 10px; }
+.field-notes { margin: 23px 0; padding: 0 0 0 21px; color: #365f59; }
+.field-notes li { margin: 16px 0; padding-left: 8px; }
+.field-notes b { color: #173548; font-size: 17px; text-transform: uppercase; }
+.field-notes p { margin: 6px 0; color: #65786e; font-size: 10px; line-height: 1.6; }
+
+.map-dialog { width: min(750px, 100%); }
+.map-dialog h2 { font-size: 32px; }
+.map-dialog > p { margin-bottom: 15px; font-size: 11px; }
+.trail-map { max-height: 40dvh; overflow: hidden; background: #b7b681; border: 2px solid #294b57; border-radius: 2px; box-shadow: 4px 4px 0 #07152155; }
+.trail-map > svg { display: block; width: 100%; height: auto; max-height: 40dvh; }
+.map-destinations { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 14px; }
+.map-destination { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 45px; padding: 11px; color: #18384a; background: #efdca66e; border: 1px solid #61766c7a; border-radius: 2px; text-align: left; transition: transform .14s, background-color .16s; }
+.map-destination:active { transform: scale(.96); }
+.map-destination:hover { background: #f1dfa9; }
+.map-destination > span { display: flex; align-items: center; gap: 7px; font-size: 10px; font-weight: 900; text-transform: uppercase; }
+.map-destination svg { width: 14px; height: 14px; color: #a65037; }
+.map-destination small { display: flex; align-items: center; gap: 3px; color: #667b6d; font-size: 7px; font-weight: 800; white-space: nowrap; }
+.map-destination small svg { width: 11px; height: 11px; }
+
+.journal-dialog { width: min(850px, 100%); }
+.journal-partner { display: flex; align-items: center; gap: 14px; margin: 22px 0; padding: 13px 16px; color: #173547; background: #efdca65e; border: 1px solid #5e756b6e; }
+.journal-partner > img { width: 47px; height: 54px; padding: 2px; object-fit: contain; image-rendering: pixelated; background: #b6a26e; border: 1px solid #7d6845; }
+.journal-partner > div { flex: 1; }
+.journal-partner strong { font-size: 18px; text-transform: uppercase; }
+.journal-partner span { display: block; margin: 5px 0 9px; color: #6d806f; font-size: 9px; }
+.journal-partner > b { margin-left: 13px; color: #a65037; font-size: 29px; text-align: center; }
+.journal-partner small { display: block; margin-top: 5px; color: #6d806f; font: 800 6px/1.2 "SFMono-Regular", monospace; letter-spacing: .12em; }
+.journal-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 25px 0 13px; }
+.journal-heading h3 { margin: 0; color: #173547; font-size: 21px; text-transform: uppercase; }
+.journal-heading > span { color: #8f513e; font-size: 7px; font-weight: 900; letter-spacing: .1em; }
+.species-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.species-card { padding: 12px 14px 14px; background: #efdca640; border: 1px solid #63776d52; }
+.species-illustration { display: grid; place-items: center; height: 72px; margin-bottom: 3px; }
+.journal-bird { display: block; width: 44px; height: 28px; background-repeat: no-repeat; image-rendering: pixelated; transform: scale(2); }
+.journal-bird.grouse { filter: saturate(.35); transform: scale(2.2); }
+.unknown-bird { color: #9c9b75; font-size: 38px; }
+.species-card .eyebrow { color: #a45339; font-size: 6px; letter-spacing: .11em; }
+.species-card h4 { margin: 7px 0 8px; color: #173547; font-size: 17px; line-height: 1.15; text-transform: uppercase; }
+.species-card p { margin: 0; color: #738274; font-size: 9px; line-height: 1.6; }
+.species-card.unseen { opacity: .86; }
+.species-card.unseen .eyebrow { color: #96705a; }
+.species-card.unseen p { color: #9aa89b; }
+.discovery-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 19px; }
+.discovery { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-top: 1px solid #61756b42; }
+.discovery > svg { flex: none; width: 17px; height: 17px; margin-top: 2px; color: #8d9a7a; }
+.discovery.seen > svg { color: #a65037; }
+.discovery strong { display: block; margin-bottom: 5px; color: #173547; font-size: 10px; font-weight: 900; text-transform: uppercase; }
+.discovery span { display: block; color: #788778; font-size: 9px; line-height: 1.5; }
+.toast { position: fixed; bottom: 140px; left: 50%; z-index: 150; min-width: 240px; max-width: min(500px, calc(100vw - 36px)); padding: 11px 17px; color: #fae9b0; background: #092437f5; border: 2px solid #d3a14b; box-shadow: 4px 4px 0 #071521bd; font-size: 10px; font-weight: 700; line-height: 1.5; text-align: center; transform: translate(-50%, 8px); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
+.toast[hidden] { display: none; }
+.toast.visible { transform: translate(-50%, 0); opacity: 1; }
+
+@media (max-width: 700px) {
+  .dialog-scrim { padding: 14px; }
+  .paper-dialog { max-height: calc(100dvh - 28px); padding: 28px 22px 23px; }
+  .paper-dialog::before { inset: 6px; }
+  .dialog-close { top: 11px; right: 11px; width: 35px; height: 35px; }
+  .paper-dialog > .eyebrow { font-size: 7px; }
+  .paper-dialog h2 { font-size: 28px; }
+  .paper-dialog > p { font-size: 11px; }
+  .welcome-dialog > .eyebrow { padding: 0 18px; }
+  .welcome-dialog h2 { font-size: 26px; }
+  .welcome-dialog > p { font-size: 10px; }
+  .welcome-dog { width: 87px; height: 87px; }
+  .welcome-dog img { width: 70px; height: 76px; }
+  .welcome-tips { gap: 4px; margin: 15px 0 20px; }
+  .welcome-tips span { font-size: 6px; }
+  .welcome-dialog input { font-size: 16px; }
+  .map-dialog h2 { padding-right: 8px; font-size: 25px; }
+  .map-dialog > p { font-size: 10px; }
+  .trail-map { margin-inline: -7px; }
+  .map-destinations { grid-template-columns: 1fr; gap: 6px; margin-top: 12px; }
+  .map-destination { min-height: 42px; padding: 10px; }
+  .map-destination > span { font-size: 9px; }
+  .map-destination small { font-size: 8px; }
+  .journal-partner { gap: 9px; margin: 18px 0; padding: 10px; }
+  .journal-partner > img { width: 37px; height: 44px; }
+  .journal-partner strong { font-size: 15px; }
+  .journal-partner span { margin: 3px 0 7px; font-size: 7px; }
+  .journal-partner > b { margin-left: 3px; font-size: 24px; }
+  .journal-partner small { font-size: 5px; letter-spacing: .06em; }
+  .journal-heading { margin: 22px 0 12px; }
+  .journal-heading h3 { font-size: 18px; }
+  .journal-heading > span { font-size: 6px; }
+  .species-grid { grid-template-columns: 1fr; gap: 8px; }
+  .species-card { position: relative; min-height: 106px; padding: 13px 13px 13px 92px; }
+  .species-illustration { position: absolute; top: 17px; left: 9px; width: 68px; height: 68px; margin: 0; }
+  .journal-bird { transform: scale(1.55); }
+  .journal-bird.grouse { transform: scale(1.7); }
+  .species-card h4 { font-size: 16px; }
+  .species-card p { font-size: 8px; }
+  .discovery-list { grid-template-columns: 1fr; gap: 1px; }
+  .discovery strong { font-size: 10px; }
+  .discovery span { font-size: 8px; }
+  .toast { bottom: 238px; min-width: 260px; padding: 10px 14px; font-size: 9px; }
+}
+
+@media (max-height: 540px) {
+  .dialog-scrim { padding: 11px; }
+  .paper-dialog { max-height: calc(100dvh - 22px); padding: 18px 28px; }
+  .welcome-dog { width: 68px; height: 68px; margin: 8px auto 0; }
+  .welcome-dog img { width: 55px; height: 60px; }
+  .welcome-dialog h2 { margin-top: 9px; }
+  .welcome-dialog .name-label { margin-top: 11px; }
+  .welcome-tips { margin: 11px 0 15px; }
+  .toast { bottom: 92px; }
+}
