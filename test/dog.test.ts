@@ -61,9 +61,9 @@ function run(dog: Dog, birds: Bird[], steps: number, env: DogEnv = {}, dtMs = 50
 }
 
 describe('Dog', () => {
-  it('holds a distant live woodland scent approach and resumes when the handler closes', () => {
+  it.each(['grouse-woods', 'woodcock-bottoms'])('holds distant scent work in %s and resumes when the handler closes', huntAreaId => {
     const dog = makeDog(100, 100), bird = birdAt(145, 100);
-    const env = { huntAreaId: 'grouse-woods', hunterPos: { x: 100, y: 100 }, rangeRadius: 24, movementScale: .04 };
+    const env = { huntAreaId, hunterPos: { x: 100, y: 100 }, rangeRadius: 24, movementScale: .04 };
     run(dog, [bird], 1000, env);
     expect(dog.waitingForHandler).toBe(true);
     expect(dog.state).toBe('tracking');

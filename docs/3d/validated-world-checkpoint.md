@@ -195,6 +195,12 @@ A recall check verifies capped travel and restoration on dry ground. The full ru
 
 Browser sampling began at the assisted Beaver Pond position. The dog initially stayed at heel, so those samples were not movement proof. After normal hunter movement released it, six half-second samples showed approximately 1.4 meters per second while tracking with swimming active. A full swimming retrieve and shore transition still need review; no mobile performance claim is made.
 
+**Close handler discipline in Alder Bottoms**
+
+The continuing live session exposed a dog stalking over 100 meters away while the hunter remained in water. Extended the existing close-woodland scent hold to the bottoms doctrine: retain scent and wait for the hunter instead of running a long approach alone. The existing hold/resume test now covers both Grouse and Woodcock, while Pheasant and Chukar retain uninterrupted scent work. Sixty-two focused dog and locator checks pass; compilation and build pass with existing chunk warnings.
+
+Repeated the assisted Beaver Pond start, then used normal walking input. The dog held scent at 26 yards with the close-up HUD label. After changing only the viewing direction through the development helper and walking forward for fifteen seconds, the hunter reached shore; the dog resumed, returned to grounded presentation and pointed. Evidence: `output/playwright/woodcock-close-handler-shore.png`. The point occurred under low alder foliage, which obstructed the view at close range. This is evidence of hold/resume and swim-to-shore behavior, not a completed flush, shot or retrieve. Mobile performance remains unverified.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

@@ -694,7 +694,8 @@ export class Dog {
       // The live close-timber range must also constrain a long scent road-in.
       // Retain the scent and its current beat rather than abandon game or
       // declare a point early. Hysteresis avoids repeated stop/start steps.
-      if (this.doctrineFor(env).style === 'woods' && env.rangeRadius !== undefined && env.hunterPos &&
+      const closeCover = this.doctrineFor(env).style === 'woods' || this.doctrineFor(env).style === 'bottoms';
+      if (closeCover && env.rangeRadius !== undefined && env.hunterPos &&
         birdDistance > POINT_SETTLE_RANGE &&
         dist(this.pos, env.hunterPos) > this.effectiveRangeRadius(env) * (wasWaitingForHandler ? 1.2 : 1.6)) {
         this.waitingForHandler = true;
