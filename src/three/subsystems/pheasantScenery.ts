@@ -178,15 +178,21 @@ export class PheasantScenerySystem implements Subsystem {
     const rng = mulberry32(seeded(this.landscape.area.terrain.seed, 641));
     for (const belt of pheasantShelterbelts(this.landscape.area)) {
       for (let i = 0; i < belt.count; i++) {
-        const along = (i / (belt.count - 1) - .5) * belt.length;
-        const across = (rng() - .5) * 6;
+        const t = i / (belt.count - 1);
+        // Retain the farm windbreak line, but give it surviving groups,
+        // replacement saplings and openings instead of identical spacing.
+        const clustered = t + Math.sin(t * Math.PI * 6) * .035;
+        const along = (clustered - .5) * belt.length + (rng() - .5) * 3;
+        const across = Math.sin(t * Math.PI * 3) * 4 + (rng() - .5) * 5;
         const x = belt.x + Math.cos(belt.angle) * along - Math.sin(belt.angle) * across;
         const y = belt.y + Math.sin(belt.angle) * along + Math.cos(belt.angle) * across;
         if (!pheasantPlantClear(this.landscape.area, x, y, 2)) continue;
         const ground = this.landscape.surfaceAtProperty(x, y, this.surface);
         if (ground.moisture > .72 || ground.slope > .4) continue;
         this.landscape.propertyToWorld(x, y, this.world);
-        const height = 5.5 + rng() * 5.5;
+        const young = i % 4 === 1;
+        const height = young ? 3.5 + rng() * 2.5 : 8 + rng() * 5;
+        const breadth = young ? .78 : 1 + rng() * .25;
         rotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng() * Math.PI * 2);
         position.set(this.world.x, ground.height + height * .36, this.world.z);
         scale.set(.8 + rng() * .4, height * .72, .8 + rng() * .4);
@@ -197,8 +203,8 @@ export class PheasantScenerySystem implements Subsystem {
           position.set(this.world.x + Math.cos(angle) * spread,
             ground.height + height * (lobe === 3 ? .83 : .56 + rng() * .15),
             this.world.z + Math.sin(angle) * spread);
-          scale.set(height * (.16 + rng() * .06), height * (.20 + rng() * .08), height * (.14 + rng() * .06));
-          crowns[(i + lobe) % crowns.length].push(matrix.compose(position, rotation, scale).clone());
+          scale.set(height * (.16 + rng() * .06) * breadth, height * (.20 + rng() * .08), height * (.14 + rng() * .06) * breadth);
+          crowns[i % crowns.length].push(matrix.compose(position, rotation, scale).clone());
         }
       }
     }

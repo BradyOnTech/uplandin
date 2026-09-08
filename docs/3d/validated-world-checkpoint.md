@@ -33,6 +33,10 @@ The shoreline art pass replaces independent water-edge spikes with a 96-segment 
 
 The ground pass reuses the existing 63 KB painted prairie texture as luminance detail over Pheasant's habitat colors. Property-anchored sampling keeps it consistent between gates; two scales and a 24–90 metre fade reduce repetition. It uses mipmaps and tiered anisotropy. Reviewed Standard and Lightweight entry views in `output/playwright/pheasant-painted-ground.png` and `output/playwright/pheasant-painted-ground-lite.png`; visible soil and straw now break up the formerly flat surface. Lightweight vegetation still loses considerable silhouette quality at distance. Optional-texture failure and late-load disposal checks pass, as does the production build.
 
+The vegetation pass varies shelterbelt spacing, mature-tree breadth, and sapling height without adding batches. Lightweight prairie uses eight broader blades instead of ten narrow ones, with broader cattail leaves as well. Compared both entry views in `output/playwright/pheasant-grouping-lite.png` and `output/playwright/pheasant-grouping-high.png`. Near tufts read more clearly; distant reed aliasing remains. Compilation and build pass.
+
+Desktop browser telemetry at the stationary South Gate: Lightweight reported 140 draws and 197,268 triangles at 1228×750; Standard reported 148 draws and 472,912 triangles at 1842×1125. Both recorded a recent 95th-percentile frame interval around 10.2 ms, over different sample durations. These are scene baselines on this desktop, not a controlled before/after benchmark, phone measurement, GPU-time measurement, or encounter stress test.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

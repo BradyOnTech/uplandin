@@ -27,7 +27,7 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble', lite: boolean)
   const reed = new THREE.Color(0xe8d7a2);
   const head = new THREE.Color(0x7a5231);
 
-  const count = kind === 'prairie' ? (lite ? 10 : 18) : kind === 'cattail' ? (lite ? 5 : 8) : (lite ? 7 : 12);
+  const count = kind === 'prairie' ? (lite ? 8 : 18) : kind === 'cattail' ? (lite ? 5 : 8) : (lite ? 7 : 12);
   for (let i = 0; i < count; i++) {
     const angle = (i / count) * Math.PI * 2 + (rng() - 0.5) * 0.42;
     const sx = Math.sin(angle);
@@ -37,7 +37,9 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble', lite: boolean)
     const root = rng() * (kind === 'stubble' ? 0.67 : kind === 'cattail' ? 0.55 : 0.66);
     const x = sx * root;
     const z = sz * root;
-    const width = kind === 'cattail' ? 0.018 : kind === 'prairie' ? 0.025 + rng() * 0.030 : 0.014 + rng() * 0.018;
+    // Lite renders without multisampling. Fewer broader blades preserve a
+    // tuft's body better than thin geometry that alternates between pixels.
+    const width = (kind === 'cattail' ? 0.018 : kind === 'prairie' ? 0.025 + rng() * 0.030 : 0.014 + rng() * 0.018) * (lite ? 1.65 : 1);
     const height = kind === 'prairie'
       ? 0.46 + rng() * 0.65
       : kind === 'cattail'
@@ -73,7 +75,7 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble', lite: boolean)
       for (const side of [-1, 1]) {
         const leafHeight = height * (.58 + rng() * .18);
         const reach = .32 + rng() * .22;
-        const lw = .045 + rng() * .025;
+        const lw = (.045 + rng() * .025) * (lite ? 1.35 : 1);
         const mx = x + sx * reach * side * .35, mz = z + sz * reach * side * .35;
         const tx = x + sx * reach * side, tz = z + sz * reach * side;
         push([
