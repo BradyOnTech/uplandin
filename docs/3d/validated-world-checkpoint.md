@@ -255,11 +255,19 @@ Walked the South approach to a point at approximately 48 seconds, then used a ca
 
 Inspection of the default South setup found seven hens and three roosters, with the first six placed birds hens. Trying an alternative replay exposed a limitation: non-Quail maps ignored explicit seed parameters. Explicit seeds now vary their authored encounter and bird streams while retaining map terrain, species, stocking and placement rules. Unseeded defaults retain the original stable streams. Quail retains its dedicated encounter generator. Added a replay check covering repeatability, variation, unchanged species/count/property and stable defaults. All 59 focused checks across gameplay setup, Hunt3D, Quail encounters and property contracts pass, as do compilation and build (existing chunk warnings remain). Seed 1 has a rooster in its first placement and is open for the next reference walk; its successful encounter remains unverified.
 
+**Seed 1 Pheasant reference encounter**
+
+Completed an assisted South Gate reference on Lightweight with `area=pheasant-coverts&drop=south-gate&quality=lite&tod=noon&breed=gsp&coat=liver-white&dog=generated&challenge=balanced&seed=1`. Walked the arrival heading for about 53 seconds. The dog tracked a runner roughly 50 meters away. A camera-only turn toward the dog and approximately nine seconds of forward sprint closed the distance until the dog pointed. Turned toward the point and walked normally for another ten seconds; the rooster flushed naturally at roughly 34 meters.
+
+Mounted with the right mouse button, used the camera helper to aim at the flying bird, then fired once through the normal mouse input. The shot downed the rooster. After approximately fifteen seconds, retrieval credited one bird and the HUD showed Bag 1, Down 0 and Shells 2/3. End Hunt displayed one down, one retrieved, zero lost and one point held. Evidence: `output/playwright/pheasant-seed1-rooster-flush.png`, `output/playwright/pheasant-seed1-assisted-shot.png`, `output/playwright/pheasant-seed1-retrieve.png` and `output/playwright/pheasant-seed1-results.png`.
+
+No position teleport, forced flush, forced down or simulated-time stepping was used. Camera turns and shot aim were assisted, and pauses interrupted the run for inspection. This proves the connected natural runner-to-point, flush, normal shot, automatic retrieval credit and end-result sequence under those conditions. It does not prove ordinary aiming usability, an unbroken player-paced hunt, close carrying animation quality or mobile performance. The visible route remains sparse, the grass silhouettes repetitive and the distant cover boundaries weak. This route is now a repeatable reference for judging broader environment improvements.
+
 **Next work, in order**
 
-1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.
+1. Use the Seed 1 South reference route to judge environment improvements from arrival through the known runner encounter. Review a full encounter with ordinary aiming separately; the assisted reference does not establish input usability.
 2. Establish one convincing entry-to-cover sequence with better ground litter, grouped vegetation, recognizable wet margins, and varied shelterbelt spacing. Judge it at walking height in both display modes.
-3. Walk a complete Pheasant encounter and compare it with Quail and Chukar. Check that route choice, running birds, dog relocation, and escape directions support different decisions.
+3. Compare the assisted Pheasant reference with Quail and Chukar, then inspect running-bird and dog behavior around water from both Pheasant gates. Check that route choice, dog relocation and escape directions support different decisions.
 4. Measure frame cost and loading behavior on representative mobile hardware before making mobile-readiness claims.
 5. Continue the deferred dog presentation, controls, audio, and hunt-flow work after the world and encounter reference is convincing.
 
