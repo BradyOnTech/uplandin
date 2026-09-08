@@ -116,10 +116,23 @@ export function playBlip(): void {
 }
 
 /** Rooster pheasant cackling on the rise: raspy descending squawks. */
-export function playCackle(): void {
+export function playCackle(volume = 1): void {
   for (let i = 0; i < 4; i++) {
-    tone(340 - i * 28, i * 0.09, 0.07, { type: 'square', volume: 0.14, slideTo: 190 - i * 15 });
+    tone(340 - i * 28, i * 0.09, 0.07, { type: 'square', volume: 0.14 * volume, slideTo: 190 - i * 15 });
   }
+}
+
+/** One physical pheasant launch: heavy first beats, then receding wing wash.
+ * Distance affects loudness without changing bird state or random streams. */
+export function playPheasantFlush(distanceM: number, rooster: boolean): void {
+  const proximity = 1 / (1 + Math.max(0, distanceM) / 18);
+  noise(0, .18, 2600, 600, .42 * proximity);
+  for (let beat = 0; beat < 8; beat++) {
+    const envelope = Math.exp(-beat * .19) * proximity;
+    noise(beat * .085, .065, 1700, 380, .48 * envelope);
+    tone(105, beat * .085, .055, {type:'triangle',volume:.08 * envelope,slideTo:65});
+  }
+  if (rooster) playCackle(proximity);
 }
 
 /** Woodcock wing twitter: rapid high chirps as it towers. */

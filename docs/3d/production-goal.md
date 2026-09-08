@@ -16,7 +16,7 @@ The active goal is the full user-approved scope in the September 8 goal objectiv
 
 **Next evidence-driven work**
 
-First fix the actual encounter pipeline before judging frequency: 3D walking movement was previously aliased away, and runtime bird IDs changed temperament on same-seed restarts. Focused integration regressions now exercise those defects. Next measure runner pursuit/rest cadence: inherited speed is 42 property yards per second, about 38.4 meters per second, while the 3D dog uses a slower movement scale. A species-specific world speed needs joint review with recovery and point timing, preserving 2D rules.
+First fix the actual encounter pipeline before judging frequency: 3D walking movement was previously aliased away, and runtime bird IDs changed temperament on same-seed restarts. Focused integration regressions now exercise those defects. The runner audit found an inherited speed of 42 property yards per second, about 38.4 meters per second. Continuous ringnecks now use 4.8 meters per second while preserving rest/energy clocks and 2D rules. Controlled cover-end scenarios produce opportunities while straight broad-cover pursuit remains difficult. Natural multi-seed balance remains unverified. The latest West replay reached a natural rise but foreground blade shapes still heavily screened it; close vegetation and sight-picture composition are the next priority.
 
 Then review multiple ordinary hunts from both entries and list their three largest weaknesses. Fix those before expanding maps. Stage art views only for shape and lighting decisions; label teleported cameras, forced events, telemetry-assisted aiming and simulation stepping. Do not count those as ordinary hunting proof.
 

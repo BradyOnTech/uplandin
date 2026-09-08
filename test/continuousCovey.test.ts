@@ -1,3 +1,4 @@
+import * as audio from '../src/audio';
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { BirdsSystem } from '../src/three/subsystems/birds';
@@ -28,6 +29,22 @@ function fixture() {
 }
 
 describe('continuous Quail coveys', () => {
+  it('sounds each pheasant only on its actual launch and keeps hens silent of cackles', () => {
+    const sound = vi.spyOn(audio, 'playPheasantFlush').mockImplementation(() => {});
+    const flutter = vi.spyOn(audio, 'playFlush').mockImplementation(() => {});
+    try {
+      for (const sex of ['hen','rooster'] as const) {
+        const f=fixture(); f.runtime.frozen=false;
+        f.add(1,1,4,0); f.birds[0].speciesId='ringneck';f.birds[0].sex=sex;
+        f.runtime.applySpeciesAppearance=(slot: any,species:any,sex:any)=>{slot.species=species;slot.sex=sex;};
+        f.runtime.tickBirds(1000/30);
+        expect(sound).toHaveBeenLastCalledWith(4,sex==='rooster');
+        for(let i=0;i<10;i++)f.runtime.tickBirds(1000/30);
+      }
+      expect(sound).toHaveBeenCalledTimes(2);
+      expect(flutter).not.toHaveBeenCalled();
+    } finally {sound.mockRestore();flutter.mockRestore();}
+  });
   it('disturbs each actual launch once, including late birds, without changing flight or stagger at either quality', () => {
     const reference = fixture();
     const variants = [fixture(), fixture()];

@@ -4,7 +4,7 @@ import { QUAIL_WORLD_SCALE, quailLaunchDelay } from '../quailPresentation';
 import { QuailFlushDebris } from '../quailFlushDebris';
 import * as THREE from 'three';
 import { buildBobwhiteBody, buildBobwhiteWing, poseBobwhiteFoldedWings } from '../assets/bobwhite';
-import { playFlush, playThud } from '../../audio';
+import { playFlush, playThud, playPheasantFlush } from '../../audio';
 import { RELIGHT_CHANCE, YOUNG_FLIGHT_MULT } from '../../game/birds';
 import { mulberry32 } from '../../game/math';
 import {
@@ -265,6 +265,7 @@ interface Slot {
   species: SpeciesConfig;
   /** Young-of-year flight modifier copied from the simulation at launch. */
   young: boolean;
+  sex?: 'hen' | 'rooster';
   /** Sim-authority velocity in FLUSH px/s: x lateral, y screen-down. */
   vel: { x: number; y: number };
   /** Virtual 2D screen-x (px) — exitDirFor's frame of reference. */
@@ -667,6 +668,7 @@ export class BirdsSystem implements Subsystem {
       slot.tailMesh.rotation.set(0,0,0);
     } else if (slot.tailMesh) slot.tailMesh.visible = false;
     slot.species = species;
+    slot.sex = sex;
     slot.body.geometry = geometry.body;
     slot.wingLMesh.geometry = geometry.wingL;
     slot.wingRMesh.geometry = geometry.wingR;
@@ -918,7 +920,7 @@ export class BirdsSystem implements Subsystem {
         const flight: FlightContext = { escX:this.escX,escZ:this.escZ,rightX:this.rightX,rightZ:this.rightZ,
           hunterX:this.hunterX,hunterZ:this.hunterZ,driftPx:this.driftPx,rng:this.riseRng };
         for (const bird of covey) { this.queue[this.qTail++] = bird.id; this.pendingFlights.set(bird.id,flight); }
-        if (!this.frozen) playFlush();
+        if (!this.frozen && covey.some(bird => bird.speciesId !== 'ringneck')) playFlush();
       }
     } else if (newRise) {
       this.stageRise(simBirds);
@@ -1428,6 +1430,11 @@ export class BirdsSystem implements Subsystem {
   }
 
   private disturbLaunchCover(slot: Slot): void {
+    if (!this.frozen && this.spatialEncounter && slot.species.id === 'ringneck') {
+      const distance = Math.hypot(slot.x - (slot.flight?.hunterX ?? this.hunterX),
+        slot.z - (slot.flight?.hunterZ ?? this.hunterZ));
+      playPheasantFlush(distance, slot.sex === 'rooster');
+    }
     this.coverEvents?.dispatchEvent(new CustomEvent('bird-cover-disturbance', {
       detail: { x: slot.x, z: slot.z },
     }));
