@@ -597,6 +597,11 @@ export class Hunt3DSystem implements Subsystem {
       .find((candidate) => candidate !== undefined);
     if (!bird) return null;
     const species = getSpecies(bird.speciesId);
+    const hensOnly = info.ids.every(id => {
+      const candidate = this.hunt.birds.find(entry => entry.id === id);
+      return candidate?.speciesId === 'ringneck' && candidate.sex === 'hen';
+    });
+    if (hensOnly) return 'HEN FLUSH · HOLD FIRE';
     const shortName = species.id === 'ringneck'
       ? bird.sex === 'hen' ? 'HEN' : 'ROOSTER'
       : species.name.toUpperCase();

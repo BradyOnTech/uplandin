@@ -243,6 +243,12 @@ Added short, wider grass in selected spaces between standing bunches, using the 
 
 A bent-blade experiment produced artificial triangular tips and excessive geometry, so it was removed. Final evidence: `output/playwright/pheasant-low-growth-south.png` (Standard) and `output/playwright/pheasant-low-growth-west.png` (Lightweight), both after twelve seconds of forward walking. Earlier `pheasant-layered-*` images are rejected iterations. The final West sample recorded 119 draws and 245,264 triangles versus 119 draws and 201,948 triangles before this pass. That added geometry needs mobile measurement; the short desktop sample is not a device benchmark. All 23 property habitat contract checks, compilation and production build pass. Existing chunk warnings remain; the reviewed page had no browser warnings or errors. No complete hunting encounter was established by these entry walks.
 
+**West Track runner follow-through**
+
+Continued the West Track walk beyond the entry view using forward input. A first pass ended with one escape after about 54 seconds; a replay paused at the natural flush showed that the bird was a hen, roughly 45 meters ahead. One second after takeoff it was visible above the grass, left of center. No camera relocation, forced flush or shot was used. Evidence: `output/playwright/pheasant-west-natural-flush.png` and `output/playwright/pheasant-west-hen-rise.png`. Letting this hen go was appropriate; this does not prove a successful rooster interception or retrieval.
+
+The flush label now explicitly says `HEN FLUSH · HOLD FIRE` when every bird in the rise is a hen. Rooster labels remain unchanged. The existing hen penalty is unchanged. Added focused hen/rooster label checks through the public flush path; all 23 Hunt3D checks and compilation pass. Screenshots predate the wording change and establish encounter behavior, not the revised wording. The main remaining encounter task is to intercept a running rooster rather than simply follow behind it, and judge whether the cover and guidance make that choice understandable.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

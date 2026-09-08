@@ -264,6 +264,23 @@ describe('Hunt3DSystem live start', () => {
     expect(hunt.huntState().downed).toBe(1);
   });
 
+  it.each(['hen', 'rooster'] as const)('identifies the %s decision during a pheasant flush', sex => {
+    vi.stubGlobal('location', { search: '?breed=gsp&area=pheasant-coverts' });
+    const ctx = liveCtx();
+    const hunt = liveHunt();
+    hunt.init(ctx);
+    const dog = hunt.dog();
+    const bird = hunt.huntState().birds[0];
+    hunt.huntState().birds.splice(1);
+    bird.sex = sex;
+    bird.state = 'hidden';
+    bird.pos = { ...dog.pos, x: dog.pos.x + 10 };
+    dog.state = 'pointing';
+    dog.pointedBirdId = bird.id;
+    expect(hunt.triggerFlush(ctx)?.ids).toContain(bird.id);
+    expect(hunt.riseLabel()).toBe(sex === 'hen' ? 'HEN FLUSH · HOLD FIRE' : 'ROOSTER FLUSH');
+  });
+
   it('retrieves from the rendered landing point and credits the dog', () => {
     vi.stubGlobal('location', { search: '?breed=english-setter' });
     const ctx = liveCtx();
