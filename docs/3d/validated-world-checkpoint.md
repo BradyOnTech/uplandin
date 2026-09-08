@@ -313,6 +313,12 @@ Raised and narrowed selected background ridge features and introduced a saddle b
 
 Reviewed the eighteen-second West approach in Lightweight and twelve-second South approach in Standard: `output/playwright/chukar-west-ridge-saddles.png` and `output/playwright/chukar-south-ridge-saddles.png`. The west view has a clearer saddle; the south near slope still dominates its approach. The silhouettes remain simple, and the plain transition below them still needs improvement. Compilation and build pass with existing chunk warnings. The Standard page had no browser warnings or errors. No simulation tests rerun for this background-profile-only change; long traversals and other time-of-day views remain unreviewed.
 
+**Chukar backdrop depth correction**
+
+Ray inspection of the West vista traced the pale band to the camera-following decorative ridge ring at 255 meters, ahead of actual terrain at roughly 339 meters. Chukar now draws its ridge rings after the sky dome and before opaque world surfaces, with depth writes/testing disabled for those background cards, matching Quail's existing backdrop treatment. This prevents decorative rings from painting over farther terrain and props. Other properties retain their existing ordering.
+
+Extended the real SkySystem ordering regression to both Chukar quality modes while retaining checks for Quail and unchanged properties. All six focused checks, compilation and build pass with existing chunk warnings. Evidence: `output/playwright/chukar-background-depth.png` (assisted static Lightweight viewpoint) and `output/playwright/chukar-background-depth-high.png` (eighteen-second Standard walk). The farther slope and vegetation are now visible. A pale horizon transition remains and needs separate treatment; this correction does not establish a finished background composition. The Standard page reported no warnings or errors. No new geometry or rendering passes were added, and no mobile benchmark was performed.
+
 **Next work, in order**
 
 1. Use the Seed 1 South reference route to judge environment improvements from arrival through the known runner encounter. Review a full encounter with ordinary aiming separately; the assisted reference does not establish input usability.

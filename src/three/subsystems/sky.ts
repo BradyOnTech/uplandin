@@ -746,6 +746,7 @@ export class SkySystem implements Subsystem {
    * Firewatch e3-5 treeline).
    */
   private buildRidges(ctx: Ctx): void {
+    const backdrop = this.quail || this.areaId === 'chukar-ridge';
     const rng = mulberry32(0x51d9e5);
     for (let l = 0; l < this.ridgeProfile.layers.length; l++) {
       const layer = this.ridgeProfile.layers[l];
@@ -876,16 +877,16 @@ export class SkySystem implements Subsystem {
         },
         side: THREE.DoubleSide, // viewed from inside the ring
         depthWrite: false,
-        depthTest: !this.quail,
+        depthTest: !backdrop,
         fog: false,
       });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.frustumCulled = false;
-      // Quail's camera-following rings are a backdrop: their decorative radii
+      // Quail and Chukar camera-following rings are a backdrop: their radii
       // lie inside the playable property and must never cut off distant props.
       // Paint after the dome, before the real world, with far bands first.
       // Other properties retain their existing depth-resolved ridge order.
-      mesh.renderOrder = this.quail ? -20 - l : 10 - l;
+      mesh.renderOrder = backdrop ? -20 - l : 10 - l;
       ctx.scene.add(mesh);
       this.ridges.push(mesh);
       this.ridgeMats.push(mat);

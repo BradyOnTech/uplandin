@@ -26,9 +26,9 @@ function fixture(areaId: string, quality: Quality = 'high') {
   } };
 }
 
-describe('Quail decorative skyline ordering', () => {
-  it.each<Quality>(['high', 'lite'])('draws the %s backdrop behind every opaque world surface', quality => {
-    const f = fixture('quail-fields', quality);
+describe('Decorative skyline ordering', () => {
+  it.each<[string, Quality]>([['quail-fields', 'high'], ['quail-fields', 'lite'], ['chukar-ridge', 'high'], ['chukar-ridge', 'lite']])('draws the %s %s backdrop behind every opaque world surface', (area, quality) => {
+    const f = fixture(area, quality);
     try {
       expect(f.ridges.length).toBeGreaterThan(1);
       const ordered = [...f.ridges].reverse(); // authored layers run near to far
@@ -46,7 +46,7 @@ describe('Quail decorative skyline ordering', () => {
     } finally { f.dispose(); }
   });
 
-  it.each(['sharptail-prairie', 'chukar-ridge', 'pheasant-coverts'])('preserves %s ridge depth and ordering', area => {
+  it.each(['sharptail-prairie', 'pheasant-coverts'])('preserves %s ridge depth and ordering', area => {
     const f = fixture(area);
     try {
       expect(f.dome.renderOrder).toBe(-30);
