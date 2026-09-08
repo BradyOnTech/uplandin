@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { pheasantPondObstacles } from '../../game/pheasantHabitat';
 import type { AreaLandmark } from '../../game/areas';
 import { PROPERTY_PX_TO_M, LandscapeModel } from '../../game/landscape';
 import { createChukarLandmarks } from './chukarLandmarks';
@@ -62,6 +63,12 @@ export class LandmarksSystem implements Subsystem {
       // generic landmark primitives on top of their authored wetland, fence,
       // or alder-bottom structures.
       const areaId = hunt.areaConfig().id;
+      if (areaId === 'pheasant-coverts' && landmark.kind === 'pond') {
+        const center = hunt.simToWorld(landmark.position.x, landmark.position.y, { x: 0, z: 0 });
+        for (const circle of pheasantPondObstacles(landmark.id)) {
+          this.obstacles.push({ x: center.x + circle.x, z: center.z + circle.z, radius: circle.radius });
+        }
+      }
       if ((areaId === 'pheasant-coverts' && (landmark.kind === 'pond' || landmark.kind === 'fence'))
         || (areaId === 'woodcock-bottoms' && landmark.kind === 'pond')) continue;
       const world = hunt.simToWorld(landmark.position.x, landmark.position.y, { x: 0, z: 0 });

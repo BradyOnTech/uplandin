@@ -6,6 +6,13 @@ export function pheasantPondRadii(id: string): { rx: number; rz: number } {
   return id === 'area-feature' ? { rx: 34, rz: 23 } : { rx: 43, rz: 29 };
 }
 
+/** A conservative three-circle envelope for the current dry-land locomotion.
+ * Offsets and radii are metres, matching player and prop collision. */
+export function pheasantPondObstacles(id: string): { x: number; z: number; radius: number }[] {
+  const { rx, rz } = pheasantPondRadii(id);
+  return [-(rx - rz), 0, rx - rz].map(x => ({ x, z: 0, radius: rz + 2 }));
+}
+
 /** Keep initial holds on dry shoulders. Rectangular cover is shared by
  * the simulation, survey and vegetation; subtract a conservative water
  * envelope rather than hiding invalid bird positions in the renderer. */

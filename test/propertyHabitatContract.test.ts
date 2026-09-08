@@ -8,8 +8,18 @@ import type { Ctx } from '../src/three/engine';
 import { spawnBirds } from '../src/game/birds';
 import { mulberry32 } from '../src/game/math';
 import { createThreeHuntSetup } from '../src/game/gameplayMode';
+import { pheasantPondObstacles, pheasantPondRadii } from '../src/game/pheasantHabitat';
 
 describe('authored habitat contracts', () => {
+  it('encloses pond water in the dry-land movement boundary', () => {
+    for (const id of ['area-feature', 'south-slough']) {
+      const { rx, rz } = pheasantPondRadii(id), circles = pheasantPondObstacles(id);
+      for (let i = 0; i < 360; i++) {
+        const angle = i * Math.PI / 180, x = Math.cos(angle) * rx, z = Math.sin(angle) * rz;
+        expect(circles.some(c => Math.hypot(x - c.x, z - c.z) < c.radius)).toBe(true);
+      }
+    }
+  });
   it('keeps pheasant cover and its initial birds outside open water', () => {
     const area = getArea('pheasant-coverts'), landscape = new LandscapeModel(area);
     const ponds = pheasantPonds(landscape);
