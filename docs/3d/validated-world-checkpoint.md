@@ -325,6 +325,14 @@ Follow-up ray checks showed the remaining seam was not missing ridge geometry: s
 
 Assisted Standard viewpoint evidence: `output/playwright/chukar-real-terrain-background.png`; `chukar-haze-match.png` is the intermediate color-only pass. The conspicuous tan band is gone and the far slope transitions more continuously into the background. The skyline remains simple, and other viewing directions and times of day still need review. All six sky-ordering checks, compilation and build pass with existing chunk warnings. No complete encounter or mobile hardware review was repeated for this background change.
 
+**Integrated checks and Chukar low-side encounter**
+
+The full suite passes: 564 tests across 79 files. Reviewed Chukar South Gate, morning, Lightweight, Balanced, generated GSP, Seed 1. After approximately 28 seconds walking from entry, the dog was tracking uphill roughly 55 meters away. Assisted camera turns followed the dog and then its point; sprinting to close the gap produced a seven-bird covey break while the hunter was still below the ridge, approximately 55 meters from the pointed bird. No shots, forced flushes, teleports or simulation time shortcuts were used. Pauses and assisted turns mean this is a reference encounter, not an ordinary uninterrupted playthrough.
+
+Evidence: `output/playwright/chukar-seed1-closing.png` and `output/playwright/chukar-seed1-covey-break.png`. The rise announcement was clear, but the slope largely hid the birds. This demonstrates a costly low-side approach, not a successful Chukar shooting opportunity. Source review confirms that approaching from below and sprinting both increase point pressure; the event cause was not captured, so this run alone does not isolate the trigger. The simulation sample reported a 0.5-millisecond maximum tick, but does not resolve the earlier isolated Standard warning or establish mobile performance.
+
+Updated Chukar entry and search guidance to explicitly recommend gaining the high side and walking into the point. The previous advice to let the dog work uphill did not explain the consequence of chasing it directly up the slope. Mechanics remain unchanged. The revised entry text was confirmed in the browser and all three dog-locator checks pass. Next compare a quiet high-side approach on this same seed before tuning point duration, dog range or escape behavior. Also compare the actual terrain height with the property's fixed slope-direction model; a local ridge may not match that simplified tactical classification.
+
 **Next work, in order**
 
 1. Use the Seed 1 South reference route to judge environment improvements from arrival through the known runner encounter. Review a full encounter with ordinary aiming separately; the assisted reference does not establish input usability.
