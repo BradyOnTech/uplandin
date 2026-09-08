@@ -188,17 +188,22 @@ function irregularPuddleGeometry(
 }
 
 function alderTrunkGeometry(): THREE.BufferGeometry {
-  const geometry = new THREE.CylinderGeometry(0.2, 0.32, 1, 7, 3);
-  const position = geometry.attributes.position as THREE.BufferAttribute;
-  for (let i = 0; i < position.count; i++) {
-    const y = position.getY(i);
-    const bend = Math.sin(y * 3.1 + i * 1.7) * 0.04 * Math.max(0, y + 0.5);
-    position.setX(i, position.getX(i) + bend);
-    position.setZ(i, position.getZ(i) + Math.cos(y * 2.6 + i) * 0.03 * Math.max(0, y + 0.5));
+  const positions: number[] = [];
+  // Several slender stems share a root stool and diverge toward the crown.
+  // Bake them together so a whole thicket still needs one trunk draw.
+  for (const [x, z, height, lean] of [[-.18, .05, .92, -.24], [.16, -.08, 1, .22], [.02, .17, .76, .12]]) {
+    const stem = new THREE.CylinderGeometry(.055, .11, height, 5, 1).toNonIndexed();
+    const position = stem.getAttribute('position');
+    for (let i = 0; i < position.count; i++) {
+      const y = position.getY(i) + height / 2;
+      position.setXYZ(i, position.getX(i) + x + lean * y * y,
+        y, position.getZ(i) + z + .1 * y * y);
+    }
+    positions.push(...Array.from(position.array));
+    stem.dispose();
   }
-  // Keep the local origin at the root so slope alignment plants the alder
-  // into the sampled ground instead of leaving half its trunk underground.
-  geometry.translate(0, 0.5, 0);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
   return geometry;
@@ -206,9 +211,14 @@ function alderTrunkGeometry(): THREE.BufferGeometry {
 
 function alderCrownGeometry(): THREE.BufferGeometry {
   const positions: number[] = [];
-  for (const [x, y, z, size] of [[-.45, -.12, .08, .78], [.38, .03, -.12, .85], [-.06, .51, .02, .64]]) {
+  // Uneven vertical sprays leave spaces between the stems, with foliage
+  // extending below the top instead of forming a single flat umbrella.
+  for (const [x, y, z, size] of [
+    [-.48, -.35, .08, .58], [.4, -.12, -.15, .66],
+    [-.17, .45, .04, .51], [.2, -.8, .28, .43], [-.6, -.94, -.2, .36],
+  ]) {
     const lobe = new THREE.IcosahedronGeometry(size, 0);
-    lobe.scale(1, .8, .9); lobe.translate(x, y, z);
+    lobe.scale(.82, 1.15, .85); lobe.translate(x, y, z);
     positions.push(...Array.from(lobe.getAttribute('position').array)); lobe.dispose();
   }
   const geometry = new THREE.BufferGeometry();
@@ -226,10 +236,10 @@ function sedgeGeometry(): THREE.BufferGeometry {
   const tip = new THREE.Color(0xc4ccb2);
   for (let i = 0; i < 12; i++) {
     const angle = i / 12 * Math.PI * 2 + (rng() - 0.5) * 0.3;
-    const height = 0.7 + rng() * 0.68;
-    const width = 0.035 + rng() * 0.022;
+    const height = 0.38 + rng() * 0.48;
+    const width = 0.04 + rng() * 0.03;
     const root = 0.03 + rng() * 0.18;
-    const lean = 0.08 + rng() * 0.23;
+    const lean = 0.3 + rng() * 0.5;
     const sx = Math.sin(angle);
     const sz = Math.cos(angle);
     const px = Math.cos(angle);
@@ -384,12 +394,12 @@ export class WetBottomsSystem implements Subsystem {
         this.rotation.setFromUnitVectors(UP, this.normal);
         this.yaw.setFromAxisAngle(UP, tree.yaw);
         this.rotation.multiply(this.yaw);
-        this.scale.set(.65, tree.height, .65);
+        this.scale.set(1.25, tree.height, 1.25);
         trunks.setMatrixAt(index, this.matrix.compose(this.position, this.rotation, this.scale));
         trunks.setColorAt(index, color.setHex(tree.trunkColor));
 
-        this.position.y = tree.y + tree.height * 0.9;
-        this.scale.set(tree.crown, tree.crown * 0.72, tree.crown * 0.9);
+        this.position.y = tree.y + tree.height * 0.78;
+        this.scale.set(tree.crown, tree.crown * 1.05, tree.crown * 0.9);
         crowns.setMatrixAt(index, this.matrix.compose(this.position, this.rotation, this.scale));
         crowns.setColorAt(index, color.setHex(tree.crownColor));
       }
@@ -592,7 +602,7 @@ export class WetBottomsSystem implements Subsystem {
     // the pond rims to the approach without laying a prairie grass carpet.
     for (const trail of this.wetTrails()) {
       const length = trailLength(trail);
-      for (let distance = 10; distance < length; distance += high ? 2.8 : 4.5) {
+      for (let distance = 10; distance < length; distance += high ? 1.5 : 2.5) {
         const located = pointAlongTrail(trail, distance);
         if (!located) continue;
         for (const side of [-1, 1]) {

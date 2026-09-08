@@ -133,6 +133,12 @@ Broke the evenly spaced alder bands into asymmetric groups with wider openings a
 
 Walked West Track for 12 seconds in Lightweight mode. The initial texture was too strong; halved its contribution and repeated the walk. Final evidence is `output/playwright/woodcock-wet-soil-restrained.png`. The earlier same-geometry sample reported 97 draws, 194,246 triangles and a 10.2-millisecond 95th-percentile frame interval on desktop. Mobile hardware remains unmeasured. Texture edges were requested to tile, but exact pixel seamlessness is not established. Ground detail is improved; the long straight path, repeated crowns, sparse understory and missing alder obstruction still prevent this from being a convincing finished wetland.
 
+**Alder structure and sedge silhouette**
+
+Replaced each single alder trunk with three diverging stems baked into one shared geometry. Five uneven vertical foliage lobes now reach down the stems instead of forming a flat umbrella. Lowered and widened sedge blades and increased route-side clumps. This remains an inexpensive instanced treatment with no additional draw calls, though geometry cost increased.
+
+Repeated the 12-second West Track approach in Lightweight mode. Evidence: `output/playwright/woodcock-stools-sedge-lite.png`. The alder silhouette now reads as a branching thicket; cover remains too regularly tied to the straight route, and the wetland still needs more convincing ground-level mass and pool transitions. Final desktop sample: 97 draws, 252,722 triangles, 9.8-millisecond 95th-percentile frame interval, and a 141.8-millisecond maximum interval. That outlier is not diagnosed, and this is not a mobile readiness claim. Compilation and production build pass with existing chunk warnings. This geometry-only pass did not rerun simulation tests. Alder collisions and shot obstruction remain outstanding.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.
