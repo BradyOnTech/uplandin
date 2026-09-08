@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { dogRelativeBearing, dogWorkLabel, pointApproachCue, trackingApproachCue, trackingApproachGuidance } from '../src/three/dogLocator';
+import { dogRelativeBearing, dogWorkLabel, pointApproachCue, trackingApproachCue, trackingApproachGuidance, pheasantPointGuidance } from '../src/three/dogLocator';
 
 it('gives the actual continuous bearing relative to the hunter looking north or west', () => {
   expect(dogRelativeBearing(0, -10, 0)).toBeCloseTo(0);
@@ -60,5 +60,13 @@ it('keeps far stalking and waiting advice consistent across both HUD messages', 
     expect(waiting.detail).toContain('waiting on scent');expect(waiting.detail).toContain('Close the gap');
     expect(dogWorkLabel({state:'tracking',scentStage:stage,carryingBirdId:null,waitingForHandler:true},'pheasant-coverts'))
       .toBe('DOG HOLDING SCENT');
+  }
+});
+
+it('guides a nearby handler beyond the pointing dog using its body direction', () => {
+  for (const [heading, cardinal] of [[0, 'E'], [Math.PI/2, 'S'], [Math.PI, 'W'], [-Math.PI/2, 'N']] as const) {
+    expect(pheasantPointGuidance(5, heading)).toContain(`Dog facing ${cardinal}.`);
+    expect(pheasantPointGuidance(5, heading)).toContain('Walk past its nose');
+    expect(pheasantPointGuidance(30, heading)).toContain('Walk toward the point.');
   }
 });

@@ -54,6 +54,14 @@ export function trackingApproachCue(dogDistanceM: number, areaId: string, stage:
 
 /** Guidance refers to the visible dog's work and hunter's pace, never the
  * concealed birds' positions, nerve or an assumed guaranteed shooting range. */
+export function pheasantPointGuidance(dogDistanceM: number, dogHeading: number): string {
+  if (dogDistanceM > 12) return 'Walk toward the point. Watch above the cover and identify the rooster before firing.';
+  // The dog's body direction is observable; never aim this cue at a hidden bird.
+  // Dog headings use +x east and +y south in property coordinates.
+  const direction = fieldCompassHeading(-dogHeading - Math.PI / 2).cardinal;
+  return `Dog facing ${direction}. Walk past its nose into cover; identify the bird before firing.`;
+}
+
 export function pointApproachCue(dogDistanceM: number, running: boolean, areaId = ''): string {
   const style = huntingDoctrine(areaId).style;
   if (style === 'pheasant') return running ? 'ON POINT · SLOW YOUR APPROACH'

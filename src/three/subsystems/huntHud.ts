@@ -2,7 +2,7 @@ import { huntComplete } from '../../game/state';
 import { nextHuntUrl } from '../../game/huntSeed';
 import { huntingDoctrine } from '../../game/huntDoctrine';
 import { renderFieldNotes } from '../fieldNotes';
-import { dogRelativeBearing, dogWorkLabel, fieldCompassHeading, fieldSearchGuidance, pointApproachCue, trackingApproachGuidance } from '../dogLocator';
+import { dogRelativeBearing, dogWorkLabel, fieldCompassHeading, fieldSearchGuidance, pointApproachCue, pheasantPointGuidance, trackingApproachGuidance } from '../dogLocator';
 import type { Ctx, Subsystem } from '../engine';
 import type { BirdsSystem } from './birds';
 import type { GunSystem } from './gun';
@@ -249,7 +249,7 @@ export class HuntHudSystem implements Subsystem {
       if (this.guidance) {
         let cue = '';
         if (!rise && trackedDog?.state === 'pointing' && hunt.areaId === 'pheasant-coverts')
-          cue = 'Walk toward the point. Watch above the cover and identify the rooster before firing.';
+          cue = pheasantPointGuidance(dogRange, trackedDog.heading);
         else if (!rise && trackingGuidance) cue = trackingGuidance.detail;
         if (!rise && trackedDog?.state === 'quartering') {
           if (this.fieldTime < 35) cue = fieldSearchGuidance(hunt.areaId);
