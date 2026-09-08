@@ -1,3 +1,4 @@
+import { buildPheasantBody, buildPheasantWing, buildPheasantTail } from '../assets/pheasant';
 import { createQuailFlight, selectQuailEscapeCover, stepQuailFlight, type QuailFlight } from '../quailFlight';
 import { QUAIL_WORLD_SCALE, quailLaunchDelay } from '../quailPresentation';
 import { QuailFlushDebris } from '../quailFlushDebris';
@@ -287,11 +288,13 @@ interface Slot {
   wingRMesh: THREE.Mesh;
   wingL: THREE.Group;
   wingR: THREE.Group;
+  tailMesh?: THREE.Mesh;
   visualScale: number;
   spanM: number;
 }
 
 interface BirdGeometrySet {
+  tail?: THREE.BufferGeometry;
   body: THREE.BufferGeometry;
   wingL: THREE.BufferGeometry;
   wingR: THREE.BufferGeometry;
@@ -502,7 +505,7 @@ export class BirdsSystem implements Subsystem {
     if (this.frozen && previewSpecies && SPECIES.some((species) => species.id === previewSpecies)) {
       const slot = this.slots[0];
       const species = getSpecies(previewSpecies);
-      this.applySpeciesAppearance(slot, species, previewSpecies === 'ringneck' ? 'rooster' : undefined);
+      this.applySpeciesAppearance(slot, species, previewSpecies === 'ringneck' ? new URLSearchParams(location.search).get('birdSex') === 'hen' ? 'hen' : 'rooster' : undefined);
       slot.simId = -999;
       slot.status = 'flying';
       slot.x = 0;
@@ -635,12 +638,15 @@ export class BirdsSystem implements Subsystem {
     const wingTop = back.clone().multiplyScalar(0.9);
     const wingTopDim = wingTop.clone().multiplyScalar(0.8);
     const wingUnder = belly.clone().multiplyScalar(0.78);
-    const body = species.id === 'bobwhite' ? buildBobwhiteBody() : this.buildBodyGeo(back, backDim, belly, cap, throat, tail, shape);
-    const wingL = species.id === 'bobwhite' ? buildBobwhiteWing(-1) : this.buildWingGeo(-1, wingTop, wingTopDim, wingUnder, shape);
-    const wingR = species.id === 'bobwhite' ? buildBobwhiteWing(1) : this.buildWingGeo(1, wingTop, wingTopDim, wingUnder, shape);
+    const body = species.id === 'ringneck' ? buildPheasantBody(hen) : species.id === 'bobwhite' ? buildBobwhiteBody() : this.buildBodyGeo(back, backDim, belly, cap, throat, tail, shape);
+    const wingL = species.id === 'ringneck' ? buildPheasantWing(-1,hen) : species.id === 'bobwhite' ? buildBobwhiteWing(-1) : this.buildWingGeo(-1, wingTop, wingTopDim, wingUnder, shape);
+    const wingR = species.id === 'ringneck' ? buildPheasantWing(1,hen) : species.id === 'bobwhite' ? buildBobwhiteWing(1) : this.buildWingGeo(1, wingTop, wingTopDim, wingUnder, shape);
+    const tailGeo = species.id === 'ringneck' ? buildPheasantTail(hen) : undefined;
+    if (tailGeo) this.geos.push(tailGeo);
     this.geos.push(body, wingL, wingR);
-    const spanM = 2 * (0.03 * shape.bodyWidth + 0.124 * shape.wingSpan);
-    this.speciesGeos.set(`${species.id}${hen ? ':hen' : ''}`, { body, wingL, wingR, shape, spanM });
+    wingR.computeBoundingBox();
+    const spanM = 2 * (0.03 * shape.bodyWidth + wingR.boundingBox!.max.x);
+    this.speciesGeos.set(`${species.id}${hen ? ':hen' : ''}`, { body, wingL, wingR, tail: tailGeo, shape, spanM });
   }
 
   private applySpeciesAppearance(
@@ -650,6 +656,16 @@ export class BirdsSystem implements Subsystem {
   ): void {
     const geometry = this.speciesGeos.get(`${species.id}${sex === 'hen' ? ':hen' : ''}`)
       ?? this.speciesGeos.get(species.id)!;
+    if (geometry.tail) {
+      if (!slot.tailMesh) {
+        slot.tailMesh = new THREE.Mesh(geometry.tail, this.mat!);
+        slot.tailMesh.position.set(0,.004,-.085);
+        slot.root.add(slot.tailMesh);
+      }
+      slot.tailMesh.geometry = geometry.tail;
+      slot.tailMesh.visible = true;
+      slot.tailMesh.rotation.set(0,0,0);
+    } else if (slot.tailMesh) slot.tailMesh.visible = false;
     slot.species = species;
     slot.body.geometry = geometry.body;
     slot.wingLMesh.geometry = geometry.wingL;
@@ -1595,6 +1611,12 @@ export class BirdsSystem implements Subsystem {
       }
       s.root.position.set(s.x, s.y, s.z);
       s.root.scale.setScalar((this.refinedQuail ? QUAIL_WORLD_SCALE : s.status === 'grounded' ? GROUNDED_SCALE : RISE_SCALE) * s.visualScale);
+      if (s.tailMesh?.visible) {
+        const flying = s.status === 'flying';
+        const settle = Math.exp(-s.airMs / 650);
+        s.tailMesh.rotation.x = flying ? -.13 * settle + .025 * Math.sin(s.airMs * .009) : .08;
+        s.tailMesh.rotation.y = flying ? .045 * Math.sin(s.airMs * .005 + s.wobblePh) : 0;
+      }
       if (s.status === 'grounded') {
         // Folded bird remains marked in the grass until the dog picks it up.
         s.root.rotation.set(0, s.root.rotation.y, 1.2);

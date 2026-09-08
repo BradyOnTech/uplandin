@@ -1,0 +1,27 @@
+# Complete low-poly hunting experience
+
+The active goal is the full user-approved scope in the September 8 goal objective, with Pheasant Coverts as the reference experience and subsequent application to the other species. A small passing change, a staged screenshot, or a successful scripted encounter does not complete this goal. Previous turn produced implementation and verified evidence; this continuation remains progress, not completion.
+
+**Required outcomes and evidence**
+
+| Outcome | Required evidence | Current status |
+| --- | --- | --- |
+| Exciting natural hunts | Ordinary uninterrupted hunts across seeds and routes; close, runner, wary, hen and follow-up presentations; meaningful wind, approach and dog handling | Incomplete; approach integration defects fixed, natural distribution not established |
+| Finished birds | Readable rooster/hen anatomy, wings, tail, takeoff, banking and falling or landing during play | Dedicated model in review; banking, falling and ordinary identification remain open |
+| Cohesive environment | Walking-height review of vegetation shapes, transitions, terrain, landmarks, materials and lighting in both quality tiers | Dense habitat established; close silhouettes and composition still incomplete |
+| Finished dog | Convincing search, track, relocate, point, break, find and return; explicit procedural asset acceptance review | Provisional model and complete retrieve presentation unresolved |
+| Finished controls and sound | Sustained laptop aim/track/mount/recoil/reload review; deliberate flush, cackle, cover, dog and environmental sound review | Keyboard path improved; complete tactile and audio review open |
+| Performance and reliability | Measured ordinary laptop and actual phone performance, loading, repeated sessions, both entries, varied lighting, misses and retrieves | Tests/build evidence exists; hardware validation incomplete |
+| Reference and transfer | Cohesive Pheasant hunt through final retrieve/results that warrants replay, then species-specific application elsewhere | Pheasant benchmark not achieved; no broad completion claim |
+
+**Next evidence-driven work**
+
+First fix the actual encounter pipeline before judging frequency: 3D walking movement was previously aliased away, and runtime bird IDs changed temperament on same-seed restarts. Focused integration regressions now exercise those defects. Next measure runner pursuit/rest cadence: inherited speed is 42 property yards per second, about 38.4 meters per second, while the 3D dog uses a slower movement scale. A species-specific world speed needs joint review with recovery and point timing, preserving 2D rules.
+
+Then review multiple ordinary hunts from both entries and list their three largest weaknesses. Fix those before expanding maps. Stage art views only for shape and lighting decisions; label teleported cameras, forced events, telemetry-assisted aiming and simulation stepping. Do not count those as ordinary hunting proof.
+
+Retain dense pheasant habitat and the browser/mobile direction. Do not solve acquisition by clearing a target corridor, highlighting every bird, or forcing every encounter to be close. Actual mobile hardware evidence remains required by the goal; an emulated viewport cannot replace it.
+
+**Evidence location**
+
+The chronological record is in `docs/3d/pheasant-completion.md`. Tests and build reports prove only their covered behavior. The latest model comparison is under `output/playwright/pheasant-model-rooster-side.png` and `pheasant-model-hen-side.png`. These are assisted frozen previews at approximately eight meters, not new hunts.
