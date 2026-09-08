@@ -291,6 +291,8 @@ export interface DogEnv {
   trackingRange?: number;
   /** Meaningful bird relocation from an established point, in property units. */
   pointRelocationRange?: number;
+  /** Falls currently claimed by packmates; carried birds remain in the shared list. */
+  reservedRetrieveIds?: readonly number[];
   /** Optional cast center, distinct from the hunter used by recall/scent rules. */
   workAnchor?: Vec2;
   /** Direction the wind blows TOWARD (radians, screen coords). Undefined = calm. */
@@ -418,6 +420,9 @@ export class Dog {
   }
 
   watchedBirdIds(): readonly number[] { return this.markingBirdIds; }
+  /** A current recovery claim for coordinating packmates. */
+  reservedRetrieveId(): number | null { return this.state === 'retrieving' ? this.retrieveTargetId : null; }
+
   /** Read-only pickup/delivery hold clock for pose presentation. */
   retrieveHoldTimeMs(): number { return this.retrieveHoldMs; }
 
@@ -587,7 +592,8 @@ export class Dog {
 
     if (this.state === 'retrieving') {
       const target = birds.find((b) => b.id === this.retrieveTargetId);
-      if (!target || target.fallPending || (target.state !== 'downed' && target.state !== 'carried')) {
+      if (!target || target.fallPending || (target.state !== 'downed' && target.state !== 'carried') ||
+        (target.state === 'carried' && this.carryingBirdId !== target.id)) {
         this.state = 'quartering';
         this.retrieveTargetId = null;
         this.carryingBirdId = null;
@@ -655,7 +661,7 @@ export class Dog {
     }
 
     // A bird on the ground outranks fresh scent: fetch it first.
-    const downed = this.nearestBird(birds, 'downed');
+    const downed = this.nearestBirdWithin(birds, 'downed', Infinity, env.reservedRetrieveIds);
     if (downed) {
       this.state = 'retrieving';
       this.resetScentApproach();
@@ -1140,11 +1146,11 @@ export class Dog {
     return this.nearestBirdWithin(birds, state, Infinity);
   }
 
-  private nearestBirdWithin(birds: Bird[], state: Bird['state'], radius: number): Bird | null {
+  private nearestBirdWithin(birds: Bird[], state: Bird['state'], radius: number, excluded?: readonly number[]): Bird | null {
     let best: Bird | null = null;
     let bestDist = radius;
     for (const b of birds) {
-      if (b.state !== state || (state === 'downed' && b.fallPending)) continue;
+      if (b.state !== state || (state === 'downed' && b.fallPending) || excluded?.includes(b.id)) continue;
       const d = dist(this.pos, b.pos);
       if (d < bestDist) {
         best = b;

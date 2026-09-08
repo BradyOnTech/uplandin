@@ -61,6 +61,14 @@ function run(dog: Dog, birds: Bird[], steps: number, env: DogEnv = {}, dtMs = 50
 }
 
 describe('Dog', () => {
+  it('cannot deliver a bird picked up by another dog', () => {
+    const a=makeDog(100,100), b=makeDog(104,100), bird=birdAt(100,100,{state:'downed'});
+    const env={hunterPos:{x:104,y:100},pickupRange:.7,deliveryRange:1,movementScale:0};
+    for(let i=0;i<120;i++){a.update(50,[bird],env);b.update(50,[bird],env);}
+    expect(bird.state).toBe('carried');expect(a.carryingBirdId).toBe(bird.id);
+    expect(b.carryingBirdId).toBeNull();expect(bird.pos).toEqual(a.pos);
+  });
+
   it('re-establishes a relocated pheasant point without tracking tiny movements with its nose', () => {
     const dog = makeDog(100, 100), bird = birdAt(114, 100, { speciesId: 'ringneck' });
     const env: DogEnv = { pointRelocationRange: 3 / .9144 };

@@ -40,6 +40,34 @@ function pointedSimulation(hunterDistance: number, continuousEncounter = false, 
 }
 
 describe('HuntSimulation shared orchestration', () => {
+  it('assigns separate falls and credits two physical handoffs to their actual carriers', () => {
+    const f=pointedSimulation(20,true,'pheasant-coverts','ringneck');
+    const a=f.dog; a.pos={x:300,y:300};a.state='quartering';a.pointedBirdId=null;
+    const b=new Dog({x:301,y:300},{breed:getBreed('english-setter'),level:8},mulberry32(19),getArea('pheasant-coverts').world);
+    f.bird.state='downed';f.bird.pos={x:300,y:300};
+    const second: Bird={...f.bird,id:9002,pos:{x:306,y:300}};f.hunt.birds.push(second);
+    f.hunt.hunterPos={x:290,y:300};
+    const sim=new HuntSimulation({hunt:f.hunt,dogs:[a,b],area:getArea('pheasant-coverts'),rng:mulberry32(20),continuousEncounter:true});
+    const events:any[]=[];const carried=new Set<number>();
+    for(let i=0;i<1200 && f.hunt.birds.some(bird=>bird.state!=='retrieved');i++) {
+      events.push(...sim.update(50,{hunterPos:{...f.hunt.hunterPos},dogMotion:[{movementScale:.04,maxTravelSpeed:3},{movementScale:.04,maxTravelSpeed:3}]}));
+      if(i===0){expect(a.reservedRetrieveId()).toBe(9001);expect(b.reservedRetrieveId()).toBe(9002);}
+      for(const bird of f.hunt.birds)if(bird.state==='carried'){
+        const owners=[a,b].filter(dog=>dog.carryingBirdId===bird.id);
+        expect(owners).toHaveLength(1);expect(bird.pos).toEqual(owners[0].pos);carried.add(bird.id);
+      }
+      for(const event of events.splice(0))if(event.type==='bird-retrieved') {
+        const dog=[a,b][event.dogIndex];
+        expect(Math.hypot(dog.pos.x-f.hunt.hunterPos.x,dog.pos.y-f.hunt.hunterPos.y)*.9144).toBeLessThanOrEqual(1);
+      }
+    }
+    expect([...carried].sort()).toEqual([9001,9002]);
+    expect(f.hunt.birds.every(bird=>bird.state==='retrieved')).toBe(true);
+    expect(f.hunt.dogWork.map(work=>work.retrieves)).toEqual([1,1]);
+    expect(a.reservedRetrieveId()).toBeNull();expect(b.reservedRetrieveId()).toBeNull();
+    expect(a.carryingBirdId).toBeNull();expect(b.carryingBirdId).toBeNull();
+  });
+
   it('holds a distant dog on scent only in continuous pheasant country and resumes when the handler closes', () => {
     for (const [area,species,continuous,holds] of [
       ['pheasant-coverts','ringneck',true,true],
