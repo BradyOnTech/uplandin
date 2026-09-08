@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { dogRelativeBearing, dogWorkLabel, pointApproachCue } from '../src/three/dogLocator';
+import { dogRelativeBearing, dogWorkLabel, pointApproachCue, trackingApproachCue } from '../src/three/dogLocator';
 
 it('gives the actual continuous bearing relative to the hunter looking north or west', () => {
   expect(dogRelativeBearing(0, -10, 0)).toBeCloseTo(0);
@@ -25,4 +25,12 @@ it('labels real scent and retrieve behavior instead of calling every scent beat 
   expect(dogWorkLabel({ ...dog, scentStage: 'locking' })).toBe('SETTING POINT');
   expect(dogWorkLabel({ ...dog, state: 'pointing' })).toBe('DOG ON POINT');
   expect(dogWorkLabel({ ...dog, state: 'retrieving', carryingBirdId: 0 })).toBe('DOG RETURNING');
+});
+
+it('distinguishes closing on Pheasant tracking from a quiet approach to a finished point', () => {
+  expect(trackingApproachCue(40, 'pheasant-coverts')).toBe('DOG TRACKING · CLOSE THE GAP');
+  expect(trackingApproachCue(20, 'pheasant-coverts')).toBe('DOG TRACKING · WORK THE EDGE');
+  expect(trackingApproachCue(40, 'quail-fields')).toBeNull();
+  expect(pointApproachCue(20, true, 'pheasant-coverts')).toBe('ON POINT · SLOW YOUR APPROACH');
+  expect(pointApproachCue(40, false, 'pheasant-coverts')).toBe('ON POINT · WALK IN QUIETLY');
 });

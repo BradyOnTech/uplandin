@@ -2,7 +2,7 @@ import { huntComplete } from '../../game/state';
 import { nextHuntUrl } from '../../game/huntSeed';
 import { huntingDoctrine } from '../../game/huntDoctrine';
 import { renderFieldNotes } from '../fieldNotes';
-import { dogRelativeBearing, dogWorkLabel, fieldCompassHeading, fieldSearchGuidance, pointApproachCue } from '../dogLocator';
+import { dogRelativeBearing, dogWorkLabel, fieldCompassHeading, fieldSearchGuidance, pointApproachCue, trackingApproachCue } from '../dogLocator';
 import type { Ctx, Subsystem } from '../engine';
 import type { BirdsSystem } from './birds';
 import type { GunSystem } from './gun';
@@ -173,6 +173,7 @@ export class HuntHudSystem implements Subsystem {
     if (this.endButton) this.endButton.disabled = rise || downOnGround > 0;
     const shells = this.gun.shellsRemaining();
     const capacity = this.gun.shellCapacity();
+    const trackingCue = trackedDog?.state === 'tracking' ? trackingApproachCue(dogRange, hunt.areaId) : null;
     const phase = this.gun.isReloading()
       ? `RELOADING · ${shells}/${capacity}`
       : rise
@@ -183,6 +184,8 @@ export class HuntHudSystem implements Subsystem {
           : 'DOG HUNTING DEAD'
         : dogs.some((candidate) => candidate.state === 'pointing')
           ? pointApproachCue(dogRange, this.player.isRunning(), hunt.areaId)
+          : trackingCue
+            ? trackingCue
           : shells < capacity
             ? `SHELLS ${shells}/${capacity} · R RELOAD`
           : hunt.doubles > 0
@@ -243,6 +246,9 @@ export class HuntHudSystem implements Subsystem {
       }
       if (this.guidance) {
         let cue = '';
+        if (!rise && trackingCue) cue = dogRange > 30
+          ? 'Move up along dry cover while the dog tracks. Walk when it points.'
+          : 'Stay with the cover edge and give the dog room to finish.';
         if (!rise && trackedDog?.state === 'quartering') {
           if (this.fieldTime < 35) cue = fieldSearchGuidance(hunt.areaId);
           else if (truckMeters < 14) cue = `${this.hunt.dropPoint().name} · back at the truck`;

@@ -79,6 +79,24 @@ export class PheasantScenerySystem implements Subsystem {
     height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0,
   };
   private world = { x: 0, z: 0 };
+  private obstacles: { x: number; z: number; radius: number }[] = [];
+  private shotWood: THREE.Object3D[] = [];
+  private shotRay = new THREE.Raycaster();
+  private shotOrigin = new THREE.Vector3();
+  private shotDirection = new THREE.Vector3();
+
+  collisionCircles(): readonly { x: number; z: number; radius: number }[] { return this.obstacles; }
+
+  blocksShot(origin: { x: number; y: number; z: number }, target: { x: number; y: number; z: number }): boolean {
+    this.shotOrigin.set(origin.x, origin.y, origin.z);
+    this.shotDirection.set(target.x - origin.x, target.y - origin.y, target.z - origin.z);
+    const distance = this.shotDirection.length();
+    if (distance < .001) return false;
+    this.shotRay.set(this.shotOrigin, this.shotDirection.divideScalar(distance));
+    this.shotRay.far = distance - .001;
+    for (const wood of this.shotWood) wood.updateWorldMatrix(true, false);
+    return this.shotRay.intersectObjects(this.shotWood, false).length > 0;
+  }
 
   constructor(private readonly landscape: LandscapeModel) {}
 
@@ -202,6 +220,7 @@ export class PheasantScenerySystem implements Subsystem {
         );
         tree.position.set(treeX, this.landscape.heightAtWorld(treeX, treeZ) - 0.1, treeZ);
         tree.rotation.y = i * 1.83 + 0.4;
+        this.obstacles.push({ x: treeX, z: treeZ, radius: .70 });
         ctx.scene.add(tree);
         this.objects.push(tree);
       }
@@ -242,6 +261,7 @@ export class PheasantScenerySystem implements Subsystem {
         rotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng() * Math.PI * 2);
         position.set(this.world.x, ground.height + height * .36, this.world.z);
         scale.set(.8 + rng() * .4, height * .72, .8 + rng() * .4);
+        this.obstacles.push({ x: this.world.x, z: this.world.z, radius: .23 * Math.max(scale.x, scale.z) });
         stems.push(matrix.compose(position, rotation, scale).clone());
         for (let lobe = 0; lobe < 4; lobe++) {
           const angle = lobe * 2.4 + rng() * .5;
@@ -273,6 +293,7 @@ export class PheasantScenerySystem implements Subsystem {
       mesh.computeBoundingSphere();
       ctx.scene.add(mesh);
       this.objects.push(mesh);
+      if (geometry === trunkGeo) this.shotWood.push(mesh);
     };
     addBatch(trunkGeo, trunkMaterial, stems, 'Pheasant shelterbelt trunks');
     crowns.forEach((transforms, i) => addBatch(crownGeo, foliageMaterials[i], transforms, 'Pheasant shelterbelt crowns'));
@@ -292,6 +313,7 @@ export class PheasantScenerySystem implements Subsystem {
     this.breakCylinder(trunkGeo, 0.075, seed);
     this.geometries.push(trunkGeo);
     const trunk = new THREE.Mesh(trunkGeo, trunkMaterial);
+    this.shotWood.push(trunk);
     trunk.position.y = height * 0.36;
     trunk.castShadow = castShadow;
     trunk.receiveShadow = true;
@@ -354,6 +376,7 @@ export class PheasantScenerySystem implements Subsystem {
     branches.castShadow = castShadow;
     branches.computeBoundingSphere();
     root.add(branches);
+    this.shotWood.push(branches);
 
     for (let materialIndex = 0; materialIndex < canopyMatrices.length; materialIndex++) {
       const matrices = canopyMatrices[materialIndex];
@@ -498,12 +521,14 @@ export class PheasantScenerySystem implements Subsystem {
   dispose(ctx: Ctx): void {
     for (const object of this.objects) {
       ctx.scene.remove(object);
-      if (object instanceof THREE.InstancedMesh) object.dispose();
+      object.traverse(child => { if (child instanceof THREE.InstancedMesh) child.dispose(); });
     }
     for (const geometry of this.geometries) geometry.dispose();
     for (const material of this.materials) material.dispose();
     this.objects.length = 0;
     this.geometries.length = 0;
     this.materials.length = 0;
+    this.obstacles.length = 0;
+    this.shotWood.length = 0;
   }
 }

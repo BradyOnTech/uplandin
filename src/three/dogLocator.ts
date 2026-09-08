@@ -17,11 +17,17 @@ export function fieldSearchGuidance(areaId: string): string {
   return huntingDoctrine(areaId).guidance;
 }
 
+export function trackingApproachCue(dogDistanceM: number, areaId: string): string | null {
+  if (huntingDoctrine(areaId).style !== 'pheasant') return null;
+  return dogDistanceM > 30 ? 'DOG TRACKING · CLOSE THE GAP' : 'DOG TRACKING · WORK THE EDGE';
+}
+
 /** Guidance refers to the visible dog's work and hunter's pace, never the
  * concealed birds' positions, nerve or an assumed guaranteed shooting range. */
 export function pointApproachCue(dogDistanceM: number, running: boolean, areaId = ''): string {
   const style = huntingDoctrine(areaId).style;
-  if (style === 'pheasant' && running && dogDistanceM < 42) return 'RUNNER MOVING · CUT THE NEXT LINE';
+  if (style === 'pheasant') return running ? 'ON POINT · SLOW YOUR APPROACH'
+    : dogDistanceM > 9 ? 'ON POINT · WALK IN QUIETLY' : 'ON POINT · WATCH THE COVER';
   if (areaId === 'sharptail-prairie' && dogDistanceM < 42) return 'ON POINT · HOLD THE COVEY EDGE';
   if (style === 'chukar' && dogDistanceM < 42) return 'ON POINT · HOLD THE HIGH SIDE';
   if (style === 'bench-covey' && dogDistanceM < 42) return 'ON POINT · FLANK THE BENCH';

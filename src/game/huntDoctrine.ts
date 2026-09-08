@@ -95,7 +95,7 @@ const DOCTRINES: Record<string, HuntDoctrine> = {
     style: 'pheasant', region: 'PRAIRIE POTHOLE',
     description: 'Cattails, cut grain, and running roosters. Keep the dog on the edge and close the next line.',
     method: 'COVER EDGE · READ AND RELOCATE',
-    tip: 'Keep a steady pace along the cover edge. If the rooster runs, cut ahead and let the dog relocate it.',
+    tip: 'Close the gap along dry cover while the dog tracks a runner. Slow to a walk when it points, and identify the rooster before firing.',
     guidance: 'Read the runner. Cut the next hedge and let your dog close the edge.', dogRangeMult: .88, dogEdgeBias: .2, coverWorkMult: .74, dogPaceMult: 1.15,
     pointNerveMult: .84, pointRadius: 16, hunterSpookRadius: 38, sprintNerveMult: 2.05, runnerStyle: 'pheasant', circleBack: false, spatialEncounter: true,
     flight: { lateral: .7, climb: .78, carry: 1.08, wobble: .55 },

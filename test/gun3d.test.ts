@@ -34,7 +34,7 @@ describe('3D shotgun action', () => {
     }
   });
 
-  it.each(['tree', 'terrain', 'open'])('consumes a shell and resolves only a clear shot (%s)', obstruction => {
+  it.each(['tree', 'pheasant-tree', 'terrain', 'open'])('consumes a shell and resolves only a clear shot (%s)', obstruction => {
     const blocked = obstruction !== 'open';
     vi.stubGlobal('window', new EventTarget());
     vi.stubGlobal('location', { search: '' });
@@ -47,6 +47,7 @@ describe('3D shotgun action', () => {
     const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), renderer: { domElement: new EventTarget() },
       events: new EventTarget(), quality: 'high', timeOfDay: 'noon', time: 10, paused: false,
       get: (id: string) => ({ hunt3d: hunt, birds, 'property-habitat': habitat,
+        flora: { blocksShot: () => obstruction === 'pheasant-tree' },
         terrain: { heightAt: (_x: number, z: number) => obstruction === 'terrain' ? Math.max(0, 2 - Math.abs(z + 6)) : 0 } }[id]),
     } as unknown as Ctx;
     vi.stubGlobal('document', { getElementById: () => null, pointerLockElement: ctx.renderer.domElement });
