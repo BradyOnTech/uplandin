@@ -40,6 +40,19 @@ function pointedSimulation(hunterDistance: number, continuousEncounter = false, 
 }
 
 describe('HuntSimulation shared orchestration', () => {
+  it('preserves a steady point when a separate neighboring bird flushes', () => {
+    const f=pointedSimulation(20,true,'pheasant-coverts','ringneck');
+    const neighbor: Bird={...f.bird,id:9002,coveyId:78,pos:{x:275,y:290}};
+    f.hunt.birds.push(neighbor);
+    const sim=new HuntSimulation({hunt:f.hunt,dogs:[f.dog],area:getArea('pheasant-coverts'),rng:()=>.999,continuousEncounter:true});
+    const rise=sim.flushBird(neighbor.id,'spook',null);
+    expect(rise?.pointCredit).toBe(false);expect(f.hunt.dogWork[0].pointFlushes).toBe(0);
+    expect(neighbor.state).toBe('flushed');expect(f.bird.state).toBe('hidden');
+    expect(f.dog.state).toBe('pointing');expect(f.dog.pointedBirdId).toBe(f.bird.id);
+    const ownRise=sim.flushBird(f.bird.id,'proximity',0);
+    expect(ownRise?.pointCredit).toBe(true);expect(f.hunt.dogWork[0].pointFlushes).toBe(1);
+    expect(f.dog.state).toBe('marking');expect(f.dog.watchedBirdIds()).toEqual([f.bird.id]);
+  });
   it('assigns separate falls and credits two physical handoffs to their actual carriers', () => {
     const f=pointedSimulation(20,true,'pheasant-coverts','ringneck');
     const a=f.dog; a.pos={x:300,y:300};a.state='quartering';a.pointedBirdId=null;

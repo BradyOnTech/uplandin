@@ -505,6 +505,25 @@ describe('Dog', () => {
   });
 
   describe('breaking and marking', () => {
+    it('holds a separate point through a neighboring rise but marks its own bird', () => {
+      const dog = makeDog(100,100);
+      const target = birdAt(112,100,{id:1});
+      dog.state='pointing';dog.pointedBirdId=target.id;dog.heading=0;dog.gait='still';
+      expect(dog.onFlush(()=>.999,{x:90,y:90},[2])).toBe(false);
+      expect(dog.state).toBe('pointing');expect(dog.pointedBirdId).toBe(1);
+      expect(dog.heading).toBe(0);expect(dog.watchedBirdIds()).toEqual([]);
+      dog.update(50,[target],{});
+      expect(dog.state).toBe('pointing');
+      target.state='flushed';dog.onFlush(()=>.999,target.pos,[1]);
+      expect(dog.state).toBe('marking');expect(dog.pointedBirdId).toBeNull();
+      expect(dog.watchedBirdIds()).toEqual([1]);
+    });
+
+    it('still allows an unsteady pointing dog to break on a neighboring rise', () => {
+      const dog = makeDog(100,100,1);dog.state='pointing';dog.pointedBirdId=1;
+      expect(dog.onFlush(()=>0,{x:90,y:90},[2])).toBe(true);
+      expect(dog.state).toBe('breaking');
+    });
     it('watches the complete continuous covey through flight and falling, then retrieves', () => {
       const dog = makeDog(100, 100);
       const a = birdAt(112, 100, { id: 1, state: 'flushed' });

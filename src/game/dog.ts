@@ -1069,6 +1069,11 @@ export class Dog {
     if (watchBirdIds && this.state === 'breaking') return true;
     if (watchBirdIds && ['retrieving', 'recalled', 'heel'].includes(this.state)) return false;
     if (rng() >= breedBreakChance(this.profile.breed, this.profile.level)) {
+      // A neighboring rise does not resolve this dog's separate point.
+      // Keep the nose line and target until its own bird moves or flushes.
+      // An unsteady dog can still break through the same steadiness roll.
+      if (watchBirdIds?.length && this.state === 'pointing' && this.pointedBirdId !== null
+        && !watchBirdIds.includes(this.pointedBirdId)) return false;
       if (watchBirdIds?.length && this.state !== 'retrieving' && this.state !== 'recalled' && this.state !== 'heel') {
         this.state = 'marking'; this.gait = 'still';
         this.markingBirdIds = [...new Set([...this.markingBirdIds, ...watchBirdIds])];
