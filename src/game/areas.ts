@@ -241,6 +241,10 @@ function pheasantGeography(w: number, h: number) {
   ] satisfies AreaLandmark[];
   return {
     ...base,
+    dropPoints: [south, west].map((drop, index) => {
+      const next = index === 0 ? pointOffDrop(south, 32, -27) : pointOffDrop(west, 35, 28);
+      return { ...drop, heading: Math.atan2(next.y - drop.position.y, next.x - drop.position.x) };
+    }),
     landmarks,
     patches: pheasantDryCover([
       ...scatterRects(world(w, h), { count: 30, minW: 90, maxW: 170, minH: 28, maxH: 50 }, mulberry32(22)),

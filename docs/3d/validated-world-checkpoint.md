@@ -225,6 +225,12 @@ Grouped alder instances into 80-meter cells sharing the same geometry and materi
 
 Compared the same assisted entry viewpoint: rendered triangles dropped from 352,774 to 194,998, while draw calls rose from 69 to 84. Evidence: `output/playwright/woodcock-alder-cells.png`. Nearby cover retains its composition. Dog pose and elapsed simulation differ between samples, so these are approximate scene comparisons, not controlled performance benchmarks. The short desktop sample does not establish mobile readiness. Distant group transitions, a longer walking comparison and device performance remain to review.
 
+**Pheasant arrival direction**
+
+Returned to the Pheasant approaches after the Alder work. The old South Gate heading aimed straight at the slough despite a dry-shoulder route turning northwest. Both Pheasant headings now derive from their first authored route segment. The route-direction contract now includes both Pheasant entries; all 23 focused checks pass. Compilation and build pass with existing chunk warnings.
+
+Walked forward for twelve seconds from South Gate in Standard and West Track in Lightweight. Evidence: `output/playwright/pheasant-aligned-south.png` and `output/playwright/pheasant-aligned-west.png`. The slough/pothole sits beside the approach instead of directly ahead; South Gate also reveals the homestead along the edge. West Track showed the dog tracking a runner at 19 yards. These are entry walks, not full encounters. Bright ground patches in both views were traced to seasonal frost/snow overlay geometry; their solid pale shapes still look artificial and need refinement. No mobile hardware run in this pass.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.
