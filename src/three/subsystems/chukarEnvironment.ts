@@ -6,6 +6,7 @@ import type { Ctx, Subsystem } from '../engine';
 import { chukarLandmarkClearance } from './chukarLandmarks';
 
 const TILE = 80;
+const TRACK_HALF_WIDTH_M = .8;
 const STONE = [0xb39b78, 0x8c8573, 0x9f896c, 0x7a776d];
 const SAGE = [0x819483, 0x9ba18b, 0x71887d];
 const STRAW = [0xb9a477, 0xc3af83, 0xa0926a, 0x919779];
@@ -147,7 +148,7 @@ export class ChukarEnvironmentSystem implements Subsystem {
   private clear(x: number, y: number, radius: number, keepHabitat = false): boolean {
     const area = this.landscape.area, margin = radius / PROPERTY_PX_TO_M;
     if (x < area.world.x + margin || y < area.world.y + margin || x > area.world.x + area.world.w - margin || y > area.world.y + area.world.h - margin) return false;
-    if (chukarTrackDistance(area, x, y) < 2.6 + radius) return false;
+    if (chukarTrackDistance(area, x, y) < TRACK_HALF_WIDTH_M + .35 + radius) return false;
     if (area.dropPoints.some(d => Math.hypot(x - d.position.x, y - d.position.y) * PROPERTY_PX_TO_M < 10 + radius)) return false;
     if (area.landmarks.some(l => Math.hypot(x - l.position.x, y - l.position.y) * PROPERTY_PX_TO_M < 14 + radius)) return false;
     if (this.landmarkClearance.some(l => Math.hypot(x - l.x, y - l.y) * PROPERTY_PX_TO_M < l.radius + radius)) return false;
@@ -269,26 +270,38 @@ export class ChukarEnvironmentSystem implements Subsystem {
   }
 
   private buildTrack(): void {
-    const positions: number[] = [], colors: number[] = [], dust = new THREE.Color(0xb19b78), edge = new THREE.Color(0x887e64);
+    const positions: number[] = [], colors: number[] = [], opacity: number[] = [], dust = new THREE.Color(0xb19b78), edge = new THREE.Color(0x887e64);
     for (const trail of this.landscape.area.trails) for (let n = 1; n < trail.points.length; n++) {
       const a = trail.points[n - 1], b = trail.points[n], dx = b.x - a.x, dy = b.y - a.y, length = Math.hypot(dx, dy);
       if (length < .01) continue;
       const count = Math.ceil(length / 2.5), rx = -dy / length, ry = dx / length;
       const row = (t: number) => [-1, -.55, .55, 1].map((across, i) => {
-        const x = a.x + dx * t + rx * across * 2.2, y = a.y + dy * t + ry * across * 2.2;
+        const halfWidth = TRACK_HALF_WIDTH_M / PROPERTY_PX_TO_M;
+        const x = a.x + dx * t + rx * across * halfWidth, y = a.y + dy * t + ry * across * halfWidth;
         this.landscape.propertyToWorld(x, y, this.world);
-        return { p: [this.world.x, this.landscape.heightAtProperty(x, y) + .035, this.world.z], c: i === 0 || i === 3 ? edge : dust };
+        return { p: [this.world.x, this.landscape.heightAtProperty(x, y) + .035, this.world.z], c: i === 0 || i === 3 ? edge : dust, alpha: i === 0 || i === 3 ? 0 : .6 };
       });
       for (let i = 0; i < count; i++) {
         const near = row(i / count), far = row((i + 1) / count);
         for (let across = 0; across < 3; across++) for (const v of [near[across], far[across], near[across + 1], near[across + 1], far[across], far[across + 1]]) {
           positions.push(...v.p); colors.push(v.c.r, v.c.g, v.c.b);
+          opacity.push(v.alpha);
         }
       }
     }
     const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); geometry.computeVertexNormals();
-    const material = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, side: THREE.DoubleSide });
+    geometry.setAttribute('trailOpacity', new THREE.Float32BufferAttribute(opacity, 1));
+    const material = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, side: THREE.DoubleSide });
+    material.customProgramCacheKey = () => 'chukar-footpath-soft-shoulder-v1';
+    material.onBeforeCompile = shader => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float trailOpacity; varying float vTrailOpacity;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvTrailOpacity = trailOpacity;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vTrailOpacity;')
+        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.a *= vTrailOpacity;');
+    };
     const mesh = new THREE.Mesh(geometry, material); mesh.name = 'Chukar dusty contour access tracks'; mesh.receiveShadow = true;
     this.geometries.add(geometry); this.materials.add(material); this.root.add(mesh);
   }

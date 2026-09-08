@@ -303,6 +303,12 @@ function chukarGeography(w: number, h: number) {
   const westBench = { x: w * .28, y: h * .42 };
   return {
     ...base,
+    // Face the authored first switchback, not the old generic junction.
+    // Trailhead props and dog release use these same bearings.
+    dropPoints: [
+      { ...south, heading: Math.atan2(-46, -30) },
+      { ...west, heading: Math.atan2(22, 52) },
+    ],
     trails: [
       { id: 'south-switchback', points: [south.position, { x: south.position.x - 30, y: south.position.y - 46 }, lower, { x: w * .58, y: h * .66 }, middle] },
       { id: 'west-switchback', points: [west.position, { x: west.position.x + 52, y: west.position.y + 22 }, westBench, { x: w * .42, y: h * .37 }, middle] },
