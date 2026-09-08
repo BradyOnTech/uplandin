@@ -1,3 +1,4 @@
+import { ShallowWater } from '../../game/shallowWater';
 import { wetPondLayout, wetPondRadius } from '../../game/wetPonds';
 import * as THREE from 'three';
 import type { AreaTrail } from '../../game/areas';
@@ -298,7 +299,12 @@ export class WetBottomsSystem implements Subsystem {
   private normal = new THREE.Vector3();
   private tangent = new THREE.Vector3();
 
-  constructor(private readonly landscape: LandscapeModel) {}
+  private readonly water: ShallowWater;
+  private readonly ripples = { value: Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, -100, 0)) };
+  private rippleCursor = 0;
+  private lastWalker?: { x: number; z: number };
+  private rippleDistance = 0;
+  constructor(private readonly landscape: LandscapeModel) { this.water = new ShallowWater(landscape); }
 
   init(ctx: Ctx): void {
     const high = ctx.quality === 'high';
@@ -316,6 +322,27 @@ export class WetBottomsSystem implements Subsystem {
         depthWrite: false,
         side: THREE.DoubleSide,
       });
+      waterMaterial.customProgramCacheKey = () => 'bottoms-wading-ripples-v1';
+      waterMaterial.onBeforeCompile = shader => {
+        shader.uniforms.uWadeRipples = this.ripples;
+        shader.uniforms.uWadeTime = this.wind;
+        shader.vertexShader = shader.vertexShader
+          .replace('#include <common>', '#include <common>\nvarying vec2 vWadeWorld;')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWadeWorld = (modelMatrix * vec4(position, 1.0)).xz;');
+        shader.fragmentShader = shader.fragmentShader
+          .replace('#include <common>', '#include <common>\nuniform vec4 uWadeRipples[8]; uniform float uWadeTime; varying vec2 vWadeWorld;')
+          .replace('#include <color_fragment>', `#include <color_fragment>
+            float wake = 0.0;
+            for (int i = 0; i < 8; i++) {
+              float age = uWadeTime - uWadeRipples[i].z;
+              float radius = .12 + age * .65;
+              float ring = 1.0 - smoothstep(.018, .055, abs(length(vWadeWorld - uWadeRipples[i].xy) - radius));
+              float fade = max(0.0, 1.0 - age / 1.8);
+              wake += ring * fade * uWadeRipples[i].w;
+            }
+            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.32, .40, .34), min(wake * .5, .35));
+          `);
+      };
       const water = new THREE.Mesh(waterGeometry, waterMaterial);
       water.name = 'Woodcock irregular pond chain';
       water.receiveShadow = true;
@@ -596,6 +623,21 @@ export class WetBottomsSystem implements Subsystem {
 
   update(ctx: Ctx): void {
     this.wind.value = ctx.time;
+    const x = ctx.camera.position.x, z = ctx.camera.position.z;
+    if (this.lastWalker && !ctx.paused) {
+      const moved = Math.hypot(x - this.lastWalker.x, z - this.lastWalker.z);
+      const depth = this.water.depthAtWorld(x, z);
+      if (moved < 3 && depth > .05) {
+        this.rippleDistance += moved;
+        if (this.rippleDistance > .38) {
+          this.ripples.value[this.rippleCursor].set(x, z, ctx.time, Math.min(1, depth / .2));
+          this.rippleCursor = (this.rippleCursor + 1) % this.ripples.value.length;
+          this.rippleDistance = 0;
+        }
+      } else this.rippleDistance = 0;
+    }
+    this.lastWalker ??= { x, z };
+    this.lastWalker.x = x; this.lastWalker.z = z;
   }
 
   dispose(ctx: Ctx): void {

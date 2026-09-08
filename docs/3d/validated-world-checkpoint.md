@@ -169,6 +169,12 @@ Added a cached water-depth sampler using the shared pool levels and terrain bed.
 
 Browser verification started from an assisted position at Beaver Pond center, then held ordinary forward and sprint keys for three seconds. Travel was 3.639 meters, consistent with the 1.21-meter-per-second wading pace. Evidence: `output/playwright/woodcock-wading.png`. This proves the player pace change, not a completed hunt or a finished water experience. Dog water movement, ripples, water footsteps, and communication of depth remain outstanding. No mobile performance run or full-suite rerun in this pass.
 
+**Wading ripple feedback**
+
+The existing water material now draws up to eight expanding, fading ripple rings from hunter movement. Positions are reused in shader uniforms, with no new textures or draw calls. Stationary time does not emit ripples, dry movement does not emit them, and large camera jumps reset travel accumulation. The effect uses the same depth sampler as player movement.
+
+Reviewed Lightweight mode with an assisted downward view and normal forward input. Evidence: `output/playwright/woodcock-wading-ripples.png` and `output/playwright/woodcock-ripples-settled.png`. Rings appeared during movement and disappeared after stopping. Compilation and production build pass with existing chunk warnings. No simulation tests rerun for this presentation change. This close view also exposes unfinished dog water height and the weapon intersecting the water when looking down; neither is fixed by ripple feedback. Mobile shader cost remains unmeasured.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.
