@@ -99,22 +99,17 @@ function pointAlongTrail(trail: AreaTrail, distance: number): { point: Vec2; tan
 export function irregularPuddleGeometry(
   puddles: readonly Pond[],
   landscape: LandscapeModel,
-  bank: boolean,
 ): THREE.BufferGeometry {
   const positions: number[] = [];
   const colors: number[] = [];
   const indices: number[] = [];
   const segments = 24;
   const world = { x: 0, z: 0 };
-  const sample: GroundSample = { ...SAMPLE };
-  const color = new THREE.Color();
   let vertex = 0;
 
   for (const pond of puddles) {
     const rng = mulberry32(pond.seed ^ 0x84b3);
-    const detailRng = mulberry32(pond.seed ^ 0x71e2);
     const inner: Array<{ x: number; y: number; z: number }> = [];
-    const outer: Array<{ x: number; y: number; z: number }> = [];
     for (let i = 0; i < segments; i++) {
       const angle = i / segments * Math.PI * 2;
       const wobble = 0.87 + rng() * 0.2 + Math.sin(angle * 2.7 + pond.seed) * 0.045;
@@ -127,38 +122,7 @@ export function irregularPuddleGeometry(
       const localX = pond.px + alongX * pondCos - alongY * pondSin;
       const localY = pond.py + alongX * pondSin + alongY * pondCos;
       landscape.propertyToWorld(localX, localY, world);
-      if (bank) {
-        inner.push({ x: world.x, y: pond.waterY, z: world.z });
-        const outerScale = 1.13 + detailRng() * 0.11;
-        const outerAlongX = c * pond.rx * outerScale * wobble;
-        const outerAlongY = s * pond.rz * outerScale * wobble;
-        const outerX = pond.px + outerAlongX * pondCos - outerAlongY * pondSin;
-        const outerY = pond.py + outerAlongX * pondSin + outerAlongY * pondCos;
-        landscape.propertyToWorld(outerX, outerY, world);
-        const edgeHeight = landscape.surfaceAtProperty(outerX, outerY, sample).height;
-        outer.push({ x: world.x, y: edgeHeight + 0.022, z: world.z });
-      } else {
-        inner.push({ x: world.x, y: pond.waterY, z: world.z });
-      }
-    }
-
-    if (bank) {
-      for (let i = 0; i < segments; i++) {
-        const next = (i + 1) % segments;
-        const shade = 0.78 + rng() * 0.2;
-        const bankColor = i % 3 === 0 ? 0x514939 : i % 3 === 1 ? 0x665a43 : 0x756849;
-        color.setHex(bankColor).multiplyScalar(shade);
-        for (let colorVertex = 0; colorVertex < 4; colorVertex++) colors.push(color.r, color.g, color.b);
-        positions.push(
-          inner[i].x, inner[i].y, inner[i].z,
-          outer[i].x, outer[i].y, outer[i].z,
-          inner[next].x, inner[next].y, inner[next].z,
-          outer[next].x, outer[next].y, outer[next].z,
-        );
-        indices.push(vertex, vertex + 1, vertex + 2, vertex + 1, vertex + 3, vertex + 2);
-        vertex += 4;
-      }
-      continue;
+      inner.push({ x: world.x, y: pond.waterY, z: world.z });
     }
 
     // A fan with a small, deterministic color shift gives the water a low
@@ -341,8 +305,7 @@ export class WetBottomsSystem implements Subsystem {
     const area = this.landscape.area;
     const ponds = this.buildPonds(high);
     if (ponds.length > 0) {
-      const waterGeometry = irregularPuddleGeometry(ponds, this.landscape, false);
-      const bankGeometry = irregularPuddleGeometry(ponds, this.landscape, true);
+      const waterGeometry = irregularPuddleGeometry(ponds, this.landscape);
       const waterMaterial = new THREE.MeshStandardMaterial({
         color: 0xffffff,
         vertexColors: true,
@@ -353,21 +316,15 @@ export class WetBottomsSystem implements Subsystem {
         depthWrite: false,
         side: THREE.DoubleSide,
       });
-      const bankMaterial = new THREE.MeshLambertMaterial({
-        color: 0xffffff,
-        vertexColors: true,
-        side: THREE.DoubleSide,
-      });
       const water = new THREE.Mesh(waterGeometry, waterMaterial);
       water.name = 'Woodcock irregular pond chain';
       water.receiveShadow = true;
-      const bank = new THREE.Mesh(bankGeometry, bankMaterial);
-      bank.name = 'Woodcock mud and soft-ground edges';
-      bank.receiveShadow = true;
-      ctx.scene.add(bank, water);
-      this.objects.push(bank, water);
-      this.geometries.push(bankGeometry, waterGeometry);
-      this.materials.push(bankMaterial, waterMaterial);
+      // Mud is painted on the basin terrain. A separate ring bridges over
+      // the heightfield and produces a hard, floating-looking border.
+      ctx.scene.add(water);
+      this.objects.push(water);
+      this.geometries.push(waterGeometry);
+      this.materials.push(waterMaterial);
     }
 
     const trees = this.buildAlders(high).filter(tree => {
@@ -565,8 +522,8 @@ export class WetBottomsSystem implements Subsystem {
       const count = high ? (pond.hero ? 34 : 18) : pond.hero ? 20 : 10;
       for (let i = 0; i < count; i++) {
         const angle = rng() * Math.PI * 2;
-        const radiusX = pond.rx * (1.01 + rng() * 0.24);
-        const radiusZ = pond.rz * (1.01 + rng() * 0.24);
+        const radiusX = pond.rx * (1.15 + rng() * 0.24);
+        const radiusZ = pond.rz * (1.15 + rng() * 0.24);
         const x = Math.cos(angle) * radiusX, z = Math.sin(angle) * radiusZ;
         const px = pond.px + x * Math.cos(pond.angle) - z * Math.sin(pond.angle);
         const py = pond.py + x * Math.sin(pond.angle) + z * Math.cos(pond.angle);
@@ -590,7 +547,7 @@ export class WetBottomsSystem implements Subsystem {
           if (px < area.world.x || py < area.world.y || px > area.world.x + area.world.w || py > area.world.y + area.world.h) continue;
           if (area.dropPoints.some(drop => Math.hypot(px - drop.position.x, py - drop.position.y) < 9)) continue;
           this.landscape.surfaceAtProperty(px, py, this.sample);
-          if (this.sample.slope > .5) continue;
+          if (this.sample.slope > .5 || ponds.some(pond => wetPondRadius(pond, px, py) < 1.12)) continue;
           this.landscape.propertyToWorld(px, py, this.world);
           placements.push({ x: this.world.x, z: this.world.z, y: this.sample.height + .012,
             scale: .55 + rng() * .45, yaw: rng() * Math.PI * 2, color: colors[Math.floor(rng() * colors.length)] });

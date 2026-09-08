@@ -151,6 +151,12 @@ Moved the pond layout into `src/game/wetPonds.ts` so the terrain and scenery sha
 
 The full suite passes: 553 tests across 78 files. New basin checks cover surrounding bank elevation and consistency between both entries. Compilation and build pass with the existing chunk-size warnings. Reviewed the same assisted camera position in Lightweight mode: `output/playwright/woodcock-basin-lite.png`. The pool is recessed and the alder formerly standing in it is gone. The bank remains visibly coarse; terrain tessellation, water-margin sedges, broader vegetation exclusion and water traversal still need review. No complete encounter or mobile hardware run accompanied this pass.
 
+**Terrain shoreline instead of a separate rim**
+
+Removed the separate mud strip, which bridged over the basin and left an angular brown border. Mud now comes entirely from the terrain paint. Only tiles intersecting basin influence receive extra detail: 64 Lightweight or 96 Standard near divisions and 32 far divisions. Other tiles retain their existing budget. Moved pond sedges farther onto the banks, excluded route sedges from water, and excluded shared habitat scenery from the pool footprint.
+
+Reviewed assisted pool views in both display modes. Evidence: `output/playwright/woodcock-terrain-shore-lite.png` and `output/playwright/woodcock-shore-cleared-high.png`. The floating rim is gone. Standard review still shows a thin vertical object near the water that needs tracing to its source; shoreline clutter is not fully resolved. Six focused checks pass, including level water, basin height and texture fallback. Compilation passes after the final habitat exclusion; the production build passed before that last exclusion. The previous full-suite result remains 553 tests. No mobile or full encounter validation in this pass.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

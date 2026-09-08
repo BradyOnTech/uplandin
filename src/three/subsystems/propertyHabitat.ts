@@ -1,3 +1,4 @@
+import { wetPondLayout, wetPondRadius } from '../../game/wetPonds';
 import * as THREE from 'three';
 import { HUNT_WORLD_ANCHOR, PROPERTY_PX_TO_M, type GroundSample, type LandscapeModel } from '../../game/landscape';
 import { mulberry32 } from '../../game/math';
@@ -352,6 +353,7 @@ export class PropertyHabitatSystem implements Subsystem {
       const middle = trail.points[Math.floor(trail.points.length / 2)];
       if (middle) anchors.push(middle);
     }
+    const wetPools = area.id === 'woodcock-bottoms' ? wetPondLayout(area) : [];
     const addHero = (kind: HabitatKind, x: number, y: number, size: number, yaw: number, yOffset = 0): void => {
       if (!lists.has(kind) || x < minX + 8 || x > maxX - 8 || y < minY + 8 || y > maxY - 8) return;
       this.landscape.propertyToWorld(x, y, this.world);
@@ -360,6 +362,7 @@ export class PropertyHabitatSystem implements Subsystem {
       // clearance cannot accept one half of a tree and reject the other.
       const clearanceRadius = kind === 'canopy' ? size * .82 : kind === 'trunk' ? size * .55 * .82 : kind === 'rock' ? size * .72 : size * .45;
       if (!propertyPositionClear(area, x, y, clearanceRadius)) return;
+      if (wetPools.some(pond => wetPondRadius(pond, x, y) < 1.2)) return;
       this.landscape.surfaceAtProperty(x, y, this.surface);
       const palette = profile.colors[kind];
       lists.get(kind)!.push({
@@ -429,6 +432,7 @@ export class PropertyHabitatSystem implements Subsystem {
         if (Math.hypot(this.world.x - HUNT_WORLD_ANCHOR.x, this.world.z - HUNT_WORLD_ANCHOR.z) < profile.nearClear) continue;
         const coverMargin = woodland ? 1 : profile.kinds.includes('trunk') && profile.kinds.includes('canopy') ? 2.8 : 1.5;
         if (!propertyPositionClear(area, px, py, coverMargin, woodland ? 1.1 : 3.4)) continue;
+        if (wetPools.some(pond => wetPondRadius(pond, px, py) < 1.2)) continue;
         this.landscape.surfaceAtProperty(px, py, this.surface);
         if (this.surface.slope > profile.maxSlope) continue;
         const cover = area.patches.some((patch) => px >= patch.x - 3 && px <= patch.x + patch.w + 3 && py >= patch.y - 3 && py <= patch.y + patch.h + 3);

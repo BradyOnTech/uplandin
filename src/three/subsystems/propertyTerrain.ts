@@ -301,9 +301,18 @@ export class PropertyTerrain {
       const tod = (event as CustomEvent<TimeOfDay>).detail;
       this.applyTod(tod);
     }, { signal: this.abort.signal });
+    const wetPools = this.landscape.area.id === 'woodcock-bottoms' ? wetPondLayout(this.landscape.area) : [];
     for (const tile of quailGroundTiles(this.landscape)) {
-      const near = new THREE.Mesh(buildQuailTerrainGeometry(this.landscape, tile.x, tile.y, tile.width, tile.depth, ctx.quality === 'high' ? 48 : 24, this.paint), this.material);
-      const far = new THREE.Mesh(buildQuailTerrainGeometry(this.landscape, tile.x, tile.y, tile.width, tile.depth, 14, this.paint), this.material);
+      // Spend terrain vertices around small basins, where a coarse grid
+      // otherwise cuts across the shore. Open ground keeps its usual budget.
+      const basinTile = wetPools.some(pond => {
+        const margin = Math.max(pond.rx, pond.rz) * 1.6;
+        return pond.px + margin > tile.x && pond.px - margin < tile.x + tile.width
+          && pond.py + margin > tile.y && pond.py - margin < tile.y + tile.depth;
+      });
+      const nearDivisions = basinTile ? (ctx.quality === 'high' ? 96 : 64) : (ctx.quality === 'high' ? 48 : 24);
+      const near = new THREE.Mesh(buildQuailTerrainGeometry(this.landscape, tile.x, tile.y, tile.width, tile.depth, nearDivisions, this.paint), this.material);
+      const far = new THREE.Mesh(buildQuailTerrainGeometry(this.landscape, tile.x, tile.y, tile.width, tile.depth, basinTile ? 32 : 14, this.paint), this.material);
       near.name = `${this.landscape.area.name} near terrain`;
       far.name = `${this.landscape.area.name} distant terrain`;
       near.receiveShadow = far.receiveShadow = true;
