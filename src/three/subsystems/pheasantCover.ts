@@ -67,7 +67,7 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
     const x = sx * root;
     const z = sz * root;
     rootX = x; rootZ = z;
-    // Lite renders without multisampling. Fewer broader blades preserve a
+    // Lite uses a lower pixel budget. Fewer broader blades preserve a
     // tuft's body better than thin geometry that alternates between pixels.
     const width = (kind === 'cattail' ? 0.018 : kind === 'prairie' ? 0.045 + rng() * 0.040 : 0.014 + rng() * 0.018) * (distant ? 3 : medium ? 2 : lite ? 1.65 : 1);
     const height = kind === 'prairie'

@@ -48,7 +48,10 @@ export class Engine {
   private maxFrameMs = 0;
 
   constructor(canvas: HTMLCanvasElement, quality: Quality, seed = 1971) {
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: quality === 'high', powerPreference: quality === 'high' ? 'high-performance' : 'low-power' });
+    // Preserve thin vegetation edges even at the lightweight pixel budget.
+    // The browser may decline multisampling; geometry and shadow savings
+    // still distinguish the tiers independently of this context request.
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: quality === 'high' ? 'high-performance' : 'low-power' });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.shadowMap.enabled = true;
