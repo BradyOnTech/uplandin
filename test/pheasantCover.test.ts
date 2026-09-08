@@ -8,7 +8,7 @@ import { PheasantCoverSystem } from '../src/three/subsystems/pheasantCover';
 describe('Pheasant close ground layer', () => {
   it('culls remote litter and releases instance and shared resources on leaving the field', () => {
     const landscape = new LandscapeModel(getArea('pheasant-coverts'));
-    const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), quality: 'lite', time: 0 } as Ctx;
+    const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), quality: 'lite', time: 0, get: () => ({ huntState: () => ({ wind: 0, windStrength: 'breezy' }) }) } as unknown as Ctx;
     const cover = new PheasantCoverSystem(landscape);
     cover.init(ctx);
     const meshes = ctx.scene.children as THREE.InstancedMesh[];
@@ -44,7 +44,7 @@ describe('Pheasant standing habitat', () => {
     const stands: string[] = [];
     for (const quality of ['high', 'lite'] as const) {
       const landscape = new LandscapeModel(getArea('pheasant-coverts'));
-      const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), quality, time: 0 } as Ctx;
+      const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), quality, time: 0, get: () => ({ huntState: () => ({ wind: 0, windStrength: 'breezy' }) }) } as unknown as Ctx;
       const cover = new PheasantCoverSystem(landscape);
       cover.init(ctx);
       const prairie = (ctx.scene.children as THREE.InstancedMesh[]).filter(mesh => mesh.name === 'Pheasant prairie parcel');
@@ -74,5 +74,5 @@ describe('Pheasant standing habitat', () => {
       cover.dispose(ctx);
     }
     expect(stands[1]).toEqual(stands[0]);
-  });
+  }, 15000); // Builds both full-property tiers; allow for concurrent suite workers.
 });

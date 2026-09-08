@@ -246,7 +246,9 @@ export class HuntHudSystem implements Subsystem {
       }
       if (this.guidance) {
         let cue = '';
-        if (!rise && trackingCue) cue = dogRange > 30
+        if (!rise && trackedDog?.state === 'pointing' && hunt.areaId === 'pheasant-coverts')
+          cue = 'Walk toward the point. Watch above the cover and identify the rooster before firing.';
+        else if (!rise && trackingCue) cue = dogRange > 30
           ? 'Move up along dry cover while the dog tracks. Walk when it points.'
           : 'Stay with the cover edge and give the dog room to finish.';
         if (!rise && trackedDog?.state === 'quartering') {

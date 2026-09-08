@@ -3,8 +3,9 @@ import type { GroundSample, LandscapeModel } from '../../game/landscape';
 import { PROPERTY_PX_TO_M } from '../../game/landscape';
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
+import type { Hunt3DSystem } from './hunt3d';
 
-import { pheasantCoverAt, pheasantFields, samplePheasantHarvest, pheasantPlantClear, pheasantPonds } from './pheasantLandscape';
+import { pheasantCoverAt, pheasantCoverFringeAt, pheasantFields, samplePheasantHarvest, pheasantPlantClear, pheasantPonds } from './pheasantLandscape';
 
 function cellSeed(x: number, z: number, seed: number): number {
   let h = seed ^ Math.imul(x, 374761393) ^ Math.imul(z, 668265263);
@@ -18,7 +19,13 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
   const colors: number[] = [];
   const push = (vertices: number[], color: THREE.Color): void => {
     positions.push(...vertices);
-    for (let i = 0; i < vertices.length / 3; i++) colors.push(color.r, color.g, color.b);
+    for (let i = 0; i < vertices.length; i += 3) {
+      // A restrained root-to-tip gradient gives overlapping blades depth
+      // without textures, alpha overdraw or another rendering pass.
+      const light = kind === 'prairie' || kind === 'cattail'
+        ? .68 + Math.min(1, vertices[i + 1] / (kind === 'cattail' ? 1.7 : .9)) * .45 : 1;
+      colors.push(color.r * light, color.g * light, color.b * light);
+    }
   };
   // Instance tinting multiplies these vertex colors, so keep the blades light.
   // The variation belongs in the instance palette, not in nearly-black stems.
@@ -64,7 +71,7 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
       : kind === 'cattail'
         ? 1.55 + rng() * 0.64
         : 0.11 + rng() * 0.22;
-    const lean = kind === 'stubble' ? 0.015 : 0.08 + rng() * (kind === 'cattail' ? 0.18 : 0.34);
+    const lean = kind === 'stubble' ? 0.015 : 0.12 + rng() * (kind === 'cattail' ? 0.24 : 0.58);
     const curve = (rng() - 0.5) * (kind === 'cattail' ? 0.08 : 0.28);
     const tone = kind === 'cattail'
       ? reed.clone().lerp(straw, rng() * 0.22)
@@ -74,17 +81,18 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
     const tipX = x + sx * lean + px * curve;
     const tipZ = z + sz * lean + pz * curve;
     const midY = height * 0.54;
+    const rootWidth = kind === 'prairie' ? width * .38 : width;
     // Three tapered facets give the blade a visible lower body and a bent
     // silhouette. One root-to-tip triangle reduced prairie to toothpicks.
     push([
-      x - px * width, 0, z - pz * width,
-      x + px * width, 0, z + pz * width,
-      midX + px * width * 0.55, midY, midZ + pz * width * 0.55,
-      x - px * width, 0, z - pz * width,
-      midX + px * width * 0.55, midY, midZ + pz * width * 0.55,
-      midX - px * width * 0.55, midY, midZ - pz * width * 0.55,
-      midX - px * width * 0.55, midY, midZ - pz * width * 0.55,
-      midX + px * width * 0.55, midY, midZ + pz * width * 0.55,
+      x - px * rootWidth, 0, z - pz * rootWidth,
+      x + px * rootWidth, 0, z + pz * rootWidth,
+      midX + px * width * 0.82, midY, midZ + pz * width * 0.82,
+      x - px * rootWidth, 0, z - pz * rootWidth,
+      midX + px * width * 0.82, midY, midZ + pz * width * 0.82,
+      midX - px * width * 0.82, midY, midZ - pz * width * 0.82,
+      midX - px * width * 0.82, midY, midZ - pz * width * 0.82,
+      midX + px * width * 0.82, midY, midZ + pz * width * 0.82,
       tipX, height, tipZ,
     ], tone);
 
@@ -108,8 +116,32 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
 
     const seeded = kind === 'cattail' || (kind === 'prairie' && i % 5 === 0);
     if (!seeded) continue;
-    const hw = kind === 'cattail' ? 0.032 : 0.021;
-    const hh = kind === 'cattail' ? 0.14 : 0.09;
+    if (kind === 'prairie') {
+      // Carry the seed head on a slender stem connected to the leaf bend.
+      // A head placed only at tipX floated beside the tapered blade.
+      const stalkWidth = distant ? .015 : .008;
+      const seedBase = height - .13 * .7;
+      push([
+        midX - px * stalkWidth, midY, midZ - pz * stalkWidth,
+        midX + px * stalkWidth, midY, midZ + pz * stalkWidth,
+        tipX + px * stalkWidth, seedBase, tipZ + pz * stalkWidth,
+        midX - px * stalkWidth, midY, midZ - pz * stalkWidth,
+        tipX + px * stalkWidth, seedBase, tipZ + pz * stalkWidth,
+        tipX - px * stalkWidth, seedBase, tipZ - pz * stalkWidth,
+      ], tone);
+      const hw = distant ? .037 : .025, hh = .13;
+      push([
+        tipX, height - hh * .7, tipZ,
+        tipX + px * hw, height - hh * .2, tipZ + pz * hw,
+        tipX, height + hh * .35, tipZ,
+        tipX, height - hh * .7, tipZ,
+        tipX, height + hh * .35, tipZ,
+        tipX - px * hw, height - hh * .2, tipZ - pz * hw,
+      ], tone.clone().multiplyScalar(.85));
+      continue;
+    }
+    const hw = 0.032;
+    const hh = 0.14;
     const cy = height - hh * 0.35;
     const cx = tipX;
     const cz = tipZ;
@@ -120,7 +152,7 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
       cx - px * hw, cy - hh * 0.5, cz - pz * hw,
       cx + px * hw * 0.72, cy + hh * 0.5, cz + pz * hw * 0.72,
       cx - px * hw * 0.72, cy + hh * 0.5, cz - pz * hw * 0.72,
-    ], kind === 'cattail' ? head : tone.clone().multiplyScalar(0.68));
+    ], head);
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -141,25 +173,35 @@ export class PheasantCoverSystem implements Subsystem {
   private surface: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
   private world = { x: 0, z: 0 };
   private wind = { value: 0 };
+  private windDirection = { value: new THREE.Vector2(1, 0) };
+  private windStrength = { value: 1 };
   constructor(private readonly landscape: LandscapeModel) {}
 
   init(ctx: Ctx): void {
     const lite = ctx.quality === 'lite', area = this.landscape.area;
+    const hunt = ctx.get<Hunt3DSystem>('hunt3d').huntState();
+    this.windDirection.value.set(Math.cos(hunt.wind), Math.sin(hunt.wind));
+    this.windStrength.value = hunt.windStrength === 'calm' ? .35 : hunt.windStrength === 'strong' ? 1.7 : 1;
     const geometries = { prairie: habitatGeometry('prairie', lite), cattail: habitatGeometry('cattail', lite), stubble: habitatGeometry('stubble', lite), litter: habitatGeometry('litter', lite) };
     const distant = { prairie: habitatGeometry('prairie', true, true), cattail: habitatGeometry('cattail', true, true) };
     this.geometries.push(...Object.values(geometries), ...Object.values(distant));
-    const material = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, side: THREE.DoubleSide });
+    const material = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x81714b, emissiveIntensity: .12, vertexColors: true, side: THREE.DoubleSide });
     material.onBeforeCompile = shader => {
       shader.uniforms.uPheasantWind = this.wind;
-      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uPheasantWind;')
+      shader.uniforms.uPheasantWindDirection = this.windDirection;
+      shader.uniforms.uPheasantWindStrength = this.windStrength;
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uPheasantWind;\nuniform vec2 uPheasantWindDirection;\nuniform float uPheasantWindStrength;')
         .replace('#include <begin_vertex>', `#include <begin_vertex>
           #ifdef USE_INSTANCING
           float phase = instanceMatrix[3].x * .15 + instanceMatrix[3].z * .11;
-          transformed.x += (sin(uPheasantWind * 1.35 + phase) * .028 + sin(uPheasantWind * .60 + phase * .32) * .018) * position.y * position.y;
-          transformed.z += sin(uPheasantWind * .8 + phase) * .018 * position.y;
+          vec2 localWind = vec2(dot(normalize(instanceMatrix[0].xz), uPheasantWindDirection),
+            dot(normalize(instanceMatrix[2].xz), uPheasantWindDirection));
+          float gust = .045 + sin(uPheasantWind * 1.35 + phase) * .024
+            + sin(uPheasantWind * .60 + phase * .32) * .016;
+          transformed.xz += localWind * gust * uPheasantWindStrength * position.y * position.y;
           #endif`);
     };
-    material.customProgramCacheKey = () => 'pheasant-rooted-cover-wind-v2'; this.materials.push(material);
+    material.customProgramCacheKey = () => 'pheasant-rooted-cover-wind-v3'; this.materials.push(material);
     // Keep the same habitat footprint in both tiers. Distance changes blade
     // complexity, not the height or presence of protective cover.
     const fields = pheasantFields(area), ponds = pheasantPonds(this.landscape);
@@ -209,17 +251,22 @@ export class PheasantCoverSystem implements Subsystem {
             groups.stubble.push({ x, y, scale: .80 + rng() * .55, angle: harvestSample.angle + (rng() - .5) * .12, color: color.copy(straw).lerp(amber, rng() * .35).getHex() });
           continue;
         }
-        if (cover) {
+        if (cover || (harvest < .3 && pheasantCoverFringeAt(area, x, y) > .02)) {
           // Overlapping rooted clumps make a stand, rather than a scatter of
           // ornamental tufts. Preserve the same density on the lite tier.
           for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) {
             const cx = cellX + (dx + .15 + rng() * .7) * spacing / 3;
             const cy = cellY + (dy + .15 + rng() * .7) * spacing / 3;
-            if (!pheasantCoverAt(area, cx, cy) || !pheasantPlantClear(area, cx, cy)) continue;
+            if (!pheasantPlantClear(area, cx, cy)) continue;
+            const core = pheasantCoverAt(area, cx, cy);
+            const fringe = core ? 1 : pheasantCoverFringeAt(area, cx, cy);
+            // A separate seed keeps core plant placement independent of fringe sampling.
+            const fringeRng = mulberry32(cellSeed(Math.round(cx * 100), Math.round(cy * 100), area.terrain.seed ^ 0xf219));
+            if (!core && fringeRng() > fringe * .85) continue;
             if (pond && pond.waterY - this.landscape.heightAtProperty(cx, cy) > .12) continue;
             const wave = .5 + .5 * Math.sin(cx * .038 + Math.sin(cy * .051));
             groups.prairie.push({ x: cx, y: cy, scale: .94 + rng() * .22,
-              height: 1.45 + wave * .35, spread: 1.2, angle: rng() * Math.PI * 2,
+              height: core ? 1.45 + wave * .35 : .50 + fringe * .75, spread: 1.2, angle: rng() * Math.PI * 2,
               color: color.copy(straw).lerp(olive, moisture * .6 + wave * .18).lerp(amber, rng() * .16).getHex() });
           }
           continue;
@@ -280,7 +327,13 @@ export class PheasantCoverSystem implements Subsystem {
     for (const batch of this.batches) {
       const distance = Math.hypot(ctx.camera.position.x - batch.center.x, ctx.camera.position.z - batch.center.z);
       batch.mesh.visible = distance < batch.range + batch.radius;
-      if (batch.near && batch.far) batch.mesh.geometry = distance < batch.detailRange! + batch.radius ? batch.near : batch.far;
+      if (batch.near && batch.far) {
+        // Hysteresis stops entire parcels flickering between detail levels
+        // while the hunter moves around a threshold.
+        const threshold = batch.detailRange! + batch.radius;
+        if (distance < threshold - 4) batch.mesh.geometry = batch.near;
+        else if (distance > threshold + 4) batch.mesh.geometry = batch.far;
+      }
     }
   }
 

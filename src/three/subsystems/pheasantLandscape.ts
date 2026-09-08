@@ -21,6 +21,20 @@ export function pheasantCoverAt(area: AreaConfig, x: number, y: number): boolean
   return area.patches.some(p => x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h);
 }
 
+/** A visual fringe outside authoritative bird cover. Dense interiors stay
+ * intact; a varying verge breaks up the rectangular management boundaries. */
+export function pheasantCoverFringeAt(area: AreaConfig, x: number, y: number): number {
+  let distance = Infinity;
+  for (const patch of area.patches) {
+    distance = Math.min(distance, Math.hypot(Math.max(patch.x - x, 0, x - patch.x - patch.w),
+      Math.max(patch.y - y, 0, y - patch.y - patch.h)));
+  }
+  if (distance === 0) return 1;
+  const width = 5.5 + Math.sin(x * .093 + Math.sin(y * .057) * 1.6) * 2 + Math.cos(y * .12) * 1.2;
+  const t = clamp(1 - distance / width);
+  return t * t * (3 - 2 * t);
+}
+
 /** Reusable by terrain paint: zero means cover/unharvested, one means the
  * interior of a cut field. The width is feathered over an eight-yard verge. */
 export function pheasantHarvestAt(area: AreaConfig, x: number, y: number, fields = pheasantFields(area)): number {

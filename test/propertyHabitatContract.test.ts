@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { AREAS, getArea } from '../src/game/areas';
 import { LandscapeModel, PROPERTY_PX_TO_M } from '../src/game/landscape';
 import { PropertyTrailsSystem } from '../src/three/subsystems/propertyTrails';
-import { pheasantPonds, samplePheasantHarvest } from '../src/three/subsystems/pheasantLandscape';
+import { pheasantCoverFringeAt, pheasantCoverAt, pheasantPonds, samplePheasantHarvest } from '../src/three/subsystems/pheasantLandscape';
 import type { Ctx } from '../src/three/engine';
 import { spawnBirds } from '../src/game/birds';
 import { mulberry32 } from '../src/game/math';
@@ -151,6 +151,17 @@ describe('authored habitat contracts', () => {
     expect(sample(113.5)).toBeCloseTo(.5);
     expect(sample(117)).toBe(1);
     expect(sample(205)).toBe(0);
+  });
+
+  it('adds a bounded visual fringe without expanding authoritative bird cover', () => {
+    const area = { ...getArea('pheasant-coverts'), patches: [{ x: 90, y: 90, w: 20, h: 20 }] };
+    expect(pheasantCoverFringeAt(area, 100, 100)).toBe(1);
+    expect(pheasantCoverFringeAt(area, 110, 100)).toBe(1);
+    expect(pheasantCoverFringeAt(area, 112, 100)).toBeGreaterThan(0);
+    expect(pheasantCoverFringeAt(area, 112, 100)).toBeLessThan(1);
+    expect(pheasantCoverAt(area, 112, 100)).toBe(false);
+    expect(pheasantCoverFringeAt(area, 120, 100)).toBe(0);
+    expect(pheasantCoverFringeAt({ ...area, patches: [] }, 100, 100)).toBe(0);
   });
 
   it('keeps parallel rows aligned inside rotated parcels', () => {
