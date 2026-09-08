@@ -30,7 +30,7 @@ const PALETTE = {
 const AREA_PALETTE_OVERRIDES: Record<string, Partial<Record<'dark' | 'mid' | 'light' | 'wet', number>>> = {
   'pheasant-coverts': { dark: 0x4c4b33, mid: 0x8f7b48, light: 0xbfa36b, wet: 0x4f6658 },
   'woodcock-bottoms': { dark: 0x3f5140, mid: 0x6f7d5a, light: 0x9ca16f, wet: 0x3f5c57 },
-  'grouse-woods': { dark: 0x334331, mid: 0x5d6a46, light: 0x89905e, wet: 0x3e5d4a },
+  'grouse-woods': { dark: 0x625540, mid: 0x8c815d, light: 0xb5a376, wet: 0x56684b },
   'sharptail-prairie': { dark: 0x756444, mid: 0xa68f59, light: 0xc8b77e, wet: 0x6c7154 },
   'hun-benches': { dark: 0x625640, mid: 0x9e8b66, light: 0xc8b98f, wet: 0x72745d },
   'chukar-ridge': { dark: 0x514b43, mid: 0x81786b, light: 0xa99c83, wet: 0x626b61 },

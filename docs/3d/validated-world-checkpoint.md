@@ -49,6 +49,18 @@ The Chukar arrival pass aligns both gate headings with their actual first trail 
 
 The rock-shape pass replaces eleven narrow uprights per formation with up to seven broad ledges, caps their height relative to width, and aligns each long face with the formation. Added stepped bedding rings to the shared low-poly stone geometry. Repeated the 18-second climb and captured `output/playwright/chukar-bedded-ledges.png`; the rows of posts are replaced by low shelves emerging from the slope. The view is more coherent, though it still lacks a strong hero landform and needs broader art review. Compilation passes.
 
+**Grouse woodland structure pass**
+
+The South Gate visual review showed an almost bare hillside. Grouse was using generic habitat with an 11 percent tree chance on a 16-yard grid, leaving widely separated silhouettes rather than close timber. It now uses an eight-yard candidate grid with 68 percent tree probability, thinner pale trunks, varied upright crowns, nearby shrubs and slash, and narrower planting clearance along the route. Both quality tiers preserve the same tree density. Ground colors now favor dry leaf litter, and noon fill is brighter so shade remains readable.
+
+The shared habitat material incorrectly enabled vertex colors on geometry without a color attribute, turning instance colors black. Removed that flag and the redundant non-indexed conversion warning. Shared placement budgets now sample across the full candidate list instead of retaining only its beginning. This cap issue was a general distribution hazard; the sparse Grouse profile was the immediate cause of its empty entry. Hero trunks use their crowns' clearance footprint so one half of a tree cannot be rejected independently.
+
+Woodland instances are grouped into 80-metre rendering cells, with distance limits for trees and shorter limits for ground objects. They share geometry and materials, which are released once on disposal. New checks cover timber in all four property quadrants on both quality tiers, paired crown counts, culling and restoration, and resource cleanup. All 534 tests and the production build pass. The build still reports large bundles.
+
+Reviewed the high-quality South Gate and walked the lightweight West Track for 14 seconds. The latter reported 124 draws and 246,552 triangles at 1228 by 750 pixels, with a sampled 95th-percentile frame interval of 10.2 milliseconds on this desktop. These are not mobile measurements or GPU timings. The console had no warnings or errors. Evidence: `output/playwright/grouse-entry-review.png`, `output/playwright/grouse-timber-noon.png`, and `output/playwright/grouse-west-lite-walk.png`.
+
+The forest now constrains sightlines, but the ground is still too bare, crowns repeat visibly, and this habitat layer does not yet supply tree collision. The walk showed the dog working timber openings; it did not validate a complete grouse flush, shot, and retrieve. Those remain substantive work, alongside the other maps and deferred presentation phases.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

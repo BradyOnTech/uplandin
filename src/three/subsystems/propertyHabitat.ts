@@ -61,10 +61,10 @@ function profileFor(style: HuntStyle, lite: boolean): HabitatProfile {
       // close, quick-point hunt a readable ground-level edge. They share the
       // existing instanced habitat path, so the extra vocabulary is one draw
       // call and remains bounded on the lite tier.
-      return { ...base, step: lite ? 24 : 16, nearClear: 18, kinds: ['trunk', 'canopy', 'shrub', 'rock', 'log'],
-        chances: { trunk: .11, shrub: .17, rock: .025, log: .06 },
-        colors: colors({ trunk: [0x4e3d31, 0x604635], canopy: [0x304a37, 0x3e5c42], shrub: [0x3f5b3e, 0x4f6847], rock: [0x62675f], log: [0x514033, 0x674b37] }),
-        scale: { trunk: [4.6, 8.6], canopy: [2.8, 5.4], shrub: [.7, 1.35], rock: [.42, .9], log: [1.35, 3.2] }, };
+      return { ...base, step: 8, nearClear: 9, kinds: ['trunk', 'canopy', 'shrub', 'rock', 'log'],
+        chances: { trunk: .68, shrub: .21, rock: .015, log: .04 },
+        colors: colors({ trunk: [0x858074, 0xa09a82, 0x665747], canopy: [0x536344, 0x778050, 0x8b8850], shrub: [0x536b46, 0x6c784a], rock: [0x62675f], log: [0x514033, 0x674b37] }),
+        scale: { trunk: [3.2, 8.4], canopy: [2.8, 5.4], shrub: [.7, 1.55], rock: [.42, .9], log: [1.35, 3.2] }, };
     case 'bottoms':
       return { ...base, step: lite ? 22 : 15, nearClear: 18, kinds: ['reed', 'trunk', 'canopy', 'shrub'],
         chances: { reed: .3, trunk: .06, shrub: .17 },
@@ -134,12 +134,12 @@ function distanceToSegment(x: number, y: number, ax: number, ay: number, bx: num
 /** Keep the generic fill legible around the authored route and set pieces.
  * Margins are supplied in world metres and converted once here, while all
  * authored map geometry remains in its stable property-pixel coordinates. */
-function propertyPositionClear(area: LandscapeModel['area'], x: number, y: number, marginMeters: number): boolean {
+function propertyPositionClear(area: LandscapeModel['area'], x: number, y: number, marginMeters: number, routeHalfWidth = 3.4): boolean {
   const margin = marginMeters / PROPERTY_PX_TO_M;
   for (const trail of area.trails) {
     for (let i = 1; i < trail.points.length; i++) {
       const a = trail.points[i - 1], b = trail.points[i];
-      if (distanceToSegment(x, y, a.x, a.y, b.x, b.y) < 3.4 + margin) return false;
+      if (distanceToSegment(x, y, a.x, a.y, b.x, b.y) < routeHalfWidth + margin) return false;
     }
   }
   for (const drop of area.dropPoints) {
@@ -216,9 +216,7 @@ function canopyGeometry(style: HuntStyle): THREE.BufferGeometry {
   for (const lobe of lobes) {
     // Non-indexed geometry lets each lobe be concatenated without bringing
     // an index offset or a second draw submission into the instanced crown.
-    const indexed = new THREE.IcosahedronGeometry(1, 0);
-    const source = indexed.toNonIndexed();
-    indexed.dispose();
+    const source = new THREE.IcosahedronGeometry(1, 0);
     const position = source.getAttribute('position');
     const c = Math.cos(lobe.yaw), s = Math.sin(lobe.yaw);
     for (let index = 0; index < position.count; index++) {
@@ -306,6 +304,7 @@ export class PropertyHabitatSystem implements Subsystem {
 
   init(ctx: Ctx): void {
     const doctrine = huntingDoctrine(this.landscape.area.id);
+    const woodland = doctrine.style === 'woods';
     const profile = profileFor(doctrine.style, ctx.quality === 'lite');
     const lists = new Map<HabitatKind, HabitatPlacement[]>();
     for (const kind of profile.kinds) lists.set(kind, []);
@@ -330,7 +329,9 @@ export class PropertyHabitatSystem implements Subsystem {
       if (!lists.has(kind) || x < minX + 8 || x > maxX - 8 || y < minY + 8 || y > maxY - 8) return;
       this.landscape.propertyToWorld(x, y, this.world);
       if (Math.hypot(this.world.x - HUNT_WORLD_ANCHOR.x, this.world.z - HUNT_WORLD_ANCHOR.z) < profile.nearClear + 6) return;
-      const clearanceRadius = kind === 'canopy' ? size * .82 : kind === 'trunk' ? size * .28 : kind === 'rock' ? size * .72 : size * .45;
+      // Use the paired crown's footprint for the trunk too, so a route
+      // clearance cannot accept one half of a tree and reject the other.
+      const clearanceRadius = kind === 'canopy' ? size * .82 : kind === 'trunk' ? size * .55 * .82 : kind === 'rock' ? size * .72 : size * .45;
       if (!propertyPositionClear(area, x, y, clearanceRadius)) return;
       this.landscape.surfaceAtProperty(x, y, this.surface);
       const palette = profile.colors[kind];
@@ -399,8 +400,8 @@ export class PropertyHabitatSystem implements Subsystem {
         const py = Math.min(maxY - .5, cellY + rng() * step);
         this.landscape.propertyToWorld(px, py, this.world);
         if (Math.hypot(this.world.x - HUNT_WORLD_ANCHOR.x, this.world.z - HUNT_WORLD_ANCHOR.z) < profile.nearClear) continue;
-        const coverMargin = profile.kinds.includes('trunk') && profile.kinds.includes('canopy') ? 2.8 : 1.5;
-        if (!propertyPositionClear(area, px, py, coverMargin)) continue;
+        const coverMargin = woodland ? 1 : profile.kinds.includes('trunk') && profile.kinds.includes('canopy') ? 2.8 : 1.5;
+        if (!propertyPositionClear(area, px, py, coverMargin, woodland ? 1.1 : 3.4)) continue;
         this.landscape.surfaceAtProperty(px, py, this.surface);
         if (this.surface.slope > profile.maxSlope) continue;
         const cover = area.patches.some((patch) => px >= patch.x - 3 && px <= patch.x + patch.w + 3 && py >= patch.y - 3 && py <= patch.y + patch.h + 3);
@@ -435,13 +436,19 @@ export class PropertyHabitatSystem implements Subsystem {
       const placements = lists.get(kind)!;
       // Hard caps keep a worst-case wide map within a predictable mobile
       // budget; deterministic order means the cutoff never shimmers.
-      const cap = ctx.quality === 'lite' ? 420 : kind === 'canopy' || kind === 'trunk' ? 280 : 760;
+      const cap = woodland ? 12000 : ctx.quality === 'lite' ? 420 : kind === 'canopy' || kind === 'trunk' ? 280 : 760;
       const heroes = placements.filter((placement) => placement.hero);
-      const fill = placements.filter((placement) => !placement.hero).slice(0, Math.max(0, cap - heroes.length));
+      const candidates = placements.filter((placement) => !placement.hero);
+      const fillBudget = Math.min(candidates.length, Math.max(0, cap - heroes.length));
+      // Spread the budget across the entire property instead of exhausting
+      // it along the first columns visited by the placement loop.
+      const fill = Array.from({ length: fillBudget }, (_, i) => candidates[Math.floor(i * candidates.length / fillBudget)]);
       const selected = [...heroes.slice(0, cap), ...fill];
       if (selected.length === 0) continue;
       const geometry = geometryFor(kind, doctrine.style);
-      const material = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, flatShading: true });
+      // Colors come from instances; these geometries have no vertex-color
+      // attribute. Enabling vertexColors multiplies their tint by black.
+      const material = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
       material.onBeforeCompile = (shader) => {
         shader.uniforms.uPropertyHabitatWind = this.wind;
         shader.vertexShader = shader.vertexShader
@@ -455,51 +462,69 @@ export class PropertyHabitatSystem implements Subsystem {
             #endif`);
       };
       material.customProgramCacheKey = () => `property-habitat-${kind}-wind-v1`;
-      const mesh = new THREE.InstancedMesh(geometry, material, selected.length);
-      mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(selected.length * 3), 3);
-      // Tree trunks and cactus columns need to participate in the high-tier
-      // shadow pass so the habitat reads as grounded at noon and at the
-      // long Firewatch-style evening angles. Lite keeps the cheaper shadow
-      // path for mobile. Rocks already cast; reeds and shrubs remain
-      // receiver-only because their thin silhouettes add little shadow value.
-      mesh.castShadow = ctx.quality === 'high'
-        && (kind === 'canopy' || kind === 'trunk' || kind === 'cactus' || kind === 'rock' || kind === 'log');
-      mesh.receiveShadow = true;
-      mesh.matrixAutoUpdate = false;
-      for (const [i, item] of selected.entries()) {
-        this.position.set(item.x, item.y + item.yOffset, item.z);
-        // Paired canopies carry a y offset; all other geometry is rooted at 0.
-        // Woody silhouettes should stay upright on a hillside. Fully
-        // aligning a tree to the terrain normal makes a steep rim or canyon
-        // turn the whole trunk and crown into a leaning marker. Keep a small
-        // grade response for natural variation while letting loose ground
-        // forms (rocks, shrubs, reeds) settle into the slope.
-        const gradeResponse = kind === 'trunk' || kind === 'canopy' ? .12
-          : kind === 'cactus' ? .2
-            : kind === 'reed' ? .38
-              : kind === 'log' ? .55 : 1;
-        this.normal.set(-item.gradeX * gradeResponse, 1, -item.gradeZ * gradeResponse).normalize();
-        this.rotation.setFromUnitVectors(this.up, this.normal);
-        this.yaw.setFromAxisAngle(this.up, item.yaw);
-        this.rotation.multiply(this.yaw);
-        this.scale.setScalar(item.scale);
-        if (kind === 'trunk') this.scale.set(item.scale * .62, item.scale * 1.3, item.scale * .62);
-        if (kind === 'canopy') this.scale.set(item.scale * 1.2, item.scale * .95, item.scale);
-        if (kind === 'cactus') this.scale.set(item.scale, item.scale, item.scale);
-        if (kind === 'log') this.scale.set(item.scale, item.scale * .72, item.scale * .72);
-        mesh.setMatrixAt(i, this.matrix.compose(this.position, this.rotation, this.scale));
-        this.color.setHex(item.color).multiplyScalar(.9 + hashCell(i, selected.length, this.landscape.area.terrain.seed) * .16);
-        mesh.setColorAt(i, this.color);
+      const batches = new Map<string, HabitatPlacement[]>();
+      for (const item of selected) {
+        const key = woodland ? `${Math.floor(item.x / 80)},${Math.floor(item.z / 80)}` : 'property';
+        const batch = batches.get(key) ?? [];
+        batch.push(item); batches.set(key, batch);
       }
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      mesh.name = `${area.name} ${kind} habitat`;
-      mesh.computeBoundingSphere();
-      ctx.scene.add(mesh);
-      this.meshes.push(mesh); this.geometries.push(geometry); this.materials.push(material);
+      this.geometries.push(geometry); this.materials.push(material);
+      for (const batch of batches.values()) {
+        const mesh = new THREE.InstancedMesh(geometry, material, batch.length);
+        mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(batch.length * 3), 3);
+        // Tree trunks and cactus columns need to participate in the high-tier
+        // shadow pass so the habitat reads as grounded at noon and at the
+        // long Firewatch-style evening angles. Lite keeps the cheaper shadow
+        // path for mobile. Rocks already cast; reeds and shrubs remain
+        // receiver-only because their thin silhouettes add little shadow value.
+        mesh.castShadow = ctx.quality === 'high'
+          && (kind === 'canopy' || kind === 'trunk' || kind === 'cactus' || kind === 'rock' || kind === 'log');
+        mesh.receiveShadow = true;
+        mesh.matrixAutoUpdate = false;
+        for (const [i, item] of batch.entries()) {
+          this.position.set(item.x, item.y + item.yOffset, item.z);
+          // Paired canopies carry a y offset; all other geometry is rooted at 0.
+          // Woody silhouettes should stay upright on a hillside. Fully
+          // aligning a tree to the terrain normal makes a steep rim or canyon
+          // turn the whole trunk and crown into a leaning marker. Keep a small
+          // grade response for natural variation while letting loose ground
+          // forms (rocks, shrubs, reeds) settle into the slope.
+          const gradeResponse = kind === 'trunk' || kind === 'canopy' ? .12
+            : kind === 'cactus' ? .2
+              : kind === 'reed' ? .38
+                : kind === 'log' ? .55 : 1;
+          this.normal.set(-item.gradeX * gradeResponse, 1, -item.gradeZ * gradeResponse).normalize();
+          this.rotation.setFromUnitVectors(this.up, this.normal);
+          this.yaw.setFromAxisAngle(this.up, item.yaw);
+          this.rotation.multiply(this.yaw);
+          this.scale.setScalar(item.scale);
+          if (kind === 'trunk') this.scale.set(item.scale * (woodland ? .16 : .62), item.scale * 1.3, item.scale * (woodland ? .16 : .62));
+          if (kind === 'canopy') this.scale.set(item.scale * 1.2, item.scale * .95, item.scale);
+          if (kind === 'cactus') this.scale.set(item.scale, item.scale, item.scale);
+          if (kind === 'log') this.scale.set(item.scale, item.scale * .72, item.scale * .72);
+          mesh.setMatrixAt(i, this.matrix.compose(this.position, this.rotation, this.scale));
+          this.color.setHex(item.color).multiplyScalar(.9 + hashCell(i, selected.length, this.landscape.area.terrain.seed) * .16);
+          mesh.setColorAt(i, this.color);
+        }
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+        mesh.name = `${area.name} ${kind} habitat`;
+        mesh.computeBoundingSphere();
+        mesh.userData.habitatRange = woodland ? (kind === 'trunk' || kind === 'canopy' ? 310 : ctx.quality === 'lite' ? 85 : 130) : Infinity;
+        ctx.scene.add(mesh);
+        this.meshes.push(mesh);
+      }
     }
+    this.update(ctx);
   }
 
-  update(ctx: Ctx): void { this.wind.value = ctx.time; }
+  update(ctx: Ctx): void {
+    this.wind.value = ctx.time;
+    for (const mesh of this.meshes) {
+      const sphere = mesh.boundingSphere!;
+      const distance = Math.hypot(ctx.camera.position.x - sphere.center.x, ctx.camera.position.z - sphere.center.z);
+      mesh.visible = distance < mesh.userData.habitatRange + sphere.radius;
+    }
+  }
 
   dispose(ctx: Ctx): void {
     for (const mesh of this.meshes) ctx.scene.remove(mesh);
