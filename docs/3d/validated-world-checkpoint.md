@@ -263,6 +263,12 @@ Mounted with the right mouse button, used the camera helper to aim at the flying
 
 No position teleport, forced flush, forced down or simulated-time stepping was used. Camera turns and shot aim were assisted, and pauses interrupted the run for inspection. This proves the connected natural runner-to-point, flush, normal shot, automatic retrieval credit and end-result sequence under those conditions. It does not prove ordinary aiming usability, an unbroken player-paced hunt, close carrying animation quality or mobile performance. The visible route remains sparse, the grass silhouettes repetitive and the distant cover boundaries weak. This route is now a repeatable reference for judging broader environment improvements.
 
+**Pheasant cover-ground contrast**
+
+Terrain beneath standing habitat now uses a cooler olive grass/litter tone, feathered over a nine-meter outer verge. Harvested fields have stronger warm straw and soil swaths. Both use existing authored cover and harvest masks, with pond mud applied afterward. The change affects construction-time vertex colors; it adds no draw calls, textures or per-frame shader work. Terrain initialization cost was not benchmarked.
+
+The first pass was too subtle under warm lighting. The revised contrast is visible at the known Seed 1 flush viewpoint in both display modes: `output/playwright/pheasant-ground-cover-contrast.png` and `output/playwright/pheasant-ground-cover-contrast-high.png`. These are assisted static visual comparisons using setPose and renderOnce, not replayed encounters; HUD/dog state is from fresh entry and must not be interpreted as gameplay evidence. Standing cover reads as a cooler band against cut ground, though plant silhouettes and open-ground density still need improvement. Compilation and build pass with existing chunk warnings; the reviewed page had no browser warnings or errors. No simulation tests rerun for this terrain-color-only pass.
+
 **Next work, in order**
 
 1. Use the Seed 1 South reference route to judge environment improvements from arrival through the known runner encounter. Review a full encounter with ordinary aiming separately; the assisted reference does not establish input usability.

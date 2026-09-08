@@ -152,6 +152,7 @@ function paintFor(property: LandscapeModel): Paint {
   const cutSoil = new THREE.Color(0x927551);
   const bankMud = new THREE.Color(0x514936);
   const reedLitter = new THREE.Color(0x8d8055);
+  const standingGrass = new THREE.Color(0x596747);
   // Geometry construction is synchronous; reuse one sampler per painter.
   const surface: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
   return (landscape, x, y, out) => {
@@ -174,13 +175,24 @@ function paintFor(property: LandscapeModel): Paint {
     out.lerp(palette.wet, moisture * (.45 + (1 - broad) * .55) * finish.wetStrength);
     out.lerp(stone, exposure * finish.stoneStrength);
     if (fields.length > 0) {
+      // Standing habitat retains a cooler grass-and-litter base even where
+      // individual blades disappear at distance. Feather the rectangle edge
+      // over a broad verge rather than outlining the encounter volume.
+      let coverDistance = Infinity;
+      for (const patch of landscape.area.patches) {
+        const dx = Math.max(patch.x - x, 0, x - patch.x - patch.w);
+        const dy = Math.max(patch.y - y, 0, y - patch.y - patch.h);
+        coverDistance = Math.min(coverDistance, Math.hypot(dx, dy) * PROPERTY_PX_TO_M);
+      }
+      const standing = 1 - THREE.MathUtils.smoothstep(coverDistance, 0, 9);
+      out.lerp(standingGrass, standing * (.72 + meso * .16));
       samplePheasantHarvest(landscape.area, x, y, fields, harvestSample);
       // Match the dry-ground cutoff used by stubble placement, feathered
       // into the wet fringe so harvested rectangles do not paint over mud.
       const harvest = harvestSample.amount * (1 - THREE.MathUtils.smoothstep(moisture, .25, .36));
       const swath = .5 + .5 * Math.sin(harvestSample.row * Math.PI / 24);
-      out.lerp(cutSoil, harvest * .4);
-      out.lerp(cutStraw, harvest * (.25 + swath * .2));
+      out.lerp(cutSoil, harvest * .5);
+      out.lerp(cutStraw, harvest * (.42 + swath * .24));
     }
     for (const pond of ponds) {
       const radius = Math.hypot((x - pond.x) * PROPERTY_PX_TO_M / pond.rx,
