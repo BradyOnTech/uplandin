@@ -113,6 +113,14 @@ Aim direction was supplied from airborne telemetry through the development camer
 
 Evidence: `output/playwright/grouse-obstruction-aim-0.png`, `output/playwright/grouse-obstruction-aim-1.png`, and `output/playwright/grouse-obstruction-delivery.png`. The browser reported no errors and one 2.1-millisecond simulation warning; telemetry's maximum simulation tick was 2.5 milliseconds and maximum frame interval was 50.2 milliseconds. No code changed in this verification pass, so the previous 548-test and build results remain the latest checks. Mobile performance is still unverified.
 
+**Alder Bottoms first corridor pass**
+
+The Woodcock South Gate opened onto sparse parkland. Its bespoke alder and log materials also enabled vertex colors without geometry color attributes, producing black silhouettes. Corrected those materials, shortened the alders, replaced single oval crowns with three lobes, narrowed trunks, and positioned crowns to cover their tips. Route-side placement now uses much tighter staggered bands, preserving tree density in both quality modes. Added sedge shoulders between the existing pond rims and widened their blades; their geometry now supplies a neutral light-to-tip gradient beneath the instance tint.
+
+Walked the South Gate in Standard and West Track in Lightweight. Evidence: `output/playwright/woodcock-entry-review.png`, `output/playwright/woodcock-alder-corridor.png`, and `output/playwright/woodcock-west-lite-corridor.png`. The corridor is more enclosed, but still needs softer understory shapes, better shade readability, and a more convincing wet ground surface. The West Track initial heading also needs checking against its authored route. Bespoke alder collisions and shot obstruction remain missing.
+
+The final lightweight walk reported 66 draws and 242,422 triangles, with no browser warnings or errors. The denser Standard pass reported 91 draws and 507,380 triangles before the final trunk-width adjustment. These are desktop samples, not mobile acceptance. Compilation and build pass. No new tests or full-suite rerun accompanied this visual-only pass; the last full suite remains 548 passing tests.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

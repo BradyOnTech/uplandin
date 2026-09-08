@@ -205,8 +205,14 @@ function alderTrunkGeometry(): THREE.BufferGeometry {
 }
 
 function alderCrownGeometry(): THREE.BufferGeometry {
-  const geometry = new THREE.IcosahedronGeometry(1, 1);
-  geometry.scale(1.18, 0.84, 0.98);
+  const positions: number[] = [];
+  for (const [x, y, z, size] of [[-.45, -.12, .08, .78], [.38, .03, -.12, .85], [-.06, .51, .02, .64]]) {
+    const lobe = new THREE.IcosahedronGeometry(size, 0);
+    lobe.scale(1, .8, .9); lobe.translate(x, y, z);
+    positions.push(...Array.from(lobe.getAttribute('position').array)); lobe.dispose();
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
   return geometry;
@@ -216,12 +222,12 @@ function sedgeGeometry(): THREE.BufferGeometry {
   const positions: number[] = [];
   const colors: number[] = [];
   const rng = mulberry32(0x5e9d41);
-  const base = new THREE.Color(0x9ca36c);
-  const tip = new THREE.Color(0x6c7656);
+  const base = new THREE.Color(0xffffff);
+  const tip = new THREE.Color(0xc4ccb2);
   for (let i = 0; i < 12; i++) {
     const angle = i / 12 * Math.PI * 2 + (rng() - 0.5) * 0.3;
     const height = 0.7 + rng() * 0.68;
-    const width = 0.018 + rng() * 0.016;
+    const width = 0.035 + rng() * 0.022;
     const root = 0.03 + rng() * 0.18;
     const lean = 0.08 + rng() * 0.23;
     const sx = Math.sin(angle);
@@ -357,13 +363,11 @@ export class WetBottomsSystem implements Subsystem {
       const trunkGeometry = alderTrunkGeometry();
       const crownGeometry = alderCrownGeometry();
       const trunkMaterial = windMaterial(new THREE.MeshLambertMaterial({
-        color: 0x625342,
-        vertexColors: true,
+        color: 0xffffff,
         flatShading: true,
       }), this.wind);
       const crownMaterial = windMaterial(new THREE.MeshLambertMaterial({
         color: 0xffffff,
-        vertexColors: true,
         flatShading: true,
       }), this.wind);
       const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, trees.length);
@@ -376,15 +380,15 @@ export class WetBottomsSystem implements Subsystem {
       for (const [index, tree] of trees.entries()) {
         this.position.set(tree.x, tree.y, tree.z);
         const surface = this.sampleGrade(tree.x, tree.z);
-        this.normal.set(-surface.gradeX, 1, -surface.gradeZ).normalize();
+        this.normal.set(-surface.gradeX * .12, 1, -surface.gradeZ * .12).normalize();
         this.rotation.setFromUnitVectors(UP, this.normal);
         this.yaw.setFromAxisAngle(UP, tree.yaw);
         this.rotation.multiply(this.yaw);
-        this.scale.set(1, tree.height, 1);
+        this.scale.set(.65, tree.height, .65);
         trunks.setMatrixAt(index, this.matrix.compose(this.position, this.rotation, this.scale));
         trunks.setColorAt(index, color.setHex(tree.trunkColor));
 
-        this.position.y = tree.y + tree.height * 0.77;
+        this.position.y = tree.y + tree.height * 0.9;
         this.scale.set(tree.crown, tree.crown * 0.72, tree.crown * 0.9);
         crowns.setMatrixAt(index, this.matrix.compose(this.position, this.rotation, this.scale));
         crowns.setColorAt(index, color.setHex(tree.crownColor));
@@ -445,7 +449,7 @@ export class WetBottomsSystem implements Subsystem {
     const logs = this.buildLogs(high);
     if (logs.length > 0) {
       const geometry = downedLogGeometry();
-      const material = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, flatShading: true });
+      const material = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
       const mesh = new THREE.InstancedMesh(geometry, material, logs.length);
       mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(logs.length * 3), 3);
       mesh.matrixAutoUpdate = false;
@@ -521,25 +525,26 @@ export class WetBottomsSystem implements Subsystem {
     return selected.length > 0 ? selected : area.trails.slice(0, 2);
   }
 
-  private buildAlders(high: boolean): TreePlacement[] {
+  private buildAlders(_high: boolean): TreePlacement[] {
     const area = this.landscape.area;
     const placements: TreePlacement[] = [];
     const rng = mulberry32(seeded(area.terrain.seed, 0xa1de7));
     for (const [trailIndex, trail] of this.wetTrails().entries()) {
       const length = trailLength(trail);
-      const count = Math.ceil(length / (high ? 25 : 34));
+      const count = Math.ceil(length / 1.3);
       for (let i = 1; i < count; i++) {
         const located = pointAlongTrail(trail, length * i / count);
         if (!located) continue;
         const side = (i + trailIndex) % 2 === 0 ? 1 : -1;
-        const offset = 10 + rng() * 15;
+        const band = i % 3;
+        const offset = 5 + band * 5 + rng() * 3.5;
         const px = located.point.x - located.tangent.y * offset * side;
         const py = located.point.y + located.tangent.x * offset * side;
         if (px < area.world.x + 12 || py < area.world.y + 12 || px > area.world.x + area.world.w - 12 || py > area.world.y + area.world.h - 12) continue;
-        if (area.dropPoints.some(drop => Math.hypot(px - drop.position.x, py - drop.position.y) < 25)) continue;
+        if (area.dropPoints.some(drop => Math.hypot(px - drop.position.x, py - drop.position.y) < 12)) continue;
         if (placements.some(tree => {
           this.landscape.worldToProperty(tree.x, tree.z, this.property);
-          return Math.hypot(this.property.x - px, this.property.y - py) < 18;
+          return Math.hypot(this.property.x - px, this.property.y - py) < 1.8;
         })) continue;
         this.landscape.surfaceAtProperty(px, py, this.sample);
         if (this.sample.slope > 0.72) continue;
@@ -548,16 +553,15 @@ export class WetBottomsSystem implements Subsystem {
           x: this.world.x,
           z: this.world.z,
           y: this.sample.height + 0.02,
-          height: 4.6 + rng() * 2.4,
-          crown: 1.8 + rng() * 1.25,
+          height: 2.4 + rng() * 2.8,
+          crown: 1.25 + rng() * .85,
           yaw: rng() * Math.PI * 2,
-          trunkColor: [0x58483c, 0x66503f, 0x705745][Math.floor(rng() * 3)],
-          crownColor: [0x4e684f, 0x5d7655, 0x6e8159][Math.floor(rng() * 3)],
+          trunkColor: [0x8c8573, 0x766b59, 0x9a9279][Math.floor(rng() * 3)],
+          crownColor: [0x657c58, 0x799166, 0x8b9968][Math.floor(rng() * 3)],
         });
       }
     }
-    const cap = high ? 90 : 46;
-    return placements.slice(0, cap);
+    return placements;
   }
 
   private buildSedges(ponds: readonly Pond[], high: boolean): SedgePlacement[] {
@@ -579,8 +583,28 @@ export class WetBottomsSystem implements Subsystem {
         placements.push({ x: this.world.x, z: this.world.z, y: this.sample.height + 0.012, scale: 0.72 + rng() * 0.46, yaw: rng() * Math.PI * 2, color: colors[(i + pondIndex) % colors.length] });
       }
     }
-    const cap = high ? 500 : 220;
-    return placements.slice(0, cap);
+    // Wet ground continues between pools. Broken sedge shoulders connect
+    // the pond rims to the approach without laying a prairie grass carpet.
+    for (const trail of this.wetTrails()) {
+      const length = trailLength(trail);
+      for (let distance = 10; distance < length; distance += high ? 2.8 : 4.5) {
+        const located = pointAlongTrail(trail, distance);
+        if (!located) continue;
+        for (const side of [-1, 1]) {
+          const offset = 3 + rng() * 10;
+          const px = located.point.x - located.tangent.y * offset * side;
+          const py = located.point.y + located.tangent.x * offset * side;
+          if (px < area.world.x || py < area.world.y || px > area.world.x + area.world.w || py > area.world.y + area.world.h) continue;
+          if (area.dropPoints.some(drop => Math.hypot(px - drop.position.x, py - drop.position.y) < 9)) continue;
+          this.landscape.surfaceAtProperty(px, py, this.sample);
+          if (this.sample.slope > .5) continue;
+          this.landscape.propertyToWorld(px, py, this.world);
+          placements.push({ x: this.world.x, z: this.world.z, y: this.sample.height + .012,
+            scale: .55 + rng() * .45, yaw: rng() * Math.PI * 2, color: colors[Math.floor(rng() * colors.length)] });
+        }
+      }
+    }
+    return placements;
   }
 
   private buildLogs(high: boolean): LogPlacement[] {
