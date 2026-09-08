@@ -1399,13 +1399,15 @@ export class BirdsSystem implements Subsystem {
       slot.y = this.terrain.heightAt(slot.x, slot.z) + 0.2;
       slot.vxW = speciesFlight.escX * FWD_MIN;
       slot.vzW = speciesFlight.escZ * FWD_MIN;
-      slot.vyW = -v.y * FLUSH_PX_TO_M_V;
       if (this.spatialEncounter && species.id === 'ringneck') {
         const distance = Math.hypot(slot.x - speciesFlight.hunterX, slot.z - speciesFlight.hunterZ);
         // Close birds break upward; distant birds carry away sooner. Keep
         // the actual launch location and random individual impulse intact.
-        slot.vyW *= THREE.MathUtils.lerp(1.25, .85, THREE.MathUtils.smoothstep(distance, 5, 28));
+        // Adjust the persistent controller input: flight ticks rebuild vyW
+        // from vel.y, and levelStep eases this impulse into forward flight.
+        slot.vel.y *= THREE.MathUtils.lerp(1.25, .85, THREE.MathUtils.smoothstep(distance, 5, 28));
       }
+      slot.vyW = -slot.vel.y * FLUSH_PX_TO_M_V;
       slot.spatialFlight = this.spatialFlightFor(
         species,
         speciesFlight.escX,

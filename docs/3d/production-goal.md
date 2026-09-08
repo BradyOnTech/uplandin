@@ -35,3 +35,6 @@ The same walking review exposed rectangular cattail heads and repetitive broad c
 
 
 South Gate seed 23 at evening reached a natural point and allowed closing to the dog, but its recorded rise was not acquired during tool observation gaps. Close-point text now distinguishes reaching the dog from working ahead of its nose and uses the dog's facing direction. Revalidate that guidance in a fresh hunt before treating it as an improvement to encounter completion. Successful ordinary shooting and recovery are still missing from the current presentation acceptance evidence.
+
+
+A natural West seed-7 frame sequence recorded a hen-flush cue without a clearly identifiable forward-view bird. Off-axis flight remains a hypothesis; use revealed-airborne projection diagnostics during a future rise to distinguish it from concealment. The same audit fixed a separate first-flight-tick overwrite of the intended close-flush vertical impulse. Its persistence now has regression proof, but complete ordinary shooting/recovery remains the priority.

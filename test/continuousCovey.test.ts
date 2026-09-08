@@ -173,6 +173,30 @@ describe('continuous Quail coveys', () => {
       f.runtime.tickBirds(1000 / 30);
     }
     expect(close.runtime.slots[0].vyW).toBeGreaterThan(far.runtime.slots[0].vyW * 1.3);
+    // Launch alone only checks the displayed velocity; the controller must
+    // retain that impulse when the first real flight tick moves the bird.
+    for (let i = 0; i < 15; i++) {
+      for (const f of [close, far]) f.runtime.tickBirds(1000 / 30);
+      expect(close.runtime.slots[0].vyW / far.runtime.slots[0].vyW).toBeCloseTo(1.25 / .85);
+    }
+    expect((close.runtime.slots[0].y - .2) / (far.runtime.slots[0].y - .2)).toBeCloseTo(1.25 / .85);
+  });
+  it.each([
+    { species: 'ringneck', spatial: false },
+    { species: 'bobwhite', spatial: true },
+  ])('keeps distance-independent climb for $species with spatial=$spatial', ({ species, spatial }) => {
+    const close = fixture(), far = fixture();
+    close.add(1, 1, 3, 0); far.add(1, 1, 40, 0);
+    for (const f of [close, far]) {
+      f.birds[0].speciesId = species;
+      f.runtime.spatialEncounter = spatial;
+      f.runtime.tickBirds(1000 / 30);
+    }
+    for (let i = 0; i < 15; i++) {
+      expect(close.runtime.slots[0].vyW).toBeCloseTo(far.runtime.slots[0].vyW);
+      for (const f of [close, far]) f.runtime.tickBirds(1000 / 30);
+    }
+    expect(close.runtime.slots[0].y).toBeCloseTo(far.runtime.slots[0].y);
   });
   it('lets pheasants punch above tall cover before leveling out without changing a low covey launch', () => {
     const pheasant = fixture(), quail = fixture();
