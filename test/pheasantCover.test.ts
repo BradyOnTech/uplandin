@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { getArea } from '../src/game/areas';
 import { LandscapeModel } from '../src/game/landscape';
 import type { Ctx } from '../src/three/engine';
+import { pheasantFields, pheasantHarvestAt, pheasantCoverFringeAt } from '../src/three/subsystems/pheasantLandscape';
 import { PheasantCoverSystem } from '../src/three/subsystems/pheasantCover';
 
 describe('Pheasant close ground layer', () => {
@@ -51,14 +52,21 @@ describe('Pheasant standing habitat', () => {
       const matrix = new THREE.Matrix4(), position = new THREE.Vector3(), rotation = new THREE.Quaternion(), scale = new THREE.Vector3();
       const roots: number[] = [];
       let tallMesh: THREE.InstancedMesh | undefined;
-      let minimumHeightScale = Infinity;
+      let minimumHeightScale = Infinity, mixedVergeRoots = 0;
+      const fields = pheasantFields(landscape.area), property = { x: 0, y: 0 };
       for (const mesh of prairie) for (let i = 0; i < mesh.count; i++) {
         mesh.getMatrixAt(i, matrix); matrix.decompose(position, rotation, scale);
-        if (scale.y / scale.x < 1.19) continue;
+        if (scale.y / scale.x < 1.19) {
+          landscape.worldToProperty(position.x, position.z, property);
+          if (pheasantHarvestAt(landscape.area, property.x, property.y, fields) > .65 &&
+            pheasantCoverFringeAt(landscape.area, property.x, property.y) > .02) mixedVergeRoots++;
+          continue;
+        }
         minimumHeightScale = Math.min(minimumHeightScale, scale.y);
         roots.push(position.x, position.z, scale.y);
         tallMesh ??= mesh;
       }
+      expect(mixedVergeRoots, 'Fringe grass must survive into partially harvested ground').toBeGreaterThan(10);
       expect(roots.length / 3).toBeGreaterThan(20000);
       expect(minimumHeightScale).toBeGreaterThan(1.35);
       stands.push(roots.join(','));
@@ -92,6 +100,6 @@ describe('Pheasant standing habitat', () => {
       expect(mesh.count).toBe(count);
       cover.dispose(ctx);
     }
-    expect(stands[1]).toEqual(stands[0]);
+    expect(stands[1] === stands[0], 'Both tiers must retain identical tall habitat roots and heights').toBe(true);
   }, 15000); // Builds both full-property tiers; allow for concurrent suite workers.
 });

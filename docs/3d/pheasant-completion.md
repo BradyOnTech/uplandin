@@ -246,3 +246,14 @@ The assisted West Pothole view at (130,80), yaw 30, pitch -5, morning, compares 
 A twenty-second Standard lateral walk from that staged start ended at (168.11,58.00), with active dog tracking, 113 draws and 2,848,499 triangles. The same local M1 Pro browser produced 2,400 animation-frame intervals, p95 9.2 ms, p99 9.3 ms and no gaps above 33.4 ms. This is callback cadence during traversal, not GPU timing, a shooting/retrieve workload or phone validation. The geometry increase remains a cost to revisit on weaker hardware.
 
 All 616 tests across 86 files, TypeScript checking and production build pass; the existing large-bundle warning remains. The heads have improved volume, while vegetation grouping, material variation and habitat transitions still need refinement.
+
+
+**Harvest and standing-cover transition**
+
+Harvest ground paint was continuous, but plant construction switched exclusively to stubble above a 0.3 harvest sample for an entire 2.8-yard cell. That could truncate the independently authored grassy fringe. Fringe roots now sample the same harvest and moisture fade used by terrain paint, gradually reducing fringe grass as cut ground increases. Stubble and verge grass can coexist; authoritative cover interiors are not subjected to this harvest thinning, and gameplay cover rectangles are unchanged.
+
+The first implementation exposed a quality-tier regression: omitted Lightweight stubble consumed fewer random values before neighboring grass. Both tiers now consume the same stubble variation before deciding whether to render it. The existing exact tall-root/height comparison passes again. It now reports a concise equality failure instead of dumping millions of characters. The standing-habitat check also verifies fringe grass exists in substantially harvested transition ground.
+
+The assisted West Track view at (97.95,156.69), yaw 0, pitch -8, morning, is recorded in `output/playwright/pheasant-harvest-fringe-before.png`, `pheasant-harvest-fringe-after.png` and `pheasant-harvest-fringe-lite.png`. Standard reported 1,755,431 triangles before and 1,756,269 after at 137 draws. Lightweight reported 1,023,508 triangles and 107 draws. The visual change fills some abrupt bare verge gaps without a new material or draw batch. These are static shape comparisons, not complete hunt or mobile performance evidence.
+
+All 616 tests across 86 files, TypeScript checking and production build pass; the existing large-bundle warning remains. Track shoulders, broader habitat composition and full ordinary-hunt acceptance remain open.

@@ -343,6 +343,7 @@ export class PheasantCoverSystem implements Subsystem {
     // complexity, not the height or presence of protective cover.
     const fields = pheasantFields(area), ponds = pheasantPonds(this.landscape);
     const harvestSample = { amount: 0, row: 0, angle: 0 };
+    const fringeHarvestSample = { amount: 0, row: 0, angle: 0 };
     const TILE = 168, spacing = 2.8;
     const straw = new THREE.Color(0xb8a477), amber = new THREE.Color(0xb18e59), olive = new THREE.Color(0x919872), reed = new THREE.Color(0xa99b76), color = new THREE.Color();
     type Plant = { x: number; y: number; scale: number; angle: number; color: number; low?: boolean; spread?: number; height?: number };
@@ -384,11 +385,15 @@ export class PheasantCoverSystem implements Subsystem {
           // Parallel machinery rows supply agricultural scale. Gaps and a
           // few taller grasses interrupt them along the habitat boundary.
           const stripe = .5 + .5 * Math.cos(harvestSample.row * Math.PI * .88);
-          if (rng() < (.25 + stripe * .50) * harvest && (!lite || keep > .35))
-            groups.stubble.push({ x, y, scale: .80 + rng() * .55, angle: harvestSample.angle + (rng() - .5) * .12, color: color.copy(straw).lerp(amber, rng() * .35).getHex() });
-          continue;
+          if (rng() < (.25 + stripe * .50) * harvest) {
+            // Consume the same variation in both tiers before fringe roots:
+            // lighter stubble must not move neighboring standing habitat.
+            const plant = { x, y, scale: .80 + rng() * .55, angle: harvestSample.angle + (rng() - .5) * .12,
+              color: color.copy(straw).lerp(amber, rng() * .35).getHex() };
+            if (!lite || keep > .35) groups.stubble.push(plant);
+          }
         }
-        if (cover || (harvest < .3 && pheasantCoverFringeAt(area, x, y) > .02)) {
+        if (cover || pheasantCoverFringeAt(area, x, y) > .02) {
           // Overlapping rooted clumps make a stand, rather than a scatter of
           // ornamental tufts. Preserve the same density on the lite tier.
           for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) {
@@ -399,7 +404,14 @@ export class PheasantCoverSystem implements Subsystem {
             const fringe = core ? 1 : pheasantCoverFringeAt(area, cx, cy);
             // A separate seed keeps core plant placement independent of fringe sampling.
             const fringeRng = mulberry32(cellSeed(Math.round(cx * 100), Math.round(cy * 100), area.terrain.seed ^ 0xf219));
-            if (!core && fringeRng() > fringe * .85) continue;
+            if (!core) {
+              // The ground painter blends cut fields continuously. Do the same
+              // at each fringe root instead of cutting off an entire grid cell.
+              samplePheasantHarvest(area, cx, cy, fields, fringeHarvestSample);
+              this.landscape.surfaceAtProperty(cx, cy, this.surface);
+              const cut = fringeHarvestSample.amount * (1 - THREE.MathUtils.smoothstep(this.surface.moisture, .25, .36));
+              if (fringeRng() > fringe * .85 * (1 - cut)) continue;
+            }
             if (pond && pond.waterY - this.landscape.heightAtProperty(cx, cy) > .12) continue;
             const wave = .5 + .5 * Math.sin(cx * .038 + Math.sin(cy * .051));
             groups.prairie.push({ x: cx, y: cy, scale: .94 + rng() * .22,
@@ -408,6 +420,7 @@ export class PheasantCoverSystem implements Subsystem {
           }
           continue;
         }
+        if (harvest > .3 && moisture < .36) continue;
         const drift = .50 + Math.sin(x * .065 + Math.sin(y * .038) * 2.4) * .27 + Math.cos(y * .07) * .20;
         // Low, weathered grass fills the spaces between standing bunches.
         // Reuse the prairie mesh so the extra ground layer needs no new draw.
