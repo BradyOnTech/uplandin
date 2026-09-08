@@ -237,6 +237,12 @@ Seasonal patches now use a feathered radial edge with irregular mottling instead
 
 Repeated twelve-second entry walks from West Track in Lightweight and South Gate in Standard. Evidence: `output/playwright/pheasant-feathered-frost-west.png` and `output/playwright/pheasant-feathered-frost-south.png`. The conspicuous white plates are gone in these views. Frost is now subtle; the overall scene still needs stronger vegetation grouping, ground variation and shelterbelt composition. Compilation and production build pass with existing chunk warnings, and the reviewed browser page reported no warnings or errors. No simulation tests were rerun for this material-only change. Snow-specific visibility and mobile shader cost remain unreviewed.
 
+**Pheasant ground layers and windbreak density**
+
+Added short, wider grass in selected spaces between standing bunches, using the existing prairie geometry and batches. Shelterbelts have more trees, broader mature crowns and irregular sapling placement, producing overlapping groups. This is a modest composition improvement; the open ground still looks sparse and the cottonwood crowns remain too round.
+
+A bent-blade experiment produced artificial triangular tips and excessive geometry, so it was removed. Final evidence: `output/playwright/pheasant-low-growth-south.png` (Standard) and `output/playwright/pheasant-low-growth-west.png` (Lightweight), both after twelve seconds of forward walking. Earlier `pheasant-layered-*` images are rejected iterations. The final West sample recorded 119 draws and 245,264 triangles versus 119 draws and 201,948 triangles before this pass. That added geometry needs mobile measurement; the short desktop sample is not a device benchmark. All 23 property habitat contract checks, compilation and production build pass. Existing chunk warnings remain; the reviewed page had no browser warnings or errors. No complete hunting encounter was established by these entry walks.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

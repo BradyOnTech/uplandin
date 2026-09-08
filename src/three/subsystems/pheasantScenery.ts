@@ -205,8 +205,9 @@ export class PheasantScenerySystem implements Subsystem {
     const rotation = new THREE.Quaternion(), matrix = new THREE.Matrix4();
     const rng = mulberry32(seeded(this.landscape.area.terrain.seed, 641));
     for (const belt of pheasantShelterbelts(this.landscape.area)) {
-      for (let i = 0; i < belt.count; i++) {
-        const t = i / (belt.count - 1);
+      const plantingCount = Math.ceil(belt.count * 1.65);
+      for (let i = 0; i < plantingCount; i++) {
+        const t = i / (plantingCount - 1);
         // Retain the farm windbreak line, but give it surviving groups,
         // replacement saplings and openings instead of identical spacing.
         const clustered = t + Math.sin(t * Math.PI * 6) * .035;
@@ -218,9 +219,9 @@ export class PheasantScenerySystem implements Subsystem {
         const ground = this.landscape.surfaceAtProperty(x, y, this.surface);
         if (ground.moisture > .72 || ground.slope > .4) continue;
         this.landscape.propertyToWorld(x, y, this.world);
-        const young = i % 4 === 1;
+        const young = rng() < .28;
         const height = young ? 3.5 + rng() * 2.5 : 8 + rng() * 5;
-        const breadth = young ? .78 : 1 + rng() * .25;
+        const breadth = young ? .78 : 1.16 + rng() * .32;
         rotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng() * Math.PI * 2);
         position.set(this.world.x, ground.height + height * .36, this.world.z);
         scale.set(.8 + rng() * .4, height * .72, .8 + rng() * .4);

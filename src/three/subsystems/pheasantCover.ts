@@ -150,7 +150,7 @@ export class PheasantCoverSystem implements Subsystem {
     const harvestSample = { amount: 0, row: 0, angle: 0 };
     const TILE = lite ? 216 : 144, spacing = 2.8;
     const straw = new THREE.Color(0xb8a477), amber = new THREE.Color(0xb18e59), olive = new THREE.Color(0x919872), reed = new THREE.Color(0xa99b76), color = new THREE.Color();
-    type Plant = { x: number; y: number; scale: number; angle: number; color: number };
+    type Plant = { x: number; y: number; scale: number; angle: number; color: number; low?: boolean };
     for (let ty = area.world.y; ty < area.world.y + area.world.h; ty += TILE) for (let tx = area.world.x; tx < area.world.x + area.world.w; tx += TILE) {
       const groups: Record<keyof typeof geometries, Plant[]> = { prairie: [], cattail: [], stubble: [] };
       for (let row = 0; row < Math.ceil(TILE / spacing); row++) for (let column = 0; column < Math.ceil(TILE / spacing); column++) {
@@ -179,6 +179,14 @@ export class PheasantCoverSystem implements Subsystem {
           continue;
         }
         const drift = .50 + Math.sin(x * .065 + Math.sin(y * .038) * 2.4) * .27 + Math.cos(y * .07) * .20;
+        // Low, weathered grass fills the spaces between standing bunches.
+        // Reuse the prairie mesh so the extra ground layer needs no new draw.
+        if (!cover && keep < (lite ? .18 : .28) && drift < .64) {
+          groups.prairie.push({ x, y, scale: .65 + rng() * .5, low: true,
+            angle: rng() * Math.PI * 2,
+            color: color.copy(amber).lerp(olive, .35 + moisture * .3).getHex() });
+          continue;
+        }
         const chance = (cover ? .94 : .23 + vegetation * .28) * (.34 + drift * .72);
         if (rng() < chance && (!lite || keep > .30)) {
           const scale = (cover ? .95 : .60) + rng() * .42;
@@ -193,7 +201,7 @@ export class PheasantCoverSystem implements Subsystem {
         for (const [i, plant] of plants.entries()) {
           this.landscape.propertyToWorld(plant.x, plant.y, this.world); this.landscape.surfaceAtProperty(plant.x, plant.y, this.surface);
           normal.set(-this.surface.gradeX, 1, -this.surface.gradeZ).normalize(); rotation.setFromUnitVectors(up, normal);
-          yaw.setFromAxisAngle(up, plant.angle); rotation.multiply(yaw); scale.setScalar(plant.scale);
+          yaw.setFromAxisAngle(up, plant.angle); rotation.multiply(yaw); scale.set(plant.scale * (plant.low ? 1.15 : 1), plant.scale * (plant.low ? .30 : 1), plant.scale * (plant.low ? 1.15 : 1));
           position.set(this.world.x, this.surface.height - .022, this.world.z);
           mesh.setMatrixAt(i, matrix.compose(position, rotation, scale)); mesh.setColorAt(i, color.setHex(plant.color));
         }
