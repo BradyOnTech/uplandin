@@ -249,6 +249,12 @@ Continued the West Track walk beyond the entry view using forward input. A first
 
 The flush label now explicitly says `HEN FLUSH · HOLD FIRE` when every bird in the rise is a hen. Rooster labels remain unchanged. The existing hen penalty is unchanged. Added focused hen/rooster label checks through the public flush path; all 23 Hunt3D checks and compilation pass. Screenshots predate the wording change and establish encounter behavior, not the revised wording. The main remaining encounter task is to intercept a running rooster rather than simply follow behind it, and judge whether the cover and guidance make that choice understandable.
 
+**South approach and explicit replay seeds**
+
+Walked the South approach to a point at approximately 48 seconds, then used a camera-only heading adjustment and normal forward input to flush a hen. The live `HOLD FIRE` label is visible in `output/playwright/pheasant-south-point-flush.png`. Continued past the homestead, consulted the survey map and reached another point; this also flushed a hen. These walks used assisted turns, no position teleport, forced flush or shot. They do not prove mouse aiming or a rooster retrieval.
+
+Inspection of the default South setup found seven hens and three roosters, with the first six placed birds hens. Trying an alternative replay exposed a limitation: non-Quail maps ignored explicit seed parameters. Explicit seeds now vary their authored encounter and bird streams while retaining map terrain, species, stocking and placement rules. Unseeded defaults retain the original stable streams. Quail retains its dedicated encounter generator. Added a replay check covering repeatability, variation, unchanged species/count/property and stable defaults. All 59 focused checks across gameplay setup, Hunt3D, Quail encounters and property contracts pass, as do compilation and build (existing chunk warnings remain). Seed 1 has a rooster in its first placement and is open for the next reference walk; its successful encounter remains unverified.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

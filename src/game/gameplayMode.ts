@@ -204,18 +204,20 @@ export function createThreeHuntSetup(
   const challenge = resolveThreeHuntChallenge(search, storage);
   const tuning = HUNT_CHALLENGES[challenge];
   const resolvedArea = resolveThreeHuntArea(search, storage);
-  const seed = resolvedArea.id === 'quail-fields' ? parseHuntSeed(search) ?? Math.floor(rng() * 0x100000000) : undefined;
+  const isQuail = resolvedArea.id === 'quail-fields';
+  const seed = parseHuntSeed(search) ?? (isQuail ? Math.floor(rng() * 0x100000000) : undefined);
   const environmentRng = seed === undefined ? rng : mulberry32(huntStreamSeed(seed, 0xe071));
   // Authored non-Quail properties use their own stable encounter streams so
   // route sampling cannot consume the weather/wind stream or change when a
   // player revisits the same drop. The two drop entries get different, but
-  // repeatable, cover ordering.
+  // repeatable, cover ordering. An explicit replay seed varies both streams
+  // without changing the property terrain or the authored placement rules.
   const dropSalt = dropPointId === 'west-track' ? 0x4a9f : 0x17c3;
-  const authoredEncounterRng = mulberry32(huntStreamSeed(resolvedArea.terrain.seed, 0xa11c0a ^ dropSalt));
-  const authoredBirdRng = mulberry32(huntStreamSeed(resolvedArea.terrain.seed, 0xb17d7d ^ dropSalt));
+  const authoredEncounterRng = mulberry32(huntStreamSeed(seed ?? resolvedArea.terrain.seed, 0xa11c0a ^ dropSalt));
+  const authoredBirdRng = mulberry32(huntStreamSeed(seed ?? resolvedArea.terrain.seed, 0xb17d7d ^ dropSalt));
   const challengeOptions = {
     stockingMult: tuning.stocking, encounterNerveMult: tuning.nerve,
-    ...(seed === undefined ? {
+    ...(!isQuail ? {
       // Quail keeps its seeded calibration below. Other 3D properties use
       // their authored route network to place cover encounters; 2D callers
       // never pass this option and retain the original scatter behavior.
@@ -233,8 +235,8 @@ export function createThreeHuntSetup(
       coveyAnchors: authoredEncounterAnchors(resolvedArea, dropPointId, authoredEncounterRng),
     } : {
       birdCount: QUAIL_FIELD_BIRD_COUNT,
-      birdRng: mulberry32(huntStreamSeed(seed, 0xb17d)),
-      coveyAnchors: quailEncounterAnchors(resolvedArea, dropPointId, mulberry32(huntStreamSeed(seed, 0xc07e))),
+      birdRng: mulberry32(huntStreamSeed(seed!, 0xb17d)),
+      coveyAnchors: quailEncounterAnchors(resolvedArea, dropPointId, mulberry32(huntStreamSeed(seed!, 0xc07e))),
     }),
   };
 

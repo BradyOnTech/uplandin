@@ -24,6 +24,23 @@ function memoryStorage(): StorageLike & { data: Record<string, string> } {
 }
 
 describe('gameplay mode and shared hunt launch', () => {
+  it('replays explicit Pheasant seeds without using Quail stocking or changing the property', () => {
+    const setup = (seed?: number, rngSeed = 1) => createThreeHuntSetup(
+      `?area=pheasant-coverts&drop=south-gate${seed === undefined ? '' : `&seed=${seed}`}`,
+      mulberry32(rngSeed), memoryStorage());
+    const snapshot = (result: ReturnType<typeof setup>) => result.hunt.birds.map(bird => ({
+      species: bird.speciesId, sex: bird.sex, pos: bird.pos, runs: bird.runs,
+    }));
+    const first = setup(1), replay = setup(1, 900), different = setup(2), original = setup();
+    expect(first.seed).toBe(1);
+    expect(snapshot(first)).toEqual(snapshot(replay));
+    expect(snapshot(first)).not.toEqual(snapshot(different));
+    expect(first.hunt.birds).toHaveLength(original.hunt.birds.length);
+    expect(first.hunt.birds.every(bird => bird.speciesId === 'ringneck')).toBe(true);
+    expect(first.area).toEqual(original.area);
+    expect(snapshot(original)).toEqual(snapshot(setup(undefined, 999)));
+  });
+
   it('defaults to 2D and persists either renderer without touching career', () => {
     const storage = memoryStorage();
     const { career } = addDogToKennel(emptyCareer(), 'Millie', 'gsp');
