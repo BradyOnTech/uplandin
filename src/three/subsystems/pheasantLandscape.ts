@@ -1,5 +1,6 @@
 import type { AreaConfig } from '../../game/areas';
 import { PROPERTY_PX_TO_M, type LandscapeModel } from '../../game/landscape';
+import { pheasantPondRadii } from '../../game/pheasantHabitat';
 
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
 /** Vertical offset from the sampled pond basin floor used by all Pheasant water surfaces. */
@@ -77,7 +78,7 @@ export function pheasantPlantClear(area: AreaConfig, x: number, y: number, radiu
 export function pheasantPonds(landscape: LandscapeModel): PheasantPond[] {
   return landscape.area.landmarks.filter(l => l.kind === 'pond').map(l => ({
     landmarkId: l.id,
-    x: l.position.x, y: l.position.y, rx: l.id === 'area-feature' ? 34 : 43, ry: l.id === 'area-feature' ? 23 : 29,
+    x: l.position.x, y: l.position.y, rx: pheasantPondRadii(l.id).rx, ry: pheasantPondRadii(l.id).rz,
     waterY: landscape.heightAtProperty(l.position.x, l.position.y) + PHEASANT_WATER_LEVEL_OFFSET,
   }));
 }

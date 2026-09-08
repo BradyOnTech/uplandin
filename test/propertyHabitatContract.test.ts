@@ -5,8 +5,44 @@ import { LandscapeModel, PROPERTY_PX_TO_M } from '../src/game/landscape';
 import { PropertyTrailsSystem } from '../src/three/subsystems/propertyTrails';
 import { pheasantPonds, samplePheasantHarvest } from '../src/three/subsystems/pheasantLandscape';
 import type { Ctx } from '../src/three/engine';
+import { spawnBirds } from '../src/game/birds';
+import { mulberry32 } from '../src/game/math';
+import { createThreeHuntSetup } from '../src/game/gameplayMode';
 
 describe('authored habitat contracts', () => {
+  it('keeps pheasant cover and its initial birds outside open water', () => {
+    const area = getArea('pheasant-coverts'), landscape = new LandscapeModel(area);
+    const ponds = pheasantPonds(landscape);
+    for (const patch of area.patches) {
+      expect(patch.x).toBeGreaterThanOrEqual(area.world.x);
+      expect(patch.y).toBeGreaterThanOrEqual(area.world.y);
+      expect(patch.x + patch.w).toBeLessThanOrEqual(area.world.x + area.world.w);
+      expect(patch.y + patch.h).toBeLessThanOrEqual(area.world.y + area.world.h);
+      for (const pond of ponds) {
+        // The nearest point of each rectangle proves the entire footprint
+        // remains outside the water, including between sampled corners.
+        const x = Math.max(patch.x, Math.min(pond.x, patch.x + patch.w));
+        const y = Math.max(patch.y, Math.min(pond.y, patch.y + patch.h));
+        expect(Math.hypot((x - pond.x) * PROPERTY_PX_TO_M / pond.rx,
+          (y - pond.y) * PROPERTY_PX_TO_M / pond.ry)).toBeGreaterThan(1.15);
+      }
+    }
+    for (let seed = 0; seed < 12; seed++) {
+      const birds = spawnBirds({ patches: area.patches, bounds: area.world, speciesMix: area.speciesMix, birdCount: 60 }, mulberry32(seed));
+      expect(birds).toHaveLength(60);
+      for (const bird of birds) for (const pond of ponds) {
+        expect(Math.hypot((bird.pos.x - pond.x) * PROPERTY_PX_TO_M / pond.rx,
+          (bird.pos.y - pond.y) * PROPERTY_PX_TO_M / pond.ry)).toBeGreaterThan(1.15);
+      }
+    }
+    for (const drop of area.dropPoints) for (const challenge of ['relaxed', 'balanced', 'wild']) {
+      const { hunt } = createThreeHuntSetup(`?area=pheasant-coverts&drop=${drop.id}&challenge=${challenge}`, mulberry32(22), null);
+      for (const bird of hunt.birds) for (const pond of ponds) {
+        expect(Math.hypot((bird.pos.x - pond.x) * PROPERTY_PX_TO_M / pond.rx,
+          (bird.pos.y - pond.y) * PROPERTY_PX_TO_M / pond.ry)).toBeGreaterThan(1.15);
+      }
+    }
+  });
   it.each(AREAS)('$name has finite, connected routes from both entries', area => {
     const graph = new Map<string, Set<string>>();
     const key = (p: { x: number; y: number }) => `${p.x},${p.y}`;

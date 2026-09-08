@@ -3,6 +3,7 @@ import { scatterRects, type Rect } from './field';
 import { mulberry32 } from './math';
 import type { SpeciesShare } from './species';
 import type { Vec2 } from './types';
+import { pheasantDryCover, pheasantShoreCover } from './pheasantHabitat';
 
 export type LandmarkKind = 'gate' | 'windmill' | 'barn' | 'pond' | 'fence';
 
@@ -241,6 +242,10 @@ function pheasantGeography(w: number, h: number) {
   return {
     ...base,
     landmarks,
+    patches: pheasantDryCover([
+      ...scatterRects(world(w, h), { count: 30, minW: 90, maxW: 170, minH: 28, maxH: 50 }, mulberry32(22)),
+      ...pheasantShoreCover(landmarks),
+    ], landmarks),
     // Pheasant routes follow water and the outer edge of cover. The dog can
     // run a line, relocate at the next pocket, and use the fence as a stop;
     // these are physical routes shared by the survey map and ground ribbon.
@@ -472,7 +477,6 @@ export const AREAS: AreaConfig[] = [
     world: world(1400, 800),
     terrain: terrain('wetland', 2201),
     ...pheasantGeography(1400, 800),
-    patches: [...scatterRects(world(1400, 800), { count: 30, minW: 90, maxW: 170, minH: 28, maxH: 50 }, mulberry32(22)), ...entryCover(1400, 800, 22)],
     stocking: 0.85,
     speciesMix: [
       { speciesId: 'ringneck', weight: 0.8 },

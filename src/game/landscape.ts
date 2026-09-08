@@ -6,9 +6,11 @@ import {
 } from './areas';
 import type { Vec2 } from './types';
 import { quailDrainageAt } from './quailLandscape';
+import { pheasantPondRadii } from './pheasantHabitat';
+import { PROPERTY_PX_TO_M } from './worldUnits';
 
 /** One shared map pixel is one yard in the 3D presentation. */
-export const PROPERTY_PX_TO_M = 0.9144;
+export { PROPERTY_PX_TO_M } from './worldUnits';
 
 /**
  * The selected parking place is kept near the origin for render precision.
@@ -302,8 +304,7 @@ function pheasantLandform(area: AreaConfig): LandformAdapter {
     .map((landmark) => ({
       x: (landmark.position.x - canonical.position.x) * PROPERTY_PX_TO_M + HUNT_WORLD_ANCHOR.x,
       z: (landmark.position.y - canonical.position.y) * PROPERTY_PX_TO_M + HUNT_WORLD_ANCHOR.z,
-      rx: landmark.id === 'area-feature' ? 34 : 43,
-      rz: landmark.id === 'area-feature' ? 23 : 29,
+      ...pheasantPondRadii(landmark.id),
     }));
   const wetnessAt = (x: number, z: number): number => {
     let wetness = 0;
