@@ -66,10 +66,23 @@ describe('Pheasant standing habitat', () => {
       const mesh = tallMesh!;
       ctx.camera.position.copy(mesh.boundingSphere!.center); cover.update(ctx);
       const near = mesh.geometry.getAttribute('position').count;
+      const assertFold = () => {
+        // Two culm triangles precede the leaf. Its left/right root faces
+        // now meet at a shallow ridge instead of sharing one sheet normal.
+        const normal=mesh.geometry.getAttribute('normal');
+        const left=new THREE.Vector3().fromBufferAttribute(normal,9);
+        const right=new THREE.Vector3().fromBufferAttribute(normal,15);
+        expect(left.dot(right)).toBeLessThan(.99);
+        expect(left.dot(right)).toBeGreaterThan(.5);
+      };
+      assertFold();
       const count = mesh.count;
       const center = ctx.camera.position.clone();
       ctx.camera.position.x = mesh.boundingBox!.max.x + 29; cover.update(ctx);
       const middle = mesh.geometry.getAttribute('position').count;
+      const middleNormals=mesh.geometry.getAttribute('normal');
+      expect(new THREE.Vector3().fromBufferAttribute(middleNormals,6)
+        .dot(new THREE.Vector3().fromBufferAttribute(middleNormals,9))).toBeCloseTo(1,5);
       expect(middle).toBeLessThan(near);
       ctx.camera.position.copy(center);
       ctx.camera.position.x += 120; cover.update(ctx);

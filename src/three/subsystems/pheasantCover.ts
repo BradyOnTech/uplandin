@@ -107,18 +107,43 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
       const bendZ=z+sz*lean*.87+pz*curve*.65;
       const bendY=height*.77;
       const w=width*.72;
-      push([
-        x-px*rootWidth,0,z-pz*rootWidth, x+px*rootWidth,0,z+pz*rootWidth,
-        shoulderX+px*w,shoulderY,shoulderZ+pz*w,
-        x-px*rootWidth,0,z-pz*rootWidth, shoulderX+px*w,shoulderY,shoulderZ+pz*w,
-        shoulderX-px*w,shoulderY,shoulderZ-pz*w,
-        shoulderX-px*w,shoulderY,shoulderZ-pz*w, shoulderX+px*w,shoulderY,shoulderZ+pz*w,
-        bendX+px*w*.45,bendY,bendZ+pz*w*.45,
-        shoulderX-px*w,shoulderY,shoulderZ-pz*w, bendX+px*w*.45,bendY,bendZ+pz*w*.45,
-        bendX-px*w*.45,bendY,bendZ-pz*w*.45,
-        bendX-px*w*.45,bendY,bendZ-pz*w*.45, bendX+px*w*.45,bendY,bendZ+pz*w*.45,
-        endX,endY,endZ,
-      ],tone);
+      if (medium) {
+        push([
+          x-px*rootWidth,0,z-pz*rootWidth, x+px*rootWidth,0,z+pz*rootWidth,
+          shoulderX+px*w,shoulderY,shoulderZ+pz*w,
+          x-px*rootWidth,0,z-pz*rootWidth, shoulderX+px*w,shoulderY,shoulderZ+pz*w,
+          shoulderX-px*w,shoulderY,shoulderZ-pz*w,
+          shoulderX-px*w,shoulderY,shoulderZ-pz*w, shoulderX+px*w,shoulderY,shoulderZ+pz*w,
+          bendX+px*w*.45,bendY,bendZ+pz*w*.45,
+          shoulderX-px*w,shoulderY,shoulderZ-pz*w, bendX+px*w*.45,bendY,bendZ+pz*w*.45,
+          bendX-px*w*.45,bendY,bendZ-pz*w*.45,
+          bendX-px*w*.45,bendY,bendZ-pz*w*.45, bendX+px*w*.45,bendY,bendZ+pz*w*.45,
+          endX,endY,endZ,
+        ],tone);
+      } else {
+      // Keep every outer vertex, root and RNG sample unchanged. A shallow
+      // center fold gives the two faces different normals as light crosses
+      // the leaf instead of leaving one flat sheet from edge to edge.
+      const fold = w * .4;
+      const row = (cx:number,cy:number,cz:number,halfWidth:number,ridge:number) => ({
+        left: [cx-px*halfWidth,cy,cz-pz*halfWidth],
+        center: [cx+sx*ridge,cy,cz+sz*ridge],
+        right: [cx+px*halfWidth,cy,cz+pz*halfWidth],
+      });
+      const rows = [row(x,0,z,rootWidth,0),
+        row(shoulderX,shoulderY,shoulderZ,w,fold),
+        row(bendX,bendY,bendZ,w*.45,fold*.45)];
+      for (let segment=0;segment<2;segment++) {
+        const a=rows[segment],b=rows[segment+1];
+        push([
+          ...a.left,...a.center,...b.center, ...a.left,...b.center,...b.left,
+          ...a.center,...a.right,...b.right, ...a.center,...b.right,...b.center,
+        ],tone);
+      }
+      const end=rows[2];
+      push([...end.left,...end.center,endX,endY,endZ,
+        ...end.center,...end.right,endX,endY,endZ],tone);
+      }
     } else {
       // Three tapered facets give the blade a visible lower body and a bent
       // silhouette. One root-to-tip triangle reduced prairie to toothpicks.

@@ -199,3 +199,15 @@ An actual browser OfflineAudioContext rendered the procedural rooster launch at 
 Focused coverage exercises the current camera for delayed takeoff, turn-relative pan, silent frozen review, shared routing, node cleanup and muting. Natural listening review, the sound palette and actual phone output remain open.
 
 All 611 tests across 86 files, TypeScript checking and the production build pass. The existing large-bundle warning remains.
+
+**Nearby leaf folds and traversal timing**
+
+Near prairie leaves now have a shallow central fold so lighting can separate their two faces. Roots, existing outer vertices, width, arch height, random sequence, instance placement and habitat density remain unchanged. The first version also folded middle-detail leaves; matched Standard geometry rose from 1,250,549 to 1,712,894 triangles for a subtle visual difference. That version was rejected. The retained near-only version uses a stronger fold and 1,466,459 triangles at the same view, with the same 155 draws. Middle and far geometry retain their earlier shapes. Cost per near clump is 90 additional triangles in Standard and 50 in Lightweight.
+
+The explicitly positioned West Track view at (129,95), yaw -98, pitch -8, morning, is recorded in `output/playwright/pheasant-leaf-fold-before.png`, the discarded `pheasant-leaf-fold-after.png`, the retained `pheasant-leaf-fold-near.png`, and `pheasant-leaf-fold-lite.png`. The fold adds close surface definition; the stand still needs broader composition and material refinement before visual acceptance. It is not a replacement for the dense-cover requirement.
+
+Twenty-second forward walks from that assisted start used the actual movement controls and active dog simulation. Both ended around (172.58,101.12), with the dog tracking around (200.42,99.68). On the same M1 Pro/Chrome/ANGLE Metal setup as the preceding timing record, Standard measured 119.95 callbacks/second and Lightweight 120.02. Both had p95 9.2 milliseconds, p99 9.3 milliseconds and no callback gaps above 33.4 milliseconds. Standard ended at 2,337,993 triangles/149 draws; Lightweight at 1,103,136 triangles/128 draws. These are short traversal samples with no airborne birds, shooting or retrieve, and they measure scheduling rather than GPU time. They do not establish lower-end or phone performance.
+
+An attempt to enumerate mobile devices through xctrace could not run because that developer utility is unavailable. This establishes a missing inspection tool, not that no phone exists. Actual phone validation remains open.
+
+All 611 tests across 86 files, TypeScript checking and the production build pass. The existing large-bundle warning remains.
