@@ -56,10 +56,10 @@ function formations(area: AreaConfig): Formation[] {
 /** A fractured seven-sided slab with broad, uneven bedding planes. */
 export function chukarStoneGeometry(variant = 0, gravel = false): THREE.BufferGeometry {
   const rng = mulberry32(seed(variant, 3, 31)), positions: number[] = [], colors: number[] = [];
-  const outline = gravel ? [[-.5, -.38], [.42, -.47], [.53, .32], [-.34, .49]]
+  const outline = gravel ? [[-.52, -.16], [-.24, -.43], [.31, -.39], [.52, .06], [.23, .45], [-.38, .31]]
     : [[-.5, -.38], [-.19, -.56], [.45, -.44], [.56, -.06], [.39, .52], [-.14, .42], [-.54, .23]];
-  const rings = (gravel ? [0, 1] : [0, .24, .29, .61, .67, 1]).map((y, ring) => outline.map(([x, z], n) => {
-    const spread = gravel ? (ring === 0 ? .89 : .72 + rng() * .16)
+  const rings = (gravel ? [0, .44, 1] : [0, .24, .29, .61, .67, 1]).map((y, ring) => outline.map(([x, z], n) => {
+    const spread = gravel ? (ring === 0 ? .82 : ring === 1 ? .88 + rng() * .1 : .42 + rng() * .19)
       : [1.04, 1.03, .90, .88, .77, .71][ring];
     return new THREE.Vector3(x * spread + y * .13, y + (y > 0 ? Math.sin(n * 2.7 + variant) * .035 : 0), z * spread - y * .08);
   }));

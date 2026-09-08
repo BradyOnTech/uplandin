@@ -301,6 +301,12 @@ Replaced the shared Quail soil/straw shader detail with a Chukar-specific proced
 
 Reviewed twelve-second morning walks in Lightweight and Standard: `output/playwright/chukar-scree-ground-lite.png` and `output/playwright/chukar-scree-ground-high.png`. The hill reads as stony ground and the walking strip is clearer. Chips are still a flat surface treatment; larger stone geometry supplies actual relief. This adds no textures, meshes or draw calls. Standard reported the same 151 draws and 357,660 triangles, with a 9.5-millisecond 95th-percentile desktop frame interval in the short sample. Shader cost on mobile, long-range transitions and sustained motion artifacts remain unmeasured. Compilation and build pass with existing chunk warnings. The Lightweight page reported no warnings or errors; no simulation tests rerun for this material-only change.
 
+**Chukar West talus profile**
+
+An eighteen-second West Track walk revealed that nearby talus looked like manufactured rectangular blocks. Replaced the four-sided, two-ring chip with an irregular six-sided profile and a beveled shoulder/top. Placement, material and collision behavior are unchanged; the shared stone geometry now has 32 triangles versus 12 previously. This adds vertices but no new draw submissions.
+
+Reviewed the same West approach in both modes: `output/playwright/chukar-west-beveled-talus.png` and `output/playwright/chukar-west-beveled-talus-lite.png`. The nearer stones read less like blocks; large distant ribs and broad empty slopes remain unfinished. Standard reported 192 draws and 447,776 triangles; Lightweight reported 168 draws and 144,772 triangles. These are desktop scene counts, not mobile readiness evidence. Compilation and build pass with existing chunk warnings; the Lightweight page had no warnings or errors. No simulation tests rerun for this geometry-only change. The west vista also exposes a plain distant landform transition that needs a broader composition review.
+
 **Next work, in order**
 
 1. Use the Seed 1 South reference route to judge environment improvements from arrival through the known runner encounter. Review a full encounter with ordinary aiming separately; the assisted reference does not establish input usability.
