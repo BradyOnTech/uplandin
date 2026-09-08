@@ -975,10 +975,12 @@ export class BirdsSystem implements Subsystem {
         // share the same pace once they left the cover. Keep a gentle wing-in
         // ramp, then let each species' glide/level beat shape the carry.
         const speedT = Math.min(1, s.airMs / FWD_RAMP_MS);
+        const pheasantLaunch = s.species.id === 'ringneck';
+        const launchDrive = pheasantLaunch ? .45 + .55 * THREE.MathUtils.smoothstep(s.airMs, 0, 900) : 1;
         const speciesFwd = (fl.speedMin + (fl.speedMax - fl.speedMin) * speedT) * .055;
         const glideK = fl.glideAfterMs !== undefined && s.airMs > fl.glideAfterMs ? .84 : 1;
         const levelK = fl.levelAfterMs !== undefined && s.airMs > fl.levelAfterMs ? 1.1 : 1;
-        const fwd = Math.max(FWD_MIN, speciesFwd) * doctrine.flight.carry *
+        const fwd = Math.max(FWD_MIN, speciesFwd * launchDrive) * doctrine.flight.carry *
           (s.young ? YOUNG_FLIGHT_MULT : 1) * glideK * levelK;
         // Lateral ramp (iteration 3): the 2D fan speeds are instant-on —
         // honest on a flat screen, but in world space they tore the covey
@@ -1010,7 +1012,10 @@ export class BirdsSystem implements Subsystem {
             : doctrine.style === 'canyon' ? Math.tan(24 * Math.PI / 180) : LOW_ELEV_TAN;
         const free = Math.min(1, Math.max(0, (s.airMs - lowMs) / climbRampMs));
         const climbCap = horizV * (lowElevationTan + free * (downhillFlight ? 1.05 : 1.8));
-        if (s.vyW > climbCap) {
+        // Pheasants punch upward out of standing cover; the authored
+        // levelAfterMs controller then turns the burst into forward carry.
+        // Applying the covey's low cap here buried the first wingbeats.
+        if (!pheasantLaunch && s.vyW > climbCap) {
           const excess = s.vyW - climbCap;
           s.vyW = climbCap;
           s.vxW += flight.escX * excess * 0.4;

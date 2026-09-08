@@ -21,7 +21,7 @@ function fixture() {
     simToWorld: (x:number,y:number,out:{x:number;z:number}) => Object.assign(out,{x,z:y}),
     coverPatches: () => [], lastFlushInfo: () => null, finishRise, resolveBird: vi.fn(), recordFallWorld: vi.fn() };
   runtime.terrain = { heightAt: () => 0 };
-  runtime.applySpeciesAppearance = () => {}; runtime.burstDebris = () => {};
+  runtime.applySpeciesAppearance = (slot: { species: unknown }, species: unknown) => { slot.species = species; }; runtime.burstDebris = () => {};
   runtime.slots = Array.from({length:14},()=>({status:'idle',root:new THREE.Group(),vel:{x:0,y:0},species:getSpecies('bobwhite')}));
   const add = (id:number,coveyId:number,x:number,y:number) => birds.push({id,coveyId,pos:{x,y},state:'flushed',speciesId:'bobwhite',runs:false,runEnergy:0,restingMs:0,nerveMs:0});
   return { runtime, birds, add, finishRise };
@@ -58,6 +58,21 @@ describe('continuous Quail coveys', () => {
       f.runtime.launchCover!.dispose();
     }
   });
+  it('lets pheasants punch above tall cover before leveling out without changing a low covey launch', () => {
+    const pheasant = fixture(), quail = fixture();
+    for (const f of [pheasant, quail]) f.add(1, 1, 40, 20);
+    pheasant.birds[0].speciesId = 'ringneck';
+    for (const f of [pheasant, quail]) f.runtime.tickBirds(1000 / 30);
+    for (let i = 0; i < 18; i++) for (const f of [pheasant, quail]) f.runtime.tickBirds(1000 / 30);
+    const cock = pheasant.runtime.slots[0], bobwhite = quail.runtime.slots[0];
+    expect(cock.y).toBeGreaterThan(2);
+    expect(cock.y).toBeGreaterThan(bobwhite.y);
+    const launchClimb = cock.vyW;
+    for (let i = 0; i < 60; i++) pheasant.runtime.tickBirds(1000 / 30);
+    expect(cock.vyW).toBeLessThan(launchClimb * .5);
+    expect(cock.status).toBe('flying');
+  });
+
   it('hands the actual ground contact to the simulation, but gives no landing for a fly-away', () => {
     const f = fixture();
     const resolveBird = vi.fn((id: number, outcome: Bird['state']) => {

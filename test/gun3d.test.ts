@@ -73,7 +73,7 @@ describe('3D shotgun action', () => {
       get: (id: string) => ({ hunt3d: hunt, birds, terrain: { heightAt: () => 0 } }[id]),
     } as unknown as Ctx;
     const gun = new GunSystem(); gun.init(ctx);
-    const key = (code: string, repeat = false) => window.dispatchEvent(Object.assign(new Event('keydown', { cancelable: true }), { code, key: code === 'Space' ? ' ' : 'f', repeat }));
+    const key = (code: string, repeat = false) => window.dispatchEvent(Object.assign(new Event('keydown', { cancelable: true }), { code, key: code === 'Space' ? ' ' : code === 'KeyR' ? 'r' : 'f', repeat }));
     key('KeyF'); key('KeyF', true);
     for (let i = 0; i < 40; i++) gun.update(ctx, 1 / 60);
     expect(gun.mountProgress()).toBeGreaterThan(.99);
@@ -86,8 +86,15 @@ describe('3D shotgun action', () => {
     expect(gun.shellsRemaining()).toBe(3);
     key('Space'); key('Space', true);
     expect(gun.shellsRemaining()).toBe(2);
+    key('KeyR');
+    expect(gun.isReloading()).toBe(true);
+    for (let i = 0; i < 180; i++) gun.update(ctx, 1 / 60);
+    key('KeyF');
+    for (let i = 0; i < 40; i++) gun.update(ctx, 1 / 60);
+    expect(gun.mountProgress()).toBeGreaterThan(.99);
+    expect(gun.shellsRemaining()).toBe(3);
     ctx.paused = true; ctx.events.dispatchEvent(new Event('pause'));
-    key('Space'); expect(gun.shellsRemaining()).toBe(2);
+    key('Space'); expect(gun.shellsRemaining()).toBe(3);
     ctx.paused = false;
     for (let i = 0; i < 40; i++) gun.update(ctx, 1 / 60);
     expect(gun.mountProgress()).toBe(0);

@@ -375,7 +375,7 @@ export class GunSystem implements Subsystem {
         // In trackpad drag-look mode, a latched keyboard aim leaves the
         // primary button free for looking. Space is the trigger.
         else if (e.button === 0 && this.mountT > 0.7
-          && (!this.keyboardAim || document.pointerLockElement === ctx.renderer.domElement)) this.fire(ctx);
+          && (!this.keyboardAim || document.pointerLockElement === ctx.renderer.domElement)) this.requestFire(ctx);
       }, { signal });
       window.addEventListener('mouseup', (e) => { if (e.button === 2) this.aim = this.keyboardAim; }, { signal });
       ctx.renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault(), { signal });
@@ -385,11 +385,12 @@ export class GunSystem implements Subsystem {
           || target?.closest?.('button, input, select, textarea, [contenteditable="true"]')) return;
         if (event.code === 'KeyF' || event.key.toLowerCase() === 'f') {
           event.preventDefault();
+          if (this.isReloading()) return;
           this.keyboardAim = !this.keyboardAim;
           this.aim = this.keyboardAim;
         } else if (event.code === 'Space' || event.key === ' ') {
           event.preventDefault();
-          if (this.mountT > .7) this.fire(ctx);
+          this.requestFire(ctx);
         } else if (event.key.toLowerCase() === 'r') this.beginReload();
       };
       window.addEventListener('keydown', this.keydownHandler, { signal });
@@ -398,7 +399,7 @@ export class GunSystem implements Subsystem {
         if (event.detail === 'mount') this.aim = true;
         else if (event.detail === 'lower') this.aim = false;
         else if (event.detail === 'reload') this.beginReload();
-        else if (event.detail === 'fire' && this.mountT > 0.7) this.fire(ctx);
+        else if (event.detail === 'fire') this.requestFire(ctx);
       }) as EventListener, { signal });
       const lowerGun = () => {
         this.keyboardAim = false;
@@ -526,6 +527,8 @@ export class GunSystem implements Subsystem {
   private beginReload(): boolean {
     if (this.isReloading() || this.shells >= this.gun.shells) return false;
     this.aim = false;
+    this.keyboardAim = false;
+    document.querySelector?.('[data-action="aim"]')?.setAttribute('aria-pressed', 'false');
     this.reloadElapsed = 0;
     playActionClick();
     this.reloadDuration = RELOAD_OPEN_S + (this.gun.shells - this.shells) * RELOAD_PER_SHELL_S;
@@ -536,6 +539,20 @@ export class GunSystem implements Subsystem {
       this.shotCalloutUntil = Infinity;
     }
     return true;
+  }
+
+  private requestFire(ctx: Ctx): void {
+    if (ctx.paused || this.isReloading()) return;
+    const hint = this.mountT <= .7
+      ? this.aim ? 'RAISING GUN' : 'F TO AIM · SPACE TO SHOOT'
+      : !this.birds.isRiseActive() ? 'WAIT FOR A FLUSH' : null;
+    if (!hint) { this.fire(ctx); return; }
+    if (this.shotCallout) {
+      this.shotCallout.textContent = hint;
+      this.shotCallout.classList.remove('miss');
+      this.shotCallout.hidden = false;
+      this.shotCalloutUntil = ctx.time + 1.5;
+    }
   }
 
   private fire(ctx: Ctx): void {
