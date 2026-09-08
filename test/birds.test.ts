@@ -323,6 +323,53 @@ describe('circleBack (the hun move)', () => {
 });
 
 describe('updateBirds (runners)', () => {
+  it('lets a hunter cut a pheasant route while leaving a covered side exit', () => {
+    const make = () => bird({ speciesId: 'ringneck', pos: { x: 100, y: 100 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
+    const behind = make(), blocking = make(), distant = make();
+    const env = { worldScale: true, runnerStyle: 'pheasant' as const, patches: [{ x: 50, y: 50, w: 150, h: 100 }] };
+    updateBirds(100, [behind], { x: 90, y: 100 }, { ...env, hunterPos: { x: 80, y: 100 } });
+    updateBirds(100, [blocking], { x: 90, y: 100 }, { ...env, hunterPos: { x: 110, y: 100 } });
+    updateBirds(100, [distant], { x: 90, y: 100 }, { ...env, hunterPos: { x: 180, y: 100 } });
+    expect(behind.pos.x).toBeGreaterThan(100);
+    expect(distant.pos).toEqual(behind.pos);
+    expect(blocking.pos.x).toBeCloseTo(100);
+    expect(Math.abs(blocking.pos.y - 100)).toBeGreaterThan(0);
+    expect(blocking.restingMs).toBe(0);
+    expect(blocking.state).toBe('hidden');
+  });
+
+  it('holds when both the hunter and cover close the exits without forcing a flush', () => {
+    const b = bird({ speciesId: 'ringneck', pos: { x: 100, y: 100 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
+    updateBirds(1000, [b], { x: 90, y: 100 }, { worldScale: true, runnerStyle: 'pheasant',
+      hunterPos: { x: 110, y: 100 }, patches: [{ x: 50, y: 99, w: 150, h: 2 }] });
+    expect(b.pos).toEqual({ x: 100, y: 100 });
+    expect(b.restingMs).toBeGreaterThan(0);
+    expect(b.state).toBe('hidden');
+  });
+
+  it('does not cross an occupied route on a long step, or apply cover blocking outside cover', () => {
+    const make = () => bird({ speciesId: 'ringneck', pos: { x: 100, y: 100 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
+    const covered = make(), exposed = make();
+    const env = { worldScale: true, runnerStyle: 'pheasant' as const, hunterPos: { x: 115, y: 100 } };
+    updateBirds(6000, [covered], { x: 90, y: 100 }, { ...env, patches: [{ x: 50, y: 99, w: 150, h: 2 }] });
+    expect(covered.pos).toEqual({ x: 100, y: 100 });
+    updateBirds(100, [exposed], { x: 90, y: 100 }, { ...env, patches: [{ x: 200, y: 50, w: 100, h: 100 }] });
+    expect(exposed.pos.x).toBeGreaterThan(100);
+  });
+
+  it.each([
+    { speciesId: 'hun', worldScale: true, runnerStyle: 'pheasant' as const },
+    { speciesId: 'ringneck', worldScale: false, runnerStyle: 'pheasant' as const },
+    { speciesId: 'ringneck', worldScale: true, runnerStyle: 'default' as const },
+  ])('keeps other runner contexts unchanged: %j', context => {
+    const make = () => bird({ speciesId: context.speciesId, pos: { x: 100, y: 100 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
+    const plain = make(), blocked = make();
+    const env = { ...context, patches: [{ x: 50, y: 50, w: 150, h: 100 }] };
+    updateBirds(100, [plain], { x: 90, y: 100 }, env);
+    updateBirds(100, [blocked], { x: 90, y: 100 }, { ...env, hunterPos: { x: 110, y: 100 } });
+    expect(blocked.pos).toEqual(plain.pos);
+  });
+
   it('uses world pace only for continuous ringnecks without slowing their energy clock', () => {
     const legacy = bird({ speciesId: 'ringneck', pos: { x: 100, y: 100 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
     const world = { ...legacy, pos: { ...legacy.pos } };

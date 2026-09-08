@@ -376,6 +376,8 @@ export interface RunnerEnv {
   runnerStyle?: RunnerStyle;
   /** Authored walking lines used as habitat corridors by route-biased runners. */
   trails?: readonly AreaTrail[];
+  /** Local blocking pressure for continuous pheasant encounters, in property yards. */
+  hunterPos?: Vec2;
 }
 
 const SLOPE_RUN_BIAS = 0.55; // how strongly sloped-ground runners pull uphill
@@ -411,7 +413,8 @@ function nearestTrailDirection(point: Vec2, trails: readonly AreaTrail[]): Vec2 
 /**
  * Move runner birds. A hidden runner flees the dog while it has energy,
  * then holds still to recover — that's the dog's (and hunter's) window.
- * Only the dog spooks them; the hunter walking up doesn't. A runner that
+ * The dog starts ground movement; a nearby hunter can block a covered exit.
+ * Walking flushes remain the encounter controller's responsibility. A runner that
  * reaches the end of its cover pins there rather than crossing the open —
  * that's how you block a rooster at the end of a slough.
  */
@@ -485,6 +488,20 @@ export function updateBirds(dtMs: number, birds: Bird[], dogPos: Vec2, env: Runn
       x: clamp(b.pos.x + dirX * speed * dt, bounds.x + 4, bounds.x + bounds.w - 4),
       y: clamp(b.pos.y + dirY * speed * dt, bounds.y + 4, bounds.y + bounds.h - 4),
     };
+    const hunter = env.worldScale && env.runnerStyle === 'pheasant' && b.speciesId === 'ringneck'
+      ? env.hunterPos : undefined;
+    const blockedByHunter = (end: Vec2): boolean => {
+      if (!hunter) return false;
+      const dx = end.x - b.pos.x, dy = end.y - b.pos.y;
+      const lengthSq = dx * dx + dy * dy;
+      if (lengthSq < 1e-10) return false;
+      const t = clamp(((hunter.x - b.pos.x) * dx + (hunter.y - b.pos.y) * dy) / lengthSq, 0, 1);
+      const closest = Math.hypot(b.pos.x + dx * t - hunter.x, b.pos.y + dy * t - hunter.y);
+      // Local pressure only: do not road into the handler, but allow a lateral
+      // covered escape. Segment distance also prevents a long tick crossing
+      // the occupied route and ending safely on the other side.
+      return closest < 12 / PROPERTY_PX_TO_M && closest < dist(b.pos, hunter) - 1e-5;
+    };
     if (env.patches && inAnyPatch(b.pos, env.patches)) {
       const patches = env.patches;
       const coveredStep = (end: Vec2): boolean => {
@@ -495,7 +512,7 @@ export function updateBirds(dtMs: number, birds: Bird[], dogPos: Vec2, env: Runn
         }
         return true;
       };
-      if (!coveredStep(next)) {
+      if (!coveredStep(next) || blockedByHunter(next)) {
         // A rooster can road sideways along a dry shoulder when the direct
         // escape is blocked. Do not transfer this behavior to a Hun or Quail
         // merely because it shares the property. Every candidate must stay
@@ -509,7 +526,7 @@ export function updateBirds(dtMs: number, birds: Bird[], dogPos: Vec2, env: Runn
             y: clamp(b.pos.y + (dirX * s + dirY * c) * speed * dt, bounds.y + 4, bounds.y + bounds.h - 4),
           };
           const distance = dist(candidate, dogPos);
-          if (distance > bestDistance && coveredStep(candidate)) { escape = candidate; bestDistance = distance; }
+          if (distance > bestDistance && coveredStep(candidate) && !blockedByHunter(candidate)) { escape = candidate; bestDistance = distance; }
         }
         if (!escape) { b.restingMs = restMs; continue; }
         next = escape;

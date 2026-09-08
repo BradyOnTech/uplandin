@@ -158,6 +158,7 @@ export class HuntSimulation {
       holdBobwhiteCoveys: this.continuousEncounter && doctrine.style === 'quail',
       holdCoveys: this.continuousEncounter,
       runnerStyle: doctrine.runnerStyle,
+      hunterPos: spatialEncounter ? input.hunterPos : undefined,
     });
 
     const wind = windMults(this.hunt.windStrength);
