@@ -280,6 +280,7 @@ interface Slot {
   vyW: number;
   vzW: number;
   airMs: number;
+  fallPose?: { startMs: number; rotation: THREE.Euler; groundedMs?: number };
   delayMs: number;
   wobblePh: number;
   wobbleMult: number;
@@ -368,6 +369,8 @@ export class BirdsSystem implements Subsystem {
   private terrain!: TerrainSystem;
   private frozen = false;
 
+  private fallEuler = new THREE.Euler();
+  private restRotation = new THREE.Quaternion();
   private mat?: THREE.MeshLambertMaterial;
   private geos: THREE.BufferGeometry[] = [];
   private speciesGeos = new Map<string, BirdGeometrySet>();
@@ -934,6 +937,7 @@ export class BirdsSystem implements Subsystem {
       const s = this.slots[i];
       if (s.status === 'idle' || s.status === 'done') continue;
       if (s.status === 'grounded') {
+        if (s.fallPose?.groundedMs !== undefined) s.fallPose.groundedMs += dtMs;
         const bird = simBirds.find((candidate) => candidate.id === s.simId);
         if (!bird || bird.state === 'retrieved' || bird.state === 'escaped') {
           s.status = 'done';
@@ -951,14 +955,26 @@ export class BirdsSystem implements Subsystem {
         continue;
       }
       if (s.status === 'falling') {
-        // 2D authority: 170 px/s drop, 540 deg/s tumble (update() spins).
-        s.vyW = -FALL_PX_PER_S * FLUSH_PX_TO_M_V;
-        s.y += s.vyW * dt;
+        if (this.spatialEncounter && s.species.id === 'ringneck') {
+          // Retain launch/crossing momentum at impact. Drag bleeds forward
+          // carry while gravity turns even an upward hit into a falling arc.
+          const drag = .65, decay = Math.exp(-drag * dt);
+          s.x += s.vxW * (1 - decay) / drag;
+          s.z += s.vzW * (1 - decay) / drag;
+          s.vxW *= decay; s.vzW *= decay;
+          s.y += s.vyW * dt - .5 * 9.81 * dt * dt;
+          s.vyW -= 9.81 * dt;
+        } else {
+          // Legacy screen-space falling remains unchanged for other birds.
+          s.vyW = -FALL_PX_PER_S * FLUSH_PX_TO_M_V;
+          s.y += s.vyW * dt;
+        }
         s.airMs += dtMs;
         const g = this.terrain.heightAt(s.x, s.z);
         if (s.y <= g + 0.06) {
           s.y = g + 0.06;
           s.status = 'grounded';
+          if (s.fallPose) s.fallPose.groundedMs = 0;
           this.hunt.recordFallWorld(s.simId, s.x, s.z);
           playThud();
         }
@@ -1403,6 +1419,7 @@ export class BirdsSystem implements Subsystem {
         );
       }
       slot.airMs = 0;
+      slot.fallPose = undefined;
       slot.wobblePh = launched * 2.1;
       slot.wobbleMult = 0.6 + rng();
       slot.gliding = false;
@@ -1467,6 +1484,9 @@ export class BirdsSystem implements Subsystem {
       const s = this.slots[i];
       if (s.simId === simId && s.status === 'flying') {
         s.status = 'falling';
+        if (this.spatialEncounter && s.species.id === 'ringneck') {
+          s.fallPose = { startMs: s.airMs, rotation: s.root.rotation.clone() };
+        }
         this.burstFeathers(s);
         return true;
       }
@@ -1570,6 +1590,14 @@ export class BirdsSystem implements Subsystem {
 
   /* ------------------------------ render ----------------------------- */
 
+  private poseFallingPheasant(slot: Slot): void {
+    const fall = slot.fallPose!;
+    const t = Math.max(0, slot.airMs - fall.startMs) / 1000;
+    slot.root.rotation.copy(fall.rotation);
+    slot.root.rotation.x += t * 4.2;
+    slot.root.rotation.z += t * .65;
+  }
+
   private foldWings(slot: Slot): void {
     if (slot.species.id === 'ringneck') {
       posePheasantFoldedWings(slot.wingL, slot.wingR);
@@ -1635,13 +1663,18 @@ export class BirdsSystem implements Subsystem {
       }
       if (s.status === 'grounded') {
         // Folded bird remains marked in the grass until the dog picks it up.
-        s.root.rotation.set(0, s.root.rotation.y, 1.2);
+        if (s.fallPose) {
+          this.poseFallingPheasant(s);
+          this.restRotation.setFromEuler(this.fallEuler.set(0, s.fallPose.rotation.y, 1.2, 'YXZ'));
+          s.root.quaternion.slerp(this.restRotation, THREE.MathUtils.smoothstep(s.fallPose.groundedMs ?? 0, 0, 260));
+        } else s.root.rotation.set(0, s.root.rotation.y, 1.2);
         this.foldWings(s);
         continue;
       }
       if (s.status === 'falling') {
         // Folded frame: wings pinned to the body, tumbling — dead weight.
-        s.root.rotation.set(s.airMs * 0.001 * TUMBLE_RAD_PER_S, s.root.rotation.y, 0.5);
+        if (s.fallPose) this.poseFallingPheasant(s);
+        else s.root.rotation.set(s.airMs * 0.001 * TUMBLE_RAD_PER_S, s.root.rotation.y, 0.5);
         this.foldWings(s);
         continue;
       }

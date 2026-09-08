@@ -13,7 +13,7 @@ function fixture() {
   const finishRise = vi.fn();
   const system = new BirdsSystem();
   const runtime = system as unknown as {
-    tickBirds(dt: number): void; slots: Array<Record<string, any>>;
+    tickBirds(dt: number): void; downBird(id: number): boolean; slots: Array<Record<string, any>>;
     refinedQuail: boolean; spatialEncounter: boolean; frozen: boolean; hunt: unknown; terrain: unknown;
     applySpeciesAppearance: unknown; burstDebris: unknown; launchCover?: QuailFlushDebris; coverEvents?: EventTarget;
   };
@@ -29,6 +29,56 @@ function fixture() {
 }
 
 describe('continuous Quail coveys', () => {
+  it('retains a hit pheasant momentum and records its moving fall on the actual terrain', () => {
+    const f=fixture();f.add(1,1,4,0);f.birds[0].speciesId='ringneck';
+    f.runtime.tickBirds(1000/30);
+    const slot=f.runtime.slots[0];
+    Object.assign(slot,{x:4,y:3,z:0,vxW:10,vyW:3,vzW:2});
+    f.runtime.terrain={heightAt:(x:number,z:number)=>.02*x+.01*z};
+    f.birds[0].state='downed';
+    expect(f.runtime.downBird(1)).toBe(true);
+    f.runtime.tickBirds(1000/30);
+    expect(slot.x).toBeGreaterThan(4);expect(slot.z).toBeGreaterThan(0);
+    expect(slot.y).toBeGreaterThan(3); // A hit during climb retains its upward momentum.
+    expect(slot.vyW).toBeLessThan(3);expect(slot.vyW).toBeGreaterThan(0);
+    expect(slot.vxW).toBeGreaterThan(0);expect(slot.vxW).toBeLessThan(10);
+    for(let i=0;i<180&&slot.status!=='grounded';i++)f.runtime.tickBirds(1000/30);
+    expect(slot.status).toBe('grounded');expect(slot.x).toBeGreaterThan(8);
+    expect(slot.y).toBeCloseTo(.02*slot.x+.01*slot.z+.06);
+    const record=(f.runtime.hunt as {recordFallWorld:ReturnType<typeof vi.fn>}).recordFallWorld;
+    expect(record).toHaveBeenCalledExactlyOnceWith(1,slot.x,slot.z);
+  });
+  it('starts pheasant tumbling from the visible hit pose and settles after contact', () => {
+    const f=fixture();f.add(1,1,4,0);f.birds[0].speciesId='ringneck';
+    f.runtime.tickBirds(1000/30);
+    const slot=f.runtime.slots[0];
+    Object.assign(slot,{airMs:7000,y:3,wingL:new THREE.Group(),wingR:new THREE.Group(),visualScale:1});
+    slot.root.rotation.set(-.3,.8,.1,'YXZ');const hit=slot.root.quaternion.clone();
+    f.birds[0].state='downed';f.runtime.downBird(1);
+    const render=()=> (f.runtime as unknown as {update(ctx:unknown,dt:number):void}).update({},0);
+    render();expect(slot.root.quaternion.angleTo(hit)).toBeLessThan(.00001);
+    f.runtime.tickBirds(1000/30);render();
+    expect(slot.root.quaternion.angleTo(hit)).toBeGreaterThan(.01);
+    expect(slot.root.quaternion.angleTo(hit)).toBeLessThan(.2);
+    slot.y=.061;slot.vyW=-1;
+    f.runtime.tickBirds(1000/30);render();const contact=slot.root.quaternion.clone();
+    expect(slot.status).toBe('grounded');
+    f.runtime.tickBirds(1000/30);render();expect(slot.root.quaternion.angleTo(contact)).toBeLessThan(.2);
+    for(let i=0;i<10;i++)f.runtime.tickBirds(1000/30);render();
+    const rest=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,.8,1.2,'YXZ'));
+    expect(slot.root.quaternion.angleTo(rest)).toBeLessThan(.00001);
+  });
+
+  it.each([{species:'bobwhite',spatial:true},{species:'ringneck',spatial:false}])(
+    'preserves legacy falling for $species (spatial: $spatial)', ({species,spatial}) => {
+      const f=fixture();f.add(1,1,4,0);f.birds[0].speciesId=species;
+      f.runtime.tickBirds(1000/30);f.runtime.spatialEncounter=spatial;
+      const slot=f.runtime.slots[0];Object.assign(slot,{x:4,y:10,z:2,vxW:10,vyW:3,vzW:2});
+      f.birds[0].state='downed';f.runtime.downBird(1);f.runtime.tickBirds(1000/30);
+      expect(slot.x).toBe(4);expect(slot.z).toBe(2);expect(slot.vyW).toBeLessThan(0);
+      const velocity=slot.vyW;f.runtime.tickBirds(1000/30);expect(slot.vyW).toBe(velocity);
+    });
+
   it('sounds each pheasant only on its actual launch and keeps hens silent of cackles', () => {
     const sound = vi.spyOn(audio, 'playPheasantFlush').mockImplementation(() => {});
     const flutter = vi.spyOn(audio, 'playFlush').mockImplementation(() => {});
