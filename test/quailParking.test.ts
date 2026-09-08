@@ -13,7 +13,7 @@ vi.mock('../src/audio', () => ({ unlockAudio: vi.fn(), playFootstep: vi.fn(), pl
 const cleanup: (() => void)[] = [];
 beforeEach(() => {
   vi.stubGlobal('window', new EventTarget());
-  vi.stubGlobal('document', { getElementById: () => null });
+  vi.stubGlobal('document', Object.assign(new EventTarget(), { getElementById: () => null }));
   vi.stubGlobal('HTMLElement', class {});
 });
 afterEach(() => { cleanup.splice(0).forEach(dispose => dispose()); vi.unstubAllGlobals(); });

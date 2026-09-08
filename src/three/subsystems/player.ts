@@ -6,6 +6,7 @@ import type { Ctx, Subsystem } from '../engine';
 import type { TerrainSystem } from './terrain';
 import type { Hunt3DSystem } from './hunt3d';
 import { ObstacleIndex } from '../../game/obstacleIndex';
+import { bindMouseLook } from '../mouseLook';
 
 const WALK_SPEED = 2.2;
 const SPRINT_MULT = 1.9;
@@ -61,13 +62,24 @@ export class PlayerSystem implements Subsystem {
       canvas.addEventListener('click', (event) => {
         if (ctx.paused || event.pointerType === 'touch') return;
         unlockAudio();
-        if (document.pointerLockElement !== canvas) canvas.requestPointerLock()?.catch(() => undefined);
       }, { signal });
-      window.addEventListener('mousemove', (event) => {
-        if (ctx.paused || document.pointerLockElement !== canvas) return;
-        this.yaw -= event.movementX * 0.0022;
-        this.pitch = THREE.MathUtils.clamp(this.pitch - event.movementY * 0.0022, -1.4, 1.4);
-      }, { signal });
+      const look = bindMouseLook(canvas, {
+        signal, paused: () => ctx.paused,
+        turn: (dx, dy) => {
+          this.yaw -= dx * .0022;
+          this.pitch = THREE.MathUtils.clamp(this.pitch - dy * .0022, -1.4, 1.4);
+        },
+        fallbackChanged: active => {
+          let hint = document.getElementById('mouse-look-fallback');
+          if (!hint && active) {
+            hint = document.createElement('div'); hint.id = 'mouse-look-fallback';
+            hint.textContent = 'Drag to look · Hold right mouse to aim and look';
+            document.getElementById('controls')?.append(hint);
+          }
+          if (hint) hint.hidden = !active;
+        },
+      });
+      ctx.events.addEventListener('pause', look.release, { signal });
       window.addEventListener('keydown', (event) => {
         if (ctx.paused || (event.target instanceof HTMLElement && /INPUT|SELECT|BUTTON/.test(event.target.tagName))) return;
         this.keys.add(event.code);
