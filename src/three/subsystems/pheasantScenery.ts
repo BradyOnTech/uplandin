@@ -281,6 +281,33 @@ export class PheasantScenerySystem implements Subsystem {
         }
       }
     }
+    // Neighboring farm windbreaks extend the landscape beyond the property
+    // boundary. Broken groups leave open prairie between them; they share
+    // the existing low-detail trunk/crown batches and cast no shadows.
+    const bounds = this.landscape.area.world;
+    for (let side = 0; side < 4; side++) for (let group = 0; group < 3; group++) {
+      const center = .17 + group * .31 + (rng() - .5) * .06;
+      const depth = 65 + rng() * 65;
+      for (let i = 0; i < 13; i++) {
+        if (rng() < .17) continue;
+        const along = center + (i - 6) * .009;
+        const outside = depth + Math.sin(i * .7) * 12 + rng() * 8;
+        const x = side < 2 ? bounds.x + bounds.w * along
+          : side === 2 ? bounds.x - outside : bounds.x + bounds.w + outside;
+        const y = side >= 2 ? bounds.y + bounds.h * along
+          : side === 0 ? bounds.y - outside : bounds.y + bounds.h + outside;
+        this.landscape.propertyToWorld(x, y, this.world);
+        const ground = this.landscape.heightAtProperty(x, y);
+        const height = 10 + rng() * 10;
+        rotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng() * Math.PI * 2);
+        position.set(this.world.x, ground + height * .30, this.world.z);
+        scale.set(1.1, height * .60, 1.1);
+        stems.push(matrix.compose(position, rotation, scale).clone());
+        position.y = ground + height * .68;
+        scale.set(height * .26, height * .38, height * .24);
+        crowns[group % crowns.length].push(matrix.compose(position, rotation, scale).clone());
+      }
+    }
     const addBatch = (geometry: THREE.BufferGeometry, material: THREE.Material, matrices: THREE.Matrix4[], name: string) => {
       if (!matrices.length) return;
       const mesh = new THREE.InstancedMesh(geometry, material, matrices.length);

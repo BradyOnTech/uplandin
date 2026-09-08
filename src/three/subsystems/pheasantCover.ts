@@ -13,7 +13,7 @@ function cellSeed(x: number, z: number, seed: number): number {
   return (h ^ (h >>> 16)) >>> 0;
 }
 
-function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lite: boolean, distant = false): THREE.BufferGeometry {
+function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lite: boolean, distant = false, medium = false): THREE.BufferGeometry {
   const rng = mulberry32(kind === 'prairie' ? 0x51a7 : kind === 'cattail' ? 0xca77 : 0x57bb1e);
   const positions: number[] = [];
   const colors: number[] = [];
@@ -53,7 +53,7 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
     }
   }
 
-  const count = kind === 'litter' ? 0 : kind === 'prairie' ? (distant ? 4 : lite ? 10 : 18) : kind === 'cattail' ? (distant ? 3 : lite ? 5 : 8) : (lite ? 7 : 12);
+  const count = kind === 'litter' ? 0 : kind === 'prairie' ? (distant ? 4 : medium ? 7 : lite ? 10 : 18) : kind === 'cattail' ? (distant ? 3 : medium ? 4 : lite ? 5 : 8) : (lite ? 7 : 12);
   for (let i = 0; i < count; i++) {
     const angle = (i / count) * Math.PI * 2 + (rng() - 0.5) * 0.42;
     const sx = Math.sin(angle);
@@ -65,7 +65,7 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
     const z = sz * root;
     // Lite renders without multisampling. Fewer broader blades preserve a
     // tuft's body better than thin geometry that alternates between pixels.
-    const width = (kind === 'cattail' ? 0.018 : kind === 'prairie' ? 0.045 + rng() * 0.040 : 0.014 + rng() * 0.018) * (distant ? 3 : lite ? 1.65 : 1);
+    const width = (kind === 'cattail' ? 0.018 : kind === 'prairie' ? 0.045 + rng() * 0.040 : 0.014 + rng() * 0.018) * (distant ? 3 : medium ? 2 : lite ? 1.65 : 1);
     const height = kind === 'prairie'
       ? 0.46 + rng() * 0.65
       : kind === 'cattail'
@@ -167,7 +167,7 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
 export class PheasantCoverSystem implements Subsystem {
   readonly id = 'grass';
   private objects: THREE.InstancedMesh[] = [];
-  private batches: { mesh: THREE.InstancedMesh; center: THREE.Vector3; radius: number; range: number; near?: THREE.BufferGeometry; far?: THREE.BufferGeometry; detailRange?: number }[] = [];
+  private batches: { mesh: THREE.InstancedMesh; bounds: THREE.Box3; range: number; near?: THREE.BufferGeometry; middle?: THREE.BufferGeometry; far?: THREE.BufferGeometry; detailRange: number; middleRange: number }[] = [];
   private geometries: THREE.BufferGeometry[] = [];
   private materials: THREE.Material[] = [];
   private surface: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
@@ -184,7 +184,8 @@ export class PheasantCoverSystem implements Subsystem {
     this.windStrength.value = hunt.windStrength === 'calm' ? .35 : hunt.windStrength === 'strong' ? 1.7 : 1;
     const geometries = { prairie: habitatGeometry('prairie', lite), cattail: habitatGeometry('cattail', lite), stubble: habitatGeometry('stubble', lite), litter: habitatGeometry('litter', lite) };
     const distant = { prairie: habitatGeometry('prairie', true, true), cattail: habitatGeometry('cattail', true, true) };
-    this.geometries.push(...Object.values(geometries), ...Object.values(distant));
+    const middle = { prairie: habitatGeometry('prairie', lite, false, true), cattail: habitatGeometry('cattail', lite, false, true) };
+    this.geometries.push(...Object.values(geometries), ...Object.values(middle), ...Object.values(distant));
     const material = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x81714b, emissiveIntensity: .12, vertexColors: true, side: THREE.DoubleSide });
     material.onBeforeCompile = shader => {
       shader.uniforms.uPheasantWind = this.wind;
@@ -310,11 +311,12 @@ export class PheasantCoverSystem implements Subsystem {
           position.set(this.world.x, this.surface.height - .022, this.world.z);
           mesh.setMatrixAt(i, matrix.compose(position, rotation, scale)); mesh.setColorAt(i, color.setHex(plant.color));
         }
-        mesh.name = `Pheasant ${kind} parcel`; mesh.receiveShadow = true; mesh.computeBoundingSphere();
+        mesh.name = `Pheasant ${kind} parcel`; mesh.receiveShadow = true; mesh.computeBoundingSphere(); mesh.computeBoundingBox();
         const range = kind === 'litter' ? (lite ? 18 : 28) : kind === 'cattail' ? (lite ? 230 : 330) : kind === 'stubble' ? (lite ? 95 : 145) : (lite ? 130 : 195);
         const far = kind === 'prairie' || kind === 'cattail' ? distant[kind] : undefined;
-        this.batches.push({ mesh, center: mesh.boundingSphere!.center.clone(), radius: mesh.boundingSphere!.radius + 1, range,
-          near: far ? geometries[kind] : undefined, far, detailRange: lite ? 24 : 42 });
+        this.batches.push({ mesh, bounds: mesh.boundingBox!.clone().expandByScalar(1), range,
+          near: far ? geometries[kind] : undefined, middle: kind === 'prairie' || kind === 'cattail' ? middle[kind] : undefined, far,
+          detailRange: lite ? 14 : 22, middleRange: lite ? 40 : 65 });
         this.objects.push(mesh); ctx.scene.add(mesh);
         }
       }
@@ -325,14 +327,21 @@ export class PheasantCoverSystem implements Subsystem {
   update(ctx: Ctx): void {
     this.wind.value = ctx.time;
     for (const batch of this.batches) {
-      const distance = Math.hypot(ctx.camera.position.x - batch.center.x, ctx.camera.position.z - batch.center.z);
-      batch.mesh.visible = distance < batch.range + batch.radius;
-      if (batch.near && batch.far) {
-        // Hysteresis stops entire parcels flickering between detail levels
-        // while the hunter moves around a threshold.
-        const threshold = batch.detailRange! + batch.radius;
-        if (distance < threshold - 4) batch.mesh.geometry = batch.near;
-        else if (distance > threshold + 4) batch.mesh.geometry = batch.far;
+      // Distance to the actual parcel footprint avoids keeping an entire
+      // diagonal sphere in the most expensive detail tier.
+      const distance = Math.hypot(
+        Math.max(batch.bounds.min.x - ctx.camera.position.x, 0, ctx.camera.position.x - batch.bounds.max.x),
+        Math.max(batch.bounds.min.z - ctx.camera.position.z, 0, ctx.camera.position.z - batch.bounds.max.z),
+      );
+      batch.mesh.visible = distance < batch.range;
+      if (batch.near && batch.middle && batch.far) {
+        const current = batch.mesh.geometry;
+        // Separate enter/leave thresholds prevent oscillation at parcel edges.
+        if (distance < batch.detailRange - 3) batch.mesh.geometry = batch.near;
+        else if (distance > batch.middleRange + 3) batch.mesh.geometry = batch.far;
+        else if (distance > batch.detailRange + 3 && distance < batch.middleRange - 3) batch.mesh.geometry = batch.middle;
+        else if (current === batch.near && distance > batch.detailRange + 3) batch.mesh.geometry = batch.middle;
+        else if (current === batch.far && distance < batch.middleRange - 3) batch.mesh.geometry = batch.middle;
       }
     }
   }

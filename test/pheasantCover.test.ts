@@ -67,9 +67,15 @@ describe('Pheasant standing habitat', () => {
       ctx.camera.position.copy(mesh.boundingSphere!.center); cover.update(ctx);
       const near = mesh.geometry.getAttribute('position').count;
       const count = mesh.count;
+      const center = ctx.camera.position.clone();
+      ctx.camera.position.x = mesh.boundingBox!.max.x + 29; cover.update(ctx);
+      const middle = mesh.geometry.getAttribute('position').count;
+      expect(middle).toBeLessThan(near);
+      ctx.camera.position.copy(center);
       ctx.camera.position.x += 120; cover.update(ctx);
       expect(mesh.visible).toBe(true);
       expect(mesh.geometry.getAttribute('position').count).toBeLessThan(near / 2);
+      expect(mesh.geometry.getAttribute('position').count).toBeLessThan(middle);
       expect(mesh.count).toBe(count);
       cover.dispose(ctx);
     }

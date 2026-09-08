@@ -39,7 +39,6 @@ An assisted Seed 1 run with the sporting gun completed one rooster shot, retriev
 
 The empty-hunt and retrieved-bird summaries were reviewed separately. Narrow layout evidence is `output/playwright/pheasant-field-notes-narrow-final.png`. Native captured-mouse feel, the West approach, later encounters, water/prop interaction and presentation of a close retrieve remain outstanding. The field is still not declared complete.
 
-
 **Dense habitat correction**
 
 User review correctly identified that the widened tufts still made Pheasant look like sparse upland grass. Standing habitat now uses nine closely spaced, jittered clumps per planting cell, with a separate height multiplier of 1.45–1.80 and broader blades. Wet margins use clustered reeds, including the damp shore above water level. Harvested fields and access clearances stay open. Standard and Lightweight preserve identical tall-grass root positions and height multipliers; Lightweight reduces blades per clump, and both tiers swap simpler geometry into distant parcels without removing their instances.
@@ -50,7 +49,6 @@ Cottonwood and shelterbelt trunks now supply player/dog obstacles and actual woo
 
 The West walking approach left the dog approximately 69 yards ahead on point. Guidance now distinguishes closing the gap while the dog tracks from slowing to a walk on point. This is a cue correction; the West hunt still needs a complete input-only replay.
 
-
 **Refinement after the dense-cover pass**
 
 Added a varying visual fringe outside the authoritative cover rectangles. Shorter, less continuous vegetation now blends into the shoulders while the dense interior stays intact. A habitat contract verifies that the fringe does not expand bird cover. Blades have narrower roots, broader bends, increased curvature, and a root-to-tip color gradient. Seed heads now attach to explicit stems instead of appearing detached beside the taper. Wind movement follows the hunt's direction and strength, with restrained movement in calm conditions. Detail switching has a hysteresis band to prevent repeated parcel changes when hovering near a distance threshold.
@@ -60,3 +58,13 @@ A South Gate Seed 1 Lightweight replay completed the approach, natural point and
 A West Track Standard morning input approach closed the tracking gap before the point and reached approximately 27 yards from the dog, compared with roughly 69 yards in the earlier walking-only reference. It then paused for review; no completed West retrieve is claimed. Guidance now explicitly describes walking toward the point and identifying the rooster above the cover. Screenshot: `output/playwright/pheasant-refined-west-point.png`. Final camera-positioned stem review: `output/playwright/pheasant-refined-west-stems-final.png`. Browser review reported no warnings or errors.
 
 The full suite passed 581 tests across 83 files. The full-property two-tier cover test now has a 15-second allowance: its normal assertions passed in isolation, but concurrent suite/build workers pushed generation past the previous five-second timeout. This does not relax density, placement, disposal, or distance-detail assertions. The final West static view reports 161 draws and 1,375,000 triangles; mobile performance is still unverified. The scene remains short of the requested finish, particularly close vegetation silhouettes, distant landscape composition, and sustained play across both entries.
+
+**Vegetation cost and West encounter review**
+
+Standing vegetation now has three detail levels. Distance is measured to the parcel's horizontal bounding box rather than an expanded sphere, with separate enter/leave thresholds. The same root instances and height transforms remain in every tier. At the matched West morning viewpoint, Standard decreased from 1,375,000 triangles/161 draws to 1,140,345 triangles/157 draws before adding the neighboring farm trees, approximately a 17 percent triangle reduction. This is a static rendering comparison, not a measured frame-rate improvement. The focused cover test now verifies the intermediate geometry as well as near/far detail, unchanged instance counts and identical tall habitat across quality tiers.
+
+Broken windbreak groups beyond the property boundary give neighboring farmland a visible horizon. They use existing trunk and crown batches without shadow casting or additional draw batches. Their positions remain outside the playable property. Camera-positioned review: `output/playwright/pheasant-neighboring-windbreaks-high.png`. The dense West comparison is `output/playwright/pheasant-west-three-detail-high.png`.
+
+A West Standard approach reached a natural rooster flush, then paused for inspection. Its resumed assisted shot missed and field notes recorded an escaped bird; the mouse movement during that review is not reliable aiming-usability evidence. A fresh Lightweight morning replay ran continuously from entry through point, flush, shot, retrieve and results. The shot used live bird-position telemetry to calculate a mouse correction, so it is explicitly an assisted aiming review, with no forced flush, direct down, repositioning or simulation stepping. One rooster was downed and retrieved, with zero escaped birds. Evidence: `output/playwright/pheasant-west-continuous-assisted-results.png`. Normal visual acquisition and an unassisted West completion remain outstanding.
+
+TypeScript checking, the production build, and four focused cover/solidity tests passed. Existing large-bundle warnings remain. Phone hardware performance remains unverified.
