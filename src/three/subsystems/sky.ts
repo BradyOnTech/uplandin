@@ -427,17 +427,17 @@ const CHUKAR_RIDGES: RidgeProfile = {
 
 const PHEASANT_RIDGES: RidgeProfile = {
   layers: [
-    { radius: 260, base: -1.5, amp: 8, far: 0, fogMix: 0.02, hazeAmt: 0.3, jag: 0.02, freqs: [3, 8, 19], noiseScale: 0.5, land: true },
-    { radius: 390, base: 2, amp: 18, far: 0.22, fogMix: 0.12, hazeAmt: 0.58, jag: 0.03, freqs: [2, 7, 17], noiseScale: 0.48 },
-    { radius: 560, base: 4, amp: 30, far: 0.62, fogMix: 0.2, hazeAmt: 0.78, jag: 0.04, freqs: [3, 6, 15], noiseScale: 0.42 },
+    { radius: 260, base: -1.5, amp: 12, far: 0, fogMix: 0.02, hazeAmt: 0.3, jag: 0.02, freqs: [3, 8, 19], noiseScale: 0.4, land: true, trees: 4, treeHaze: .25 },
+    { radius: 390, base: 3, amp: 34, far: 0.22, fogMix: 0.12, hazeAmt: 0.58, jag: 0.03, freqs: [2, 7, 17], noiseScale: 0.35, trees: 5, treeHaze: .4 },
+    { radius: 560, base: 8, amp: 58, far: 0.62, fogMix: 0.2, hazeAmt: 0.78, jag: 0.04, freqs: [3, 6, 15], noiseScale: 0.28 },
   ],
   features: [
-    [{ c: -20, h: 0.5, sl: 55, sr: 65 }, { c: 118, h: 0.4, sl: 60, sr: 50 }],
-    [{ c: 25, h: 0.44, sl: 62, sr: 70 }, { c: 160, h: 0.38, sl: 58, sr: 66 }],
-    [{ c: -75, h: 0.48, sl: 70, sr: 82 }, { c: 75, h: 0.42, sl: 74, sr: 65 }],
+    [{ c: -20, h: 0.5, sl: 35, sr: 55 }, { c: 118, h: 0.4, sl: 45, sr: 32 }],
+    [{ c: 10, h: 0.55, sl: 32, sr: 52 }, { c: 150, h: 0.65, sl: 38, sr: 30 }],
+    [{ c: -65, h: 0.55, sl: 48, sr: 32 }, { c: 110, h: 0.8, sl: 30, sr: 52 }],
   ],
   segments: [768, 640, 512],
-  treeCount: 0,
+  treeCount: 96,
   verticalFollow: .7,
 };
 
@@ -833,7 +833,9 @@ export class SkySystem implements Subsystem {
             const fc = (f - 0.5) / wvar + 0.5;
             if (fc > 0 && fc < 1) {
               const apex = 0.3 + 0.4 * hash01(uiw, sTreeP);
-              const tri = fc < apex ? fc / apex : (1 - fc) / (1 - apex);
+              const tri = this.areaId === 'pheasant-coverts'
+                ? Math.pow(Math.sin(fc * Math.PI), .65)
+                : fc < apex ? fc / apex : (1 - fc) / (1 - apex);
               let hgt = (0.3 + 0.7 * hash01(uiw, sTreeH)) * (0.2 + 1.0 * cluster);
               if (layer.land) {
                 hgt *= THREE.MathUtils.clamp(peakSum / (0.45 * layer.amp), 0.1, 1);
