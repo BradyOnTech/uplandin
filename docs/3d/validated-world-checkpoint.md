@@ -295,6 +295,12 @@ Small talus now aligns to the terrain normal and embeds by at most 1.2 centimete
 
 Compilation and build pass with existing chunk warnings. One Standard review emitted a 4.20-millisecond simulation-tick warning against its two-millisecond budget; this was not diagnosed or fixed here. No simulation tests rerun for this visual placement change. The next Chukar pass should address continuous ground texture and larger-scale planting composition, not assume talus alone resolves the empty appearance.
 
+**Chukar scree surface**
+
+Replaced the shared Quail soil/straw shader detail with a Chukar-specific procedural scree treatment. Irregular angular chips sit in broader stone deposits, with two tonal facets and small soil variation. Coordinates use property-relative world meters so the pattern does not depend on terrain tiles or entry origin. Distance and derivative filtering fade chips before they become unresolved. The worn trail keeps its own material.
+
+Reviewed twelve-second morning walks in Lightweight and Standard: `output/playwright/chukar-scree-ground-lite.png` and `output/playwright/chukar-scree-ground-high.png`. The hill reads as stony ground and the walking strip is clearer. Chips are still a flat surface treatment; larger stone geometry supplies actual relief. This adds no textures, meshes or draw calls. Standard reported the same 151 draws and 357,660 triangles, with a 9.5-millisecond 95th-percentile desktop frame interval in the short sample. Shader cost on mobile, long-range transitions and sustained motion artifacts remain unmeasured. Compilation and build pass with existing chunk warnings. The Lightweight page reported no warnings or errors; no simulation tests rerun for this material-only change.
+
 **Next work, in order**
 
 1. Use the Seed 1 South reference route to judge environment improvements from arrival through the known runner encounter. Review a full encounter with ordinary aiming separately; the assisted reference does not establish input usability.

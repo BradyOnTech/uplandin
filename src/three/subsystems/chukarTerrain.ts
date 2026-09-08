@@ -1,12 +1,63 @@
 import * as THREE from 'three';
-import type { LandscapeModel } from '../../game/landscape';
+import { PROPERTY_PX_TO_M, type LandscapeModel } from '../../game/landscape';
 import type { Ctx } from '../engine';
-import { buildQuailTerrainGeometry, applyQuailSurfaceDetail } from './quailTerrain';
+import { buildQuailTerrainGeometry } from './quailTerrain';
 import { quailGroundTiles, quailGroundUsesNear } from './quailGroundGeometry';
 
 const earth = new THREE.Color(0x9d8a70), dust = new THREE.Color(0xbea886);
 const stone = new THREE.Color(0x8d8980), shade = new THREE.Color(0x6d716b), sage = new THREE.Color(0x7e8771);
 const sample = {height:0,slope:0,gradeX:0,gradeZ:0,rockiness:0,vegetation:0,moisture:0};
+
+/** World-anchored scree detail, filtered before individual chips become subpixel. */
+function applyScreeDetail(material: THREE.MeshLambertMaterial, landscape: LandscapeModel): void {
+  const origin = landscape.worldToProperty(0, 0, { x: 0, y: 0 });
+  material.customProgramCacheKey = () => 'chukar-scree-v1';
+  material.onBeforeCompile = shader => {
+    shader.uniforms.uScreeOrigin = { value: new THREE.Vector2(origin.x * PROPERTY_PX_TO_M, origin.y * PROPERTY_PX_TO_M) };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vScreeGround;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvScreeGround = (modelMatrix * vec4(transformed, 1.)).xz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying vec2 vScreeGround;
+        uniform vec2 uScreeOrigin;
+        float screeHash(vec2 p) {
+          vec3 h = fract(vec3(p.xyx) * .1031);
+          h += dot(h, h.yzx + 33.33);
+          return fract((h.x + h.y) * h.z);
+        }
+        float screeNoise(vec2 p) {
+          vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f);
+          return mix(mix(screeHash(i), screeHash(i+vec2(1.,0.)), f.x),
+            mix(screeHash(i+vec2(0.,1.)), screeHash(i+vec2(1.,1.)),f.x),f.y);
+        }
+      `)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        vec2 ground = vScreeGround + uScreeOrigin;
+        float deposit = screeNoise(ground * .17);
+        float soil = screeNoise(ground * 1.4);
+        diffuseColor.rgb *= .89 + deposit * .16 + soil * .10;
+        vec2 cells = mat2(.8,-.6,.6,.8) * ground * 2.4;
+        vec2 cell = floor(cells);
+        float seed = screeHash(cell);
+        float angle = seed * 6.2831853;
+        vec2 local = fract(cells) - .5;
+        local -= vec2(screeHash(cell+17.), screeHash(cell+39.)) * .22 - .11;
+        local = mat2(cos(angle),-sin(angle),sin(angle),cos(angle))*local;
+        local.y *= 1.2 + seed * .9;
+        float edge = max(max(abs(local.x), abs(local.y)), abs(local.x+local.y)*.72);
+        float aa = max(fwidth(edge), .003);
+        float radius = .14 + screeHash(cell+91.) * .20;
+        float chip = 1.-smoothstep(radius-aa, radius+aa, edge);
+        float range = 1.-smoothstep(18.,65.,length(vScreeGround-cameraPosition.xz));
+        float resolved = 1.-smoothstep(.12,.35,max(fwidth(cells.x),fwidth(cells.y)));
+        float exposed = smoothstep(.2,.6,deposit) * step(.19,seed);
+        float facet = local.x + local.y * .55 > 0. ? 1.22 : .87;
+        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.02,1.07,1.14) * facet,
+          chip * exposed * range * resolved * .9);
+      `);
+  };
+}
 
 function paint(landscape:LandscapeModel,x:number,y:number,out:THREE.Color):THREE.Color {
   const surface=landscape.surfaceAtProperty(x,y,sample);
@@ -26,7 +77,7 @@ export class ChukarTerrain {
   private distant:THREE.Mesh[]=[];
   private material=new THREE.MeshLambertMaterial({vertexColors:true});
   private nearDistance=170;
-  constructor(private landscape:LandscapeModel){applyQuailSurfaceDetail(this.material,landscape);}
+  constructor(private landscape:LandscapeModel){applyScreeDetail(this.material,landscape);}
   init(ctx:Ctx):void {
     this.nearDistance=ctx.quality==='high'?170:125;
     // Chukar used to keep the high-tier 64-cell near grid on mobile even
