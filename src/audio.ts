@@ -127,27 +127,39 @@ export function playCackle(volume = 1, destination?: AudioNode): void {
 
 /** One physical pheasant launch: heavy first beats, then receding wing wash.
  * Distance affects loudness without changing bird state or random streams. */
+export interface SoundDirection { x: number; y: number; z: number }
+
 export interface PheasantFlushSound {
   readonly active: boolean;
-  updateSpatial(distanceM: number, pan: number): void;
+  updateSpatial(distanceM: number, direction: SoundDirection): void;
   stop(): void;
 }
 
-export function playPheasantFlush(distanceM: number, rooster: boolean, pan = 0): PheasantFlushSound | undefined {
+export function playPheasantFlush(distanceM: number, rooster: boolean, source: SoundDirection = { x: 0, y: 0, z: -1 }): PheasantFlushSound | undefined {
   const c = ready();
   if (!c) return;
-  const direction = c.createStereoPanner(), distanceGain = c.createGain();
-  const clampPan = (value: number) => Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
+  const direction = c.createPanner(), distanceGain = c.createGain();
+  direction.panningModel = 'HRTF';
+  direction.rolloffFactor = 0; // The existing distance gain owns attenuation.
+  const position = (source: SoundDirection, smooth: boolean) => {
+    const length = Math.hypot(source.x, source.y, source.z);
+    const valid = Number.isFinite(length) && length > .001;
+    const values = valid ? [source.x / length, source.y / length, source.z / length] : [0, 0, -1];
+    [direction.positionX, direction.positionY, direction.positionZ].forEach((param, i) => {
+      if (smooth) param.setTargetAtTime(values[i], c.currentTime, .025);
+      else param.value = values[i];
+    });
+  };
   const proximity = (distance: number) => 1 / (1 + (Number.isFinite(distance) ? Math.max(0, distance) : 0) / 18);
-  direction.pan.value = clampPan(pan);
+  position(source, false);
   distanceGain.gain.value = proximity(distanceM);
   distanceGain.connect(direction).connect(output(c));
   let active = true;
   const handle: PheasantFlushSound = {
     get active() { return active; },
-    updateSpatial(distance, nextPan) {
+    updateSpatial(distance, nextDirection) {
       if (!active) return;
-      direction.pan.setTargetAtTime(clampPan(nextPan), c.currentTime, .025);
+      position(nextDirection, true);
       distanceGain.gain.setTargetAtTime(proximity(distance), c.currentTime, .025);
     },
     stop() {

@@ -370,6 +370,8 @@ export class BirdsSystem implements Subsystem {
 
   private hunt!: Hunt3DSystem;
   private terrain!: TerrainSystem;
+  private soundOffset = new THREE.Vector3();
+  private soundInverse = new THREE.Quaternion();
   private listener?: THREE.Camera;
   private frozen = false;
 
@@ -1462,14 +1464,11 @@ export class BirdsSystem implements Subsystem {
 
   private disturbLaunchCover(slot: Slot): void {
     if (!this.frozen && this.spatialEncounter && slot.species.id === 'ringneck') {
-      const dx = slot.x - (this.listener?.position.x ?? slot.flight?.hunterX ?? this.hunterX);
-      const dz = slot.z - (this.listener?.position.z ?? slot.flight?.hunterZ ?? this.hunterZ);
-      const distance = Math.hypot(dx, dz), yaw = this.listener?.rotation.y ?? 0;
-      // The camera's local +X is the listener's right. Use the actual
-      // takeoff moment, so a delayed second bird respects a recent turn.
-      const pan = distance > .001 ? (dx * Math.cos(yaw) - dz * Math.sin(yaw)) / distance : 0;
+      const offset = new THREE.Vector3(slot.x, slot.y, slot.z);
+      if (this.listener) offset.sub(this.listener.position).applyQuaternion(this.listener.quaternion.clone().invert());
+      else offset.sub(new THREE.Vector3(this.hunterX, 0, this.hunterZ));
       slot.launchSound?.stop();
-      slot.launchSound = playPheasantFlush(distance, slot.sex === 'rooster', pan);
+      slot.launchSound = playPheasantFlush(offset.length(), slot.sex === 'rooster', offset);
     }
     this.coverEvents?.dispatchEvent(new CustomEvent('bird-cover-disturbance', {
       detail: { x: slot.x, z: slot.z },
@@ -1645,10 +1644,11 @@ export class BirdsSystem implements Subsystem {
       if (s.launchSound) {
         if (!s.launchSound.active) s.launchSound = undefined;
         else if (!this.frozen) {
-          const dx = s.x - ctx.camera.position.x, dz = s.z - ctx.camera.position.z;
-          const distance = Math.hypot(dx, dz), yaw = ctx.camera.rotation.y;
-          const pan = distance > .001 ? (dx * Math.cos(yaw) - dz * Math.sin(yaw)) / distance : 0;
-          s.launchSound.updateSpatial(distance, pan);
+          this.soundOffset.set(s.x, s.y, s.z).sub(ctx.camera.position);
+          const distance = this.soundOffset.length();
+          this.soundInverse.copy(ctx.camera.quaternion).invert();
+          this.soundOffset.applyQuaternion(this.soundInverse);
+          s.launchSound.updateSpatial(distance, this.soundOffset);
         }
       }
       const visible = s.status === 'flying' || s.status === 'falling' || s.status === 'grounded';
