@@ -279,6 +279,7 @@ export interface DogEnv {
   /** Physical pickup and handoff distances in property yards; legacy defaults otherwise. */
   pickupRange?: number;
   deliveryRange?: number;
+  deliveryHoldMs?: number;
   recallArriveRange?: number;
   heelFollowRange?: number;
   obstacles?: readonly DogObstacle[];
@@ -642,7 +643,7 @@ export class Dog {
       if (!env.hunterPos || dist(this.pos, env.hunterPos) <= (env.deliveryRange ?? RETRIEVE_RANGE)) {
         this.gait = 'still';
         this.retrieveHoldMs += dtMs;
-        if (this.retrieveHoldMs >= RETRIEVE_DELIVERY_HOLD_MS) {
+        if (this.retrieveHoldMs >= (env.deliveryHoldMs ?? RETRIEVE_DELIVERY_HOLD_MS)) {
           target.state = 'retrieved';
           target.pos.x = env.hunterPos?.x ?? this.pos.x;
           target.pos.y = env.hunterPos?.y ?? this.pos.y;

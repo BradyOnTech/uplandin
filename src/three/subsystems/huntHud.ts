@@ -39,6 +39,8 @@ export class HuntHudSystem implements Subsystem {
   private frozen = false;
   private summaryShown = false;
   private lastTally = '';
+  private lastRetrieved = 0;
+  private deliveryNoticeUntil = 0;
   private lastPhase = '';
   private lastEncounter = '';
   private lastBeacon = '';
@@ -153,6 +155,8 @@ export class HuntHudSystem implements Subsystem {
     }
 
     const tally = `Bag ${retrieved} · Down ${downOnGround} · Shells ${this.gun.shellsRemaining()}/${this.gun.shellCapacity()}`;
+    if (retrieved > this.lastRetrieved) this.deliveryNoticeUntil = this.fieldTime + 3;
+    this.lastRetrieved = retrieved;
     if (tally !== this.lastTally) {
       if (this.tally) this.tally.textContent = tally;
       this.lastTally = tally;
@@ -188,6 +192,8 @@ export class HuntHudSystem implements Subsystem {
           ? pointApproachCue(dogRange, this.player.isRunning(), hunt.areaId)
           : trackingCue
             ? trackingCue
+          : this.fieldTime < this.deliveryNoticeUntil
+            ? 'BIRD BROUGHT TO HAND'
           : shells < capacity
             ? `SHELLS ${shells}/${capacity} · R RELOAD`
           : hunt.doubles > 0

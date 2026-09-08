@@ -183,6 +183,7 @@ export class HuntSimulation {
         // the fall and beside the handler without demanding center overlap.
         pickupRange: spatialEncounter ? .65 / PROPERTY_PX_TO_M : undefined,
         deliveryRange: spatialEncounter ? 1 / PROPERTY_PX_TO_M : undefined,
+        deliveryHoldMs: spatialEncounter ? 900 : undefined,
         recallArriveRange: spatialEncounter ? 1.5 / PROPERTY_PX_TO_M : undefined,
         heelFollowRange: spatialEncounter ? 2 / PROPERTY_PX_TO_M : undefined,
         hunterPos: this.hunt.hunterPos,

@@ -40,6 +40,24 @@ function pointedSimulation(hunterDistance: number, continuousEncounter = false, 
 }
 
 describe('HuntSimulation shared orchestration', () => {
+  it('keeps a spatial retrieve carried through the handoff pause before awarding the bag', () => {
+    const f = pointedSimulation(20, true, 'pheasant-coverts', 'ringneck');
+    f.bird.state = 'downed'; f.bird.pos = {...f.dog.pos};
+    f.dog.state = 'quartering'; f.dog.pointedBirdId = null;
+    for (let i=0;i<100 && f.dog.carryingBirdId===null;i++)
+      f.simulation.update(50,{hunterPos:{...f.hunt.hunterPos}});
+    expect(f.dog.carryingBirdId).toBe(f.bird.id);
+    const handler = {...f.dog.pos};
+    f.simulation.update(0,{hunterPos:handler});
+    const early = f.simulation.update(850,{hunterPos:handler});
+    expect(f.bird.state).toBe('carried');
+    expect(f.dog.gait).toBe('still');
+    expect(early.some(e=>e.type==='bird-retrieved')).toBe(false);
+    const delivered = f.simulation.update(50,{hunterPos:handler});
+    expect(f.bird.state).toBe('retrieved');
+    expect(delivered.filter(e=>e.type==='bird-retrieved')).toHaveLength(1);
+    expect(f.dog.carryingBirdId).toBeNull();
+  });
   it('recalls a continuous dog to the handler and casts it hunting on the next whistle', () => {
     const f = pointedSimulation(30, true, 'pheasant-coverts', 'ringneck');
     f.hunt.birds = [];
