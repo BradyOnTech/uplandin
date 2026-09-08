@@ -75,3 +75,21 @@ it('uses correctly oriented finite normals for the long thin lit fragments', () 
   }
   effect.dispose();
 });
+
+
+it('lifts broken stems into tall cover while keeping the same fixed rendering pool', () => {
+  const low = new QuailFlushDebris('lite', () => 4);
+  const tall = new QuailFlushDebris('lite', () => 4, 'tall-cover');
+  for (const effect of [low, tall]) { effect.launch(10, 20, 1, 0, 14); effect.render(); }
+  expect(tall.capacity).toBe(low.capacity);
+  expect(tall.audit().visible).toBeGreaterThan(low.audit().visible);
+  const positions = tall.mesh.geometry.attributes.position;
+  for (let i = 0; i < tall.audit().visible; i++) {
+    const centerY = (positions.getY(i * 4) + positions.getY(i * 4 + 2)) / 2;
+    expect(centerY).toBeGreaterThanOrEqual(4.75);
+    expect(centerY).toBeLessThanOrEqual(5.25);
+  }
+  tall.advance(2000); tall.render();
+  expect(tall.mesh.visible).toBe(false);
+  low.dispose(); tall.dispose();
+});

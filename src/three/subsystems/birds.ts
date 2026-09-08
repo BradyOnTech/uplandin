@@ -420,6 +420,7 @@ export class BirdsSystem implements Subsystem {
   private debrisOz = 0;
   private debrisMs = -1;
   private launchCover?: QuailFlushDebris;
+  private coverEvents?: EventTarget;
   /** World-space rises stay attached to their authored cover on all authored
    * properties. Solitary pheasant/Chukar paths retain their dedicated
    * screen-velocity rules because those profiles already encode level-out and
@@ -439,6 +440,7 @@ export class BirdsSystem implements Subsystem {
   private carryW = { x: 0, z: 0 };
 
   init(ctx: Ctx): void {
+    this.coverEvents = ctx.events;
     this.frozen = new URLSearchParams(location.search).has('capture');
     this.hunt = ctx.get<Hunt3DSystem>('hunt3d');
     this.terrain = ctx.get<TerrainSystem>('terrain');
@@ -487,7 +489,8 @@ export class BirdsSystem implements Subsystem {
 
     this.buildPool(ctx);
     if (this.spatialEncounter) {
-      this.launchCover = new QuailFlushDebris(ctx.quality, (x, z) => this.terrain.heightAt(x, z));
+      this.launchCover = new QuailFlushDebris(ctx.quality, (x, z) => this.terrain.heightAt(x, z),
+        this.hunt.areaConfig().id === 'pheasant-coverts' ? 'tall-cover' : 'ground');
       ctx.scene.add(this.launchCover.mesh);
     } else this.buildDebris(ctx);
     this.buildFeathers(ctx);
@@ -1398,6 +1401,9 @@ export class BirdsSystem implements Subsystem {
   }
 
   private disturbLaunchCover(slot: Slot): void {
+    this.coverEvents?.dispatchEvent(new CustomEvent('bird-cover-disturbance', {
+      detail: { x: slot.x, z: slot.z },
+    }));
     this.launchCover?.launch(slot.x, slot.z, slot.flight?.escX ?? 0, slot.flight?.escZ ?? 0,
       (slot.simId * 0x9e3779b9 + this.riseSeq * 0x85ebca6b) >>> 0);
   }
@@ -1670,6 +1676,7 @@ export class BirdsSystem implements Subsystem {
   }
 
   dispose(ctx: Ctx): void {
+    this.coverEvents = undefined;
     this.launchCover?.dispose();
     this.launchCover = undefined;
     for (const s of this.slots) ctx.scene.remove(s.root);

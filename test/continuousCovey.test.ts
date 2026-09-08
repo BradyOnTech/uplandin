@@ -14,7 +14,7 @@ function fixture() {
   const runtime = system as unknown as {
     tickBirds(dt: number): void; slots: Array<Record<string, any>>;
     refinedQuail: boolean; spatialEncounter: boolean; frozen: boolean; hunt: unknown; terrain: unknown;
-    applySpeciesAppearance: unknown; burstDebris: unknown; launchCover?: QuailFlushDebris;
+    applySpeciesAppearance: unknown; burstDebris: unknown; launchCover?: QuailFlushDebris; coverEvents?: EventTarget;
   };
   runtime.refinedQuail = true; runtime.spatialEncounter = true; runtime.frozen = true;
   runtime.hunt = { areaConfig: () => getArea('quail-fields'), huntState: () => ({ birds, hunterPos: {x:0,y:0}, wind:0 }),
@@ -31,6 +31,13 @@ describe('continuous Quail coveys', () => {
   it('disturbs each actual launch once, including late birds, without changing flight or stagger at either quality', () => {
     const reference = fixture();
     const variants = [fixture(), fixture()];
+    const disturbances: Array<Array<{ x: number; z: number }>> = [[], []];
+    variants.forEach((variant, i) => {
+      variant.runtime.coverEvents = new EventTarget();
+      variant.runtime.coverEvents.addEventListener('bird-cover-disturbance', event => {
+        disturbances[i].push((event as CustomEvent).detail);
+      });
+    });
     variants[0].runtime.launchCover = new QuailFlushDebris('high', () => 0);
     variants[1].runtime.launchCover = new QuailFlushDebris('lite', () => 0);
     for (const f of [reference, ...variants]) {
@@ -43,7 +50,9 @@ describe('continuous Quail coveys', () => {
     for (const f of variants) expect(snapshot(f)).toEqual(snapshot(reference));
     expect(variants[0].runtime.launchCover!.audit().launches).toBeLessThan(9);
     for (let step = 0; step < 30; step++) for (const f of [reference, ...variants]) f.runtime.tickBirds(1000 / 30);
-    for (const f of variants) {
+    for (const [i, f] of variants.entries()) {
+      expect(disturbances[i]).toHaveLength(9);
+      expect(disturbances[i]).toEqual(f.birds.map(bird => ({ x: bird.pos.x, z: bird.pos.y })));
       expect(snapshot(f)).toEqual(snapshot(reference));
       expect(f.runtime.launchCover!.audit().launches).toBe(9);
       f.runtime.launchCover!.dispose();

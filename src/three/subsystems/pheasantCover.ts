@@ -17,6 +17,8 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
   const rng = mulberry32(kind === 'prairie' ? 0x51a7 : kind === 'cattail' ? 0xca77 : 0x57bb1e);
   const positions: number[] = [];
   const colors: number[] = [];
+  const roots: number[] = [];
+  let rootX = 0, rootZ = 0;
   const push = (vertices: number[], color: THREE.Color): void => {
     positions.push(...vertices);
     for (let i = 0; i < vertices.length; i += 3) {
@@ -25,6 +27,7 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
       const light = kind === 'prairie' || kind === 'cattail'
         ? .68 + Math.min(1, vertices[i + 1] / (kind === 'cattail' ? 1.7 : .9)) * .45 : 1;
       colors.push(color.r * light, color.g * light, color.b * light);
+      roots.push(rootX, 0, rootZ);
     }
   };
   // Instance tinting multiplies these vertex colors, so keep the blades light.
@@ -63,6 +66,7 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
     const root = rng() * (kind === 'stubble' ? 0.67 : kind === 'cattail' ? 0.55 : 0.66);
     const x = sx * root;
     const z = sz * root;
+    rootX = x; rootZ = z;
     // Lite renders without multisampling. Fewer broader blades preserve a
     // tuft's body better than thin geometry that alternates between pixels.
     const width = (kind === 'cattail' ? 0.018 : kind === 'prairie' ? 0.045 + rng() * 0.040 : 0.014 + rng() * 0.018) * (distant ? 3 : medium ? 2 : lite ? 1.65 : 1);
@@ -157,6 +161,7 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setAttribute('bladeRoot', new THREE.Float32BufferAttribute(roots, 3));
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
   geometry.userData = { kind: `pheasant-${kind}`, triangles: positions.length / 9 };
@@ -173,12 +178,22 @@ export class PheasantCoverSystem implements Subsystem {
   private surface: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
   private world = { x: 0, z: 0 };
   private wind = { value: 0 };
+  private hunterPosition = { value: new THREE.Vector2() };
+  private abort = new AbortController();
+  private disturbanceCursor = 0;
+  private disturbances = { value: Array.from({ length: 4 }, () => new THREE.Vector4(0, 0, -100, 0)) };
   private windDirection = { value: new THREE.Vector2(1, 0) };
   private windStrength = { value: 1 };
   constructor(private readonly landscape: LandscapeModel) {}
 
   init(ctx: Ctx): void {
     const lite = ctx.quality === 'lite', area = this.landscape.area;
+    ctx.events.addEventListener('bird-cover-disturbance', ((event: CustomEvent<{ x: number; z: number }>) => {
+      const { x, z } = event.detail;
+      if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+      this.disturbances.value[this.disturbanceCursor].set(x, z, ctx.time, 2.6);
+      this.disturbanceCursor = (this.disturbanceCursor + 1) % this.disturbances.value.length;
+    }) as EventListener, { signal: this.abort.signal });
     const hunt = ctx.get<Hunt3DSystem>('hunt3d').huntState();
     this.windDirection.value.set(Math.cos(hunt.wind), Math.sin(hunt.wind));
     this.windStrength.value = hunt.windStrength === 'calm' ? .35 : hunt.windStrength === 'strong' ? 1.7 : 1;
@@ -189,9 +204,11 @@ export class PheasantCoverSystem implements Subsystem {
     const material = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x81714b, emissiveIntensity: .12, vertexColors: true, side: THREE.DoubleSide });
     material.onBeforeCompile = shader => {
       shader.uniforms.uPheasantWind = this.wind;
+      shader.uniforms.uCoverDisturbance = this.disturbances;
+      shader.uniforms.uCoverHunter = this.hunterPosition;
       shader.uniforms.uPheasantWindDirection = this.windDirection;
       shader.uniforms.uPheasantWindStrength = this.windStrength;
-      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uPheasantWind;\nuniform vec2 uPheasantWindDirection;\nuniform float uPheasantWindStrength;')
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uPheasantWind;\nuniform vec2 uPheasantWindDirection;\nuniform float uPheasantWindStrength;\nuniform vec4 uCoverDisturbance[4];\nuniform vec2 uCoverHunter;\nattribute vec3 bladeRoot;')
         .replace('#include <begin_vertex>', `#include <begin_vertex>
           #ifdef USE_INSTANCING
           float phase = instanceMatrix[3].x * .15 + instanceMatrix[3].z * .11;
@@ -200,9 +217,33 @@ export class PheasantCoverSystem implements Subsystem {
           float gust = .045 + sin(uPheasantWind * 1.35 + phase) * .024
             + sin(uPheasantWind * .60 + phase * .32) * .016;
           transformed.xz += localWind * gust * uPheasantWindStrength * position.y * position.y;
+          // Only vegetation touching the hunter bends aside. Roots stay
+          // planted; no fade, shrinking or corridor toward the target.
+          vec2 bodyAway = (instanceMatrix * vec4(bladeRoot, 1.0)).xz - uCoverHunter;
+          float bodyDistance = length(bodyAway);
+          float bodyPart = 1.0 - smoothstep(.35, 1.4, bodyDistance);
+          vec2 bodyDirection = bodyAway / max(bodyDistance, .10);
+          vec2 bodyLocal = vec2(dot(normalize(instanceMatrix[0].xz), bodyDirection),
+            dot(normalize(instanceMatrix[2].xz), bodyDirection));
+          float bodyBend = bodyPart * 1.2;
+          transformed.xz += bodyLocal * position.y * sin(bodyBend);
+          transformed.y -= position.y * (1.0 - cos(bodyBend));
+          for (int i = 0; i < 4; i++) {
+            vec4 disturbance = uCoverDisturbance[i];
+            float age = uPheasantWind - disturbance.z;
+            if (age < 0.0 || age >= 2.5) continue;
+            vec2 away = instanceMatrix[3].xz - disturbance.xy;
+            float radius = max(disturbance.w, .001);
+            float influence = 1.0 - smoothstep(0.0, radius, length(away));
+            float kick = sin(age * 9.0) * exp(-age * 2.8);
+            vec2 direction = away / max(length(away), .15);
+            vec2 localDirection = vec2(dot(normalize(instanceMatrix[0].xz), direction),
+              dot(normalize(instanceMatrix[2].xz), direction));
+            transformed.xz += localDirection * influence * kick * .40 * position.y * position.y;
+          }
           #endif`);
     };
-    material.customProgramCacheKey = () => 'pheasant-rooted-cover-wind-v3'; this.materials.push(material);
+    material.customProgramCacheKey = () => 'pheasant-rooted-cover-wind-v5'; this.materials.push(material);
     // Keep the same habitat footprint in both tiers. Distance changes blade
     // complexity, not the height or presence of protective cover.
     const fields = pheasantFields(area), ponds = pheasantPonds(this.landscape);
@@ -326,6 +367,7 @@ export class PheasantCoverSystem implements Subsystem {
 
   update(ctx: Ctx): void {
     this.wind.value = ctx.time;
+    this.hunterPosition.value.set(ctx.camera.position.x, ctx.camera.position.z);
     for (const batch of this.batches) {
       // Distance to the actual parcel footprint avoids keeping an entire
       // diagonal sphere in the most expensive detail tier.
@@ -347,6 +389,7 @@ export class PheasantCoverSystem implements Subsystem {
   }
 
   dispose(ctx: Ctx): void {
+    this.abort.abort();
     for (const object of this.objects) { ctx.scene.remove(object); object.dispose(); }
     for (const geometry of this.geometries) geometry.dispose(); for (const material of this.materials) material.dispose();
     this.objects.length = 0; this.batches.length = 0; this.geometries.length = 0; this.materials.length = 0;

@@ -24,9 +24,10 @@ export class QuailFlushDebris {
   private launchCount = 0;
   private visibleCount = 0;
 
-  constructor(quality: Quality, private readonly ground: (x: number, z: number) => number) {
+  constructor(quality: Quality, private readonly ground: (x: number, z: number) => number,
+    private readonly profile: 'ground' | 'tall-cover' = 'ground') {
     this.capacity = quality === 'lite' ? 56 : 112;
-    this.piecesPerBird = quality === 'lite' ? 4 : 8;
+    this.piecesPerBird = profile === 'tall-cover' ? (quality === 'lite' ? 8 : 14) : (quality === 'lite' ? 4 : 8);
     this.fragments = Array.from({ length: this.capacity }, () => ({
       age: -1, life: 1, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0,
       length: 0, width: 0, phase: 0, spin: 0,
@@ -48,7 +49,7 @@ export class QuailFlushDebris {
     geometry.setIndex(new THREE.BufferAttribute(indices, 1));
     const material = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
     this.mesh = new THREE.Mesh(geometry, material);
-    this.mesh.name = 'quail-launch-cover';
+    this.mesh.name = profile === 'tall-cover' ? 'pheasant-launch-cover' : 'quail-launch-cover';
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;
   }
@@ -66,14 +67,16 @@ export class QuailFlushDebris {
       piece.age = 0;
       piece.life = .85 + rng() * .65;
       piece.x = x + Math.cos(angle) * .12;
-      piece.y = base + .12 + rng() * .2;
+      piece.y = base + (this.profile === 'tall-cover' ? .75 + rng() * .5 : .12 + rng() * .2);
       piece.z = z + Math.sin(angle) * .12;
       piece.vx = Math.cos(angle) * outward + forwardX * .65;
       piece.vy = 1.5 + rng() * 2.9;
       piece.vz = Math.sin(angle) * outward + forwardZ * .65;
       // Half-lengths: clipped stalks are 9–21 cm, leaves are 4–9 cm.
       piece.length = stem ? .045 + rng() * .060 : .022 + rng() * .023;
+      if (this.profile === 'tall-cover') piece.length *= 1.8;
       piece.width = stem ? .002 + rng() * .002 : .006 + rng() * .004;
+      if (this.profile === 'tall-cover') piece.width *= 1.4;
       piece.phase = rng() * Math.PI * 2;
       piece.spin = (rng() < .5 ? -1 : 1) * (4 + rng() * 5);
     }
