@@ -40,6 +40,28 @@ function pointedSimulation(hunterDistance: number, continuousEncounter = false, 
 }
 
 describe('HuntSimulation shared orchestration', () => {
+  it('holds a distant dog on scent only in continuous pheasant country and resumes when the handler closes', () => {
+    for (const [area,species,continuous,holds] of [
+      ['pheasant-coverts','ringneck',true,true],
+      ['pheasant-coverts','ringneck',false,false],
+      ['quail-fields','bobwhite',true,false],
+    ] as const) {
+      const f=pointedSimulation(100,continuous,area,species);
+      f.dog.pos={x:280,y:300};f.dog.state='quartering';f.dog.pointedBirdId=null;
+      const position={...f.dog.pos};
+      f.simulation.update(1000/30,{hunterPos:{...f.hunt.hunterPos},dogMotion:[{movementScale:.04}]});
+      expect(f.dog.state).toBe('tracking');expect(f.dog.waitingForHandler).toBe(holds);
+      if(holds) {
+        for(let i=0;i<60;i++)f.simulation.update(1000/30,{hunterPos:{...f.hunt.hunterPos},dogMotion:[{movementScale:.04}]});
+        expect(f.dog.pos).toEqual(position);expect(f.bird.state).toBe('hidden');
+        // Movement is consumed after the dog tick; the next tick observes it.
+        const closer={x:position.x-30,y:position.y};
+        for(let i=0;i<2;i++)f.simulation.update(1000/30,{hunterPos:closer,dogMotion:[{movementScale:.04}]});
+        expect(f.dog.waitingForHandler).toBe(false);expect(f.dog.state).toBe('tracking');
+      }
+    }
+  });
+
   it('keeps seeded pheasant temperament stable across hunts with different runtime IDs', () => {
     const area = getArea('pheasant-coverts');
     const a = createHunt(area, mulberry32(1));

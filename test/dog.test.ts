@@ -86,6 +86,37 @@ describe('Dog', () => {
     expect(dog.state).toBe('pointing');
   });
 
+  it('holds a long pheasant road-in until the handler closes, without inventing a point', () => {
+    const dog = makeDog(100, 100), bird = birdAt(130, 100, { speciesId: 'ringneck' });
+    const env: DogEnv = { huntAreaId: 'pheasant-coverts', hunterPos: { x: 100, y: 100 },
+      rangeRadius: 24, trackingRange: 52.5, movementScale: .04 };
+    // Keep real scent ahead, as a runner does, without letting it reach point range.
+    for (let i = 0; i < 1000 && !dog.waitingForHandler; i++) {
+      bird.pos = { x: dog.pos.x + 30, y: dog.pos.y };
+      dog.update(50, [bird], env);
+    }
+    expect(dog.waitingForHandler).toBe(true);
+    expect(dist(dog.pos, env.hunterPos!)).toBeGreaterThan(52.5);
+    expect(dist(dog.pos, env.hunterPos!)).toBeLessThan(53);
+    expect(dog.state).toBe('tracking');
+    expect(dog.pointedBirdId).toBeNull();
+    const held = { ...dog.pos };
+    // A small advance does not cause stop/start chatter around the outer limit.
+    env.hunterPos = { x: held.x - 45, y: held.y };
+    run(dog, [bird], 50, env);
+    expect(dog.waitingForHandler).toBe(true);
+    expect(dog.pos).toEqual(held);
+    env.hunterPos = { x: held.x - 30, y: held.y };
+    run(dog, [bird], 10, env);
+    expect(dog.waitingForHandler).toBe(false);
+    expect(dog.pos.x).toBeGreaterThan(held.x);
+    // Losing this scent releases the hold; it cannot claim a permanent target.
+    bird.state = 'flushed';
+    run(dog, [bird], 1, env);
+    expect(dog.waitingForHandler).toBe(false);
+    expect(dog.state).toBe('quartering');
+  });
+
   it('starts quartering', () => {
     expect(makeDog(240, 135).state).toBe('quartering');
   });

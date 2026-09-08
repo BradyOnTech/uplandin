@@ -2,7 +2,7 @@ import { huntComplete } from '../../game/state';
 import { nextHuntUrl } from '../../game/huntSeed';
 import { huntingDoctrine } from '../../game/huntDoctrine';
 import { renderFieldNotes } from '../fieldNotes';
-import { dogRelativeBearing, dogWorkLabel, fieldCompassHeading, fieldSearchGuidance, pointApproachCue, trackingApproachCue } from '../dogLocator';
+import { dogRelativeBearing, dogWorkLabel, fieldCompassHeading, fieldSearchGuidance, pointApproachCue, trackingApproachGuidance } from '../dogLocator';
 import type { Ctx, Subsystem } from '../engine';
 import type { BirdsSystem } from './birds';
 import type { GunSystem } from './gun';
@@ -173,7 +173,9 @@ export class HuntHudSystem implements Subsystem {
     if (this.endButton) this.endButton.disabled = rise || downOnGround > 0;
     const shells = this.gun.shellsRemaining();
     const capacity = this.gun.shellCapacity();
-    const trackingCue = trackedDog?.state === 'tracking' ? trackingApproachCue(dogRange, hunt.areaId, trackedDog.scentStage) : null;
+    const trackingGuidance = trackedDog?.state === 'tracking'
+      ? trackingApproachGuidance(dogRange, hunt.areaId, trackedDog.scentStage, trackedDog.waitingForHandler) : null;
+    const trackingCue = trackingGuidance?.headline ?? null;
     const phase = this.gun.isReloading()
       ? `RELOADING · ${shells}/${capacity}`
       : rise
@@ -248,17 +250,7 @@ export class HuntHudSystem implements Subsystem {
         let cue = '';
         if (!rise && trackedDog?.state === 'pointing' && hunt.areaId === 'pheasant-coverts')
           cue = 'Walk toward the point. Watch above the cover and identify the rooster before firing.';
-        else if (!rise && trackingCue) {
-          if (trackedDog?.scentStage === 'locking')
-            cue = 'The dog is setting its point. Slow down and let it finish.';
-          else if (trackedDog?.scentStage === 'stalking')
-            cue = 'The dog is closing on scent. Walk quietly and give it room.';
-          else if (trackedDog?.scentStage === 'checking')
-            cue = 'The dog has checked scent. Give it room to locate the source.';
-          else cue = dogRange > 30
-            ? 'Move up along dry cover while the dog tracks. Walk when it points.'
-            : 'Stay with the cover edge and give the dog room to finish.';
-        }
+        else if (!rise && trackingGuidance) cue = trackingGuidance.detail;
         if (!rise && trackedDog?.state === 'quartering') {
           if (this.fieldTime < 35) cue = fieldSearchGuidance(hunt.areaId);
           else if (truckMeters < 14) cue = `${this.hunt.dropPoint().name} · back at the truck`;

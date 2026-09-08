@@ -189,6 +189,9 @@ export class HuntSimulation {
         movementScale: motion?.movementScale,
         maxTravelSpeed: motion?.maxTravelSpeed,
         rangeRadius: motion?.rangeRadius,
+        // Leave room to road in on a runner, then wait for the handler.
+        // Existing points can finish; concealed birds keep moving normally.
+        trackingRange: spatialEncounter && huntStyle === 'pheasant' ? 48 / PROPERTY_PX_TO_M : undefined,
         workAnchor: motion?.workAnchor,
         obstacles: motion?.obstacles,
       };

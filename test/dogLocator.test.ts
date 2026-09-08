@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { dogRelativeBearing, dogWorkLabel, pointApproachCue, trackingApproachCue } from '../src/three/dogLocator';
+import { dogRelativeBearing, dogWorkLabel, pointApproachCue, trackingApproachCue, trackingApproachGuidance } from '../src/three/dogLocator';
 
 it('gives the actual continuous bearing relative to the hunter looking north or west', () => {
   expect(dogRelativeBearing(0, -10, 0)).toBeCloseTo(0);
@@ -45,4 +45,20 @@ it('describes pheasant scent stages without assuming a hidden bird is running', 
   expect(trackingApproachCue(40,'pheasant-coverts','stalking')).toBe('DOG CLOSING · CLOSE THE GAP');
   expect(trackingApproachCue(20,'pheasant-coverts','stalking')).toBe('DOG CLOSING · WALK QUIETLY');
   expect(trackingApproachCue(40,'pheasant-coverts','checking')).toBe('SCENT CHECK · GIVE THE DOG ROOM');
+});
+
+it('keeps far stalking and waiting advice consistent across both HUD messages', () => {
+  const far=trackingApproachGuidance(55,'pheasant-coverts','stalking')!;
+  expect(far.headline).toContain('CLOSE THE GAP');
+  expect(far.detail).toContain('Move up along dry cover');
+  expect(far.detail).not.toContain('Walk quietly and give it room');
+  const near=trackingApproachGuidance(20,'pheasant-coverts','stalking')!;
+  expect(near.headline).toContain('WALK QUIETLY');expect(near.detail).toContain('Walk quietly');
+  for(const stage of ['checking','locating','stalking','locking','none'] as const) {
+    const waiting=trackingApproachGuidance(45,'pheasant-coverts',stage,true)!;
+    expect(waiting.headline).toBe('DOG HOLDING SCENT · CLOSE UP');
+    expect(waiting.detail).toContain('waiting on scent');expect(waiting.detail).toContain('Close the gap');
+    expect(dogWorkLabel({state:'tracking',scentStage:stage,carryingBirdId:null,waitingForHandler:true},'pheasant-coverts'))
+      .toBe('DOG HOLDING SCENT');
+  }
 });

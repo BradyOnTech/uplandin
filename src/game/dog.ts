@@ -287,6 +287,8 @@ export interface DogEnv {
   maxTravelSpeed?: number;
   /** Optional working radius override in sim pixels. */
   rangeRadius?: number;
+  /** Maximum road-in distance from the handler in property units; resumes inside 70%. */
+  trackingRange?: number;
   /** Optional cast center, distinct from the hunter used by recall/scent rules. */
   workAnchor?: Vec2;
   /** Direction the wind blows TOWARD (radians, screen coords). Undefined = calm. */
@@ -696,13 +698,17 @@ export class Dog {
       const style = scentApproachStyle(this.profile.breed, this.profile.level);
       const direct = Math.atan2(bird.pos.y - this.pos.y, bird.pos.x - this.pos.x);
       const birdDistance = dist(this.pos, bird.pos);
-      // The live close-timber range must also constrain a long scent road-in.
+      // Handler range must also constrain a long scent road-in.
       // Retain the scent and its current beat rather than abandon game or
       // declare a point early. Hysteresis avoids repeated stop/start steps.
       const closeCover = this.doctrineFor(env).style === 'woods' || this.doctrineFor(env).style === 'bottoms';
-      if (closeCover && env.rangeRadius !== undefined && env.hunterPos &&
-        birdDistance > POINT_SETTLE_RANGE &&
-        dist(this.pos, env.hunterPos) > this.effectiveRangeRadius(env) * (wasWaitingForHandler ? 1.2 : 1.6)) {
+      const trackingLimit = env.trackingRange !== undefined
+        ? env.trackingRange * (wasWaitingForHandler ? .7 : 1)
+        : closeCover && env.rangeRadius !== undefined
+          ? this.effectiveRangeRadius(env) * (wasWaitingForHandler ? 1.2 : 1.6)
+          : Infinity;
+      if (env.hunterPos && birdDistance > POINT_SETTLE_RANGE &&
+        dist(this.pos, env.hunterPos) > trackingLimit) {
         this.waitingForHandler = true;
         this.heading = turnToward(this.heading, direct, 4 * dt);
         this.gait = 'still';

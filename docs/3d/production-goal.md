@@ -7,9 +7,9 @@ The active goal is the full user-approved scope in the September 8 goal objectiv
 | Outcome | Required evidence | Current status |
 | --- | --- | --- |
 | Exciting natural hunts | Ordinary uninterrupted hunts across seeds and routes; close, runner, wary, hen and follow-up presentations; meaningful wind, approach and dog handling | Incomplete; approach integration defects fixed, natural distribution not established |
-| Finished birds | Readable rooster/hen anatomy, wings, tail, takeoff, banking and falling or landing during play | Dedicated model in review; banking, falling and ordinary identification remain open |
+| Finished birds | Readable rooster/hen anatomy, wings, tail, takeoff, banking and falling or landing during play | Dedicated model, banking and momentum-based fall implemented; ordinary identification and complete presentation acceptance remain open |
 | Cohesive environment | Walking-height review of vegetation shapes, transitions, terrain, landmarks, materials and lighting in both quality tiers | Dense habitat established; close silhouettes and composition still incomplete |
-| Finished dog | Convincing search, track, relocate, point, break, find and return; explicit procedural asset acceptance review | Provisional model and complete retrieve presentation unresolved |
+| Finished dog | Convincing search, track, relocate, point, break, find and return; explicit procedural asset acceptance review | Procedural carry and assisted return improved; provisional model and ordinary retrieve acceptance unresolved |
 | Finished controls and sound | Sustained laptop aim/track/mount/recoil/reload review; deliberate flush, cackle, cover, dog and environmental sound review | Keyboard path improved; complete tactile and audio review open |
 | Performance and reliability | Measured ordinary laptop and actual phone performance, loading, repeated sessions, both entries, varied lighting, misses and retrieves | Static and short traversal M1 Pro frame-cadence samples exist; full hunts and actual phone validation incomplete |
 | Reference and transfer | Cohesive Pheasant hunt through final retrieve/results that warrants replay, then species-specific application elsewhere | Pheasant benchmark not achieved; no broad completion claim |
@@ -25,3 +25,10 @@ Retain dense pheasant habitat and the browser/mobile direction. Do not solve acq
 **Evidence location**
 
 The chronological record is in `docs/3d/pheasant-completion.md`. Tests and build reports prove only their covered behavior. The latest model comparison is under `output/playwright/pheasant-model-rooster-side.png` and `pheasant-model-hen-side.png`. These are assisted frozen previews at approximately eight meters, not new hunts.
+
+
+**Latest review priorities**
+
+West Track seed 17 produced three point flushes in a four-minute real-control session, with no bagged birds. Observation gaps prevented acquiring every rise; this is not the uninterrupted completion benchmark. It did expose conflicting distance advice and a dog pursuing scent beyond useful handler range. Shared guidance and a generous continuous-Pheasant tracking hold now pass browser and integration checks. Replay varied routes and seeds to judge whether those changes improve participation without creating repeated artificial stops.
+
+The same walking review exposed rectangular cattail heads and repetitive broad cover transitions. Refine those silhouettes and grouping next, preserving dense habitat and measuring additional geometry. Bird acquisition, tactile shooting, ordinary return, deliberate listening and actual phone performance remain required.

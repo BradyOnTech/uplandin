@@ -17,14 +17,39 @@ export function fieldSearchGuidance(areaId: string): string {
   return huntingDoctrine(areaId).guidance;
 }
 
-export function trackingApproachCue(dogDistanceM: number, areaId: string, stage: DogScentStage = 'none'): string | null {
+export function trackingApproachGuidance(dogDistanceM: number, areaId: string, stage: DogScentStage = 'none', waitingForHandler = false): { headline: string; detail: string } | null {
   if (huntingDoctrine(areaId).style !== 'pheasant') return null;
-  if (stage === 'checking') return 'SCENT CHECK · GIVE THE DOG ROOM';
-  if (stage === 'locating') return 'LOCATING SCENT · WORK THE EDGE';
-  if (stage === 'stalking') return dogDistanceM > 30
-    ? 'DOG CLOSING · CLOSE THE GAP' : 'DOG CLOSING · WALK QUIETLY';
-  if (stage === 'locking') return 'SETTING POINT · SLOW YOUR APPROACH';
-  return dogDistanceM > 30 ? 'DOG TRACKING · CLOSE THE GAP' : 'DOG TRACKING · WORK THE EDGE';
+  if (waitingForHandler) return {
+    headline: 'DOG HOLDING SCENT · CLOSE UP',
+    detail: 'The dog is waiting on scent. Close the gap along dry cover so it can continue.',
+  };
+  if (stage === 'locking') return {
+    headline: 'SETTING POINT · SLOW YOUR APPROACH',
+    detail: 'The dog is setting its point. Slow down and let it finish.',
+  };
+  if (stage === 'checking') return {
+    headline: 'SCENT CHECK · GIVE THE DOG ROOM',
+    detail: 'The dog has checked scent. Give it room to locate the source.',
+  };
+  if (stage === 'locating') return {
+    headline: 'LOCATING SCENT · WORK THE EDGE',
+    detail: 'Stay with the cover edge and give the dog room to locate the scent.',
+  };
+  const far = dogDistanceM > 30;
+  if (stage === 'stalking') return {
+    headline: far ? 'DOG CLOSING · CLOSE THE GAP' : 'DOG CLOSING · WALK QUIETLY',
+    detail: far ? 'Move up along dry cover while the dog closes on scent. Slow when it starts setting its point.'
+      : 'The dog is closing on scent. Walk quietly and give it room.',
+  };
+  return {
+    headline: far ? 'DOG TRACKING · CLOSE THE GAP' : 'DOG TRACKING · WORK THE EDGE',
+    detail: far ? 'Move up along dry cover while the dog tracks. Walk when it points.'
+      : 'Stay with the cover edge and give the dog room to finish.',
+  };
+}
+
+export function trackingApproachCue(dogDistanceM: number, areaId: string, stage: DogScentStage = 'none', waitingForHandler = false): string | null {
+  return trackingApproachGuidance(dogDistanceM, areaId, stage, waitingForHandler)?.headline ?? null;
 }
 
 /** Guidance refers to the visible dog's work and hunter's pace, never the
@@ -67,7 +92,7 @@ export function dogWorkLabel(dog: { state: DogState; scentStage: DogScentStage; 
   const style = huntingDoctrine(areaId).style;
   if (dog.carryingBirdId !== null) return 'DOG RETURNING';
   if (dog.state === 'pointing') return 'DOG ON POINT';
-  if (dog.waitingForHandler) return 'DOG HOLDING SCENT · CLOSE UP';
+  if (dog.waitingForHandler) return style === 'pheasant' ? 'DOG HOLDING SCENT' : 'DOG HOLDING SCENT · CLOSE UP';
   if (dog.state === 'tracking') {
     if (style === 'pheasant') {
       if (dog.scentStage === 'checking') return 'SCENT CHECK';
