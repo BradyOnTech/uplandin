@@ -17,8 +17,13 @@ export function fieldSearchGuidance(areaId: string): string {
   return huntingDoctrine(areaId).guidance;
 }
 
-export function trackingApproachCue(dogDistanceM: number, areaId: string): string | null {
+export function trackingApproachCue(dogDistanceM: number, areaId: string, stage: DogScentStage = 'none'): string | null {
   if (huntingDoctrine(areaId).style !== 'pheasant') return null;
+  if (stage === 'checking') return 'SCENT CHECK · GIVE THE DOG ROOM';
+  if (stage === 'locating') return 'LOCATING SCENT · WORK THE EDGE';
+  if (stage === 'stalking') return dogDistanceM > 30
+    ? 'DOG CLOSING · CLOSE THE GAP' : 'DOG CLOSING · WALK QUIETLY';
+  if (stage === 'locking') return 'SETTING POINT · SLOW YOUR APPROACH';
   return dogDistanceM > 30 ? 'DOG TRACKING · CLOSE THE GAP' : 'DOG TRACKING · WORK THE EDGE';
 }
 
@@ -64,7 +69,13 @@ export function dogWorkLabel(dog: { state: DogState; scentStage: DogScentStage; 
   if (dog.state === 'pointing') return 'DOG ON POINT';
   if (dog.waitingForHandler) return 'DOG HOLDING SCENT · CLOSE UP';
   if (dog.state === 'tracking') {
-    if (style === 'pheasant') return 'DOG TRACKING RUNNER';
+    if (style === 'pheasant') {
+      if (dog.scentStage === 'checking') return 'SCENT CHECK';
+      if (dog.scentStage === 'locating') return 'LOCATING SCENT';
+      if (dog.scentStage === 'stalking') return 'DOG CLOSING';
+      if (dog.scentStage === 'locking') return 'SETTING POINT';
+      return 'DOG WORKING SCENT';
+    }
     if (areaId === 'sharptail-prairie') return 'DOG WORKING THE WIND LANE';
     if (style === 'chukar') return 'DOG CLIMBING SCENT';
     if (style === 'bench-covey') return 'DOG WORKING THE BENCH';

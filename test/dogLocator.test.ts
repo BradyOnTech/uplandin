@@ -34,3 +34,15 @@ it('distinguishes closing on Pheasant tracking from a quiet approach to a finish
   expect(pointApproachCue(20, true, 'pheasant-coverts')).toBe('ON POINT · SLOW YOUR APPROACH');
   expect(pointApproachCue(40, false, 'pheasant-coverts')).toBe('ON POINT · WALK IN QUIETLY');
 });
+
+it('describes pheasant scent stages without assuming a hidden bird is running', () => {
+  const dog = { state: 'tracking' as const, scentStage: 'checking' as const, carryingBirdId: null };
+  for (const [stage,label] of [['checking','SCENT CHECK'],['locating','LOCATING SCENT'],
+    ['stalking','DOG CLOSING'],['locking','SETTING POINT'],['none','DOG WORKING SCENT']] as const) {
+    expect(dogWorkLabel({...dog,scentStage:stage},'pheasant-coverts')).toBe(label);
+  }
+  expect(trackingApproachCue(40,'pheasant-coverts','locking')).toBe('SETTING POINT · SLOW YOUR APPROACH');
+  expect(trackingApproachCue(40,'pheasant-coverts','stalking')).toBe('DOG CLOSING · CLOSE THE GAP');
+  expect(trackingApproachCue(20,'pheasant-coverts','stalking')).toBe('DOG CLOSING · WALK QUIETLY');
+  expect(trackingApproachCue(40,'pheasant-coverts','checking')).toBe('SCENT CHECK · GIVE THE DOG ROOM');
+});
