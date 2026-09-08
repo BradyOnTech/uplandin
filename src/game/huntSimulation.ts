@@ -29,6 +29,7 @@ import { HUNT_CHALLENGES, type HuntChallenge } from './huntChallenge';
 import { huntHabitatAffinity, huntingDoctrine } from './huntDoctrine';
 import { LandscapeModel, type GroundSample } from './landscape';
 import { getSpecies } from './species';
+import { PROPERTY_PX_TO_M } from './worldUnits';
 
 /** Shared field rules. Both renderers cross this seam. */
 export const HUNT_FLUSH_RADIUS = 22;
@@ -273,7 +274,7 @@ export class HuntSimulation {
         if (coveyApproach) {
           nerveMult *= quailPointApproach(pointed.coveyId, dog.pressure, !!input.hunterRunning).nerveScale;
         }
-        nerveMult *= slopeNerveMult(speciesSlopeApproach(species, this.area.slope, this.hunt.hunterPos, pointed.pos));
+        nerveMult *= slopeNerveMult(this.birdSlopeApproach(pointed));
         if (isFlanking(this.hunt.hunterPos, dog.pos, pointed.pos)) nerveMult *= FLANK_NERVE_MULT;
       }
       const wild = updateBirdNerve(dtMs, this.hunt.birds, dog.pointedBirdId, nerveMult);
@@ -312,6 +313,21 @@ export class HuntSimulation {
     return huntHabitatAffinity(huntingDoctrine(this.area.id), this.dogSurface);
   }
 
+  private birdSlopeApproach(bird: Bird): SlopeApproach | null {
+    const species = getSpecies(bird.speciesId);
+    if (!this.continuousEncounter) {
+      return speciesSlopeApproach(species, this.area.slope, this.hunt.hunterPos, bird.pos);
+    }
+    if (species?.flightDirection !== 'downhill') return null;
+    const hunter = this.hunt.hunterPos;
+    const elevation = this.landscape.heightAtProperty(hunter.x, hunter.y)
+      - this.landscape.heightAtProperty(bird.pos.x, bird.pos.y);
+    // Ignore small surface undulations and near-level traverses. Elevations
+    // are meters, while simulation positions are property units.
+    const levelBand = Math.max(1, dist(hunter, bird.pos) * PROPERTY_PX_TO_M * .05);
+    return elevation > levelBand ? 'above' : elevation < -levelBand ? 'below' : 'level';
+  }
+
   flushBird(
     birdId: number,
     cause: FlushCause,
@@ -338,7 +354,7 @@ export class HuntSimulation {
       hunterDistance,
       pointingSlot,
       pointCredit,
-      slopeApproach: speciesSlopeApproach(getSpecies(bird.speciesId), this.area.slope, this.hunt.hunterPos, bird.pos),
+      slopeApproach: this.birdSlopeApproach(bird),
     };
     this.activeRises.set(event.birdId, event);
     return event;

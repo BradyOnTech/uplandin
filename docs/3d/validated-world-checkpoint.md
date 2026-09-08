@@ -333,6 +333,14 @@ Evidence: `output/playwright/chukar-seed1-closing.png` and `output/playwright/ch
 
 Updated Chukar entry and search guidance to explicitly recommend gaining the high side and walking into the point. The previous advice to let the dog work uphill did not explain the consequence of chasing it directly up the slope. Mechanics remain unchanged. The revised entry text was confirmed in the browser and all three dog-locator checks pass. Next compare a quiet high-side approach on this same seed before tuning point duration, dog range or escape behavior. Also compare the actual terrain height with the property's fixed slope-direction model; a local ridge may not match that simplified tactical classification.
 
+**Chukar tactics follow terrain elevation**
+
+Compared the reviewed covey at local (19.22, -47.98) with nearby terrain samples. Its ground elevation was 26.72 meters; a west-side position at (-10, -48) was 21.04 meters, but the fixed north-facing slope rule classified that approach as level. Continuous encounters now classify above/below from shared property elevations. A one-meter minimum neutral band, widening to five percent of horizontal distance, avoids treating small ground undulations as a tactical height advantage. Only species with downhill flight use this classification. Legacy discrete encounters retain their compass-direction model.
+
+Both point-pressure and the emitted flush classification use the same resolver. Regression coverage uses the actual reviewed Chukar terrain, verifies increased pressure from the lower west position, checks above/level positions, and preserves legacy and non-mountain species behavior. All 18 focused simulation/fieldcraft checks, compilation and production build pass; existing chunk-size warnings remain. This does not yet change runner path selection or flight direction, which still need a separate local-terrain review.
+
+A fresh Seed 1 South Gate walk headed north rather than northwest. After approximately 27 seconds the dog pointed about 23 meters away. A quiet walk toward it produced a seven-bird rise at approximately 26 meters, compared with 55 meters on the previous sprinting approach. Evidence: `output/playwright/chukar-quiet-direct-rise.png`. Birds were visible near the crest. One assisted aimed shot did not produce a down; three birds had already escaped by the next observation. No teleport, forced flush or down helper was used; camera turns/aim and pauses were assisted. This is a closer encounter, not a completed successful hunt or an isolated comparison of sprint versus walking, since the route also changed. A true high-side approach and Chukar flight-window review remain outstanding.
+
 **Next work, in order**
 
 1. Use the Seed 1 South reference route to judge environment improvements from arrival through the known runner encounter. Review a full encounter with ordinary aiming separately; the assisted reference does not establish input usability.

@@ -6,6 +6,7 @@ import { Dog } from '../src/game/dog';
 import { HuntSimulation } from '../src/game/huntSimulation';
 import { mulberry32 } from '../src/game/math';
 import { createHunt } from '../src/game/state';
+import { LandscapeModel } from '../src/game/landscape';
 
 function pointedSimulation(hunterDistance: number, continuousEncounter = false) {
   const area = getArea('quail-fields');
@@ -37,6 +38,40 @@ function pointedSimulation(hunterDistance: number, continuousEncounter = false) 
 }
 
 describe('HuntSimulation shared orchestration', () => {
+  it('uses the actual Chukar cross-slope elevation for continuous encounters', () => {
+    const area = getArea('chukar-ridge');
+    const land = new LandscapeModel(area, 'south-gate');
+    // Reviewed South Gate covey: west is almost six meters lower, although
+    // the legacy north-facing slope model calls this a level traverse.
+    const birdPos = land.worldToProperty(19.2216, -47.9787, { x: 0, y: 0 });
+    const hunterPos = land.worldToProperty(-10, -48, { x: 0, y: 0 });
+    expect(land.heightAtProperty(birdPos.x, birdPos.y)
+      - land.heightAtProperty(hunterPos.x, hunterPos.y)).toBeGreaterThan(5);
+    const fixture = (continuousEncounter: boolean, speciesId = 'chukar') => {
+      const hunt = createHunt(area, mulberry32(11));
+      const bird: Bird = { id: 9001, coveyId: 77, speciesId, pos: { ...birdPos },
+        state: 'hidden', runs: false, runEnergy: 2500, restingMs: 0, nerveMs: 10000 };
+      hunt.birds = [bird]; hunt.hunterPos = { ...hunterPos };
+      const dog = new Dog({ x: birdPos.x + 12, y: birdPos.y },
+        { breed: getBreed('english-setter'), level: 8 }, mulberry32(12), area.world);
+      dog.state = 'pointing'; dog.gait = 'still'; dog.pointedBirdId = bird.id;
+      const simulation = new HuntSimulation({ hunt, dogs: [dog], area, rng: mulberry32(13), continuousEncounter });
+      return { hunt, bird, simulation };
+    };
+    const spatial = fixture(true), legacy = fixture(false);
+    spatial.simulation.update(16, { hunterPos });
+    legacy.simulation.update(16, { hunterPos });
+    expect(10000 - spatial.bird.nerveMs).toBeCloseTo((10000 - legacy.bird.nerveMs) * 1.4, 5);
+    expect(spatial.simulation.flushBird(9001, 'nerve', 0)?.slopeApproach).toBe('below');
+    expect(legacy.simulation.flushBird(9001, 'nerve', 0)?.slopeApproach).toBe('level');
+    const nonMountain = fixture(true, 'bobwhite');
+    expect(nonMountain.simulation.flushBird(9001, 'proximity', 0)?.slopeApproach).toBeNull();
+    for (const [x, z, expected] of [[19.2216, -80, 'above'], [50, -48, 'level']] as const) {
+      const f = fixture(true);
+      f.hunt.hunterPos = land.worldToProperty(x, z, { x: 0, y: 0 });
+      expect(f.simulation.flushBird(9001, 'proximity', 0)?.slopeApproach).toBe(expected);
+    }
+  });
   it('settles a continuous covey at its observed landings and permits one follow-up single', () => {
     const f = pointedSimulation(10, true);
     const departed = { ...f.bird, id: 9002, pos: { ...f.bird.pos } };
