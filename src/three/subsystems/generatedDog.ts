@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import type { Ctx, Subsystem } from '../engine';
 import type { Hunt3DSystem } from './hunt3d';
 import type { TerrainSystem } from './terrain';
-import { GeneratedFieldMotion } from '../dogs/generatedFieldMotion';
+import { GeneratedFieldMotion, type GeneratedRetrievePose } from '../dogs/generatedFieldMotion';
 import { dogTorsoHeading } from '../dogs/riggedMotion';
 import { GeneratedAttention } from '../dogs/generatedAttention';
 import type { BirdsSystem } from './birds';
@@ -43,7 +43,13 @@ export class GeneratedDogSystem implements Subsystem {
     else if(dt>0)this.speed=THREE.MathUtils.lerp(this.speed,distance/dt,1-Math.exp(-dt*12));
     this.heading=dogTorsoHeading(dog,this.speed,this.hunt.dogRenderTravelHeading(ctx.fixedAlpha),this.hunt.dogRenderHeading(ctx.fixedAlpha),this.heading,dt,!this.placed||distance>3);
     const point=dog.state==='pointing'||dog.state==='honoring';
-    this.motion.update(this.position.x,this.position.z,Math.PI/2-this.heading,dt,dog.gait!=='still'&&this.speed>.06&&!point,point);
+    const retrieve: GeneratedRetrievePose | undefined = dog.state === 'retrieving'
+      ? { stage: dog.carryingBirdId !== null ? dog.gait === 'still' ? 'deliver' : 'carry' : 'pickup',
+          holdMs: dog.retrieveHoldTimeMs?.() ?? 0 }
+      : undefined;
+    // Only settle into pickup once the simulation has reached the actual fall.
+    const retrievePose = retrieve?.stage === 'pickup' && dog.gait !== 'still' ? undefined : retrieve;
+    this.motion.update(this.position.x,this.position.z,Math.PI/2-this.heading,dt,dog.gait!=='still'&&this.speed>.06&&!point,point,retrievePose);
     this.auditFrame++;
     const watching=dog.state==='marking' && ctx.get<BirdsSystem>('birds').markingTarget(dog.watchedBirdIds(),this.attentionTarget);
     this.attention.update(this.motion.asset,watching?this.attentionTarget:null,dt);

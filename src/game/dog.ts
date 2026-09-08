@@ -413,6 +413,8 @@ export class Dog {
   }
 
   watchedBirdIds(): readonly number[] { return this.markingBirdIds; }
+  /** Read-only pickup/delivery hold clock for pose presentation. */
+  retrieveHoldTimeMs(): number { return this.retrieveHoldMs; }
 
   /** Out of stamina: slower, duller nose, sloppier. */
   get winded(): boolean {

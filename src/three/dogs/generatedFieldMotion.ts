@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import type { LocomotionGait } from './locomotion';
 import { createGeneratedGsp, GENERATED_STRIDE } from './generatedGsp';
 
+export interface GeneratedRetrievePose { stage: 'pickup' | 'carry' | 'deliver'; holdMs: number; }
+
 /** Presentation-only ground contacts. The shared hunt remains the movement authority. */
 export class GeneratedFieldMotion {
   readonly asset: ReturnType<typeof createGeneratedGsp>;
@@ -17,6 +19,9 @@ export class GeneratedFieldMotion {
   private nominal=new THREE.Vector3();
   private bodyHeight=0;
   private pointPresence=0;
+  private pickupPresence=0;
+  private carryPresence=0;
+  private deliverPresence=0;
   private wasMoving=false;
   private lastYaw=0;
   private transitionTime=.24;
@@ -29,7 +34,7 @@ export class GeneratedFieldMotion {
     this.asset=createGeneratedGsp(detail,true);
     this.pose=Object.values(this.asset.joints).map(node=>({node,previousPosition:node.position.clone(),previousRotation:node.quaternion.clone(),fromPosition:node.position.clone(),fromRotation:node.quaternion.clone()}));
   }
-  update(x:number,z:number,yaw:number,dt:number,moving:boolean,point:boolean) {
+  update(x:number,z:number,yaw:number,dt:number,moving:boolean,point:boolean,retrieve?:GeneratedRetrievePose) {
     const root=this.asset.root,ground=this.ground(x,z),distance=this.placed?Math.hypot(x-this.last.x,z-this.last.z):0;
     const depth=this.waterDepth(x,z);
     const wasSwimming=this.swimming;
@@ -43,7 +48,7 @@ export class GeneratedFieldMotion {
       root.position.set(x,ground+Math.max(0,depth-.4),z);root.rotation.set(0,yaw,0);
       root.updateMatrixWorld(true);
       this.feet.forEach((foot,i)=>{foot.locked=false;foot.initialized=false;this.asset.paws[i].getWorldPosition(foot.target);});
-      this.pointPresence=0;this.wasMoving=true;
+      this.pointPresence=0;this.pickupPresence=0;this.carryPresence=0;this.deliverPresence=0;this.wasMoving=true;
       this.last.set(x,ground,z);this.lastYaw=yaw;this.placed=true;
       this.pose.forEach(p=>{p.previousPosition.copy(p.node.position);p.previousRotation.copy(p.node.quaternion);});
       return;
@@ -130,6 +135,18 @@ export class GeneratedFieldMotion {
     this.clamped=this.asset.solveWorldFeet(this.targets,this.normals,posedFoot);
     if(posedFoot>=0)this.asset.paws[posedFoot].getWorldPosition(this.feet[posedFoot].target);
     this.pose.forEach(p=>{p.previousPosition.copy(p.node.position);p.previousRotation.copy(p.node.quaternion);});
+    // Retrieval is an upper-body layer. Foot targets and locomotion remain
+    // authoritative below; entering a pickup never slides the planted paws.
+    const action = point ? undefined : retrieve?.stage;
+    const blend = 1 - Math.exp(-Math.max(0, dt) * 12);
+    this.pickupPresence = THREE.MathUtils.lerp(this.pickupPresence, action === 'pickup' ? THREE.MathUtils.smoothstep(retrieve!.holdMs, 0, 180) : 0, blend);
+    this.carryPresence = THREE.MathUtils.lerp(this.carryPresence, action === 'carry' ? 1 : 0, blend);
+    this.deliverPresence = THREE.MathUtils.lerp(this.deliverPresence, action === 'deliver' ? 1 : 0, blend);
+    const { neck, head } = this.asset.joints;
+    neck.position.y -= .17 * this.pickupPresence;
+    neck.rotation.x += 1.25 * this.pickupPresence + .10 * this.carryPresence - .08 * this.deliverPresence;
+    head.rotation.x += .30 * this.pickupPresence - .10 * this.carryPresence - .12 * this.deliverPresence;
+    root.updateMatrixWorld(true);
     this.wasMoving=moving;
     this.lastYaw=yaw;
     this.last.set(x,ground,z);this.placed=true;
