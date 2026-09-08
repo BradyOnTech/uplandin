@@ -1,3 +1,4 @@
+import { getArea, getDropPoint } from '../src/game/areas';
 import { afterEach,expect,it,vi } from 'vitest';
 import * as THREE from 'three';
 import { GeneratedDogSystem } from '../src/three/subsystems/generatedDog';
@@ -7,7 +8,7 @@ it('does not interpret the first live placement as running, and preserves speed 
   const scope:{__generatedDogAudit?:()=>{speed:number;gait:string}}={};vi.stubGlobal('window',scope);
   let x=100,z=100;
   const dog={state:'heel',gait:'still',scentStage:'none',carryingBirdId:null};
-  const hunt={dog:()=>dog,dogRenderWorld:(_alpha:number,out:{x:number;z:number})=>Object.assign(out,{x,z}),dogRenderHeading:()=>0,dogRenderTravelHeading:()=>0};
+  const hunt={areaConfig:()=>getArea('quail-fields'),dropPoint:()=>getDropPoint(getArea('quail-fields')),dog:()=>dog,dogRenderWorld:(_alpha:number,out:{x:number;z:number})=>Object.assign(out,{x,z}),dogRenderHeading:()=>0,dogRenderTravelHeading:()=>0};
   const ctx={scene:new THREE.Scene(),quality:'lite',fixedAlpha:1,get:(id:string)=>id==='hunt3d'?hunt:{heightAt:()=>0}} as unknown as Ctx;
   const system=new GeneratedDogSystem();system.init(ctx);
   system.update(ctx,0);x=0;z=0;system.update(ctx,1/60);

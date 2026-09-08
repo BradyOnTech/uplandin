@@ -187,6 +187,14 @@ Replaced the swimming branch's walking-cycle reuse with submerged elliptical paw
 
 Reviewed the generated GSP from the assisted Beaver Pond position. Evidence: `output/playwright/woodcock-gsp-paddle.png`; the live audit reported swimming active and zero clamped targets. This is still an initial authored paddle, not a biomechanically validated swimming animation. Body immersion, transitions, travel speed, wake effects and legacy dog support remain unfinished. No complete swimming retrieve or mobile run was performed.
 
+**Dog water travel ceiling**
+
+The 3D hunt now samples each dog's water depth and supplies a travel-speed ceiling to the shared simulation. The ceiling eases down to 1.4 meters per second in deeper water and is absent on dry ground. It applies to movement, including recall and retrieval, without slowing sensing or decision timers. The generated paddle remains presentation-only; legacy dog visuals are still unfinished in water.
+
+A recall check verifies capped travel and restoration on dry ground. The full run exposed the generated-startup fixture's missing area/drop accessors introduced by water sampling; supplied those while retaining its startup, zero-time and disposal assertions. All 557 tests across 78 files now pass, as do compilation and build with existing chunk warnings.
+
+Browser sampling began at the assisted Beaver Pond position. The dog initially stayed at heel, so those samples were not movement proof. After normal hunter movement released it, six half-second samples showed approximately 1.4 meters per second while tracking with swimming active. A full swimming retrieve and shore transition still need review; no mobile performance claim is made.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

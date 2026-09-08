@@ -63,6 +63,7 @@ export type HuntSimulationEvent =
 export interface HuntDogMotion {
   obstacles?: DogEnv['obstacles'];
   movementScale?: number;
+  maxTravelSpeed?: number;
   rangeRadius?: number;
   workAnchor?: Vec2;
 }
@@ -179,6 +180,7 @@ export class HuntSimulation {
         huntAreaId: this.area.id,
         slopeAngle: this.area.slope,
         movementScale: motion?.movementScale,
+        maxTravelSpeed: motion?.maxTravelSpeed,
         rangeRadius: motion?.rangeRadius,
         workAnchor: motion?.workAnchor,
         obstacles: motion?.obstacles,

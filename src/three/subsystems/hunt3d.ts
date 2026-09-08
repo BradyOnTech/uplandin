@@ -1,3 +1,4 @@
+import { ShallowWater } from '../../game/shallowWater';
 import { quailGroundPropObstacles } from './quailGroundProps';
 import { getDropPoint, type AreaConfig, type DropPoint } from '../../game/areas';
 import { playWhistle } from '../../audio';
@@ -151,6 +152,8 @@ export class Hunt3DSystem implements Subsystem {
   private simulation!: HuntSimulation;
   /** Adapter-only pace/range mapping passed through the shared sim seam. */
   private liveDogMotions: HuntDogMotion[] = [];
+  private dogWater?: ShallowWater;
+  private waterPosition = { x: 0, z: 0 };
   private dogObstaclesSynced = false;
   private simMsLast = 0;
   private simMsMax = 0;
@@ -240,6 +243,7 @@ export class Hunt3DSystem implements Subsystem {
       const p = this.landscape.worldToProperty(o.x,o.z,{x:0,y:0});
       return {x:p.x,y:p.y,radius:o.radius / PROPERTY_PX_TO_M};
     });
+    this.dogWater = new ShallowWater(this.landscape);
     this.liveDogMotions = this.simDogs.map((dog) => ({
       obstacles: propObstacles,
       movementScale: liveMovementScaleForGait(dog.gait),
@@ -364,6 +368,11 @@ export class Hunt3DSystem implements Subsystem {
     // than making a hunting dog run at one mechanical velocity forever.
     for (let slot = 0; slot < this.simDogs.length; slot++) {
       const dog = this.simDogs[slot];
+      this.landscape.propertyToWorld(dog.pos.x, dog.pos.y, this.waterPosition);
+      const depth = this.dogWater?.depthAtWorld(this.waterPosition.x, this.waterPosition.z) ?? 0;
+      const wet = Math.max(0, Math.min(1, (depth - .08) / .4));
+      this.liveDogMotions[slot].maxTravelSpeed = depth > .08
+        ? (4.5 - 3.1 * wet * wet * (3 - 2 * wet)) / PROPERTY_PX_TO_M : undefined;
       this.pacePhases[slot] += (dtMs / 1000) * Math.PI * 2 * dog.profile.breed.motion.surgeHz;
       this.liveDogMotions[slot].movementScale = liveMovementScaleForDog(
         dog.gait,

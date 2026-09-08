@@ -280,6 +280,8 @@ export interface DogEnv {
   hunterPos?: Vec2;
   /** Presentation-space pace multiplier; AI clocks still advance in real time. */
   movementScale?: number;
+  /** Terrain travel ceiling in property units per second; AI clocks are unchanged. */
+  maxTravelSpeed?: number;
   /** Optional working radius override in sim pixels. */
   rangeRadius?: number;
   /** Optional cast center, distinct from the hunter used by recall/scent rules. */
@@ -462,12 +464,14 @@ export class Dog {
 
   private obstacleMotion = new DogObstacleMotion();
   private obstacles: readonly DogObstacle[] = [];
+  private maxTravel = Infinity;
 
   update(dtMs: number, birds: Bird[], env: DogEnv = {}): void {
     const wasWaitingForHandler = this.waitingForHandler;
     this.waitingForHandler = false;
     this.obstacles = env.obstacles ?? [];
     const dt = dtMs / 1000;
+    this.maxTravel = env.maxTravelSpeed === undefined ? Infinity : Math.max(0, env.maxTravelSpeed) * dt;
     const movementDt = dt * (env.movementScale ?? 1);
     // Default presentation; branches below overwrite for cast/track/still.
     this.gait = 'run';
@@ -1145,6 +1149,7 @@ export class Dog {
   }
 
   private advance(heading: number, distance: number): void {
+    distance = Math.min(distance, this.maxTravel);
     if (this.obstacles.length) {
       // The travel direction may include a temporary quartering weave.
       // Feed back only an obstacle's detour, not that weave: accumulating

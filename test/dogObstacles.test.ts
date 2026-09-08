@@ -61,3 +61,16 @@ describe('dog local prop detours', () => {
     expect(p).toEqual({x:Math.cos(.7)*2,y:Math.sin(.7)*2});
   });
 });
+
+it('caps recall travel through water and releases the ceiling on dry ground',()=>{
+  const dog=new Dog({x:500,y:500},{breed:getBreed('gsp'),level:10},()=>.5,{x:0,y:0,w:1200,h:1000});
+  const hunterPos={x:600,y:500};
+  dog.update(100,[],{hunterPos,recall:true,maxTravelSpeed:2});
+  expect(dog.state).toBe('recalled');
+  expect(dog.pos.x).toBeCloseTo(500.2);
+  for(let i=0;i<9;i++)dog.update(100,[],{hunterPos,maxTravelSpeed:2});
+  expect(dog.pos.x).toBeCloseTo(502);
+  const before=dog.pos.x;
+  dog.update(100,[],{hunterPos});
+  expect(dog.pos.x-before).toBeGreaterThan(.2);
+});
