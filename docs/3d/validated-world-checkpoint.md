@@ -77,6 +77,14 @@ Repeated the West Track walk in both modes. Evidence is `output/playwright/grous
 
 The woodland floor now has recognizable small vegetation and litter, but the fronds remain coarse and the canopy and shrub silhouettes still repeat. This is incremental art progress, not a finished reference hunt. A complete encounter remains unverified.
 
+**Close-timber scent pacing**
+
+The browser dog reached 84 yards while tracking, despite the close-timber search range. Search steering respected the range, but the scent-approach branch did not. For the live woodland range configuration, the dog now pauses a scent approach beyond 1.6 times its effective working radius and resumes within 1.2 times that radius. It retains the scent beat and does not declare an early point. Finished points, retrievals, and other species' tracking remain outside this hold rule. The HUD says `DOG HOLDING SCENT · CLOSE UP` while waiting.
+
+Focused checks cover holding position without losing the scent, resuming into a point, and uninterrupted Pheasant and Chukar tracking. All 540 tests and the production build pass. In the browser, the dog held at 28 yards, resumed when approached, and reached a point at 22 yards. No rise had occurred before that point. The live HUD and telemetry confirmed the point; the screenshot requested afterward was too late and shows the subsequent search, so `grouse-followed-point.png` must not be treated as point-image proof. The hold is captured in `output/playwright/grouse-handler-hold.png`.
+
+The bird escaped before a shot or retrieve was completed. The next encounter review needs continuous recording or tightly timed input through the point-to-rise window. This change improves approach pacing but does not establish a complete reference hunt, and the hold behavior still needs broader judgment across dog training levels.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

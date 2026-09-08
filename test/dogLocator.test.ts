@@ -20,6 +20,7 @@ it('guides the actual walk-in without promising a flush distance or exposing a c
 it('labels real scent and retrieve behavior instead of calling every scent beat a finished point', () => {
   const dog = { state: 'tracking' as const, scentStage: 'locating' as const, carryingBirdId: null };
   expect(dogWorkLabel(dog)).toBe('LOCATING SCENT');
+  expect(dogWorkLabel({ ...dog, waitingForHandler: true }, 'grouse-woods')).toBe('DOG HOLDING SCENT · CLOSE UP');
   expect(dogWorkLabel({ ...dog, scentStage: 'stalking' })).toBe('DOG CLOSING');
   expect(dogWorkLabel({ ...dog, scentStage: 'locking' })).toBe('SETTING POINT');
   expect(dogWorkLabel({ ...dog, state: 'pointing' })).toBe('DOG ON POINT');

@@ -355,6 +355,8 @@ export class Dog {
   gait: DogGait = 'run';
   /** True for a brief beat when scent first hits — head up, freeze a step. */
   scentCheck = false;
+  /** Close-timber scent approach pauses until the handler can follow. */
+  waitingForHandler = false;
   /** Current shared search-to-point beat, consumed by both presentations. */
   scentStage: DogScentStage = 'none';
   /** Normalized progress through the current beat (distance-based for stalk). */
@@ -462,6 +464,8 @@ export class Dog {
   private obstacles: readonly DogObstacle[] = [];
 
   update(dtMs: number, birds: Bird[], env: DogEnv = {}): void {
+    const wasWaitingForHandler = this.waitingForHandler;
+    this.waitingForHandler = false;
     this.obstacles = env.obstacles ?? [];
     const dt = dtMs / 1000;
     const movementDt = dt * (env.movementScale ?? 1);
@@ -683,6 +687,17 @@ export class Dog {
       const style = scentApproachStyle(this.profile.breed, this.profile.level);
       const direct = Math.atan2(bird.pos.y - this.pos.y, bird.pos.x - this.pos.x);
       const birdDistance = dist(this.pos, bird.pos);
+      // The live close-timber range must also constrain a long scent road-in.
+      // Retain the scent and its current beat rather than abandon game or
+      // declare a point early. Hysteresis avoids repeated stop/start steps.
+      if (this.doctrineFor(env).style === 'woods' && env.rangeRadius !== undefined && env.hunterPos &&
+        birdDistance > POINT_SETTLE_RANGE &&
+        dist(this.pos, env.hunterPos) > this.effectiveRangeRadius(env) * (wasWaitingForHandler ? 1.2 : 1.6)) {
+        this.waitingForHandler = true;
+        this.heading = turnToward(this.heading, direct, 4 * dt);
+        this.gait = 'still';
+        return;
+      }
 
       if (this.scentStage === 'checking') {
         // First contact: freeze a beat and face the scent cone. The original

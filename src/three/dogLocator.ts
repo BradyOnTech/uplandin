@@ -52,10 +52,11 @@ const SEARCH_LABELS: Record<string, string> = {
   'valley-oaks': 'DOG CASTING OAK SKIRTS',
 };
 
-export function dogWorkLabel(dog: { state: DogState; scentStage: DogScentStage; carryingBirdId: number | null }, areaId = ''): string {
+export function dogWorkLabel(dog: { state: DogState; scentStage: DogScentStage; carryingBirdId: number | null; waitingForHandler?: boolean }, areaId = ''): string {
   const style = huntingDoctrine(areaId).style;
   if (dog.carryingBirdId !== null) return 'DOG RETURNING';
   if (dog.state === 'pointing') return 'DOG ON POINT';
+  if (dog.waitingForHandler) return 'DOG HOLDING SCENT · CLOSE UP';
   if (dog.state === 'tracking') {
     if (style === 'pheasant') return 'DOG TRACKING RUNNER';
     if (areaId === 'sharptail-prairie') return 'DOG WORKING THE WIND LANE';

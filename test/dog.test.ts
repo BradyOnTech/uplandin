@@ -61,6 +61,31 @@ function run(dog: Dog, birds: Bird[], steps: number, env: DogEnv = {}, dtMs = 50
 }
 
 describe('Dog', () => {
+  it('holds a distant live woodland scent approach and resumes when the handler closes', () => {
+    const dog = makeDog(100, 100), bird = birdAt(145, 100);
+    const env = { huntAreaId: 'grouse-woods', hunterPos: { x: 100, y: 100 }, rangeRadius: 24, movementScale: .04 };
+    run(dog, [bird], 1000, env);
+    expect(dog.waitingForHandler).toBe(true);
+    expect(dog.state).toBe('tracking');
+    expect(dog.pointedBirdId).toBeNull();
+    const held = { ...dog.pos };
+    run(dog, [bird], 100, env);
+    expect(dog.pos).toEqual(held);
+    env.hunterPos = { x: held.x - 4, y: held.y };
+    run(dog, [bird], 1000, env);
+    expect(dog.waitingForHandler).toBe(false);
+    expect(dog.state).toBe('pointing');
+    expect(dog.pointedBirdId).toBe(bird.id);
+  });
+
+  it.each(['pheasant-coverts', 'chukar-ridge'])('retains uninterrupted scent work in %s', huntAreaId => {
+    const dog = makeDog(100, 100), bird = birdAt(145, 100);
+    const env = { huntAreaId, hunterPos: { x: 100, y: 100 }, rangeRadius: 24, movementScale: .04 };
+    run(dog, [bird], 1000, env);
+    expect(dog.waitingForHandler).toBe(false);
+    expect(dog.state).toBe('pointing');
+  });
+
   it('starts quartering', () => {
     expect(makeDog(240, 135).state).toBe('quartering');
   });
