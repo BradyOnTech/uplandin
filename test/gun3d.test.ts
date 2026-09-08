@@ -62,6 +62,40 @@ describe('3D shotgun action', () => {
     gun.dispose(ctx);
   });
 
+  it.each(['fire', 'lower', 'pause', 'reload', 'no-rise', 'changed-rise', 'expired', 'cooldown'])(
+    'handles rapid F + Space during mount safely: %s', scenario => {
+      vi.stubGlobal('window', new EventTarget());vi.stubGlobal('location', { search: '' });
+      vi.stubGlobal('document', { getElementById: () => null, querySelector: () => null });
+      let active = scenario !== 'no-rise', sequence = 1;
+      const birds = { riseSequence: () => sequence, isRiseActive: () => active, shootRay: vi.fn(() => null) };
+      const hunt = { huntState: () => ({ gunId: 'semi-auto', birds: [] }), dog: () => ({ state: 'quartering' }), dogCount: () => 1 };
+      const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), renderer: { domElement: new EventTarget() },
+        events: new EventTarget(), quality: 'high', timeOfDay: 'noon', time: 1, paused: false,
+        get: (id: string) => ({ hunt3d: hunt, birds, terrain: { heightAt: () => 0 } }[id]),
+      } as unknown as Ctx;
+      const gun = new GunSystem();gun.init(ctx);
+      const key = (code: string) => window.dispatchEvent(Object.assign(new Event('keydown', { cancelable: true }),
+        { code, key: code === 'Space' ? ' ' : code === 'KeyR' ? 'r' : 'f', repeat: false }));
+      const step = (dt: number) => { ctx.time += dt;gun.update(ctx,dt); };
+      // A lowered trigger must never mount or queue a later shot.
+      key('Space');step(.05);expect(gun.shellsRemaining()).toBe(3);expect(gun.mountProgress()).toBe(0);
+      if (scenario === 'cooldown') (gun as unknown as { lastShotMs: number }).lastShotMs=ctx.time*1000;
+      key('KeyF');key('Space');expect(gun.shellsRemaining()).toBe(3);
+      if (scenario === 'lower') { key('KeyF');key('KeyF'); }
+      if (scenario === 'pause') { ctx.paused=true;ctx.events.dispatchEvent(new Event('pause'));ctx.paused=false;key('KeyF'); }
+      if (scenario === 'reload') key('KeyR'); // Even a full-gun reload request cancels a queued trigger.
+      if (scenario === 'changed-rise') sequence++;
+      if (scenario === 'no-rise') active=true;
+      if (scenario === 'expired') step(.26);
+      else for(let i=0;i<12;i++)step(1/60);
+      expect(gun.shellsRemaining()).toBe(scenario==='fire'?2:3);
+      for(let i=0;i<60;i++)step(1/60);
+      expect(gun.shellsRemaining()).toBe(scenario==='fire'?2:3);
+      // A new deliberate trigger after cooldown still works normally.
+      key('Space');expect(gun.shellsRemaining()).toBe(scenario==='fire'?1:2);
+      gun.dispose(ctx);
+    });
+
   it('supports latched keyboard aim and a single shot per Space press without mouse buttons', () => {
     vi.stubGlobal('window', new EventTarget());
     vi.stubGlobal('location', { search: '' });

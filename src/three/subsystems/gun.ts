@@ -219,6 +219,7 @@ export class GunSystem implements Subsystem {
 
   /** Aim intent (RMB / staged). The one input the states hang off. */
   private aim = false;
+  private pendingTrigger: { until: number; rise: number } | null = null;
   /** Mount timeline 0..1 (linear; pose uses ease()). */
   private mountT = 0;
   private keyboardAim = false;
@@ -377,7 +378,7 @@ export class GunSystem implements Subsystem {
         else if (e.button === 0 && this.mountT > 0.7
           && (!this.keyboardAim || document.pointerLockElement === ctx.renderer.domElement)) this.requestFire(ctx);
       }, { signal });
-      window.addEventListener('mouseup', (e) => { if (e.button === 2) this.aim = this.keyboardAim; }, { signal });
+      window.addEventListener('mouseup', (e) => { if (e.button === 2) this.aim = this.keyboardAim; if (!this.aim) this.pendingTrigger = null; }, { signal });
       ctx.renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault(), { signal });
       this.keydownHandler = (event) => {
         const target = event.target as HTMLElement | null;
@@ -388,6 +389,7 @@ export class GunSystem implements Subsystem {
           if (this.isReloading()) return;
           this.keyboardAim = !this.keyboardAim;
           this.aim = this.keyboardAim;
+          if (!this.aim) this.pendingTrigger = null;
         } else if (event.code === 'Space' || event.key === ' ') {
           event.preventDefault();
           this.requestFire(ctx);
@@ -397,11 +399,12 @@ export class GunSystem implements Subsystem {
       ctx.events.addEventListener('hunt-action', ((event: CustomEvent) => {
         if (ctx.paused) return;
         if (event.detail === 'mount') this.aim = true;
-        else if (event.detail === 'lower') this.aim = false;
+        else if (event.detail === 'lower') { this.aim = false; this.pendingTrigger = null; }
         else if (event.detail === 'reload') this.beginReload();
         else if (event.detail === 'fire') this.requestFire(ctx);
       }) as EventListener, { signal });
       const lowerGun = () => {
+        this.pendingTrigger = null;
         this.keyboardAim = false;
         this.aim = false;
         document.querySelector('[data-action="aim"]')?.setAttribute('aria-pressed', 'false');
@@ -525,6 +528,7 @@ export class GunSystem implements Subsystem {
   }
 
   private beginReload(): boolean {
+    this.pendingTrigger = null;
     if (this.isReloading() || this.shells >= this.gun.shells) return false;
     this.aim = false;
     this.keyboardAim = false;
@@ -543,10 +547,14 @@ export class GunSystem implements Subsystem {
 
   private requestFire(ctx: Ctx): void {
     if (ctx.paused || this.isReloading()) return;
+    if (this.aim && this.mountT <= .7 && this.birds.isRiseActive()) {
+      // Honor one deliberate trigger during mounting, never a later encounter.
+      this.pendingTrigger ??= { until: ctx.time + .25, rise: this.birds.riseSequence() };
+    }
     const hint = this.mountT <= .7
       ? this.aim ? 'RAISING GUN' : 'F TO AIM · SPACE TO SHOOT'
       : !this.birds.isRiseActive() ? 'WAIT FOR A FLUSH' : null;
-    if (!hint) { this.fire(ctx); return; }
+    if (!hint) { this.pendingTrigger = null; this.fire(ctx); return; }
     if (this.shotCallout) {
       this.shotCallout.textContent = hint;
       this.shotCallout.classList.remove('miss');
@@ -820,6 +828,15 @@ export class GunSystem implements Subsystem {
     }
 
     this.advance(dt);
+    if (this.pendingTrigger) {
+      const pending = this.pendingTrigger;
+      if (ctx.paused || !this.aim || this.isReloading() || ctx.time >= pending.until
+        || !this.birds.isRiseActive() || riseSequence !== pending.rise) this.pendingTrigger = null;
+      else if (this.mountT > .7) {
+        this.pendingTrigger = null;
+        this.fire(ctx);
+      }
+    }
     const m = ease(this.mountT);
     const reloadP = this.visualReloadPreview ?? this.reloadProgress();
     const reloadArc = Math.sin(reloadP * Math.PI);
@@ -929,6 +946,7 @@ export class GunSystem implements Subsystem {
   }
 
   dispose(ctx: Ctx): void {
+    this.pendingTrigger = null;
     this.inputAbort.abort();
     ctx.scene.remove(this.root);
     if (this.keydownHandler) window.removeEventListener('keydown', this.keydownHandler);
