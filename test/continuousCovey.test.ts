@@ -30,6 +30,28 @@ function fixture() {
 }
 
 describe('continuous Quail coveys', () => {
+  it('renders restrained fixed-clock pheasant banking through heading wrap and settles on straight flight', () => {
+    const f=fixture();f.add(1,1,4,0);f.birds[0].speciesId='ringneck';f.runtime.tickBirds(1000/30);
+    const slot=f.runtime.slots[0];Object.assign(slot,{body:new THREE.Mesh(),wingL:new THREE.Group(),wingR:new THREE.Group(),visualScale:1});
+    const runtime=f.runtime as unknown as {updatePheasantBank(slot:unknown,dt:number):void;update(ctx:unknown,dt:number):void};
+    const heading=(yaw:number)=>{slot.vxW=Math.sin(yaw)*10;slot.vzW=Math.cos(yaw)*10;runtime.updatePheasantBank(slot,1/30);};
+    slot.bank=0;slot.bankYaw=Math.PI-.01;
+    heading(-Math.PI+.01);runtime.update({},0);
+    expect(slot.bank).toBeLessThan(0);expect(Math.abs(slot.bank)).toBeLessThan(.06);
+    expect(slot.root.rotation.z).toBeCloseTo(slot.bank);
+    const bank=slot.bank;for(let i=0;i<10;i++)runtime.update({},0);
+    expect(slot.bank).toBe(bank);expect(slot.root.rotation.z).toBeCloseTo(bank);
+    for(let i=1;i<=30;i++)heading(-Math.PI+.01+i*.02);
+    expect(slot.bank).toBeLessThan(-.1);expect(slot.bank).toBeGreaterThanOrEqual(-.35);
+    const yaw=slot.bankYaw;
+    for(let i=0;i<60;i++)heading(yaw);
+    runtime.update({},0);expect(Math.abs(slot.root.rotation.z)).toBeLessThan(.001);
+    // A fresh pooled launch must not inherit a previous bird's turn.
+    const fresh=fixture();fresh.add(1,1,4,0);fresh.birds[0].speciesId='ringneck';
+    Object.assign(fresh.runtime.slots[0],{bank:.3,bankYaw:2});fresh.runtime.tickBirds(1000/30);
+    expect(fresh.runtime.slots[0].bank).toBe(0);
+  });
+
   it('retains a hit pheasant momentum and records its moving fall on the actual terrain', () => {
     const f=fixture();f.add(1,1,4,0);f.birds[0].speciesId='ringneck';
     f.runtime.tickBirds(1000/30);

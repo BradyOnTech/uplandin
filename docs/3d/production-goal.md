@@ -11,7 +11,7 @@ The active goal is the full user-approved scope in the September 8 goal objectiv
 | Cohesive environment | Walking-height review of vegetation shapes, transitions, terrain, landmarks, materials and lighting in both quality tiers | Dense habitat established; close silhouettes and composition still incomplete |
 | Finished dog | Convincing search, track, relocate, point, break, find and return; explicit procedural asset acceptance review | Provisional model and complete retrieve presentation unresolved |
 | Finished controls and sound | Sustained laptop aim/track/mount/recoil/reload review; deliberate flush, cackle, cover, dog and environmental sound review | Keyboard path improved; complete tactile and audio review open |
-| Performance and reliability | Measured ordinary laptop and actual phone performance, loading, repeated sessions, both entries, varied lighting, misses and retrieves | Tests/build evidence exists; hardware validation incomplete |
+| Performance and reliability | Measured ordinary laptop and actual phone performance, loading, repeated sessions, both entries, varied lighting, misses and retrieves | Initial static M1 Pro frame-cadence samples exist; moving hunts and actual phone validation incomplete |
 | Reference and transfer | Cohesive Pheasant hunt through final retrieve/results that warrants replay, then species-specific application elsewhere | Pheasant benchmark not achieved; no broad completion claim |
 
 **Next evidence-driven work**

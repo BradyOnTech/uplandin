@@ -174,3 +174,18 @@ The pheasant-specific tracking label previously overrode every scent stage with 
 A South Gate Balanced Seed 2 review explicitly selected the generated GSP. Before the change, a walking approach reached a distant hen flush with the dog about 58 yards away; no shot was taken. After the change, live HUD sampling saw closing/quiet-walk at 15 seconds and closing/close-gap at 19 seconds. A resumed run-to-setup sequence reached “SETTING POINT” at 31 yards, then switched to walking. The approach was paused for visual review at 19 yards; despite its filename, `output/playwright/pheasant-south-cued-rise.png` shows the point approach, not a flush. Turning toward the displayed dog-bearing arrow and walking produced a hen flush with the dog about 16 yards away. `pheasant-south-cued-follow.png` records the view one second after the rise. Fire was held.
 
 These were normal movement inputs with pauses for review and a calculated turn from the visible GPS arrow, not uninterrupted hunts or hidden-position-assisted flushes. The closer presentation remains hard to distinguish against cover. HUD sex identification does not establish visual rooster/hen recognition. Five focused cue tests, TypeScript checking and the production build pass; the existing build chunk warning remains. No new audio or completed-hunt claim is included.
+
+**Banking and initial local frame measurements**
+
+Flying pheasants previously had body roll explicitly reset to zero on every render. Their heading changes now drive a restrained bank on the fixed simulation tick, with wrapped angular differences, smoothing and a 20-degree cap. Straight flight returns toward level; pooled launches reset the bank and falling keeps the visible banked impact orientation. Trajectory, velocity and target scale are unchanged. Focused tests exercise actual render roll, heading wrap, repeated frozen renders, settling and pool reuse. Source review found no missing upper/lower wing faces warranting a material or scale change. Ordinary flight readability is still unproven.
+
+Initial timing checks used this MacBookPro18,3, Apple M1 Pro, 16 GiB memory, Chrome 152, and the ANGLE Metal Apple M1 Pro renderer. At a 1512-by-833 CSS viewport, the camera was explicitly positioned at West Track world (129,95), yaw -98 degrees, level pitch, morning light. Both scenes ran live for 20 seconds after warming, with the dog at heel and no airborne birds. A first sample at the same coordinates under South Gate was outside the intended stand and was excluded from the dense-cover comparison. A failed file-export attempt did not alter the scene; the Lightweight dense sample was collected again.
+
+| Display | Render resolution | Draw calls | Triangles | Callback rate | p95 interval | p99 interval | Gaps over 33.4 ms |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Lightweight | 1293 × 712 | 135 | 618,861 | 120.04/sec | 9.2 ms | 9.3 ms | 0 |
+| Standard | 1940 × 1068 | 157 | 1,255,029 | 120.01/sec | 9.2 ms | 9.3 ms | 0 |
+
+These measure requestAnimationFrame scheduling alongside the active render loop, corroborated by the engine's advancing rendered-frame counter. They are not GPU timer queries, display-scanout proof, moving-hunt stress measurements, low-end laptop qualification or phone evidence. No performance optimization is claimed. The next performance review should include traversal, active dog work, launches and repeated sessions; actual phone hardware is still required.
+
+All 609 tests across 85 files, TypeScript checking and the production build pass. The existing large-bundle warning remains. The full production goal remains incomplete.

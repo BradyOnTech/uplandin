@@ -280,6 +280,8 @@ interface Slot {
   vyW: number;
   vzW: number;
   airMs: number;
+  bank?: number;
+  bankYaw?: number;
   fallPose?: { startMs: number; rotation: THREE.Euler; groundedMs?: number };
   delayMs: number;
   wobblePh: number;
@@ -1067,6 +1069,7 @@ export class BirdsSystem implements Subsystem {
           s.vzW *= k;
         }
       }
+      this.updatePheasantBank(s, dt);
       s.x += s.vxW * dt;
       s.z += s.vzW * dt;
       s.y += s.vyW * dt;
@@ -1421,6 +1424,8 @@ export class BirdsSystem implements Subsystem {
       }
       slot.airMs = 0;
       slot.fallPose = undefined;
+      slot.bank = 0;
+      slot.bankYaw = undefined;
       slot.wobblePh = launched * 2.1;
       slot.wobbleMult = 0.6 + rng();
       slot.gliding = false;
@@ -1591,6 +1596,16 @@ export class BirdsSystem implements Subsystem {
 
   /* ------------------------------ render ----------------------------- */
 
+  private updatePheasantBank(slot: Slot, dt: number): void {
+    if (!this.spatialEncounter || slot.species.id !== 'ringneck' || dt <= 0) return;
+    const yaw = Math.atan2(slot.vxW, slot.vzW);
+    const turn = slot.bankYaw === undefined ? 0
+      : Math.atan2(Math.sin(yaw - slot.bankYaw), Math.cos(yaw - slot.bankYaw)) / dt;
+    const target = THREE.MathUtils.clamp(-Math.atan2(Math.hypot(slot.vxW, slot.vzW) * turn, 9.81) * .65, -.35, .35);
+    slot.bank = THREE.MathUtils.lerp(slot.bank ?? 0, target, 1 - Math.exp(-dt * 5));
+    slot.bankYaw = yaw;
+  }
+
   private poseFallingPheasant(slot: Slot): void {
     const fall = slot.fallPose!;
     const t = Math.max(0, slot.airMs - fall.startMs) / 1000;
@@ -1690,7 +1705,7 @@ export class BirdsSystem implements Subsystem {
       const yaw = Math.atan2(s.vxW, s.vzW);
       const pitch = THREE.MathUtils.clamp(Math.atan2(s.vyW, Math.max(hSpeed, 0.3)), -0.5, 1.1);
       s.root.rotation.order = 'YXZ';
-      s.root.rotation.set(-pitch * 0.85, yaw, 0);
+      s.root.rotation.set(-pitch * 0.85, yaw, this.spatialEncounter && s.species.id === 'ringneck' ? (s.bank ?? 0) : 0);
       if (s.gliding) {
         // Wings locked in the set-wing dihedral — the glide read.
         s.wingL.rotation.set(0, 0, -0.16);
