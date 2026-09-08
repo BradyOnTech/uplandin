@@ -6,6 +6,7 @@ import { P, fieldTimeOfDay, type TimeOfDay } from '../palette';
 import type { BirdsSystem } from './birds';
 import type { Hunt3DSystem } from './hunt3d';
 import type { TerrainSystem } from './terrain';
+import type { PropertyHabitatSystem } from './propertyHabitat';
 import { createSportingShotgun, type SportingShotgun } from '../assets/shotgun';
 
 /*
@@ -533,10 +534,13 @@ export class GunSystem implements Subsystem {
     playShot();
 
     ctx.camera.getWorldDirection(this.fwd);
+    let habitat: PropertyHabitatSystem | undefined;
+    try { habitat = ctx.get<PropertyHabitatSystem>('property-habitat'); } catch { /* bespoke properties use their own scenery */ }
     const birdId = this.birds.shootRay(
       ctx.camera.position,
       this.fwd,
       this.gun.spread / 400,
+      target => !habitat?.blocksShot?.(ctx.camera.position, target),
     );
     const hit = birdId !== null && this.hunt.resolveBird(birdId, 'downed');
     if (hit && birdId !== null) {

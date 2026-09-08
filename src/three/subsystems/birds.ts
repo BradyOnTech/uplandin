@@ -220,6 +220,7 @@ export function pickBirdAlongRay(
   origin: { x: number; y: number; z: number },
   direction: { x: number; y: number; z: number },
   spreadRad = 0.04,
+  targetVisible?: (target: RayBirdTarget) => boolean,
 ): number | null {
   let bestId: number | null = null;
   let bestAlong = Infinity;
@@ -239,7 +240,7 @@ export function pickBirdAlongRay(
     // The minimum pattern is intentionally forgiving at close range. It is
     // a gameplay allowance, independent of the bird's rendered wingspan.
     const patternRadius = Math.max(0.48, along * Math.tan(spreadRad));
-    if (perpendicular <= patternRadius) {
+    if (perpendicular <= patternRadius && (!targetVisible || targetVisible(target))) {
       bestId = target.simId;
       bestAlong = along;
     }
@@ -1437,8 +1438,9 @@ export class BirdsSystem implements Subsystem {
     origin: { x: number; y: number; z: number },
     direction: { x: number; y: number; z: number },
     spreadRad = 0.04,
+    targetVisible?: (target: RayBirdTarget) => boolean,
   ): number | null {
-    return pickBirdAlongRay(this.slots, origin, direction, spreadRad);
+    return pickBirdAlongRay(this.slots, origin, direction, spreadRad, targetVisible);
   }
 
   riseSequence(): number {

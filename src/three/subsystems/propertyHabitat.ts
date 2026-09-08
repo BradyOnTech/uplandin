@@ -308,6 +308,22 @@ export class PropertyHabitatSystem implements Subsystem {
   private color = new THREE.Color();
   private wind = { value: 0 };
   private obstacles: { x: number; z: number; radius: number }[] = [];
+  private shotTrunks: THREE.InstancedMesh[] = [];
+  private shotRay = new THREE.Raycaster();
+  private shotOrigin = new THREE.Vector3();
+  private shotDirection = new THREE.Vector3();
+
+  blocksShot(origin: { x: number; y: number; z: number }, target: { x: number; y: number; z: number }): boolean {
+    this.shotOrigin.set(origin.x, origin.y, origin.z);
+    this.shotDirection.set(target.x - origin.x, target.y - origin.y, target.z - origin.z);
+    const distance = this.shotDirection.length();
+    if (distance < .001) return false;
+    this.shotRay.set(this.shotOrigin, this.shotDirection.divideScalar(distance));
+    this.shotRay.far = distance - .001;
+    // Test rooted trunk geometry, including height and lean. Hidden render
+    // cells remain physical; a shot above or beside a trunk stays open.
+    return this.shotRay.intersectObjects(this.shotTrunks, false).length > 0;
+  }
 
   collisionCircles(): readonly { x: number; z: number; radius: number }[] { return this.obstacles; }
 
@@ -527,6 +543,7 @@ export class PropertyHabitatSystem implements Subsystem {
         mesh.computeBoundingSphere();
         mesh.userData.habitatRange = woodland ? (kind === 'trunk' || kind === 'canopy' ? 310 : ctx.quality === 'lite' ? 85 : 130) : Infinity;
         ctx.scene.add(mesh);
+        if (woodland && kind === 'trunk') this.shotTrunks.push(mesh);
         this.meshes.push(mesh);
       }
     }
@@ -546,6 +563,7 @@ export class PropertyHabitatSystem implements Subsystem {
     for (const mesh of this.meshes) ctx.scene.remove(mesh);
     this.meshes.length = 0;
     this.obstacles.length = 0;
+    this.shotTrunks.length = 0;
     for (const geometry of this.geometries) geometry.dispose();
     for (const material of this.materials) material.dispose();
     this.geometries.length = 0; this.materials.length = 0;

@@ -93,6 +93,12 @@ This verifies a connected assisted point/shot/retrieve sequence, not ordinary ai
 
 The encounter images revealed a foreground shrub filling the view like a solid green boulder. Woodland shrubs now use a lower multi-lobe crown instead of the generic dodecahedron. Revisited the exact camera position for a visual comparison in `output/playwright/grouse-shrub-sightline.png`; the foreground and dog are substantially less obscured. Compilation and the production build pass. No simulation changes followed the 540-test passing run. Ordinary aiming, obstruction of shots by scenery, varied dog training levels, and mobile behavior still need review.
 
+**Woodland shot obstruction**
+
+Inspection confirmed the gun selected airborne birds solely from the shot pattern, ignoring intervening timber. Grouse habitat now checks candidate targets against actual instanced trunk geometry, including trunk height and lean. The gun rejects an obscured candidate while still allowing another visible candidate inside its pattern. Distance-culled trees remain solid for shots. This check runs when firing, not during every frame.
+
+New checks cover a shot through a real trunk, a shot above it, a target before it, hidden rendering cells, and disposal. Gun integration checks confirm that both blocked and open shots consume a shell, while only the open shot resolves a downed bird. Compilation and the production build pass. The earlier assisted browser delivery predates this obstruction rule and does not prove a successful shot with it enabled. Terrain, rocks, buildings, and other maps' scenery are still outside this new trunk check and need further review.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

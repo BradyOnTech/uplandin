@@ -16,6 +16,20 @@ function fixture(quality: Quality) {
 }
 
 describe('grouse woodland coverage', () => {
+  it('blocks a shot through a real trunk while allowing a shot above it, even in a culled cell', () => {
+    const { system, ctx, meshes } = fixture('lite');
+    const trunk = meshes.find(mesh => !mesh.visible && mesh.name.includes('trunk'))!;
+    const matrix = new THREE.Matrix4(); trunk.getMatrixAt(0, matrix);
+    const center = new THREE.Vector3(0, .1, 0).applyMatrix4(matrix);
+    const start = { x: center.x - 1, y: center.y, z: center.z };
+    const end = { x: center.x + 1, y: center.y, z: center.z };
+    expect(system.blocksShot(start, end)).toBe(true);
+    expect(system.blocksShot({ ...start, y: center.y + 25 }, { ...end, y: center.y + 25 })).toBe(false);
+    expect(system.blocksShot(start, { ...start, x: start.x + .1 })).toBe(false);
+    system.dispose(ctx);
+    expect(system.blocksShot(start, end)).toBe(false);
+  });
+
   for (const quality of ['high', 'lite'] as const) {
     it(`retains timber throughout the property on ${quality}, with paired crowns`, () => {
       const { landscape, system, ctx, meshes } = fixture(quality);

@@ -398,6 +398,16 @@ describe('Hunt3DSystem live start', () => {
 });
 
 describe('3D center-pattern shooting', () => {
+  it('rejects an obscured bird but can select another bird in an open part of the pattern', () => {
+    const targets = [
+      { simId: 1, x: 0, y: 1.5, z: -12, status: 'flying' },
+      { simId: 2, x: .6, y: 1.5, z: -20, status: 'flying' },
+    ];
+    const origin = { x: 0, y: 1.5, z: 0 }, direction = { x: 0, y: 0, z: -1 };
+    expect(pickBirdAlongRay(targets, origin, direction, .04, target => target.simId !== 1)).toBe(2);
+    expect(pickBirdAlongRay(targets, origin, direction, .04, () => false)).toBeNull();
+  });
+
   it('selects the nearest flying bird inside the camera ray pattern', () => {
     const targets = [
       { simId: 1, x: 0.1, y: 1.5, z: -12, status: 'flying' },
