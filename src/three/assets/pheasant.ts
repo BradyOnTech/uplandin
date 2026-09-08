@@ -89,3 +89,9 @@ export function buildPheasantWing(side:-1|1,hen=false):THREE.BufferGeometry {
   }
   return join(parts);
 }
+
+/** Sweep flight feathers aft against the flanks instead of lifting them. */
+export function posePheasantFoldedWings(left: THREE.Group, right: THREE.Group): void {
+  left.rotation.set(.35, -1.42, .10, 'YXZ');
+  right.rotation.set(.35, 1.42, -.10, 'YXZ');
+}

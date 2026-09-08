@@ -1,4 +1,4 @@
-import { buildPheasantBody, buildPheasantWing, buildPheasantTail } from '../assets/pheasant';
+import { buildPheasantBody, buildPheasantWing, buildPheasantTail, posePheasantFoldedWings } from '../assets/pheasant';
 import { createQuailFlight, selectQuailEscapeCover, stepQuailFlight, type QuailFlight } from '../quailFlight';
 import { QUAIL_WORLD_SCALE, quailLaunchDelay } from '../quailPresentation';
 import { QuailFlushDebris } from '../quailFlushDebris';
@@ -91,6 +91,7 @@ const LAUNCH_JITTER_PX = 16;
  */
 const RISE_SCALE = 3.3;
 const GROUNDED_SCALE = 2.1;
+const PHEASANT_REST_SCALE = 1.25;
 /** Tip-to-tip wingspan of the UNSCALED model (m) — telemetry only. */
 const SPAN_M = 0.308;
 
@@ -1570,7 +1571,9 @@ export class BirdsSystem implements Subsystem {
   /* ------------------------------ render ----------------------------- */
 
   private foldWings(slot: Slot): void {
-    if (this.refinedQuail && slot.species.id === 'bobwhite') {
+    if (slot.species.id === 'ringneck') {
+      posePheasantFoldedWings(slot.wingL, slot.wingR);
+    } else if (this.refinedQuail && slot.species.id === 'bobwhite') {
       poseBobwhiteFoldedWings(slot.wingL, slot.wingR);
     } else {
       slot.wingL.rotation.set(0, 0.9, -1.35, 'XYZ');
@@ -1609,7 +1612,7 @@ export class BirdsSystem implements Subsystem {
           );
           const visual = ctx.get<Subsystem & { mouthWorld?: (out: THREE.Vector3) => boolean }>(carrierSlot === 0 ? 'dog' : 'dog2');
           visual.mouthWorld?.(s.root.position);
-          s.root.scale.setScalar((this.refinedQuail ? QUAIL_WORLD_SCALE : GROUNDED_SCALE) * s.visualScale);
+          s.root.scale.setScalar((s.species.id === 'ringneck' ? PHEASANT_REST_SCALE : this.refinedQuail ? QUAIL_WORLD_SCALE : GROUNDED_SCALE) * s.visualScale);
           // Carry the bird crosswise in the mouth, wings folded.
           s.root.rotation.set(0.12, dogYaw + Math.PI / 2, 0.42);
           this.foldWings(s);
@@ -1617,7 +1620,13 @@ export class BirdsSystem implements Subsystem {
         }
       }
       s.root.position.set(s.x, s.y, s.z);
-      s.root.scale.setScalar((this.refinedQuail ? QUAIL_WORLD_SCALE : s.status === 'grounded' ? GROUNDED_SCALE : RISE_SCALE) * s.visualScale);
+      let scale = this.refinedQuail ? QUAIL_WORLD_SCALE : s.status === 'grounded' ? GROUNDED_SCALE : RISE_SCALE;
+      if (s.species.id === 'ringneck' && (s.status === 'grounded' || s.status === 'falling')) {
+        const height = s.y - this.terrain.heightAt(s.x, s.z);
+        scale = s.status === 'grounded' ? PHEASANT_REST_SCALE
+          : THREE.MathUtils.lerp(PHEASANT_REST_SCALE, scale, THREE.MathUtils.smoothstep(height, .06, 2));
+      }
+      s.root.scale.setScalar(scale * s.visualScale);
       if (s.tailMesh?.visible) {
         const flying = s.status === 'flying';
         const settle = Math.exp(-s.airMs / 650);

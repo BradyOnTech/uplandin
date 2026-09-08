@@ -1,5 +1,6 @@
+import * as THREE from 'three';
 import { describe, it, expect } from 'vitest';
-import { buildPheasantBody, buildPheasantWing, buildPheasantTail } from '../src/three/assets/pheasant';
+import { buildPheasantBody, buildPheasantWing, buildPheasantTail, posePheasantFoldedWings } from '../src/three/assets/pheasant';
 
 describe('shared pheasant geometry', () => {
   it('builds complete colored rooster and hen meshes within a small per-bird budget', () => {
@@ -16,6 +17,18 @@ describe('shared pheasant geometry', () => {
       }
       expect(triangles).toBeLessThan(3000);
     }
+  });
+  it('folds the flight feathers aft instead of lifting them above a carried bird', () => {
+    const left=new THREE.Group(),right=new THREE.Group();
+    const a=buildPheasantWing(-1),b=buildPheasantWing(1);
+    left.add(new THREE.Mesh(a));right.add(new THREE.Mesh(b));
+    posePheasantFoldedWings(left,right);
+    for(const wing of [left,right]) {
+      const bounds=new THREE.Box3().setFromObject(wing);
+      expect(bounds.max.y).toBeLessThan(.06);
+      expect(bounds.min.z).toBeLessThan(-.1);
+    }
+    a.dispose();b.dispose();
   });
   it('gives the hen a shorter tail and mirrors the two flight wings', () => {
     const rooster=buildPheasantTail(),hen=buildPheasantTail(true);
