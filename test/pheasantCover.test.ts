@@ -37,3 +37,42 @@ describe('Pheasant close ground layer', () => {
     expect(materialDisposals).toBe(materials.size);
   });
 });
+
+
+describe('Pheasant standing habitat', () => {
+  it('preserves tall stand placement on lite and simplifies distant blades without removing plants', () => {
+    const stands: string[] = [];
+    for (const quality of ['high', 'lite'] as const) {
+      const landscape = new LandscapeModel(getArea('pheasant-coverts'));
+      const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), quality, time: 0 } as Ctx;
+      const cover = new PheasantCoverSystem(landscape);
+      cover.init(ctx);
+      const prairie = (ctx.scene.children as THREE.InstancedMesh[]).filter(mesh => mesh.name === 'Pheasant prairie parcel');
+      const matrix = new THREE.Matrix4(), position = new THREE.Vector3(), rotation = new THREE.Quaternion(), scale = new THREE.Vector3();
+      const roots: number[] = [];
+      let tallMesh: THREE.InstancedMesh | undefined;
+      let minimumHeightScale = Infinity;
+      for (const mesh of prairie) for (let i = 0; i < mesh.count; i++) {
+        mesh.getMatrixAt(i, matrix); matrix.decompose(position, rotation, scale);
+        if (scale.y / scale.x < 1.19) continue;
+        minimumHeightScale = Math.min(minimumHeightScale, scale.y);
+        roots.push(position.x, position.z, scale.y);
+        tallMesh ??= mesh;
+      }
+      expect(roots.length / 3).toBeGreaterThan(20000);
+      expect(minimumHeightScale).toBeGreaterThan(1.35);
+      stands.push(roots.join(','));
+      expect(tallMesh).toBeDefined();
+      const mesh = tallMesh!;
+      ctx.camera.position.copy(mesh.boundingSphere!.center); cover.update(ctx);
+      const near = mesh.geometry.getAttribute('position').count;
+      const count = mesh.count;
+      ctx.camera.position.x += 120; cover.update(ctx);
+      expect(mesh.visible).toBe(true);
+      expect(mesh.geometry.getAttribute('position').count).toBeLessThan(near / 2);
+      expect(mesh.count).toBe(count);
+      cover.dispose(ctx);
+    }
+    expect(stands[1]).toEqual(stands[0]);
+  });
+});

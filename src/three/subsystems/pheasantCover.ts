@@ -12,7 +12,7 @@ function cellSeed(x: number, z: number, seed: number): number {
   return (h ^ (h >>> 16)) >>> 0;
 }
 
-function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lite: boolean): THREE.BufferGeometry {
+function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lite: boolean, distant = false): THREE.BufferGeometry {
   const rng = mulberry32(kind === 'prairie' ? 0x51a7 : kind === 'cattail' ? 0xca77 : 0x57bb1e);
   const positions: number[] = [];
   const colors: number[] = [];
@@ -46,7 +46,7 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
     }
   }
 
-  const count = kind === 'litter' ? 0 : kind === 'prairie' ? (lite ? 8 : 18) : kind === 'cattail' ? (lite ? 5 : 8) : (lite ? 7 : 12);
+  const count = kind === 'litter' ? 0 : kind === 'prairie' ? (distant ? 4 : lite ? 10 : 18) : kind === 'cattail' ? (distant ? 3 : lite ? 5 : 8) : (lite ? 7 : 12);
   for (let i = 0; i < count; i++) {
     const angle = (i / count) * Math.PI * 2 + (rng() - 0.5) * 0.42;
     const sx = Math.sin(angle);
@@ -58,7 +58,7 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
     const z = sz * root;
     // Lite renders without multisampling. Fewer broader blades preserve a
     // tuft's body better than thin geometry that alternates between pixels.
-    const width = (kind === 'cattail' ? 0.018 : kind === 'prairie' ? 0.025 + rng() * 0.030 : 0.014 + rng() * 0.018) * (lite ? 1.65 : 1);
+    const width = (kind === 'cattail' ? 0.018 : kind === 'prairie' ? 0.045 + rng() * 0.040 : 0.014 + rng() * 0.018) * (distant ? 3 : lite ? 1.65 : 1);
     const height = kind === 'prairie'
       ? 0.46 + rng() * 0.65
       : kind === 'cattail'
@@ -135,7 +135,7 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
 export class PheasantCoverSystem implements Subsystem {
   readonly id = 'grass';
   private objects: THREE.InstancedMesh[] = [];
-  private batches: { mesh: THREE.InstancedMesh; center: THREE.Vector3; radius: number; range: number }[] = [];
+  private batches: { mesh: THREE.InstancedMesh; center: THREE.Vector3; radius: number; range: number; near?: THREE.BufferGeometry; far?: THREE.BufferGeometry; detailRange?: number }[] = [];
   private geometries: THREE.BufferGeometry[] = [];
   private materials: THREE.Material[] = [];
   private surface: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
@@ -146,7 +146,8 @@ export class PheasantCoverSystem implements Subsystem {
   init(ctx: Ctx): void {
     const lite = ctx.quality === 'lite', area = this.landscape.area;
     const geometries = { prairie: habitatGeometry('prairie', lite), cattail: habitatGeometry('cattail', lite), stubble: habitatGeometry('stubble', lite), litter: habitatGeometry('litter', lite) };
-    this.geometries.push(...Object.values(geometries));
+    const distant = { prairie: habitatGeometry('prairie', true, true), cattail: habitatGeometry('cattail', true, true) };
+    this.geometries.push(...Object.values(geometries), ...Object.values(distant));
     const material = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, side: THREE.DoubleSide });
     material.onBeforeCompile = shader => {
       shader.uniforms.uPheasantWind = this.wind;
@@ -159,17 +160,13 @@ export class PheasantCoverSystem implements Subsystem {
           #endif`);
     };
     material.customProgramCacheKey = () => 'pheasant-rooted-cover-wind-v2'; this.materials.push(material);
-    // Parcel batches are deliberately larger on the lite tier. The old 72px
-    // parcels produced up to 240 tiles × 3 instanced materials on this
-    // 1400×800 property, so a phone could spend more time submitting cover
-    // draws than rendering the actual hunt. 144px keeps high-tier culling
-    // reasonably tight; 216px reduces the mobile batch count to about one
-    // eighth while preserving the same deterministic plant distribution.
+    // Keep the same habitat footprint in both tiers. Distance changes blade
+    // complexity, not the height or presence of protective cover.
     const fields = pheasantFields(area), ponds = pheasantPonds(this.landscape);
     const harvestSample = { amount: 0, row: 0, angle: 0 };
-    const TILE = lite ? 216 : 144, spacing = 2.8;
+    const TILE = 168, spacing = 2.8;
     const straw = new THREE.Color(0xb8a477), amber = new THREE.Color(0xb18e59), olive = new THREE.Color(0x919872), reed = new THREE.Color(0xa99b76), color = new THREE.Color();
-    type Plant = { x: number; y: number; scale: number; angle: number; color: number; low?: boolean; spread?: number };
+    type Plant = { x: number; y: number; scale: number; angle: number; color: number; low?: boolean; spread?: number; height?: number };
     for (let ty = area.world.y; ty < area.world.y + area.world.h; ty += TILE) for (let tx = area.world.x; tx < area.world.x + area.world.w; tx += TILE) {
       const groups: Record<keyof typeof geometries, Plant[]> = { prairie: [], cattail: [], stubble: [], litter: [] };
       for (let row = 0; row < Math.ceil(TILE / spacing); row++) for (let column = 0; column < Math.ceil(TILE / spacing); column++) {
@@ -184,8 +181,15 @@ export class PheasantCoverSystem implements Subsystem {
         const depth = pond ? pond.waterY - height : -10;
         // Rhizomes belong in mud, not on top of the water plane. Very deep
         // open water remains open; the head and blades emerge on the margin.
-        if (pond && depth > -.65 && depth < .95 && moisture > .18 && rng() < .68 + moisture * .25) {
-          if (!lite || keep > .22) groups.cattail.push({ x, y, scale: .86 + rng() * .32, angle: rng() * Math.PI * 2, color: color.copy(reed).lerp(amber, rng() * .25).getHex() });
+        if (pond && depth > -1.4 && depth < .95 && moisture > .10 && rng() < .68 + moisture * .25) {
+          for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) {
+            const cx = cellX + (dx + .15 + rng() * .7) * spacing / 3;
+            const cy = cellY + (dy + .15 + rng() * .7) * spacing / 3;
+            const reedDepth = pond.waterY - this.landscape.heightAtProperty(cx, cy);
+            if (!pheasantPlantClear(area, cx, cy) || reedDepth < -1.4 || reedDepth > .95) continue;
+            groups.cattail.push({ x: cx, y: cy, scale: .95 + rng() * .25,
+              angle: rng() * Math.PI * 2, color: color.copy(reed).lerp(amber, rng() * .25).getHex() });
+          }
           continue;
         }
         if (pond && depth > .12) continue;
@@ -205,6 +209,21 @@ export class PheasantCoverSystem implements Subsystem {
             groups.stubble.push({ x, y, scale: .80 + rng() * .55, angle: harvestSample.angle + (rng() - .5) * .12, color: color.copy(straw).lerp(amber, rng() * .35).getHex() });
           continue;
         }
+        if (cover) {
+          // Overlapping rooted clumps make a stand, rather than a scatter of
+          // ornamental tufts. Preserve the same density on the lite tier.
+          for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) {
+            const cx = cellX + (dx + .15 + rng() * .7) * spacing / 3;
+            const cy = cellY + (dy + .15 + rng() * .7) * spacing / 3;
+            if (!pheasantCoverAt(area, cx, cy) || !pheasantPlantClear(area, cx, cy)) continue;
+            if (pond && pond.waterY - this.landscape.heightAtProperty(cx, cy) > .12) continue;
+            const wave = .5 + .5 * Math.sin(cx * .038 + Math.sin(cy * .051));
+            groups.prairie.push({ x: cx, y: cy, scale: .94 + rng() * .22,
+              height: 1.45 + wave * .35, spread: 1.2, angle: rng() * Math.PI * 2,
+              color: color.copy(straw).lerp(olive, moisture * .6 + wave * .18).lerp(amber, rng() * .16).getHex() });
+          }
+          continue;
+        }
         const drift = .50 + Math.sin(x * .065 + Math.sin(y * .038) * 2.4) * .27 + Math.cos(y * .07) * .20;
         // Low, weathered grass fills the spaces between standing bunches.
         // Reuse the prairie mesh so the extra ground layer needs no new draw.
@@ -214,10 +233,10 @@ export class PheasantCoverSystem implements Subsystem {
             color: color.copy(amber).lerp(olive, .35 + moisture * .3).getHex() });
           continue;
         }
-        const chance = (cover ? .94 : .23 + vegetation * .28) * (.34 + drift * .72);
+        const chance = (.23 + vegetation * .28) * (.34 + drift * .72);
         if (rng() < chance && (!lite || keep > .30)) {
-          const scale = (cover ? .95 : .60) + rng() * .42;
-          groups.prairie.push({ x, y, scale, spread: cover ? 1.45 : 1, angle: rng() * Math.PI * 2, color: color.copy(straw).lerp(olive, moisture * .60 + rng() * .16).lerp(amber, rng() * .12).getHex() });
+          const scale = .60 + rng() * .42;
+          groups.prairie.push({ x, y, scale, spread: 1, angle: rng() * Math.PI * 2, color: color.copy(straw).lerp(olive, moisture * .60 + rng() * .16).lerp(amber, rng() * .12).getHex() });
         }
       }
       const matrix = new THREE.Matrix4(), position = new THREE.Vector3(), rotation = new THREE.Quaternion(), scale = new THREE.Vector3();
@@ -227,7 +246,8 @@ export class PheasantCoverSystem implements Subsystem {
         // groups avoid drawing an entire field for a few nearby pieces.
         const partitions = new Map<string, Plant[]>();
         for (const plant of groups[kind]) {
-          const key = kind === 'litter' ? `${Math.floor(plant.x / 52)},${Math.floor(plant.y / 52)}` : 'parcel';
+          const cellSize = kind === 'litter' ? 52 : 56;
+          const key = kind === 'stubble' ? 'parcel' : `${Math.floor(plant.x / cellSize)},${Math.floor(plant.y / cellSize)}`;
           let partition = partitions.get(key);
           if (!partition) { partition = []; partitions.set(key, partition); }
           partition.push(plant);
@@ -239,13 +259,15 @@ export class PheasantCoverSystem implements Subsystem {
           normal.set(-this.surface.gradeX, 1, -this.surface.gradeZ).normalize(); rotation.setFromUnitVectors(up, normal);
           yaw.setFromAxisAngle(up, plant.angle); rotation.multiply(yaw);
           const spread = plant.low ? 1.15 : plant.spread ?? 1;
-          scale.set(plant.scale * spread, plant.scale * (plant.low ? .30 : 1), plant.scale * spread);
+          scale.set(plant.scale * spread, plant.scale * (plant.low ? .30 : plant.height ?? 1), plant.scale * spread);
           position.set(this.world.x, this.surface.height - .022, this.world.z);
           mesh.setMatrixAt(i, matrix.compose(position, rotation, scale)); mesh.setColorAt(i, color.setHex(plant.color));
         }
         mesh.name = `Pheasant ${kind} parcel`; mesh.receiveShadow = true; mesh.computeBoundingSphere();
         const range = kind === 'litter' ? (lite ? 18 : 28) : kind === 'cattail' ? (lite ? 230 : 330) : kind === 'stubble' ? (lite ? 95 : 145) : (lite ? 130 : 195);
-        this.batches.push({ mesh, center: mesh.boundingSphere!.center.clone(), radius: mesh.boundingSphere!.radius + .2, range });
+        const far = kind === 'prairie' || kind === 'cattail' ? distant[kind] : undefined;
+        this.batches.push({ mesh, center: mesh.boundingSphere!.center.clone(), radius: mesh.boundingSphere!.radius + 1, range,
+          near: far ? geometries[kind] : undefined, far, detailRange: lite ? 24 : 42 });
         this.objects.push(mesh); ctx.scene.add(mesh);
         }
       }
@@ -255,7 +277,11 @@ export class PheasantCoverSystem implements Subsystem {
 
   update(ctx: Ctx): void {
     this.wind.value = ctx.time;
-    for (const batch of this.batches) batch.mesh.visible = Math.hypot(ctx.camera.position.x - batch.center.x, ctx.camera.position.z - batch.center.z) < batch.range + batch.radius;
+    for (const batch of this.batches) {
+      const distance = Math.hypot(ctx.camera.position.x - batch.center.x, ctx.camera.position.z - batch.center.z);
+      batch.mesh.visible = distance < batch.range + batch.radius;
+      if (batch.near && batch.far) batch.mesh.geometry = distance < batch.detailRange! + batch.radius ? batch.near : batch.far;
+    }
   }
 
   dispose(ctx: Ctx): void {
