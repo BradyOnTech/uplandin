@@ -235,3 +235,14 @@ Continuous Pheasant country now supplies a 48-meter tracking limit. Beyond it, a
 Both tracking messages now use one decision for scent stage, distance and waiting state. The short locator says DOG HOLDING SCENT; headline and detail explain closing up. A fresh seed-17 entry followed by twenty seconds walking and ten seconds stationary naturally reached a 53-yard hold. Turning toward the visible dog bearing and walking ten seconds resumed tracking, ending at 42 yards with consistent move-up advice. Screenshots are `pheasant-handler-range-live.png` and `pheasant-handler-range-resume.png`; the hold screenshot predates the final shorter locator wording. No forced event or camera helper was used for this check.
 
 Regressions cover stopping, hysteresis, resuming, scent loss and real shared-simulation wiring with legacy and Quail exclusions. All 616 tests across 86 files, TypeScript checking and the production build pass. The existing large-bundle warning remains. Multi-seed encounter balance and complete shooting/recovery acceptance are still open.
+
+
+**Cattail seed-head volume**
+
+Nearby cattail heads now use slender six-sided volumes with tapered ends aligned to their stalks. The previous single-card heads read as rectangular signs and vanished edge-on. Middle detail uses two crossed tapered silhouettes; far detail remains two triangles. Existing plant roots, leaves, instance placement, random sequence, density and habitat authority are unchanged. No new material, texture or draw batch was added.
+
+The assisted West Pothole view at (130,80), yaw 30, pitch -5, morning, compares `output/playwright/pheasant-cattail-shape-before.png`, `pheasant-cattail-shape-after.png` and `pheasant-cattail-shape-retained.png`. Standard reported 1,708,833 triangles before, 2,085,338 in the first version with solid middle heads, and 1,988,346 with the retained crossed middle heads, at 125 draws. The discarded version cost more for little visible benefit. Lightweight retained dense reed cover at 912,365 triangles and 103 draws in `pheasant-cattail-shape-lite.png`. These views use camera positioning for shape comparison, not natural-hunt evidence.
+
+A twenty-second Standard lateral walk from that staged start ended at (168.11,58.00), with active dog tracking, 113 draws and 2,848,499 triangles. The same local M1 Pro browser produced 2,400 animation-frame intervals, p95 9.2 ms, p99 9.3 ms and no gaps above 33.4 ms. This is callback cadence during traversal, not GPU timing, a shooting/retrieve workload or phone validation. The geometry increase remains a cost to revisit on weaker hardware.
+
+All 616 tests across 86 files, TypeScript checking and production build pass; the existing large-bundle warning remains. The heads have improved volume, while vegetation grouping, material variation and habitat transitions still need refinement.

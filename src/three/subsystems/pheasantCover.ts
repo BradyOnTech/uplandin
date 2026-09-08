@@ -206,19 +206,52 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
       }
       continue;
     }
-    const hw = 0.032;
-    const hh = 0.14;
-    const cy = height - hh * 0.35;
-    const cx = tipX;
-    const cz = tipZ;
-    push([
-      cx - px * hw, cy - hh * 0.5, cz - pz * hw,
-      cx + px * hw, cy - hh * 0.5, cz + pz * hw,
-      cx + px * hw * 0.72, cy + hh * 0.5, cz + pz * hw * 0.72,
-      cx - px * hw, cy - hh * 0.5, cz - pz * hw,
-      cx + px * hw * 0.72, cy + hh * 0.5, cz + pz * hw * 0.72,
-      cx - px * hw * 0.72, cy + hh * 0.5, cz - pz * hw * 0.72,
-    ], head);
+    // Solid slender seed heads retain volume as the player walks past.
+    // Only nearby tiers need radial faces; distant heads keep a cheap card.
+    const hw = 0.023;
+    const hh = 0.18 * (.92 + (i % 3) * .08);
+    const cy = height - hh * .35;
+    if (!distant && !medium) {
+      const sides = 6;
+      const slopeX = (tipX - midX) / (height - midY);
+      const slopeZ = (tipZ - midZ) / (height - midY);
+      const center = (y: number): number[] => [tipX + (y - height) * slopeX, y, tipZ + (y - height) * slopeZ];
+      const ring = (a: number, y: number): number[] => {
+        const c = center(y);
+        return [c[0] + Math.cos(a) * hw, y, c[2] + Math.sin(a) * hw];
+      };
+      const bottom = center(cy - hh * .5), top = center(cy + hh * .5);
+      for (let face = 0; face < sides; face++) {
+        const a = face * Math.PI * 2 / sides, b = (face + 1) * Math.PI * 2 / sides;
+        const loA = ring(a, cy - hh * .36), loB = ring(b, cy - hh * .36);
+        const hiA = ring(a, cy + hh * .36), hiB = ring(b, cy + hh * .36);
+        push([...loA, ...hiA, ...hiB, ...loA, ...hiB, ...loB,
+          ...bottom, ...loA, ...loB, ...top, ...hiB, ...hiA], head);
+      }
+    } else if (medium) {
+      // Crossed tapered silhouettes are enough once individual facets are small.
+      for (const angle of [0, Math.PI / 2]) {
+        const vx = Math.cos(angle) * hw, vz = Math.sin(angle) * hw;
+        const outline = [
+          [tipX, cy - hh * .5, tipZ],
+          [tipX - vx, cy - hh * .36, tipZ - vz],
+          [tipX - vx, cy + hh * .36, tipZ - vz],
+          [tipX, cy + hh * .5, tipZ],
+          [tipX + vx, cy + hh * .36, tipZ + vz],
+          [tipX + vx, cy - hh * .36, tipZ + vz],
+        ];
+        for (let j = 1; j < outline.length - 1; j++) push([...outline[0], ...outline[j], ...outline[j + 1]], head);
+      }
+    } else {
+      push([
+        tipX - px * hw, cy - hh * .35, tipZ - pz * hw,
+        tipX + px * hw, cy - hh * .35, tipZ + pz * hw,
+        tipX, cy + hh * .5, tipZ,
+        tipX - px * hw, cy - hh * .35, tipZ - pz * hw,
+        tipX, cy - hh * .5, tipZ,
+        tipX + px * hw, cy - hh * .35, tipZ + pz * hw,
+      ], head);
+    }
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
