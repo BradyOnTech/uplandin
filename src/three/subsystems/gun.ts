@@ -221,6 +221,7 @@ export class GunSystem implements Subsystem {
   private aim = false;
   /** Mount timeline 0..1 (linear; pose uses ease()). */
   private mountT = 0;
+  private keyboardAim = false;
   /** Sight-picture settle clock, armed when the mount completes. */
   private settleAge = 10;
   private wasMounted = false;
@@ -371,12 +372,25 @@ export class GunSystem implements Subsystem {
       window.addEventListener('mousedown', (e) => {
         if (ctx.paused || (e.target !== ctx.renderer.domElement && document.pointerLockElement !== ctx.renderer.domElement)) return;
         if (e.button === 2) this.aim = true;
-        else if (e.button === 0 && this.mountT > 0.7) this.fire(ctx);
+        // In trackpad drag-look mode, a latched keyboard aim leaves the
+        // primary button free for looking. Space is the trigger.
+        else if (e.button === 0 && this.mountT > 0.7
+          && (!this.keyboardAim || document.pointerLockElement === ctx.renderer.domElement)) this.fire(ctx);
       }, { signal });
-      window.addEventListener('mouseup', (e) => { if (e.button === 2) this.aim = false; }, { signal });
+      window.addEventListener('mouseup', (e) => { if (e.button === 2) this.aim = this.keyboardAim; }, { signal });
       ctx.renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault(), { signal });
       this.keydownHandler = (event) => {
-        if (!ctx.paused && event.key.toLowerCase() === 'r') this.beginReload();
+        const target = event.target as HTMLElement | null;
+        if (ctx.paused || event.repeat || event.ctrlKey || event.metaKey || event.altKey
+          || target?.closest?.('button, input, select, textarea, [contenteditable="true"]')) return;
+        if (event.code === 'KeyF' || event.key.toLowerCase() === 'f') {
+          event.preventDefault();
+          this.keyboardAim = !this.keyboardAim;
+          this.aim = this.keyboardAim;
+        } else if (event.code === 'Space' || event.key === ' ') {
+          event.preventDefault();
+          if (this.mountT > .7) this.fire(ctx);
+        } else if (event.key.toLowerCase() === 'r') this.beginReload();
       };
       window.addEventListener('keydown', this.keydownHandler, { signal });
       ctx.events.addEventListener('hunt-action', ((event: CustomEvent) => {
@@ -386,10 +400,13 @@ export class GunSystem implements Subsystem {
         else if (event.detail === 'reload') this.beginReload();
         else if (event.detail === 'fire' && this.mountT > 0.7) this.fire(ctx);
       }) as EventListener, { signal });
-      ctx.events.addEventListener('pause', () => {
+      const lowerGun = () => {
+        this.keyboardAim = false;
         this.aim = false;
         document.querySelector('[data-action="aim"]')?.setAttribute('aria-pressed', 'false');
-      }, { signal });
+      };
+      ctx.events.addEventListener('pause', lowerGun, { signal });
+      window.addEventListener('blur', lowerGun, { signal });
     } else {
       // CAPTURE HARNESS HANDLE (dog pattern: tooling only, never gameplay):
       // stage states, measure the mount clock and the recoil spring with

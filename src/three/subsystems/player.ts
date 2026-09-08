@@ -73,7 +73,7 @@ export class PlayerSystem implements Subsystem {
           let hint = document.getElementById('mouse-look-fallback');
           if (!hint && active) {
             hint = document.createElement('div'); hint.id = 'mouse-look-fallback';
-            hint.textContent = 'Drag to look · Hold right mouse to aim and look';
+            hint.textContent = 'Drag to look · F toggles aim · Space shoots';
             document.getElementById('controls')?.append(hint);
           }
           if (hint) hint.hidden = !active;

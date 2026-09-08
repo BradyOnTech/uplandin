@@ -62,6 +62,38 @@ describe('3D shotgun action', () => {
     gun.dispose(ctx);
   });
 
+  it('supports latched keyboard aim and a single shot per Space press without mouse buttons', () => {
+    vi.stubGlobal('window', new EventTarget());
+    vi.stubGlobal('location', { search: '' });
+    vi.stubGlobal('document', { getElementById: () => null, querySelector: () => null });
+    const birds = { riseSequence: () => 0, isRiseActive: () => true, shootRay: () => null };
+    const hunt = { huntState: () => ({ gunId: 'semi-auto', birds: [] }), dog: () => ({ state: 'quartering' }), dogCount: () => 1 };
+    const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), renderer: { domElement: new EventTarget() },
+      events: new EventTarget(), quality: 'high', timeOfDay: 'noon', time: 0, paused: false,
+      get: (id: string) => ({ hunt3d: hunt, birds, terrain: { heightAt: () => 0 } }[id]),
+    } as unknown as Ctx;
+    const gun = new GunSystem(); gun.init(ctx);
+    const key = (code: string, repeat = false) => window.dispatchEvent(Object.assign(new Event('keydown', { cancelable: true }), { code, key: code === 'Space' ? ' ' : 'f', repeat }));
+    key('KeyF'); key('KeyF', true);
+    for (let i = 0; i < 40; i++) gun.update(ctx, 1 / 60);
+    expect(gun.mountProgress()).toBeGreaterThan(.99);
+    window.dispatchEvent(Object.assign(new Event('mouseup'), { button: 2 }));
+    gun.update(ctx, .1);
+    expect(gun.mountProgress()).toBeGreaterThan(.99);
+    const drag = Object.assign(new Event('mousedown'), { button: 0 });
+    Object.defineProperty(drag, 'target', { value: ctx.renderer.domElement });
+    window.dispatchEvent(drag);
+    expect(gun.shellsRemaining()).toBe(3);
+    key('Space'); key('Space', true);
+    expect(gun.shellsRemaining()).toBe(2);
+    ctx.paused = true; ctx.events.dispatchEvent(new Event('pause'));
+    key('Space'); expect(gun.shellsRemaining()).toBe(2);
+    ctx.paused = false;
+    for (let i = 0; i < 40; i++) gun.update(ctx, 1 / 60);
+    expect(gun.mountProgress()).toBe(0);
+    gun.dispose(ctx);
+  });
+
   it('reloads an empty gun when the player presses R', () => {
     const browserWindow = new EventTarget();
     vi.stubGlobal('window', browserWindow);
