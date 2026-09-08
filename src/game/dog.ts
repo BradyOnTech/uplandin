@@ -289,6 +289,8 @@ export interface DogEnv {
   rangeRadius?: number;
   /** Maximum road-in distance from the handler in property units; resumes inside 70%. */
   trackingRange?: number;
+  /** Meaningful bird relocation from an established point, in property units. */
+  pointRelocationRange?: number;
   /** Optional cast center, distinct from the hunter used by recall/scent rules. */
   workAnchor?: Vec2;
   /** Direction the wind blows TOWARD (radians, screen coords). Undefined = calm. */
@@ -347,6 +349,7 @@ export function scentRange(windAngle: number | undefined, dx: number, dy: number
 export class Dog {
   state: DogState = 'quartering';
   pointedBirdId: number | null = null;
+  private pointOrigin: { id: number; x: number; y: number } | null = null;
   /** Base travel direction; the quartering weave oscillates around this. */
   heading: number;
   /** Set when the dog bumps a bird (creep or breaking); the scene flushes it wild. */
@@ -566,8 +569,11 @@ export class Dog {
         this.pointedBirdId = null;
         this.resetCreep();
         this.resetScentApproach();
-      } else if (dist(this.pos, pointed.pos) > POINT_RANGE * 2) {
-        // A running bird broke the point — road it.
+      } else if (dist(this.pos, pointed.pos) > POINT_RANGE * 2 ||
+        (pointed.speciesId === 'ringneck' && env.pointRelocationRange !== undefined &&
+          this.pointOrigin?.id === pointed.id && dist(this.pointOrigin, pointed.pos) > env.pointRelocationRange)) {
+        // A running bird broke the point — road it. Meaningful displacement
+        // also breaks a stale point before the bird leaves the distance ring.
         this.state = 'tracking';
         this.pointedBirdId = null;
         this.resetCreep();
@@ -769,6 +775,7 @@ export class Dog {
           this.heading = direct;
           this.state = 'pointing';
           this.pointedBirdId = bird.id;
+          this.pointOrigin = { id: bird.id, x: bird.pos.x, y: bird.pos.y };
           this.gait = 'still';
         }
         return;

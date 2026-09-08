@@ -192,6 +192,9 @@ export class HuntSimulation {
         // Leave room to road in on a runner, then wait for the handler.
         // Existing points can finish; concealed birds keep moving normally.
         trackingRange: spatialEncounter && huntStyle === 'pheasant' ? 48 / PROPERTY_PX_TO_M : undefined,
+        // A few metres of relocation warrants observable re-establishment,
+        // while tiny runner steps must not flicker an otherwise steady point.
+        pointRelocationRange: spatialEncounter && huntStyle === 'pheasant' ? 3 / PROPERTY_PX_TO_M : undefined,
         workAnchor: motion?.workAnchor,
         obstacles: motion?.obstacles,
       };

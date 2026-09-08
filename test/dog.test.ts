@@ -61,6 +61,35 @@ function run(dog: Dog, birds: Bird[], steps: number, env: DogEnv = {}, dtMs = 50
 }
 
 describe('Dog', () => {
+  it('re-establishes a relocated pheasant point without tracking tiny movements with its nose', () => {
+    const dog = makeDog(100, 100), bird = birdAt(114, 100, { speciesId: 'ringneck' });
+    const env: DogEnv = { pointRelocationRange: 3 / .9144 };
+    for (let i = 0; i < 300 && dog.state !== 'pointing'; i++) dog.update(50, [bird], env);
+    expect(dog.state).toBe('pointing');
+    const heading = dog.heading;
+    bird.pos.y += 1;
+    run(dog, [bird], 10, env);
+    expect(dog.state).toBe('pointing');expect(dog.heading).toBe(heading);
+    bird.pos.y += 3;
+    expect(dist(dog.pos, bird.pos)).toBeLessThan(24);
+    dog.update(50, [bird], env);
+    expect(dog.state).toBe('tracking');expect(dog.scentStage).toBe('stalking');
+    expect(dog.pointedBirdId).toBeNull();expect(dog.heading).toBe(heading);
+    for (let i = 0; i < 300 && dog.state !== 'pointing'; i++) dog.update(50, [bird], env);
+    expect(dog.state).toBe('pointing');expect(dog.heading).toBeGreaterThan(heading);
+    // The second point starts a fresh displacement window.
+    bird.pos.y += 1;run(dog, [bird], 10, env);
+    expect(dog.state).toBe('pointing');
+  });
+  it.each([{ species: 'ringneck', env: {} }, { species: 'bobwhite', env: { pointRelocationRange: 3 / .9144 } }])(
+    'preserves the existing point distance rule for $species outside the scoped behavior', ({ species, env }) => {
+      const dog = makeDog(100, 100), bird = birdAt(114, 100, { speciesId: species });
+      for (let i = 0; i < 300 && dog.state !== 'pointing'; i++) dog.update(50, [bird], env);
+      expect(dog.state).toBe('pointing');const heading = dog.heading;
+      bird.pos.y += 4;run(dog, [bird], 10, env);
+      expect(dog.state).toBe('pointing');expect(dog.heading).toBe(heading);
+    });
+
   it.each(['grouse-woods', 'woodcock-bottoms'])('holds distant scent work in %s and resumes when the handler closes', huntAreaId => {
     const dog = makeDog(100, 100), bird = birdAt(145, 100);
     const env = { huntAreaId, hunterPos: { x: 100, y: 100 }, rangeRadius: 24, movementScale: .04 };

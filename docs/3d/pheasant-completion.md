@@ -290,3 +290,17 @@ The audit separately found a concrete defect in close-flush presentation: the di
 The old implementation failed the extended first-flight-tick regression: close/far climb became equal. The corrected ratio stays 1.4706 through 500 ms and matches actual upward displacement in the controlled flat-ground fixture. Distance-neutral legacy-ringneck and continuous-bobwhite regressions pass. This proves the flight integration fix; ordinary visual readability and successful shooting/retrieve acceptance remain open.
 
 All 619 tests across 86 files, TypeScript checking and production build pass. The existing large-bundle warning remains.
+
+**West Track rise direction verified**
+
+A repeat ordinary approach on West Track seed 7, morning, Balanced, generated GSP recorded only revealed airborne positions and the camera every 50 ms. The player followed the visible dog cues, stopped walking at the hen-flush announcement and held fire. No hidden bird coordinates, forced event, simulation stepping or camera placement guided the approach. The 49-sample trace is saved in `output/playwright/west7-rise-camera-audit.json`; the forward view after the rise is `output/playwright/west7-projection.png`.
+
+At launch, the hen's center was 57.92 degrees right of the camera, outside the approximately 51.8-degree horizontal half-view. At 600, 1,200 and 2,300 ms it was respectively 67.56, 75.08 and 107.28 degrees right. It climbed from 1.41 meters below camera height at takeoff to 2.95 meters above it. This confirms an off-axis rise in this replay; the empty forward view does not establish a rendering disappearance. It does not prove that every earlier missed bird had the same cause.
+
+The dog-facing compass conversion agrees with generated body orientation. Its direction originates at the dog, and a cardinal sector is coarse; it is not a precise bird bearing from the player. Source review separately found that a runner can relocate within the existing point-distance threshold while the dog retains its initial pointing heading. That behavior merits a relocation response, but the off-axis capture alone does not prove it occurred here. Ordinary visual acquisition, shooting and complete-hunt acceptance remain open.
+
+**Re-establishing a relocated pheasant point**
+
+An established point now records the bird's position. In continuous Pheasant encounters, a ringneck moving more than three meters from that position releases the dog into the existing stalking and settling sequence, even if the bird remains within the old point-distance ring. The dog retains its heading on the release tick and works the new direction through ordinary scent behavior. It does not continuously swivel toward a hidden target. Each fresh point resets the displacement reference; small movements retain a steady point. Other species and legacy encounters retain their existing rule.
+
+The three-meter threshold is a tuning choice, approximately one-quarter of the existing settling separation. Regression checks cover lateral relocation inside the old release radius, unchanged heading before re-establishment, small movements, a fresh displacement reference and excluded encounters. All 622 tests across 86 files, TypeScript checking and the production build pass. The existing large-bundle warning remains. Natural hunt review is still required to assess the rhythm of repeated points and whether this improves the player's understanding of runner work.
