@@ -147,6 +147,7 @@ export class HuntSimulation {
     const huntStyle = doctrine.style;
 
     updateBirds(dtMs, this.hunt.birds, leadDog.pos, {
+      worldScale: spatialEncounter,
       bounds: this.area.world,
       patches: this.area.patches,
       slopeAngle: this.area.slope,
@@ -248,7 +249,8 @@ export class HuntSimulation {
         disturbed.push(...this.hunt.birds.filter(bird => bird.state === 'hidden'
           && bird.speciesId === 'ringneck' && !pointedIds.includes(bird.id)
           && dist(bird.pos, this.hunt.hunterPos) <= Math.min(5.5,
-            pheasantApproach(bird.id, 0, false).flushRadius)));
+            pheasantApproach(bird.id, 0, false, bird.approachRoll).flushRadius)
+            * HUNT_CHALLENGES[this.challenge].approach));
         disturbed.sort((a, b) => dist(a.pos, this.hunt.hunterPos) - dist(b.pos, this.hunt.hunterPos) || a.id - b.id);
       }
       if (disturbed.length > 0) {
@@ -281,7 +283,7 @@ export class HuntSimulation {
         const species = getSpecies(pointed.speciesId);
         nerveMult *= species.pointNerveMult ?? 1;
         if (spatialEncounter && species.id === 'ringneck') {
-          nerveMult *= pheasantApproach(pointed.id, dist(this.hunt.hunterPos, pointed.pos), !!input.hunterRunning).nerveScale;
+          nerveMult *= pheasantApproach(pointed.id, dist(this.hunt.hunterPos, pointed.pos), !!input.hunterRunning, pointed.approachRoll).nerveScale;
         }
         const coveyApproach = spatialEncounter && species.coveyApproach === true;
         if (coveyApproach) {
@@ -307,7 +309,7 @@ export class HuntSimulation {
       const radius = bird && coveyApproach
         ? quailPointApproach(bird.coveyId, dog.pressure, !!input.hunterRunning).flushRadius * HUNT_CHALLENGES[this.challenge].approach * (species?.pointRadiusMult ?? 1)
         : bird && spatialEncounter && species?.id === 'ringneck'
-          ? pheasantApproach(bird.id, dist(this.hunt.hunterPos, bird.pos), !!input.hunterRunning).flushRadius
+          ? pheasantApproach(bird.id, dist(this.hunt.hunterPos, bird.pos), !!input.hunterRunning, bird.approachRoll).flushRadius * HUNT_CHALLENGES[this.challenge].approach
           : doctrine.pointRadius * (species?.pointRadiusMult ?? 1);
       const trigger = bird && coveyApproach
         ? this.hunt.birds.filter(candidate => candidate.state === 'hidden' && candidate.coveyId === bird.coveyId)

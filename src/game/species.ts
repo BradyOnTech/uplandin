@@ -33,6 +33,8 @@ export type SpeciesFlightDirection = 'none' | 'downhill';
 
 /** Species-owned ground behavior used when a bird roads ahead of the dog. */
 export interface RunnerBehavior {
+  /** Continuous-world ground pace in metres/second; game tuning, not a field measurement. */
+  worldSpeedMps?: number;
   /** Try an escape along a cover edge before stopping at it. */
   turnAlongCover?: boolean;
   /** Distance at which the dog makes a runner break into a road (property px). */
@@ -129,7 +131,7 @@ export const SPECIES: SpeciesConfig[] = [
     pointRadiusMult: 0.86,
     groundResponse: 'none',
     runnerChance: 0.75,
-    runnerBehavior: { fleeRadius: 45, energyRate: .78, restMultiplier: .72, routeBias: .42, turnAlongCover: true },
+    runnerBehavior: { worldSpeedMps: 4.8, fleeRadius: 45, energyRate: .78, restMultiplier: .72, routeBias: .42, turnAlongCover: true },
     nerveMinMs: 4000,
     nerveMaxMs: 7000,
     flight: { speedMin: 125, speedMax: 160, climb: 0.65, wobble: 14, flapRate: 9, levelAfterMs: 1000 },

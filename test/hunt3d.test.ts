@@ -42,6 +42,25 @@ function walkForward(ctx: Ctx, distance: number): void {
 describe('Hunt3DSystem live start', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it('flushes a resting unpointed pheasant when the live camera walks over it', () => {
+    vi.stubGlobal('location', { search: '?breed=gsp&area=pheasant-coverts&seed=1' });
+    const ctx = liveCtx();
+    const hunt = liveHunt();
+    hunt.init(ctx);
+    hunt.fixedUpdate(ctx, 1000 / 30);
+    const state = hunt.huntState();
+    const position = hunt.worldToSim(ctx.camera.position.x + 7, ctx.camera.position.z, { x: 0, y: 0 });
+    const bird = { ...state.birds[0], speciesId: 'ringneck', pos: position,
+      state: 'hidden' as const, runs: true, restingMs: 2000, approachRoll: .2 };
+    state.birds = [bird];
+    hunt.dog().pos = { x: position.x + 300, y: position.y + 300 };
+    ctx.camera.position.x += 6;
+    hunt.fixedUpdate(ctx, 1000 / 30);
+    expect(bird.state).toBe('flushed');
+    expect(hunt.lastFlushInfo()?.ids).toEqual([bird.id]);
+    expect(state.dogWork[0].pointFlushes).toBe(0);
+  });
+
   it('ends a quiet Quail session without releasing hidden birds or advancing the dog afterward', () => {
     vi.stubGlobal('location', { search: '?breed=gsp&area=quail-fields' });
     const ctx = liveCtx();

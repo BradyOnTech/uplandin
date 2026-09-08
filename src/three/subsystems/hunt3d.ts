@@ -300,15 +300,16 @@ export class Hunt3DSystem implements Subsystem {
   private tick(ctx: Ctx, dtMs: number): void {
     const t0 = performance.now();
     this.syncDogObstacles(ctx);
-    // The player IS the hunter: camera world position -> sim hunterPos.
-    this.worldToSim(ctx.camera.position.x, ctx.camera.position.z, this.hunt.hunterPos);
+    // Keep the previous authoritative hunter position until the simulation
+    // consumes this movement. Aliasing it here disables walking disturbances.
+    const hunterPos = this.worldToSim(ctx.camera.position.x, ctx.camera.position.z, { x: 0, y: 0 });
     const yaw = ctx.camera.rotation.y;
     const forwardX = -Math.sin(yaw);
     const forwardZ = -Math.cos(yaw);
     this.liveDogAnchor.x =
-      this.hunt.hunterPos.x + (forwardX * LIVE_DOG_ANCHOR_AHEAD_M) / PROPERTY_PX_TO_M;
+      hunterPos.x + (forwardX * LIVE_DOG_ANCHOR_AHEAD_M) / PROPERTY_PX_TO_M;
     this.liveDogAnchor.y =
-      this.hunt.hunterPos.y + (forwardZ * LIVE_DOG_ANCHOR_AHEAD_M) / PROPERTY_PX_TO_M;
+      hunterPos.y + (forwardZ * LIVE_DOG_ANCHOR_AHEAD_M) / PROPERTY_PX_TO_M;
 
     // The 2D area's hunter/dog spawn lives near its bottom edge, while the
     // 3D player deliberately starts near the field center. Without this
@@ -324,9 +325,9 @@ export class Hunt3DSystem implements Subsystem {
       for (let slot = 0; slot < this.simDogs.length; slot++) {
         const dog = this.simDogs[slot];
         const side = slot === 0 ? 1 : -1;
-        dog.pos.x = this.hunt.hunterPos.x +
+        dog.pos.x = hunterPos.x +
           (forwardX * LIVE_DOG_AHEAD_M + leftX * LIVE_DOG_LEFT_M * side) / PROPERTY_PX_TO_M;
-        dog.pos.y = this.hunt.hunterPos.y +
+        dog.pos.y = hunterPos.y +
           (forwardZ * LIVE_DOG_AHEAD_M + leftZ * LIVE_DOG_LEFT_M * side) / PROPERTY_PX_TO_M;
         dog.state = 'heel';
         dog.gait = 'still';
@@ -335,14 +336,14 @@ export class Hunt3DSystem implements Subsystem {
         dog.heading = Math.atan2(forwardZ, forwardX) + LIVE_DOG_INTRO_ANGLE * side;
       }
       this.liveIntroHolding = true;
-      this.liveIntroHunter.x = this.hunt.hunterPos.x;
-      this.liveIntroHunter.y = this.hunt.hunterPos.y;
+      this.liveIntroHunter.x = hunterPos.x;
+      this.liveIntroHunter.y = hunterPos.y;
       this.liveSpawnSynced = true;
       snappedSpawn = true;
     }
     if (this.liveIntroHolding) {
       const playerStartedWalking =
-        dist(this.hunt.hunterPos, this.liveIntroHunter) >= LIVE_DOG_RELEASE_MOVE_PX;
+        dist(hunterPos, this.liveIntroHunter) >= LIVE_DOG_RELEASE_MOVE_PX;
       if (playerStartedWalking) {
         for (const dog of this.simDogs) dog.castOff();
         this.liveIntroHolding = false;
@@ -385,7 +386,7 @@ export class Hunt3DSystem implements Subsystem {
     const recall = player.consumeRecall();
     if (recall) playWhistle();
     const events = this.simulation.update(dtMs, {
-      hunterPos: this.hunt.hunterPos,
+      hunterPos: hunterPos,
       hunterRunning: player.isRunning(),
       recall,
       whistleRange: this.gearTier >= 3 ? Infinity : undefined,

@@ -4,6 +4,7 @@ import { clamp, dist } from './math';
 import { getSpecies, rollSpecies, type SpeciesShare } from './species';
 import type { RNG, Vec2 } from './types';
 import type { RunnerStyle } from './huntDoctrine';
+import { PROPERTY_PX_TO_M } from './worldUnits';
 
 export type BirdState = 'hidden' | 'flushed' | 'downed' | 'carried' | 'escaped' | 'retrieved';
 
@@ -31,6 +32,8 @@ export interface Bird {
   restingMs: number;
   /** ms of being pointed the bird will tolerate before flushing wild. */
   nerveMs: number;
+  /** Seeded individual approach temperament, retained through relights. */
+  approachRoll?: number;
 }
 
 const COVEY_JITTER = 10; // fallback when a future species omits its spread
@@ -166,6 +169,7 @@ export function spawnBirds(cfg: SpawnConfig, rng: RNG = Math.random): Bird[] {
         sex: species.henRule ? (rng() < 0.5 ? 'hen' : 'rooster') : undefined,
         young: young || undefined,
         runs,
+        approachRoll: nerveRoll,
         runEnergy: RUNNER_MAX_ENERGY,
         restingMs: 0,
         nerveMs:
@@ -356,6 +360,8 @@ export function birdsDisturbedByHunter(
 }
 
 export interface RunnerEnv {
+  /** Use species world pace in continuous 3D; legacy screen-space speed otherwise. */
+  worldScale?: boolean;
   /** Continuous Quail scenes keep a hidden bobwhite covey together until
    * coordinated ground movement exists; relit singles may still run. */
   holdBobwhiteCoveys?: boolean;
@@ -438,7 +444,9 @@ export function updateBirds(dtMs: number, birds: Bird[], dogPos: Vec2, env: Runn
       continue;
     }
     b.runEnergy -= dtMs * energyRate;
-    const speed = RUNNER_SPEED * (species.runSpeedMult ?? 1);
+    const speed = env.worldScale && runner?.worldSpeedMps !== undefined
+      ? runner.worldSpeedMps / PROPERTY_PX_TO_M
+      : RUNNER_SPEED * (species.runSpeedMult ?? 1);
     const away = Math.atan2(b.pos.y - dogPos.y, b.pos.x - dogPos.x);
     let dirX = Math.cos(away);
     let dirY = Math.sin(away);

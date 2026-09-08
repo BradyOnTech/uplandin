@@ -323,6 +323,19 @@ describe('circleBack (the hun move)', () => {
 });
 
 describe('updateBirds (runners)', () => {
+  it('uses world pace only for continuous ringnecks without slowing their energy clock', () => {
+    const legacy = bird({ speciesId: 'ringneck', pos: { x: 100, y: 100 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
+    const world = { ...legacy, pos: { ...legacy.pos } };
+    updateBirds(1000, [legacy], { x: 99, y: 100 });
+    updateBirds(1000, [world], { x: 99, y: 100 }, { worldScale: true });
+    expect(legacy.pos.x - 100).toBeCloseTo(42);
+    expect((world.pos.x - 100) * .9144).toBeCloseTo(4.8);
+    expect(world.runEnergy).toBe(legacy.runEnergy);
+    const bobwhite = bird({ speciesId: 'bobwhite', pos: { x: 100, y: 100 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
+    updateBirds(1000, [bobwhite], { x: 99, y: 100 }, { worldScale: true });
+    expect(bobwhite.pos.x - 100).toBeCloseTo(42);
+  });
+
   it('flees the dog when it gets close', () => {
     const b = bird({ pos: { x: 100, y: 100 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
     for (let i = 0; i < 20; i++) updateBirds(50, [b], { x: 130, y: 100 });
@@ -401,12 +414,12 @@ describe('updateBirds (runners)', () => {
     expect(b.restingMs).toBeGreaterThan(0); // holding — the hunter's window
   });
 
-  it('a ringneck roads along a blocked cover edge while a bobwhite holds', () => {
+  it.each([false, true])('a ringneck roads along a blocked cover edge while a bobwhite holds (world pace: %s)', worldScale => {
     const patches = [{ x: 280, y: 140, w: 60, h: 120 }];
     const rooster = bird({ speciesId: 'ringneck', pos: { x: 340, y: 200 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
     const bobwhite = bird({ speciesId: 'bobwhite', pos: { x: 340, y: 200 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
     const dog = { x: 320, y: 198 };
-    updateBirds(100, [rooster, bobwhite], dog, { patches });
+    updateBirds(100, [rooster, bobwhite], dog, { patches, worldScale });
     expect(rooster.pos.x).toBeLessThanOrEqual(340);
     expect(rooster.pos.y).toBeGreaterThan(200);
     expect(rooster.restingMs).toBe(0);

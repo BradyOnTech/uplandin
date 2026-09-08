@@ -8,8 +8,9 @@ import { mulberry32 } from '../src/game/math';
 import { createHunt } from '../src/game/state';
 import { LandscapeModel } from '../src/game/landscape';
 import { pheasantApproach } from '../src/game/pheasantApproach';
+import { HUNT_CHALLENGES, type HuntChallenge } from '../src/game/huntChallenge';
 
-function pointedSimulation(hunterDistance: number, continuousEncounter = false, areaId = 'quail-fields', speciesId = 'bobwhite') {
+function pointedSimulation(hunterDistance: number, continuousEncounter = false, areaId = 'quail-fields', speciesId = 'bobwhite', challenge: HuntChallenge = 'balanced') {
   const area = getArea(areaId);
   const hunt = createHunt(area, mulberry32(11), { wind: 'calm', condition: 'mild' });
   const bird: Bird = {
@@ -34,11 +35,31 @@ function pointedSimulation(hunterDistance: number, continuousEncounter = false, 
   dog.state = 'pointing';
   dog.gait = 'still';
   dog.pointedBirdId = bird.id;
-  const simulation = new HuntSimulation({ hunt, dogs: [dog], area, rng: mulberry32(13), continuousEncounter });
+  const simulation = new HuntSimulation({ hunt, dogs: [dog], area, rng: mulberry32(13), continuousEncounter, challenge });
   return { bird, dog, hunt, simulation };
 }
 
 describe('HuntSimulation shared orchestration', () => {
+  it('keeps seeded pheasant temperament stable across hunts with different runtime IDs', () => {
+    const area = getArea('pheasant-coverts');
+    const a = createHunt(area, mulberry32(1));
+    const b = createHunt(area, mulberry32(1));
+    expect(a.birds[0].id).not.toBe(b.birds[0].id);
+    expect(a.birds.map(bird => pheasantApproach(bird.id, 20, false, bird.approachRoll)))
+      .toEqual(b.birds.map(bird => pheasantApproach(bird.id, 20, false, bird.approachRoll)));
+    expect(a.birds.every(bird => bird.approachRoll !== undefined)).toBe(true);
+  });
+
+  it.each(['relaxed', 'balanced', 'wild'] as const)('uses the %s quiet approach distance for pointed pheasants', challenge => {
+    const f = pointedSimulation(30, true, 'pheasant-coverts', 'ringneck', challenge);
+    f.bird.approachRoll = .6;
+    const radius = 11 * HUNT_CHALLENGES[challenge].approach;
+    expect(f.simulation.update(16, { hunterPos: { x: 300 - radius - .1, y: 300 } })
+      .some(event => event.type === 'covey-flushed')).toBe(false);
+    expect(f.simulation.update(16, { hunterPos: { x: 300 - radius + .1, y: 300 } }))
+      .toContainEqual(expect.objectContaining({ type: 'covey-flushed', cause: 'proximity', pointCredit: true }));
+  });
+
   it('allows a tight pheasant to hold through a quiet walk and flush at the actual boots with point credit', () => {
     const f = pointedSimulation(40, true, 'pheasant-coverts', 'ringneck');
     const id = Array.from({length: 100}, (_, i) => i + 1).find(id => pheasantApproach(id, 40, false).kind === 'tight')!;
