@@ -127,23 +127,46 @@ export function playCackle(volume = 1, destination?: AudioNode): void {
 
 /** One physical pheasant launch: heavy first beats, then receding wing wash.
  * Distance affects loudness without changing bird state or random streams. */
-export function playPheasantFlush(distanceM: number, rooster: boolean, pan = 0): void {
+export interface PheasantFlushSound {
+  readonly active: boolean;
+  updateSpatial(distanceM: number, pan: number): void;
+  stop(): void;
+}
+
+export function playPheasantFlush(distanceM: number, rooster: boolean, pan = 0): PheasantFlushSound | undefined {
   const c = ready();
   if (!c) return;
-  const direction = c.createStereoPanner();
-  direction.pan.value = Number.isFinite(pan) ? Math.max(-1, Math.min(1, pan)) : 0;
-  direction.connect(output(c));
-  const proximity = 1 / (1 + Math.max(0, distanceM) / 18);
-  noise(0, .18, 2600, 600, .42 * proximity, direction);
+  const direction = c.createStereoPanner(), distanceGain = c.createGain();
+  const clampPan = (value: number) => Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
+  const proximity = (distance: number) => 1 / (1 + (Number.isFinite(distance) ? Math.max(0, distance) : 0) / 18);
+  direction.pan.value = clampPan(pan);
+  distanceGain.gain.value = proximity(distanceM);
+  distanceGain.connect(direction).connect(output(c));
+  let active = true;
+  const handle: PheasantFlushSound = {
+    get active() { return active; },
+    updateSpatial(distance, nextPan) {
+      if (!active) return;
+      direction.pan.setTargetAtTime(clampPan(nextPan), c.currentTime, .025);
+      distanceGain.gain.setTargetAtTime(proximity(distance), c.currentTime, .025);
+    },
+    stop() {
+      if (!active) return;
+      active = false;
+      distanceGain.disconnect(); direction.disconnect();
+    },
+  };
+  noise(0, .18, 2600, 600, .42, distanceGain);
   for (let beat = 0; beat < 8; beat++) {
-    const envelope = Math.exp(-beat * .19) * proximity;
-    // The final wing wash ends after all tones and the optional cackle.
-    // Its audio-clock completion releases the shared routing node.
-    noise(beat * .085, .065, 1700, 380, .48 * envelope, direction,
-      beat === 7 ? () => direction.disconnect() : undefined);
-    tone(105, beat * .085, .055, {type:'triangle',volume:.08 * envelope,slideTo:65,destination:direction});
+    const envelope = Math.exp(-beat * .19);
+    // Audio-clock completion releases both shared routing nodes, even if
+    // the game stops rendering before this final wing wash finishes.
+    noise(beat * .085, .065, 1700, 380, .48 * envelope, distanceGain,
+      beat === 7 ? () => handle.stop() : undefined);
+    tone(105, beat * .085, .055, {type:'triangle',volume:.08 * envelope,slideTo:65,destination:distanceGain});
   }
-  if (rooster) playCackle(proximity, direction);
+  if (rooster) playCackle(1, distanceGain);
+  return handle;
 }
 
 /** Woodcock wing twitter: rapid high chirps as it towers. */

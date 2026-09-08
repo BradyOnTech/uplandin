@@ -4,7 +4,7 @@ import { QUAIL_WORLD_SCALE, quailLaunchDelay } from '../quailPresentation';
 import { QuailFlushDebris } from '../quailFlushDebris';
 import * as THREE from 'three';
 import { buildBobwhiteBody, buildBobwhiteWing, poseBobwhiteFoldedWings } from '../assets/bobwhite';
-import { playFlush, playThud, playPheasantFlush } from '../../audio';
+import { playFlush, playThud, playPheasantFlush, type PheasantFlushSound } from '../../audio';
 import { RELIGHT_CHANCE, YOUNG_FLIGHT_MULT } from '../../game/birds';
 import { mulberry32 } from '../../game/math';
 import {
@@ -260,6 +260,7 @@ interface Slot {
    * original Quail flight controller, but the profile is now authored from
    * each species' flight data and map doctrine. */
   spatialFlight?: QuailFlight;
+  launchSound?: PheasantFlushSound;
   flight?: FlightContext;
   status: SlotStatus;
   simId: number;
@@ -1337,6 +1338,8 @@ export class BirdsSystem implements Subsystem {
         }
       }
       if (!slot) break; // Keep the queued id until a presentation slot is free.
+      slot.launchSound?.stop();
+      slot.launchSound = undefined;
       this.qHead++;
       const flight = this.pendingFlights.get(id);
       this.pendingFlights.delete(id);
@@ -1465,7 +1468,8 @@ export class BirdsSystem implements Subsystem {
       // The camera's local +X is the listener's right. Use the actual
       // takeoff moment, so a delayed second bird respects a recent turn.
       const pan = distance > .001 ? (dx * Math.cos(yaw) - dz * Math.sin(yaw)) / distance : 0;
-      playPheasantFlush(distance, slot.sex === 'rooster', pan);
+      slot.launchSound?.stop();
+      slot.launchSound = playPheasantFlush(distance, slot.sex === 'rooster', pan);
     }
     this.coverEvents?.dispatchEvent(new CustomEvent('bird-cover-disturbance', {
       detail: { x: slot.x, z: slot.z },
@@ -1638,6 +1642,15 @@ export class BirdsSystem implements Subsystem {
     const simBirds = this.hunt.huntState().birds;
     for (let i = 0; i < POOL; i++) {
       const s = this.slots[i];
+      if (s.launchSound) {
+        if (!s.launchSound.active) s.launchSound = undefined;
+        else if (!this.frozen) {
+          const dx = s.x - ctx.camera.position.x, dz = s.z - ctx.camera.position.z;
+          const distance = Math.hypot(dx, dz), yaw = ctx.camera.rotation.y;
+          const pan = distance > .001 ? (dx * Math.cos(yaw) - dz * Math.sin(yaw)) / distance : 0;
+          s.launchSound.updateSpatial(distance, pan);
+        }
+      }
       const visible = s.status === 'flying' || s.status === 'falling' || s.status === 'grounded';
       s.root.visible = visible;
       if (!visible) continue;
@@ -1794,7 +1807,7 @@ export class BirdsSystem implements Subsystem {
     this.coverEvents = undefined;
     this.launchCover?.dispose();
     this.launchCover = undefined;
-    for (const s of this.slots) ctx.scene.remove(s.root);
+    for (const s of this.slots) { s.launchSound?.stop(); ctx.scene.remove(s.root); }
     this.slots.length = 0;
     if (this.debrisMesh) ctx.scene.remove(this.debrisMesh);
     if (this.featherPoints) ctx.scene.remove(this.featherPoints);

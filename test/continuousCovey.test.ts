@@ -120,6 +120,24 @@ describe('continuous Quail coveys', () => {
       expect(flutter).not.toHaveBeenCalled();
     } finally {sound.mockRestore();flutter.mockRestore();}
   });
+  it('updates a launched sound with moving bird and listener, then stops it on slot reuse', () => {
+    const handle={active:true,updateSpatial:vi.fn(),stop:vi.fn()};
+    const sound=vi.spyOn(audio,'playPheasantFlush').mockReturnValue(handle);
+    try {
+      const f=fixture();f.runtime.frozen=false;f.add(1,1,4,0);f.birds[0].speciesId='ringneck';
+      const camera=new THREE.PerspectiveCamera();f.runtime.listener=camera;
+      f.runtime.tickBirds(1000/30);
+      const slot=f.runtime.slots[0];Object.assign(slot,{body:new THREE.Mesh(),wingL:new THREE.Group(),wingR:new THREE.Group(),visualScale:1});
+      const render=()=> (f.runtime as unknown as {update(ctx:unknown,dt:number):void}).update({camera},0);
+      render();expect(handle.updateSpatial).toHaveBeenLastCalledWith(4,1);
+      camera.rotation.y=Math.PI;render();expect(handle.updateSpatial).toHaveBeenLastCalledWith(4,-1);
+      slot.x=8;camera.position.x=2;render();expect(handle.updateSpatial).toHaveBeenLastCalledWith(6,-1);
+      expect(sound).toHaveBeenCalledOnce();
+      slot.status='done';f.add(2,2,9,0);f.birds[1].speciesId='ringneck';f.runtime.tickBirds(1000/30);
+      expect(handle.stop).toHaveBeenCalledOnce();
+      handle.active=false;render();expect(slot.launchSound).toBeUndefined();
+    } finally {sound.mockRestore();}
+  });
   it('positions a delayed pheasant sound against the current listener rather than the original flush camera', () => {
     const sound=vi.spyOn(audio,'playPheasantFlush').mockImplementation(()=>{});
     try {

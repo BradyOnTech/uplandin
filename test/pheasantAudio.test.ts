@@ -15,15 +15,25 @@ it('routes the complete pheasant flush through one clamped stereo node and relea
     createBufferSource(){return node('noise');}
     createBuffer(_channels:number,length:number){return {getChannelData:()=>new Float32Array(length)};}
   });
-  const audio=await import('../src/audio');audio.playPheasantFlush(5,true,4);
+  const audio=await import('../src/audio');const sound=audio.playPheasantFlush(5,true,4)!;
   const pans=nodes.filter(n=>n.kind==='pan');expect(pans).toHaveLength(1);expect(pans[0].pan.value).toBe(1);
   expect(nodes.filter(n=>n.kind==='tone')).toHaveLength(12);
-  const sourceGains=nodes.filter(n=>n.kind==='gain'&&n.connect.mock.calls[0]?.[0]===pans[0]);
+  const attenuation=nodes.find(n=>n.kind==='gain'&&n.connect.mock.calls[0]?.[0]===pans[0]);
+  expect(attenuation.gain.value).toBeCloseTo(1/(1+5/18));
+  sound.updateSpatial(36,-4);
+  expect(pans[0].pan.setTargetAtTime).toHaveBeenLastCalledWith(-1,0,.025);
+  expect(attenuation.gain.setTargetAtTime).toHaveBeenLastCalledWith(1/3,0,.025);
+  const sourceGains=nodes.filter(n=>n.kind==='gain'&&n.connect.mock.calls[0]?.[0]===attenuation);
   expect(sourceGains).toHaveLength(21); // 9 wing noises, 8 beat tones, 4 cackle tones.
   const sources=nodes.filter(n=>n.kind==='tone'||n.kind==='noise').sort((a,b)=>a.stopAt-b.stopAt);
   for(const source of sources.slice(0,-1))source.onended();
   expect(pans[0].disconnect).not.toHaveBeenCalled();
   sources.at(-1).onended();expect(pans[0].disconnect).toHaveBeenCalledOnce();
+  expect(sound.active).toBe(false);expect(attenuation.disconnect).toHaveBeenCalledOnce();
+  sound.stop();sound.updateSpatial(0,1);
+  expect(pans[0].disconnect).toHaveBeenCalledOnce();
+  expect(pans[0].pan.setTargetAtTime).toHaveBeenCalledOnce();
+  const stopped=audio.playPheasantFlush(5,false)!;stopped.stop();expect(stopped.active).toBe(false);
   audio.setAudioEnabled(false);audio.playPheasantFlush(5,false,-1);
-  expect(nodes.filter(n=>n.kind==='pan')).toHaveLength(1);
+  expect(nodes.filter(n=>n.kind==='pan')).toHaveLength(2);
 });
