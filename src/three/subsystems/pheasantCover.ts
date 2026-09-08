@@ -86,19 +86,54 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
     const tipZ = z + sz * lean + pz * curve;
     const midY = height * 0.54;
     const rootWidth = kind === 'prairie' ? width * .38 : width;
-    // Three tapered facets give the blade a visible lower body and a bent
-    // silhouette. One root-to-tip triangle reduced prairie to toothpicks.
-    push([
-      x - px * rootWidth, 0, z - pz * rootWidth,
-      x + px * rootWidth, 0, z + pz * rootWidth,
-      midX + px * width * 0.82, midY, midZ + pz * width * 0.82,
-      x - px * rootWidth, 0, z - pz * rootWidth,
-      midX + px * width * 0.82, midY, midZ + pz * width * 0.82,
-      midX - px * width * 0.82, midY, midZ - pz * width * 0.82,
-      midX - px * width * 0.82, midY, midZ - pz * width * 0.82,
-      midX + px * width * 0.82, midY, midZ + pz * width * 0.82,
-      tipX, height, tipZ,
-    ], tone);
+    if (kind === 'prairie' && !distant) {
+      // Standing grass carries its seed on a culm above arching leaves.
+      // Separate that fine upper structure from the broad lower foliage.
+      // These points consume no new RNG, preserving the authored roots.
+      const stalkWidth = medium ? .012 : .007;
+      push([
+        x-px*stalkWidth,0,z-pz*stalkWidth, x+px*stalkWidth,0,z+pz*stalkWidth,
+        tipX+px*stalkWidth,height,tipZ+pz*stalkWidth,
+        x-px*stalkWidth,0,z-pz*stalkWidth, tipX+px*stalkWidth,height,tipZ+pz*stalkWidth,
+        tipX-px*stalkWidth,height,tipZ-pz*stalkWidth,
+      ],tone);
+      const shoulderX=x+sx*lean*.42+px*curve*.2;
+      const shoulderZ=z+sz*lean*.42+pz*curve*.2;
+      const shoulderY=height*.58;
+      const endX=x+sx*lean*1.34+px*curve;
+      const endZ=z+sz*lean*1.34+pz*curve;
+      const endY=height*(.58+(i%3)*.065);
+      const bendX=x+sx*lean*.87+px*curve*.65;
+      const bendZ=z+sz*lean*.87+pz*curve*.65;
+      const bendY=height*.77;
+      const w=width*.72;
+      push([
+        x-px*rootWidth,0,z-pz*rootWidth, x+px*rootWidth,0,z+pz*rootWidth,
+        shoulderX+px*w,shoulderY,shoulderZ+pz*w,
+        x-px*rootWidth,0,z-pz*rootWidth, shoulderX+px*w,shoulderY,shoulderZ+pz*w,
+        shoulderX-px*w,shoulderY,shoulderZ-pz*w,
+        shoulderX-px*w,shoulderY,shoulderZ-pz*w, shoulderX+px*w,shoulderY,shoulderZ+pz*w,
+        bendX+px*w*.45,bendY,bendZ+pz*w*.45,
+        shoulderX-px*w,shoulderY,shoulderZ-pz*w, bendX+px*w*.45,bendY,bendZ+pz*w*.45,
+        bendX-px*w*.45,bendY,bendZ-pz*w*.45,
+        bendX-px*w*.45,bendY,bendZ-pz*w*.45, bendX+px*w*.45,bendY,bendZ+pz*w*.45,
+        endX,endY,endZ,
+      ],tone);
+    } else {
+      // Three tapered facets give the blade a visible lower body and a bent
+      // silhouette. One root-to-tip triangle reduced prairie to toothpicks.
+      push([
+        x - px * rootWidth, 0, z - pz * rootWidth,
+        x + px * rootWidth, 0, z + pz * rootWidth,
+        midX + px * width * 0.82, midY, midZ + pz * width * 0.82,
+        x - px * rootWidth, 0, z - pz * rootWidth,
+        midX + px * width * 0.82, midY, midZ + pz * width * 0.82,
+        midX - px * width * 0.82, midY, midZ - pz * width * 0.82,
+        midX - px * width * 0.82, midY, midZ - pz * width * 0.82,
+        midX + px * width * 0.82, midY, midZ + pz * width * 0.82,
+        tipX, height, tipZ,
+      ], tone);
+    }
 
     if (kind === 'cattail') {
       // The seed stalk is thin; broad leaves supply most of the plant's
@@ -121,27 +156,29 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
     const seeded = kind === 'cattail' || (kind === 'prairie' && i % 5 === 0);
     if (!seeded) continue;
     if (kind === 'prairie') {
-      // Carry the seed head on a slender stem connected to the leaf bend.
-      // A head placed only at tipX floated beside the tapered blade.
-      const stalkWidth = distant ? .015 : .008;
-      const seedBase = height - .13 * .7;
-      push([
-        midX - px * stalkWidth, midY, midZ - pz * stalkWidth,
-        midX + px * stalkWidth, midY, midZ + pz * stalkWidth,
-        tipX + px * stalkWidth, seedBase, tipZ + pz * stalkWidth,
-        midX - px * stalkWidth, midY, midZ - pz * stalkWidth,
-        tipX + px * stalkWidth, seedBase, tipZ + pz * stalkWidth,
-        tipX - px * stalkWidth, seedBase, tipZ - pz * stalkWidth,
-      ], tone);
-      const hw = distant ? .037 : .025, hh = .13;
-      push([
-        tipX, height - hh * .7, tipZ,
-        tipX + px * hw, height - hh * .2, tipZ + pz * hw,
-        tipX, height + hh * .35, tipZ,
-        tipX, height - hh * .7, tipZ,
-        tipX, height + hh * .35, tipZ,
-        tipX - px * hw, height - hh * .2, tipZ - pz * hw,
-      ], tone.clone().multiplyScalar(.85));
+      const seedTone=tone.clone().multiplyScalar(.85);
+      if (!distant) {
+        // An open seed panicle rather than a solid spear at eye level.
+        for (let branch=0;branch<3;branch++) for (const side of [-1,1]) {
+          const t=.86+branch*.065;
+          const cx=x+(tipX-x)*t,cz=z+(tipZ-z)*t;
+          const reach=(.055-branch*.013)*side;
+          const y=height*t;
+          push([
+            cx,y,cz,
+            cx+px*reach,height*(t+.07),cz+pz*reach,
+            cx+px*reach*.72,height*(t+.025),cz+pz*reach*.72,
+          ],seedTone);
+        }
+      } else {
+        const hw=.037,hh=.13;
+        push([
+          tipX,height-hh*.7,tipZ, tipX+px*hw,height-hh*.2,tipZ+pz*hw,
+          tipX,height+hh*.35,tipZ,
+          tipX,height-hh*.7,tipZ, tipX,height+hh*.35,tipZ,
+          tipX-px*hw,height-hh*.2,tipZ-pz*hw,
+        ],seedTone);
+      }
       continue;
     }
     const hw = 0.032;
