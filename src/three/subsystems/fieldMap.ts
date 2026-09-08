@@ -1,4 +1,5 @@
 import { huntingDoctrine } from '../../game/huntDoctrine';
+import { fieldCompassHeading } from '../dogLocator';
 import { LandscapeModel, PROPERTY_PX_TO_M, type GroundSample } from '../../game/landscape';
 import { pheasantPonds } from './pheasantLandscape';
 import type { Ctx, Subsystem } from '../engine';
@@ -69,12 +70,17 @@ export class FieldMapSystem implements Subsystem {
   private open = false;
   private nextDraw = 0;
   private abort = new AbortController();
+  private resize?: ResizeObserver;
 
   init(ctx: Ctx): void {
     this.hunt = ctx.get<Hunt3DSystem>('hunt3d');
     this.landscape = new LandscapeModel(this.hunt.areaConfig());
     if (!this.panel || !this.canvas) return;
     this.context = this.canvas.getContext('2d') ?? undefined;
+    // Survey pauses simulation time; viewport changes still need a fresh
+    // canvas rather than stretching the old map and its text.
+    this.resize = new ResizeObserver(() => { if (this.open) this.draw(ctx); });
+    this.resize.observe(this.canvas);
     const signal = this.abort.signal;
     this.toggleButton?.addEventListener('click', () => this.setOpen(!this.open, ctx), { signal });
     this.closeButton?.addEventListener('click', () => this.setOpen(false, ctx), { signal });
@@ -121,8 +127,9 @@ export class FieldMapSystem implements Subsystem {
     const w = rect.width, h = rect.height;
     const area = this.hunt.areaConfig(), doctrine = huntingDoctrine(area.id);
     const pad = 24;
-    const scale = Math.min((w - pad * 2) / area.world.w, (h - pad * 2) / area.world.h);
-    const ox = (w - area.world.w * scale) * .5, oy = (h - area.world.h * scale) * .5;
+    const top = 52, bottom = 65;
+    const scale = Math.min((w - pad * 2) / area.world.w, (h - top - bottom) / area.world.h);
+    const ox = (w - area.world.w * scale) * .5, oy = top + (h - top - bottom - area.world.h * scale) * .5;
     const point = (x: number, y: number): [number, number] => [ox + (x - area.world.x) * scale, oy + (y - area.world.y) * scale];
     const clear = doctrine.style === 'woods' || doctrine.style === 'bottoms' ? '#182a24'
       : doctrine.style === 'desert-wash' || doctrine.style === 'canyon' ? '#31291f'
@@ -132,6 +139,11 @@ export class FieldMapSystem implements Subsystem {
     g.clearRect(0, 0, w, h); g.fillStyle = clear; g.fillRect(0, 0, w, h);
     g.fillStyle = '#d9d1ae'; g.font = '600 10px -apple-system, sans-serif';
     g.fillText(`${area.name.toUpperCase()} · SURVEY`, pad, 16);
+    const state = this.hunt.huntState();
+    const windTo = fieldCompassHeading(-state.wind - Math.PI / 2).cardinal;
+    g.font = '10px -apple-system, sans-serif';
+    g.fillText(`WIND TO ${windTo} · ${state.windStrength.toUpperCase()}`, pad, 35);
+    g.textAlign = 'right'; g.fillText('N ↑', w - pad, 35); g.textAlign = 'left';
     g.font = '10px -apple-system, sans-serif'; g.fillStyle = '#c8cdbb';
     const guidanceLines: string[] = [];
     let guidanceLine = '';
@@ -229,10 +241,13 @@ export class FieldMapSystem implements Subsystem {
     g.fillStyle = '#eadfbf'; g.fillText('TRUCK', truckX + 8, truckY + 3);
 
     // Live hunter and dog positions are the only moving markers.
-    const state = this.hunt.huntState();
     const [hunterX, hunterY] = point(state.hunterPos.x, state.hunterPos.y);
     g.fillStyle = '#f6e7b2'; g.beginPath(); g.arc(hunterX, hunterY, 4.5, 0, Math.PI * 2); g.fill();
-    g.strokeStyle = '#f6e7b288'; g.beginPath(); g.moveTo(hunterX, hunterY); g.lineTo(hunterX, hunterY - 11); g.stroke();
+    const yaw = ctx.camera.rotation.y;
+    const facingX = -Math.sin(yaw), facingY = -Math.cos(yaw);
+    g.strokeStyle = '#f6e7b2'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(hunterX, hunterY);
+    g.lineTo(hunterX + facingX * 17, hunterY + facingY * 17); g.stroke();
     state.dogsPos.forEach((dog, i) => {
       const [x, y] = point(dog.x, dog.y);
       g.fillStyle = i === 0 ? '#9bc18d' : '#c6d59b'; g.beginPath(); g.arc(x, y, 3.5, 0, Math.PI * 2); g.fill();
@@ -246,8 +261,8 @@ export class FieldMapSystem implements Subsystem {
     g.fillStyle = '#c6b88488'; g.fillRect(pad + 83, legendY - 5, 10, 10); g.fillStyle = '#d6d9c9b8'; g.fillText('COVER', pad + 100, legendY);
     g.fillStyle = '#f6e7b2'; g.beginPath(); g.arc(pad + 166, legendY - 1, 3.5, 0, Math.PI * 2); g.fill(); g.fillStyle = '#d6d9c9b8'; g.fillText('YOU', pad + 175, legendY);
     g.fillStyle = '#9bc18d'; g.beginPath(); g.arc(pad + 213, legendY - 1, 3, 0, Math.PI * 2); g.fill(); g.fillStyle = '#d6d9c9b8'; g.fillText('DOG', pad + 222, legendY);
-    if (this.caption) this.caption.textContent = `${doctrine.description}  Birds stay concealed until your dog makes them.`;
+    if (this.caption) this.caption.textContent = `${doctrine.description} Wind blows toward ${windTo}; the line from your marker shows where you face. Birds stay concealed until your dog makes them.`;
   }
 
-  dispose(_ctx: Ctx): void { this.abort.abort(); }
+  dispose(_ctx: Ctx): void { this.resize?.disconnect(); this.abort.abort(); }
 }
