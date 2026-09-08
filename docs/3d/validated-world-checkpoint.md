@@ -47,6 +47,8 @@ The first Chukar vegetation pass widens sage leaves and bunchgrass blades, incre
 
 The Chukar arrival pass aligns both gate headings with their actual first trail segments. The South Gate previously faced the generic junction rather than the authored northwest switchback. Trailhead props and release direction now follow that route. Narrowed the contour ribbon to 1.6 metres overall, feathered its edges, and reduced small-plant clearance to match. Walked 49 yards up the first leg and captured `output/playwright/chukar-first-switchback.png`: the crest reveals the sidehill and contour path. The rock ribs still resemble rows of upright blocks and require a formation-shape redesign, not another density adjustment. Focused route and opportunity checks pass (24 tests), along with compilation.
 
+The rock-shape pass replaces eleven narrow uprights per formation with up to seven broad ledges, caps their height relative to width, and aligns each long face with the formation. Added stepped bedding rings to the shared low-poly stone geometry. Repeated the 18-second climb and captured `output/playwright/chukar-bedded-ledges.png`; the rows of posts are replaced by low shelves emerging from the slope. The view is more coherent, though it still lacks a strong hero landform and needs broader art review. Compilation passes.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

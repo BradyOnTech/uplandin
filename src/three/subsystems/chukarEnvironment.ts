@@ -58,15 +58,16 @@ export function chukarStoneGeometry(variant = 0, gravel = false): THREE.BufferGe
   const rng = mulberry32(seed(variant, 3, 31)), positions: number[] = [], colors: number[] = [];
   const outline = gravel ? [[-.5, -.38], [.42, -.47], [.53, .32], [-.34, .49]]
     : [[-.5, -.38], [-.19, -.56], [.45, -.44], [.56, -.06], [.39, .52], [-.14, .42], [-.54, .23]];
-  const rings = (gravel ? [0, 1] : [0, .38, 1]).map((y, ring) => outline.map(([x, z], n) => {
-    const spread = ring === 0 ? .89 : ring === 1 && !gravel ? 1.03 : .72 + rng() * .16;
-    return new THREE.Vector3(x * spread + y * .11, y + (y > 0 ? Math.sin(n * 2.7 + variant) * .065 : 0), z * spread - y * .08);
+  const rings = (gravel ? [0, 1] : [0, .24, .29, .61, .67, 1]).map((y, ring) => outline.map(([x, z], n) => {
+    const spread = gravel ? (ring === 0 ? .89 : .72 + rng() * .16)
+      : [1.04, 1.03, .90, .88, .77, .71][ring];
+    return new THREE.Vector3(x * spread + y * .13, y + (y > 0 ? Math.sin(n * 2.7 + variant) * .035 : 0), z * spread - y * .08);
   }));
   const tri = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, shade: number) => {
     for (const p of [a, b, c]) { positions.push(p.x, p.y, p.z); colors.push(shade, shade * .98, shade * .94); }
   };
   for (let ring = 0; ring < rings.length - 1; ring++) for (let n = 0; n < outline.length; n++) {
-    const next = (n + 1) % outline.length, shade = (.79 + ring * .11) + rng() * .12;
+    const next = (n + 1) % outline.length, shade = (ring % 2 ? .73 : .88) + rng() * .09;
     tri(rings[ring][n], rings[ring + 1][next], rings[ring][next], shade);
     tri(rings[ring][n], rings[ring + 1][n], rings[ring + 1][next], shade);
   }
@@ -209,17 +210,17 @@ export class ChukarEnvironmentSystem implements Subsystem {
     // being distributed at equal density everywhere.
     for (const formation of formations(area)) {
       const rng = mulberry32(formation.seed), ribs: Plant[] = [], apron: Plant[] = [];
-      for (let n = 0; n < 11; n++) {
-        // Detached ends and occasional breaks keep a rib from reading as
-        // eleven identical barricade blocks across the hillside.
-        if ((n === 2 || n === 8) && rng() < .7) continue;
-        const u = n / 10 - .5, x = formation.x + Math.cos(formation.yaw) * u * formation.length,
+      for (let n = 0; n < 7; n++) {
+        if (n === 5 && rng() < .5) continue;
+        const u = n / 6 - .5, x = formation.x + Math.cos(formation.yaw) * u * formation.length,
           y = formation.y + Math.sin(formation.yaw) * u * formation.length;
-        const width = 2.8 + rng() * 4.4, depth = 3.1 + rng() * 2.8;
+        const width = formation.length / 6 * (1.05 + rng() * .4), depth = 5 + rng() * 3;
         if (!this.clear(x, y, Math.max(width, depth) * .6, true)) continue;
         this.landscape.surfaceAtProperty(x, y, this.sample);
-        const height = formation.height * (.42 + (1 - Math.abs(u) * 1.75) * .65) * (.82 + rng() * .25);
-        ribs.push({ x, y, sx: width, sy: height, sz: depth, yaw: Math.PI / 2 - formation.yaw + (rng() - .5) * .22, color: STONE[n % STONE.length] });
+        const height = Math.min(width * .48, formation.height * (.24 + (1 - Math.abs(u) * 1.75) * .30) * (.82 + rng() * .25));
+        // Local X follows the formation. The old quarter-turn put the long
+        // face across the rib and exaggerated its fence-post silhouette.
+        ribs.push({ x, y, sx: width, sy: height, sz: depth, yaw: -formation.yaw + (rng() - .5) * .12, color: STONE[n % STONE.length] });
         const slopeLength = Math.hypot(this.sample.gradeX, this.sample.gradeZ) || 1;
         const dx = -this.sample.gradeX / slopeLength, dy = -this.sample.gradeZ / slopeLength;
         for (let chip = 0; chip < (lite ? 5 : 9); chip++) {
