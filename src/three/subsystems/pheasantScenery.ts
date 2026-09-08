@@ -14,21 +14,28 @@ function seeded(seed: number, salt: number): number {
 
 function irregularDisc(rx: number, rz: number, seed: number, y = 0): THREE.BufferGeometry {
   const rng = mulberry32(seed);
-  const segments = 36;
+  const segments = 96;
+  const phase = rng() * Math.PI * 2;
   const ring: Array<[number, number]> = [];
   for (let i = 0; i < segments; i++) {
     const angle = i / segments * Math.PI * 2;
-    const wobble = 0.86 + rng() * 0.22 + Math.sin(angle * 3 + seed) * 0.045;
+    // Broad shoreline bends, not independent spikes at every vertex.
+    const wobble = .97 + Math.sin(angle * 3 + phase) * .025 + Math.sin(angle * 5 - phase) * .012;
     ring.push([Math.cos(angle) * rx * wobble, Math.sin(angle) * rz * wobble]);
   }
   const positions: number[] = [];
+  const uv: number[] = [];
   for (let i = 0; i < segments; i++) {
     const a = ring[i];
     const b = ring[(i + 1) % segments];
-    positions.push(0, y, 0, a[0], y, a[1], b[0], y, b[1]);
+    positions.push(0, y, 0, b[0], y, b[1], a[0], y, a[1]);
+    const angleA = i / segments * Math.PI * 2, angleB = (i + 1) / segments * Math.PI * 2;
+    uv.push(.5, .5, .5 + Math.cos(angleB) * .5, .5 + Math.sin(angleB) * .5,
+      .5 + Math.cos(angleA) * .5, .5 + Math.sin(angleA) * .5);
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
   return geometry;
@@ -59,8 +66,22 @@ export class PheasantScenerySystem implements Subsystem {
       metalness: 0.08,
       transparent: true,
       opacity: 0.86,
+      depthWrite: false,
       side: THREE.DoubleSide,
     });
+    waterMaterial.customProgramCacheKey = () => 'pheasant-water-soft-margin-v1';
+    waterMaterial.onBeforeCompile = shader => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec2 vPondUV;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPondUV = uv;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec2 vPondUV;')
+        .replace('#include <color_fragment>', `#include <color_fragment>
+          float shore = length(vPondUV * 2.0 - 1.0);
+          diffuseColor.a *= 1.0 - smoothstep(.965, 1.0, shore);
+          diffuseColor.rgb *= 1.0 - smoothstep(.78, 1.0, shore) * .12;
+        `);
+    };
     const snowMaterial = new THREE.MeshStandardMaterial({
       color: 0xd9dcd4,
       roughness: 0.86,
@@ -305,6 +326,7 @@ export class PheasantScenerySystem implements Subsystem {
     const condition = ctx.get<Hunt3DSystem>('hunt3d').condition();
     if (condition !== 'snow' && condition !== 'frost') return;
     const positions: number[] = [];
+    const ponds = pheasantPonds(this.landscape);
     const radius = 220;
     const stepM = condition === 'snow' ? 18 : 25;
     const stepProperty = stepM / PROPERTY_PX_TO_M;
@@ -322,14 +344,25 @@ export class PheasantScenerySystem implements Subsystem {
         if (surface.moisture > 0.78 || surface.slope > 0.18) continue;
         const rx = (condition === 'snow' ? 2.2 : 1.25) + rng() * (condition === 'snow' ? 5.5 : 2.8);
         const rz = rx * (0.45 + rng() * 0.55);
+        // Seasonal litter/frost may settle on the bank, but never draw a
+        // floating white plate through the water. Include the whole patch
+        // extent when checking the pond's conservative footprint.
+        if (ponds.some(pond => Math.hypot(
+          (px - pond.x) * PROPERTY_PX_TO_M / (pond.rx * 1.05 + rx),
+          (py - pond.y) * PROPERTY_PX_TO_M / (pond.ry * 1.05 + rz),
+        ) < 1)) continue;
         const segments = 10;
         for (let i = 0; i < segments; i++) {
           const a = i / segments * Math.PI * 2;
           const b = (i + 1) / segments * Math.PI * 2;
           positions.push(
             this.world.x, surface.height + 0.045, this.world.z,
-            this.world.x + Math.cos(a) * rx, surface.height + 0.045, this.world.z + Math.sin(a) * rz,
-            this.world.x + Math.cos(b) * rx, surface.height + 0.045, this.world.z + Math.sin(b) * rz,
+            this.world.x + Math.cos(a) * rx,
+            this.landscape.heightAtWorld(this.world.x + Math.cos(a) * rx, this.world.z + Math.sin(a) * rz) + .045,
+            this.world.z + Math.sin(a) * rz,
+            this.world.x + Math.cos(b) * rx,
+            this.landscape.heightAtWorld(this.world.x + Math.cos(b) * rx, this.world.z + Math.sin(b) * rz) + .045,
+            this.world.z + Math.sin(b) * rz,
           );
         }
       }

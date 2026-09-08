@@ -67,6 +67,24 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble', lite: boolean)
       tipX, height, tipZ,
     ], tone);
 
+    if (kind === 'cattail') {
+      // The seed stalk is thin; broad leaves supply most of the plant's
+      // silhouette. Keep them rooted and bending outward below the head.
+      for (const side of [-1, 1]) {
+        const leafHeight = height * (.58 + rng() * .18);
+        const reach = .32 + rng() * .22;
+        const lw = .045 + rng() * .025;
+        const mx = x + sx * reach * side * .35, mz = z + sz * reach * side * .35;
+        const tx = x + sx * reach * side, tz = z + sz * reach * side;
+        push([
+          x, .02, z, mx - px * lw, leafHeight * .65, mz - pz * lw,
+          mx + px * lw, leafHeight * .65, mz + pz * lw,
+          mx - px * lw, leafHeight * .65, mz - pz * lw,
+          tx, leafHeight, tz, mx + px * lw, leafHeight * .65, mz + pz * lw,
+        ], tone);
+      }
+    }
+
     const seeded = kind === 'cattail' || (kind === 'prairie' && i % 5 === 0);
     if (!seeded) continue;
     const hw = kind === 'cattail' ? 0.032 : 0.021;
