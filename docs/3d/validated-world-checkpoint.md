@@ -43,6 +43,8 @@ The South Gate approach has a clear sidehill and uphill dog behavior, but sparse
 
 Repeated the same Chukar walk: a covey rose, escaped, and the session returned to hunting. Evidence is in `output/playwright/chukar-bench-review.png` before and `output/playwright/chukar-after-opening-escape.png` after. All 530 tests pass. The complete shot/retrieve loop remains unverified; improving the rocky-map vegetation and landform presentation remains necessary.
 
+The first Chukar vegetation pass widens sage leaves and bunchgrass blades, increases shrub body size, varies rib widths and gaps, and adds restrained rock fill light. The first image showed only a modest improvement. Sampling the entry's ground confirmed suitable slopes; the sparse five-metre placement grid was the stronger constraint. Reduced small-plant spacing from 5.4 to 3.8 property yards and compensated rock probabilities to retain their expected density. Existing route and landmark clearances remain in use. The revised entry image is `output/playwright/chukar-bench-planting.png`; it has more visible sage and bunchgrass, but the scene still needs substantial composition work. Standard entry reported 204 draws and 322,970 triangles. Compilation and build pass; no mobile performance conclusion follows from this desktop sample.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

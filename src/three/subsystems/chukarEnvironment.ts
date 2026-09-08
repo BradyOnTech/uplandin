@@ -97,7 +97,7 @@ function sageGeometry(lite: boolean): THREE.BufferGeometry {
       for (const side of [-1, 1]) {
         const az = angle + level * .74 + side * 1.12, length = .10 + rng() * .07;
         const tip = [center[0] + Math.sin(az) * length, center[1] + .045, center[2] + Math.cos(az) * length];
-        const mid = center.map((v, i) => (v + tip[i]) * .5), width = .022;
+        const mid = center.map((v, i) => (v + tip[i]) * .5), width = lite ? .047 : .037;
         const edge = [mid[0] + Math.cos(az) * width, mid[1] - .007, mid[2] - Math.sin(az) * width];
         tri(center, edge, tip, .90 + t * .08);
         tri(center, tip, [mid[0] - Math.cos(az) * width, mid[1] - .016, mid[2] + Math.sin(az) * width], .85 + t * .08);
@@ -113,7 +113,7 @@ function sageGeometry(lite: boolean): THREE.BufferGeometry {
 function grassGeometry(lite: boolean): THREE.BufferGeometry {
   const positions: number[] = [], colors: number[] = [], rng = mulberry32(578);
   for (let blade = 0; blade < (lite ? 8 : 14); blade++) {
-    const az = blade * 2.399, height = .28 + rng() * .40, reach = .13 + rng() * .17, width = .014 + rng() * .009;
+    const az = blade * 2.399, height = .28 + rng() * .40, reach = .13 + rng() * .17, width = (lite ? .032 : .022) + rng() * .014;
     const x = Math.sin(az) * .07, z = Math.cos(az) * .07;
     const base = [x, 0, z], mid = [x + Math.sin(az) * reach * .30, height * .76, z + Math.cos(az) * reach * .30];
     const a = [mid[0] + Math.cos(az) * width, mid[1], mid[2] - Math.sin(az) * width];
@@ -187,7 +187,8 @@ export class ChukarEnvironmentSystem implements Subsystem {
     this.root.name = 'Chukar Ridge — sage benches and broken rimrock'; ctx.scene.add(this.root);
     const stones = [0, 1, 2].map(i => chukarStoneGeometry(i)), gravel = chukarStoneGeometry(3, true), grass = grassGeometry(lite), sage = sageGeometry(lite);
     for (const geometry of [...stones, gravel, grass, sage]) this.geometries.add(geometry);
-    const rockMat = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true });
+    const rockMat = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true,
+      emissive: 0x555b54, emissiveIntensity: .12 });
     const leafMat = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, side: THREE.DoubleSide });
     this.materials.add(rockMat); this.materials.add(leafMat);
     leafMat.onBeforeCompile = shader => {
@@ -208,9 +209,12 @@ export class ChukarEnvironmentSystem implements Subsystem {
     for (const formation of formations(area)) {
       const rng = mulberry32(formation.seed), ribs: Plant[] = [], apron: Plant[] = [];
       for (let n = 0; n < 11; n++) {
+        // Detached ends and occasional breaks keep a rib from reading as
+        // eleven identical barricade blocks across the hillside.
+        if ((n === 2 || n === 8) && rng() < .7) continue;
         const u = n / 10 - .5, x = formation.x + Math.cos(formation.yaw) * u * formation.length,
           y = formation.y + Math.sin(formation.yaw) * u * formation.length;
-        const width = 3.4 + rng() * 3, depth = 3.5 + rng() * 2.2;
+        const width = 2.8 + rng() * 4.4, depth = 3.1 + rng() * 2.8;
         if (!this.clear(x, y, Math.max(width, depth) * .6, true)) continue;
         this.landscape.surfaceAtProperty(x, y, this.sample);
         const height = formation.height * (.42 + (1 - Math.abs(u) * 1.75) * .65) * (.82 + rng() * .25);
@@ -227,7 +231,8 @@ export class ChukarEnvironmentSystem implements Subsystem {
       this.batch(gravel, rockMat, apron, lite ? 150 : 230, false, true);
     }
 
-    const spacing = 5.4;
+    const spacing = 3.8;
+    const rockDensityScale = (spacing / 5.4) ** 2;
     for (let ty = area.world.y; ty < area.world.y + area.world.h; ty += TILE) for (let tx = area.world.x; tx < area.world.x + area.world.w; tx += TILE) {
       const bunches: Plant[] = [], bushes: Plant[] = [], chips: Plant[] = [], outcrops: Plant[] = [];
       for (let row = 0; row < Math.ceil(TILE / spacing); row++) for (let column = 0; column < Math.ceil(TILE / spacing); column++) {
@@ -239,18 +244,18 @@ export class ChukarEnvironmentSystem implements Subsystem {
         const patch = coverAt(area, x, y), band = clamp(.48 + Math.sin(x * .027 + Math.sin(y * .016) * 2) * .30 + Math.cos(y * .034) * .21);
         const qualityKeep = rng();
         if (rng() < (.07 + vegetation * .80 + (patch ? .18 : 0)) * (.30 + band * .82) && slope < .95) {
-          const size = .66 + rng() * .76 + (patch ? .28 : 0);
+          const size = .82 + rng() * .80 + (patch ? .32 : 0);
           if (!lite || qualityKeep > .28) bunches.push({ x, y, sx: size, sy: size, sz: size, yaw: rng() * Math.PI * 2, color: STRAW[Math.floor(rng() * STRAW.length)] });
         }
-        if (rng() < (.012 + vegetation * .11 + (patch ? .045 : 0)) * band && slope < .72 && rockiness < .76) {
-          const size = .70 + rng() * .83;
-          if (!lite || qualityKeep > .30) bushes.push({ x, y, sx: size * 1.13, sy: size, sz: size, yaw: rng() * Math.PI * 2, color: SAGE[Math.floor(rng() * SAGE.length)] });
+        if (rng() < (.018 + vegetation * .15 + (patch ? .06 : 0)) * band && slope < .82 && rockiness < .76) {
+          const size = .95 + rng() * .90;
+          if (!lite || qualityKeep > .30) bushes.push({ x, y, sx: size * 1.22, sy: size, sz: size * 1.12, yaw: rng() * Math.PI * 2, color: SAGE[Math.floor(rng() * SAGE.length)] });
         }
-        if (rng() < (.018 + rockiness * .22) * (1 - band * .45)) {
+        if (rng() < (.018 + rockiness * .22) * (1 - band * .45) * rockDensityScale) {
           const size = .16 + rng() * .50;
           if (!lite || qualityKeep > .40) chips.push({ x, y, sx: size * 1.5, sy: size * .43, sz: size, yaw: rng() * Math.PI * 2, color: STONE[Math.floor(rng() * STONE.length)] });
         }
-        if (rng() < .0015 + rockiness * .012 && this.clear(x, y, 2.8, true)) {
+        if (rng() < (.0015 + rockiness * .012) * rockDensityScale && this.clear(x, y, 2.8, true)) {
           const size = 1.4 + rng() * 2.3;
           outcrops.push({ x, y, sx: size * 1.7, sy: size * .75, sz: size, yaw: Math.atan2(this.sample.gradeX, this.sample.gradeZ) + Math.PI / 2, color: STONE[Math.floor(rng() * STONE.length)] });
         }
