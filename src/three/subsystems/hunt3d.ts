@@ -599,7 +599,7 @@ export class Hunt3DSystem implements Subsystem {
     const species = getSpecies(bird.speciesId);
     const shortName = species.id === 'ringneck'
       ? bird.sex === 'hen' ? 'HEN' : 'ROOSTER'
-      : species.name.split(' ')[0].toUpperCase();
+      : species.name.toUpperCase();
     return species.flushAsCovey && info.ids.length > 1
       ? `${shortName} COVEY RISE`
       : `${shortName} FLUSH`;

@@ -201,6 +201,12 @@ The continuing live session exposed a dog stalking over 100 meters away while th
 
 Repeated the assisted Beaver Pond start, then used normal walking input. The dog held scent at 26 yards with the close-up HUD label. After changing only the viewing direction through the development helper and walking forward for fifteen seconds, the hunter reached shore; the dog resumed, returned to grounded presentation and pointed. Evidence: `output/playwright/woodcock-close-handler-shore.png`. The point occurred under low alder foliage, which obstructed the view at close range. This is evidence of hold/resume and swim-to-shore behavior, not a completed flush, shot or retrieve. Mobile performance remains unverified.
 
+**Continuous approach to a Woodcock flush**
+
+Continued normal walking from the shore encounter, with occasional assisted viewing-direction changes. The earlier pointed bird had already flushed during unattended live time, so it was not treated as shot evidence. Followed the next scent approach continuously until a natural single-bird rise was captured at approximately nine yards, then paused. Evidence: `output/playwright/woodcock-follow-rise.png`. The bird was off the current viewing direction; no shot or retrieve was completed. A subsequent paused camera change did not produce a refreshed render and is not visual proof.
+
+The HUD displayed “AMERICAN FLUSH” because it kept only the first word of a species name. It now retains full species names, while preserving hen/rooster identification for pheasants. Compilation passes; no new tests or build rerun for this text-only correction. Ordinary target acquisition and complete encounter validation remain outstanding.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.
