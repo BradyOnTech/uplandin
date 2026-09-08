@@ -300,6 +300,14 @@ const OAK_SAVANNA_LANDFORM: LandformAdapter = {
 
 function pheasantLandform(area: AreaConfig): LandformAdapter {
   const canonical = getDropPoint(area);
+  const homestead = area.landmarks.find(landmark => landmark.kind === 'barn');
+  // Broad dry shoulders make the homestead, western fields and interior
+  // crest distinct places. Coordinates belong to the property, not an entry.
+  const shoulders = [
+    { x: homestead?.position.x ?? area.world.w * .42, y: homestead?.position.y ?? area.world.h * .74, rx: 120, ry: 95, height: 6 },
+    { x: area.world.x + area.world.w * .23, y: area.world.y + area.world.h * .68, rx: 180, ry: 110, height: 5 },
+    { x: area.world.x + area.world.w * .53, y: area.world.y + area.world.h * .43, rx: 260, ry: 145, height: 9 },
+  ];
   const ponds = area.landmarks
     .filter((landmark) => landmark.kind === 'pond')
     .map((landmark) => ({
@@ -322,7 +330,22 @@ function pheasantLandform(area: AreaConfig): LandformAdapter {
       const hummocks = (noise(x * 0.035 + 2700, z * 0.035 + 2700) - 0.5) * profile.detailRelief * 0.75;
       const dropDistance = Math.hypot(x, z - HUNT_WORLD_ANCHOR.z);
       const dropRise = 2.4 * Math.exp(-(dropDistance * dropDistance) / (2 * 52 * 52));
-      return profile.baseHeight + broad + swales + hummocks + dropRise - wetnessAt(x, z) * 3.2;
+      const propertyX = (x - HUNT_WORLD_ANCHOR.x) / PROPERTY_PX_TO_M + canonical.position.x;
+      const propertyY = (z - HUNT_WORLD_ANCHOR.z) / PROPERTY_PX_TO_M + canonical.position.y;
+      let authored = 0;
+      for (const shoulder of shoulders) {
+        authored += shoulder.height * Math.exp(-(((propertyX - shoulder.x) / shoulder.rx) ** 2
+          + ((propertyY - shoulder.y) / shoulder.ry) ** 2));
+      }
+      // Preserve pond floors AND their existing shoreline, then ease into
+      // dry upland relief. Shared water levels and walking barriers stay put.
+      let dryBlend = 1;
+      for (const pond of ponds) {
+        const radius = Math.hypot((x - pond.x) / pond.rx, (z - pond.z) / pond.rz);
+        const t = Math.max(0, Math.min(1, (radius - 1.5) / 1.2));
+        dryBlend = Math.min(dryBlend, t * t * (3 - 2 * t));
+      }
+      return profile.baseHeight + broad + swales + hummocks + dropRise - wetnessAt(x, z) * 3.2 + authored * dryBlend;
     },
     surfaceAt(x, z, _height, slope, _gradeX, _gradeZ, noise, out) {
       const wet = Math.max(wetnessAt(x, z), noise(x * 0.018 + 4400, z * 0.018 + 4400) * 0.28);

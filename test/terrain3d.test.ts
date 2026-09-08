@@ -119,4 +119,25 @@ describe('shared property landscape', () => {
     expect(atCenter.height).toBeLessThan(shoulder.height - 1.5);
     expect(throughWestDrop).toEqual(atCenter);
   });
+
+  it('keeps pheasant water levels stable while dry relief remains walkable from either entry', () => {
+    const area = getArea('pheasant-coverts');
+    const south = new LandscapeModel(area, 'south-gate');
+    const west = new LandscapeModel(area, 'west-track');
+    // These pre-relief basin elevations anchor the existing water surfaces.
+    const floors: Record<string, number> = { 'area-feature': -1.719858937546333,
+      'south-slough': .8533217314736081, 'west-pothole': -1.4560832864903448 };
+    for (const pond of area.landmarks.filter(l => l.kind === 'pond')) {
+      expect(south.heightAtProperty(pond.position.x, pond.position.y)).toBeCloseTo(floors[pond.id], 10);
+    }
+    const sample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
+    let maximum = -Infinity;
+    for (let y = 0; y <= 800; y += 20) for (let x = 0; x <= 1400; x += 20) {
+      south.surfaceAtProperty(x, y, sample);
+      expect(sample.slope).toBeLessThan(.3);
+      expect(sample.height).toBe(west.heightAtProperty(x, y));
+      maximum = Math.max(maximum, sample.height);
+    }
+    expect(maximum).toBeGreaterThan(9);
+  });
 });
