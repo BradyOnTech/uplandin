@@ -48,6 +48,21 @@ export function buildPheasantBody(hen=false):THREE.BufferGeometry {
   parts.push(paint(new THREE.ConeGeometry(.007,.026,6).rotateX(Math.PI/2).translate(0,.041,.170),ivory));
   const geo=join(parts);
   if(hen) geo.scale(.92,.94,.95);
+  // A shared relaxed-neck target keeps the carried bird from looking alert.
+  // Bend progressively above the shoulder; the torso and grip stay fixed.
+  const relaxed=geo.clone(), p=relaxed.getAttribute('position');
+  for(let i=0;i<p.count;i++) {
+    const z=p.getZ(i), y=p.getY(i), angle=1.2*THREE.MathUtils.smoothstep(z,.045,.105);
+    const dy=y-.015, dz=z-.055;
+    p.setY(i,.015+dy*Math.cos(angle)-dz*Math.sin(angle));
+    p.setZ(i,.055+dy*Math.sin(angle)+dz*Math.cos(angle));
+  }
+  relaxed.computeVertexNormals();
+  geo.morphAttributes.position=[p.clone()];
+  geo.morphAttributes.normal=[relaxed.getAttribute('normal').clone()];
+  geo.morphAttributes.position[0].name='relaxed-neck';
+  relaxed.dispose();
+  geo.computeBoundingSphere();
   return geo;
 }
 

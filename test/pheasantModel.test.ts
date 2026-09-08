@@ -3,6 +3,23 @@ import { describe, it, expect } from 'vitest';
 import { buildPheasantBody, buildPheasantWing, buildPheasantTail, posePheasantFoldedWings } from '../src/three/assets/pheasant';
 
 describe('shared pheasant geometry', () => {
+  it('relaxes the neck below the body without moving the grip or adding topology', () => {
+    for(const hen of [false,true]) {
+      const geo=buildPheasantBody(hen),base=geo.attributes.position,relaxed=geo.morphAttributes.position![0];
+      expect(relaxed.count).toBe(base.count);
+      expect(geo.morphAttributes.normal![0].count).toBe(base.count);
+      let headDrop=0;
+      for(let i=0;i<base.count;i++) {
+        if(base.getZ(i)<.04) {
+          expect(relaxed.getY(i)).toBeCloseTo(base.getY(i),6);
+          expect(relaxed.getZ(i)).toBeCloseTo(base.getZ(i),6);
+        }
+        if(base.getZ(i)>.14)headDrop=Math.max(headDrop,base.getY(i)-relaxed.getY(i));
+      }
+      expect(headDrop).toBeGreaterThan(.07);
+      geo.dispose();
+    }
+  });
   it('builds complete colored rooster and hen meshes within a small per-bird budget', () => {
     for (const hen of [false,true]) {
       const parts=[buildPheasantBody(hen),buildPheasantWing(-1,hen),buildPheasantWing(1,hen),buildPheasantTail(hen)];

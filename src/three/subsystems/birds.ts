@@ -674,6 +674,7 @@ export class BirdsSystem implements Subsystem {
     slot.species = species;
     slot.sex = sex;
     slot.body.geometry = geometry.body;
+    slot.body.updateMorphTargets();
     slot.wingLMesh.geometry = geometry.wingL;
     slot.wingRMesh.geometry = geometry.wingR;
     slot.wingL.position.set(
@@ -1617,6 +1618,10 @@ export class BirdsSystem implements Subsystem {
       const visible = s.status === 'flying' || s.status === 'falling' || s.status === 'grounded';
       s.root.visible = visible;
       if (!visible) continue;
+      if (s.species.id === 'ringneck' && s.body.morphTargetInfluences) {
+        s.body.morphTargetInfluences[0] = s.status === 'grounded' ? 1
+          : s.status === 'falling' ? THREE.MathUtils.smoothstep(s.airMs - (s.fallPose?.startMs ?? s.airMs), 0, 300) : 0;
+      }
       const simBird = s.status === 'grounded'
         ? simBirds.find((candidate) => candidate.id === s.simId)
         : undefined;

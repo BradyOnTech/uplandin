@@ -1,3 +1,4 @@
+import { buildPheasantBody } from '../src/three/assets/pheasant';
 import * as audio from '../src/audio';
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
@@ -52,11 +53,12 @@ describe('continuous Quail coveys', () => {
     const f=fixture();f.add(1,1,4,0);f.birds[0].speciesId='ringneck';
     f.runtime.tickBirds(1000/30);
     const slot=f.runtime.slots[0];
-    Object.assign(slot,{airMs:7000,y:3,wingL:new THREE.Group(),wingR:new THREE.Group(),visualScale:1});
+    Object.assign(slot,{body:new THREE.Mesh(buildPheasantBody()),airMs:7000,y:3,wingL:new THREE.Group(),wingR:new THREE.Group(),visualScale:1});
     slot.root.rotation.set(-.3,.8,.1,'YXZ');const hit=slot.root.quaternion.clone();
     f.birds[0].state='downed';f.runtime.downBird(1);
     const render=()=> (f.runtime as unknown as {update(ctx:unknown,dt:number):void}).update({},0);
     render();expect(slot.root.quaternion.angleTo(hit)).toBeLessThan(.00001);
+    expect(slot.body.morphTargetInfluences[0]).toBe(0);
     f.runtime.tickBirds(1000/30);render();
     expect(slot.root.quaternion.angleTo(hit)).toBeGreaterThan(.01);
     expect(slot.root.quaternion.angleTo(hit)).toBeLessThan(.2);
@@ -67,6 +69,7 @@ describe('continuous Quail coveys', () => {
     for(let i=0;i<10;i++)f.runtime.tickBirds(1000/30);render();
     const rest=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,.8,1.2,'YXZ'));
     expect(slot.root.quaternion.angleTo(rest)).toBeLessThan(.00001);
+    expect(slot.body.morphTargetInfluences[0]).toBe(1);slot.body.geometry.dispose();
   });
 
   it.each([{species:'bobwhite',spatial:true},{species:'ringneck',spatial:false}])(
