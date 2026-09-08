@@ -24,6 +24,8 @@ it('labels real scent and retrieve behavior instead of calling every scent beat 
   expect(dogWorkLabel({ ...dog, scentStage: 'stalking' })).toBe('DOG CLOSING');
   expect(dogWorkLabel({ ...dog, scentStage: 'locking' })).toBe('SETTING POINT');
   expect(dogWorkLabel({ ...dog, state: 'pointing' })).toBe('DOG ON POINT');
+  expect(dogWorkLabel({ ...dog, state: 'recalled' })).toBe('DOG COMING IN');
+  expect(dogWorkLabel({ ...dog, state: 'heel' })).toBe('DOG AT HEEL');
   expect(dogWorkLabel({ ...dog, state: 'retrieving', carryingBirdId: 0 })).toBe('DOG RETURNING');
 });
 

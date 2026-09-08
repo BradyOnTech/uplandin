@@ -129,7 +129,8 @@ export function dogWorkLabel(dog: { state: DogState; scentStage: DogScentStage; 
   }
   if (dog.state === 'marking') return 'DOG MARKING THE RISE';
   if (dog.state === 'retrieving') return 'DOG HUNTING DEAD';
-  if (dog.state === 'recalled' || dog.state === 'heel') return 'DOG COMING IN';
+  if (dog.state === 'recalled') return 'DOG COMING IN';
+  if (dog.state === 'heel') return 'DOG AT HEEL';
   if (dog.state === 'honoring') return 'DOG BACKING POINT';
   if (dog.state === 'breaking') return 'DOG CHASING';
   if (dog.state === 'quartering') return SEARCH_LABELS[areaId] ?? 'DOG SEARCHING';

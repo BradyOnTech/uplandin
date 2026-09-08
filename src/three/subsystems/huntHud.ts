@@ -251,6 +251,7 @@ export class HuntHudSystem implements Subsystem {
         if (!rise && trackedDog?.state === 'pointing' && hunt.areaId === 'pheasant-coverts')
           cue = pheasantPointGuidance(dogRange, trackedDog.heading);
         else if (!rise && trackingGuidance) cue = trackingGuidance.detail;
+        else if (!rise && trackedDog?.state === 'heel') cue = 'Whistle again to send the dog hunting.';
         if (!rise && trackedDog?.state === 'quartering') {
           if (this.fieldTime < 35) cue = fieldSearchGuidance(hunt.areaId);
           else if (truckMeters < 14) cue = `${this.hunt.dropPoint().name} · back at the truck`;

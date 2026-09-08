@@ -40,6 +40,34 @@ function pointedSimulation(hunterDistance: number, continuousEncounter = false, 
 }
 
 describe('HuntSimulation shared orchestration', () => {
+  it('recalls a continuous dog to the handler and casts it hunting on the next whistle', () => {
+    const f = pointedSimulation(30, true, 'pheasant-coverts', 'ringneck');
+    f.hunt.birds = [];
+    f.dog.state = 'quartering'; f.dog.pointedBirdId = null;
+    const input = { hunterPos: { ...f.hunt.hunterPos }, dogMotion: [{ movementScale: .04 }] };
+    f.simulation.update(50, { ...input, recall: true });
+    expect(f.dog.state).toBe('recalled');
+    for (let i = 0; i < 300; i++) f.simulation.update(50, input);
+    expect(f.dog.state).toBe('heel');
+    expect(Math.hypot(f.dog.pos.x-input.hunterPos.x, f.dog.pos.y-input.hunterPos.y)*.9144).toBeLessThanOrEqual(1.5);
+    f.simulation.update(1000, input);
+    expect(f.dog.state).toBe('heel');
+    f.simulation.update(50, { ...input, recall: true });
+    expect(f.dog.state).toBe('quartering');
+    f.simulation.update(50, input);
+    expect(f.dog.state).toBe('quartering');
+  });
+
+  it('does not cast a heeled packmate while another dog is still holding a point', () => {
+    const f = pointedSimulation(40, true, 'pheasant-coverts', 'ringneck');
+    const heeled = new Dog({...f.hunt.hunterPos}, {breed:getBreed('english-setter'),level:8}, mulberry32(20), getArea('pheasant-coverts').world);
+    heeled.state = 'heel';
+    const sim = new HuntSimulation({hunt:f.hunt,dogs:[f.dog,heeled],area:getArea('pheasant-coverts'),continuousEncounter:true,rng:mulberry32(22)});
+    sim.update(50, {hunterPos:{...f.hunt.hunterPos},recall:true});
+    expect(f.dog.state).toBe('pointing');
+    expect(heeled.state).toBe('heel');
+  });
+
   it('preserves a steady point when a separate neighboring bird flushes', () => {
     const f=pointedSimulation(20,true,'pheasant-coverts','ringneck');
     const neighbor: Bird={...f.bird,id:9002,coveyId:78,pos:{x:275,y:290}};

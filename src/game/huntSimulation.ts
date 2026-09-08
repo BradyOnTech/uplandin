@@ -145,6 +145,10 @@ export class HuntSimulation {
     const doctrine = huntingDoctrine(this.area.id);
     const spatialEncounter = this.continuousEncounter && doctrine.spatialEncounter;
     const huntStyle = doctrine.style;
+    // The 2D scene handles cast-off itself. Continuous play uses the same
+    // whistle once the pack is at heel, without immediately recalling it.
+    const castOff = this.continuousEncounter && input.recall && this.dogs.every(dog => dog.state === 'heel');
+    if (castOff) for (const dog of this.dogs) dog.castOff();
 
     updateBirds(dtMs, this.hunt.birds, leadDog.pos, {
       worldScale: spatialEncounter,
@@ -179,10 +183,12 @@ export class HuntSimulation {
         // the fall and beside the handler without demanding center overlap.
         pickupRange: spatialEncounter ? .65 / PROPERTY_PX_TO_M : undefined,
         deliveryRange: spatialEncounter ? 1 / PROPERTY_PX_TO_M : undefined,
+        recallArriveRange: spatialEncounter ? 1.5 / PROPERTY_PX_TO_M : undefined,
+        heelFollowRange: spatialEncounter ? 2 / PROPERTY_PX_TO_M : undefined,
         hunterPos: this.hunt.hunterPos,
         windAngle: this.hunt.wind,
         scentMult: wind.scent * weather.scent,
-        recall: input.recall ?? false,
+        recall: !castOff && (input.recall ?? false),
         whistleRange: input.whistleRange,
         honorPoint: packmate?.pos,
         drainMult: weather.stamina,

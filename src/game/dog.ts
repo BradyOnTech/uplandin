@@ -279,6 +279,8 @@ export interface DogEnv {
   /** Physical pickup and handoff distances in property yards; legacy defaults otherwise. */
   pickupRange?: number;
   deliveryRange?: number;
+  recallArriveRange?: number;
+  heelFollowRange?: number;
   obstacles?: readonly DogObstacle[];
   hunterPos?: Vec2;
   /** Presentation-space pace multiplier; AI clocks still advance in real time. */
@@ -502,7 +504,7 @@ export class Dog {
 
     if (this.state === 'recalled') {
       this.gait = 'run';
-      if (!env.hunterPos || dist(this.pos, env.hunterPos) <= RECALL_ARRIVE) {
+      if (!env.hunterPos || dist(this.pos, env.hunterPos) <= (env.recallArriveRange ?? RECALL_ARRIVE)) {
         this.state = 'heel'; // waits at heel until cast off
         this.gait = 'still';
         return;
@@ -515,7 +517,7 @@ export class Dog {
     if (this.state === 'heel') {
       this.gait = 'still';
       this.staminaMs = Math.min(this.maxStaminaMs, this.staminaMs + dtMs * HEEL_RECOVER_MULT);
-      if (env.hunterPos && dist(this.pos, env.hunterPos) > HEEL_FOLLOW) {
+      if (env.hunterPos && dist(this.pos, env.hunterPos) > (env.heelFollowRange ?? HEEL_FOLLOW)) {
         this.gait = 'trot';
         this.heading = Math.atan2(env.hunterPos.y - this.pos.y, env.hunterPos.x - this.pos.x);
         this.advance(this.heading, RECALL_SPEED * 0.8 * movementDt);
