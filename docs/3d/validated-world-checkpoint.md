@@ -85,6 +85,14 @@ Focused checks cover holding position without losing the scent, resuming into a 
 
 The bird escaped before a shot or retrieve was completed. The next encounter review needs continuous recording or tightly timed input through the point-to-rise window. This change improves approach pacing but does not establish a complete reference hunt, and the hold behavior still needs broader judgment across dog training levels.
 
+**Assisted Grouse encounter completed**
+
+A continuous browser action captured the point at 23 yards, mounted the gun through normal right-mouse input, aimed with the development camera-pose helper at the first airborne bird, and fired through normal left-mouse input. One shell was consumed and one bird went down. The dog retrieved it, returned carrying it, delivered it, and resumed searching. The HUD changed from `Bag 0 / Down 1 / Shells 2` to `Bag 1 / Down 0 / Shells 2`. No direct bird-down, flush, or delivery helper was used.
+
+This verifies a connected assisted point/shot/retrieve sequence, not ordinary aiming skill or shooting-window quality. The shot occurred at the start of flight using exact airborne coordinates. The browser had no errors, but recorded a 12.4-millisecond simulation spike and a 216-millisecond maximum frame interval during the instrumented sequence; it is not performance acceptance evidence. Actual point and delivery images are `output/playwright/grouse-point-continuous.png` and `output/playwright/grouse-assisted-delivery.png`.
+
+The encounter images revealed a foreground shrub filling the view like a solid green boulder. Woodland shrubs now use a lower multi-lobe crown instead of the generic dodecahedron. Revisited the exact camera position for a visual comparison in `output/playwright/grouse-shrub-sightline.png`; the foreground and dog are substantially less obscured. Compilation and the production build pass. No simulation changes followed the 540-test passing run. Ordinary aiming, obstruction of shots by scenery, varied dog training levels, and mobile behavior still need review.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

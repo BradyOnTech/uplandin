@@ -271,6 +271,14 @@ function geometryFor(kind: HabitatKind, style: HuntStyle): THREE.BufferGeometry 
     const geo = new THREE.DodecahedronGeometry(1, 0);
     geo.scale(1.25, .65, .95); geo.translate(0, .5, 0); return geo;
   }
+  if (kind === 'shrub' && style === 'woods') {
+    const geo = canopyGeometry('woods');
+    // Understory crowns sit below the hunter's view and retain separate
+    // lobes instead of a torso-high, solid boulder silhouette.
+    geo.scale(1.05, .28, .95);
+    geo.translate(0, .22, 0);
+    return geo;
+  }
   const geo = new THREE.DodecahedronGeometry(1, 0);
   geo.scale(1, .58, .86); geo.translate(0, .48, 0); return geo;
 }
