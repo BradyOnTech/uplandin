@@ -281,6 +281,12 @@ The Pheasant homestead now has a closed gable, slate-colored roof and ridge, wea
 
 Reviewed the twenty-four-second South approach in Lightweight and a nearby assisted camera view: `output/playwright/pheasant-homestead-approach.png` and `output/playwright/pheasant-homestead-close.png`. Door framing reads from the approach and the nearby building is more recognizable. The shaded facade remains dark, and the side wall still has limited detail. Compilation and build pass with existing chunk warnings; the reviewed page had no browser warnings or errors. No simulation tests rerun for this prop-only change, and no mobile hardware or Standard-mode review was performed in this pass.
 
+**Pheasant daylight fill**
+
+Raised the existing morning/noon hemisphere fill, using brighter sky and ground bounce colors, and slightly strengthened the existing directional fill. This improves readability of shaded siding and grass without adding lights or shadow passes. Other times and properties retain their presets.
+
+Compared the same assisted homestead viewpoint in noon Lightweight and morning Standard: `output/playwright/pheasant-noon-fill-homestead.png` and `output/playwright/pheasant-morning-fill-homestead.png`. The facade retains a shaded side but its boards and trim are easier to see, and cool standing-cover ground remains distinct. These are static render comparisons, with stale entry HUD state, not encounter replays. Compilation and build pass with existing chunk warnings; the reviewed page had no browser warnings or errors. No simulation tests rerun for this lighting-only change. Direct device performance and the full range of viewing directions remain unreviewed.
+
 **Next work, in order**
 
 1. Use the Seed 1 South reference route to judge environment improvements from arrival through the known runner encounter. Review a full encounter with ordinary aiming separately; the assisted reference does not establish input usability.

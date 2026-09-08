@@ -564,8 +564,8 @@ const PHEASANT_TOD = Object.fromEntries((Object.keys(TOD) as TimeOfDay[]).map((t
   ...(tod === 'morning' || tod === 'noon' ? {
     skyTop: 0x4c7180, skyMid: 0x9eb4b7, skyHorizon: 0xd8cfb5,
     fogColor: 0xb4c0bc, fogDensity: tod === 'noon' ? .00155 : .0019,
-    sunColor: 0xffe5c0, fillColor: 0xaec7cd, fillIntensity: .39,
-    ambientGround: 0x777564, ambientIntensity: .82,
+    sunColor: 0xffe5c0, fillColor: 0xaec7cd, fillIntensity: .52,
+    ambientSky: 0xc0d1d3, ambientGround: 0xa39d85, ambientIntensity: 1.35,
     ridge: 0x53665b, ridgeFar: 0x95a9aa, landform: 0x75816d,
     floraWarm: .25, floraCool: .52, exposure: .97,
   } : tod === 'dawn' || tod === 'evening' ? {
