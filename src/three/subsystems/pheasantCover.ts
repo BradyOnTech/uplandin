@@ -101,16 +101,19 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
       ],tone);
       const shoulderX=x+sx*lean*.42+px*curve*.2;
       const shoulderZ=z+sz*lean*.42+pz*curve*.2;
-      const shoulderY=height*.58;
-      const endX=x+sx*lean*1.34+px*curve;
-      const endZ=z+sz*lean*1.34+pz*curve;
-      const endY=height*(.58+(i%3)*.065);
-      const bendX=x+sx*lean*.87+px*curve*.65;
-      const bendZ=z+sz*lean*.87+pz*curve*.65;
-      const bendY=height*.77;
+      // Standing autumn leaves arch away from the culm and hang below
+      // their shoulder. Vary the droop without changing roots or stem height.
+      const shoulderY=height*.46;
+      const reach=1.45+(i%4)*.17;
+      const endX=x+sx*lean*reach+px*curve;
+      const endZ=z+sz*lean*reach+pz*curve;
+      const endY=height*(.27+(i%4)*.07);
+      const bendX=x+sx*lean*1.02+px*curve*.65;
+      const bendZ=z+sz*lean*1.02+pz*curve*.65;
+      const bendY=height*(.66+(i%3)*.035);
       // Close leaves need a slender, tapering silhouette. Keep the wider
       // distant representation where thin leaves would disappear between pixels.
-      const w=width*(medium ? .72 : .45);
+      const w=width*(medium ? .43 : .45);
       if (medium) {
         push([
           x-px*rootWidth,0,z-pz*rootWidth, x+px*rootWidth,0,z+pz*rootWidth,

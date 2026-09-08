@@ -41,6 +41,7 @@ uniform vec3 uCloudLit;
 uniform vec3 uCloudShade;
 uniform float uCloudAmt;
 uniform float uQuail;
+uniform float uPheasant;
 varying vec3 vPos;
 
 /*
@@ -87,6 +88,15 @@ vec2 cloudLocal(vec2 ae, vec2 c, vec2 ms) {
 }
 
 float cloudField(vec2 ae) {
+  if (uPheasant > 0.5) {
+    // Long, separated autumn banks leave open flight corridors between
+    // layers instead of repeating the same outlined cumulus silhouette.
+    float f = prairieBank(cloudLocal(ae, vec2(-2.35, 0.20), vec2(0.95, 1.2)));
+    f = max(f, prairieBank(cloudLocal(ae, vec2(1.25, 0.30), vec2(-1.35, 1.6))));
+    f = max(f, prairieBank(cloudLocal(ae, vec2(-0.45, 0.12), vec2(1.65, 2.2))));
+    f = max(f, prairieBank(cloudLocal(ae, vec2(2.85, 0.09), vec2(-1.5, 2.7))));
+    return f;
+  }
   if (uQuail > 0.5) {
     float f = prairieBank(cloudLocal(ae, vec2(-2.70, 0.26), vec2(1.45, 1.5)));
     f = max(f, prairieBank(cloudLocal(ae, vec2(2.15, 0.14), vec2(-1.7, 1.9))));
@@ -143,14 +153,15 @@ void main() {
   // so a low sun still burns through them instead of being pasted over.
   vec2 ae = vec2(atan(dir.x, dir.z), h);
   float cf = cloudField(ae);
-  float cm = smoothstep(mix(0.55, 0.45, uQuail), mix(0.60, 0.58, uQuail), cf) * uCloudAmt * smoothstep(0.05, 0.10, h);
+  float layered = max(uQuail, uPheasant);
+  float cm = smoothstep(mix(0.55, 0.45, layered), mix(0.60, 0.58, layered), cf) * uCloudAmt * smoothstep(0.05, 0.10, h);
   // Flat painted plates (round 5): fw-e3-5's cumulus is 2-3 VALUE STEPS
   // with hard undersides — not an airbrushed gradient (measured: our cloud
   // interior ramped 0.69->0.87 with 13% banding edges; the ref holds ~3
   // flat plates at 0.85/0.92/1.0). Quantize the thickness-above field into
   // a lit face, a mid plate, and a shaded belly; smoothsteps kept tight so
   // edges are anti-aliased, never gradients.
-  float cAboveRaw = cloudField(ae + vec2(0.0, mix(0.055, 0.016, uQuail)));
+  float cAboveRaw = cloudField(ae + vec2(0.0, mix(0.055, 0.016, layered)));
   float plateMid = smoothstep(0.32, 0.38, cAboveRaw);
   float plateDeep = smoothstep(0.60, 0.66, cAboveRaw);
   // Round 6 (item 4): the underside shade answers the SUN'S HEIGHT. At the
@@ -164,7 +175,7 @@ void main() {
   // reference's paper-white crowns (measured ref p50 V=1.0, ours 0.84).
   vec3 cCol = mix(uCloudLit * mix(1.28, 1.36, cLow), mix(uCloudLit, cShade, mix(0.45, 0.68, cLow)), plateMid);
   cCol = mix(cCol, cShade, plateDeep);
-  if (uQuail > 0.5) {
+  if (layered > 0.5) {
     // Restrained tonal relief: thin trailing pieces borrow the sky color,
     // while the thicker middle carries one cool underside and warm crown.
     float belly = smoothstep(0.35, 1.35, cAboveRaw);
@@ -678,6 +689,7 @@ export class SkySystem implements Subsystem {
         uCloudShade: { value: new THREE.Color() },
         uCloudAmt: { value: 0 },
         uQuail: { value: this.quail ? 1 : 0 },
+        uPheasant: { value: this.areaId === 'pheasant-coverts' ? 1 : 0 },
       },
       side: THREE.BackSide,
       depthWrite: false,
