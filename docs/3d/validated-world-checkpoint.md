@@ -287,6 +287,14 @@ Raised the existing morning/noon hemisphere fill, using brighter sky and ground 
 
 Compared the same assisted homestead viewpoint in noon Lightweight and morning Standard: `output/playwright/pheasant-noon-fill-homestead.png` and `output/playwright/pheasant-morning-fill-homestead.png`. The facade retains a shaded side but its boards and trim are easier to see, and cool standing-cover ground remains distinct. These are static render comparisons, with stale entry HUD state, not encounter replays. Compilation and build pass with existing chunk warnings; the reviewed page had no browser warnings or errors. No simulation tests rerun for this lighting-only change. Direct device performance and the full range of viewing directions remain unreviewed.
 
+**Chukar return and talus footing**
+
+Returned to Chukar South Gate for a twelve-second morning walk. The sidehill, contour path and climbing scent work distinguish it from Pheasant, but the approach remains largely bare. Nearby ground samples were suitable for vegetation and outside generic landmark clearance. Increased low-stone scattering exposed a footing issue: talus used the fixed ten-centimeter burial and lowest-corner footing intended for large outcrops, often deeper than the small stones themselves.
+
+Small talus now aligns to the terrain normal and embeds by at most 1.2 centimeters; large outcrops retain their original deeper footing. Existing trail and landmark exclusions remain. Two nearby instance roots were approximately five to six millimeters below the actual rendered terrain, checked with downward mesh raycasts. Temporary scene inspection hooks were restored immediately. Evidence: `output/playwright/chukar-slope-talus.png` and `output/playwright/chukar-slope-talus-lite.png`. The visible improvement is modest and the bare-ground composition remains unfinished. The denser Standard scatter sample rose from 150 draws/340,768 triangles to 151 draws/357,660 triangles before the footing correction; no mobile performance inference is justified.
+
+Compilation and build pass with existing chunk warnings. One Standard review emitted a 4.20-millisecond simulation-tick warning against its two-millisecond budget; this was not diagnosed or fixed here. No simulation tests rerun for this visual placement change. The next Chukar pass should address continuous ground texture and larger-scale planting composition, not assume talus alone resolves the empty appearance.
+
 **Next work, in order**
 
 1. Use the Seed 1 South reference route to judge environment improvements from arrival through the known runner encounter. Review a full encounter with ordinary aiming separately; the assisted reference does not establish input usability.

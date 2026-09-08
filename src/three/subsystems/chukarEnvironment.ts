@@ -161,10 +161,11 @@ export class ChukarEnvironmentSystem implements Subsystem {
     const mesh = new THREE.InstancedMesh(geometry, material, plants.length), matrix = new THREE.Matrix4(), position = new THREE.Vector3();
     const rotation = new THREE.Quaternion(), scale = new THREE.Vector3(), color = new THREE.Color(), normal = new THREE.Vector3();
     const up = new THREE.Vector3(0, 1, 0), yaw = new THREE.Quaternion(), axis = new THREE.Vector3(0, 1, 0);
+    const talus = geometry.userData.kind === 'chukar-talus';
     for (const [i, p] of plants.entries()) {
       this.landscape.propertyToWorld(p.x, p.y, this.world); this.landscape.surfaceAtProperty(p.x, p.y, this.sample);
       let ground = this.sample.height;
-      if (rock) {
+      if (rock && !talus) {
         // Bury the foot below its lowest corner on a sidehill; no floating
         // downhill corners or flat support disks beneath the geology.
         const radius = Math.max(p.sx, p.sz) * .42;
@@ -175,7 +176,7 @@ export class ChukarEnvironmentSystem implements Subsystem {
         normal.set(-this.sample.gradeX, 1, -this.sample.gradeZ).normalize(); rotation.setFromUnitVectors(up, normal);
         yaw.setFromAxisAngle(axis, p.yaw); rotation.multiply(yaw);
       }
-      position.set(this.world.x, ground - (rock ? .10 : .018), this.world.z); scale.set(p.sx, p.sy, p.sz);
+      position.set(this.world.x, ground - (talus ? Math.min(.012, p.sy * .08) : rock ? .10 : .018), this.world.z); scale.set(p.sx, p.sy, p.sz);
       mesh.setMatrixAt(i, matrix.compose(position, rotation, scale)); mesh.setColorAt(i, color.setHex(p.color));
       if (rock && ground + p.sy - this.sample.height > .75)
         this.obstacles.push({ x: this.world.x, z: this.world.z, radius: Math.min(p.sx, p.sz) * .37 });
@@ -253,8 +254,10 @@ export class ChukarEnvironmentSystem implements Subsystem {
           const size = .95 + rng() * .90;
           if (!lite || qualityKeep > .30) bushes.push({ x, y, sx: size * 1.22, sy: size, sz: size * 1.12, yaw: rng() * Math.PI * 2, color: SAGE[Math.floor(rng() * SAGE.length)] });
         }
-        if (rng() < (.018 + rockiness * .22) * (1 - band * .45) * rockDensityScale) {
-          const size = .16 + rng() * .50;
+        // Low talus needs a continuous scattering, not the sparse density
+        // reserved for large outcrops. Keep the trail clearance above.
+        if (rng() < (.26 + rockiness * .40) * (1 - band * .32)) {
+          const size = .18 + rng() * .44;
           if (!lite || qualityKeep > .40) chips.push({ x, y, sx: size * 1.5, sy: size * .43, sz: size, yaw: rng() * Math.PI * 2, color: STONE[Math.floor(rng() * STONE.length)] });
         }
         if (rng() < (.0015 + rockiness * .012) * rockDensityScale && this.clear(x, y, 2.8, true)) {
