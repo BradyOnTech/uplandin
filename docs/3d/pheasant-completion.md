@@ -342,3 +342,18 @@ A controlled continuation of the seed-7 browser session positioned the player ne
 A separate source audit and controlled reproduction identified a two-dog ownership failure: both dogs could select the same downed bird, and the second dog accepted the first dog's carried target without owning it. With the first dog fixed at the fall and the second fixed beside the handler, the second could credit delivery before the carrier returned. The next correction protects carried ownership and coordinates assignments so an available second dog can recover another fall. This is a bag-credit and recovery correctness issue, not asset polish.
 
 The correction now rejects a carried target that belongs to another dog. Shared simulation derives each dog's current recovery claim before selecting falls, allowing packmates to choose separate birds without removing carried birds from the authoritative list. Claims release when retrieving ends. The original regression failed with premature retrieved state before the fix. The two-fall integration now verifies one owner per carried bird, bird position following its actual carrier, both physical handoffs within one meter, one retrieve credit per dog and released claims/carrier IDs afterward. All 633 tests across 86 files, TypeScript checking and production build pass; the existing large-bundle warning remains. A natural two-dog hunt and ordinary shot-to-retrieve acceptance remain outstanding.
+
+**Dense-cover rendering cost**
+
+Standing vegetation now partitions into 28-yard groups rather than 56-yard groups. Smaller bounds allow distant plants to use the existing simpler geometry sooner and improve culling. Individual plants, instance transforms, habitat density and detail thresholds are unchanged. Litter and stubble retain their prior grouping. The tradeoff is more draw calls. Staged comparisons use West Track coordinates, morning, seed 17; they are not ordinary hunts.
+
+| View x,z | Standard triangles before / after | Draws before / after |
+| --- | --- | --- |
+| 63,93 | 2,812,664 / 1,462,623 | 161 / 193 |
+| 130,80 | 1,988,346 / 1,194,176 | 125 / 182 |
+| -55,-57 | 163,281 / 114,952 | 43 / 51 |
+| 32,75 | 1,516,694 / 1,275,373 | 156 / 196 |
+
+At (63,93), Lightweight changed from 1,040,534 to 625,344 triangles and 140 to 160 draws. Screenshots `output/playwright/pheasant-batching28.png` and `pheasant-batching28-lite.png` retain dense cover and the nearby silhouette. The standing-habitat test initially failed because it compared batch enumeration order across tiers. It now compares sorted complete root/height tuples, retaining multiplicity; exact plant positions and heights match. Both existing vegetation tests, TypeScript checking and production build pass. The preceding full-suite result remains 633; no full-suite rerun was needed for this grouping change.
+
+Actual WebGL GPU timer queries on the local Apple M1 Pro/ANGLE Metal renderer bracketed 30 paused `renderOnce` samples after five warm-up renders, with disjoint-clock checking. At fixed 1940×1068 Standard resolution, median GPU time was 9.00 ms before and 7.61 ms after; p95 was 9.10 and 9.73 ms, so this small sample does not demonstrate improved worst-case latency. Median CPU submission rose from 1.2 to 1.8 ms. At fixed 1293×712 Lightweight resolution, median GPU time was 7.51 to 5.50 ms, p95 8.20 to 6.45 ms, and median CPU submission 1.2 to 1.6 ms. The review script is `output/audit/pheasant-gpu-review.js`. These short static measurements support the geometry-cost reduction and expose its CPU tradeoff; they do not prove sustained whole-hunt performance or actual mobile readiness.

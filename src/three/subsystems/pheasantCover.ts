@@ -446,7 +446,9 @@ export class PheasantCoverSystem implements Subsystem {
         // groups avoid drawing an entire field for a few nearby pieces.
         const partitions = new Map<string, Plant[]>();
         for (const plant of groups[kind]) {
-          const cellSize = kind === 'litter' ? 52 : 56;
+          // Smaller standing-cover groups let distant plants simplify without
+          // keeping a whole field corner at the player's close-up detail.
+          const cellSize = kind === 'litter' ? 52 : 28;
           const key = kind === 'stubble' ? 'parcel' : `${Math.floor(plant.x / cellSize)},${Math.floor(plant.y / cellSize)}`;
           let partition = partitions.get(key);
           if (!partition) { partition = []; partitions.set(key, partition); }

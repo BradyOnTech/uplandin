@@ -50,7 +50,7 @@ describe('Pheasant standing habitat', () => {
       cover.init(ctx);
       const prairie = (ctx.scene.children as THREE.InstancedMesh[]).filter(mesh => mesh.name === 'Pheasant prairie parcel');
       const matrix = new THREE.Matrix4(), position = new THREE.Vector3(), rotation = new THREE.Quaternion(), scale = new THREE.Vector3();
-      const roots: number[] = [];
+      const roots: string[] = [];
       let tallMesh: THREE.InstancedMesh | undefined;
       let minimumHeightScale = Infinity, mixedVergeRoots = 0;
       const fields = pheasantFields(landscape.area), property = { x: 0, y: 0 };
@@ -63,13 +63,15 @@ describe('Pheasant standing habitat', () => {
           continue;
         }
         minimumHeightScale = Math.min(minimumHeightScale, scale.y);
-        roots.push(position.x, position.z, scale.y);
+        roots.push(`${position.x},${position.z},${scale.y}`);
         tallMesh ??= mesh;
       }
       expect(mixedVergeRoots, 'Fringe grass must survive into partially harvested ground').toBeGreaterThan(10);
-      expect(roots.length / 3).toBeGreaterThan(20000);
+      expect(roots.length).toBeGreaterThan(20000);
       expect(minimumHeightScale).toBeGreaterThan(1.35);
-      stands.push(roots.join(','));
+      // Spatial batches can be enumerated differently by tier; compare every
+      // complete root/height tuple, including duplicates, independent of order.
+      stands.push(roots.sort().join(';'));
       expect(tallMesh).toBeDefined();
       const mesh = tallMesh!;
       ctx.camera.position.copy(mesh.boundingSphere!.center); cover.update(ctx);
