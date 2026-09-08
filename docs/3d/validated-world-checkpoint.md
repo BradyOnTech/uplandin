@@ -213,6 +213,12 @@ Bespoke alder root clusters now supply collision circles to hunter movement and 
 
 Browser review began at an assisted position two meters beside a real alder. Normal forward input stopped 0.74 meters from the root center, matching the root radius plus hunter clearance. Evidence: `output/playwright/woodcock-trunk-collision.png`. This close view also shows how opaque crown lobes engulf the camera; collisions alone do not solve foliage readability. A complete hunt with the new obstacles and a mobile performance review remain outstanding.
 
+**Broken alder foliage and camera clearance**
+
+Replaced five closed crown solids with separated folded leaf sprays. The first pass was too sparse and horizontal; increased overlap and varied pitch to retain a fuller side silhouette. Leaves within 0.45 to 1.15 meters of the camera now fade through a small screen-door pattern. Stem collision and shot obstruction remain solid. This adds geometry but no textures or draw calls.
+
+Reviewed the same close-trunk position and entry view in Lightweight mode. Evidence: `output/playwright/woodcock-leaf-clearance.png` and `output/playwright/woodcock-leaf-sprays-final-entry.png`. The camera is no longer sealed behind one solid crown face, though the close fade pattern is visible and still needs polish. The entry sample reported 69 draws and 352,774 triangles, with a 9.8-millisecond 95th-percentile frame interval and 140.7-millisecond maximum interval on desktop. Mobile cost is unmeasured. Compilation and build pass with existing chunk warnings. No simulation tests rerun for this foliage-only change.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

@@ -178,15 +178,29 @@ function alderTrunkGeometry(): THREE.BufferGeometry {
 
 function alderCrownGeometry(): THREE.BufferGeometry {
   const positions: number[] = [];
-  // Uneven vertical sprays leave spaces between the stems, with foliage
-  // extending below the top instead of forming a single flat umbrella.
+  const rng = mulberry32(0xa1de712);
+  const point = new THREE.Vector3();
+  const rotation = new THREE.Euler();
+  // Broken sprays replace closed solids. Folded diamonds carry a broad
+  // leaf-mass silhouette while leaving sightlines between small clusters.
   for (const [x, y, z, size] of [
     [-.48, -.35, .08, .58], [.4, -.12, -.15, .66],
     [-.17, .45, .04, .51], [.2, -.8, .28, .43], [-.6, -.94, -.2, .36],
   ]) {
-    const lobe = new THREE.IcosahedronGeometry(size, 0);
-    lobe.scale(.82, 1.15, .85); lobe.translate(x, y, z);
-    positions.push(...Array.from(lobe.getAttribute('position').array)); lobe.dispose();
+    for (let i=0;i<10;i++) {
+      const angle=i*2.4;
+      const radius=size*(.2+rng()*.55);
+      const cx=x+Math.cos(angle)*radius, cy=y+(rng()-.5)*size*1.6, cz=z+Math.sin(angle)*radius;
+      const width=size*(.36+rng()*.18), length=width*(1.2+rng()*.3);
+      rotation.set(.8+(rng()-.5)*1.8,angle,(rng()-.5)*1.4);
+      const outline=[[0,0,-length],[-width,0,0],[0,0,length],[width,0,0]];
+      for(let edge=0;edge<4;edge++) {
+        for(const vertex of [[0,width*.18,0],outline[edge],outline[(edge+1)%4]]) {
+          point.set(vertex[0],vertex[1],vertex[2]).applyEuler(rotation);
+          positions.push(point.x+cx,point.y+cy,point.z+cz);
+        }
+      }
+    }
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -382,9 +396,24 @@ export class WetBottomsSystem implements Subsystem {
         flatShading: true,
       }), this.wind);
       const crownMaterial = windMaterial(new THREE.MeshLambertMaterial({
-        color: 0xffffff,
+        color: 0xffffff, side: THREE.DoubleSide,
         flatShading: true,
       }), this.wind);
+      const compileCrownWind = crownMaterial.onBeforeCompile;
+      crownMaterial.customProgramCacheKey = () => 'alder-leaf-sprays-near-fade-v1';
+      crownMaterial.onBeforeCompile = (shader, renderer) => {
+        compileCrownWind.call(crownMaterial, shader, renderer);
+        shader.vertexShader = shader.vertexShader
+          .replace('#include <common>', '#include <common>\nvarying vec3 vAlderLeafWorld;')
+          .replace('#include <project_vertex>', '#include <project_vertex>\nvAlderLeafWorld = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;');
+        shader.fragmentShader = shader.fragmentShader
+          .replace('#include <common>', '#include <common>\nvarying vec3 vAlderLeafWorld;')
+          .replace('#include <color_fragment>', `#include <color_fragment>
+            float leafCoverage = smoothstep(.45, 1.15, distance(vAlderLeafWorld, cameraPosition));
+            float leafDither = fract(dot(mod(gl_FragCoord.xy, 4.0), vec2(.25, .0625)));
+            if (leafCoverage <= leafDither) discard;
+          `);
+      };
       const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, trees.length);
       const crowns = new THREE.InstancedMesh(crownGeometry, crownMaterial, trees.length);
       trunks.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(trees.length * 3), 3);
