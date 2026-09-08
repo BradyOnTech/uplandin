@@ -211,3 +211,14 @@ Twenty-second forward walks from that assisted start used the actual movement co
 An attempt to enumerate mobile devices through xctrace could not run because that developer utility is unavailable. This establishes a missing inspection tool, not that no phone exists. Actual phone validation remains open.
 
 All 611 tests across 86 files, TypeScript checking and the production build pass. The existing large-bundle warning remains.
+
+
+**Farmland horizon and windbreak lighting**
+
+Pheasant's camera-following ridge rings now draw behind the playable world. Their radii lie inside the property, so their earlier depth-tested ordering could hide farther terrain and props. The horizon also follows 70 percent of camera elevation and uses broader low rolling silhouettes. This changes decorative scenery, not traversable terrain or habitat.
+
+Standard quality now casts shadows from farm windbreak trunks and crowns. Those shared batches had excluded even nearby walkable trees from shadow rendering. Lightweight retains its existing shadow budget. Pheasant fill light now comes from the opposing elevated direction, using the existing time-of-day colors and intensities, so shaded tree faces retain more shape in evening light.
+
+The assisted South Gate view at (-55,-57), yaw 31, pitch 0, compares `output/playwright/pheasant-horizon-before.png` and `pheasant-horizon-after.png`; both used 119 draws and 1,000,832 triangles. Adding windbreak shadows produced 123 draws and 1,037,052 triangles in `pheasant-windbreak-shadow.png`. Evening comparison appears in `pheasant-windbreak-evening.png` and `pheasant-windbreak-evening-fill.png`. These are static composition reviews, not ordinary-hunt or device-performance evidence.
+
+All 613 tests across 86 files passed before the final fill-direction adjustment; the eight sky tests, TypeScript checking and production build passed again afterward. The existing large-bundle warning remains. Natural hunts, broader environment acceptance and actual mobile validation remain incomplete.

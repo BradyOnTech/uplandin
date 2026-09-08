@@ -416,9 +416,9 @@ const CHUKAR_RIDGES: RidgeProfile = {
 
 const PHEASANT_RIDGES: RidgeProfile = {
   layers: [
-    { radius: 260, base: -1.5, amp: 4, far: 0, fogMix: 0.02, hazeAmt: 0.3, jag: 0.02, freqs: [3, 8, 19], noiseScale: 0.5, land: true },
-    { radius: 390, base: 2, amp: 6, far: 0.22, fogMix: 0.12, hazeAmt: 0.58, jag: 0.03, freqs: [2, 7, 17], noiseScale: 0.48 },
-    { radius: 560, base: 4, amp: 9, far: 0.62, fogMix: 0.2, hazeAmt: 0.78, jag: 0.04, freqs: [3, 6, 15], noiseScale: 0.42 },
+    { radius: 260, base: -1.5, amp: 8, far: 0, fogMix: 0.02, hazeAmt: 0.3, jag: 0.02, freqs: [3, 8, 19], noiseScale: 0.5, land: true },
+    { radius: 390, base: 2, amp: 18, far: 0.22, fogMix: 0.12, hazeAmt: 0.58, jag: 0.03, freqs: [2, 7, 17], noiseScale: 0.48 },
+    { radius: 560, base: 4, amp: 30, far: 0.62, fogMix: 0.2, hazeAmt: 0.78, jag: 0.04, freqs: [3, 6, 15], noiseScale: 0.42 },
   ],
   features: [
     [{ c: -20, h: 0.5, sl: 55, sr: 65 }, { c: 118, h: 0.4, sl: 60, sr: 50 }],
@@ -427,6 +427,7 @@ const PHEASANT_RIDGES: RidgeProfile = {
   ],
   segments: [768, 640, 512],
   treeCount: 0,
+  verticalFollow: .7,
 };
 
 /** Broad Great Basin benches: lower and softer than Chukar's broken ridge,
@@ -744,7 +745,7 @@ export class SkySystem implements Subsystem {
    * Firewatch e3-5 treeline).
    */
   private buildRidges(ctx: Ctx): void {
-    const backdrop = this.quail || this.areaId === 'chukar-ridge';
+    const backdrop = this.quail || this.areaId === 'chukar-ridge' || this.areaId === 'pheasant-coverts';
     const rng = mulberry32(0x51d9e5);
     for (let l = 0; l < this.ridgeProfile.layers.length; l++) {
       const layer = this.ridgeProfile.layers[l];
@@ -880,7 +881,7 @@ export class SkySystem implements Subsystem {
       });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.frustumCulled = false;
-      // Quail and Chukar camera-following rings are a backdrop: their radii
+      // Quail, Chukar and Pheasant camera-following rings are backdrops: their radii
       // lie inside the playable property and must never cut off distant props.
       // Paint after the dome, before the real world, with far bands first.
       // Other properties retain their existing depth-resolved ridge order.
@@ -924,7 +925,7 @@ export class SkySystem implements Subsystem {
     this.sun.intensity = spec.sunIntensity;
     const fel = Math.max(el, THREE.MathUtils.degToRad(16));
     this.fillDir.set(Math.sin(az) * Math.cos(fel), Math.sin(fel), Math.cos(az) * Math.cos(fel));
-    if (this.quail || this.areaId === 'chukar-ridge') this.fillDir.set(-Math.sin(az) * 0.64, 0.77, -Math.cos(az) * 0.64);
+    if (this.quail || this.areaId === 'chukar-ridge' || this.areaId === 'pheasant-coverts') this.fillDir.set(-Math.sin(az) * 0.64, 0.77, -Math.cos(az) * 0.64);
     this.fill.color.setHex(spec.fillColor);
     this.fill.intensity = spec.fillIntensity;
     // Shadow frustum: X spans the view width; light-space Y needs only the

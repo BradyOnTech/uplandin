@@ -20,14 +20,14 @@ function fixture(areaId: string, quality: Quality = 'high') {
   const meshes = scene.children.filter((object): object is THREE.Mesh => object instanceof THREE.Mesh);
   const dome = meshes.find(mesh => mesh.geometry instanceof THREE.SphereGeometry)!;
   const ridges = meshes.filter(mesh => mesh.geometry.hasAttribute('aHaze'));
-  return { dome, ridges, world, dispose: () => {
+  return { dome, ridges, world, camera, sky, ctx, dispose: () => {
     sky.dispose(ctx);
     world.forEach(mesh => { mesh.geometry.dispose(); mesh.material.dispose(); });
   } };
 }
 
 describe('Decorative skyline ordering', () => {
-  it.each<[string, Quality]>([['quail-fields', 'high'], ['quail-fields', 'lite'], ['chukar-ridge', 'high'], ['chukar-ridge', 'lite']])('draws the %s %s backdrop behind every opaque world surface', (area, quality) => {
+  it.each<[string, Quality]>([['quail-fields', 'high'], ['quail-fields', 'lite'], ['chukar-ridge', 'high'], ['chukar-ridge', 'lite'], ['pheasant-coverts', 'high'], ['pheasant-coverts', 'lite']])('draws the %s %s backdrop behind every opaque world surface', (area, quality) => {
     const f = fixture(area, quality);
     try {
       expect(f.ridges.length).toBeGreaterThan(1);
@@ -46,7 +46,19 @@ describe('Decorative skyline ordering', () => {
     } finally { f.dispose(); }
   });
 
-  it.each(['sharptail-prairie', 'pheasant-coverts'])('preserves %s ridge depth and ordering', area => {
+  it('keeps the pheasant decorative horizon following elevated camera views without moving real terrain', () => {
+    const f=fixture('pheasant-coverts');
+    try {
+      const worldPositions=f.world.map(mesh=>mesh.position.clone());
+      f.camera.position.set(120,20,-35);f.sky.update(f.ctx);
+      for(const ridge of f.ridges)expect(ridge.position.toArray()).toEqual([120,14,-35]);
+      f.world.forEach((mesh,i)=>expect(mesh.position.toArray()).toEqual(worldPositions[i].toArray()));
+      f.camera.position.y=40;f.sky.update(f.ctx);
+      for(const ridge of f.ridges)expect(ridge.position.y).toBe(28);
+    } finally {f.dispose();}
+  });
+
+  it.each(['sharptail-prairie'])('preserves %s ridge depth and ordering', area => {
     const f = fixture(area);
     try {
       expect(f.dome.renderOrder).toBe(-30);

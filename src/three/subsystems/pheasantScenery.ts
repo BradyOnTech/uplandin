@@ -315,8 +315,10 @@ export class PheasantScenerySystem implements Subsystem {
       mesh.name = name;
       mesh.instanceMatrix.needsUpdate = true;
       mesh.receiveShadow = true;
-      // Distant structural planting stays out of the shadow pass at both
-      // tiers. Four shared batches retain the same landmarks on mobile.
+      // These batches include walkable farm windbreaks as well as distant
+      // planting. Nearby trees need contact and canopy shadows; the sun's
+      // local shadow frustum clips distant planting out of the shadow map.
+      mesh.castShadow = ctx.quality === 'high';
       mesh.computeBoundingSphere();
       ctx.scene.add(mesh);
       this.objects.push(mesh);
