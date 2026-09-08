@@ -473,14 +473,39 @@ export function updateBirds(dtMs: number, birds: Bird[], dogPos: Vec2, env: Runn
       dirX /= len;
       dirY /= len;
     }
-    const next = {
+    let next = {
       x: clamp(b.pos.x + dirX * speed * dt, bounds.x + 4, bounds.x + bounds.w - 4),
       y: clamp(b.pos.y + dirY * speed * dt, bounds.y + 4, bounds.y + bounds.h - 4),
     };
-    // Blocked at the cover's end: hold rather than cross open ground.
-    if (env.patches && inAnyPatch(b.pos, env.patches) && !inAnyPatch(next, env.patches)) {
-      b.restingMs = restMs;
-      continue;
+    if (env.patches && inAnyPatch(b.pos, env.patches)) {
+      const patches = env.patches;
+      const coveredStep = (end: Vec2): boolean => {
+        const steps = Math.max(1, Math.ceil(dist(b.pos, end)));
+        for (let i = 1; i <= steps; i++) {
+          if (!inAnyPatch({ x: b.pos.x + (end.x - b.pos.x) * i / steps,
+            y: b.pos.y + (end.y - b.pos.y) * i / steps }, patches)) return false;
+        }
+        return true;
+      };
+      if (!coveredStep(next)) {
+        // A rooster can road sideways along a dry shoulder when the direct
+        // escape is blocked. Do not transfer this behavior to a Hun or Quail
+        // merely because it shares the property. Every candidate must stay
+        // in cover along its whole step, including across fragmented strips.
+        let escape: Vec2 | undefined;
+        let bestDistance = dist(b.pos, dogPos);
+        if (runner?.turnAlongCover) for (const angle of [Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2]) {
+          const c = Math.cos(angle), s = Math.sin(angle);
+          const candidate = {
+            x: clamp(b.pos.x + (dirX * c - dirY * s) * speed * dt, bounds.x + 4, bounds.x + bounds.w - 4),
+            y: clamp(b.pos.y + (dirX * s + dirY * c) * speed * dt, bounds.y + 4, bounds.y + bounds.h - 4),
+          };
+          const distance = dist(candidate, dogPos);
+          if (distance > bestDistance && coveredStep(candidate)) { escape = candidate; bestDistance = distance; }
+        }
+        if (!escape) { b.restingMs = restMs; continue; }
+        next = escape;
+      }
     }
     b.pos = next;
   }

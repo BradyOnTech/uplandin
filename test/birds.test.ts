@@ -400,6 +400,27 @@ describe('updateBirds (runners)', () => {
     expect(b.pos.x).toBeLessThanOrEqual(340); // pinned at the patch edge
     expect(b.restingMs).toBeGreaterThan(0); // holding — the hunter's window
   });
+
+  it('a ringneck roads along a blocked cover edge while a bobwhite holds', () => {
+    const patches = [{ x: 280, y: 140, w: 60, h: 120 }];
+    const rooster = bird({ speciesId: 'ringneck', pos: { x: 340, y: 200 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
+    const bobwhite = bird({ speciesId: 'bobwhite', pos: { x: 340, y: 200 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
+    const dog = { x: 320, y: 198 };
+    updateBirds(100, [rooster, bobwhite], dog, { patches });
+    expect(rooster.pos.x).toBeLessThanOrEqual(340);
+    expect(rooster.pos.y).toBeGreaterThan(200);
+    expect(rooster.restingMs).toBe(0);
+    expect(bobwhite.pos).toEqual({ x: 340, y: 200 });
+    expect(bobwhite.restingMs).toBeGreaterThan(0);
+  });
+
+  it('does not jump an open gap just because the end of a long step lands in cover', () => {
+    const patches = [{ x: 280, y: 190, w: 21, h: 20 }, { x: 310, y: 190, w: 40, h: 20 }];
+    const b = bird({ speciesId: 'bobwhite', pos: { x: 300, y: 200 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
+    updateBirds(400, [b], { x: 280, y: 200 }, { patches });
+    expect(b.pos).toEqual({ x: 300, y: 200 });
+    expect(b.restingMs).toBeGreaterThan(0);
+  });
 });
 
 describe('birdsSpookedBy (sprinting hunter)', () => {
