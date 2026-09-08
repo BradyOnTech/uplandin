@@ -436,7 +436,7 @@ export class Hunt3DSystem implements Subsystem {
     const converted: { x: number; y: number; radius: number }[] = [];
     const base = this.liveDogMotions[0]?.obstacles ?? [];
     for (const obstacle of base) converted.push({ ...obstacle });
-    for (const id of ['chukar-environment', 'property-habitat', 'landmarks']) {
+    for (const id of ['chukar-environment', 'property-habitat', 'woodcock-wet-bottoms', 'landmarks']) {
       let provider: { collisionCircles?: () => readonly { x: number; z: number; radius: number }[] };
       try { provider = ctx.get(id) as typeof provider; } catch { continue; }
       for (const circle of provider.collisionCircles?.() ?? []) {

@@ -150,6 +150,7 @@ export class PlayerSystem implements Subsystem {
               const areaId = this.landscape?.area.id;
               if (areaId === 'chukar-ridge') this.scenery = ctx.get('chukar-environment');
               else if (areaId === 'quail-fields') this.scenery = ctx.get('quail-environment');
+              else if (areaId === 'woodcock-bottoms') this.scenery = ctx.get('woodcock-wet-bottoms');
               else if (areaId === 'grouse-woods') this.scenery = ctx.get('property-habitat');
             } catch { /* environment initializes after input */ }
           }

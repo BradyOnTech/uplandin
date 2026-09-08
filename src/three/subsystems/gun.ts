@@ -1,3 +1,4 @@
+import type { WetBottomsSystem } from './wetBottoms';
 import * as THREE from 'three';
 import { playShot, unlockAudio, playActionClick } from '../../audio';
 import { getGun, type GunConfig } from '../../game/guns';
@@ -537,12 +538,15 @@ export class GunSystem implements Subsystem {
     ctx.camera.getWorldDirection(this.fwd);
     let habitat: PropertyHabitatSystem | undefined;
     try { habitat = ctx.get<PropertyHabitatSystem>('property-habitat'); } catch { /* bespoke properties use their own scenery */ }
+    let wetBottoms: WetBottomsSystem | undefined;
+    try { wetBottoms = ctx.get<WetBottomsSystem>('woodcock-wet-bottoms'); } catch { /* other properties */ }
     const birdId = this.birds.shootRay(
       ctx.camera.position,
       this.fwd,
       this.gun.spread / 400,
       target => !terrainBlocksShot(ctx.camera.position, target, (x, z) => this.terrain.heightAt(x, z))
-        && !habitat?.blocksShot?.(ctx.camera.position, target),
+        && !habitat?.blocksShot?.(ctx.camera.position, target)
+        && !wetBottoms?.blocksShot?.(ctx.camera.position, target),
     );
     const hit = birdId !== null && this.hunt.resolveBird(birdId, 'downed');
     if (hit && birdId !== null) {

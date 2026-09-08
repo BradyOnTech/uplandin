@@ -299,6 +299,21 @@ export class WetBottomsSystem implements Subsystem {
   private normal = new THREE.Vector3();
   private tangent = new THREE.Vector3();
 
+  private obstacles: { x: number; z: number; radius: number }[] = [];
+  private shotTrunks: THREE.InstancedMesh[] = [];
+  private shotRay = new THREE.Raycaster();
+  private shotOrigin = new THREE.Vector3();
+  private shotDirection = new THREE.Vector3();
+  collisionCircles() { return this.obstacles; }
+  blocksShot(origin: {x:number;y:number;z:number}, target: {x:number;y:number;z:number}): boolean {
+    this.shotOrigin.set(origin.x,origin.y,origin.z);
+    this.shotDirection.set(target.x-origin.x,target.y-origin.y,target.z-origin.z);
+    const distance=this.shotDirection.length();
+    if(distance<.001)return false;
+    this.shotRay.set(this.shotOrigin,this.shotDirection.divideScalar(distance));
+    this.shotRay.far=distance-.001;
+    return this.shotRay.intersectObjects(this.shotTrunks,false).length>0;
+  }
   private readonly water: ShallowWater;
   private readonly ripples = { value: Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, -100, 0)) };
   private rippleCursor = 0;
@@ -359,6 +374,7 @@ export class WetBottomsSystem implements Subsystem {
       return !ponds.some(pond => wetPondRadius(pond, this.property.x, this.property.y) < 1.12);
     });
     if (trees.length > 0) {
+      this.obstacles = trees.map(tree => ({x:tree.x,z:tree.z,radius:.42}));
       const trunkGeometry = alderTrunkGeometry();
       const crownGeometry = alderCrownGeometry();
       const trunkMaterial = windMaterial(new THREE.MeshLambertMaterial({
@@ -392,6 +408,7 @@ export class WetBottomsSystem implements Subsystem {
         crowns.setMatrixAt(index, this.matrix.compose(this.position, this.rotation, this.scale));
         crowns.setColorAt(index, color.setHex(tree.crownColor));
       }
+      this.shotTrunks.push(trunks);
       trunks.instanceMatrix.needsUpdate = true;
       crowns.instanceMatrix.needsUpdate = true;
       trunks.instanceColor.needsUpdate = true;
@@ -644,6 +661,7 @@ export class WetBottomsSystem implements Subsystem {
     for (const object of this.objects) ctx.scene.remove(object);
     for (const geometry of this.geometries) geometry.dispose();
     for (const material of this.materials) material.dispose();
+    this.obstacles.length = 0; this.shotTrunks.length = 0;
     this.objects.length = 0;
     this.geometries.length = 0;
     this.materials.length = 0;

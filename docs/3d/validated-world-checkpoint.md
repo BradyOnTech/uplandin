@@ -207,6 +207,12 @@ Continued normal walking from the shore encounter, with occasional assisted view
 
 The HUD displayed “AMERICAN FLUSH” because it kept only the first word of a species name. It now retains full species names, while preserving hen/rooster identification for pheasants. Compilation passes; no new tests or build rerun for this text-only correction. Ordinary target acquisition and complete encounter validation remain outstanding.
 
+**Physical alder trunks**
+
+Bespoke alder root clusters now supply collision circles to hunter movement and dog navigation. Shots test the rendered stem geometry, including gaps and height, rather than the broad crown. The new geometry test checks an actual stem, a target before it, a shot above it, persistence when hidden and disposal. All 559 tests across 79 files pass; compilation and build pass with existing chunk warnings.
+
+Browser review began at an assisted position two meters beside a real alder. Normal forward input stopped 0.74 meters from the root center, matching the root radius plus hunter clearance. Evidence: `output/playwright/woodcock-trunk-collision.png`. This close view also shows how opaque crown lobes engulf the camera; collisions alone do not solve foliage readability. A complete hunt with the new obstacles and a mobile performance review remain outstanding.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.
