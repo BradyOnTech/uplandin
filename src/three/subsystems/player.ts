@@ -1,3 +1,4 @@
+import { ShallowWater, wadingSpeedMultiplier } from '../../game/shallowWater';
 import * as THREE from 'three';
 import { unlockAudio, playFootstep } from '../../audio';
 import type { LandscapeModel } from '../../game/landscape';
@@ -31,7 +32,11 @@ export class PlayerSystem implements Subsystem {
   private landmarks?: Subsystem & { collisionCircles?: () => readonly { x: number; z: number; radius: number }[] };
   private hunt?: Hunt3DSystem;
   private obstacleIndex?: ObstacleIndex;
-  constructor(private readonly landscape?: LandscapeModel) {}
+  private readonly water?: ShallowWater;
+  private waterDepth = 0;
+  constructor(private readonly landscape?: LandscapeModel) {
+    if (landscape) this.water = new ShallowWater(landscape);
+  }
 
   init(ctx: Ctx): void {
     this.captureMode = new URLSearchParams(location.search).has('capture');
@@ -116,11 +121,12 @@ export class PlayerSystem implements Subsystem {
   }
   isRunning(): boolean {
     const moving = this.keys.has('KeyW') || this.keys.has('KeyA') || this.keys.has('KeyS') || this.keys.has('KeyD');
-    return moving && (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'));
+    return this.waterDepth < .12 && moving && (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'));
   }
   consumeRecall(): boolean { const pending = this.recallPending; this.recallPending = false; return pending; }
   setHuntHeading(ctx: Ctx, heading: number): void { this.yaw = -heading - Math.PI / 2; this.place(ctx); }
   setPose(ctx: Ctx, x: number, z: number, yawDeg: number, pitchDeg = 0): void {
+    this.waterDepth = this.water?.depthAtWorld(x, z) ?? 0;
     this.pos.set(x, 0, z); this.yaw = THREE.MathUtils.degToRad(yawDeg); this.pitch = THREE.MathUtils.degToRad(pitchDeg); this.place(ctx);
   }
   private place(ctx: Ctx): void {
@@ -129,13 +135,14 @@ export class PlayerSystem implements Subsystem {
     ctx.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
   }
   update(ctx: Ctx, dt: number): void {
+    this.waterDepth = this.water?.depthAtWorld(this.pos.x, this.pos.z) ?? 0;
     if (!this.captureMode && !ctx.paused) {
       const f = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0) - (this.touchMove?.dy ?? 0);
       const s = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0) + (this.touchMove?.dx ?? 0);
       // Camera right is +X when yaw=0; movement matches the visible view.
       this.vel.set(-Math.sin(this.yaw) * f + Math.cos(this.yaw) * s, 0, -Math.cos(this.yaw) * f - Math.sin(this.yaw) * s);
       if (this.vel.lengthSq() > 0.0025) {
-        this.vel.clampLength(0, 1).multiplyScalar(WALK_SPEED * (this.isRunning() ? SPRINT_MULT : 1));
+        this.vel.clampLength(0, 1).multiplyScalar(WALK_SPEED * wadingSpeedMultiplier(this.waterDepth) * (this.isRunning() ? SPRINT_MULT : 1));
         const oldX = this.pos.x, oldZ = this.pos.z;
         if (this.bounds) {
           if (!this.scenery) {

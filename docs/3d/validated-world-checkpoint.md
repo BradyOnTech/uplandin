@@ -163,6 +163,12 @@ Traced the thin object with a temporary browser ray inspection: it was shared re
 
 Evidence: `output/playwright/woodcock-reed-clumps.png` and `output/playwright/woodcock-shore-walk.png`. Started from the assisted review position and used normal forward input for ten seconds. The player entered the pool at normal speed, confirming that water traversal still lacks a distinct response. The final Standard view reported 49 draws, 591,964 triangles, a 10-millisecond 95th-percentile frame interval and a 158.2-millisecond maximum interval; no mobile inference is justified. Compilation and build pass with existing chunk warnings. This visual-only change did not rerun simulation tests. Next gameplay work should define shallow-water movement and dog behavior rather than hide this gap with more scenery.
 
+**Initial shallow-water movement**
+
+Added a cached water-depth sampler using the shared pool levels and terrain bed. Woodcock hunter speed now falls smoothly to 55 percent of walking pace in deeper shallows; sprint input is suppressed above 12 centimeters of water. Moving back onto dry ground restores ordinary sprinting. Other maps keep their existing movement. A player integration check exercises both wet and dry movement, alongside the existing collision cases; 16 focused checks pass. Compilation and build pass with existing chunk warnings.
+
+Browser verification started from an assisted position at Beaver Pond center, then held ordinary forward and sprint keys for three seconds. Travel was 3.639 meters, consistent with the 1.21-meter-per-second wading pace. Evidence: `output/playwright/woodcock-wading.png`. This proves the player pace change, not a completed hunt or a finished water experience. Dog water movement, ripples, water footsteps, and communication of depth remain outstanding. No mobile performance run or full-suite rerun in this pass.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

@@ -1,3 +1,4 @@
+import { wetPondLayout } from '../src/game/wetPonds';
 import { QUAIL_GROUND_PROPS, quailGroundPropObstacles } from '../src/three/subsystems/quailGroundProps';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
@@ -131,4 +132,21 @@ describe('Quail hunter movement against actual lane fences', () => {
     expect(f.ctx.camera.position.x).toBeCloseTo(bound.minX + 1.5, 10);
     expect(f.ctx.camera.position.y).toBeCloseTo(f.landscape.heightAtWorld(bound.minX + 1.5, 40) + 1.62 + Math.sin(.02 * 4.3) * .018, 10);
   });
+});
+
+it('wades through Woodcock water without sprinting and restores dry-ground sprint', () => {
+  const { player, ctx, landscape, press, point } = fixture('west-track', 'woodcock-bottoms', false);
+  const pond = wetPondLayout(landscape.area)[0];
+  const center = landscape.propertyToWorld(pond.px, pond.py, { x: 0, z: 0 });
+  player.setPose(ctx, center.x, center.z, -90);
+  press('KeyW', 'ShiftLeft');
+  const start = point();
+  for (let i = 0; i < 10; i++) player.update(ctx, .1);
+  expect(point().distanceTo(start)).toBeCloseTo(2.2 * .55, 2);
+  expect(player.isRunning()).toBe(false);
+  player.setPose(ctx, 0, 40, -90);
+  const dry = point();
+  for (let i = 0; i < 10; i++) player.update(ctx, .1);
+  expect(point().distanceTo(dry)).toBeCloseTo(2.2 * 1.9, 2);
+  expect(player.isRunning()).toBe(true);
 });
