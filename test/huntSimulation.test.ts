@@ -7,7 +7,7 @@ import { HuntSimulation } from '../src/game/huntSimulation';
 import { mulberry32 } from '../src/game/math';
 import { createHunt } from '../src/game/state';
 
-function pointedSimulation(hunterDistance: number) {
+function pointedSimulation(hunterDistance: number, continuousEncounter = false) {
   const area = getArea('quail-fields');
   const hunt = createHunt(area, mulberry32(11), { wind: 'calm', condition: 'mild' });
   const bird: Bird = {
@@ -32,11 +32,100 @@ function pointedSimulation(hunterDistance: number) {
   dog.state = 'pointing';
   dog.gait = 'still';
   dog.pointedBirdId = bird.id;
-  const simulation = new HuntSimulation({ hunt, dogs: [dog], area, rng: mulberry32(13) });
+  const simulation = new HuntSimulation({ hunt, dogs: [dog], area, rng: mulberry32(13), continuousEncounter });
   return { bird, dog, hunt, simulation };
 }
 
 describe('HuntSimulation shared orchestration', () => {
+  it('settles a continuous covey at its observed landings and permits one follow-up single', () => {
+    const f = pointedSimulation(10, true);
+    const departed = { ...f.bird, id: 9002, pos: { ...f.bird.pos } };
+    f.hunt.birds.push(departed);
+    const patch = getArea('quail-fields').patches[0];
+    const landing = { x: patch.x + patch.w / 2, y: patch.y + patch.h / 2 };
+    f.simulation.flushBird(f.bird.id, 'proximity', 0);
+    f.simulation.resolveBird(f.bird.id, 'escaped', landing);
+    f.simulation.resolveBird(departed.id, 'escaped');
+    const result = f.simulation.finishRise();
+    expect(result?.relitIds).toEqual([f.bird.id]);
+    expect(f.bird.pos).toEqual(landing);
+    expect(f.bird.state).toBe('hidden');
+    expect(f.hunt.escaped).toBe(1);
+    expect(f.simulation.finishRise()).toBeNull();
+    f.simulation.flushBird(f.bird.id, 'bump', null);
+    f.simulation.resolveBird(f.bird.id, 'escaped', landing);
+    expect(f.simulation.finishRise()?.relitIds).toEqual([]);
+    expect(f.hunt.escaped).toBe(2);
+  });
+  it('flushes the nearby member of a pointed covey and preserves the earned point credit', () => {
+    const f=pointedSimulation(40,true);
+    const nearby={...f.bird,id:9002,pos:{x:f.hunt.hunterPos.x+7,y:f.hunt.hunterPos.y}};
+    f.hunt.birds.push(nearby);
+    const events=f.simulation.update(16,{hunterPos:f.hunt.hunterPos});
+    expect(events).toContainEqual(expect.objectContaining({type:'covey-flushed',birdId:9002,pointCredit:true,hunterDistance:7}));
+    expect(f.hunt.dogWork[0].pointFlushes).toBe(1);
+    expect(f.hunt.birds.every(b=>b.state==='flushed')).toBe(true);
+  });
+  it('keeps a bobwhite runner with its hidden covey in a continuous Quail hunt', () => {
+    const f=pointedSimulation(40,true);
+    f.bird.runs=true;
+    f.hunt.birds.push({...f.bird,id:9002,pos:{x:302,y:300},runs:false});
+    const before={...f.bird.pos};
+    f.simulation.update(500,{hunterPos:f.hunt.hunterPos});
+    expect(f.bird.pos).toEqual(before);
+  });
+  it('lets a quiet 3D approach pass the legacy flush distance, then rises close', () => {
+    const f = pointedSimulation(20, true);
+    expect(f.simulation.update(16, {hunterPos:f.hunt.hunterPos}).some(e=>e.type==='covey-flushed')).toBe(false);
+    expect(f.bird.state).toBe('hidden');
+    const events=f.simulation.update(16,{hunterPos:{x:f.bird.pos.x-7,y:f.bird.pos.y}});
+    expect(events).toContainEqual(expect.objectContaining({type:'covey-flushed',cause:'proximity',pointCredit:true}));
+  });
+  it('still flushes a close pointed covey wild when the hunter sprints in', () => {
+    const f = pointedSimulation(20, true);
+    const events=f.simulation.update(16,{hunterPos:f.hunt.hunterPos,hunterRunning:true});
+    expect(events).toContainEqual(expect.objectContaining({type:'covey-flushed',cause:'spook',pointCredit:false}));
+  });
+  it('keeps nerve expiry as a risk during a quiet 3D approach', () => {
+    const f = pointedSimulation(40, true); f.bird.nerveMs=1;
+    const events=f.simulation.update(16,{hunterPos:f.hunt.hunterPos});
+    expect(events).toContainEqual(expect.objectContaining({type:'covey-flushed',cause:'nerve'}));
+  });
+  it('waits for a 3D fall to land before the dog can select it for retrieval', () => {
+    const { bird, dog, hunt, simulation } = pointedSimulation(10);
+    bird.state = 'downed'; bird.fallPending = true;
+    bird.pos = { ...dog.pos }; dog.state = 'quartering'; dog.pointedBirdId = null;
+    for (let i=0;i<90;i++) simulation.update(1000/30,{hunterPos:hunt.hunterPos});
+    expect(bird.state).toBe('downed'); expect(dog.state).not.toBe('retrieving');
+    expect(simulation.recordFall(bird.id,{...dog.pos})).toBe(true);
+    expect(bird.fallPending).toBe(false);
+    simulation.update(1000/30,{hunterPos:hunt.hunterPos});
+    expect(dog.state).toBe('retrieving');
+  });
+
+  it('settles overlapping coveys independently without losing point credit or counting a cross-covey double', () => {
+    const { bird, dog, hunt, simulation } = pointedSimulation(10);
+    const later = { ...bird, id: 9101, coveyId: 88, pos: { x: 330, y: 300 } };
+    hunt.birds.push(later);
+    simulation.flushBird(bird.id, 'proximity', 0);
+    dog.pointedBirdId = later.id;
+    simulation.flushBird(later.id, 'proximity', 0);
+    simulation.resolveBird(bird.id, 'downed');
+    simulation.resolveBird(later.id, 'downed');
+    expect(simulation.finishRise({ birdId: -1, relight: false })).toBeNull();
+    expect(simulation.finishRise({ birdId: later.id, relight: false })).toMatchObject({
+      birdIds: [later.id], downedIds: [later.id], double: false, pointingSlot: 0,
+    });
+    expect(simulation.finishRise({ birdId: later.id, relight: false })).toBeNull();
+    expect(hunt.dogWork[0].downedOverPoint).toBe(1);
+    expect(simulation.finishRise({ relight: false })).toMatchObject({
+      birdIds: [bird.id], downedIds: [bird.id], double: false, pointingSlot: 0,
+    });
+    expect(hunt.dogWork[0].downedOverPoint).toBe(2);
+    expect(hunt.doubles).toBe(0);
+    expect(simulation.finishRise()).toBeNull();
+  });
+
   it('owns proximity flush, point credit, and dog steadiness for both adapters', () => {
     const { bird, hunt, simulation } = pointedSimulation(10);
     const events = simulation.update(1000 / 30, { hunterPos: { ...hunt.hunterPos } });

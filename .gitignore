@@ -3,3 +3,5 @@ dist/
 *.local
 .DS_Store
 .git.icloud-backup/
+__pycache__/
+*.blend1

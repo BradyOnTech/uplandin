@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /*
- * Headless capture harness — the eye of the AAA loop. Renders the 3D
- * build at named camera poses / times of day and writes PNGs that the
- * visual-critic agents judge against the Firewatch / A Short Hike
- * reference stills in docs/3d/reference/.
+ * Normal gameplay captures default to FOV70 with real browser input.
+ * Legacy named compositions are labeled staged-asset-review and saved with
+ * a manifest of camera settings and simulation state. They are useful for
+ * asset inspection, never evidence of normal play or overall readiness.
  *
  * Usage:
  *   node tools3d/capture.mjs                       # standard shot set
@@ -16,8 +16,9 @@
  * If no server answers, it boots its own `vite --port 4517` and kills it
  * after. Exit code is non-zero if any shot fails — this is a build gate.
  */
-import { spawn } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { runNormalGameplay, startServer } from './playthrough.mjs';
+import { verifyEvidenceImage } from './evidence-image.mjs';
 import { resolve } from 'node:path';
 import puppeteer from 'puppeteer';
 
@@ -52,13 +53,8 @@ const SHOTS = {
   // reads side-on — level topline, raised flag, folded foreleg — with the
   // sunrise still in the top of the wide frame.
   'dawn-point': { tod: 'dawn', sim: 'point', base: [0, 40, 180, 4], maxTicks: 30000, dist: 2.2, spin: -1.35, pitch: -18 },
-  // THE GAMEPLAY READ (round 9 reframe): honest hunter-follow range — the
-  // fixed 1.62 m eye at 9 m, three-quarter off the dog-bird line — with a
-  // slightly longer lens (FOV 70 -> 44, capture-only via __dogAudit.setFov)
-  // so the dog holds a meaningful share of frame. This is the frame the
-  // player actually hunts from; the point silhouette (raised flag, level
-  // topline, lifted fore) must read INSTANTLY here.
-  'gameplay-point': { tod: 'dawn', sim: 'point', base: [0, 40, 180, 4], maxTicks: 30000, dist: 8.5, spin: -1.3, pitch: -7, fov: 40 },
+  // Historical enlarged-lens composition retained only as an asset review.
+  'review-point-long-lens': { tod: 'dawn', sim: 'point', base: [0, 40, 180, 4], maxTicks: 30000, dist: 8.5, spin: -1.3, pitch: -7, fov: 40 },
   // THE COVEY RISE — the whole game in one frame. Deterministic: gate on
   // the locked point (same round-9 predicate), triggerFlush() walks the
   // mapped hunter in under the sim's own checkFlush law, then stepRise
@@ -191,8 +187,8 @@ const SHOTS = {
   //   (iteration 3: mount walks in to gun range and stands further off
   //   the line — at 7 m dead astern the dog was a white sliver behind
   //   the rib.)
-  'gameplay-walk': { tod: 'dawn', sim: 'open', base: [0, 40, 180, 4], maxTicks: 12000, dist: 7.5, spin: 0.55, pitch: -3, gun: 'carry', gunYawBias: 8 },
-  'gameplay-mount': { tod: 'dawn', sim: 'point', base: [0, 40, 180, 4], maxTicks: 30000, dist: 5, spin: -0.65, pitch: -4, gun: 'mount', gunYawBias: 12 },
+  'review-gun-carry': { tod: 'dawn', sim: 'open', base: [0, 40, 180, 4], maxTicks: 12000, dist: 7.5, spin: 0.55, pitch: -3, gun: 'carry', gunYawBias: 8 },
+  'review-gun-mount': { tod: 'dawn', sim: 'point', base: [0, 40, 180, 4], maxTicks: 30000, dist: 5, spin: -0.65, pitch: -4, gun: 'mount', gunYawBias: 12 },
 };
 
 const args = process.argv.slice(2);
@@ -202,56 +198,50 @@ const get = (flag, dflt) => {
 };
 const baseUrl = get('--url', 'http://localhost:4517');
 const outDir = resolve(get('--out', 'docs/3d/shots'));
-const coat = get('--coat', 'orange-belton');
-const breed = get('--breed', 'english-setter');
+const coat = get('--coat', 'liver-white');
+const breed = get('--breed', 'gsp');
+const quality = get('--quality', 'high');
+if (!['high', 'lite'].includes(quality)) throw new Error('quality must be high or lite');
 const area = get('--area', 'quail-fields');
 const drop = get('--drop', '');
 const wanted = get(
   '--shots',
-  Object.keys(SHOTS).filter((n) => !n.startsWith('debug-')).join(','),
+  'gameplay-arrival,gameplay-walk,gameplay-point',
 ).split(',');
-const W = 960;
-const H = 540;
-
-async function reachable(url) {
-  try {
-    const res = await fetch(url + '/index3d.html', { signal: AbortSignal.timeout(1500) });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
+const W = Number(get('--width', '1920'));
+const H = Number(get('--height', '1080'));
 
 async function main() {
   mkdirSync(outDir, { recursive: true });
-  let server = null;
-  let url = baseUrl;
-  if (!(await reachable(url))) {
-    server = spawn('npx', ['vite', '--port', '4517', '--strictPort'], { stdio: 'pipe' });
-    url = 'http://localhost:4517';
-    for (let i = 0; i < 40; i++) {
-      if (await reachable(url)) break;
-      await new Promise((r) => setTimeout(r, 500));
-      if (i === 39) throw new Error('vite never came up');
-    }
-  }
+  const { url, server } = await startServer(baseUrl);
 
   const browser = await puppeteer.launch({
-    headless: true,
-    // vsync decoupled: on a sleeping/locked macOS display the new headless
-    // stops issuing BeginFrames entirely — rAF never fires, __ready3d never
-    // sets, and every capture times out. Decoupling from the display clock
-    // keeps the harness alive regardless of monitor state.
-    args: [
-      '--no-sandbox', '--enable-unsafe-swiftshader', '--use-gl=angle',
-      '--disable-frame-rate-limit', '--disable-gpu-vsync',
-    ],
+    headless: !args.includes('--headed'),
+    args: args.includes('--uncapped') ? ['--disable-frame-rate-limit', '--disable-gpu-vsync'] : [],
   });
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: W, height: H, deviceScaleFactor: 1 });
     let failed = 0;
     for (const name of wanted) {
+      const normalMode = {
+        'gameplay-arrival': 'arrival', 'gameplay-walk': 'walk', 'gameplay-point': 'point',
+        'gameplay-hunt': 'complete',
+      }[name];
+      if (normalMode) {
+        try {
+          const result = await runNormalGameplay(page, {
+            url, area, drop: drop || 'south-gate', breed, coat, quality,
+            tod: get('--tod', 'morning'), until: normalMode, out: outDir,
+            name, width: W, height: H, video: args.includes('--video'),
+            maxSeconds: Number(get('--seconds', '240')), uncapped: args.includes('--uncapped'),
+          });
+          const last = result.checkpoints.filter((c) => c.screenshot).at(-1);
+          if (last) copyFileSync(last.screenshot, `${outDir}/${name}.png`);
+          if (result.result !== 'passed') failed++;
+        } catch (error) { console.error(`${name}: ${error}`); failed++; }
+        continue;
+      }
       const spec = SHOTS[name];
       if (!spec) {
         console.error(`unknown shot: ${name}`);
@@ -260,10 +250,29 @@ async function main() {
       }
       const tod = Array.isArray(spec) ? spec[4] : spec.tod;
       await page.goto(
-        `${url}/index3d.html?capture=1&tod=${tod}&coat=${encodeURIComponent(coat)}&breed=${encodeURIComponent(breed)}&area=${encodeURIComponent(area)}${drop ? `&drop=${encodeURIComponent(drop)}` : ''}`,
+        `${url}/index3d.html?capture=1&tod=${tod}&coat=${encodeURIComponent(coat)}&breed=${encodeURIComponent(breed)}&area=${encodeURIComponent(area)}&quality=${quality}${drop ? `&drop=${encodeURIComponent(drop)}` : ''}`,
         { waitUntil: 'domcontentloaded' },
       );
       await page.waitForFunction('window.__ready3d === true', { timeout: 30000 });
+      const bootToken = await page.evaluate(() => (window.__evidenceBootToken = crypto.randomUUID()));
+      // Legacy compositions are asset inspections. They share normal hunt
+      // spawn/range/pace, but advance a controlled clock and stage a camera.
+      // Their labels and manifest must never imply normal gameplay evidence.
+      console.log(`asset-review ${name}: controlled clock and staged camera`);
+      await page.evaluate(() => {
+        const entry = window.__api3d.telemetry().camera;
+        window.__captureStep = (ticks) => {
+          for (let i = 0; i < ticks; i++) {
+            const h = window.__api3d.hunt();
+            const walk = h.dog.state !== 'pointing' ? 2.2 / 30 : 0;
+            const yaw = entry.yawDeg * Math.PI / 180;
+            window.__api3d.setPose(h.hunter.x - Math.sin(yaw) * walk,
+              h.hunter.z - Math.cos(yaw) * walk, entry.yawDeg, entry.pitchDeg);
+            window.__api3d.stepSim(1);
+          }
+        };
+        window.__api3d.stepSim(1);
+      });
       if (Array.isArray(spec)) {
         const [x, z, yaw, pitch] = spec;
         await page.evaluate(
@@ -302,12 +311,12 @@ async function main() {
               if (!still) return false;
               window.__api3d.renderOnce();
               const st = window.__dogAudit && window.__dogAudit.state();
-              if (!st) return false;
-              const stance = st.paws.filter((p) => p.i !== 0);
-              locked = stance.every((p) => p.gap > -0.06 && p.gap < 0.05);
+              // Point identity belongs to the simulation; paw quality is
+              // reported separately instead of discarding the valid state.
+              locked = still;
               return locked;
             };
-            window.__api3d.stepSim(240);
+            window.__captureStep(240);
             let ticks = 240;
             let h = hunt();
             let flushedThrough = 0;
@@ -324,7 +333,7 @@ async function main() {
                 const small = window.__api3d.triggerFlush();
                 if (small) {
                   flushedThrough++;
-                  window.__api3d.stepSim(800);
+                  window.__captureStep(800);
                   ticks += 800;
                   h = hunt();
                   lpx = null;
@@ -332,7 +341,7 @@ async function main() {
                 }
               }
               if (lockedPoint(h)) break;
-              window.__api3d.stepSim(15);
+              window.__captureStep(15);
               ticks += 15;
               h = hunt();
             }
@@ -500,13 +509,9 @@ async function main() {
               }
               return best;
             };
-            // LOCKED-POINT GATE (round 9): a point shot only fires when the
-            // sim dog is in a LOCKED point — state 'pointing' held across
-            // two consecutive probes with ~zero ground speed — AND every
-            // stance paw probe-verifies planted (|gap| inside tolerance,
-            // measured through the full transform chain by __dogAudit; the
-            // lifted foreleg, paw 0, is exempt by design). Stepping until
-            // this predicate is a pure function of the seed: deterministic.
+            // Observe the authoritative point across two probes. Foot
+            // quality is separate evidence: a contact defect or unavailable
+            // audit must not erase the point we are meant to inspect.
             let lpx = null;
             let lpz = null;
             let lastLock = null;
@@ -524,16 +529,17 @@ async function main() {
               // smoothing), then audit the paw markers against terrain.
               window.__api3d.renderOnce();
               const st = window.__dogAudit && window.__dogAudit.state();
-              if (!st) return false;
-              const stance = st.paws.filter((p) => p.i !== 0);
-              const planted = stance.every((p) => p.gap > -0.06 && p.gap < 0.05);
+              const stance = st?.paws?.filter((p) => p.i !== 0) ?? [];
+              const planted = stance.length === 3
+                ? stance.every((p) => p.gap > -0.06 && p.gap < 0.05)
+                : null;
               lastLock = {
                 still,
                 planted,
                 gaps: stance.map((p) => Number(p.gap.toFixed(4))),
               };
-              locked = planted;
-              return planted;
+              locked = still;
+              return locked;
             };
             const scentTarget = {
               'scent-checking': ['checking', 0.35],
@@ -567,12 +573,12 @@ async function main() {
             // Ordinary reviews skip the opening cast. Scent beats are short,
             // so probe them one authoritative tick at a time from frame 0.
             const initialTicks = scentTarget ? 0 : 240;
-            if (initialTicks > 0) window.__api3d.stepSim(initialTicks);
+            if (initialTicks > 0) window.__captureStep(initialTicks);
             let ticks = initialTicks;
             let h = hunt();
             while (!want(h) && ticks < maxTicks) {
               const step = scentTarget ? 1 : 15;
-              window.__api3d.stepSim(step);
+              window.__captureStep(step);
               ticks += step;
               h = hunt();
             }
@@ -624,8 +630,7 @@ async function main() {
             const vz = frameZ - camZ;
             const yawDeg = (Math.atan2(-vx, -vz) * 180) / Math.PI;
             window.__api3d.setPose(camX, camZ, yawDeg, camPitch);
-            // Capture-only lens for framed reads (gameplay-point): reduced
-            // FOV = slight lens length at honest follow range.
+            // Explicitly staged asset-review lens, recorded in metadata.
             if (fov && window.__dogAudit) window.__dogAudit.setFov(fov);
             window.__api3d.renderOnce();
             const reached = mode === 'point' ? locked : want(h);
@@ -637,7 +642,7 @@ async function main() {
           spec.base, spec.sim, spec.maxTicks, spec.dist, spec.spin ?? 0, spec.pitch ?? 0, tod, spec.fov ?? 0, spec.camAz ?? null, spec.broadsideDog ?? false,
         );
         if (!simInfo.reached) {
-          console.error(`  sim: ${name} never reached mode '${spec.sim}' in ${spec.maxTicks} ticks`);
+          console.error(`  asset-review: ${name} did not observe '${spec.sim}' in ${spec.maxTicks} ticks`);
           failed++;
         }
         console.log(
@@ -645,6 +650,12 @@ async function main() {
           `cam (${simInfo.cam.x.toFixed(1)}, ${simInfo.cam.z.toFixed(1)}) yaw ${simInfo.cam.yawDeg.toFixed(0)}, ` +
           `sim ${simInfo.simMs.avg.toFixed(3)}ms avg / ${simInfo.simMs.max.toFixed(2)}ms max per tick`,
         );
+        if (simInfo.lock && !simInfo.lock.planted) {
+          console.warn(simInfo.lock.planted === null
+            ? '  CONTACT UNVERIFIED: the current model did not provide three support probes.'
+            : '  CONTACT DEFECT: authoritative point exists; supporting paw clearance exceeds tolerance.');
+          if (args.includes('--require-contact')) failed++;
+        }
         if (simInfo.lock) {
           console.log(
             `  lock: still=${simInfo.lock.still} planted=${simInfo.lock.planted} ` +
@@ -733,11 +744,21 @@ async function main() {
       }
       await new Promise((r) => setTimeout(r, 400)); // settle a few frames
       const file = `${outDir}/${name}.png`;
-      await page.screenshot({ path: file });
+      const png = await page.screenshot({ path: file });
+      const imageMeasurement = await verifyEvidenceImage(page, png, bootToken);
+      const metadata = await page.evaluate(() => ({
+        telemetry: window.__api3d.telemetry(), hunt: window.__api3d.hunt(),
+        dog: window.__dogAudit?.state(),
+      }));
+      writeFileSync(`${outDir}/${name}.json`, JSON.stringify({
+        evidence: 'staged-asset-review', normalGameplayEvidence: false,
+        controlledClock: true, stagedCamera: true, spec, area, drop, breed, coat,
+        requestedQuality: quality, imageMeasurement, bootToken, ...metadata,
+      }, null, 2));
       const info = await page.evaluate(() => window.__api3d.info());
       console.log(`shot ${name} -> ${file} (${info.calls} calls, ${info.triangles} tris)`);
     }
-    if (failed > 0) process.exit(1);
+    if (failed > 0) process.exitCode = 1;
   } finally {
     await browser.close();
     if (server) server.kill('SIGTERM');

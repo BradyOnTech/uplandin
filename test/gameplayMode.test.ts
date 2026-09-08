@@ -109,5 +109,8 @@ describe('gameplay mode and shared hunt launch', () => {
 
   it('keeps the standalone 3D review fallback on the English Setter', () => {
     expect(resolveThreeHuntProfile('?breed=unknown', null).breedId).toBe('english-setter');
+    expect(resolveThreeHuntProfile('', null).breedId).toBe('gsp');
+    expect(createThreeHuntSetup('', () => 0.5, null).breed.id).toBe('gsp');
+    expect(resolveThreeHuntProfile('?breed=english-setter', null).breedId).toBe('english-setter');
   });
 });

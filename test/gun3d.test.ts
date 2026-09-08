@@ -27,13 +27,14 @@ describe('3D shotgun action', () => {
     const ctx = {
       scene: new THREE.Scene(),
       camera,
-      renderer: {},
+      renderer: { domElement: new EventTarget() },
       rng: () => 0.5,
       events: new EventTarget(),
       quality: 'high',
       timeOfDay: 'dawn',
       time: 0,
       fixedAlpha: 1,
+      paused: false,
       get: (id: string) => ({ hunt3d: hunt, birds, terrain }[id]),
     } as unknown as Ctx;
     const gun = new GunSystem();

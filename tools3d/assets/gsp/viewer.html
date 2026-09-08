@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GSP asset inspection · Uplandin</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#b4b6ab;color:#292d28;font:14px system-ui,sans-serif}canvas{display:block;width:100%;height:100%}aside{position:absolute;top:24px;left:24px;width:260px;padding:18px;background:#f7f6eeed;border-radius:10px;box-shadow:0 6px 22px #25322315}h1{font-size:17px;margin:0 0 6px}p{font-size:12px;line-height:1.5;margin:6px 0 18px;color:#595e54}label{display:flex;gap:8px;align-items:center;margin:12px 0}select,input{accent-color:#725239}select,button{border:1px solid #c8c9bf;background:#fffcf1;padding:6px;border-radius:4px;color:inherit}button{cursor:pointer}#status{margin-top:12px;font-size:11px;line-height:1.5;color:#666d60}footer{position:absolute;bottom:18px;left:24px;background:#f7f6eebf;padding:8px 12px;border-radius:6px;font-size:12px}
+</style>
+<canvas id="view"></canvas>
+<aside><h1>GSP asset inspection</h1><p>Studio diagnostic only. This does not show hunting behavior, game performance, or gameplay acceptance.</p>
+<label>Action <select id="clip"></select></label>
+<label>Detail <select id="lod"><option value="0">LOD0 · close</option><option value="1">LOD1 · working</option><option value="2">LOD2 · distant</option></select></label>
+<label>Speed <input id="speed" type="range" min="0" max="2" value="1" step="0.05"><span id="speedValue">1×</span></label>
+<label><input id="bones" type="checkbox">Show skeleton</label>
+<label><input id="contacts" type="checkbox">Show contact / mouth markers</label>
+<button id="side">Side</button> <button id="front">Front</button> <button id="rear">Rear</button><div id="status">Loading authored asset…</div></aside>
+<footer>Drag to orbit · Scroll to zoom · Simulation movement is intentionally absent.</footer>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+const renderer=new THREE.WebGLRenderer({canvas:document.querySelector('#view'),antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1;
+const scene=new THREE.Scene();scene.background=new THREE.Color('#b4b6ab');
+const camera=new THREE.PerspectiveCamera(35,innerWidth/innerHeight,.01,100);camera.position.set(1.55,1.25,2.5);
+const controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,.47,.08);controls.enableDamping=true;controls.update();
+scene.add(new THREE.HemisphereLight('#e1efff','#80715b',2.1));
+const sun=new THREE.DirectionalLight('#fff2dd',3);sun.position.set(-2,4,3);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-2;sun.shadow.camera.right=2;sun.shadow.camera.top=2;sun.shadow.camera.bottom=-2;sun.shadow.bias=-.0003;sun.shadow.normalBias=.01;scene.add(sun);
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.MeshStandardMaterial({color:'#a7ab9c',roughness:1}));ground.rotation.x=-Math.PI/2;ground.position.y=-.001;ground.receiveShadow=true;scene.add(ground);
+const manifest=await fetch('/models/gsp/manifest.json').then(r=>r.json());const select=document.querySelector('#clip');for(const clip of manifest.animations){const o=document.createElement('option');o.value=clip.name;o.textContent=clip.name.replaceAll('_',' ');select.append(o);}select.value='idle';
+let asset,mixer,helper,markers=[],clips,action;const loader=new GLTFLoader();
+function play(){if(!mixer)return;const next=mixer.clipAction(clips.find(x=>x.name===select.value));if(action&&action!==next)action.fadeOut(.18);next.reset().setEffectiveWeight(1).fadeIn(.18).play();action=next;}
+async function load(lod){const gltf=await loader.loadAsync(`/models/gsp/gsp-liver-white-lod${lod}.glb`);if(asset){scene.remove(asset,helper);asset.traverse(o=>{if(o.isMesh){o.geometry.dispose();for(const m of [].concat(o.material)){m.map?.dispose();m.dispose();}}});}
+asset=gltf.scene;asset.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});scene.add(asset);mixer=new THREE.AnimationMixer(asset);clips=gltf.animations;action=null;helper=new THREE.SkeletonHelper(asset);helper.visible=document.querySelector('#bones').checked;scene.add(helper);markers=[];
+asset.traverse(o=>{if(o.isBone&&(o.name.includes('Contact')||o.name==='MouthSocket')){const marker=new THREE.Mesh(new THREE.SphereGeometry(.008,8,6),new THREE.MeshBasicMaterial({color:o.name==='MouthSocket'?'#c35531':'#198e7b',depthTest:false}));marker.renderOrder=20;o.add(marker);markers.push(marker);marker.visible=document.querySelector('#contacts').checked;}});play();const entry=manifest.lods.find(x=>x.lod===Number(lod));document.querySelector('#status').textContent=`${entry.triangles.toLocaleString()} triangles · ${manifest.bones.length} bones · ${clips.length} actions · ${(entry.bytes/1024/1024).toFixed(2)} MiB`;
+window.__gspAsset={asset,mixer,clips,renderer,scene,camera,manifest};}
+select.onchange=play;document.querySelector('#lod').onchange=e=>load(e.target.value);document.querySelector('#bones').onchange=e=>helper.visible=e.target.checked;document.querySelector('#contacts').onchange=e=>markers.forEach(m=>m.visible=e.target.checked);
+document.querySelector('#speed').oninput=e=>{mixer.timeScale=Number(e.target.value);document.querySelector('#speedValue').textContent=e.target.value+'×';};
+for(const [id,pos] of [['side',[2.5,.75,.04]],['front',[0,.75,2.6]],['rear',[0,.8,-2.6]]])document.querySelector('#'+id).onclick=()=>{camera.position.set(...pos);controls.target.set(0,.47,.06);controls.update();};
+onresize=()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);};
+const clock=new THREE.Clock();function frame(){requestAnimationFrame(frame);mixer?.update(Math.min(clock.getDelta(),.08));controls.update();renderer.render(scene,camera);}await load(0);frame();
+</script>
+</html>

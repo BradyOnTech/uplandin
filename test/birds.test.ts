@@ -205,6 +205,30 @@ describe('flushCovey', () => {
 describe('relightSurvivors (hunt the singles)', () => {
   const bounds = { x: 0, y: 0, w: 1200, h: 700 };
 
+  it('keeps observed landings in their exact cover without a second disappearance roll', () => {
+    const b = bird({ id: 1, state: 'escaped' });
+    const flyingAway = bird({ id: 2, state: 'escaped' });
+    const landing = { x: 774, y: 321 };
+    const relit = relightSurvivors([b, flyingAway], [1, 2], bounds, () => .99, 1,
+      [{ x: 750, y: 300, w: 80, h: 60 }], new Map([[1, landing]]));
+    expect(relit).toEqual([b]);
+    expect(b.pos).toEqual(landing);
+    expect(b.pos).not.toBe(landing);
+    expect(b.single).toBe(true);
+    expect(flyingAway.state).toBe('escaped');
+  });
+
+  it('never invents a replacement landing for missing, invalid, open-ground or out-of-property contacts', () => {
+    const birds = Array.from({ length: 5 }, (_, i) => bird({ id: i + 1, state: 'escaped' }));
+    const landings = new Map([
+      [1, { x: NaN, y: 320 }], [2, { x: 600, y: 350 }],
+      [3, { x: 1201, y: 350 }], [4, { x: 760, y: Infinity }],
+    ]);
+    expect(relightSurvivors(birds, [1, 2, 3, 4, 5], bounds, () => 0, 1,
+      [{ x: 750, y: 300, w: 80, h: 60 }], landings)).toEqual([]);
+    expect(birds.every(b => b.state === 'escaped')).toBe(true);
+  });
+
   it('relights survivors as tight-holding singles with real ground behind them', () => {
     const b = bird({ id: 1, pos: { x: 600, y: 350 }, state: 'escaped', runs: true });
     const mate = bird({ id: 2, pos: { x: 620, y: 350 }, state: 'escaped' });

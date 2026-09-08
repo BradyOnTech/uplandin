@@ -3,7 +3,7 @@ import { getArea } from '../src/game/areas';
 import { addDogToKennel, emptyCareer, setHomeRegion } from '../src/game/career';
 import { settleCareerHunt } from '../src/game/huntResults';
 import { mulberry32 } from '../src/game/math';
-import { createHunt } from '../src/game/state';
+import { createHunt, endFieldSession } from '../src/game/state';
 
 describe('shared career hunt settlement', () => {
   it('awards the same player and dog regardless of presentation adapter', () => {
@@ -23,6 +23,22 @@ describe('shared career hunt settlement', () => {
     expect(result.hunterGained).toBe(5);
     expect(result.weeks).toBe(1);
     expect(result.career.date.week).toBe(1);
+  });
+
+  it('records only actual escapes when an exploratory field session ends', () => {
+    const added = addDogToKennel(emptyCareer(), 'Millie', 'gsp');
+    const hunt = createHunt(getArea('quail-fields'), mulberry32(12));
+    hunt.birds[0].state = 'escaped';
+    hunt.escaped = 1;
+    hunt.birds[1].state = 'retrieved';
+    hunt.downed = 1;
+    hunt.dogWork[0].retrieves = 1;
+    expect(endFieldSession(hunt)).toBe(true);
+    const result = settleCareerHunt(added.career, hunt, [added.dog]);
+    expect(result.career.areas['quail-fields'].escaped).toBe(1);
+    expect(result.career.downed).toBe(1);
+    expect(result.dogAwards[0].gained).toBe(1);
+    expect(hunt.birds.filter((bird) => bird.state === 'hidden').length).toBeGreaterThan(0);
   });
 
   it('applies protected-hen fines before hunter XP', () => {

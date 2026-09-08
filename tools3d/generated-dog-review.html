@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GSP movement study</title>
+<style>body{margin:0;background:#46504b;color:#f3eee2;font:15px system-ui}canvas{display:block}aside{position:absolute;left:20px;top:20px;max-width:350px;padding:18px;background:#24352eee;border-radius:12px}h1{font-size:22px;margin:0 0 10px}p{line-height:1.5;margin:10px 0}button,select{font:inherit;padding:7px 12px;background:#ebe3cf;color:#263b30;border:0;border-radius:5px;margin:3px}button[aria-pressed=true]{background:#d6b56a}label{display:block;margin-top:10px}small{display:block;margin-top:12px;color:#bfc7bc}@media(max-width:600px){aside{max-width:270px;padding:12px;left:10px;top:10px}h1{font-size:18px}}</style>
+<aside><h1>GSP movement study</h1><p>Drag to look around. Review the silhouette and how the legs bend.</p><div id="poses"><button data-pose="stand">Stand</button><button data-pose="point">Point</button><button data-pose="walk">Walk</button><button data-pose="trot">Trot</button><button data-pose="canter">Canter</button><button data-pose="gallop">Gallop</button></div><button id="play" aria-pressed="true">Pause motion</button><label>Detail <select id="detail"><option value="high">High</option><option value="lite">Lite</option></select></label><label>Cycle <input id="phase" type="range" min="0" max="1" step="0.001" value="0"></label><small>Prototype. Level-ground study; terrain contact, transitions and faster gaits are still in development.</small></aside>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { createGeneratedGsp } from '../src/three/dogs/generatedGsp.ts';
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;document.body.append(renderer.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x46504b);scene.add(new THREE.HemisphereLight(0xe9eee5,0x665d49,2));
+const sun=new THREE.DirectionalLight(0xffe6bc,2.7);sun.position.set(3,5,4);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);Object.assign(sun.shadow.camera,{left:-2,right:2,top:2,bottom:-2,near:.1,far:15});sun.shadow.bias=-.0001;scene.add(sun);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(30,30),new THREE.MeshLambertMaterial({color:0x777865}));floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scene.add(floor);
+const grid=new THREE.GridHelper(20,40,0x666c57,0x6c725b);grid.position.y=.001;scene.add(grid);
+const camera=new THREE.PerspectiveCamera(35,1,.01,50);camera.position.set(2,1.05,2);const controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,.4,0);controls.minDistance=1;controls.maxDistance=9;controls.maxPolarAngle=Math.PI*.49;controls.update();
+let dog=createGeneratedGsp('high'),pose='trot',playing=true,cycle=0,travel=0,stride=.6768,last=performance.now();scene.add(dog.root);
+const phase=document.querySelector('#phase');
+const drawPose=()=>{if(pose!=='stand'&&pose!=='point'){const sample=dog.setLocomotion(pose,cycle);stride=sample.stride;grid.position.z=-travel%0.5;}else{dog.setPose(pose);grid.position.z=0;}document.querySelectorAll('[data-pose]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.pose===pose)));};
+document.querySelector('#poses').onclick=e=>{if(!e.target.dataset.pose)return;pose=e.target.dataset.pose;cycle=0;travel=0;drawPose();};
+document.querySelector('#play').onclick=e=>{playing=!playing;e.target.textContent=playing?'Pause motion':'Play motion';e.target.setAttribute('aria-pressed',String(playing));};
+phase.oninput=()=>{cycle=Number(phase.value);travel=cycle*stride;playing=false;document.querySelector('#play').textContent='Play motion';document.querySelector('#play').setAttribute('aria-pressed','false');drawPose();};
+document.querySelector('#detail').onchange=e=>{dog.dispose();dog=createGeneratedGsp(e.target.value);scene.add(dog.root);drawPose();};
+function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();}addEventListener('resize',resize);resize();
+function frame(now){const dt=Math.min((now-last)/1000,.05);last=now;if(playing&&(pose!=='stand'&&pose!=='point')){const step=dt*({walk:1.1,trot:2.2,canter:2.6,gallop:3.4}[pose]);cycle=(cycle+step)%1;travel+=step*stride;drawPose();}phase.value=String(cycle);renderer.render(scene,camera);requestAnimationFrame(frame);}drawPose();requestAnimationFrame(frame);
+window.reviewState=()=>({pose,playing,cycle,...dog.stats});
+</script></html>

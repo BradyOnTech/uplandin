@@ -42,6 +42,85 @@ function walkForward(ctx: Ctx, distance: number): void {
 describe('Hunt3DSystem live start', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it('ends a quiet Quail session without releasing hidden birds or advancing the dog afterward', () => {
+    vi.stubGlobal('location', { search: '?breed=gsp&area=quail-fields' });
+    const ctx = liveCtx();
+    const hunt = liveHunt();
+    hunt.init(ctx);
+    hunt.fixedUpdate(ctx, 1000 / 30);
+    const before = structuredClone(hunt.huntState());
+    const dogPosition = { ...hunt.dog().pos };
+    hunt.endHunt();
+    walkForward(ctx, 100);
+    for (let tick = 0; tick < 120; tick++) hunt.fixedUpdate(ctx, 1000 / 30);
+    expect(hunt.huntState().fieldSessionEnded).toBe(true);
+    expect(hunt.huntState().birds).toEqual(before.birds);
+    expect(hunt.huntState().escaped).toBe(0);
+    expect(hunt.dog().pos).toEqual(dogPosition);
+  });
+
+  it.each(['south-gate', 'west-track'])(
+    'replays the same GSP hunt in capture and ordinary play from %s',
+    (drop) => {
+      const query = `?breed=gsp&area=quail-fields&drop=${drop}`;
+      vi.stubGlobal('location', { search: query });
+      const normalCtx = liveCtx();
+      const normal = liveHunt();
+      normal.init(normalCtx);
+      vi.stubGlobal('location', { search: `${query}&capture=1` });
+      const captureCtx = liveCtx();
+      const capture = liveHunt();
+      capture.init(captureCtx);
+
+      // Recording freezes the clock, not spawn, working radius, pace or
+      // scent decisions. Replay the same camera input at the real adapter
+      // seam, including the initial heel and the first walking cast.
+      for (let tick = 0; tick < 900; tick++) {
+        if (tick > 30) {
+          walkForward(normalCtx, 2.2 / 30);
+          walkForward(captureCtx, 2.2 / 30);
+        }
+        normal.fixedUpdate(normalCtx, 1000 / 30);
+        capture.step(captureCtx, 1);
+        expect(capture.dog().pos).toEqual(normal.dog().pos);
+        expect(capture.dog().state).toBe(normal.dog().state);
+        expect(capture.dog().scentStage).toBe(normal.dog().scentStage);
+        // Bird ids are process-global; compare each hunt's corresponding
+        // birds/outcome rather than the allocation sequence of two hunts.
+        expect(capture.lastFlushInfo()?.distPx).toEqual(normal.lastFlushInfo()?.distPx);
+        expect(capture.lastFlushInfo()?.ids.length).toEqual(normal.lastFlushInfo()?.ids.length);
+        expect(capture.huntState().birds.map((bird) => bird.state)).toEqual(
+          normal.huntState().birds.map((bird) => bird.state),
+        );
+      }
+    },
+  );
+
+  it('continues handling the dog during an airborne Quail rise when a capture clock advances', () => {
+    vi.stubGlobal('location', { search: '?breed=gsp&capture=1' });
+    const ctx = liveCtx();
+    const hunt = liveHunt();
+    hunt.init(ctx);
+    hunt.step(ctx, 1);
+    walkForward(ctx, 2);
+    for (let tick = 0; tick < 1800 && hunt.dog().state !== 'pointing'; tick++) {
+      walkForward(ctx, 2.2 / 30);
+      hunt.step(ctx, 1);
+    }
+    expect(hunt.dog().state).toBe('pointing');
+    expect(hunt.triggerFlush(ctx)).not.toBeNull();
+    const get = ctx.get.bind(ctx);
+    ctx.get = ((id: string) => id === 'birds' ? { isRiseActive: () => true } : get(id)) as Ctx['get'];
+    const position = { ...hunt.dog().pos };
+    walkForward(ctx, -10); // Give the recalled dog a meaningful return distance.
+    const recall = vi.fn().mockReturnValue(false).mockReturnValueOnce(true);
+    const player = ctx.get('player') as unknown as { consumeRecall: () => boolean };
+    player.consumeRecall = recall;
+    hunt.step(ctx, 90);
+    expect(recall).toHaveBeenCalledTimes(90);
+    expect(Math.hypot(hunt.dog().pos.x-position.x,hunt.dog().pos.y-position.y)).toBeGreaterThan(.1);
+  });
+
   it('puts the dog within a visible working distance of the player on the first live tick', () => {
     vi.stubGlobal('location', { search: '' });
     const ctx = liveCtx();
@@ -92,6 +171,24 @@ describe('Hunt3DSystem live start', () => {
     const forwardDistance =
       (dog.x - ctx.camera.position.x) * forwardX + (dog.z - ctx.camera.position.z) * forwardZ;
     expect(forwardDistance).toBeGreaterThan(0);
+  });
+
+  it.each(['south-gate', 'west-track'])('keeps a searching GSP with the handler through broad cover at %s', drop => {
+    vi.stubGlobal('location', { search: `?area=quail-fields&breed=gsp&seed=41&drop=${drop}` });
+    const ctx = liveCtx(), hunt = liveHunt(); hunt.init(ctx);
+    hunt.fixedUpdate(ctx, 1000 / 30);
+    let searchingSamples = 0;
+    for (let i = 0; i < 1800; i++) {
+      walkForward(ctx, 2.2 / 30); hunt.fixedUpdate(ctx, 1000 / 30);
+      if (hunt.dog().state === 'tracking' || hunt.dog().state === 'pointing') break;
+      if (hunt.dog().state !== 'quartering') continue;
+      searchingSamples++;
+      const dog = hunt.dogWorld({ x: 0, z: 0 });
+      // Working radius plus its forward anchor and a turning allowance.
+      // Scent tracking/pointing may legitimately hold behind a moving hunter.
+      expect(Math.hypot(dog.x - ctx.camera.position.x, dog.z - ctx.camera.position.z), JSON.stringify({ tick: i, dog, gait: hunt.dog().gait, heading: hunt.dog().heading, hunter: ctx.camera.position })).toBeLessThan(42);
+    }
+    expect(searchingSamples).toBeGreaterThan(60);
   });
 
   it('lets a walking player naturally reach a dog search-to-point sequence', () => {
@@ -218,6 +315,7 @@ describe('Hunt3DSystem live start', () => {
     hunt.init(ctx);
     hunt.fixedUpdate(ctx, 1000 / 30);
 
+    const previousHeading = hunt.dog().heading;
     walkForward(ctx, 2);
     hunt.fixedUpdate(ctx, 1000 / 30);
     const previous = hunt.dogRenderWorld(0, { x: 0, z: 0 });
@@ -227,6 +325,28 @@ describe('Hunt3DSystem live start', () => {
     expect(middle.x).toBeCloseTo((previous.x + current.x) / 2, 8);
     expect(middle.z).toBeCloseTo((previous.z + current.z) / 2, 8);
     expect(hunt.dogWorld({ x: 0, z: 0 })).toEqual(current);
+    const headingDelta = Math.atan2(Math.sin(hunt.dog().heading - previousHeading), Math.cos(hunt.dog().heading - previousHeading));
+    expect(hunt.dogRenderHeading(0)).toBe(previousHeading);
+    expect(hunt.dogRenderHeading(0.5)).toBeCloseTo(previousHeading + headingDelta / 2, 8);
+    expect(Math.sin(hunt.dogRenderHeading(1))).toBeCloseTo(Math.sin(hunt.dog().heading), 8);
+  });
+
+  it('derives travelling orientation from the authoritative displacement snapshots', () => {
+    vi.stubGlobal('location', { search: '?breed=gsp&area=quail-fields' });
+    const ctx = liveCtx(); const hunt = liveHunt(); hunt.init(ctx);
+    hunt.fixedUpdate(ctx, 1000 / 30); walkForward(ctx, 2);
+    let movingSamples = 0;
+    for (let n = 0; n < 120; n++) {
+      const before = { ...hunt.dog().pos };
+      hunt.fixedUpdate(ctx, 1000 / 30);
+      const dx = hunt.dog().pos.x - before.x, dy = hunt.dog().pos.y - before.y;
+      if (dx * dx + dy * dy <= 0.000001) continue;
+      movingSamples++;
+      const travel = Math.atan2(dy, dx);
+      expect(Math.sin(hunt.dogRenderTravelHeading(1))).toBeCloseTo(Math.sin(travel), 8);
+      expect(Math.cos(hunt.dogRenderTravelHeading(1))).toBeCloseTo(Math.cos(travel), 8);
+    }
+    expect(movingSamples).toBeGreaterThan(20);
   });
 
   it('keeps physical presentation pace ordered track < trot < run', () => {

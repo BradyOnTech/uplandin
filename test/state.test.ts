@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AREAS, areaBirdCount } from '../src/game/areas';
 import type { Bird } from '../src/game/birds';
-import { birdsRemaining, createHunt, endHuntEarly, huntComplete, type HuntState } from '../src/game/state';
+import { birdsRemaining, createHunt, endFieldSession, endHuntEarly, huntComplete, type HuntState } from '../src/game/state';
 
 function huntWith(states: Bird['state'][]): HuntState {
   return {
@@ -74,6 +74,26 @@ describe('hunt bookkeeping', () => {
     const hunt = huntWith(['retrieved', 'escaped']);
     expect(endHuntEarly(hunt)).toBe(0);
     expect(hunt.escaped).toBe(0);
+  });
+
+  it('closes a quiet field session without converting hidden birds to escapes', () => {
+    const hunt = huntWith(['hidden', 'hidden']);
+    expect(endFieldSession(hunt)).toBe(true);
+    expect(huntComplete(hunt)).toBe(true);
+    expect(hunt.escaped).toBe(0);
+    expect(birdsRemaining(hunt)).toBe(2);
+    expect(endFieldSession(hunt)).toBe(true);
+    expect(hunt.escaped).toBe(0);
+  });
+
+  it.each(['flushed', 'downed', 'carried'] as const)('cannot close a field session with a %s bird', (state) => {
+    const hunt = huntWith(['hidden', state]);
+    expect(endFieldSession(hunt)).toBe(false);
+    expect(hunt.fieldSessionEnded).toBeUndefined();
+    expect(huntComplete(hunt)).toBe(false);
+    hunt.birds[1].state = 'retrieved';
+    expect(endFieldSession(hunt)).toBe(true);
+    expect(huntComplete(hunt)).toBe(true);
   });
 
   it('createHunt builds a hunt from the area config', () => {

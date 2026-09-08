@@ -412,6 +412,38 @@ describe('Dog', () => {
   });
 
   describe('breaking and marking', () => {
+    it('watches the complete continuous covey through flight and falling, then retrieves', () => {
+      const dog = makeDog(100, 100);
+      const a = birdAt(112, 100, { id: 1, state: 'flushed' });
+      const b = birdAt(114, 100, { id: 2, state: 'flushed' });
+      dog.onFlush(() => .999, a.pos, [a.id, b.id]);
+      const origin = { ...dog.pos };
+      run(dog, [a,b], 30);
+      expect(dog.state).toBe('marking'); expect(dog.pos).toEqual(origin); expect(dog.gait).toBe('still');
+      a.state = 'downed'; a.fallPending = true; b.state = 'escaped';
+      run(dog, [a,b], 10);
+      expect(dog.state).toBe('marking'); expect(dog.pos).toEqual(origin);
+      a.fallPending = false; run(dog, [a,b], 1);
+      expect(dog.state).toBe('retrieving'); expect(dog.needsSearch).toBe(false);
+    });
+
+    it('lets a handler recall a marking dog and gives up the marked-fall advantage', () => {
+      const dog = makeDog(100,100); const bird = birdAt(140,100,{id:1,state:'flushed'});
+      dog.onFlush(() => .999,bird.pos,[bird.id]);
+      dog.update(50,[bird],{hunterPos:{x:200,y:100},recall:true});
+      expect(dog.state).toBe('recalled'); expect(dog.needsSearch).toBe(true);
+      expect(dog.pos.x).toBeGreaterThan(100);
+    });
+
+    it('keeps a breaking dog moving and does not abandon a carried bird for another flush', () => {
+      const dog = makeDog(100,100); const bird = birdAt(140,100,{id:1,state:'flushed'});
+      expect(dog.onFlush(() => 0,bird.pos,[bird.id])).toBe(true);
+      run(dog,[bird],3); expect(dog.pos.x).toBeGreaterThan(100); expect(dog.needsSearch).toBe(true);
+      dog.state='retrieving'; dog.carryingBirdId=42;
+      expect(dog.onFlush(() => 0,bird.pos,[bird.id])).toBe(false);
+      expect(dog.state).toBe('retrieving'); expect(dog.carryingBirdId).toBe(42);
+    });
+
     it('breaks chase on a forced roll and bumps birds it passes', () => {
       const dog = makeDog(100, 100);
       const flushedBird = birdAt(140, 100, { id: 1, state: 'flushed' });
