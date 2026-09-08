@@ -106,6 +106,8 @@ export class FieldInterface {
       if (mapToggle) mapToggle.hidden = true;
       document.getElementById('field-map')?.setAttribute('hidden', '');
       document.getElementById('end-hunt')!.hidden = true;
+      document.getElementById('hunt-hud')?.setAttribute('hidden', '');
+      document.getElementById('controls')?.setAttribute('hidden', '');
       document.getElementById('hunt-again')?.focus();
     }, { signal });
     const quality = document.getElementById('quality-setting') as HTMLSelectElement;

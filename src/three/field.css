@@ -88,6 +88,17 @@ input { accent-color:var(--gold); }
 #hunt-summary h2 { font:500 32px/1.1 Georgia,serif; margin:0 0 22px; text-transform:none; }
 #hunt-summary-copy { color:#d4dccc; font-size:14px; line-height:1.85; }
 #hunt-summary button { margin:24px 8px 0 0; }
+.field-notes-location { margin:-10px 0 22px; color:#aeb8a2; font-size:12px; text-wrap:pretty; }
+.field-notes-bag { display:flex; align-items:baseline; gap:12px; margin-bottom:24px; }
+.field-notes-bag strong { font:500 64px/1 Georgia,serif; color:#f2e7c8; font-variant-numeric:tabular-nums; }
+.field-notes-bag span { color:#d4dccc; font-size:15px; }
+.field-notes-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:0; padding:18px 0; box-shadow:0 -1px #ffffff16,0 1px #ffffff16; }
+.field-notes-stats dt { color:#aeb8a2; font-size:11px; line-height:1.5; }
+.field-notes-stats dd { margin:5px 0 0; font-size:16px; color:#eee8d5; font-variant-numeric:tabular-nums; }
+.field-notes-note,.field-notes-career { margin:20px 0 0; font-size:13px; line-height:1.6; text-wrap:pretty; }
+#hunt-summary { max-height:calc(100dvh - 32px); overflow-y:auto; box-sizing:border-box; }
+#hunt-summary h2 { text-wrap:balance; }
+#hunt-summary button { min-height:44px; }
 #hunt-again { background:var(--gold); color:var(--ink); }
 #field-map { position:fixed; z-index:12; inset:0; display:grid; place-items:center; padding:max(22px,env(safe-area-inset-top)) max(22px,env(safe-area-inset-right)) max(22px,env(safe-area-inset-bottom)) max(22px,env(safe-area-inset-left)); background:rgba(13,24,19,.78); backdrop-filter:blur(5px); }
 .field-map-card { width:min(780px,100%); max-height:calc(100vh - 44px); padding:22px; border:1px solid #f1e6bd24; border-radius:16px; background:linear-gradient(145deg,#263a2feF,#18261feF); box-shadow:0 24px 100px #0008,inset 0 1px #fff1; }

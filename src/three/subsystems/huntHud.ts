@@ -1,6 +1,7 @@
 import { huntComplete } from '../../game/state';
 import { nextHuntUrl } from '../../game/huntSeed';
 import { huntingDoctrine } from '../../game/huntDoctrine';
+import { renderFieldNotes } from '../fieldNotes';
 import { dogRelativeBearing, dogWorkLabel, fieldCompassHeading, fieldSearchGuidance, pointApproachCue } from '../dogLocator';
 import type { Ctx, Subsystem } from '../engine';
 import type { BirdsSystem } from './birds';
@@ -130,7 +131,7 @@ export class HuntHudSystem implements Subsystem {
     if (this.summary) this.summary.hidden = true;
     const options = { signal: this.abort.signal };
     document.getElementById('hunt-again')?.addEventListener('click', () => {
-      if (this.hunt.huntState().areaId === 'quail-fields') location.assign(nextHuntUrl(location.href));
+      if (['quail-fields', 'pheasant-coverts'].includes(this.hunt.huntState().areaId)) location.assign(nextHuntUrl(location.href));
       else location.reload();
     }, options);
     document.getElementById('hunt-menu')?.addEventListener('click', () => location.assign('./index.html'), options);
@@ -276,7 +277,12 @@ export class HuntHudSystem implements Subsystem {
           ? ` · ${careerResult.dogAwards.map((award) => `${award.name} +${award.gained} XP`).join(' · ')}` +
             ` · hunter +${careerResult.hunterGained} XP · ${careerResult.weeks} week${careerResult.weeks === 1 ? '' : 's'} passed`
           : '';
-        this.summaryCopy.textContent = base + career;
+        if (hunt.areaId === 'pheasant-coverts') {
+          const title = this.summary?.querySelector('h2');
+          if (title) title.textContent = 'Field notes';
+          renderFieldNotes(this.summaryCopy, hunt, this.hunt.dogCount(), this.fieldTime,
+            this.hunt.areaConfig().name, this.hunt.dropPoint().name, career);
+        } else this.summaryCopy.textContent = base + career;
       }
       if (this.summary) this.summary.hidden = false;
       ctx.events.dispatchEvent(new Event('hunt-complete'));

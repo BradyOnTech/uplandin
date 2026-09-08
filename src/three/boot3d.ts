@@ -41,7 +41,7 @@ import {
 
 // Persist this visit's seed in its URL so display changes and reloads preserve
 // its hunt. Hunt again removes it; the following boot creates a fresh visit.
-if (resolveThreeHuntArea(location.search).id === 'quail-fields') {
+if (['quail-fields', 'pheasant-coverts'].includes(resolveThreeHuntArea(location.search).id)) {
   const seeded = prepareHuntUrl(location.href);
   if (seeded.href !== location.href) history.replaceState(null, '', seeded);
 }
