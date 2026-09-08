@@ -299,6 +299,9 @@ export class PropertyHabitatSystem implements Subsystem {
   private matrix = new THREE.Matrix4();
   private color = new THREE.Color();
   private wind = { value: 0 };
+  private obstacles: { x: number; z: number; radius: number }[] = [];
+
+  collisionCircles(): readonly { x: number; z: number; radius: number }[] { return this.obstacles; }
 
   constructor(private readonly landscape: LandscapeModel) {}
 
@@ -499,6 +502,11 @@ export class PropertyHabitatSystem implements Subsystem {
           this.rotation.multiply(this.yaw);
           this.scale.setScalar(item.scale);
           if (kind === 'trunk') this.scale.set(item.scale * (woodland ? .16 : .62), item.scale * 1.3, item.scale * (woodland ? .16 : .62));
+          if (woodland && kind === 'trunk') {
+            // Match the rooted cylinder's widest radius; rendering distance
+            // and quality must never remove physical timber from the hunt.
+            this.obstacles.push({ x: item.x, z: item.z, radius: .28 * this.scale.x });
+          }
           if (kind === 'canopy') this.scale.set(item.scale * 1.2, item.scale * .95, item.scale);
           if (kind === 'cactus') this.scale.set(item.scale, item.scale, item.scale);
           if (kind === 'log') this.scale.set(item.scale, item.scale * .72, item.scale * .72);
@@ -529,6 +537,7 @@ export class PropertyHabitatSystem implements Subsystem {
   dispose(ctx: Ctx): void {
     for (const mesh of this.meshes) ctx.scene.remove(mesh);
     this.meshes.length = 0;
+    this.obstacles.length = 0;
     for (const geometry of this.geometries) geometry.dispose();
     for (const material of this.materials) material.dispose();
     this.geometries.length = 0; this.materials.length = 0;

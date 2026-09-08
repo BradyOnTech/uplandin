@@ -1,4 +1,5 @@
 import type { Vec2 } from './types';
+import { ObstacleIndex } from './obstacleIndex';
 
 export interface DogObstacle { x: number; y: number; radius: number }
 
@@ -8,15 +9,23 @@ export interface DogObstacle { x: number; y: number; radius: number }
 export class DogObstacleMotion {
   private side = 1;
   private detouring = false;
+  private indexed?: readonly DogObstacle[];
+  private index?: ObstacleIndex;
   move(pos: Vec2, heading: number, distance: number, obstacles: readonly DogObstacle[], bodyRadius = .3): number {
     if (!obstacles.length || distance <= 0) {
       pos.x += Math.cos(heading)*distance; pos.y += Math.sin(heading)*distance; return heading;
     }
     const steps=Math.max(1,Math.ceil(distance/.18)),step=distance/steps;
+    if (this.indexed !== obstacles) {
+      this.indexed = obstacles;
+      this.index = new ObstacleIndex(obstacles);
+    }
+    // Include every possible detour over this call, plus its lookahead.
+    const nearby = this.index!.nearby(pos.x, pos.y, distance + .75 + bodyRadius);
     let travel=heading;
     const clear=(angle:number,length:number) => {
       const dx=Math.cos(angle)*length,dy=Math.sin(angle)*length;
-      for(const o of obstacles) {
+      for(const o of nearby) {
         const ox=pos.x-o.x,oy=pos.y-o.y,r=o.radius+bodyRadius;
         const before=ox*ox+oy*oy;
         if(before<r*r-1e-8) {

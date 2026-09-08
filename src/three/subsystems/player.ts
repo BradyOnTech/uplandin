@@ -4,6 +4,7 @@ import type { LandscapeModel } from '../../game/landscape';
 import type { Ctx, Subsystem } from '../engine';
 import type { TerrainSystem } from './terrain';
 import type { Hunt3DSystem } from './hunt3d';
+import { ObstacleIndex } from '../../game/obstacleIndex';
 
 const WALK_SPEED = 2.2;
 const SPRINT_MULT = 1.9;
@@ -29,6 +30,7 @@ export class PlayerSystem implements Subsystem {
   private scenery?: Subsystem & { collisionCircles?: () => readonly { x: number; z: number; radius: number }[] };
   private landmarks?: Subsystem & { collisionCircles?: () => readonly { x: number; z: number; radius: number }[] };
   private hunt?: Hunt3DSystem;
+  private obstacleIndex?: ObstacleIndex;
   constructor(private readonly landscape?: LandscapeModel) {}
 
   init(ctx: Ctx): void {
@@ -141,10 +143,13 @@ export class PlayerSystem implements Subsystem {
               const areaId = this.landscape?.area.id;
               if (areaId === 'chukar-ridge') this.scenery = ctx.get('chukar-environment');
               else if (areaId === 'quail-fields') this.scenery = ctx.get('quail-environment');
+              else if (areaId === 'grouse-woods') this.scenery = ctx.get('property-habitat');
             } catch { /* environment initializes after input */ }
           }
           this.landmarks ??= ctx.get('landmarks');
-          const obstacles = [this.scenery?.collisionCircles?.() ?? [], this.landmarks.collisionCircles?.() ?? []];
+          this.obstacleIndex ??= new ObstacleIndex([
+            ...(this.scenery?.collisionCircles?.() ?? []), ...(this.landmarks.collisionCircles?.() ?? []),
+          ].map(circle => ({ x: circle.x, y: circle.z, radius: circle.radius })));
           // A long frame can put both endpoints outside a thin fence. Resolve
           // along the movement path before a step can reach the opposite side.
           const steps = Math.max(1, Math.ceil(this.vel.length() * dt / COLLISION_STEP_METERS));
@@ -157,12 +162,12 @@ export class PlayerSystem implements Subsystem {
             // against its neighbor before the next movement step.
             for (let pass = 0; pass < 4; pass++) {
               let corrected = false;
-              for (const circles of obstacles) for (const circle of circles) {
-                const dx = this.pos.x - circle.x, dz = this.pos.z - circle.z;
+              for (const circle of this.obstacleIndex.nearby(this.pos.x, this.pos.z, .32)) {
+                const dx = this.pos.x - circle.x, dz = this.pos.z - circle.y;
                 const distance = Math.hypot(dx, dz), radius = circle.radius + 0.32;
                 if (distance < radius - 1e-7) {
                   if (distance < 0.001) { this.pos.x = stepX; this.pos.z = stepZ; }
-                  else { this.pos.x = circle.x + dx / distance * radius; this.pos.z = circle.z + dz / distance * radius; }
+                  else { this.pos.x = circle.x + dx / distance * radius; this.pos.z = circle.y + dz / distance * radius; }
                   corrected = true;
                 }
               }
@@ -183,5 +188,5 @@ export class PlayerSystem implements Subsystem {
     }
     this.place(ctx);
   }
-  dispose(): void { this.abort.abort(); this.keys.clear(); this.showStick(); }
+  dispose(): void { this.abort.abort(); this.keys.clear(); this.obstacleIndex = undefined; this.showStick(); }
 }

@@ -61,6 +61,14 @@ Reviewed the high-quality South Gate and walked the lightweight West Track for 1
 
 The forest now constrains sightlines, but the ground is still too bare, crowns repeat visibly, and this habitat layer does not yet supply tree collision. The walk showed the dog working timber openings; it did not validate a complete grouse flush, shot, and retrieve. Those remain substantive work, alongside the other maps and deferred presentation phases.
 
+**Solid woodland pass**
+
+Grouse habitat now supplies trunk collision circles from the same placements and base radius used for rendering. Both quality tiers retain identical physical trees, including trees whose rendering cells are distant or hidden. The hunter and dog consume these footprints. A shared static spatial index narrows movement checks to nearby obstacles; it also supports existing rock, fence, and pond circles, including large circles spanning several cells.
+
+Added checks for index coverage across negative coordinates and large pond boundaries, actual woodland trunk counts and quality parity, a dog detour around a real tree placement, and a hunter sprint into one. Existing fence tunneling, sliding, prop detour, and retrieval checks remain passing. The full suite passes 537 tests across 75 files, and compilation and the production build pass.
+
+Walked 66 yards from West Track using normal forward input in Lightweight mode. The dog continued working the timber and the world remained responsive. Captured `output/playwright/grouse-solid-timber-walk.png`. The sampled simulation average was about 0.068 milliseconds, with one 2.7-millisecond budget warning; this spike remains recorded. The frame interval's 95th percentile was 10.1 milliseconds on this desktop. No browser errors occurred. This walk does not prove mobile performance, complex forest navigation, or a complete encounter. Forest-floor detail, less repetitive crowns, and a full flush/shot/retrieve review remain next woodland work.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

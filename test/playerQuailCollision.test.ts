@@ -7,6 +7,7 @@ import type { Ctx } from '../src/three/engine';
 import { PlayerSystem } from '../src/three/subsystems/player';
 import { buildQuailFenceGeometry } from '../src/three/subsystems/quailFences';
 import { deriveQuailEntrances } from '../src/three/subsystems/quailEntrances';
+import { PropertyHabitatSystem } from '../src/three/subsystems/propertyHabitat';
 
 vi.mock('../src/audio', () => ({ unlockAudio: vi.fn(), playFootstep: vi.fn() }));
 
@@ -46,6 +47,32 @@ function laneMidpoint(landscape: LandscapeModel, side: number) {
 const yaw = (direction: THREE.Vector2) => Math.atan2(-direction.x, -direction.y) * 180 / Math.PI;
 
 describe('Quail hunter movement against actual lane fences', () => {
+  it('blocks a sprint through an actual Grouse Woods trunk', () => {
+    const landscape = new LandscapeModel(getArea('grouse-woods'));
+    const habitat = new PropertyHabitatSystem(landscape);
+    const ctx = { paused: false, quality: 'lite', time: 0, scene: new THREE.Scene(),
+      camera: new THREE.PerspectiveCamera(), renderer: { domElement: new EventTarget() }, events: new EventTarget(),
+      get: (id: string) => {
+        if (id === 'property-habitat') return habitat;
+        if (id === 'landmarks') return { collisionCircles: () => [] };
+        if (id === 'terrain') return { heightAt: () => 0 };
+        if (id === 'hunt3d') return { coverPatches: () => [] };
+        throw new Error(id);
+      },
+    } as unknown as Ctx;
+    habitat.init(ctx);
+    const player = new PlayerSystem(landscape); player.init(ctx);
+    cleanup.push(() => { player.dispose(); habitat.dispose(ctx); });
+    const tree = habitat.collisionCircles().find(tree => Math.hypot(tree.x, tree.z - 40) < 45)!;
+    player.setPose(ctx, tree.x - 2, tree.z, -90);
+    for (const code of ['KeyW', 'ShiftLeft']) window.dispatchEvent(Object.assign(new Event('keydown'), { code }));
+    for (let step = 0; step < 30; step++) {
+      player.update(ctx, .1);
+      expect(Math.hypot(ctx.camera.position.x - tree.x, ctx.camera.position.z - tree.z)).toBeGreaterThanOrEqual(tree.radius + .32 - 1e-7);
+    }
+    expect(ctx.camera.position.x).toBeLessThan(tree.x);
+  });
+
   it('deflects the hunter around the authored stone without entering its solid footprint', () => {
     const f=fixture('south-gate','quail-fields',false,true);
     const prop=QUAIL_GROUND_PROPS[0];
