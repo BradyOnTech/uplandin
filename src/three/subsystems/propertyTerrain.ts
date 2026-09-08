@@ -1,3 +1,4 @@
+import { wetPondLayout, wetPondRadius } from '../../game/wetPonds';
 import * as THREE from 'three';
 import type { TerrainKind } from '../../game/areas';
 import { PROPERTY_PX_TO_M, type GroundSample, type LandscapeModel } from '../../game/landscape';
@@ -144,6 +145,7 @@ function paintFor(property: LandscapeModel): Paint {
   const stone = new THREE.Color(finish.stone);
   const litter = new THREE.Color(areaId === 'woodcock-bottoms' ? 0x65583f : finish.litter);
   const fields = areaId === 'pheasant-coverts' ? pheasantFields(property.area) : [];
+  const wetPools = areaId === 'woodcock-bottoms' ? wetPondLayout(property.area) : [];
   const ponds = areaId === 'pheasant-coverts' ? pheasantPonds(property) : [];
   const harvestSample = { amount: 0, row: 0, angle: 0 };
   const cutStraw = new THREE.Color(0xb8a477);
@@ -193,6 +195,11 @@ function paintFor(property: LandscapeModel): Paint {
       const fringe = THREE.MathUtils.smoothstep(aboveWater, .1, .7)
         * (1 - THREE.MathUtils.smoothstep(aboveWater, 1.2, 2.4));
       out.lerp(reedLitter, footprint * fringe * .35);
+    }
+    for (const pond of wetPools) {
+      const radius = wetPondRadius(pond, x, y);
+      const edge = 1 - THREE.MathUtils.smoothstep(radius, 1.0, 1.65);
+      out.lerp(bankMud, edge * .8);
     }
     out.multiplyScalar(.96 + meso * .08);
     return out;

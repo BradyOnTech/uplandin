@@ -1,3 +1,4 @@
+import { wetPondLayout, wetPondRadius } from '../../game/wetPonds';
 import * as THREE from 'three';
 import type { AreaTrail } from '../../game/areas';
 import type { GroundSample, LandscapeModel } from '../../game/landscape';
@@ -369,7 +370,10 @@ export class WetBottomsSystem implements Subsystem {
       this.materials.push(bankMaterial, waterMaterial);
     }
 
-    const trees = this.buildAlders(high);
+    const trees = this.buildAlders(high).filter(tree => {
+      this.landscape.worldToProperty(tree.x, tree.z, this.property);
+      return !ponds.some(pond => wetPondRadius(pond, this.property.x, this.property.y) < 1.12);
+    });
     if (trees.length > 0) {
       const trunkGeometry = alderTrunkGeometry();
       const crownGeometry = alderCrownGeometry();
@@ -497,37 +501,9 @@ export class WetBottomsSystem implements Subsystem {
   }
 
   private buildPonds(_high: boolean): Pond[] {
-    const area = this.landscape.area;
-    const feature = area.landmarks.find(landmark => landmark.id === 'area-feature' && landmark.kind === 'pond');
-    const ponds: Pond[] = [];
-    const add = (px: number, py: number, rx: number, rz: number, seed: number, hero = false): void => {
-      if (px < area.world.x + 10 || py < area.world.y + 10 || px > area.world.x + area.world.w - 10 || py > area.world.y + area.world.h - 10) return;
-      if (area.dropPoints.some(drop => Math.hypot(px - drop.position.x, py - drop.position.y) < 22)) return;
-      if (ponds.some(pond => Math.hypot(px - pond.px, py - pond.py) < Math.min(rx, rz) * 1.18)) return;
-      const waterY = this.landscape.surfaceAtProperty(px, py, this.sample).height + 0.09;
-      ponds.push({ px, py, rx, rz, angle: (seed % 17) * 0.13, waterY, seed, hero });
-    };
-
-    if (feature) add(feature.position.x, feature.position.y, 31, 20, seeded(area.terrain.seed, 3), true);
-    const chain = area.trails.find(trail => trail.id === 'pond-chain')
-      ?? area.trails.find(trail => trail.id.includes('bottom'))
-      ?? area.trails[0];
-    if (chain) {
-      const length = trailLength(chain);
-      const count = Math.min(7, Math.max(3, Math.floor(length / 42)));
-      const rng = mulberry32(seeded(area.terrain.seed, 0x504f4e44));
-      for (let i = 0; i < count; i++) {
-        const distance = length * (0.18 + (i + rng() * 0.22) / count);
-        const located = pointAlongTrail(chain, distance);
-        if (!located) continue;
-        const side = i % 2 === 0 ? 1 : -1;
-        const offset = 8 + rng() * 11;
-        const px = located.point.x - located.tangent.y * offset * side;
-        const py = located.point.y + located.tangent.x * offset * side;
-        add(px, py, 7.4 + rng() * 5.1, 4.7 + rng() * 3.9, seeded(area.terrain.seed, 41 + i), false);
-      }
-    }
-    return ponds;
+    return wetPondLayout(this.landscape.area).map(pond => ({ ...pond,
+      waterY: this.landscape.heightAtProperty(pond.px, pond.py) + .75,
+    }));
   }
 
   private wetTrails(): AreaTrail[] {

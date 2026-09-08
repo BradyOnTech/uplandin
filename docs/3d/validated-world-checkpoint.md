@@ -145,6 +145,12 @@ A direct pool inspection exposed different random outlines and segment counts fo
 
 Evidence: `output/playwright/woodcock-pool-before.png` and `output/playwright/woodcock-pool-joined-clear.png`. These use development-camera positioning, not a completed walking encounter. The first revised camera position was obscured by foliage; moved aside to inspect the shoreline. The gaps are corrected, but the pools still look like flat surfaces laid over terrain. Basin shaping, matching ground paint, and excluding dry vegetation from water remain necessary before this becomes a convincing wet margin. No full-suite or mobile run in this pass.
 
+**Shared Woodcock basins**
+
+Moved the pond layout into `src/game/wetPonds.ts` so the terrain and scenery share rotated pool footprints. The Woodcock landform now shapes submerged floors and gently rising banks, increases moisture around the margins, and suppresses terrain vegetation classification within water. Ground paint adds a mud transition; bespoke alders are excluded from pool interiors. Basin overlap initially failed the bank-height check, so placement now separates their full terrain influence footprints.
+
+The full suite passes: 553 tests across 78 files. New basin checks cover surrounding bank elevation and consistency between both entries. Compilation and build pass with the existing chunk-size warnings. Reviewed the same assisted camera position in Lightweight mode: `output/playwright/woodcock-basin-lite.png`. The pool is recessed and the alder formerly standing in it is gone. The bank remains visibly coarse; terrain tessellation, water-margin sedges, broader vegetation exclusion and water traversal still need review. No complete encounter or mobile hardware run accompanied this pass.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

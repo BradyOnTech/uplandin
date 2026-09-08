@@ -1,3 +1,4 @@
+import { wetPondLayout, wetPondRadius } from './wetPonds';
 import {
   getDropPoint,
   type AreaConfig,
@@ -368,8 +369,46 @@ function quailLandform(area: AreaConfig): LandformAdapter {
   };
 }
 
+function woodcockLandform(area: AreaConfig): LandformAdapter {
+  const canonical = getDropPoint(area);
+  const noise = makeNoise(area.terrain.seed);
+  const ponds = wetPondLayout(area).map(pond => ({ ...pond,
+    floor: WETLAND_LANDFORM.heightAt(
+      (pond.px - canonical.position.x) * PROPERTY_PX_TO_M + HUNT_WORLD_ANCHOR.x,
+      (pond.py - canonical.position.y) * PROPERTY_PX_TO_M + HUNT_WORLD_ANCHOR.z,
+      area.terrain, noise) - 1.1,
+  }));
+  const radius = (pond: typeof ponds[number], x: number, z: number) => wetPondRadius(pond,
+    (x - HUNT_WORLD_ANCHOR.x) / PROPERTY_PX_TO_M + canonical.position.x,
+    (z - HUNT_WORLD_ANCHOR.z) / PROPERTY_PX_TO_M + canonical.position.y);
+  return {
+    heightAt(x, z, profile, fieldNoise) {
+      let height = WETLAND_LANDFORM.heightAt(x, z, profile, fieldNoise);
+      for (const pond of ponds) {
+        const r = radius(pond, x, z);
+        if (r >= 1.6) continue;
+        const t = Math.max(0, Math.min(1, (r - 1) / .6));
+        const blend = t * t * (3 - 2 * t);
+        const basin = pond.floor + .75 * r * r;
+        height = basin * (1 - blend) + height * blend;
+      }
+      return height;
+    },
+    surfaceAt(x, z, height, slope, gx, gz, fieldNoise, out) {
+      WETLAND_LANDFORM.surfaceAt(x, z, height, slope, gx, gz, fieldNoise, out);
+      for (const pond of ponds) {
+        const r = radius(pond, x, z);
+        if (r >= 1.6) continue;
+        out.moisture = Math.max(out.moisture, Math.max(0, 1 - Math.max(0, r - .8) / .8));
+        if (r < 1) out.vegetation = 0;
+      }
+    },
+  };
+}
+
 function landformFor(area: AreaConfig): LandformAdapter {
   if (area.id === 'quail-fields') return quailLandform(area);
+  if (area.id === 'woodcock-bottoms') return woodcockLandform(area);
   if (area.id === 'pheasant-coverts') return pheasantLandform(area);
   if (area.id === 'hun-benches') return HUN_BENCH_LANDFORM;
   const profile = area.terrain;
