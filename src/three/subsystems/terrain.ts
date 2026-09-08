@@ -243,8 +243,7 @@ export class TerrainSystem implements Subsystem {
     // tiled property terrain is the runtime path for maps outside the two
     // bespoke worlds above.
     this.property = new PropertyTerrain(this.landscape);
-    this.property.init(ctx);
-    return;
+    return this.property.init(ctx);
     const geo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, SEGMENTS, SEGMENTS);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position as THREE.BufferAttribute;

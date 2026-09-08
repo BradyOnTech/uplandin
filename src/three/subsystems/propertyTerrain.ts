@@ -209,6 +209,8 @@ export class PropertyTerrain {
   private paint: Paint;
   private nearDistance: number;
   private abort = new AbortController();
+  private soil = { value: null as THREE.Texture | null };
+  private soilStrength = { value: 0 };
   private light = {
     uSunXZ: { value: new THREE.Vector2(1, 0) },
     uSunTint: { value: new THREE.Color() },
@@ -225,21 +227,55 @@ export class PropertyTerrain {
     this.paint = paintFor(landscape);
     this.material = new THREE.MeshLambertMaterial({ vertexColors: true });
     const uniforms = this.light;
-    this.material.customProgramCacheKey = () => `property-surface-v1-${landscape.area.terrain.kind}`;
+    const painted = landscape.area.id === 'pheasant-coverts';
+    const origin = landscape.propertyToWorld(0, 0, { x: 0, z: 0 });
+    this.material.customProgramCacheKey = () => `property-surface-v2-${landscape.area.terrain.kind}-${painted}`;
     this.material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, uniforms);
+      if (painted) {
+        shader.uniforms.uPropertySoil = this.soil;
+        shader.uniforms.uPropertySoilStrength = this.soilStrength;
+        shader.uniforms.uPropertySoilOrigin = { value: new THREE.Vector2(origin.x, origin.z) };
+      }
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying vec3 vPropertyWorld;')
         .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n\tvPropertyWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;');
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\n' + PROPERTY_SURFACE_DECLS)
-        .replace('#include <color_fragment>', '#include <color_fragment>\n' + PROPERTY_SURFACE_FRAG)
+        .replace('#include <common>', '#include <common>\n' + PROPERTY_SURFACE_DECLS + (painted ? '\nuniform sampler2D uPropertySoil; uniform float uPropertySoilStrength; uniform vec2 uPropertySoilOrigin;' : ''))
+        .replace('#include <color_fragment>', '#include <color_fragment>\n' + PROPERTY_SURFACE_FRAG + (painted ? `
+          vec2 soilUV = (vPropertyWorld.xz - uPropertySoilOrigin) / 4.8;
+          vec3 soilA = texture2D(uPropertySoil, soilUV).rgb;
+          vec3 soilB = texture2D(uPropertySoil, mat2(.8,-.6,.6,.8) * soilUV * .57 + vec2(.31,.67)).rgb;
+          // Keep the property's wet/dry palette authoritative. Luminance
+          // adds painted grit and litter without imposing Quail's hue.
+          float soilValue = dot(mix(soilA, soilB, .24), vec3(.2126,.7152,.0722));
+          float soilDetail = clamp(soilValue / .33, .55, 1.55);
+          float soilFade = 1.0 - smoothstep(24.0, 90.0, distance(vPropertyWorld.xz, cameraPosition.xz));
+          diffuseColor.rgb *= mix(1.0, soilDetail, soilFade * uPropertySoilStrength);
+        ` : ''))
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += uSunTint * ( pLobe * 0.34 + pBloom * 0.62 ) * uSunEmit;');
     };
     this.nearDistance = quailGroundNearDistance('high');
   }
 
-  init(ctx: Ctx): void {
+  async init(ctx: Ctx): Promise<void> {
+    if (this.landscape.area.id === 'pheasant-coverts') {
+      try {
+        const texture = await new THREE.TextureLoader().loadAsync(`${import.meta.env.BASE_URL}textures/terrain/prairie-painted.webp`);
+        if (this.abort.signal.aborted) { texture.dispose(); return; }
+        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = ctx.quality === 'high' ? 4 : 2;
+        texture.needsUpdate = true;
+        this.soil.value = texture;
+        this.soilStrength.value = .82;
+      } catch (error) {
+        // The baked habitat paint remains usable if an optional art asset
+        // cannot load; a missing texture must not prevent entering a hunt.
+        console.warn('Pheasant soil detail unavailable; using habitat paint.', error);
+      }
+    }
+    if (this.abort.signal.aborted) return;
     this.nearDistance = quailGroundNearDistance(ctx.quality as Quality);
     this.applyTod(ctx.timeOfDay);
     ctx.events.addEventListener('tod', (event) => {
@@ -308,6 +344,8 @@ export class PropertyTerrain {
       mesh.geometry.dispose();
     }
     this.material.dispose();
+    this.soil.value?.dispose();
+    this.soil.value = null;
     this.tiles.length = 0;
     this.horizon.length = 0;
   }
