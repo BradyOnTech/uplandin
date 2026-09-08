@@ -307,6 +307,12 @@ An eighteen-second West Track walk revealed that nearby talus looked like manufa
 
 Reviewed the same West approach in both modes: `output/playwright/chukar-west-beveled-talus.png` and `output/playwright/chukar-west-beveled-talus-lite.png`. The nearer stones read less like blocks; large distant ribs and broad empty slopes remain unfinished. Standard reported 192 draws and 447,776 triangles; Lightweight reported 168 draws and 144,772 triangles. These are desktop scene counts, not mobile readiness evidence. Compilation and build pass with existing chunk warnings; the Lightweight page had no warnings or errors. No simulation tests rerun for this geometry-only change. The west vista also exposes a plain distant landform transition that needs a broader composition review.
 
+**Chukar background shoulders**
+
+Raised and narrowed selected background ridge features and introduced a saddle between overlapping shoulders in the west-facing vista. Existing silhouette meshes, segment counts and materials are unchanged. These are decorative distant profiles, not additional climbable terrain or collision.
+
+Reviewed the eighteen-second West approach in Lightweight and twelve-second South approach in Standard: `output/playwright/chukar-west-ridge-saddles.png` and `output/playwright/chukar-south-ridge-saddles.png`. The west view has a clearer saddle; the south near slope still dominates its approach. The silhouettes remain simple, and the plain transition below them still needs improvement. Compilation and build pass with existing chunk warnings. The Standard page had no browser warnings or errors. No simulation tests rerun for this background-profile-only change; long traversals and other time-of-day views remain unreviewed.
+
 **Next work, in order**
 
 1. Use the Seed 1 South reference route to judge environment improvements from arrival through the known runner encounter. Review a full encounter with ordinary aiming separately; the assisted reference does not establish input usability.
