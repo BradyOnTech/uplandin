@@ -219,6 +219,12 @@ Replaced five closed crown solids with separated folded leaf sprays. The first p
 
 Reviewed the same close-trunk position and entry view in Lightweight mode. Evidence: `output/playwright/woodcock-leaf-clearance.png` and `output/playwright/woodcock-leaf-sprays-final-entry.png`. The camera is no longer sealed behind one solid crown face, though the close fade pattern is visible and still needs polish. The entry sample reported 69 draws and 352,774 triangles, with a 9.8-millisecond 95th-percentile frame interval and 140.7-millisecond maximum interval on desktop. Mobile cost is unmeasured. Compilation and build pass with existing chunk warnings. No simulation tests rerun for this foliage-only change.
 
+**Alder render groups**
+
+Grouped alder instances into 80-meter cells sharing the same geometry and materials. Distant cells now stop rendering beyond a conservative 260-meter Lightweight or 340-meter Standard radius plus cell extent. All rooted collision circles and shot geometry remain available even when a cell is hidden. The obstruction test now drives actual cell hiding and verifies that shots remain blocked. Compilation and build pass with existing chunk warnings.
+
+Compared the same assisted entry viewpoint: rendered triangles dropped from 352,774 to 194,998, while draw calls rose from 69 to 84. Evidence: `output/playwright/woodcock-alder-cells.png`. Nearby cover retains its composition. Dog pose and elapsed simulation differ between samples, so these are approximate scene comparisons, not controlled performance benchmarks. The short desktop sample does not establish mobile readiness. Distant group transitions, a longer walking comparison and device performance remain to review.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

@@ -313,6 +313,7 @@ export class WetBottomsSystem implements Subsystem {
   private normal = new THREE.Vector3();
   private tangent = new THREE.Vector3();
 
+  private alderCells: { x:number; z:number; trunks:THREE.InstancedMesh; crowns:THREE.InstancedMesh }[] = [];
   private obstacles: { x: number; z: number; radius: number }[] = [];
   private shotTrunks: THREE.InstancedMesh[] = [];
   private shotRay = new THREE.Raycaster();
@@ -414,44 +415,54 @@ export class WetBottomsSystem implements Subsystem {
             if (leafCoverage <= leafDither) discard;
           `);
       };
-      const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, trees.length);
-      const crowns = new THREE.InstancedMesh(crownGeometry, crownMaterial, trees.length);
-      trunks.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(trees.length * 3), 3);
-      crowns.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(trees.length * 3), 3);
-      trunks.matrixAutoUpdate = false;
-      crowns.matrixAutoUpdate = false;
-      const color = new THREE.Color();
-      for (const [index, tree] of trees.entries()) {
-        this.position.set(tree.x, tree.y, tree.z);
-        const surface = this.sampleGrade(tree.x, tree.z);
-        this.normal.set(-surface.gradeX * .12, 1, -surface.gradeZ * .12).normalize();
-        this.rotation.setFromUnitVectors(UP, this.normal);
-        this.yaw.setFromAxisAngle(UP, tree.yaw);
-        this.rotation.multiply(this.yaw);
-        this.scale.set(1.25, tree.height, 1.25);
-        trunks.setMatrixAt(index, this.matrix.compose(this.position, this.rotation, this.scale));
-        trunks.setColorAt(index, color.setHex(tree.trunkColor));
-
-        this.position.y = tree.y + tree.height * 0.78;
-        this.scale.set(tree.crown, tree.crown * 1.05, tree.crown * 0.9);
-        crowns.setMatrixAt(index, this.matrix.compose(this.position, this.rotation, this.scale));
-        crowns.setColorAt(index, color.setHex(tree.crownColor));
+      const groups = new Map<string, {x:number;z:number;trees:TreePlacement[]}>();
+      for (const tree of trees) {
+        const gx=Math.floor(tree.x/80), gz=Math.floor(tree.z/80), key=`${gx}:${gz}`;
+        let group=groups.get(key);
+        if(!group){group={x:gx*80+40,z:gz*80+40,trees:[]};groups.set(key,group);}
+        group.trees.push(tree);
       }
-      this.shotTrunks.push(trunks);
-      trunks.instanceMatrix.needsUpdate = true;
-      crowns.instanceMatrix.needsUpdate = true;
-      trunks.instanceColor.needsUpdate = true;
-      crowns.instanceColor.needsUpdate = true;
-      trunks.computeBoundingSphere();
-      crowns.computeBoundingSphere();
-      trunks.castShadow = high;
-      crowns.castShadow = high;
-      trunks.receiveShadow = true;
-      crowns.receiveShadow = true;
-      trunks.name = `${area.name} alder trunks`;
-      crowns.name = `${area.name} alder crowns`;
-      ctx.scene.add(trunks, crowns);
-      this.objects.push(trunks, crowns);
+      for (const group of groups.values()) {
+        const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, group.trees.length);
+        const crowns = new THREE.InstancedMesh(crownGeometry, crownMaterial, group.trees.length);
+        trunks.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(group.trees.length * 3), 3);
+        crowns.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(group.trees.length * 3), 3);
+        trunks.matrixAutoUpdate = false;
+        crowns.matrixAutoUpdate = false;
+        const color = new THREE.Color();
+        for (const [index, tree] of group.trees.entries()) {
+          this.position.set(tree.x, tree.y, tree.z);
+          const surface = this.sampleGrade(tree.x, tree.z);
+          this.normal.set(-surface.gradeX * .12, 1, -surface.gradeZ * .12).normalize();
+          this.rotation.setFromUnitVectors(UP, this.normal);
+          this.yaw.setFromAxisAngle(UP, tree.yaw);
+          this.rotation.multiply(this.yaw);
+          this.scale.set(1.25, tree.height, 1.25);
+          trunks.setMatrixAt(index, this.matrix.compose(this.position, this.rotation, this.scale));
+          trunks.setColorAt(index, color.setHex(tree.trunkColor));
+
+          this.position.y = tree.y + tree.height * 0.78;
+          this.scale.set(tree.crown, tree.crown * 1.05, tree.crown * 0.9);
+          crowns.setMatrixAt(index, this.matrix.compose(this.position, this.rotation, this.scale));
+          crowns.setColorAt(index, color.setHex(tree.crownColor));
+        }
+        this.shotTrunks.push(trunks);
+        trunks.instanceMatrix.needsUpdate = true;
+        crowns.instanceMatrix.needsUpdate = true;
+        trunks.instanceColor.needsUpdate = true;
+        crowns.instanceColor.needsUpdate = true;
+        trunks.computeBoundingSphere();
+        crowns.computeBoundingSphere();
+        trunks.castShadow = high;
+        crowns.castShadow = high;
+        trunks.receiveShadow = true;
+        crowns.receiveShadow = true;
+        trunks.name = `${area.name} alder trunks`;
+        crowns.name = `${area.name} alder crowns`;
+        ctx.scene.add(trunks, crowns);
+        this.objects.push(trunks, crowns);
+        this.alderCells.push({x:group.x,z:group.z,trunks,crowns});
+      }
       this.geometries.push(trunkGeometry, crownGeometry);
       this.materials.push(trunkMaterial, crownMaterial);
     }
@@ -670,6 +681,11 @@ export class WetBottomsSystem implements Subsystem {
   update(ctx: Ctx): void {
     this.wind.value = ctx.time;
     const x = ctx.camera.position.x, z = ctx.camera.position.z;
+    const drawRange = ctx.quality === 'high' ? 340 : 260;
+    for (const cell of this.alderCells) {
+      const visible = Math.hypot(cell.x-x, cell.z-z) < drawRange + 57;
+      cell.trunks.visible = cell.crowns.visible = visible;
+    }
     if (this.lastWalker && !ctx.paused) {
       const moved = Math.hypot(x - this.lastWalker.x, z - this.lastWalker.z);
       const depth = this.water.depthAtWorld(x, z);
@@ -690,7 +706,7 @@ export class WetBottomsSystem implements Subsystem {
     for (const object of this.objects) ctx.scene.remove(object);
     for (const geometry of this.geometries) geometry.dispose();
     for (const material of this.materials) material.dispose();
-    this.obstacles.length = 0; this.shotTrunks.length = 0;
+    this.obstacles.length = 0; this.shotTrunks.length = 0; this.alderCells.length = 0;
     this.objects.length = 0;
     this.geometries.length = 0;
     this.materials.length = 0;
