@@ -228,10 +228,12 @@ export class PropertyTerrain {
     this.material = new THREE.MeshLambertMaterial({ vertexColors: true });
     const uniforms = this.light;
     const painted = landscape.area.id === 'pheasant-coverts';
+    const woodland = landscape.area.id === 'grouse-woods';
     const origin = landscape.propertyToWorld(0, 0, { x: 0, z: 0 });
-    this.material.customProgramCacheKey = () => `property-surface-v2-${landscape.area.terrain.kind}-${painted}`;
+    this.material.customProgramCacheKey = () => `property-surface-v3-${landscape.area.terrain.kind}-${painted}-${woodland}`;
     this.material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, uniforms);
+      shader.uniforms.uPropertyFloorOrigin = { value: new THREE.Vector2(origin.x, origin.z) };
       if (painted) {
         shader.uniforms.uPropertySoil = this.soil;
         shader.uniforms.uPropertySoilStrength = this.soilStrength;
@@ -241,7 +243,7 @@ export class PropertyTerrain {
         .replace('#include <common>', '#include <common>\nvarying vec3 vPropertyWorld;')
         .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n\tvPropertyWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;');
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\n' + PROPERTY_SURFACE_DECLS + (painted ? '\nuniform sampler2D uPropertySoil; uniform float uPropertySoilStrength; uniform vec2 uPropertySoilOrigin;' : ''))
+        .replace('#include <common>', '#include <common>\nuniform vec2 uPropertyFloorOrigin;\n' + PROPERTY_SURFACE_DECLS + (painted ? '\nuniform sampler2D uPropertySoil; uniform float uPropertySoilStrength; uniform vec2 uPropertySoilOrigin;' : ''))
         .replace('#include <color_fragment>', '#include <color_fragment>\n' + PROPERTY_SURFACE_FRAG + (painted ? `
           vec2 soilUV = (vPropertyWorld.xz - uPropertySoilOrigin) / 4.8;
           vec3 soilA = texture2D(uPropertySoil, soilUV).rgb;
@@ -252,6 +254,14 @@ export class PropertyTerrain {
           float soilDetail = clamp(soilValue / .33, .55, 1.55);
           float soilFade = 1.0 - smoothstep(24.0, 90.0, distance(vPropertyWorld.xz, cameraPosition.xz));
           diffuseColor.rgb *= mix(1.0, soilDetail, soilFade * uPropertySoilStrength);
+        ` : '') + (woodland ? `
+          vec2 duffPosition = vPropertyWorld.xz - uPropertyFloorOrigin;
+          float duff = propertyNoise(duffPosition * 9.0);
+          float duffMass = propertyNoise(duffPosition * .43);
+          float duffFade = 1.0 - smoothstep(12.0, 48.0, pDistance);
+          float duffDetail = mix(.9, 1.08, smoothstep(.22, .76, duff));
+          diffuseColor.rgb *= mix(1.0, duffDetail, duffFade * .6);
+          diffuseColor.rgb *= .96 + .08 * duffMass;
         ` : ''))
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += uSunTint * ( pLobe * 0.34 + pBloom * 0.62 ) * uSunEmit;');
     };

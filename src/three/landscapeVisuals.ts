@@ -19,6 +19,7 @@ import { DryWashSystem } from './subsystems/dryWash';
 import { CanyonOakSystem } from './subsystems/canyonOak';
 import { AlpineParksSystem } from './subsystems/alpineParks';
 import { ValleyOakSystem } from './subsystems/valleyOak';
+import { WoodlandFloorSystem } from './subsystems/woodlandFloor';
 
 interface LandscapeVisuals {
   systems: readonly Subsystem[];
@@ -45,7 +46,8 @@ const OPEN_COUNTRY_VISUALS: LandscapeVisualAdapter = {
  * The tiled terrain remains shared; only the visible cover grammar changes.
  */
 const CLOSE_COVER_VISUALS: LandscapeVisualAdapter = {
-  create: (landscape) => ({ systems: [new PropertyTrailsSystem(landscape), new PropertyHabitatSystem(landscape)] }),
+  create: (landscape) => ({ systems: [new PropertyTrailsSystem(landscape), new PropertyHabitatSystem(landscape),
+    ...(landscape.area.id === 'grouse-woods' ? [new WoodlandFloorSystem(landscape)] : [])] }),
 };
 
 const RIMROCK_VISUALS: LandscapeVisualAdapter = {

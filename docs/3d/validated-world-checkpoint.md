@@ -69,6 +69,14 @@ Added checks for index coverage across negative coordinates and large pond bound
 
 Walked 66 yards from West Track using normal forward input in Lightweight mode. The dog continued working the timber and the world remained responsive. Captured `output/playwright/grouse-solid-timber-walk.png`. The sampled simulation average was about 0.068 milliseconds, with one 2.7-millisecond budget warning; this spike remains recorded. The frame interval's 95th percentile was 10.1 milliseconds on this desktop. No browser errors occurred. This walk does not prove mobile performance, complex forest navigation, or a complete encounter. Forest-floor detail, less repetitive crowns, and a full flush/shot/retrieve review remain next woodland work.
 
+**Woodland floor pass**
+
+Added clustered low fronds and scattered dry leaves using two shared solid geometries, with no transparent texture cards. Placements follow the terrain normal and leave route and entry clearances. Rendering uses 48-metre cells; detail shrinks away between 30 and 42 metres on Lightweight and between 53 and 65 metres on Standard. Ground shading adds restrained fine variation in stable property coordinates. The first ground pattern looked like camouflage in the browser, so its contrast was reduced before checkpointing.
+
+Repeated the West Track walk in both modes. Evidence is `output/playwright/grouse-floor-lite.png` and the final `output/playwright/grouse-floor-restrained.png`. The initial Standard floor view reported 211 draws and 480,164 triangles; Lightweight reported 133 draws and 268,862 triangles. These desktop samples do not establish mobile performance. Compilation and the production build pass. No new tests or full-suite rerun were needed for this art pass; the previous full run remains 537 passing tests. The final browser review had no errors and one 2.2-millisecond simulation-budget warning.
+
+The woodland floor now has recognizable small vegetation and litter, but the fronds remain coarse and the canopy and shrub silhouettes still repeat. This is incremental art progress, not a finished reference hunt. A complete encounter remains unverified.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.
