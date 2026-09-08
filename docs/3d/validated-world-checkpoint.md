@@ -275,6 +275,12 @@ Replaced the round cottonwood branch-tip spheres with five overlapping, flattene
 
 Reviewed after twenty-four seconds of walking from South Gate in both modes: `output/playwright/pheasant-cottonwood-broken-crown.png` and `output/playwright/pheasant-cottonwood-broken-crown-high.png`. The prominent tree no longer reads as round balls, though foliage is still a stylized solid mass and close bark/branch detail remains limited. Compilation and build pass with existing chunk warnings, and the reviewed page had no browser warnings or errors. No simulation tests rerun for this geometry-only change. The triangle reduction is not a mobile hardware performance measurement.
 
+**Pheasant homestead construction**
+
+The Pheasant homestead now has a closed gable, slate-colored roof and ridge, weathered siding, contrasting corner/door trim, sliding doors and divided windows. Colored geometry is merged into one mesh using the shared landmark material lifetime; details do not create per-board draw submissions. The building retains the original wall footprint and collision radius. Other properties retain their existing buildings.
+
+Reviewed the twenty-four-second South approach in Lightweight and a nearby assisted camera view: `output/playwright/pheasant-homestead-approach.png` and `output/playwright/pheasant-homestead-close.png`. Door framing reads from the approach and the nearby building is more recognizable. The shaded facade remains dark, and the side wall still has limited detail. Compilation and build pass with existing chunk warnings; the reviewed page had no browser warnings or errors. No simulation tests rerun for this prop-only change, and no mobile hardware or Standard-mode review was performed in this pass.
+
 **Next work, in order**
 
 1. Use the Seed 1 South reference route to judge environment improvements from arrival through the known runner encounter. Review a full encounter with ordinary aiming separately; the assisted reference does not establish input usability.

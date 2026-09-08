@@ -1,3 +1,4 @@
+import { createPheasantHomestead } from './pheasantHomestead';
 import * as THREE from 'three';
 import { pheasantPondObstacles } from '../../game/pheasantHabitat';
 import type { AreaLandmark } from '../../game/areas';
@@ -10,6 +11,7 @@ import { createQuailGate, createQuailTruck, createQuailWindmill } from './quailL
 import { deriveQuailEntrances, deriveQuailParkingPose, QUAIL_GATE } from './quailEntrances';
 
 const MAT = {
+  homestead: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true, emissive: 0x302a20, emissiveIntensity: .14 }),
   wood: new THREE.MeshStandardMaterial({ color: 0x6d5134, roughness: 1, flatShading: true }),
   metal: new THREE.MeshStandardMaterial({ color: 0x9a9a8b, roughness: 0.85, flatShading: true }),
   wall: new THREE.MeshStandardMaterial({ color: 0x7f3828, roughness: 1, flatShading: true }),
@@ -174,6 +176,7 @@ export class LandmarksSystem implements Subsystem {
       return root;
     }
     if (landmark.kind === 'barn') {
+      if (this.landscape?.area.id === 'pheasant-coverts') return createPheasantHomestead(MAT.homestead);
       const terrainKind = this.landscape?.area.terrain.kind;
       if (terrainKind === 'alpine') return this.buildWarmingHut();
       if (terrainKind === 'woods') return this.buildLoggingShed();
