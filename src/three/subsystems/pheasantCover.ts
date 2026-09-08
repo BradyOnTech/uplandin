@@ -85,17 +85,19 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
     const tipX = x + sx * lean + px * curve;
     const tipZ = z + sz * lean + pz * curve;
     const midY = height * 0.54;
-    const rootWidth = kind === 'prairie' ? width * .38 : width;
+    const nearPrairie = kind === 'prairie' && !distant && !medium;
+    const rootWidth = kind === 'prairie' ? width * (nearPrairie ? .16 : .38) : width;
     if (kind === 'prairie' && !distant) {
       // Standing grass carries its seed on a culm above arching leaves.
       // Separate that fine upper structure from the broad lower foliage.
       // These points consume no new RNG, preserving the authored roots.
       const stalkWidth = medium ? .012 : .007;
+      const stalkTipWidth = stalkWidth * (medium ? 1 : .22);
       push([
         x-px*stalkWidth,0,z-pz*stalkWidth, x+px*stalkWidth,0,z+pz*stalkWidth,
-        tipX+px*stalkWidth,height,tipZ+pz*stalkWidth,
-        x-px*stalkWidth,0,z-pz*stalkWidth, tipX+px*stalkWidth,height,tipZ+pz*stalkWidth,
-        tipX-px*stalkWidth,height,tipZ-pz*stalkWidth,
+        tipX+px*stalkTipWidth,height,tipZ+pz*stalkTipWidth,
+        x-px*stalkWidth,0,z-pz*stalkWidth, tipX+px*stalkTipWidth,height,tipZ+pz*stalkTipWidth,
+        tipX-px*stalkTipWidth,height,tipZ-pz*stalkTipWidth,
       ],tone);
       const shoulderX=x+sx*lean*.42+px*curve*.2;
       const shoulderZ=z+sz*lean*.42+pz*curve*.2;
@@ -106,7 +108,9 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
       const bendX=x+sx*lean*.87+px*curve*.65;
       const bendZ=z+sz*lean*.87+pz*curve*.65;
       const bendY=height*.77;
-      const w=width*.72;
+      // Close leaves need a slender, tapering silhouette. Keep the wider
+      // distant representation where thin leaves would disappear between pixels.
+      const w=width*(medium ? .72 : .45);
       if (medium) {
         push([
           x-px*rootWidth,0,z-pz*rootWidth, x+px*rootWidth,0,z+pz*rootWidth,
@@ -121,9 +125,8 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
           endX,endY,endZ,
         ],tone);
       } else {
-      // Keep every outer vertex, root and RNG sample unchanged. A shallow
-      // center fold gives the two faces different normals as light crosses
-      // the leaf instead of leaving one flat sheet from edge to edge.
+      // A shallow center fold gives the two faces different normals as
+      // light crosses the leaf, without adding another material pass.
       const fold = w * .4;
       const row = (cx:number,cy:number,cz:number,halfWidth:number,ridge:number) => ({
         left: [cx-px*halfWidth,cy,cz-pz*halfWidth],
@@ -132,7 +135,7 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
       });
       const rows = [row(x,0,z,rootWidth,0),
         row(shoulderX,shoulderY,shoulderZ,w,fold),
-        row(bendX,bendY,bendZ,w*.45,fold*.45)];
+        row(bendX,bendY,bendZ,w*.30,fold*.30)];
       for (let segment=0;segment<2;segment++) {
         const a=rows[segment],b=rows[segment+1];
         push([
