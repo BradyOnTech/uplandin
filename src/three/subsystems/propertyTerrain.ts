@@ -29,7 +29,7 @@ const PALETTE = {
  */
 const AREA_PALETTE_OVERRIDES: Record<string, Partial<Record<'dark' | 'mid' | 'light' | 'wet', number>>> = {
   'pheasant-coverts': { dark: 0x4c4b33, mid: 0x8f7b48, light: 0xbfa36b, wet: 0x4f6658 },
-  'woodcock-bottoms': { dark: 0x3f5140, mid: 0x6f7d5a, light: 0x9ca16f, wet: 0x3f5c57 },
+  'woodcock-bottoms': { dark: 0x494a38, mid: 0x77755a, light: 0x9c9772, wet: 0x48594b },
   'grouse-woods': { dark: 0x625540, mid: 0x8c815d, light: 0xb5a376, wet: 0x56684b },
   'sharptail-prairie': { dark: 0x756444, mid: 0xa68f59, light: 0xc8b77e, wet: 0x6c7154 },
   'hun-benches': { dark: 0x625640, mid: 0x9e8b66, light: 0xc8b98f, wet: 0x72745d },
@@ -227,10 +227,11 @@ export class PropertyTerrain {
     this.paint = paintFor(landscape);
     this.material = new THREE.MeshLambertMaterial({ vertexColors: true });
     const uniforms = this.light;
-    const painted = landscape.area.id === 'pheasant-coverts';
+    const wetSoil = landscape.area.id === 'woodcock-bottoms';
+    const painted = landscape.area.id === 'pheasant-coverts' || wetSoil;
     const woodland = landscape.area.id === 'grouse-woods';
     const origin = landscape.propertyToWorld(0, 0, { x: 0, z: 0 });
-    this.material.customProgramCacheKey = () => `property-surface-v3-${landscape.area.terrain.kind}-${painted}-${woodland}`;
+    this.material.customProgramCacheKey = () => `property-surface-v4-${landscape.area.terrain.kind}-${painted}-${woodland}-${wetSoil}`;
     this.material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, uniforms);
       shader.uniforms.uPropertyFloorOrigin = { value: new THREE.Vector2(origin.x, origin.z) };
@@ -251,7 +252,7 @@ export class PropertyTerrain {
           // Keep the property's wet/dry palette authoritative. Luminance
           // adds painted grit and litter without imposing Quail's hue.
           float soilValue = dot(mix(soilA, soilB, .24), vec3(.2126,.7152,.0722));
-          float soilDetail = clamp(soilValue / .33, .55, 1.55);
+          float soilDetail = clamp(soilValue / ${wetSoil ? ".052" : ".33"}, ${wetSoil ? ".78, 1.25" : ".55, 1.55"});
           float soilFade = 1.0 - smoothstep(24.0, 90.0, distance(vPropertyWorld.xz, cameraPosition.xz));
           diffuseColor.rgb *= mix(1.0, soilDetail, soilFade * uPropertySoilStrength);
         ` : '') + (woodland ? `
@@ -269,20 +270,21 @@ export class PropertyTerrain {
   }
 
   async init(ctx: Ctx): Promise<void> {
-    if (this.landscape.area.id === 'pheasant-coverts') {
+    const wetSoil = this.landscape.area.id === 'woodcock-bottoms';
+    if (this.landscape.area.id === 'pheasant-coverts' || wetSoil) {
       try {
-        const texture = await new THREE.TextureLoader().loadAsync(`${import.meta.env.BASE_URL}textures/terrain/prairie-painted.webp`);
+        const texture = await new THREE.TextureLoader().loadAsync(`${import.meta.env.BASE_URL}textures/terrain/${wetSoil ? "wet-alder-painted" : "prairie-painted"}.webp`);
         if (this.abort.signal.aborted) { texture.dispose(); return; }
         texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
         texture.colorSpace = THREE.SRGBColorSpace;
         texture.anisotropy = ctx.quality === 'high' ? 4 : 2;
         texture.needsUpdate = true;
         this.soil.value = texture;
-        this.soilStrength.value = .82;
+        this.soilStrength.value = wetSoil ? .32 : .82;
       } catch (error) {
         // The baked habitat paint remains usable if an optional art asset
         // cannot load; a missing texture must not prevent entering a hunt.
-        console.warn('Pheasant soil detail unavailable; using habitat paint.', error);
+        console.warn(`${this.landscape.area.name} soil detail unavailable; using habitat paint.`, error);
       }
     }
     if (this.abort.signal.aborted) return;

@@ -127,6 +127,12 @@ Both Woodcock drop headings now derive from the first segment of their authored 
 
 Raised the Woodcock noon sky/ground fill and reduced direct sun intensity to keep the overcast corridor readable. Reviewed the same West Track walk in Lightweight mode, captured in `output/playwright/woodcock-overcast-west.png`. The path and nearby dog are clearer. The long planting bands still read too regularly, and wet soil/pool transitions need further work; this is not finished wetland composition. Compilation and build pass. The final browser console had no errors and one 5.3-millisecond simulation-budget warning. Other times of day and mobile hardware were not reviewed in this pass.
 
+**Alder groups and wet soil**
+
+Broke the evenly spaced alder bands into asymmetric groups with wider openings and varied crown sizes. Added a generated wet-soil and leaf-litter texture, saved with its exact prompt under `assets/source/terrain/`. The 1024-square runtime WebP is 102,334 bytes. It supplies restrained luminance detail over the habitat colors, with a second rotated sample and distance fade. The final ground palette shifts toward muddy olive-brown. Missing and late-loading texture handling now covers both Pheasant and Woodcock; four focused checks pass. Compilation and production build pass, retaining the existing large-chunk warnings.
+
+Walked West Track for 12 seconds in Lightweight mode. The initial texture was too strong; halved its contribution and repeated the walk. Final evidence is `output/playwright/woodcock-wet-soil-restrained.png`. The earlier same-geometry sample reported 97 draws, 194,246 triangles and a 10.2-millisecond 95th-percentile frame interval on desktop. Mobile hardware remains unmeasured. Texture edges were requested to tile, but exact pixel seamlessness is not established. Ground detail is improved; the long straight path, repeated crowns, sparse understory and missing alder obstruction still prevent this from being a convincing finished wetland.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

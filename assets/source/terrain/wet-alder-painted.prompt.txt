@@ -1,0 +1,7 @@
+Generated with the built-in image-generation tool, 2026-09-08.
+Source: wet-alder-painted.png
+Runtime: public/textures/terrain/wet-alder-painted.webp (1024 square, quality 82).
+Used as restrained luminance detail over habitat colors, with distance fade.
+
+Final prompt:
+Use case: stylized-concept. Asset type: seamless square repeatable base-color ground texture for a low-poly browser hunting game. Orthographic straight-down view of damp alder woodland soil with sparse decomposed small brown leaves, tiny broken twigs and subtle moss stains. Hand-painted simplified broad shapes, understated detail, restrained low contrast, muddy olive taupe and cool umber, occasional muted ochre leaf fragments. Uniform flat diffuse illumination, no baked cast shadows, no perspective, no horizon, no large objects, no plants rising from ground, no water puddles or reflections, no text, no border. All four edges must tile seamlessly. Equal visual density across whole square; avoid a central focal point. This is a texture sheet covering roughly four metres of ground, not a landscape illustration.

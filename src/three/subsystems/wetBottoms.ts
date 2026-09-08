@@ -533,11 +533,16 @@ export class WetBottomsSystem implements Subsystem {
       const length = trailLength(trail);
       const count = Math.ceil(length / 1.3);
       for (let i = 1; i < count; i++) {
-        const located = pointAlongTrail(trail, length * i / count);
+        const along = length * (i + (rng() - .5) * .8) / count;
+        const located = pointAlongTrail(trail, along);
         if (!located) continue;
-        const side = (i + trailIndex) % 2 === 0 ? 1 : -1;
-        const band = i % 3;
-        const offset = 5 + band * 5 + rng() * 3.5;
+        const side = rng() < .5 ? -1 : 1;
+        // Broad, asymmetric gaps separate alder stools. Their opposite
+        // banks do not share a rhythm, avoiding a planted avenue effect.
+        const mass = Math.sin(along * .053 + trailIndex * 1.7 + side * 2.1)
+          * Math.sin(along * .019 + side * 1.3);
+        if (mass < -.15 && rng() < .82) continue;
+        const offset = 4.5 + Math.pow(rng(), 1.35) * 25 + (1 - mass) * 2;
         const px = located.point.x - located.tangent.y * offset * side;
         const py = located.point.y + located.tangent.x * offset * side;
         if (px < area.world.x + 12 || py < area.world.y + 12 || px > area.world.x + area.world.w - 12 || py > area.world.y + area.world.h - 12) continue;
@@ -553,8 +558,8 @@ export class WetBottomsSystem implements Subsystem {
           x: this.world.x,
           z: this.world.z,
           y: this.sample.height + 0.02,
-          height: 2.4 + rng() * 2.8,
-          crown: 1.25 + rng() * .85,
+          height: 2.1 + rng() * 2.9 + Math.max(0, mass) * .6,
+          crown: 1.1 + rng() * 1.15,
           yaw: rng() * Math.PI * 2,
           trunkColor: [0x8c8573, 0x766b59, 0x9a9279][Math.floor(rng() * 3)],
           crownColor: [0x657c58, 0x799166, 0x8b9968][Math.floor(rng() * 3)],
