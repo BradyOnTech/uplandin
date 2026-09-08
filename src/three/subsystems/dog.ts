@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Ctx, Subsystem } from '../engine';
-import { P, TOD, type TimeOfDay } from '../palette';
+import { fieldTimeOfDay, P, type TimeOfDay } from '../palette';
 import {
   englishSetterAppearance,
   type EnglishSetterAppearance,
@@ -694,7 +694,12 @@ export class DogSystem implements Subsystem {
         );
     };
     const applyTod = (tod: TimeOfDay): void => {
-      const spec = TOD[tod];
+      // Keep the dog on the same area-aware light recipe as the sky, terrain,
+      // grass, birds, and gun.  The shared TOD is still the fallback, while
+      // authored properties such as Quail, Chukar, and Cattail Coverts can
+      // carry their own sky/fill balance without making the dog a separate
+      // light source.
+      const spec = fieldTimeOfDay(this.hunt.huntState().areaId, tod);
       const silh = spec.grassLumCap < 1;
       const lowSun = THREE.MathUtils.clamp(1 - (spec.sunElevation - 2) / 13, 0, 1);
       // Sky-fill whisper: enough that the coat never renders slate-blue

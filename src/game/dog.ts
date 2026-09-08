@@ -1,3 +1,4 @@
+import { DogObstacleMotion, type DogObstacle } from './dogObstacles';
 import type { Bird } from './birds';
 import {
   breakChance as breedBreakChance,
@@ -11,10 +12,13 @@ import {
   type BreedConfig,
 } from './breeds';
 import { FIELD_BOUNDS, type Rect } from './field';
+import type { AreaTrail } from './areas';
 import { clamp, dist, turnToward } from './math';
 import type { RNG, Vec2 } from './types';
+import { huntDoctrineForStyle, huntingDoctrine, type HuntStyle } from './huntDoctrine';
 
 export type DogState =
+  | 'marking'
   | 'quartering'
   | 'tracking'
   | 'pointing'
@@ -139,6 +143,78 @@ function distToRectEdge(r: Rect, p: Vec2): number {
   return Math.min(p.x - r.x, r.x + r.w - p.x, p.y - r.y, r.y + r.h - p.y);
 }
 
+function distanceToTrail(point: Vec2, trails: readonly AreaTrail[]): number {
+  let nearest = Infinity;
+  for (const trail of trails) {
+    for (let i = 1; i < trail.points.length; i++) {
+      const a = trail.points[i - 1], b = trail.points[i];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const t = clamp(((point.x - a.x) * dx + (point.y - a.y) * dy) / (dx * dx + dy * dy || 1), 0, 1);
+      nearest = Math.min(nearest, Math.hypot(point.x - (a.x + dx * t), point.y - (a.y + dy * t)));
+    }
+  }
+  return nearest;
+}
+
+/**
+ * Return the nearest point on an authored route. A route is a hunting aid,
+ * not a teleport rail: the dog still aims for the cover patch, but a small
+ * pull toward this point makes edge, wash, and contour work visible in its
+ * cast instead of leaving the route as map-only decoration.
+ */
+function nearestTrailPoint(point: Vec2, trails: readonly AreaTrail[], maxDistance = 120): Vec2 | null {
+  let nearest = Infinity;
+  let result: Vec2 | null = null;
+  for (const trail of trails) {
+    for (let i = 1; i < trail.points.length; i++) {
+      const a = trail.points[i - 1], b = trail.points[i];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const lengthSquared = dx * dx + dy * dy;
+      if (lengthSquared < 1e-6) continue;
+      const t = clamp(((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared, 0, 1);
+      const candidate = { x: a.x + dx * t, y: a.y + dy * t };
+      const distance = dist(point, candidate);
+      if (distance < nearest) {
+        nearest = distance;
+        result = candidate;
+      }
+    }
+  }
+  return nearest <= maxDistance ? result : null;
+}
+
+/** How strongly a property's physical route should shape a dog cast. */
+function routeCastPull(style: HuntStyle, areaId?: string): number {
+  // Shared styles still need property-specific route commitment. A wide
+  // prairie dog should use the wind lane as a destination, while a Valley
+  // Oaks dog should keep crossing from one shade island to the next. These
+  // values shape the cast only; the authored cover and the sim remain the
+  // source of truth for where a bird can actually be found.
+  switch (areaId) {
+    case 'sharptail-prairie': return 0.42; // long wind lanes and shelterbelts
+    case 'valley-oaks': return 0.56; // shade-to-shade oak skirts
+    case 'grouse-woods': return 0.38; // the next timber opening
+    case 'woodcock-bottoms': return 0.5; // wet alder chain
+    case 'mearns-canyons': return 0.44; // oak draw and rim return
+    case 'timberline-parks': return 0.4; // park edge and timber fingers
+    default: break;
+  }
+  switch (style) {
+    case 'pheasant': return 0.56; // cattail edge, fence, and water line
+    case 'desert-wash': return 0.62; // shade-to-water wash chain
+    case 'bench-covey': return 0.48; // broad contour flank
+    case 'chukar': return 0.44; // switchbacks before the uphill shelf
+    case 'woods':
+    case 'bottoms':
+    case 'canyon':
+    case 'alpine-edge':
+    case 'oak-savanna': return 0.3; // openings, fingers, and shade islands
+    case 'open-covey': return 0.24; // long grass lanes and shelterbelts
+    case 'quail': return 0.16; // a light pull keeps plum edges readable
+    default: return 0;
+  }
+}
+
 /** Point on the rectangle perimeter at normalized progress t ∈ [0,1). Clockwise from top-left. */
 export function perimeterPoint(r: Rect, t: number): Vec2 {
   const peri = 2 * (r.w + r.h);
@@ -200,6 +276,7 @@ export function castAimPoint(
 
 /** Environment the dog is hunting in for this tick. */
 export interface DogEnv {
+  obstacles?: readonly DogObstacle[];
   hunterPos?: Vec2;
   /** Presentation-space pace multiplier; AI clocks still advance in real time. */
   movementScale?: number;
@@ -223,6 +300,16 @@ export interface DogEnv {
   searchMult?: number;
   /** Cover patches in this covert — the dog hunts these as objectives. */
   patches?: Rect[];
+  /** Authored hunting lines used to choose the next cover objective. */
+  trails?: readonly AreaTrail[];
+  /** Shared ground score so the dog chooses habitat that fits this property. */
+  coverAffinity?: (point: Vec2) => number;
+  /** Property hunting language, supplied by the shared adapter. */
+  huntStyle?: HuntStyle;
+  /** Exact property id; removes ambiguity when several maps share a style. */
+  huntAreaId?: string;
+  /** Uphill direction in screen/property coordinates for ridge work. */
+  slopeAngle?: number;
 }
 
 export interface DogProfile {
@@ -300,6 +387,7 @@ export class Dog {
   private scentStageTotalMs = 0;
   private scentTargetId: number | null = null;
   private scentArcSign = 1;
+  private markingBirdIds: number[] = [];
 
   constructor(
     public pos: Vec2,
@@ -316,6 +404,8 @@ export class Dog {
   get level(): number {
     return this.profile.level;
   }
+
+  watchedBirdIds(): readonly number[] { return this.markingBirdIds; }
 
   /** Out of stamina: slower, duller nose, sloppier. */
   get winded(): boolean {
@@ -346,6 +436,15 @@ export class Dog {
     );
   }
 
+  /** Apply the property's hunting tempo to search and scent work. Delivery,
+   * recall, and a breaking chase keep their shared breed speeds so the
+   * doctrine changes the feel of finding birds without making a retrieve
+   * arbitrarily slow or fast.
+   */
+  private workingSpeed(env: DogEnv, base: number): number {
+    return base * this.doctrineFor(env).dogPaceMult;
+  }
+
   private get weave(): number {
     return WEAVE_AMPLITUDE * rangeMult(this.profile.breed, this.profile.level);
   }
@@ -359,7 +458,11 @@ export class Dog {
     return (scentRange(env.windAngle, dx, dy) / SCENT_RADIUS) * base;
   }
 
+  private obstacleMotion = new DogObstacleMotion();
+  private obstacles: readonly DogObstacle[] = [];
+
   update(dtMs: number, birds: Bird[], env: DogEnv = {}): void {
+    this.obstacles = env.obstacles ?? [];
     const dt = dtMs / 1000;
     const movementDt = dt * (env.movementScale ?? 1);
     // Default presentation; branches below overwrite for cast/track/still.
@@ -368,7 +471,8 @@ export class Dog {
 
     // The whistle only carries so far — a big-running dog can be out of earshot.
     const hearsWhistle = !env.hunterPos || dist(this.pos, env.hunterPos) <= (env.whistleRange ?? WHISTLE_RANGE);
-    if (env.recall && hearsWhistle && (this.state === 'quartering' || this.state === 'tracking')) {
+    if (env.recall && hearsWhistle && (this.state === 'quartering' || this.state === 'tracking' || this.state === 'marking')) {
+      if (this.state === 'marking') { this.markingBirdIds = []; this.needsSearch = true; }
       this.state = 'recalled';
       this.resetScentApproach();
     }
@@ -396,11 +500,20 @@ export class Dog {
       return;
     }
 
+    if (this.state === 'marking') {
+      this.gait = 'still';
+      const airborne = birds.some(b => this.markingBirdIds.includes(b.id) &&
+        (b.state === 'flushed' || (b.state === 'downed' && b.fallPending)));
+      if (airborne) return;
+      this.markingBirdIds = [];
+      this.state = 'quartering'; // The normal retrieve/search priorities resume below.
+    }
+
     // Backing a packmate's point: stand and face it until the point
     // resolves — unless there's a bird down to fetch.
     if (this.state === 'honoring') {
       this.gait = 'still';
-      const hasDowned = birds.some((b) => b.state === 'downed');
+      const hasDowned = birds.some((b) => b.state === 'downed' && !b.fallPending);
       if (!env.honorPoint || hasDowned) {
         this.state = 'quartering'; // resume below (retrieve wins if a bird is down)
       } else {
@@ -453,7 +566,7 @@ export class Dog {
 
     if (this.state === 'retrieving') {
       const target = birds.find((b) => b.id === this.retrieveTargetId);
-      if (!target || (target.state !== 'downed' && target.state !== 'carried')) {
+      if (!target || target.fallPending || (target.state !== 'downed' && target.state !== 'carried')) {
         this.state = 'quartering';
         this.retrieveTargetId = null;
         this.carryingBirdId = null;
@@ -592,7 +705,7 @@ export class Dog {
         const offset = wave * style.locateArc * tighten * this.scentArcSign;
         this.heading = turnToward(this.heading, direct + offset, 4.8 * dt);
         this.gait = 'trot';
-        this.advanceTowardPoint(this.heading, birdDistance, this.trackSpeed * style.locatePace * movementDt);
+        this.advanceTowardPoint(this.heading, birdDistance, this.workingSpeed(env, this.trackSpeed) * style.locatePace * movementDt);
         if (this.scentStageMs <= 0 || dist(this.pos, bird.pos) <= POINT_SETTLE_RANGE + 5) {
           this.startScentStage('stalking', 0);
         }
@@ -606,7 +719,7 @@ export class Dog {
         this.scentProgress = clamp(1 - (d - POINT_SETTLE_RANGE) / Math.max(1, SCENT_RADIUS - POINT_SETTLE_RANGE), 0, 1);
         this.heading = turnToward(this.heading, direct, (2.8 + this.scentProgress * 2.2) * dt);
         this.gait = 'track';
-        this.advanceTowardPoint(this.heading, d, this.trackSpeed * style.stalkPace * movementDt);
+        this.advanceTowardPoint(this.heading, d, this.workingSpeed(env, this.trackSpeed) * style.stalkPace * movementDt);
         if (dist(this.pos, bird.pos) <= POINT_SETTLE_RANGE + 1e-6) {
           this.startScentStage('locking', style.lockMs);
           this.gait = 'still';
@@ -656,14 +769,32 @@ export class Dog {
       this.gait = 'trot';
       this.weavePhase += movementDt * WEAVE_RATE;
       const aimPt = castAimPoint(patch, env.windAngle, windCraftTier(this.profile.level));
+      // Route-aware casting is what turns the authored lines into dog work.
+      // Pheasant, desert, bench, and ridge dogs should arrive at the cover
+      // from the physical edge they are meant to hunt; the softer pull on
+      // woods and open country preserves natural casts when a patch sits
+      // beside, rather than directly on, a route.
+      const routePull = routeCastPull(doctrine.style, env.huntAreaId);
+      if (routePull > 0 && env.trails && env.trails.length > 0) {
+        const routePoint = nearestTrailPoint(
+          { x: rectCx(patch), y: rectCy(patch) },
+          env.trails,
+        );
+        if (routePoint) {
+          aimPt.x = clamp(aimPt.x * (1 - routePull) + routePoint.x * routePull,
+            patch.x - COVER_GRACE, patch.x + patch.w + COVER_GRACE);
+          aimPt.y = clamp(aimPt.y * (1 - routePull) + routePoint.y * routePull,
+            patch.y - COVER_GRACE, patch.y + patch.h + COVER_GRACE);
+        }
+      }
       const aim = Math.atan2(aimPt.y - this.pos.y, aimPt.x - this.pos.x);
       this.heading = turnToward(this.heading, aim, COVER_TURN_RATE * movementDt);
       // Range correction answers real time so a presentation pace scale
       // cannot also make the dog take seconds to turn back into view.
-      this.steerToAnchor(dt, env.workAnchor ?? env.hunterPos, env.rangeRadius);
+      this.steerToAnchor(dt, env.workAnchor ?? env.hunterPos, this.effectiveRangeRadius(env));
       this.advance(
         this.heading + Math.sin(this.weavePhase) * 0.15,
-        this.speed * CAST_SPEED_MULT * movementDt,
+        this.workingSpeed(env, this.speed) * CAST_SPEED_MULT * movementDt,
       );
       return;
     }
@@ -692,7 +823,8 @@ export class Dog {
         const edgePt = perimeterPoint(patch, this.coverEdgeT);
         const aim = Math.atan2(edgePt.y - this.pos.y, edgePt.x - this.pos.x);
         this.heading = turnToward(this.heading, aim, COVER_TURN_RATE * 2.4 * movementDt);
-        this.advance(this.heading, this.speed * (onRim ? 1 : 1.15) * movementDt);
+        this.steerToAnchor(dt, env.workAnchor ?? env.hunterPos, this.effectiveRangeRadius(env));
+        this.advance(this.heading, this.workingSpeed(env, this.speed) * (onRim ? 1 : 1.15) * movementDt);
         return;
       }
       // Interior comb: tight serpentine with a soft pull toward the core
@@ -701,7 +833,8 @@ export class Dog {
       const toCore = Math.atan2(rectCy(patch) - this.pos.y, rectCx(patch) - this.pos.x);
       this.heading = turnToward(this.heading, toCore, 0.9 * movementDt);
       this.steerInsideRect(movementDt, patch);
-      this.advance(this.heading + Math.sin(this.weavePhase) * this.weave, this.speed * movementDt);
+      this.steerToAnchor(dt, env.workAnchor ?? env.hunterPos, this.effectiveRangeRadius(env));
+      this.advance(this.heading + Math.sin(this.weavePhase) * this.weave, this.workingSpeed(env, this.speed) * movementDt);
       return;
     }
 
@@ -709,9 +842,9 @@ export class Dog {
     this.gait = 'run';
     this.weavePhase += movementDt * WEAVE_RATE;
     this.steerOffEdges(movementDt);
-    this.steerToAnchor(dt, env.workAnchor ?? env.hunterPos, env.rangeRadius);
+    this.steerToAnchor(dt, env.workAnchor ?? env.hunterPos, this.effectiveRangeRadius(env));
     const weave = Math.sin(this.weavePhase) * this.weave;
-    this.advance(this.heading + weave, this.speed * movementDt);
+    this.advance(this.heading + weave, this.workingSpeed(env, this.speed) * movementDt);
   }
 
   private beginScentApproach(bird: Bird, stage: Exclude<DogScentStage, 'none'>): void {
@@ -776,12 +909,14 @@ export class Dog {
   private chooseCover(env: DogEnv): Rect | null {
     const patches = env.patches ?? [];
     const anchor = env.workAnchor ?? env.hunterPos;
+    const doctrine = this.doctrineFor(env);
+    const styleRange = this.effectiveRangeRadius(env);
     // Drop the objective if the hunter has moved on past range of it.
     if (
       this.coverIdx !== null &&
       anchor &&
       dist({ x: rectCx(patches[this.coverIdx]), y: rectCy(patches[this.coverIdx]) }, anchor) >
-        (env.rangeRadius ?? this.rangeRadius) * 1.2
+        styleRange * 1.2
     ) {
       this.coverIdx = null;
     }
@@ -789,11 +924,25 @@ export class Dog {
 
     let best: number | null = null;
     let bestDist = Infinity;
+    const routeWeight = doctrine.style === 'pheasant' ? .62
+      : doctrine.style === 'chukar' || doctrine.style === 'bench-covey' ? .74
+        : doctrine.style === 'woods' || doctrine.style === 'bottoms' || doctrine.style === 'canyon' ? .82
+          : doctrine.style === 'desert-wash' ? .68 : .38;
+    const habitatWeight = doctrine.style === 'woods' || doctrine.style === 'bottoms' || doctrine.style === 'canyon'
+      ? 46
+      : doctrine.style === 'chukar' || doctrine.style === 'bench-covey' || doctrine.style === 'alpine-edge'
+        ? 38
+        : doctrine.style === 'pheasant' || doctrine.style === 'desert-wash' || doctrine.style === 'oak-savanna'
+          ? 30 : 22;
     for (let i = 0; i < patches.length; i++) {
       if (this.checkedCovers.has(i)) continue;
       const c = { x: rectCx(patches[i]), y: rectCy(patches[i]) };
-      if (anchor && dist(c, anchor) > (env.rangeRadius ?? this.rangeRadius)) continue;
-      const d = dist(this.pos, c);
+      if (anchor && dist(c, anchor) > styleRange) continue;
+      const routeDistance = env.trails && env.trails.length > 0
+        ? distanceToTrail(c, env.trails)
+        : 0;
+      const habitat = env.coverAffinity?.(c) ?? .5;
+      const d = dist(this.pos, c) + routeDistance * routeWeight + (1 - habitat) * habitatWeight;
       if (d < bestDist) {
         best = i;
         bestDist = d;
@@ -805,16 +954,44 @@ export class Dog {
     const total =
       clamp(p.w * p.h * COVER_WORK_MS_PER_PX2, COVER_WORK_MIN_MS, COVER_WORK_MAX_MS) *
       coverThoroughness(this.profile.level) *
+      doctrine.coverWorkMult *
       (0.85 + this.rng() * 0.3);
     this.coverWorkMsLeft = total;
-    // Perimeter-first budget: pups ~0, finished dogs nearly half the clock.
-    this.coverEdgeMsLeft = total * coverEdgeFraction(this.profile.level);
+    // Pheasants are a rim-and-run problem: spend a deliberate opening lap on
+    // the outside before combing the core. Chukar get a shorter contour lap;
+    // quail retain the established level-based recipe.
+    this.coverEdgeMsLeft = total * Math.min(0.78, coverEdgeFraction(this.profile.level) + doctrine.dogEdgeBias);
     this.coverEdgeT = nearestPerimeterT(p, this.pos);
     // Face the cast aim immediately so approach heading matches the objective
     // (center for pups/calm; downwind flank when wind-craft applies).
     const aim = castAimPoint(p, env.windAngle, windCraftTier(this.profile.level));
+    if ((env.huntStyle === 'chukar' || env.huntStyle === 'alpine-edge') && env.slopeAngle !== undefined) {
+      const center = { x: rectCx(p), y: rectCy(p) };
+      const uphillReach = Math.min(p.w, p.h) * 0.34;
+      const uphill = {
+        x: center.x + Math.cos(env.slopeAngle) * uphillReach,
+        y: center.y + Math.sin(env.slopeAngle) * uphillReach,
+      };
+      aim.x = aim.x * 0.52 + uphill.x * 0.48;
+      aim.y = aim.y * 0.52 + uphill.y * 0.48;
+    }
     this.heading = Math.atan2(aim.y - this.pos.y, aim.x - this.pos.x);
     return p;
+  }
+
+  /**
+   * Resolve the property doctrine at the movement seam. The adapter may
+   * supply a presentation-space range, but the property still owns how far
+   * a dog is expected to cast before checking back with the hunter.
+   */
+  private doctrineFor(env: DogEnv) {
+    return env.huntAreaId
+      ? huntingDoctrine(env.huntAreaId)
+      : huntDoctrineForStyle(env.huntStyle);
+  }
+
+  private effectiveRangeRadius(env: DogEnv): number {
+    return (env.rangeRadius ?? this.rangeRadius) * this.doctrineFor(env).dogRangeMult;
   }
 
   /** While working cover, bounce off the patch edges instead of the field's. */
@@ -844,8 +1021,21 @@ export class Dog {
    * A covey rose: steady dogs stand through it and mark the fall; soft dogs
    * break chase (and won't have marked anything). Returns true if it broke.
    */
-  onFlush(rng: RNG, toward: Vec2): boolean {
-    if (rng() >= breedBreakChance(this.profile.breed, this.profile.level)) return false;
+  onFlush(rng: RNG, toward: Vec2, watchBirdIds?: readonly number[]): boolean {
+    if (watchBirdIds && this.state === 'breaking') return true;
+    if (watchBirdIds && ['retrieving', 'recalled', 'heel'].includes(this.state)) return false;
+    if (rng() >= breedBreakChance(this.profile.breed, this.profile.level)) {
+      if (watchBirdIds?.length && this.state !== 'retrieving' && this.state !== 'recalled' && this.state !== 'heel') {
+        this.state = 'marking'; this.gait = 'still';
+        this.markingBirdIds = [...new Set([...this.markingBirdIds, ...watchBirdIds])];
+        this.pointedBirdId = null;
+        this.resetScentApproach(); this.resetCreep();
+        this.heading = Math.atan2(toward.y - this.pos.y, toward.x - this.pos.x);
+        this.needsSearch = false;
+      }
+      return false;
+    }
+    this.markingBirdIds = [];
     this.state = 'breaking';
     this.breakMsLeft = BREAKING_MS;
     this.heading = Math.atan2(toward.y - this.pos.y, toward.x - this.pos.x);
@@ -916,7 +1106,7 @@ export class Dog {
     let best: Bird | null = null;
     let bestDist = radius;
     for (const b of birds) {
-      if (b.state !== state) continue;
+      if (b.state !== state || (state === 'downed' && b.fallPending)) continue;
       const d = dist(this.pos, b.pos);
       if (d < bestDist) {
         best = b;
@@ -940,6 +1130,16 @@ export class Dog {
   }
 
   private advance(heading: number, distance: number): void {
+    if (this.obstacles.length) {
+      // The travel direction may include a temporary quartering weave.
+      // Feed back only an obstacle's detour, not that weave: accumulating
+      // it into the base heading each frame makes an unobstructed dog circle.
+      const travel = this.obstacleMotion.move(this.pos, heading, distance, this.obstacles);
+      this.heading += travel - heading;
+      this.pos.x = clamp(this.pos.x, this.bounds.x + 4, this.bounds.x + this.bounds.w - 4);
+      this.pos.y = clamp(this.pos.y, this.bounds.y + 4, this.bounds.y + this.bounds.h - 4);
+      return;
+    }
     this.pos = {
       x: clamp(this.pos.x + Math.cos(heading) * distance, this.bounds.x + 4, this.bounds.x + this.bounds.w - 4),
       y: clamp(this.pos.y + Math.sin(heading) * distance, this.bounds.y + 4, this.bounds.y + this.bounds.h - 4),

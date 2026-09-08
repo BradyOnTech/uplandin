@@ -1,16 +1,19 @@
 import * as THREE from 'three';
-import { playShot, unlockAudio } from '../../audio';
+import { playShot, unlockAudio, playActionClick } from '../../audio';
 import { getGun, type GunConfig } from '../../game/guns';
 import type { Ctx, Subsystem } from '../engine';
-import { P, TOD, type TimeOfDay } from '../palette';
+import { P, fieldTimeOfDay, type TimeOfDay } from '../palette';
 import type { BirdsSystem } from './birds';
 import type { Hunt3DSystem } from './hunt3d';
 import type { TerrainSystem } from './terrain';
+import { createSportingShotgun, type SportingShotgun } from '../assets/shotgun';
 
 /*
  * GUN subsystem — the player finally exists.
  *
- * A low-poly SIDE-BY-SIDE shotgun viewmodel (the upland classic: two
+ * Quail Fields' configured pump/semiautomatic uses the sporting walnut/steel
+ * asset with separate gloved hands and visible cosmetic shell loading. The
+ * legacy low-poly SIDE-BY-SIDE shotgun viewmodel (the upland classic: two
  * muzzles and a broad breech face silhouette wider than any over/under
  * from the shooter's eye), flat-shaded boxes in palette walnut and
  * blued-steel tones, with a gloved forend hand cradling the splinter
@@ -83,6 +86,12 @@ const MOUNT_POS = new THREE.Vector3(0, -0.132, -0.26);
 const MOUNT_ROT = new THREE.Vector3(0.038, 0, 0);
 /** Viewmodel scale — FP guns render oversize or they read as twigs. */
 const RIG_SCALE = 1.18;
+// The production slice stays compact in the lower-right at normal FOV70.
+// At a settled mount the bead is geometrically on the camera's shot ray.
+const SPORT_CARRY_POS = new THREE.Vector3(.19, -.285, -.50);
+const SPORT_CARRY_ROT = new THREE.Vector3(-.08, -.12, -.10);
+const SPORT_MOUNT_ROT = new THREE.Vector3(.045, 0, 0);
+const SPORT_MOUNT_POS = new THREE.Vector3(0, -(.030 * Math.cos(.045) + .766 * Math.sin(.045)), -.37);
 
 /* ------------------------------ geometry ------------------------------ */
 
@@ -198,6 +207,9 @@ export class GunSystem implements Subsystem {
   private gun!: GunConfig;
   private mat?: THREE.MeshLambertMaterial;
   private geo?: THREE.BufferGeometry;
+  private sporting?: SportingShotgun;
+  /** Staged visual inspection only; never changes ammo or reload timing. */
+  private visualReloadPreview: number | null = null;
   private root = new THREE.Group();
   private rig = new THREE.Group();
   private frozen = false;
@@ -233,6 +245,7 @@ export class GunSystem implements Subsystem {
   private reloadElapsed = 0;
   private reloadDuration = 0;
   private keydownHandler?: (event: KeyboardEvent) => void;
+  private inputAbort = new AbortController();
   private reticle: HTMLElement | null = null;
   private shotCallout: HTMLElement | null = null;
   private shotCalloutUntil = 0;
@@ -311,7 +324,7 @@ export class GunSystem implements Subsystem {
         );
     };
     const applyTod = (tod: TimeOfDay): void => {
-      const spec = TOD[tod];
+      const spec = fieldTimeOfDay(this.hunt.huntState().areaId,tod);
       const silh = spec.grassLumCap < 1;
       const lowSun = THREE.MathUtils.clamp(1 - (spec.sunElevation - 2) / 13, 0, 1);
       const el = THREE.MathUtils.degToRad(spec.sunElevation);
@@ -334,32 +347,46 @@ export class GunSystem implements Subsystem {
     this.todHandler = ((e: CustomEvent) => applyTod(e.detail)) as EventListener;
     ctx.events.addEventListener('tod', this.todHandler);
 
-    this.geo = this.buildGun();
-    const mesh = new THREE.Mesh(this.geo, this.mat);
-    mesh.castShadow = false;
-    mesh.receiveShadow = false;
-    mesh.frustumCulled = false; // always at the camera; never let it pop
-    this.rig.add(mesh);
-    this.rig.scale.setScalar(RIG_SCALE);
+    if (this.hunt.huntState().areaId === 'quail-fields' && (this.gun.id === 'semi-auto' || this.gun.id === 'remington-870')) {
+      this.sporting = createSportingShotgun(this.gun.id === 'remington-870' ? 'pump' : 'semi-auto');
+      this.rig.add(this.sporting.root);
+      this.rig.scale.setScalar(1);
+    } else {
+      this.geo = this.buildGun();
+      const mesh = new THREE.Mesh(this.geo, this.mat);
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      mesh.frustumCulled = false;
+      this.rig.add(mesh);
+      this.rig.scale.setScalar(RIG_SCALE);
+    }
     this.root.add(this.rig);
     ctx.scene.add(this.root);
 
     if (!this.frozen) {
-      // AIM INTENT: right mouse held = mount; released = dismount.
-      // The 3D rise stays in the field: mount with RMB, put the camera's
-      // center pattern on a bird, then fire with LMB.
+      const signal = this.inputAbort.signal;
       window.addEventListener('mousedown', (e) => {
+        if (ctx.paused || (e.target !== ctx.renderer.domElement && document.pointerLockElement !== ctx.renderer.domElement)) return;
         if (e.button === 2) this.aim = true;
         else if (e.button === 0 && this.mountT > 0.7) this.fire(ctx);
-      });
-      window.addEventListener('mouseup', (e) => {
-        if (e.button === 2) this.aim = false;
-      });
-      window.addEventListener('contextmenu', (e) => e.preventDefault());
+      }, { signal });
+      window.addEventListener('mouseup', (e) => { if (e.button === 2) this.aim = false; }, { signal });
+      ctx.renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault(), { signal });
       this.keydownHandler = (event) => {
-        if (event.key.toLowerCase() === 'r') this.beginReload();
+        if (!ctx.paused && event.key.toLowerCase() === 'r') this.beginReload();
       };
-      window.addEventListener('keydown', this.keydownHandler);
+      window.addEventListener('keydown', this.keydownHandler, { signal });
+      ctx.events.addEventListener('hunt-action', ((event: CustomEvent) => {
+        if (ctx.paused) return;
+        if (event.detail === 'mount') this.aim = true;
+        else if (event.detail === 'lower') this.aim = false;
+        else if (event.detail === 'reload') this.beginReload();
+        else if (event.detail === 'fire' && this.mountT > 0.7) this.fire(ctx);
+      }) as EventListener, { signal });
+      ctx.events.addEventListener('pause', () => {
+        this.aim = false;
+        document.querySelector('[data-action="aim"]')?.setAttribute('aria-pressed', 'false');
+      }, { signal });
     } else {
       // CAPTURE HARNESS HANDLE (dog pattern: tooling only, never gameplay):
       // stage states, measure the mount clock and the recoil spring with
@@ -367,9 +394,15 @@ export class GunSystem implements Subsystem {
       (window as unknown as { __gunAudit?: unknown }).__gunAudit = {
         setState: (mode: 'carry' | 'mount') => {
           this.aim = mode === 'mount';
+          this.visualReloadPreview = null;
           this.mountT = this.aim ? 1 : 0;
           this.settleAge = 10;
           this.recZ = this.recVZ = this.recP = this.recVP = 0;
+        },
+        setReloadPreview: (progress: number | null) => {
+          this.visualReloadPreview = progress === null ? null : THREE.MathUtils.clamp(progress, 0, 1);
+          this.aim = false;
+          this.mountT = 0;
         },
         setVisible: (v: boolean) => {
           this.root.visible = v;
@@ -383,6 +416,11 @@ export class GunSystem implements Subsystem {
           yawDeg: THREE.MathUtils.radToDeg(ctx.camera.rotation.y),
           pitchDeg: THREE.MathUtils.radToDeg(ctx.camera.rotation.x),
         }),
+        viewmodel: () => {
+          this.root.updateMatrixWorld(true);
+          const bead = this.sporting ? this.sporting.bead.clone().applyMatrix4(this.rig.matrixWorld).project(ctx.camera) : null;
+          return { model: this.sporting ? this.sporting.root.name : 'legacy-side-by-side', gunId: this.gun.id, capacity: this.gun.shells, fov: ctx.camera.fov, beadNdc: bead ? { x: bead.x, y: bead.y } : null, stagedReloadProgress: this.visualReloadPreview };
+        },
         state: () => ({
           aim: this.aim,
           mountT: this.mountT,
@@ -469,6 +507,7 @@ export class GunSystem implements Subsystem {
     if (this.isReloading() || this.shells >= this.gun.shells) return false;
     this.aim = false;
     this.reloadElapsed = 0;
+    playActionClick();
     this.reloadDuration = RELOAD_OPEN_S + (this.gun.shells - this.shells) * RELOAD_PER_SHELL_S;
     if (this.shotCallout) {
       this.shotCallout.textContent = 'RELOADING';
@@ -480,7 +519,7 @@ export class GunSystem implements Subsystem {
   }
 
   private fire(ctx: Ctx): void {
-    if (!this.birds.isRiseActive() || this.isReloading()) return;
+    if (ctx.paused || !this.birds.isRiseActive() || this.isReloading()) return;
     if (this.shells <= 0) {
       this.beginReload();
       return;
@@ -735,7 +774,7 @@ export class GunSystem implements Subsystem {
 
     this.advance(dt);
     const m = ease(this.mountT);
-    const reloadP = this.reloadProgress();
+    const reloadP = this.visualReloadPreview ?? this.reloadProgress();
     const reloadArc = Math.sin(reloadP * Math.PI);
 
     // Distance-driven walk bob (never per-second): stride phase advances
@@ -808,35 +847,49 @@ export class GunSystem implements Subsystem {
     this.root.quaternion.copy(cam.quaternion);
 
     const carryK = 1 - m;
-    const bobAmp = this.speedK * (1 - 0.85 * m);
+    const bobAmp = this.speedK * (1 - (this.sporting ? 1 : .85) * m);
+    const carryPos = this.sporting ? SPORT_CARRY_POS : CARRY_POS;
+    const mountPos = this.sporting ? SPORT_MOUNT_POS : MOUNT_POS;
+    const carryRot = this.sporting ? SPORT_CARRY_ROT : CARRY_ROT;
+    const mountRot = this.sporting ? SPORT_MOUNT_ROT : MOUNT_ROT;
+    const carryMotion = this.sporting ? carryK : 1;
     const time = snap ? 0 : ctx.time;
     const breath = Math.sin(time * 1.8);
     // Sight-picture settle: one quick decaying nod after the rise lands.
     const settle = this.wasMounted ? 0.016 * Math.exp(-9 * this.settleAge) * Math.sin(26 * this.settleAge) : 0;
 
     this.rig.position.set(
-      CARRY_POS.x * carryK + MOUNT_POS.x * m + Math.sin(this.stridePhase) * 0.005 * bobAmp,
-      CARRY_POS.y * carryK + MOUNT_POS.y * m +
+      carryPos.x * carryK + mountPos.x * m + Math.sin(this.stridePhase) * 0.005 * bobAmp + (this.sporting ? reloadArc * .045 : 0),
+      carryPos.y * carryK + mountPos.y * m +
         Math.sin(this.stridePhase * 2) * 0.007 * bobAmp +
-        breath * 0.0025 * (1 - 0.6 * m) - reloadArc * 0.075,
-      CARRY_POS.z * carryK + MOUNT_POS.z * m + this.recZ,
+        breath * 0.0025 * (1 - 0.6 * m) * carryMotion + reloadArc * (this.sporting ? .075 : -.075),
+      carryPos.z * carryK + mountPos.z * m + this.recZ,
     );
     this.rig.rotation.order = 'YXZ';
     this.rig.rotation.set(
-      CARRY_ROT.x * carryK + MOUNT_ROT.x * m +
-        this.swayPitch + breath * 0.0012 + settle + this.recP + this.aimPitch * m + reloadArc * 0.42,
-      CARRY_ROT.y * carryK + MOUNT_ROT.y * m + this.swayYaw + this.aimYaw * m,
-      CARRY_ROT.z * carryK + MOUNT_ROT.z * m +
-        Math.sin(this.stridePhase) * 0.012 * bobAmp + reloadArc * 0.16,
+      carryRot.x * carryK + mountRot.x * m +
+        this.swayPitch * carryMotion + breath * .0012 * carryMotion + settle + this.recP +
+        (this.sporting ? 0 : this.aimPitch * m) + reloadArc * (this.sporting ? .08 : .42),
+      carryRot.y * carryK + mountRot.y * m + this.swayYaw * carryMotion + (this.sporting ? 0 : this.aimYaw * m),
+      carryRot.z * carryK + mountRot.z * m +
+        Math.sin(this.stridePhase) * .012 * bobAmp + reloadArc * (this.sporting ? -1.05 : .16),
+    );
+    this.sporting?.update(
+      this.visualReloadPreview === null ? this.reloadElapsed : this.visualReloadPreview * (RELOAD_OPEN_S + 3 * RELOAD_PER_SHELL_S),
+      this.visualReloadPreview === null ? this.reloadDuration : RELOAD_OPEN_S + 3 * RELOAD_PER_SHELL_S,
+      this.visualReloadPreview === null ? this.gun.shells - this.shells : 3, this.recZ, dt,
     );
   }
 
   dispose(ctx: Ctx): void {
+    this.inputAbort.abort();
     ctx.scene.remove(this.root);
     if (this.keydownHandler) window.removeEventListener('keydown', this.keydownHandler);
     this.keydownHandler = undefined;
     if (this.todHandler) ctx.events.removeEventListener('tod', this.todHandler);
     this.todHandler = undefined;
+    this.sporting?.dispose();
+    this.sporting = undefined;
     this.geo?.dispose();
     this.geo = undefined;
     this.mat?.dispose();

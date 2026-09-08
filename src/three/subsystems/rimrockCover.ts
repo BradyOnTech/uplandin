@@ -22,15 +22,20 @@ function cellSeed(x: number, z: number, seed: number): number {
   return (h ^ (h >>> 16)) >>> 0;
 }
 
-function bunchgrassGeometry(): THREE.BufferGeometry {
+export type RimrockCoverVariant = 'chukar' | 'hun';
+
+function bunchgrassGeometry(variant: RimrockCoverVariant): THREE.BufferGeometry {
   const rng = mulberry32(0x71b2a9);
   const positions: number[] = [];
-  for (let i = 0; i < 26; i++) {
-    const angle = (i / 26) * Math.PI * 2 + (rng() - 0.5) * 0.32;
-    const height = 0.34 + rng() * 0.42;
-    const width = 0.011 + rng() * 0.016;
-    const root = 0.04 + rng() * 0.24;
-    const lean = 0.07 + rng() * 0.23;
+  // Chukar grass is a tight, low sage-country tuft. Hun benches carry a
+  // looser, taller crown that reads as open wheatgrass from a distance.
+  const bladeCount = variant === 'hun' ? 20 : 26;
+  for (let i = 0; i < bladeCount; i++) {
+    const angle = (i / bladeCount) * Math.PI * 2 + (rng() - 0.5) * (variant === 'hun' ? 0.44 : 0.32);
+    const height = variant === 'hun' ? 0.4 + rng() * 0.52 : 0.34 + rng() * 0.42;
+    const width = variant === 'hun' ? 0.012 + rng() * 0.014 : 0.011 + rng() * 0.016;
+    const root = variant === 'hun' ? 0.05 + rng() * 0.18 : 0.04 + rng() * 0.24;
+    const lean = variant === 'hun' ? 0.1 + rng() * 0.3 : 0.07 + rng() * 0.23;
     const sx = Math.sin(angle);
     const sz = Math.cos(angle);
     const rx = Math.cos(angle) * width;
@@ -67,20 +72,24 @@ export class RimrockCoverSystem implements Subsystem {
   private color = new THREE.Color();
   private world = { x: 0, z: 0 };
 
-  constructor(private readonly landscape: LandscapeModel) {}
+  constructor(
+    private readonly landscape: LandscapeModel,
+    private readonly variant: RimrockCoverVariant = 'chukar',
+  ) {}
 
   init(ctx: Ctx): void {
     const high = ctx.quality === 'high';
-    const grassGeometry = bunchgrassGeometry();
+    const isHun = this.variant === 'hun';
+    const grassGeometry = bunchgrassGeometry(this.variant);
     const sageGeometry = new THREE.DodecahedronGeometry(0.48, 0);
     sageGeometry.scale(1.15, 0.45, 0.95);
     const grassMaterial = new THREE.MeshLambertMaterial({
-      color: 0xffffff,
+      color: isHun ? P.straw : 0xffffff,
       vertexColors: false,
       side: THREE.DoubleSide,
     });
     const sageMaterial = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
+      color: isHun ? P.oliveMid : 0xffffff,
       roughness: 1,
       flatShading: true,
       emissive: P.rimrockSage,
@@ -89,8 +98,11 @@ export class RimrockCoverSystem implements Subsystem {
     this.geometries.push(grassGeometry, sageGeometry);
     this.materials.push(grassMaterial, sageMaterial);
 
-    const grassCapacity = high ? 9000 : 4200;
-    const sageCapacity = high ? 1500 : 700;
+    // Hun country is a broad bench with fewer sage islands and more air
+    // between grass crowns. Keep both variants well inside the same mobile
+    // budget while letting density support the different hunting identity.
+    const grassCapacity = high ? (isHun ? 7200 : 9000) : (isHun ? 3400 : 4200);
+    const sageCapacity = high ? (isHun ? 720 : 1500) : (isHun ? 320 : 700);
     const grass = new THREE.InstancedMesh(grassGeometry, grassMaterial, grassCapacity);
     const sage = new THREE.InstancedMesh(sageGeometry, sageMaterial, sageCapacity);
     grass.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(grassCapacity * 3), 3);
@@ -103,7 +115,7 @@ export class RimrockCoverSystem implements Subsystem {
 
     const patches = ctx.get<HuntCoverQuery>('hunt3d').coverPatches();
     const radius = 232;
-    const stepM = high ? 2.5 : 3.55;
+    const stepM = high ? (isHun ? 3.35 : 2.5) : (isHun ? 4.6 : 3.55);
     const stepProperty = stepM / PROPERTY_PX_TO_M;
     const minProperty = this.landscape.worldToProperty(-radius, -radius, { x: 0, y: 0 });
     const maxProperty = this.landscape.worldToProperty(radius, radius, { x: 0, y: 0 });
@@ -111,10 +123,14 @@ export class RimrockCoverSystem implements Subsystem {
     const maxCellX = Math.ceil(maxProperty.x / stepProperty);
     const minCellY = Math.floor(minProperty.y / stepProperty);
     const maxCellY = Math.ceil(maxProperty.y / stepProperty);
-    const grassGold = new THREE.Color(P.grassGold);
-    const straw = new THREE.Color(P.straw);
+    const grassGold = isHun
+      ? new THREE.Color(P.straw).lerp(new THREE.Color(P.strawPale), 0.35)
+      : new THREE.Color(P.grassGold);
+    const straw = isHun
+      ? new THREE.Color(P.straw).lerp(new THREE.Color(P.grassGold), 0.25)
+      : new THREE.Color(P.straw);
     const pale = new THREE.Color(P.strawPale);
-    const sageBase = new THREE.Color(P.rimrockSage);
+    const sageBase = isHun ? new THREE.Color(P.oliveMid) : new THREE.Color(P.rimrockSage);
     const sageShade = new THREE.Color(P.rimrockSage).lerp(new THREE.Color(P.straw), 0.18);
     let grassCount = 0;
     let sageCount = 0;
@@ -144,7 +160,9 @@ export class RimrockCoverSystem implements Subsystem {
         }
         if (surface.slope > 0.86 || surface.rockiness > 0.86) continue;
 
-        const grassChance = 0.28 + surface.vegetation * 0.62 + cover * 0.2;
+        const grassChance = isHun
+          ? 0.38 + surface.vegetation * 0.54 + cover * 0.13
+          : 0.28 + surface.vegetation * 0.62 + cover * 0.2;
         if (grassCount < grassCapacity && rng() < grassChance) {
           this.position.set(x, surface.height - 0.025, z);
           this.euler.set((rng() - 0.5) * 0.1, rng() * Math.PI * 2, (rng() - 0.5) * 0.1);
@@ -159,7 +177,9 @@ export class RimrockCoverSystem implements Subsystem {
           grassCount++;
         }
 
-        const sageChance = 0.025 + surface.vegetation * 0.1 + cover * 0.19;
+        const sageChance = isHun
+          ? 0.012 + surface.vegetation * 0.07 + cover * 0.1
+          : 0.025 + surface.vegetation * 0.1 + cover * 0.19;
         if (sageCount < sageCapacity && rng() < sageChance && surface.rockiness < 0.65) {
           const scale = 0.45 + rng() * 0.95 + cover * 0.35;
           this.position.set(x + (rng() - 0.5) * 1.5, surface.height + 0.18 * scale, z + (rng() - 0.5) * 1.5);
@@ -182,6 +202,8 @@ export class RimrockCoverSystem implements Subsystem {
     if (sage.instanceColor) sage.instanceColor.needsUpdate = true;
     grass.computeBoundingSphere();
     sage.computeBoundingSphere();
+    grass.name = isHun ? 'Hun bench wheatgrass' : 'Rimrock bunchgrass';
+    sage.name = isHun ? 'Hun bench sage islands' : 'Rimrock sage islands';
     ctx.scene.add(grass, sage);
     this.objects.push(grass, sage);
   }

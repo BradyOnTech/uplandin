@@ -1,0 +1,597 @@
+{
+  "schema": 1,
+  "asset": "Uplandin liver-and-white German Shorthaired Pointer",
+  "source": {
+    "file": "GSP-liver-white.glb",
+    "sha256": "f2d24b53d1cabc3540c7d673c0910dec10ac4e8c1a97f6de0a449d3b2cc975b7",
+    "usage": "Source-conforming authored retopology and restrained albedo bake; no hero decimation"
+  },
+  "coordinates": {
+    "units": "metres",
+    "forward": "+Z",
+    "up": "+Y",
+    "shoulderHeight": 0.635,
+    "noseForward": 0.62,
+    "hindPawForward": -0.54
+  },
+  "rig": "GSP_Rig",
+  "mesh": "GSP_LiverWhite_LOD0",
+  "bones": [
+    "Root",
+    "Pelvis",
+    "Spine",
+    "Chest",
+    "Neck",
+    "Head",
+    "Jaw",
+    "Tail01",
+    "Tail02",
+    "Tail03",
+    "Shoulder.L",
+    "UpperArm.L",
+    "Forearm.L",
+    "Carpus.L",
+    "FrontPaw.L",
+    "FrontContact.L",
+    "Hip.L",
+    "Thigh.L",
+    "Shin.L",
+    "Hock.L",
+    "HindPaw.L",
+    "HindContact.L",
+    "EarBase.L",
+    "EarTip.L",
+    "Shoulder.R",
+    "UpperArm.R",
+    "Forearm.R",
+    "Carpus.R",
+    "FrontPaw.R",
+    "FrontContact.R",
+    "Hip.R",
+    "Thigh.R",
+    "Shin.R",
+    "Hock.R",
+    "HindPaw.R",
+    "HindContact.R",
+    "EarBase.R",
+    "EarTip.R",
+    "MouthSocket"
+  ],
+  "lods": [
+    {
+      "lod": 0,
+      "file": "gsp-liver-white-lod0.glb",
+      "vertices": 5620,
+      "triangles": 11100,
+      "bytes": 1943036
+    },
+    {
+      "lod": 1,
+      "file": "gsp-liver-white-lod1.glb",
+      "vertices": 2394,
+      "triangles": 4662,
+      "bytes": 1696612
+    },
+    {
+      "lod": 2,
+      "file": "gsp-liver-white-lod2.glb",
+      "vertices": 1042,
+      "triangles": 1997,
+      "bytes": 1586872
+    }
+  ],
+  "materials": 2,
+  "textures": [
+    "1024x1024 albedo",
+    "16x4 facial palette"
+  ],
+  "animations": [
+    {
+      "name": "idle",
+      "duration": 3.2,
+      "nominalSpeed": 0,
+      "loop": true,
+      "contacts": {
+        "FL": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "HL": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "FR": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "HR": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        }
+      }
+    },
+    {
+      "name": "attentive",
+      "duration": 2.4,
+      "nominalSpeed": 0,
+      "loop": true,
+      "contacts": {
+        "FL": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "HL": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "FR": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "HR": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        }
+      }
+    },
+    {
+      "name": "walk",
+      "duration": 0.8333333333333334,
+      "nominalSpeed": 0.85,
+      "loop": true,
+      "contacts": {
+        "FL": {
+          "offset": 0,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "HL": {
+          "offset": 0.25,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "FR": {
+          "offset": 0.5,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "HR": {
+          "offset": 0.75,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        }
+      }
+    },
+    {
+      "name": "trot",
+      "duration": 0.5,
+      "nominalSpeed": 2.4,
+      "loop": true,
+      "contacts": {
+        "FL": {
+          "offset": 0,
+          "stanceFraction": 0.42,
+          "mode": "gait"
+        },
+        "HL": {
+          "offset": 0.5,
+          "stanceFraction": 0.42,
+          "mode": "gait"
+        },
+        "FR": {
+          "offset": 0.5,
+          "stanceFraction": 0.42,
+          "mode": "gait"
+        },
+        "HR": {
+          "offset": 0,
+          "stanceFraction": 0.42,
+          "mode": "gait"
+        }
+      }
+    },
+    {
+      "name": "lope",
+      "duration": 0.43333333333333335,
+      "nominalSpeed": 4.4,
+      "loop": true,
+      "contacts": {
+        "FL": {
+          "offset": 0,
+          "stanceFraction": 0.26,
+          "mode": "gait"
+        },
+        "HL": {
+          "offset": 0.57,
+          "stanceFraction": 0.26,
+          "mode": "gait"
+        },
+        "FR": {
+          "offset": 0.13,
+          "stanceFraction": 0.26,
+          "mode": "gait"
+        },
+        "HR": {
+          "offset": 0.7,
+          "stanceFraction": 0.26,
+          "mode": "gait"
+        }
+      }
+    },
+    {
+      "name": "start",
+      "duration": 0.6666666666666666,
+      "nominalSpeed": 0,
+      "loop": false,
+      "contacts": {
+        "FL": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "HL": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "FR": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "HR": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        }
+      }
+    },
+    {
+      "name": "stop",
+      "duration": 0.6,
+      "nominalSpeed": 0,
+      "loop": false,
+      "contacts": {
+        "FL": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "HL": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "FR": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "HR": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        }
+      }
+    },
+    {
+      "name": "turn_left",
+      "duration": 0.8,
+      "nominalSpeed": 0.85,
+      "loop": true,
+      "contacts": {
+        "FL": {
+          "offset": 0,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "HL": {
+          "offset": 0.25,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "FR": {
+          "offset": 0.5,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "HR": {
+          "offset": 0.75,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        }
+      }
+    },
+    {
+      "name": "turn_right",
+      "duration": 0.8,
+      "nominalSpeed": 0.85,
+      "loop": true,
+      "contacts": {
+        "FL": {
+          "offset": 0,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "HL": {
+          "offset": 0.25,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "FR": {
+          "offset": 0.5,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "HR": {
+          "offset": 0.75,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        }
+      }
+    },
+    {
+      "name": "scent_check",
+      "duration": 2.4,
+      "nominalSpeed": 0,
+      "loop": true,
+      "contacts": {
+        "FL": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "HL": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "FR": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "HR": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        }
+      }
+    },
+    {
+      "name": "locate",
+      "duration": 1.4,
+      "nominalSpeed": 0.45,
+      "loop": true,
+      "contacts": {
+        "FL": {
+          "offset": 0,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "HL": {
+          "offset": 0.25,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "FR": {
+          "offset": 0.5,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "HR": {
+          "offset": 0.75,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        }
+      }
+    },
+    {
+      "name": "stalk",
+      "duration": 1.6666666666666667,
+      "nominalSpeed": 0.25,
+      "loop": true,
+      "contacts": {
+        "FL": {
+          "offset": 0,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "HL": {
+          "offset": 0.25,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "FR": {
+          "offset": 0.5,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "HR": {
+          "offset": 0.75,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        }
+      }
+    },
+    {
+      "name": "lock",
+      "duration": 0.7,
+      "nominalSpeed": 0,
+      "loop": false,
+      "contacts": {
+        "FL": {
+          "offset": 0,
+          "stanceFraction": 0,
+          "mode": "lifting"
+        },
+        "HL": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "FR": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "HR": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        }
+      }
+    },
+    {
+      "name": "point",
+      "duration": 3.2,
+      "nominalSpeed": 0,
+      "loop": true,
+      "contacts": {
+        "FL": {
+          "offset": 0,
+          "stanceFraction": 0,
+          "mode": "lifted"
+        },
+        "HL": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "FR": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "HR": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        }
+      }
+    },
+    {
+      "name": "pickup",
+      "duration": 1.6,
+      "nominalSpeed": 0,
+      "loop": false,
+      "contacts": {
+        "FL": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "HL": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "FR": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "HR": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        }
+      }
+    },
+    {
+      "name": "carry",
+      "duration": 0.8333333333333334,
+      "nominalSpeed": 0.85,
+      "loop": true,
+      "contacts": {
+        "FL": {
+          "offset": 0,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "HL": {
+          "offset": 0.25,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "FR": {
+          "offset": 0.5,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "HR": {
+          "offset": 0.75,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        }
+      }
+    },
+    {
+      "name": "deliver",
+      "duration": 1.7333333333333334,
+      "nominalSpeed": 0,
+      "loop": false,
+      "contacts": {
+        "FL": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "HL": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "FR": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        },
+        "HR": {
+          "offset": 0,
+          "stanceFraction": 1,
+          "mode": "planted"
+        }
+      }
+    },
+    {
+      "name": "heel",
+      "duration": 0.8333333333333334,
+      "nominalSpeed": 0.85,
+      "loop": true,
+      "contacts": {
+        "FL": {
+          "offset": 0,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "HL": {
+          "offset": 0.25,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "FR": {
+          "offset": 0.5,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        },
+        "HR": {
+          "offset": 0.75,
+          "stanceFraction": 0.62,
+          "mode": "gait"
+        }
+      }
+    }
+  ],
+  "motionAuthority": "Root has no translation or yaw keys. Simulation owns position and heading. Nominal clip speed controls gait playback rate.",
+  "proceduralOwnership": "Mixer owns skeletal motion. Optional post-mixer terrain IK may adjust shoulder/arm/paw chains; restore mixer transforms each update. Head gaze affects only Head; mouth item attaches to MouthSocket.",
+  "previewDisclaimer": "Studio renders and authored clips are asset diagnostics, not gameplay acceptance evidence."
+}

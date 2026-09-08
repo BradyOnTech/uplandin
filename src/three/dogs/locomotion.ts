@@ -203,8 +203,8 @@ function circularPulse(cycle: number, center: number, halfWidth: number): number
   return x * x * (3 - 2 * x);
 }
 
-function writeFoot(cycle: number, i: number, spec: GaitSpec, stride: number, out: FootPose): void {
-  const phase = wrapCycle(cycle - spec.touchdown[i]);
+function writeFoot(cycle: number, i: number, spec: GaitSpec, stride: number, out: FootPose, touchdown = spec.touchdown): void {
+  const phase = wrapCycle(cycle - touchdown[i]);
   const duty = spec.duty[i];
   const front = spec.reachFront[i];
   // The stance target travels backward by exactly the distance the root
@@ -279,6 +279,7 @@ export function writeLocomotionPose(
   lead: GallopLead,
   out: LocomotionPose,
   strideScale = 1,
+  touchdown?: FootTuple<number>,
 ): LocomotionPose {
   const c = wrapCycle(cycle);
   const spec = gait === 'walk'
@@ -295,7 +296,7 @@ export function writeLocomotionPose(
 
   let supported = false;
   for (let i = 0; i < 4; i++) {
-    writeFoot(c, i, spec, stride, out.feet[i]);
+    writeFoot(c, i, spec, stride, out.feet[i], touchdown);
     if (out.feet[i].contact !== 'swing') supported = true;
   }
   out.flight = supported ? 0 : 1;

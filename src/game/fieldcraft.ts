@@ -25,6 +25,22 @@ export function slopeApproach(
   return uphillness > 0.35 ? 'above' : uphillness < -0.35 ? 'below' : 'level';
 }
 
+/**
+ * Resolve the slope tactic only for a species that owns it. A mountain
+ * property can contain several birds, but Chukar's above/below advantage must
+ * not become a map-wide modifier for blue grouse or other bycatch.
+ */
+export function speciesSlopeApproach(
+  species: { flightDirection?: 'none' | 'downhill' } | undefined,
+  slopeAngle: number | undefined,
+  hunterPos: Vec2,
+  birdPos: Vec2,
+): SlopeApproach | null {
+  return species?.flightDirection === 'downhill'
+    ? slopeApproach(slopeAngle, hunterPos, birdPos)
+    : null;
+}
+
 /** Nerve drain while pointed: cut off from above, jumpy from below. */
 export function slopeNerveMult(approach: SlopeApproach | null): number {
   return approach === 'above' ? 0.6 : approach === 'below' ? 1.4 : 1;

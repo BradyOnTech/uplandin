@@ -1055,6 +1055,10 @@ export class FieldScene extends Phaser.Scene {
       this.area.world,
       Math.random,
       windMults(this.hunt.windStrength).nerve * conditionMults(this.hunt.condition).nerve,
+      {
+        returnTrail: this.area.trails.find((trail) => trail.id === 'circleback-return'),
+        patches: this.area.patches,
+      },
     );
     if (relanded.length > 0) {
       this.simulation.finishRise({ relight: false });

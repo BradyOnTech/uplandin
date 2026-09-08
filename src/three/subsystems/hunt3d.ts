@@ -1,3 +1,4 @@
+import { quailGroundPropObstacles } from './quailGroundProps';
 import { getDropPoint, type AreaConfig, type DropPoint } from '../../game/areas';
 import { playWhistle } from '../../audio';
 import { circleBack } from '../../game/birds';
@@ -6,10 +7,12 @@ import { loadCareer, saveCareer } from '../../game/career';
 import { Dog, type DogGait, type DogState } from '../../game/dog';
 import { conditionMults, type Condition } from '../../game/conditions';
 import { createThreeHuntSetup } from '../../game/gameplayMode';
+import { REVIEW_HUNT_SEED, huntStreamSeed, parseHuntSeed } from '../../game/huntSeed';
 import { settleCareerHunt, type CareerHuntResult } from '../../game/huntResults';
 import {
   HuntSimulation,
   HUNT_SHOT_RANGE,
+  isSpatialEncounterArea,
   type HuntDogMotion,
   type RiseResolution,
   type HuntSimulationEvent,
@@ -18,20 +21,23 @@ import { dist, mulberry32 } from '../../game/math';
 import { LandscapeModel, PROPERTY_PX_TO_M } from '../../game/landscape';
 import type { HuntState } from '../../game/state';
 import type { Vec2 } from '../../game/types';
-import { endHuntEarly } from '../../game/state';
+import { endFieldSession, endHuntEarly } from '../../game/state';
 import { windMults } from '../../game/wind';
+import { huntingDoctrine } from '../../game/huntDoctrine';
+import { getSpecies } from '../../game/species';
 import type { Ctx, Subsystem } from '../engine';
 import { huntPaceMultiplier } from '../dogs/huntMotion';
 import type { BirdsSystem } from './birds';
 import type { PlayerSystem } from './player';
+import { deriveQuailParkingPose } from './quailEntrances';
 
 /*
  * HUNT3D subsystem: the bridge that makes this world THE GAME's world.
  *
  * It owns exactly three things:
- *  1. The authoritative sim instance — createHunt on the quail-fields area
- *     with a fixed seed, consumed read-only through the same call surfaces
- *     the 2D FieldScene used (createHunt, dog.update, updateBirds).
+ *  1. The authoritative sim instance — createHunt on the selected property
+ *     with a reproducible per-visit seed, consumed through the same call
+ *     surfaces the 2D FieldScene used (createHunt, dog.update, updateBirds).
  *  2. The sim-px <-> world-meters mapping. 1 sim px = 1 yard = 0.9144 m,
  *     the selected drop pinned to the local render anchor, sim +x -> world
  *     +x, sim +y (screen down) -> world +z. The LandscapeModel keeps those
@@ -50,8 +56,6 @@ import type { PlayerSystem } from './player';
  * __api3d.stepSim), so a captured dog pose is a pure function of the seed.
  */
 
-/** Fixed hunt seed: one covert, same birds, every boot (this phase). */
-const HUNT_SEED = 0x51ba11;
 /** Independent stream for the dog's own dice (creep/honor/work rolls). */
 const DOG_SEED = 0xd0663d;
 
@@ -103,8 +107,8 @@ export function liveDogBreedId(search: string): string {
   return requested && BREEDS.some((breed) => breed.id === requested) ? requested : DEFAULT_DOG_BREED;
 }
 /** Quarter around a point ahead of the player, not a huge circle behind them. */
-const LIVE_DOG_ANCHOR_AHEAD_M = 6;
-const LIVE_DOG_RANGE_M = 3.5;
+const LIVE_DOG_ANCHOR_AHEAD_M = 14;
+const LIVE_DOG_RANGE_M = 22;
 const LIVE_DOG_INTRO_ANGLE = -1.15;
 
 /** Sim tick budget (ms). The sim is tiny; blowing this means a bug. */
@@ -147,6 +151,7 @@ export class Hunt3DSystem implements Subsystem {
   private simulation!: HuntSimulation;
   /** Adapter-only pace/range mapping passed through the shared sim seam. */
   private liveDogMotions: HuntDogMotion[] = [];
+  private dogObstaclesSynced = false;
   private simMsLast = 0;
   private simMsMax = 0;
   private simMsTotal = 0;
@@ -160,8 +165,12 @@ export class Hunt3DSystem implements Subsystem {
   private dogSnapshots: Array<{
     prevX: number;
     prevY: number;
+    prevHeading: number;
+    prevTravelHeading: number;
     currX: number;
     currY: number;
+    currHeading: number;
+    currTravelHeading: number;
     ready: boolean;
   }> = [];
   /** Slow deterministic acceleration/deceleration while actively searching. */
@@ -171,13 +180,18 @@ export class Hunt3DSystem implements Subsystem {
   private careerResult: CareerHuntResult | null = null;
   private careerSettled = false;
   private gearTier = 0;
+  private seedValue?: number;
 
   constructor(private readonly landscape: LandscapeModel) {}
 
   init(ctx: Ctx): void {
     this.frozen = new URLSearchParams(location.search).has('capture');
 
-    const setup = createThreeHuntSetup(location.search, mulberry32(HUNT_SEED));
+    const search = new URLSearchParams(location.search);
+    if (this.landscape.area.id === 'quail-fields' && parseHuntSeed(search.toString()) === undefined) search.set('seed', String(REVIEW_HUNT_SEED));
+    const setup = createThreeHuntSetup(search.toString(), mulberry32(REVIEW_HUNT_SEED));
+    this.seedValue = setup.seed;
+    this.flushRng = mulberry32(setup.seed === undefined ? FLUSH_SEED : huntStreamSeed(setup.seed, FLUSH_SEED));
     this.gearTier = setup.gearTier;
     this.careerDogIds = setup.launch?.kind === 'career'
       ? [setup.kennelDog?.id ?? null, setup.brace?.kennelDog?.id ?? null]
@@ -213,17 +227,29 @@ export class Hunt3DSystem implements Subsystem {
     this.dogSnapshots = this.simDogs.map((dog) => ({
       prevX: dog.pos.x,
       prevY: dog.pos.y,
+      prevHeading: dog.heading,
+      prevTravelHeading: dog.heading,
       currX: dog.pos.x,
       currY: dog.pos.y,
+      currHeading: dog.heading,
+      currTravelHeading: dog.heading,
       ready: false,
     }));
     this.pacePhases = this.simDogs.map(() => 0);
+    const propObstacles = quailGroundPropObstacles(this.landscape).map(o => {
+      const p = this.landscape.worldToProperty(o.x,o.z,{x:0,y:0});
+      return {x:p.x,y:p.y,radius:o.radius / PROPERTY_PX_TO_M};
+    });
     this.liveDogMotions = this.simDogs.map((dog) => ({
-      movementScale: this.frozen ? 1 : liveMovementScaleForGait(dog.gait),
-      rangeRadius: this.frozen ? undefined : LIVE_DOG_RANGE_M / PROPERTY_PX_TO_M,
-      workAnchor: this.frozen ? undefined : this.liveDogAnchor,
+      obstacles: propObstacles,
+      movementScale: liveMovementScaleForGait(dog.gait),
+      rangeRadius: LIVE_DOG_RANGE_M / PROPERTY_PX_TO_M,
+      workAnchor: this.liveDogAnchor,
     }));
+    this.dogObstaclesSynced = false;
     this.simulation = new HuntSimulation({
+      challenge: setup.challenge,
+      continuousEncounter: isSpatialEncounterArea(this.area.id),
       hunt: this.hunt,
       dogs: this.simDogs,
       area: this.area,
@@ -244,11 +270,16 @@ export class Hunt3DSystem implements Subsystem {
 
   fixedUpdate(ctx: Ctx, dtMs: number): void {
     if (this.frozen) return;
+    this.advance(ctx, dtMs);
+  }
+
+  private advance(ctx: Ctx, dtMs: number): void {
+    if (this.hunt.fieldSessionEnded) return;
     // The 2D scene cut held field time while the rise played. In open-world
     // 3D we keep the camera free but hold the dog/scent simulation so the
     // point does not dissolve into a new search under airborne birds.
     if (
-      this.lastFlush &&
+      !isSpatialEncounterArea(this.area.id) && this.lastFlush &&
       ctx.get<BirdsSystem>('birds').isRiseActive()
     ) {
       this.worldToSim(ctx.camera.position.x, ctx.camera.position.z, this.hunt.hunterPos);
@@ -259,32 +290,31 @@ export class Hunt3DSystem implements Subsystem {
 
   /** Capture harness: advance the frozen sim by exact 30 Hz ticks. */
   step(ctx: Ctx, ticks: number): void {
-    for (let i = 0; i < ticks; i++) this.tick(ctx, 1000 / 30);
+    for (let i = 0; i < ticks; i++) this.advance(ctx, 1000 / 30);
   }
 
   private tick(ctx: Ctx, dtMs: number): void {
     const t0 = performance.now();
+    this.syncDogObstacles(ctx);
     // The player IS the hunter: camera world position -> sim hunterPos.
     this.worldToSim(ctx.camera.position.x, ctx.camera.position.z, this.hunt.hunterPos);
     const yaw = ctx.camera.rotation.y;
     const forwardX = -Math.sin(yaw);
     const forwardZ = -Math.cos(yaw);
-    if (!this.frozen) {
-      this.liveDogAnchor.x =
-        this.hunt.hunterPos.x + (forwardX * LIVE_DOG_ANCHOR_AHEAD_M) / PROPERTY_PX_TO_M;
-      this.liveDogAnchor.y =
-        this.hunt.hunterPos.y + (forwardZ * LIVE_DOG_ANCHOR_AHEAD_M) / PROPERTY_PX_TO_M;
-    }
+    this.liveDogAnchor.x =
+      this.hunt.hunterPos.x + (forwardX * LIVE_DOG_ANCHOR_AHEAD_M) / PROPERTY_PX_TO_M;
+    this.liveDogAnchor.y =
+      this.hunt.hunterPos.y + (forwardZ * LIVE_DOG_ANCHOR_AHEAD_M) / PROPERTY_PX_TO_M;
 
     // The 2D area's hunter/dog spawn lives near its bottom edge, while the
     // 3D player deliberately starts near the field center. Without this
     // one-time bridge the dog begins ~250 m away: technically in the
     // camera frustum, but sub-pixel and buried in grass. Place it five
     // meters ahead and two meters screen-left on the first LIVE tick.
-    // Capture mode keeps the authored spawn so every existing deterministic
-    // review/capture sequence remains byte-for-byte stable.
+    // Recording uses the same placement. Only its clock is controlled by
+    // the harness; hidden alternative mechanics invalidate gameplay evidence.
     let snappedSpawn = false;
-    if (!this.frozen && !this.liveSpawnSynced) {
+    if (!this.liveSpawnSynced) {
       const leftX = -Math.cos(yaw);
       const leftZ = Math.sin(yaw);
       for (let slot = 0; slot < this.simDogs.length; slot++) {
@@ -323,6 +353,8 @@ export class Hunt3DSystem implements Subsystem {
         if (!snapshot.ready) continue;
         snapshot.prevX = snapshot.currX;
         snapshot.prevY = snapshot.currY;
+        snapshot.prevHeading = snapshot.currHeading;
+        snapshot.prevTravelHeading = snapshot.currTravelHeading;
       }
     }
 
@@ -330,17 +362,15 @@ export class Hunt3DSystem implements Subsystem {
     // The breed's gameplay speed is already inside Dog; this low-frequency
     // multiplier supplies acceleration/deceleration within a cast rather
     // than making a hunting dog run at one mechanical velocity forever.
-    if (!this.frozen) {
-      for (let slot = 0; slot < this.simDogs.length; slot++) {
-        const dog = this.simDogs[slot];
-        this.pacePhases[slot] += (dtMs / 1000) * Math.PI * 2 * dog.profile.breed.motion.surgeHz;
-        this.liveDogMotions[slot].movementScale = liveMovementScaleForDog(
-          dog.gait,
-          dog.state,
-          dog.profile.breed.motion,
-          this.pacePhases[slot],
-        );
-      }
+    for (let slot = 0; slot < this.simDogs.length; slot++) {
+      const dog = this.simDogs[slot];
+      this.pacePhases[slot] += (dtMs / 1000) * Math.PI * 2 * dog.profile.breed.motion.surgeHz;
+      this.liveDogMotions[slot].movementScale = liveMovementScaleForDog(
+        dog.gait,
+        dog.state,
+        dog.profile.breed.motion,
+        this.pacePhases[slot],
+      );
     }
     const player = ctx.get<PlayerSystem>('player');
     const recall = player.consumeRecall();
@@ -356,11 +386,17 @@ export class Hunt3DSystem implements Subsystem {
     for (let slot = 0; slot < this.simDogs.length; slot++) {
       const dog = this.simDogs[slot];
       const snapshot = this.dogSnapshots[slot];
+      const dx = dog.pos.x - snapshot.currX, dy = dog.pos.y - snapshot.currY;
+      if (!snapshot.ready || snappedSpawn) snapshot.currTravelHeading = dog.heading;
+      else if (dx * dx + dy * dy > 0.000001) snapshot.currTravelHeading = Math.atan2(dy, dx);
       snapshot.currX = dog.pos.x;
       snapshot.currY = dog.pos.y;
+      snapshot.currHeading = dog.heading;
       if (!snapshot.ready || snappedSpawn) {
         snapshot.prevX = snapshot.currX;
         snapshot.prevY = snapshot.currY;
+        snapshot.prevHeading = snapshot.currHeading;
+        snapshot.prevTravelHeading = snapshot.currTravelHeading;
         snapshot.ready = true;
       }
       this.hunt.dogsPos[slot].x = dog.pos.x;
@@ -378,21 +414,54 @@ export class Hunt3DSystem implements Subsystem {
     }
   }
 
+  /**
+   * Visual property systems initialize after the hunt bridge, so their
+   * collision circles are not available when the dog motion arrays are first
+   * created. Pull the finished world obstacles once before the first live
+   * tick and convert them into the simulation's property-pixel space. This
+   * keeps a Chukar dog from pathing through the same rocks the hunter cannot
+   * walk through, without coupling Dog to a renderer subsystem.
+   */
+  private syncDogObstacles(ctx: Ctx): void {
+    if (this.dogObstaclesSynced) return;
+    const converted: { x: number; y: number; radius: number }[] = [];
+    const base = this.liveDogMotions[0]?.obstacles ?? [];
+    for (const obstacle of base) converted.push({ ...obstacle });
+    for (const id of ['chukar-environment', 'landmarks']) {
+      let provider: { collisionCircles?: () => readonly { x: number; z: number; radius: number }[] };
+      try { provider = ctx.get(id) as typeof provider; } catch { continue; }
+      for (const circle of provider.collisionCircles?.() ?? []) {
+        const property = this.worldToSim(circle.x, circle.z, { x: 0, y: 0 });
+        converted.push({ x: property.x, y: property.y, radius: circle.radius / PROPERTY_PX_TO_M });
+      }
+    }
+    for (const motion of this.liveDogMotions) motion.obstacles = converted;
+    this.dogObstaclesSynced = true;
+  }
+
   private recordEvents(events: readonly HuntSimulationEvent[]): void {
     for (const event of events) {
       if (event.type !== 'covey-flushed') continue;
-      if (event.hunterDistance > HUNT_SHOT_RANGE) {
+      const doctrine = huntingDoctrine(this.area.id);
+      // Continuous world rises must stay visible before a circle-back is
+      // resolved. The scene-cut adapter can settle one immediately, while a
+      // spatial property hands the event to finishRise() after the flight.
+      if (!isSpatialEncounterArea(this.area.id) && doctrine.circleBack && event.hunterDistance > HUNT_SHOT_RANGE) {
         const relanded = circleBack(
           this.hunt.birds,
           event.birdIds,
           this.area.world,
           this.flushRng,
           windMults(this.hunt.windStrength).nerve * conditionMults(this.hunt.condition).nerve,
+          {
+            returnTrail: this.area.trails.find((trail) => trail.id === 'circleback-return'),
+            patches: this.area.patches,
+          },
         );
         if (relanded.length === 0) {
           for (const birdId of event.birdIds) this.simulation.resolveBird(birdId, 'escaped');
         }
-        this.simulation.finishRise({ relight: false });
+        this.simulation.finishRise({ relight: false, birdId: event.birdId });
         continue;
       }
       this.lastFlush = { ids: event.birdIds, distPx: event.hunterDistance };
@@ -453,8 +522,11 @@ export class Hunt3DSystem implements Subsystem {
   }
 
   /** Resolve a 3D presentation outcome through the shared simulation. */
-  resolveBird(birdId: number, outcome: 'downed' | 'escaped'): boolean {
-    return this.simulation.resolveBird(birdId, outcome);
+  resolveBird(birdId: number, outcome: 'downed' | 'escaped', landing?: { x: number; z: number }): boolean {
+    const position = landing ? this.worldToSim(landing.x, landing.z, { x: 0, y: 0 }) : undefined;
+    const resolved = this.simulation.resolveBird(birdId, outcome, position);
+    if (resolved && outcome === 'downed' && isSpatialEncounterArea(this.area.id)) this.simulation.bird(birdId)!.fallPending = true;
+    return resolved;
   }
 
   /** Convert a presentation-space ground contact into the shared fall. */
@@ -464,11 +536,21 @@ export class Hunt3DSystem implements Subsystem {
   }
 
   finishRise(): RiseResolution | null {
-    return this.simulation.finishRise();
+    // The simulation owns per-rise settlement, including the Hun circle-back
+    // rule. Drain every active rise because the spatial presentation may have
+    // staged a second covey before the first one left the sky.
+    let result: RiseResolution | null = null;
+    for (let next = this.simulation.finishRise(); next; next = this.simulation.finishRise()) result = next;
+    if (result) this.lastFlush = null;
+    return result;
   }
 
-  /** Write off unresolved birds so either renderer can complete a hunt early. */
+  /** Close a world-space field session without inventing escapes from untouched cover. */
   endHunt(): number {
+    if (isSpatialEncounterArea(this.area.id)) {
+      endFieldSession(this.hunt);
+      return 0;
+    }
     return endHuntEarly(this.hunt);
   }
 
@@ -492,12 +574,36 @@ export class Hunt3DSystem implements Subsystem {
     return this.lastFlush;
   }
 
+  /**
+   * A species-aware rise label keeps the hunt language honest in the HUD.
+   * A pheasant or grouse is a single-bird flush even if setup placed another
+   * bird in the same pocket; quail, Huns, and chukar announce the covey break
+   * that the player should read and shoot through.
+   */
+  riseLabel(): string | null {
+    const info = this.lastFlush;
+    if (!info || info.ids.length === 0) return null;
+    const bird = info.ids
+      .map((id) => this.hunt.birds.find((candidate) => candidate.id === id))
+      .find((candidate) => candidate !== undefined);
+    if (!bird) return null;
+    const species = getSpecies(bird.speciesId);
+    const shortName = species.id === 'ringneck'
+      ? bird.sex === 'hen' ? 'HEN' : 'ROOSTER'
+      : species.name.split(' ')[0].toUpperCase();
+    return species.flushAsCovey && info.ids.length > 1
+      ? `${shortName} COVEY RISE`
+      : `${shortName} FLUSH`;
+  }
+
   /* ------------------------- read-only surface ------------------------- */
 
   /** The authoritative hunt. Presentation reads it; only the sim writes. */
   huntState(): HuntState {
     return this.hunt;
   }
+
+  seed(): number | undefined { return this.seedValue; }
 
   areaConfig(): AreaConfig {
     return this.area;
@@ -511,9 +617,11 @@ export class Hunt3DSystem implements Subsystem {
     return getDropPoint(this.area, this.hunt.dropPointId);
   }
 
-  /** Selected drop's parked truck, using the same offset as its renderer. */
+  /** Presentation target shared by the parked truck and HUD; no sim anchor moves. */
   truckWorld<T extends { x: number; z: number }>(out: T): T {
     const drop = this.dropPoint();
+    const parking = deriveQuailParkingPose(this.area, drop.id);
+    if (parking) return this.simToWorld(parking.position.x, parking.position.y, out);
     return this.simToWorld(
       drop.position.x - Math.cos(drop.heading) * 6,
       drop.position.y - Math.sin(drop.heading) * 6,
@@ -561,6 +669,22 @@ export class Hunt3DSystem implements Subsystem {
     const sx = snapshot.prevX + (snapshot.currX - snapshot.prevX) * t;
     const sy = snapshot.prevY + (snapshot.currY - snapshot.prevY) * t;
     return this.simToWorld(sx, sy, out);
+  }
+
+  /** Heading shares position's fixed snapshots; wrap through the shorter turn. */
+  dogRenderHeading(alpha: number, slot = 0): number {
+    const snapshot = this.dogSnapshots[slot];
+    if (!snapshot) throw new Error(`hunt3d: dog snapshot ${slot} is not active`);
+    const delta = Math.atan2(Math.sin(snapshot.currHeading - snapshot.prevHeading), Math.cos(snapshot.currHeading - snapshot.prevHeading));
+    return snapshot.prevHeading + delta * Math.max(0, Math.min(1, alpha));
+  }
+
+  /** Actual movement includes the weave around the dog's base scent heading. */
+  dogRenderTravelHeading(alpha: number, slot = 0): number {
+    const snapshot = this.dogSnapshots[slot];
+    if (!snapshot) throw new Error(`hunt3d: dog snapshot ${slot} is not active`);
+    const delta = Math.atan2(Math.sin(snapshot.currTravelHeading - snapshot.prevTravelHeading), Math.cos(snapshot.currTravelHeading - snapshot.prevTravelHeading));
+    return snapshot.prevTravelHeading + delta * Math.max(0, Math.min(1, alpha));
   }
 
   /** Sim tick cost (ms): last / worst / mean. Capture prints these. */

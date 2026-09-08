@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { LandscapeModel } from '../../game/landscape';
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
-import { TOD, type TimeOfDay } from '../palette';
+import { fieldTimeOfDay, type TimeOfDay } from '../palette';
 
 /*
  * SKY subsystem: graded dome, sun disc + glow, layered distant ridges,
@@ -40,6 +40,7 @@ uniform vec2 uDiscCos; // x: outer cos (soft edge start), y: inner cos (full dis
 uniform vec3 uCloudLit;
 uniform vec3 uCloudShade;
 uniform float uCloudAmt;
+uniform float uQuail;
 varying vec3 vPos;
 
 /*
@@ -66,6 +67,18 @@ float cumulus(vec2 o) {
   return f;
 }
 
+// Broad wind-shaped layers for the plains. Unequal shoulders and a broken
+// trailing edge avoid repeating the same small cumulus icon around the dome.
+float prairieBank(vec2 o) {
+  o.y += o.x * 0.022;
+  o.y += sin(o.x * 22.0) * 0.005 + sin(o.x * 49.0) * 0.002;
+  float f = puff(o, vec2(-0.05, 0.0), vec2(0.31, 0.028));
+  f += puff(o, vec2(-0.26, 0.019), vec2(0.20, 0.037)) * 0.85;
+  f += puff(o, vec2(0.22, 0.007), vec2(0.24, 0.023)) * 0.72;
+  f += puff(o, vec2(0.53, -0.023), vec2(0.23, 0.012)) * 0.6;
+  return f;
+}
+
 /** True-angle local offset from a mass center (az, sinEl), incl. mirror/scale. */
 vec2 cloudLocal(vec2 ae, vec2 c, vec2 ms) {
   float dx = atan(sin(ae.x - c.x), cos(ae.x - c.x));
@@ -74,6 +87,14 @@ vec2 cloudLocal(vec2 ae, vec2 c, vec2 ms) {
 }
 
 float cloudField(vec2 ae) {
+  if (uQuail > 0.5) {
+    float f = prairieBank(cloudLocal(ae, vec2(-2.70, 0.26), vec2(1.45, 1.5)));
+    f = max(f, prairieBank(cloudLocal(ae, vec2(2.15, 0.14), vec2(-1.7, 1.9))));
+    f = max(f, prairieBank(cloudLocal(ae, vec2(0.06, 0.32), vec2(1.8, 1.9))));
+    f = max(f, prairieBank(cloudLocal(ae, vec2(-0.95, 0.13), vec2(-2.1, 2.0))));
+    f = max(f, prairieBank(cloudLocal(ae, vec2(1.12, 0.22), vec2(1.6, 1.15))));
+    return f;
+  }
   // Mass A — big anvil ahead of the noon-open camera (az ~5 deg, high —
   // kept clear of the dawn-into-sun frame corner at az ~45-55 deg).
   float f = cumulus(cloudLocal(ae, vec2(0.08, 0.30), vec2(1.0, 1.0)));
@@ -122,14 +143,14 @@ void main() {
   // so a low sun still burns through them instead of being pasted over.
   vec2 ae = vec2(atan(dir.x, dir.z), h);
   float cf = cloudField(ae);
-  float cm = smoothstep(0.55, 0.60, cf) * uCloudAmt * smoothstep(0.05, 0.10, h);
+  float cm = smoothstep(mix(0.55, 0.45, uQuail), mix(0.60, 0.58, uQuail), cf) * uCloudAmt * smoothstep(0.05, 0.10, h);
   // Flat painted plates (round 5): fw-e3-5's cumulus is 2-3 VALUE STEPS
   // with hard undersides — not an airbrushed gradient (measured: our cloud
   // interior ramped 0.69->0.87 with 13% banding edges; the ref holds ~3
   // flat plates at 0.85/0.92/1.0). Quantize the thickness-above field into
   // a lit face, a mid plate, and a shaded belly; smoothsteps kept tight so
   // edges are anti-aliased, never gradients.
-  float cAboveRaw = cloudField(ae + vec2(0.0, 0.055));
+  float cAboveRaw = cloudField(ae + vec2(0.0, mix(0.055, 0.016, uQuail)));
   float plateMid = smoothstep(0.32, 0.38, cAboveRaw);
   float plateDeep = smoothstep(0.60, 0.66, cAboveRaw);
   // Round 6 (item 4): the underside shade answers the SUN'S HEIGHT. At the
@@ -143,6 +164,12 @@ void main() {
   // reference's paper-white crowns (measured ref p50 V=1.0, ours 0.84).
   vec3 cCol = mix(uCloudLit * mix(1.28, 1.36, cLow), mix(uCloudLit, cShade, mix(0.45, 0.68, cLow)), plateMid);
   cCol = mix(cCol, cShade, plateDeep);
+  if (uQuail > 0.5) {
+    // Restrained tonal relief: thin trailing pieces borrow the sky color,
+    // while the thicker middle carries one cool underside and warm crown.
+    float belly = smoothstep(0.35, 1.35, cAboveRaw);
+    cCol = mix(uCloudLit * 1.12, mix(uCloudLit, cShade, 0.55), belly);
+  }
   col = mix(col, cCol, cm);
 
   float g2 = pow(d, 42.0) * uGlowStrength;
@@ -353,6 +380,24 @@ const DEFAULT_RIDGES: RidgeProfile = {
   treeCount: TREE_COUNT,
 };
 
+/** Low wooded shoulders, broken bluffs and a distant rolling plateau.
+ * These are decorative horizon layers, never traversable collision walls. */
+const QUAIL_RIDGES: RidgeProfile = {
+  layers: [
+    { radius: 340, base: 1, amp: 13, far: 0, fogMix: 0.08, hazeAmt: 0.55, jag: 0.04, freqs: [4, 11, 27], noiseScale: 0.48, land: true },
+    { radius: 620, base: 7, amp: 58, far: 0.18, fogMix: 0.14, hazeAmt: 0.68, jag: 0.12, freqs: [7, 18, 39], noiseScale: 0.8 },
+    { radius: 950, base: 20, amp: 110, far: 0.72, fogMix: 0.22, hazeAmt: 0.82, jag: 0.08, freqs: [4, 11, 27], noiseScale: 0.6 },
+  ],
+  features: [
+    [{ c: -143, h: 0.75, sl: 18, sr: 32 }, { c: -62, h: 0.6, sl: 27, sr: 17 }, { c: 52, h: 0.65, sl: 21, sr: 36 }],
+    [{ c: -164, h: 0.72, sl: 11, sr: 23 }, { c: -88, h: 0.62, sl: 21, sr: 10 }, { c: 29, h: 0.7, sl: 20, sr: 12 }, { c: 124, h: 0.48, sl: 12, sr: 26 }],
+    [{ c: -124, h: 0.8, sl: 22, sr: 32 }, { c: 6, h: 0.55, sl: 27, sr: 17 }, { c: 97, h: 0.55, sl: 22, sr: 35 }],
+  ],
+  segments: [512, 512, 384],
+  treeCount: 0,
+  verticalFollow: 0.75,
+};
+
 const CHUKAR_RIDGES: RidgeProfile = {
   layers: [
     { radius: 255, base: 1, amp: 32, far: 0, fogMix: 0.02, hazeAmt: 0.3, jag: 0.08, freqs: [3, 7, 17], noiseScale: 0.72, land: true },
@@ -386,9 +431,176 @@ const PHEASANT_RIDGES: RidgeProfile = {
   treeCount: 0,
 };
 
+/** Broad Great Basin benches: lower and softer than Chukar's broken ridge,
+ * with one readable rim and a long, open return horizon. */
+const HUN_RIDGES: RidgeProfile = {
+  layers: [
+    { radius: 280, base: -1, amp: 9, far: 0, fogMix: 0.03, hazeAmt: 0.34, jag: 0.08, freqs: [3, 8, 19], noiseScale: 0.54, land: true },
+    { radius: 430, base: 6, amp: 19, far: 0.16, fogMix: 0.1, hazeAmt: 0.56, jag: 0.13, freqs: [4, 9, 23], noiseScale: 0.62 },
+    { radius: 650, base: 15, amp: 38, far: 0.48, fogMix: 0.16, hazeAmt: 0.76, jag: 0.2, freqs: [3, 7, 17], noiseScale: 0.58 },
+    { radius: 900, base: 27, amp: 66, far: 0.7, fogMix: 0.23, hazeAmt: 0.9, jag: 0.14, freqs: [4, 11, 29], noiseScale: 0.52 },
+  ],
+  features: [
+    [{ c: -34, h: 0.74, sl: 23, sr: 37 }, { c: 55, h: 0.46, sl: 32, sr: 25 }, { c: 146, h: 0.58, sl: 24, sr: 34 }],
+    [{ c: -45, h: 0.86, sl: 18, sr: 28 }, { c: 20, h: 0.48, sl: 20, sr: 33 }, { c: 106, h: 0.68, sl: 26, sr: 21 }, { c: -142, h: 0.44, sl: 28, sr: 38 }],
+    [{ c: -66, h: 0.72, sl: 22, sr: 34 }, { c: 18, h: 0.42, sl: 28, sr: 24 }, { c: 112, h: 0.65, sl: 25, sr: 40 }],
+    [{ c: -88, h: 0.62, sl: 32, sr: 50 }, { c: 8, h: 0.46, sl: 42, sr: 35 }, { c: 126, h: 0.7, sl: 30, sr: 46 }],
+  ],
+  segments: [640, 576, 512, 448],
+  treeCount: 0,
+  verticalFollow: 0.68,
+};
+
+/** High plains horizon: broad grassland swells, a few low windbreaks, and
+ * distant butte shoulders. The low amplitudes keep the field feeling wide. */
+const SHARPTAIL_RIDGES: RidgeProfile = {
+  layers: [
+    { radius: 300, base: -1.5, amp: 6, far: 0, fogMix: 0.03, hazeAmt: 0.38, jag: 0.02, freqs: [3, 8, 21], noiseScale: 0.42, land: true },
+    { radius: 490, base: 2, amp: 13, far: 0.18, fogMix: 0.1, hazeAmt: 0.58, jag: 0.05, freqs: [4, 10, 25], noiseScale: 0.46 },
+    { radius: 760, base: 9, amp: 29, far: 0.52, fogMix: 0.17, hazeAmt: 0.75, jag: 0.09, freqs: [3, 7, 19], noiseScale: 0.5 },
+  ],
+  features: [
+    [{ c: -72, h: 0.38, sl: 38, sr: 56 }, { c: 18, h: 0.3, sl: 48, sr: 64 }, { c: 120, h: 0.34, sl: 45, sr: 52 }],
+    [{ c: -112, h: 0.45, sl: 34, sr: 54 }, { c: -4, h: 0.34, sl: 50, sr: 63 }, { c: 94, h: 0.42, sl: 40, sr: 58 }],
+    [{ c: -132, h: 0.58, sl: 32, sr: 60 }, { c: -26, h: 0.34, sl: 52, sr: 66 }, { c: 88, h: 0.48, sl: 40, sr: 62 }],
+  ],
+  segments: [512, 448, 384],
+  treeCount: 0,
+  verticalFollow: 0.72,
+};
+
+/** Ruffed-grouse country: a close dark timber wall with irregular conifer
+ * crowns. The horizon stays compressed so the player reads short sightlines
+ * before the first bird is found. */
+const GROUSE_RIDGES: RidgeProfile = {
+  layers: [
+    { radius: 220, base: -2, amp: 8, far: 0, fogMix: 0.02, hazeAmt: 0.3, jag: 0.05, freqs: [4, 9, 23], noiseScale: 0.5, land: true, trees: 4.6, treeHaze: 0.18 },
+    { radius: 330, base: 5, amp: 17, far: 0.15, fogMix: 0.08, hazeAmt: 0.5, jag: 0.1, freqs: [3, 8, 19], noiseScale: 0.58, trees: 6.2, treeHaze: 0.3 },
+    { radius: 520, base: 13, amp: 32, far: 0.48, fogMix: 0.15, hazeAmt: 0.72, jag: 0.16, freqs: [4, 10, 25], noiseScale: 0.55 },
+    { radius: 760, base: 24, amp: 60, far: 0.72, fogMix: 0.22, hazeAmt: 0.9, jag: 0.13, freqs: [3, 7, 21], noiseScale: 0.5 },
+  ],
+  features: [
+    [{ c: -44, h: 0.6, sl: 17, sr: 25 }, { c: 26, h: 0.48, sl: 22, sr: 31 }, { c: 112, h: 0.68, sl: 19, sr: 28 }, { c: -142, h: 0.44, sl: 25, sr: 18 }],
+    [{ c: -58, h: 0.72, sl: 16, sr: 24 }, { c: 18, h: 0.5, sl: 25, sr: 18 }, { c: 98, h: 0.6, sl: 20, sr: 29 }, { c: 164, h: 0.42, sl: 23, sr: 16 }],
+    [{ c: -78, h: 0.7, sl: 22, sr: 34 }, { c: 12, h: 0.46, sl: 36, sr: 24 }, { c: 116, h: 0.64, sl: 24, sr: 38 }],
+    [{ c: -96, h: 0.6, sl: 28, sr: 46 }, { c: 6, h: 0.48, sl: 48, sr: 34 }, { c: 128, h: 0.68, sl: 30, sr: 50 }],
+  ],
+  segments: [768, 640, 512, 448],
+  treeCount: 168,
+  verticalFollow: 0.7,
+};
+
+/** Alder bottoms: low wet ground, soft tree lines, and a hazy wooded rise
+ * behind the bottom. It is quieter and flatter than the upland grouse ring. */
+const WOODCOCK_RIDGES: RidgeProfile = {
+  layers: [
+    { radius: 240, base: -2.5, amp: 6, far: 0, fogMix: 0.03, hazeAmt: 0.4, jag: 0.03, freqs: [3, 8, 19], noiseScale: 0.44, land: true, trees: 3.6, treeHaze: 0.28 },
+    { radius: 380, base: 3, amp: 13, far: 0.2, fogMix: 0.11, hazeAmt: 0.62, jag: 0.06, freqs: [4, 9, 23], noiseScale: 0.5, trees: 4.5, treeHaze: 0.4 },
+    { radius: 590, base: 11, amp: 27, far: 0.56, fogMix: 0.18, hazeAmt: 0.78, jag: 0.1, freqs: [3, 7, 17], noiseScale: 0.5 },
+  ],
+  features: [
+    [{ c: -68, h: 0.44, sl: 28, sr: 38 }, { c: 14, h: 0.5, sl: 34, sr: 46 }, { c: 104, h: 0.42, sl: 32, sr: 27 }],
+    [{ c: -88, h: 0.5, sl: 24, sr: 36 }, { c: 10, h: 0.58, sl: 39, sr: 52 }, { c: 118, h: 0.46, sl: 28, sr: 40 }],
+    [{ c: -122, h: 0.62, sl: 30, sr: 46 }, { c: -8, h: 0.52, sl: 48, sr: 37 }, { c: 102, h: 0.58, sl: 34, sr: 52 }],
+  ],
+  segments: [640, 576, 448],
+  treeCount: 132,
+  verticalFollow: 0.7,
+};
+
+/** Desert washes: mesas and eroded shoulders with deliberate flat gaps. A
+ * low first shelf leaves room for the wash and thornscrub to own the frame. */
+const DESERT_RIDGES: RidgeProfile = {
+  layers: [
+    { radius: 270, base: -1, amp: 10, far: 0, fogMix: 0.03, hazeAmt: 0.28, jag: 0.12, freqs: [3, 8, 19], noiseScale: 0.58, land: true },
+    { radius: 430, base: 7, amp: 24, far: 0.17, fogMix: 0.09, hazeAmt: 0.48, jag: 0.24, freqs: [4, 9, 21], noiseScale: 0.64 },
+    { radius: 650, base: 17, amp: 48, far: 0.5, fogMix: 0.16, hazeAmt: 0.7, jag: 0.3, freqs: [3, 7, 17], noiseScale: 0.6 },
+    { radius: 890, base: 30, amp: 78, far: 0.72, fogMix: 0.24, hazeAmt: 0.88, jag: 0.22, freqs: [4, 10, 25], noiseScale: 0.54 },
+  ],
+  features: [
+    [{ c: -48, h: 0.78, sl: 12, sr: 27 }, { c: 34, h: 0.46, sl: 18, sr: 31 }, { c: 126, h: 0.7, sl: 16, sr: 24 }],
+    [{ c: -70, h: 0.84, sl: 13, sr: 24 }, { c: 8, h: -0.2, sl: 10, sr: 13 }, { c: 72, h: 0.52, sl: 18, sr: 29 }, { c: 154, h: 0.6, sl: 16, sr: 30 }],
+    [{ c: -96, h: 0.72, sl: 18, sr: 34 }, { c: 24, h: 0.45, sl: 26, sr: 18 }, { c: 118, h: 0.76, sl: 15, sr: 35 }],
+    [{ c: -116, h: 0.7, sl: 26, sr: 44 }, { c: 6, h: 0.42, sl: 40, sr: 24 }, { c: 112, h: 0.82, sl: 20, sr: 45 }],
+  ],
+  segments: [640, 576, 512, 448],
+  treeCount: 0,
+  verticalFollow: 0.72,
+};
+
+/** Oak canyon skyline: red-rock fins and shaded canyon rims, kept below the
+ * Chukar profile so the country feels enclosed without becoming a mountain
+ * climb. */
+const MEARNS_RIDGES: RidgeProfile = {
+  layers: [
+    { radius: 235, base: -1, amp: 14, far: 0, fogMix: 0.03, hazeAmt: 0.3, jag: 0.16, freqs: [3, 8, 19], noiseScale: 0.58, land: true },
+    { radius: 360, base: 8, amp: 27, far: 0.14, fogMix: 0.09, hazeAmt: 0.5, jag: 0.24, freqs: [4, 9, 23], noiseScale: 0.66 },
+    { radius: 540, base: 19, amp: 52, far: 0.48, fogMix: 0.16, hazeAmt: 0.72, jag: 0.28, freqs: [3, 7, 17], noiseScale: 0.62 },
+    { radius: 760, base: 32, amp: 88, far: 0.7, fogMix: 0.23, hazeAmt: 0.9, jag: 0.2, freqs: [4, 10, 25], noiseScale: 0.55 },
+  ],
+  features: [
+    [{ c: -42, h: 0.74, sl: 12, sr: 24 }, { c: 28, h: 0.52, sl: 20, sr: 30 }, { c: 102, h: 0.62, sl: 16, sr: 23 }],
+    [{ c: -58, h: 0.82, sl: 14, sr: 26 }, { c: 4, h: -0.32, sl: 9, sr: 12 }, { c: 58, h: 0.54, sl: 17, sr: 25 }, { c: 136, h: 0.68, sl: 14, sr: 28 }],
+    [{ c: -82, h: 0.7, sl: 18, sr: 32 }, { c: 10, h: 0.46, sl: 25, sr: 19 }, { c: 112, h: 0.74, sl: 17, sr: 35 }],
+    [{ c: -104, h: 0.64, sl: 24, sr: 42 }, { c: 6, h: 0.4, sl: 36, sr: 24 }, { c: 118, h: 0.78, sl: 20, sr: 44 }],
+  ],
+  segments: [640, 576, 512, 448],
+  treeCount: 0,
+  verticalFollow: 0.7,
+};
+
+/** Timberline parks: a high, cold skyline with a readable conifer band and
+ * a few alpine summits beyond it. The tallest layer stays sparse for a clean
+ * silhouette against the sky. */
+const TIMBERLINE_RIDGES: RidgeProfile = {
+  layers: [
+    { radius: 230, base: -2, amp: 13, far: 0, fogMix: 0.02, hazeAmt: 0.28, jag: 0.1, freqs: [3, 8, 21], noiseScale: 0.56, land: true, trees: 4.4, treeHaze: 0.18 },
+    { radius: 350, base: 8, amp: 29, far: 0.14, fogMix: 0.08, hazeAmt: 0.46, jag: 0.18, freqs: [4, 9, 23], noiseScale: 0.66, trees: 6.8, treeHaze: 0.3 },
+    { radius: 530, base: 21, amp: 62, far: 0.48, fogMix: 0.15, hazeAmt: 0.7, jag: 0.25, freqs: [3, 7, 17], noiseScale: 0.62 },
+    { radius: 770, base: 37, amp: 118, far: 0.7, fogMix: 0.22, hazeAmt: 0.92, jag: 0.3, freqs: [4, 10, 25], noiseScale: 0.54 },
+  ],
+  features: [
+    [{ c: -38, h: 0.62, sl: 18, sr: 28 }, { c: 28, h: 0.46, sl: 25, sr: 34 }, { c: 112, h: 0.74, sl: 17, sr: 27 }],
+    [{ c: -52, h: 0.74, sl: 17, sr: 27 }, { c: 22, h: 0.5, sl: 26, sr: 36 }, { c: 108, h: 0.82, sl: 18, sr: 30 }],
+    [{ c: -74, h: 0.78, sl: 18, sr: 33 }, { c: 16, h: 0.5, sl: 28, sr: 22 }, { c: 104, h: 0.9, sl: 16, sr: 34 }],
+    [{ c: -96, h: 0.68, sl: 25, sr: 46 }, { c: 4, h: 1.35, sl: 10, sr: 20 }, { c: 86, h: 0.9, sl: 25, sr: 42 }],
+  ],
+  segments: [768, 640, 512, 448],
+  treeCount: 176,
+  verticalFollow: 0.72,
+};
+
+/** Valley oak country: warm rolling foothills with broad shoulders and no
+ * conifer sawtooth. The near band stays deliberately low so the live oak
+ * crowns in the field remain the visual landmarks. */
+const VALLEY_OAK_RIDGES: RidgeProfile = {
+  layers: [
+    { radius: 290, base: -1.5, amp: 8, far: 0, fogMix: 0.03, hazeAmt: 0.34, jag: 0.04, freqs: [3, 8, 21], noiseScale: 0.46, land: true },
+    { radius: 450, base: 4, amp: 17, far: 0.18, fogMix: 0.1, hazeAmt: 0.54, jag: 0.08, freqs: [4, 10, 25], noiseScale: 0.5 },
+    { radius: 680, base: 13, amp: 36, far: 0.5, fogMix: 0.17, hazeAmt: 0.74, jag: 0.12, freqs: [3, 7, 19], noiseScale: 0.54 },
+  ],
+  features: [
+    [{ c: -68, h: 0.52, sl: 28, sr: 43 }, { c: 18, h: 0.42, sl: 38, sr: 52 }, { c: 112, h: 0.48, sl: 31, sr: 44 }],
+    [{ c: -82, h: 0.6, sl: 24, sr: 40 }, { c: 8, h: 0.46, sl: 42, sr: 55 }, { c: 116, h: 0.56, sl: 28, sr: 45 }],
+    [{ c: -112, h: 0.68, sl: 28, sr: 48 }, { c: -6, h: 0.5, sl: 48, sr: 38 }, { c: 102, h: 0.62, sl: 32, sr: 52 }],
+  ],
+  segments: [576, 512, 416],
+  treeCount: 0,
+  verticalFollow: 0.7,
+};
+
 function ridgeProfileFor(landscape?: LandscapeModel): RidgeProfile {
+  if (landscape?.area.id === 'quail-fields') return QUAIL_RIDGES;
   if (landscape?.area.id === 'chukar-ridge') return CHUKAR_RIDGES;
   if (landscape?.area.id === 'pheasant-coverts') return PHEASANT_RIDGES;
+  if (landscape?.area.id === 'hun-benches') return HUN_RIDGES;
+  if (landscape?.area.id === 'sharptail-prairie') return SHARPTAIL_RIDGES;
+  if (landscape?.area.id === 'grouse-woods') return GROUSE_RIDGES;
+  if (landscape?.area.id === 'woodcock-bottoms') return WOODCOCK_RIDGES;
+  if (landscape?.area.id === 'desert-washes') return DESERT_RIDGES;
+  if (landscape?.area.id === 'mearns-canyons') return MEARNS_RIDGES;
+  if (landscape?.area.id === 'timberline-parks') return TIMBERLINE_RIDGES;
+  if (landscape?.area.id === 'valley-oaks') return VALLEY_OAK_RIDGES;
   return DEFAULT_RIDGES;
 }
 
@@ -432,9 +644,13 @@ export class SkySystem implements Subsystem {
   private fillDir = new THREE.Vector3(0, 1, 0);
   private fwd = new THREE.Vector3();
   private readonly ridgeProfile: RidgeProfile;
+  private readonly quail: boolean;
+  private readonly areaId: string;
 
   constructor(landscape?: LandscapeModel) {
     this.ridgeProfile = ridgeProfileFor(landscape);
+    this.quail = landscape?.area.id === 'quail-fields';
+    this.areaId = landscape?.area.id ?? '';
   }
 
   init(ctx: Ctx): void {
@@ -462,6 +678,7 @@ export class SkySystem implements Subsystem {
         uCloudLit: { value: new THREE.Color() },
         uCloudShade: { value: new THREE.Color() },
         uCloudAmt: { value: 0 },
+        uQuail: { value: this.quail ? 1 : 0 },
       },
       side: THREE.BackSide,
       depthWrite: false,
@@ -659,14 +876,16 @@ export class SkySystem implements Subsystem {
         },
         side: THREE.DoubleSide, // viewed from inside the ring
         depthWrite: false,
-        depthTest: true, // real radii: terrain and skirt occlude correctly
+        depthTest: !this.quail,
         fog: false,
       });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.frustumCulled = false;
-      // After opaque ground (which depth-resolves against them); among
-      // themselves, far paints first so nearer bands overlap.
-      mesh.renderOrder = 10 - l;
+      // Quail's camera-following rings are a backdrop: their decorative radii
+      // lie inside the playable property and must never cut off distant props.
+      // Paint after the dome, before the real world, with far bands first.
+      // Other properties retain their existing depth-resolved ridge order.
+      mesh.renderOrder = this.quail ? -20 - l : 10 - l;
       ctx.scene.add(mesh);
       this.ridges.push(mesh);
       this.ridgeMats.push(mat);
@@ -674,7 +893,7 @@ export class SkySystem implements Subsystem {
   }
 
   private apply(ctx: Ctx, tod: TimeOfDay): void {
-    const spec = TOD[tod];
+    const spec = fieldTimeOfDay(this.areaId, tod);
     const u = this.mat.uniforms;
     (u.uTop.value as THREE.Color).setHex(spec.skyTop);
     (u.uMid.value as THREE.Color).setHex(spec.skyMid);
@@ -706,6 +925,7 @@ export class SkySystem implements Subsystem {
     this.sun.intensity = spec.sunIntensity;
     const fel = Math.max(el, THREE.MathUtils.degToRad(16));
     this.fillDir.set(Math.sin(az) * Math.cos(fel), Math.sin(fel), Math.cos(az) * Math.cos(fel));
+    if (this.quail || this.areaId === 'chukar-ridge') this.fillDir.set(-Math.sin(az) * 0.64, 0.77, -Math.cos(az) * 0.64);
     this.fill.color.setHex(spec.fillColor);
     this.fill.intensity = spec.fillIntensity;
     // Shadow frustum: X spans the view width; light-space Y needs only the

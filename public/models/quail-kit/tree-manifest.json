@@ -1,0 +1,49 @@
+{
+  "units": "metres",
+  "referenceHeight": 8,
+  "source": "assets/source/quail-kit/field-trees.blend",
+  "assets": [
+    {
+      "id": "field-tree-upright-high",
+      "triangles": 2028,
+      "meshes": 2,
+      "materials": 2,
+      "bytes": 151748
+    },
+    {
+      "id": "field-tree-upright-lite",
+      "triangles": 1164,
+      "meshes": 2,
+      "materials": 2,
+      "bytes": 84400
+    },
+    {
+      "id": "field-tree-spreading-high",
+      "triangles": 2028,
+      "meshes": 2,
+      "materials": 2,
+      "bytes": 152052
+    },
+    {
+      "id": "field-tree-spreading-lite",
+      "triangles": 1164,
+      "meshes": 2,
+      "materials": 2,
+      "bytes": 84704
+    },
+    {
+      "id": "field-tree-leaning-high",
+      "triangles": 2028,
+      "meshes": 2,
+      "materials": 2,
+      "bytes": 151752
+    },
+    {
+      "id": "field-tree-leaning-lite",
+      "triangles": 1164,
+      "meshes": 2,
+      "materials": 2,
+      "bytes": 84352
+    }
+  ]
+}

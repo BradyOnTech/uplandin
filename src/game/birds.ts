@@ -1,7 +1,9 @@
 import { FIELD_BOUNDS, randomPointIn, type Rect } from './field';
+import type { AreaTrail } from './areas';
 import { clamp, dist } from './math';
 import { getSpecies, rollSpecies, type SpeciesShare } from './species';
 import type { RNG, Vec2 } from './types';
+import type { RunnerStyle } from './huntDoctrine';
 
 export type BirdState = 'hidden' | 'flushed' | 'downed' | 'carried' | 'escaped' | 'retrieved';
 
@@ -11,6 +13,8 @@ export interface Bird {
   speciesId: string;
   pos: Vec2;
   state: BirdState;
+  /** A 3D fall is still airborne; it is not a reachable retrieve target yet. */
+  fallPending?: boolean;
   /** Ringneck rule: hens are protected. Only set for henRule species. */
   sex?: 'hen' | 'rooster';
   /** A relit covey survivor — holds tight, and next escape is for good. */
@@ -29,7 +33,7 @@ export interface Bird {
   nerveMs: number;
 }
 
-const COVEY_JITTER = 10; // birds sit within this of their covey anchor
+const COVEY_JITTER = 10; // fallback when a future species omits its spread
 
 export const RUNNER_FLEE_RADIUS = 35; // dog this close spooks a runner into running
 export const RUNNER_SPEED = 42; // px/s — slower than the dog, but it gets a head start
@@ -42,6 +46,15 @@ export const RELIGHT_CHANCE = 0.65; // the rest are gone to the next county
 const SINGLE_SCATTER_MIN = 140; // survivors put real ground behind them...
 const SINGLE_SCATTER_MAX = 420;
 const SINGLE_NEAR_COVER = 70; // ...but sometimes drop into surprisingly close cover
+
+/** Uniformly scatter one bird inside a species-sized covey disk. The radial
+ * square-root keeps the center from becoming unnaturally dense while the
+ * hard radius keeps a wide Hun/Chukar covey from becoming a rectangle. */
+function coveyOffset(anchor: Vec2, radius: number, rng: RNG): Vec2 {
+  const angle = rng() * Math.PI * 2;
+  const distance = Math.sqrt(rng()) * radius;
+  return { x: anchor.x + Math.cos(angle) * distance, y: anchor.y + Math.sin(angle) * distance };
+}
 
 /** What an area's bird population looks like. */
 export interface SpawnConfig {
@@ -58,6 +71,8 @@ export interface SpawnConfig {
   exclusionZones?: { center: Vec2; radius: number }[];
   /** First piece of cover on the walk-in route; only the opening covey uses it. */
   openingAnchor?: Vec2;
+  /** Ordered physical cover locations for a continuous field hunt. */
+  coveyAnchors?: readonly Vec2[];
 }
 
 export const YOUNG_NERVE_MULT = 1.3; // a young bird sits longer
@@ -110,21 +125,42 @@ export function spawnBirds(cfg: SpawnConfig, rng: RNG = Math.random): Bird[] {
       species.coveyMin + Math.floor(rng() * (species.coveyMax - species.coveyMin + 1)),
     );
     const patch = cfg.patches[Math.floor(rng() * cfg.patches.length)];
-    const anchor = coveyId === 0 && cfg.openingAnchor && outsideExclusions(cfg.openingAnchor)
+    const planned = cfg.coveyAnchors?.[coveyId];
+    const anchor = planned && outsideExclusions(planned) ? planned
+      : coveyId === 0 && cfg.openingAnchor && outsideExclusions(cfg.openingAnchor)
       ? cfg.openingAnchor
       : safeAnchor(patch);
+    // Authored anchors come from the same patch list, but resolve it again so
+    // the species spread can be clamped to that patch even when a caller gives
+    // us a planned point with a different patch index. Open-country runners
+    // can leave cover later through updateBirds; their initial hold still has
+    // to begin in the cover that authored the encounter.
+    const anchorPatch = cfg.patches.find((candidate) =>
+      anchor.x >= candidate.x && anchor.x <= candidate.x + candidate.w &&
+      anchor.y >= candidate.y && anchor.y <= candidate.y + candidate.h,
+    ) ?? patch;
+    const coveyJitter = species.coveyJitter ?? COVEY_JITTER;
     for (let i = 0; i < size; i++) {
       const young = rng() < (cfg.youngShare ?? 0);
       // Young birds haven't learned to run from a dog yet.
       const runs = rng() < species.runnerChance * (young ? 0.5 : 1);
       const nerveRoll = rng();
+      const scattered = coveyOffset(anchor, coveyJitter, rng);
+      // Keep the covey inside the patch, with a small edge margin. The clamp
+      // is only visible on narrow authored pockets; ordinary patches retain
+      // the full species radius above.
+      const patchMargin = Math.min(4, anchorPatch.w * .24, anchorPatch.h * .24);
+      const patchSafe = {
+        x: clamp(scattered.x, anchorPatch.x + patchMargin, anchorPatch.x + anchorPatch.w - patchMargin),
+        y: clamp(scattered.y, anchorPatch.y + patchMargin, anchorPatch.y + anchorPatch.h - patchMargin),
+      };
       birds.push({
         id: nextBirdId++,
         coveyId,
         speciesId: species.id,
         pos: pushOutsideExclusions({
-          x: clamp(anchor.x + (rng() * 2 - 1) * COVEY_JITTER, bounds.x + 4, bounds.x + bounds.w - 4),
-          y: clamp(anchor.y + (rng() * 2 - 1) * COVEY_JITTER, bounds.y + 4, bounds.y + bounds.h - 4),
+          x: clamp(patchSafe.x, bounds.x + 4, bounds.x + bounds.w - 4),
+          y: clamp(patchSafe.y, bounds.y + 4, bounds.y + bounds.h - 4),
         }),
         state: 'hidden',
         sex: species.henRule ? (rng() < 0.5 ? 'hen' : 'rooster') : undefined,
@@ -146,15 +182,19 @@ export function spawnBirds(cfg: SpawnConfig, rng: RNG = Math.random): Bird[] {
 }
 
 /**
- * Flush a whole covey: the trigger bird plus every other hidden bird in its
- * covey. Returns the birds that took wing (always includes the trigger).
+ * Flush a species-appropriate group. Covey birds launch together; solitary
+ * birds such as pheasant, grouse, and woodcock only launch the trigger even
+ * when setup happened to place a nearby pair in the same authored pocket.
+ * Returns the birds that took wing (always includes the trigger).
  */
 export function flushCovey(birds: Bird[], birdId: number): Bird[] {
   const trigger = birds.find((b) => b.id === birdId);
   if (!trigger) return [];
+  const species = getSpecies(trigger.speciesId);
   const flushed: Bird[] = [];
   for (const b of birds) {
-    if (b.state === 'hidden' && b.coveyId === trigger.coveyId) {
+    const sameGroup = species.flushAsCovey !== false && b.coveyId === trigger.coveyId;
+    if (b.state === 'hidden' && (b.id === trigger.id || sameGroup)) {
       b.state = 'flushed';
       flushed.push(b);
     }
@@ -176,19 +216,30 @@ export function relightSurvivors(
   rng: RNG = Math.random,
   nerveMult = 1,
   patches: Rect[] = [],
+  /** Continuous scenes supply actual landings; absent IDs have flown away. */
+  landings?: ReadonlyMap<number, Vec2>,
 ): Bird[] {
   const relit: Bird[] = [];
   for (const id of escapedIds) {
     const b = birds.find((x) => x.id === id);
-    if (!b || b.state !== 'escaped' || b.single) continue;
-    if (rng() > RELIGHT_CHANCE) continue; // sailed on — gone for good
+    if (!b || b.state !== 'escaped' || b.single || b.circled) continue;
+    const landing = landings?.get(id);
+    if (landings && (!landing || !Number.isFinite(landing.x) || !Number.isFinite(landing.y) ||
+      landing.x < bounds.x || landing.x > bounds.x + bounds.w ||
+      landing.y < bounds.y || landing.y > bounds.y + bounds.h ||
+      !patches.some(p => landing.x >= p.x && landing.x <= p.x + p.w && landing.y >= p.y && landing.y <= p.y + p.h))) continue;
+    // Continuous flight has already shown which birds put down. Do not roll
+    // a second disappearance after the player has watched one land.
+    if (!landings && rng() > RELIGHT_CHANCE) continue;
     const species = getSpecies(b.speciesId);
     // Prefer real cover at single-hunting distance: the next patch over.
     const candidates = patches.filter((p) => {
       const d = dist({ x: p.x + p.w / 2, y: p.y + p.h / 2 }, b.pos);
       return d >= SINGLE_NEAR_COVER && d <= SINGLE_SCATTER_MAX;
     });
-    if (candidates.length > 0) {
+    if (landing) {
+      b.pos = { ...landing };
+    } else if (candidates.length > 0) {
       const p = candidates[Math.floor(rng() * candidates.length) % candidates.length];
       b.pos = {
         x: clamp(p.x + rng() * p.w, bounds.x + 8, bounds.x + bounds.w - 8),
@@ -237,8 +288,10 @@ export function updateBirdNerve(
 /**
  * Birds have noses too. A hidden bird downwind of the dog — the wind carries
  * the dog's scent straight to it — flushes the moment the dog gets within
- * `radius`. Returns the trigger birds (scene flushes their coveys). Radius
- * comes from the dog's wind-craft tier; 0 disables this entirely.
+ * `radius`. Runners are deliberately excluded: they must get a chance to
+ * road ahead of the dog before the hunter decides whether to cut them off.
+ * Returns the trigger birds (scene flushes their coveys). Radius comes from
+ * the dog's wind-craft tier; 0 disables this entirely.
  */
 export function birdsScentingDog(
   birds: Bird[],
@@ -249,17 +302,22 @@ export function birdsScentingDog(
   if (windAngle === undefined || radius <= 0) return [];
   const wx = Math.cos(windAngle);
   const wy = Math.sin(windAngle);
-  const scented: Bird[] = [];
+  const scented: { bird: Bird; distance: number }[] = [];
   for (const b of birds) {
-    if (b.state !== 'hidden') continue;
+    if (b.state !== 'hidden' || b.runs) continue;
     const dx = b.pos.x - dogPos.x;
     const dy = b.pos.y - dogPos.y;
     const d = Math.hypot(dx, dy);
     if (d === 0 || d > radius) continue;
     // >0.6: the bird sits mostly downwind of the dog
-    if ((dx * wx + dy * wy) / d > 0.6) scented.push(b);
+    if ((dx * wx + dy * wy) / d > 0.6) scented.push({ bird: b, distance: d });
   }
-  return scented;
+  // Spawn order is an implementation detail, especially on mixed properties
+  // where neighboring coveys can belong to different species. The dog should
+  // flush the closest scent source, so its search target and the rise identity
+  // stay coherent instead of a farther bycatch bird winning by array order.
+  scented.sort((a, b) => a.distance - b.distance || a.bird.id - b.bird.id);
+  return scented.map((entry) => entry.bird);
 }
 
 /**
@@ -270,18 +328,78 @@ export function birdsSpookedBy(birds: Bird[], pos: Vec2, radius: number): Bird[]
   return birds.filter((b) => b.state === 'hidden' && dist(b.pos, pos) <= radius);
 }
 
+/**
+ * Grouse and woodcock can flush under the hunter's boots before a dog has a
+ * finished point. The radius belongs to the species, so this does not turn a
+ * walking hunter into a universal wild-flush button. Runners are excluded:
+ * they already own a ground road and should be handled by `updateBirds`.
+ * `excludeIds` keeps a dog-held point eligible for the normal earned flush
+ * path when the hunter walks into it.
+ */
+export function birdsDisturbedByHunter(
+  birds: Bird[],
+  pos: Vec2,
+  moving: boolean,
+  excludeIds: readonly number[] = [],
+): Bird[] {
+  if (!moving) return [];
+  const disturbed: { bird: Bird; distance: number }[] = [];
+  for (const bird of birds) {
+    if (bird.state !== 'hidden' || bird.runs || excludeIds.includes(bird.id)) continue;
+    const radius = getSpecies(bird.speciesId).hunterDisturbanceRadius ?? 0;
+    if (radius <= 0) continue;
+    const distance = dist(bird.pos, pos);
+    if (distance <= radius) disturbed.push({ bird, distance });
+  }
+  disturbed.sort((a, b) => a.distance - b.distance || a.bird.id - b.bird.id);
+  return disturbed.map((entry) => entry.bird);
+}
+
 export interface RunnerEnv {
+  /** Continuous Quail scenes keep a hidden bobwhite covey together until
+   * coordinated ground movement exists; relit singles may still run. */
+  holdBobwhiteCoveys?: boolean;
+  /** Species with a covey approach hold their group unless its runners road. */
+  holdCoveys?: boolean;
   bounds?: Rect;
   /** Cover patches: a runner holds at the edge of its cover instead of crossing open ground. */
   patches?: Rect[];
   /** Uphill direction on sloped ground — runners angle uphill (the chukar move). */
   slopeAngle?: number;
+  /** Map route context: pheasants road an edge, desert birds use a wash. */
+  runnerStyle?: RunnerStyle;
+  /** Authored walking lines used as habitat corridors by route-biased runners. */
+  trails?: readonly AreaTrail[];
 }
 
 const SLOPE_RUN_BIAS = 0.55; // how strongly sloped-ground runners pull uphill
 
 function inAnyPatch(p: Vec2, patches: Rect[]): boolean {
   return patches.some((r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h);
+}
+
+function nearestTrailDirection(point: Vec2, trails: readonly AreaTrail[]): Vec2 | null {
+  let bestDistance = Infinity;
+  let bestX = 0;
+  let bestY = 0;
+  for (const trail of trails) {
+    for (let i = 1; i < trail.points.length; i++) {
+      const a = trail.points[i - 1];
+      const b = trail.points[i];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const length = Math.hypot(dx, dy);
+      if (length < 1e-5) continue;
+      const t = clamp(((point.x - a.x) * dx + (point.y - a.y) * dy) / (length * length), 0, 1);
+      const distance = Math.hypot(point.x - (a.x + dx * t), point.y - (a.y + dy * t));
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestX = dx / length;
+        bestY = dy / length;
+      }
+    }
+  }
+  return Number.isFinite(bestDistance) && bestDistance <= 90 ? { x: bestX, y: bestY } : null;
 }
 
 /**
@@ -296,22 +414,59 @@ export function updateBirds(dtMs: number, birds: Bird[], dogPos: Vec2, env: Runn
   const dt = dtMs / 1000;
   for (const b of birds) {
     if (b.state !== 'hidden' || !b.runs) continue;
+    const species = getSpecies(b.speciesId);
+    // The bird owns its running temperament. A Hun bycatch bird in pheasant
+    // country keeps the Hun rhythm, while the map still supplies the route
+    // it can follow below. This prevents a palette/map style from rewriting
+    // the ecology of every runner in the field.
+    const runner = species.runnerBehavior;
+    const fleeRadius = runner?.fleeRadius ?? RUNNER_FLEE_RADIUS;
+    const energyRate = runner?.energyRate ?? 1;
+    const restMs = RUNNER_REST_MS * (runner?.restMultiplier ?? 1);
+    const coveyHeld = (env.holdBobwhiteCoveys && b.speciesId === 'bobwhite') ||
+      (env.holdCoveys && species.coveyApproach === true && species.roadAsCovey !== true);
+    if (coveyHeld && birds.some(other =>
+      other.id !== b.id && other.coveyId === b.coveyId && other.state === 'hidden')) continue;
     if (b.restingMs > 0) {
       b.restingMs = Math.max(0, b.restingMs - dtMs);
       continue;
     }
-    if (dist(b.pos, dogPos) > RUNNER_FLEE_RADIUS) continue;
+    if (dist(b.pos, dogPos) > fleeRadius) continue;
     if (b.runEnergy <= 0) {
-      b.restingMs = RUNNER_REST_MS;
+      b.restingMs = restMs;
       b.runEnergy = RUNNER_MAX_ENERGY;
       continue;
     }
-    b.runEnergy -= dtMs;
-    const speed = RUNNER_SPEED * (getSpecies(b.speciesId).runSpeedMult ?? 1);
+    b.runEnergy -= dtMs * energyRate;
+    const speed = RUNNER_SPEED * (species.runSpeedMult ?? 1);
     const away = Math.atan2(b.pos.y - dogPos.y, b.pos.x - dogPos.x);
     let dirX = Math.cos(away);
     let dirY = Math.sin(away);
-    if (env.slopeAngle !== undefined) {
+    // Country runners do not choose an arbitrary bearing across the map. They
+    // road the nearest authored line, with the flee vector deciding which way
+    // along it to travel. This makes pheasant and desert-wash pursuits read as
+    // a cut-and-relocate problem, while the existing species bias also lets
+    // Huns, grouse, prairie birds, and mountain quail use their own contour,
+    // timber, or grass-lane routes on properties whose style is otherwise
+    // `default`.
+    if (env.trails && env.trails.length > 0) {
+      const route = nearestTrailDirection(b.pos, env.trails);
+      if (route) {
+        const sign = route.x * dirX + route.y * dirY < 0 ? -1 : 1;
+        const mapRouteBias = env.runnerStyle === 'pheasant' ? .42
+          : env.runnerStyle === 'desert' ? .5
+            : env.runnerStyle === 'chukar' ? .24 : 0;
+        const routeBias = runner?.routeBias ?? mapRouteBias;
+        if (routeBias > 0) {
+          dirX = dirX * (1 - routeBias) + route.x * sign * routeBias;
+          dirY = dirY * (1 - routeBias) + route.y * sign * routeBias;
+          const routeLength = Math.hypot(dirX, dirY) || 1;
+          dirX /= routeLength;
+          dirY /= routeLength;
+        }
+      }
+    }
+    if (env.slopeAngle !== undefined && species.groundResponse === 'uphill') {
       dirX = dirX * (1 - SLOPE_RUN_BIAS) + Math.cos(env.slopeAngle) * SLOPE_RUN_BIAS;
       dirY = dirY * (1 - SLOPE_RUN_BIAS) + Math.sin(env.slopeAngle) * SLOPE_RUN_BIAS;
       const len = Math.hypot(dirX, dirY) || 1;
@@ -324,7 +479,7 @@ export function updateBirds(dtMs: number, birds: Bird[], dogPos: Vec2, env: Runn
     };
     // Blocked at the cover's end: hold rather than cross open ground.
     if (env.patches && inAnyPatch(b.pos, env.patches) && !inAnyPatch(next, env.patches)) {
-      b.restingMs = RUNNER_REST_MS;
+      b.restingMs = restMs;
       continue;
     }
     b.pos = next;
@@ -342,27 +497,77 @@ export function circleBack(
   bounds: Rect,
   rng: RNG = Math.random,
   nerveMult = 1,
+  options: { returnTrail?: AreaTrail; patches?: readonly Rect[] } = {},
 ): Bird[] {
+  // A spatial rise reaches this seam after the flight has either settled or
+  // left the readable envelope, so survivors may already be marked escaped.
+  // Scene-cut callers still hand us flushed birds. Downed/retrieved birds are
+  // omitted: the covey can circle back around the birds the hunter took.
   const covey = flushedIds
     .map((id) => birds.find((b) => b.id === id))
-    .filter((b): b is Bird => b !== undefined);
+    .filter((b): b is Bird => b !== undefined && (b.state === 'flushed' || b.state === 'escaped'));
   if (covey.length === 0) return [];
-  if (!covey.every((b) => b.speciesId === 'hun' && b.state === 'flushed' && !b.circled && !b.single)) {
+  if (!covey.every((b) => b.speciesId === 'hun' && !b.circled && !b.single)) {
     return [];
   }
   const cx = covey.reduce((a, b) => a + b.pos.x, 0) / covey.length;
   const cy = covey.reduce((a, b) => a + b.pos.y, 0) / covey.length;
-  const away = rng() * Math.PI * 2;
-  const distance = 150 + rng() * 150;
-  const anchor = {
-    x: clamp(cx + Math.cos(away) * distance, bounds.x + 12, bounds.x + bounds.w - 12),
-    y: clamp(cy + Math.sin(away) * distance, bounds.y + 12, bounds.y + bounds.h - 12),
-  };
+  let anchor: Vec2 | undefined;
+  const returnTrail = options.returnTrail;
+  const patches = options.patches ?? [];
+  if (returnTrail && returnTrail.points.length >= 2) {
+    // Sample a point along the authored return contour, then pull it into the
+    // nearest usable cover pocket when one is close. Huns remember a flank;
+    // they do not choose a fresh random bearing through bare ground.
+    const candidates: Vec2[] = [];
+    for (let index = 1; index < returnTrail.points.length; index++) {
+      const start = returnTrail.points[index - 1];
+      const end = returnTrail.points[index];
+      const t = 0.28 + rng() * 0.44;
+      const routePoint = {
+        x: start.x + (end.x - start.x) * t,
+        y: start.y + (end.y - start.y) * t,
+      };
+      const distance = dist(routePoint, { x: cx, y: cy });
+      if (distance < 80 || distance > 360) continue;
+      let nearestPatch: Rect | undefined;
+      let nearestPatchDistance = Infinity;
+      for (const patch of patches) {
+        const patchCenter = { x: patch.x + patch.w / 2, y: patch.y + patch.h / 2 };
+        const patchDistance = dist(routePoint, patchCenter);
+        if (patchDistance < nearestPatchDistance) {
+          nearestPatchDistance = patchDistance;
+          nearestPatch = patch;
+        }
+      }
+      if (nearestPatch && nearestPatchDistance <= 128) {
+        const insetX = Math.min(8, nearestPatch.w * .24);
+        const insetY = Math.min(8, nearestPatch.h * .24);
+        candidates.push({
+          x: clamp(routePoint.x, nearestPatch.x + insetX, nearestPatch.x + nearestPatch.w - insetX),
+          y: clamp(routePoint.y, nearestPatch.y + insetY, nearestPatch.y + nearestPatch.h - insetY),
+        });
+      } else {
+        candidates.push(routePoint);
+      }
+    }
+    if (candidates.length > 0) anchor = candidates[Math.floor(rng() * candidates.length) % candidates.length];
+  }
+  if (!anchor) {
+    const away = rng() * Math.PI * 2;
+    const distance = 150 + rng() * 150;
+    anchor = {
+      x: clamp(cx + Math.cos(away) * distance, bounds.x + 12, bounds.x + bounds.w - 12),
+      y: clamp(cy + Math.sin(away) * distance, bounds.y + 12, bounds.y + bounds.h - 12),
+    };
+  }
   const species = getSpecies('hun');
+  const spread = species.coveyJitter ?? COVEY_JITTER;
   for (const b of covey) {
+    const scattered = coveyOffset(anchor, spread, rng);
     b.pos = {
-      x: clamp(anchor.x + (rng() * 2 - 1) * 12, bounds.x + 4, bounds.x + bounds.w - 4),
-      y: clamp(anchor.y + (rng() * 2 - 1) * 12, bounds.y + 4, bounds.y + bounds.h - 4),
+      x: clamp(scattered.x, bounds.x + 4, bounds.x + bounds.w - 4),
+      y: clamp(scattered.y, bounds.y + 4, bounds.y + bounds.h - 4),
     };
     b.state = 'hidden';
     b.circled = true;

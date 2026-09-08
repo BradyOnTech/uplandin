@@ -21,6 +21,14 @@ interface ReliefStyle {
 }
 
 const RELIEF_STYLES: Partial<Record<TerrainKind, ReliefStyle>> = {
+  prairie: {
+    low: 0x626047,
+    high: 0xb29c6d,
+    rock: 0x817861,
+    vegetation: 0x66704f,
+    contour: 0xe6d7ad,
+    contourMeters: 2.8,
+  },
   rimrock: {
     low: 0x6d5943,
     high: 0xb49c71,
@@ -39,6 +47,66 @@ const RELIEF_STYLES: Partial<Record<TerrainKind, ReliefStyle>> = {
     water: 0x5f8990,
     moistureK: 0.86,
   },
+  woods: {
+    low: 0x263b31,
+    high: 0x637451,
+    rock: 0x5e665d,
+    vegetation: 0x385b42,
+    contour: 0xb9c49d,
+    contourMeters: 3.2,
+    moistureK: 0.28,
+  },
+  desert: {
+    low: 0x624b39,
+    high: 0xb38a5d,
+    rock: 0x927c67,
+    vegetation: 0x6f754b,
+    contour: 0xe4c68f,
+    contourMeters: 4.5,
+    moistureK: 0.15,
+  },
+  canyon: {
+    low: 0x593a33,
+    high: 0xc1845d,
+    rock: 0x926c5a,
+    vegetation: 0x65703e,
+    contour: 0xf0c497,
+    contourMeters: 3.5,
+    moistureK: 0.16,
+  },
+  alpine: {
+    low: 0x39463f,
+    high: 0x84917c,
+    rock: 0x737b78,
+    vegetation: 0x4d705a,
+    contour: 0xd1d6c5,
+    contourMeters: 5.5,
+    moistureK: 0.22,
+  },
+  'oak-savanna': {
+    low: 0x5b4b31,
+    high: 0xb19455,
+    rock: 0x82745c,
+    vegetation: 0x5e6f3f,
+    contour: 0xe4d0a2,
+    contourMeters: 3.8,
+    moistureK: 0.18,
+  },
+};
+
+// This authored property has its own shallow draw and prairie shoulders.
+// Keep other prairie maps on their existing presentation until they are authored.
+const QUAIL_RELIEF: ReliefStyle = {
+  low: 0x62694c,
+  high: 0xab9a70,
+  rock: 0x817861,
+  vegetation: 0x667152,
+  contour: 0xe5d8ad,
+  contourMeters: 2,
+  // A cool vegetated draw, not a permanent river: moisture comes directly
+  // from the same LandscapeModel sample that depresses the 3D drainage bed.
+  water: 0x466e67,
+  moistureK: 0.86,
 };
 
 function mixColor(from: number, to: number, amount: number): number {
@@ -105,14 +173,15 @@ function drawContourCell(
 
 /**
  * Paints a terrain-kind-specific shaded relief from the same fixed property
- * model used by the 3D hunt. Returns false until that biome has a map adapter.
+ * model used by the 3D hunt. Returns false only if a future terrain kind has
+ * not received a map adapter yet.
  */
 export function drawPropertyRelief(
   gfx: Phaser.GameObjects.Graphics,
   area: AreaConfig,
   rect: MapRect,
 ): boolean {
-  const style = RELIEF_STYLES[area.terrain.kind];
+  const style = area.id === 'quail-fields' ? QUAIL_RELIEF : RELIEF_STYLES[area.terrain.kind];
   if (!style) return false;
 
   const landscape = new LandscapeModel(area);

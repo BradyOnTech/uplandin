@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import type { GroundSample, LandscapeModel } from '../../game/landscape';
 import type { Ctx, Subsystem } from '../engine';
 import { P, TOD, type TimeOfDay } from '../palette';
+import { QuailTerrain } from './quailTerrain';
+import { ChukarTerrain } from './chukarTerrain';
+import { PropertyTerrain } from './propertyTerrain';
 
 /*
  * TERRAIN subsystem: the ground under the hunt. Gentle rolling prairie —
@@ -128,6 +131,9 @@ diffuseColor.rgb *= 1.0 - 0.2 * smoothstep( 0.3, 0.75, gCs ) * uCloudShK;
 
 export class TerrainSystem implements Subsystem {
   readonly id = 'terrain';
+  private quail?: QuailTerrain;
+  private chukar?: ChukarTerrain;
+  private property?: PropertyTerrain;
   private noise: ReturnType<typeof makeNoise>;
   // The grass system's fertility field (same seed 4127, same octaves): the
   // ground tints toward trodden grass-olive wherever tufts will grow, so
@@ -224,7 +230,21 @@ export class TerrainSystem implements Subsystem {
     return this.landscape.heightAtWorld(x, z);
   }
 
-  init(ctx: Ctx): void {
+  init(ctx: Ctx): void | Promise<void> {
+    if(this.landscape.area.id==='chukar-ridge'){
+      this.chukar=new ChukarTerrain(this.landscape);this.chukar.init(ctx);return;
+    }
+    if (this.landscape.area.id === 'quail-fields') {
+      this.quail = new QuailTerrain(this.landscape);
+      return this.quail.init(ctx);
+    }
+    // Every other property receives the full authored heightfield. The old
+    // generic branch below is retained for its mature palette recipe, but the
+    // tiled property terrain is the runtime path for maps outside the two
+    // bespoke worlds above.
+    this.property = new PropertyTerrain(this.landscape);
+    this.property.init(ctx);
+    return;
     const geo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, SEGMENTS, SEGMENTS);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position as THREE.BufferAttribute;
@@ -508,6 +528,9 @@ export class TerrainSystem implements Subsystem {
 
   /** One uniform write per frame: the cloud-shade mask drifts with time. */
   update(ctx: Ctx): void {
+    this.quail?.update(ctx);
+    this.chukar?.update(ctx);
+    this.property?.update(ctx);
     this.drench.uCloudT.value = ctx.time * 0.14;
   }
 
@@ -515,6 +538,10 @@ export class TerrainSystem implements Subsystem {
   // flora.ts), which owns all props and midground mass.
 
   dispose(ctx: Ctx): void {
+    this.quail?.dispose(ctx);
+    this.quail = undefined;
+    this.chukar?.dispose(ctx);this.chukar=undefined;
+    this.property?.dispose(ctx);this.property=undefined;
     if (this.mesh) {
       ctx.scene.remove(this.mesh);
       this.mesh.geometry.dispose();

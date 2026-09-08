@@ -35,6 +35,8 @@ export interface HuntState {
   condition: Condition;
   downed: number;
   escaped: number;
+  /** Explicit field-session closure; untouched birds remain in their cover. */
+  fieldSessionEnded?: boolean;
   /** Flushes where two birds fell — the classic double, bonus hunter XP. */
   doubles: number;
   /** Protected hens downed — each one fines the hunter's XP. */
@@ -48,6 +50,12 @@ export interface HuntState {
 }
 
 export interface HuntOptions {
+  birdCount?: number;
+  birdRng?: RNG;
+  coveyAnchors?: readonly Vec2[];
+  /** Explicit 3D challenge tuning; legacy callers retain their current balance. */
+  stockingMult?: number;
+  encounterNerveMult?: number;
   dropPointId?: string;
   wind?: WindStrength;
   gunId?: string;
@@ -89,15 +97,16 @@ export function createHunt(area: AreaConfig, rng: RNG = Math.random, opts: HuntO
     birds: spawnBirds(
       {
         patches: area.patches,
-        birdCount: areaBirdCount(area),
+        birdCount: Math.max(3, Math.round((opts.birdCount ?? areaBirdCount(area)) * (opts.stockingMult ?? 1))),
         speciesMix: opts.mix && opts.mix.length > 0 ? opts.mix : area.speciesMix,
         bounds: w,
-        nerveMult: windMults(windStrength).nerve * conditionMults(condition).nerve * (opts.educatedMult ?? 1),
+        nerveMult: windMults(windStrength).nerve * conditionMults(condition).nerve * (opts.educatedMult ?? 1) * (opts.encounterNerveMult ?? 1),
         youngShare: opts.youngShare,
         exclusionZones: area.dropPoints.map((point) => ({ center: point.position, radius: point.safetyRadius })),
         openingAnchor,
+        coveyAnchors: opts.coveyAnchors,
       },
-      rng,
+      opts.birdRng ?? rng,
     ),
     dogsPos: [
       { x: drop.position.x + forward.x * 8 + side.x * 5, y: drop.position.y + forward.y * 8 + side.y * 5 },
@@ -122,7 +131,8 @@ export function birdsRemaining(hunt: HuntState): number {
 
 /** A hunt is over once every bird is lost or delivered to hand. */
 export function huntComplete(hunt: HuntState): boolean {
-  return hunt.birds.every((b) => b.state === 'escaped' || b.state === 'retrieved');
+  return hunt.birds.every((b) => b.state === 'escaped' || b.state === 'retrieved' ||
+    (hunt.fieldSessionEnded === true && b.state === 'hidden'));
 }
 
 /**
@@ -140,4 +150,16 @@ export function endHuntEarly(hunt: HuntState): number {
   }
   hunt.escaped += writtenOff;
   return writtenOff;
+}
+
+/** End a continuous field session only once flight and recovery are resolved.
+ * Hidden birds are neither a target quota nor escapes. Legacy scene-based
+ * hunts retain endHuntEarly; this policy is selected by the 3D adapter.
+ */
+export function endFieldSession(hunt: HuntState): boolean {
+  if (hunt.birds.some((bird) => bird.state === 'flushed' || bird.state === 'downed' || bird.state === 'carried')) {
+    return false;
+  }
+  hunt.fieldSessionEnded = true;
+  return true;
 }

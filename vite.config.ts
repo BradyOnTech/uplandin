@@ -1,9 +1,37 @@
 import { resolve } from 'node:path';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
   // Relative base keeps the build deployable anywhere (itch.io, subpaths, Capacitor).
   base: './',
+  plugins: [{
+    name: 'offline-hunt-assets',
+    apply: 'build',
+    writeBundle(options, bundle) {
+      const directory = resolve(options.dir ?? 'dist');
+      const files = [
+        'index.html', 'index3d.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
+        'textures/terrain/prairie-painted.webp',
+        ...Object.keys(bundle).filter(name => /\.(js|css)$/.test(name)),
+        'models/quail-kit/prop-manifest.json',
+        ...['slab', 'split-log', 'fallen-limb'].flatMap(habit => ['high', 'lite'].map(detail => `models/quail-kit/ground-prop-${habit}-${detail}.glb`)),
+        'models/quail-kit/tree-manifest.json',
+        ...['upright', 'spreading', 'leaning'].flatMap(habit => ['high', 'lite'].map(detail => `models/quail-kit/field-tree-${habit}-${detail}.glb`)),
+        'models/quail-kit/manifest.json',
+        ...['open', 'low', 'tall'].flatMap(habit => ['high', 'lite'].map(detail => `models/quail-kit/sand-plum-${habit}-${detail}.glb`)),
+        'models/gsp/manifest.json',
+        'models/gsp/gsp-liver-white-lod0.glb', 'models/gsp/gsp-liver-white-lod1.glb', 'models/gsp/gsp-liver-white-lod2.glb',
+      ];
+      const hash = createHash('sha256');
+      for (const file of files) hash.update(readFileSync(resolve(directory, file)));
+      const build = hash.digest('hex').slice(0, 16);
+      writeFileSync(resolve(directory, 'precache.json'), JSON.stringify({ build, files }));
+      const worker = readFileSync(resolve(__dirname, 'public/sw.js'), 'utf8').replace('__BUILD_ID__', build);
+      writeFileSync(resolve(directory, 'sw.js'), worker);
+    },
+  }],
   build: {
     rollupOptions: {
       input: {

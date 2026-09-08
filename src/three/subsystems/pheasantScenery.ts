@@ -5,6 +5,7 @@ import { PROPERTY_PX_TO_M } from '../../game/landscape';
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
 import type { Hunt3DSystem } from './hunt3d';
+import { PHEASANT_WATER_LEVEL_OFFSET } from './pheasantLandscape';
 
 function seeded(seed: number, salt: number): number {
   let h = seed ^ Math.imul(salt, 0x9e3779b1);
@@ -48,6 +49,11 @@ export class PheasantScenerySystem implements Subsystem {
   constructor(private readonly landscape: LandscapeModel) {}
 
   init(ctx: Ctx): void {
+    // The shared key light already supplies the field's major shadow shapes.
+    // Keep detailed cottonwood branches and fence wires out of the lite
+    // shadow pass; they remain visible and receive light, while a phone avoids
+    // re-rendering dozens of small casters into the shadow map every frame.
+    const castShadow = ctx.quality === 'high';
     const waterMaterial = new THREE.MeshStandardMaterial({
       color: 0x7396a0,
       roughness: 0.28,
@@ -84,7 +90,10 @@ export class PheasantScenerySystem implements Subsystem {
     for (const landmark of this.landscape.area.landmarks) {
       if (landmark.kind !== 'pond') continue;
       this.landscape.propertyToWorld(landmark.position.x, landmark.position.y, this.world);
-      if (Math.abs(this.world.x) > 320 || Math.abs(this.world.z) > 320) continue;
+      // Pheasant Coverts is a full property. Keep every authored pothole in
+      // the world so the player can read the wetland chain from the field,
+      // rather than getting a drop-centered “hero pond” and an empty horizon.
+      if (Math.abs(this.world.x) > 680 || Math.abs(this.world.z) > 520) continue;
       visiblePonds.push({ landmark, x: this.world.x, z: this.world.z });
     }
 
@@ -99,7 +108,7 @@ export class PheasantScenerySystem implements Subsystem {
       // The landform carves a full basin beneath the water. Fill it almost
       // to the surrounding grade so the slough remains visible from a
       // hunter's eye on the entry swell instead of hiding behind its rim.
-      const waterY = this.landscape.heightAtWorld(pond.x, pond.z) + 2.95;
+      const waterY = this.landscape.heightAtWorld(pond.x, pond.z) + PHEASANT_WATER_LEVEL_OFFSET;
       const bank = new THREE.Mesh(bankGeo, bankMaterial);
       bank.position.set(pond.x, waterY - 0.055, pond.z);
       bank.receiveShadow = true;
@@ -119,6 +128,7 @@ export class PheasantScenerySystem implements Subsystem {
           trunkMaterial,
           branchMaterial,
           foliageMaterials,
+          castShadow,
         );
         tree.position.set(treeX, this.landscape.heightAtWorld(treeX, treeZ) - 0.1, treeZ);
         tree.rotation.y = i * 1.83 + 0.4;
@@ -128,7 +138,7 @@ export class PheasantScenerySystem implements Subsystem {
     }
 
     this.buildSeasonalGround(ctx, snowMaterial);
-    this.buildFence(ctx, fenceMaterial, wireMaterial);
+    this.buildFence(ctx, fenceMaterial, wireMaterial, castShadow);
   }
 
   private buildCottonwood(
@@ -137,6 +147,7 @@ export class PheasantScenerySystem implements Subsystem {
     trunkMaterial: THREE.Material,
     branchMaterial: THREE.Material,
     foliageMaterials: THREE.Material[],
+    castShadow: boolean,
   ): THREE.Group {
     const rng = mulberry32(seed);
     const root = new THREE.Group();
@@ -145,7 +156,7 @@ export class PheasantScenerySystem implements Subsystem {
     this.geometries.push(trunkGeo);
     const trunk = new THREE.Mesh(trunkGeo, trunkMaterial);
     trunk.position.y = height * 0.36;
-    trunk.castShadow = true;
+    trunk.castShadow = castShadow;
     trunk.receiveShadow = true;
     root.add(trunk);
 
@@ -153,6 +164,17 @@ export class PheasantScenerySystem implements Subsystem {
     const crownGeo = new THREE.IcosahedronGeometry(1, 2);
     this.geometries.push(branchGeo, crownGeo);
     const up = new THREE.Vector3(0, 1, 0);
+    const branchMatrices: THREE.Matrix4[] = [];
+    const canopyMatrices = foliageMaterials.map(() => [] as THREE.Matrix4[]);
+    const branchPosition = new THREE.Vector3();
+    const branchQuaternion = new THREE.Quaternion();
+    const branchUnit = new THREE.Vector3();
+    const branchScale = new THREE.Vector3();
+    const canopyPosition = new THREE.Vector3();
+    const canopyQuaternion = new THREE.Quaternion();
+    const canopyEuler = new THREE.Euler();
+    const canopyScale = new THREE.Vector3();
+    const matrix = new THREE.Matrix4();
     for (let i = 0; i < 7; i++) {
       const angle = i / 7 * Math.PI * 2 + rng() * 0.55;
       const start = new THREE.Vector3(0, height * (0.46 + rng() * 0.18), 0);
@@ -163,31 +185,50 @@ export class PheasantScenerySystem implements Subsystem {
         Math.cos(angle) * reach,
       );
       const direction = end.clone().sub(start);
-      const branch = new THREE.Mesh(branchGeo, branchMaterial);
-      branch.position.copy(start).add(end).multiplyScalar(0.5);
-      branch.quaternion.setFromUnitVectors(up, direction.clone().normalize());
-      branch.scale.set(0.72 + rng() * 0.42, direction.length(), 0.72 + rng() * 0.42);
-      branch.castShadow = true;
-      root.add(branch);
+      branchPosition.copy(start).add(end).multiplyScalar(0.5);
+      branchUnit.copy(direction).normalize();
+      branchQuaternion.setFromUnitVectors(up, branchUnit);
+      branchScale.set(0.72 + rng() * 0.42, direction.length(), 0.72 + rng() * 0.42);
+      branchMatrices.push(matrix.compose(branchPosition, branchQuaternion, branchScale).clone());
 
       const lobes = 2 + (i % 3 === 0 ? 1 : 0);
       for (let lobe = 0; lobe < lobes; lobe++) {
-        const canopy = new THREE.Mesh(crownGeo, foliageMaterials[(i + lobe) % foliageMaterials.length]);
-        canopy.position.copy(end).add(new THREE.Vector3(
+        const materialIndex = (i + lobe) % foliageMaterials.length;
+        canopyPosition.copy(end).add(new THREE.Vector3(
           (rng() - 0.5) * height * 0.12,
           (rng() - 0.35) * height * 0.1,
           (rng() - 0.5) * height * 0.12,
         ));
-        canopy.scale.set(
+        canopyScale.set(
           height * (0.12 + rng() * 0.06),
           height * (0.09 + rng() * 0.055),
           height * (0.12 + rng() * 0.06),
         );
-        canopy.rotation.set(rng(), rng() * Math.PI, rng());
-        canopy.castShadow = true;
-        canopy.receiveShadow = true;
-        root.add(canopy);
+        canopyEuler.set(rng(), rng() * Math.PI, rng());
+        canopyQuaternion.setFromEuler(canopyEuler);
+        canopyMatrices[materialIndex].push(matrix.compose(canopyPosition, canopyQuaternion, canopyScale).clone());
       }
+    }
+
+    const branches = new THREE.InstancedMesh(branchGeo, branchMaterial, branchMatrices.length);
+    branches.matrixAutoUpdate = false;
+    for (let i = 0; i < branchMatrices.length; i++) branches.setMatrixAt(i, branchMatrices[i]);
+    branches.instanceMatrix.needsUpdate = true;
+    branches.castShadow = castShadow;
+    branches.computeBoundingSphere();
+    root.add(branches);
+
+    for (let materialIndex = 0; materialIndex < canopyMatrices.length; materialIndex++) {
+      const matrices = canopyMatrices[materialIndex];
+      if (matrices.length === 0) continue;
+      const canopies = new THREE.InstancedMesh(crownGeo, foliageMaterials[materialIndex], matrices.length);
+      canopies.matrixAutoUpdate = false;
+      for (let i = 0; i < matrices.length; i++) canopies.setMatrixAt(i, matrices[i]);
+      canopies.instanceMatrix.needsUpdate = true;
+      canopies.castShadow = castShadow;
+      canopies.receiveShadow = true;
+      canopies.computeBoundingSphere();
+      root.add(canopies);
     }
     return root;
   }
@@ -248,7 +289,7 @@ export class PheasantScenerySystem implements Subsystem {
     this.objects.push(mesh);
   }
 
-  private buildFence(ctx: Ctx, postMaterial: THREE.Material, wireMaterial: THREE.Material): void {
+  private buildFence(ctx: Ctx, postMaterial: THREE.Material, wireMaterial: THREE.Material, castShadow: boolean): void {
     const landmark = this.landscape.area.landmarks.find((candidate) => candidate.id === 'north-fence')
       ?? this.landscape.area.landmarks.find((candidate) => candidate.kind === 'barn');
     if (!landmark) return;
@@ -291,8 +332,8 @@ export class PheasantScenerySystem implements Subsystem {
         wires.setMatrixAt(wireIndex++, matrix.compose(position, quaternion, scale));
       }
     }
-    posts.castShadow = true;
-    wires.castShadow = true;
+    posts.castShadow = castShadow;
+    wires.castShadow = castShadow;
     posts.matrixAutoUpdate = false;
     wires.matrixAutoUpdate = false;
     posts.computeBoundingSphere();

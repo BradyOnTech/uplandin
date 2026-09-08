@@ -2,153 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Uplandin 3D</title>
-    <style>
-      html, body { margin: 0; height: 100%; overflow: hidden; background: #1e2316; }
-      [hidden] { display: none !important; }
-      canvas { display: block; width: 100%; height: 100%; }
-      #dog-appearance {
-        position: fixed;
-        z-index: 2;
-        top: 14px;
-        right: 14px;
-        padding: 9px 11px;
-        border: 1px solid rgba(244, 239, 227, 0.3);
-        border-radius: 7px;
-        color: #f4efe3;
-        background: rgba(20, 27, 17, 0.82);
-        font: 12px/1.2 system-ui, sans-serif;
-        backdrop-filter: blur(5px);
-      }
-      #dog-appearance label { display: grid; gap: 5px; }
-      #dog-appearance select {
-        min-width: 145px;
-        color: #1e2316;
-        background: #f4efe3;
-        font: inherit;
-      }
-      #controls {
-        position: fixed;
-        z-index: 2;
-        left: 14px;
-        bottom: 14px;
-        padding: 8px 10px;
-        border: 1px solid rgba(244, 239, 227, 0.25);
-        border-radius: 7px;
-        color: rgba(244, 239, 227, 0.9);
-        background: rgba(20, 27, 17, 0.72);
-        font: 12px/1.35 system-ui, sans-serif;
-        pointer-events: none;
-      }
-      #field-menu {
-        position: fixed;
-        z-index: 2;
-        right: 14px;
-        bottom: 14px;
-        padding: 7px 11px;
-        border: 1px solid rgba(244, 239, 227, 0.35);
-        border-radius: 6px;
-        color: #f4efe3;
-        background: rgba(20, 27, 17, 0.78);
-        font: 600 12px system-ui, sans-serif;
-        cursor: pointer;
-      }
-      #end-hunt {
-        position: fixed;
-        z-index: 2;
-        right: 14px;
-        bottom: 52px;
-        padding: 7px 11px;
-        border: 1px solid rgba(244, 239, 227, 0.35);
-        border-radius: 6px;
-        color: #f4efe3;
-        background: rgba(20, 27, 17, 0.78);
-        font: 600 12px system-ui, sans-serif;
-        cursor: pointer;
-      }
-      #end-hunt:disabled { opacity: 0.45; cursor: default; }
-      #reticle {
-        position: fixed;
-        z-index: 3;
-        left: 50%;
-        top: 50%;
-        width: 14px;
-        height: 14px;
-        margin: -7px 0 0 -7px;
-        border: 1px solid rgba(255, 245, 214, 0.9);
-        border-radius: 50%;
-        box-shadow: 0 0 5px rgba(26, 31, 20, 0.8);
-        pointer-events: none;
-      }
-      #reticle::after {
-        content: '';
-        position: absolute;
-        left: 5px;
-        top: 5px;
-        width: 2px;
-        height: 2px;
-        border-radius: 50%;
-        background: #fff5d6;
-      }
-      #hunt-hud {
-        position: fixed;
-        z-index: 2;
-        top: 14px;
-        left: 14px;
-        min-width: 190px;
-        padding: 9px 11px;
-        border: 1px solid rgba(244, 239, 227, 0.28);
-        border-radius: 7px;
-        color: #f4efe3;
-        background: rgba(20, 27, 17, 0.78);
-        font: 12px/1.4 system-ui, sans-serif;
-        pointer-events: none;
-      }
-      #hunt-phase { color: #ffd78a; font-weight: 700; letter-spacing: 0.04em; }
-      #hunt-beacon { color: #a9b982; font-weight: 700; letter-spacing: 0.04em; }
-      #shot-callout {
-        position: fixed;
-        z-index: 4;
-        left: 50%;
-        top: 39%;
-        transform: translate(-50%, -50%);
-        color: #fff5d6;
-        font: 700 20px/1 system-ui, sans-serif;
-        letter-spacing: 0.08em;
-        text-shadow: 0 2px 5px #141b11;
-        pointer-events: none;
-      }
-      #shot-callout.miss { color: #d7c9ae; font-size: 14px; }
-      #hunt-summary {
-        position: fixed;
-        z-index: 5;
-        left: 50%;
-        top: 50%;
-        width: min(360px, calc(100vw - 40px));
-        transform: translate(-50%, -50%);
-        padding: 24px;
-        border: 1px solid rgba(255, 215, 138, 0.55);
-        border-radius: 10px;
-        color: #f4efe3;
-        background: rgba(16, 21, 14, 0.94);
-        text-align: center;
-        font: 14px/1.55 system-ui, sans-serif;
-      }
-      #hunt-summary h2 { margin: 0 0 10px; color: #ffd78a; letter-spacing: 0.08em; }
-      #hunt-summary button {
-        margin-top: 16px;
-        padding: 8px 16px;
-        border: 1px solid #d9b25f;
-        border-radius: 5px;
-        color: #1e2316;
-        background: #ffd78a;
-        font: 600 13px system-ui, sans-serif;
-        cursor: pointer;
-      }
-      #hunt-summary button + button { margin-left: 8px; }
-      body.capture #controls, body.capture #field-menu, body.capture #end-hunt { display: none; }
-    </style>
+    <link rel="icon" type="image/png" href="./icon-192.png" />
+
   </head>
   <body>
     <canvas id="game3d"></canvas>
@@ -156,12 +13,15 @@
       <label>Dog breed <select id="dog-breed"></select></label>
       <label><span id="dog-coat-label">Dog coat</span><select id="dog-coat"></select></label>
     </aside>
-    <div id="controls">WASD move · Shift run · Q whistle<br>RMB mount · LMB shoot · R reload</div>
+    <div id="controls">WASD move · Shift run · Q whistle · M survey map<br>RMB mount · LMB shoot · R reload</div>
+    <button id="pause-hunt" type="button" aria-label="Pause hunt">Pause <kbd>Esc</kbd></button>
+    <button id="field-map-toggle" type="button" aria-expanded="false" aria-controls="field-map" hidden>Survey <kbd>M</kbd></button>
     <button id="field-menu" type="button">Main menu</button>
     <button id="end-hunt" type="button">End hunt</button>
     <div id="hunt-hud" aria-live="polite">
       <div id="hunt-tally">birds hidden 0 · bag 0 · lost 0</div>
       <div id="hunt-phase">HUNTING</div>
+      <div id="dog-locator" aria-live="off"><span id="dog-direction" aria-hidden="true">↑</span><span id="dog-status">DOG SEARCHING</span><span id="dog-distance">0 YD</span></div>
       <div id="hunt-beacon">TRUCK ↑ 0 YD</div>
     </div>
     <div id="reticle" hidden aria-hidden="true"></div>
@@ -171,6 +31,70 @@
       <div id="hunt-summary-copy"></div>
       <button id="hunt-again" type="button">Hunt again</button>
       <button id="hunt-menu" type="button">Main menu</button>
+    </section>
+    <div id="move-stick" hidden aria-hidden="true"><span></span></div>
+    <div id="touch-controls" aria-label="Hunting controls" hidden>
+      <button data-action="recall" type="button" aria-label="Whistle to recall dog">Whistle</button>
+      <button data-action="reload" type="button">Reload</button>
+      <button data-action="aim" type="button" aria-pressed="false">Aim</button>
+      <button data-action="fire" class="fire" type="button" aria-label="Fire: drag to track, release to shoot">Fire<small>Drag to track</small></button>
+    </div>
+    <section id="field-map" hidden aria-label="Field survey map" role="dialog" aria-modal="true">
+      <div class="field-map-card">
+        <header class="field-map-heading">
+          <div>
+            <p class="field-map-eyebrow">FIELD SURVEY</p>
+            <h2>Read the ground</h2>
+          </div>
+          <button id="field-map-close" type="button">Close <kbd>Esc</kbd></button>
+        </header>
+        <canvas id="field-map-canvas" aria-label="Survey map showing trails, landmarks, hunter, and dog"></canvas>
+        <p id="field-map-caption"></p>
+      </div>
+    </section>
+    <section id="field-overlay" aria-label="Field menu" role="dialog" aria-modal="true">
+      <div class="field-card">
+        <p class="eyebrow">UPLANDIN · SOUTHERN PLAINS</p>
+        <h1 id="field-title">Quail Fields</h1>
+        <p id="field-description">A good dog. A little wind. A field worth walking.</p>
+        <p id="field-species" aria-label="Species">Northern Bobwhite</p>
+        <p id="field-method" aria-label="Hunting method">COVEY EDGE · HOLD AND WALK IN</p>
+        <div class="field-divider"></div>
+        <p id="loading-status" role="status">Preparing the field…</p>
+        <progress id="loading-progress" max="1" value="0" aria-label="Loading the field"></progress>
+        <div id="field-instructions" hidden>
+          <p class="desktop-instructions"><kbd>W A S D</kbd> Walk <span>·</span> <kbd>Shift</kbd> Run <span>·</span> <kbd>Q</kbd> Whistle <span>·</span> <kbd>M</kbd> Survey map</p>
+          <p class="desktop-instructions">Hold right mouse to mount. Left mouse to fire. <kbd>R</kbd> Reload.</p>
+          <p class="touch-instructions">Drag left to walk, right to look. Tap Survey for the route map. Tap Aim, then drag Fire to track and release to shoot. Whistle brings your dog back.</p>
+          <p class="field-tip">Work the edges into the wind. When your dog holds point, walk in steadily.</p>
+        </div>
+        <button id="enter-field" class="primary" type="button" hidden>Enter the field <span aria-hidden="true">↗</span></button>
+        <button id="retry-field" type="button" hidden>Reload the field</button>
+        <div id="field-options">
+          <label id="property-option">Property <select id="property-setting">
+            <option value="quail-fields">Quail Fields</option>
+            <option value="pheasant-coverts">Cattail Coverts</option>
+            <option value="sharptail-prairie">Sharptail Prairie</option>
+            <option value="grouse-woods">Grouse Woods</option>
+            <option value="woodcock-bottoms">Alder Bottoms</option>
+            <option value="hun-benches">Rimrock Benches</option>
+            <option value="chukar-ridge">Chukar Ridge</option>
+            <option value="desert-washes">Desert Washes</option>
+            <option value="mearns-canyons">Oak Canyons</option>
+            <option value="timberline-parks">Timberline Parks</option>
+            <option value="valley-oaks">Valley Oaks</option>
+          </select></label>
+          <label>Light <select id="light-setting"><option value="dawn">Dawn</option><option value="morning">Morning</option><option value="noon">Midday</option><option value="evening">Evening</option><option value="lastlight">Last light</option></select></label>
+          <label>Display <select id="quality-setting"><option value="high">Standard</option><option value="lite">Lightweight</option></select></label>
+          <label><input id="sound-setting" type="checkbox" checked> Field audio</label>
+        </div>
+        <div id="challenge-options">
+          <label>Hunt challenge <select id="challenge-setting" aria-describedby="challenge-help"><option value="relaxed">Relaxed</option><option value="balanced">Balanced</option><option value="wild">Wild</option></select></label>
+          <p id="challenge-help">Work the cover and approach quietly. Birds can still surprise you.</p>
+        </div>
+        <a class="menu-link" href="./index.html">Back to main menu</a>
+        <small id="offline-status" aria-live="polite"></small>
+      </div>
     </section>
     <script type="module" src="/src/three/main3d.ts"></script>
   </body>

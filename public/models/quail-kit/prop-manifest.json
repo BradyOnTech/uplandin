@@ -1,0 +1,48 @@
+{
+  "units": "metres",
+  "source": "assets/source/quail-kit/ground-props.blend",
+  "assets": [
+    {
+      "id": "ground-prop-slab-high",
+      "triangles": 58,
+      "meshes": 2,
+      "materials": 2,
+      "bytes": 5236
+    },
+    {
+      "id": "ground-prop-slab-lite",
+      "triangles": 34,
+      "meshes": 2,
+      "materials": 2,
+      "bytes": 3940
+    },
+    {
+      "id": "ground-prop-split-log-high",
+      "triangles": 168,
+      "meshes": 3,
+      "materials": 3,
+      "bytes": 11028
+    },
+    {
+      "id": "ground-prop-split-log-lite",
+      "triangles": 96,
+      "meshes": 3,
+      "materials": 3,
+      "bytes": 7716
+    },
+    {
+      "id": "ground-prop-fallen-limb-high",
+      "triangles": 168,
+      "meshes": 3,
+      "materials": 3,
+      "bytes": 11028
+    },
+    {
+      "id": "ground-prop-fallen-limb-lite",
+      "triangles": 96,
+      "meshes": 3,
+      "materials": 3,
+      "bytes": 7720
+    }
+  ]
+}

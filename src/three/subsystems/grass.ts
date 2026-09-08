@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
-import { P, TOD, type TimeOfDay } from '../palette';
+import { P, fieldTimeOfDay, type TimeOfDay } from '../palette';
 import type { BirdsSystem } from './birds';
 import type { DogSystem } from './dog';
 import type { Hunt3DSystem } from './hunt3d';
@@ -55,6 +55,88 @@ const TILE = 20; // meters — tile grid cell for the roaming open field
 const WORLD_LIMIT = 235; // stay on the 480 m terrain plate
 // One shared drill direction for the whole farm's stubble rows (radians).
 const ROW_YAW = 0.42;
+
+/**
+ * Open country is not one universal grass material. Sharptail prairie has a
+ * cooler, silvered late-season sward and wind-laid structure; valley oak
+ * country has warmer dry grass with greener shade between the crowns. Keep
+ * the profile to a few scalar/material choices so both tiers still share the
+ * same instanced geometry and draw budget.
+ */
+interface GrassArtProfile {
+  rowYaw: number | null;
+  heightScale: number;
+  bodyDensity: number;
+  coverDensity: number;
+  grassGold: number;
+  grassOlive: number;
+  forbGreen: number;
+  strawLight: number;
+  strawPale: number;
+  khaki: number;
+  oliveMid: number;
+  olive: number;
+  oliveDeep: number;
+}
+
+const DEFAULT_GRASS_ART: GrassArtProfile = {
+  rowYaw: ROW_YAW,
+  heightScale: 1,
+  bodyDensity: 1,
+  coverDensity: 1,
+  grassGold: P.grassGold,
+  grassOlive: P.grassOlive,
+  forbGreen: P.forbGreen,
+  strawLight: P.strawLight,
+  strawPale: P.strawPale,
+  khaki: P.khaki,
+  oliveMid: P.oliveMid,
+  olive: P.olive,
+  oliveDeep: P.oliveDeep,
+};
+
+const GRASS_ART_BY_AREA: Readonly<Record<string, GrassArtProfile>> = {
+  'sharptail-prairie': {
+    ...DEFAULT_GRASS_ART,
+    // Natural prairie bunches do not line up like the drilled Quail Fields
+    // stubble. The slight grain keeps the field readable without making a
+    // repeated row pattern the map's visual signature.
+    rowYaw: null,
+    heightScale: 0.88,
+    bodyDensity: 0.86,
+    coverDensity: 0.9,
+    grassGold: 0xc3b47d,
+    grassOlive: 0x85875e,
+    forbGreen: 0x68784f,
+    strawLight: 0xd4c398,
+    strawPale: 0xe6d8b1,
+    khaki: 0x988567,
+    oliveMid: 0x716747,
+    olive: 0x5f5b43,
+  },
+  'valley-oaks': {
+    ...DEFAULT_GRASS_ART,
+    // Valley grass is a warmer, shorter summer sward with green low growth
+    // under the live-oak shade. A different grain direction prevents it from
+    // inheriting the northern prairie's visual rhythm.
+    rowYaw: 0.94,
+    heightScale: 0.92,
+    bodyDensity: 0.82,
+    coverDensity: 0.86,
+    grassGold: 0xc9ae68,
+    grassOlive: 0x788148,
+    forbGreen: 0x5d753f,
+    strawLight: 0xd7bb7d,
+    strawPale: 0xe7d19d,
+    khaki: 0x9b7a43,
+    oliveMid: 0x675e30,
+    olive: 0x514f2a,
+  },
+};
+
+function grassArtFor(areaId: string): GrassArtProfile {
+  return GRASS_ART_BY_AREA[areaId] ?? DEFAULT_GRASS_ART;
+}
 
 interface QualityCfg {
   /** Active open-field radius around the camera (m). */
@@ -301,12 +383,18 @@ gWorld.y -= gSightPart * 0.38 * gT;
 // blades blow outward and DOWN, harder than the dog's push, and the radius
 // itself carries a pop-then-shake envelope fed per-frame from the birds
 // subsystem (xy = world xz, z = radius; epsilon when no rise is live).
-vec2 gAway3 = gWorld.xz - uPart3.xy;
-float gBurstD = length( gAway3 );
-float gPart3 = 1.0 - smoothstep( 0.0, uPart3.z, gBurstD );
-gPart3 *= gPart3;
-gWorld.xz += ( gAway3 / max( gBurstD, 1e-4 ) ) * gPart3 * 0.95 * gT;
-gWorld.y -= gPart3 * 0.62 * gT;
+// The explicit uniform guard matters on mobile: the burst is inactive for
+// nearly the whole hunt, so avoid doing three distance/smoothstep operations
+// for every grass vertex until a real rise has opened the cover. The epsilon
+// radius already means "no effect"; this preserves the active burst exactly.
+if (uPart3.z > 0.001) {
+  vec2 gAway3 = gWorld.xz - uPart3.xy;
+  float gBurstD = length( gAway3 );
+  float gPart3 = 1.0 - smoothstep( 0.0, uPart3.z, gBurstD );
+  gPart3 *= gPart3;
+  gWorld.xz += ( gAway3 / max( gBurstD, 1e-4 ) ) * gPart3 * 0.95 * gT;
+  gWorld.y -= gPart3 * 0.62 * gT;
+}
 
 // Distance collapse, confined to the LAST THIRD of draw distance: each
 // tuft shrinks smoothly to its root over a 12 m window ending at a hashed
@@ -739,6 +827,7 @@ export class GrassSystem implements Subsystem {
   readonly id = 'grass';
 
   private cfg!: QualityCfg;
+  private art: GrassArtProfile = DEFAULT_GRASS_ART;
   private terrain!: TerrainSystem;
   private hunt!: Hunt3DSystem;
   // Clump structure: knots of dense grass and genuinely bare dirt patches —
@@ -806,6 +895,18 @@ export class GrassSystem implements Subsystem {
     this.cfg = CFG[ctx.quality];
     this.terrain = ctx.get<TerrainSystem>('terrain');
     this.hunt = ctx.get<Hunt3DSystem>('hunt3d');
+    this.art = grassArtFor(this.hunt.huntState().areaId);
+    this.grassGold.setHex(this.art.grassGold);
+    this.grassOlive.setHex(this.art.grassOlive);
+    this.forbGreen.setHex(this.art.forbGreen);
+    this.strawLight.setHex(this.art.strawLight);
+    this.strawPale.setHex(this.art.strawPale);
+    this.khaki.setHex(this.art.khaki);
+    this.oliveMid.setHex(this.art.oliveMid);
+    this.olive.setHex(this.art.olive);
+    this.oliveDeep.setHex(this.art.oliveDeep);
+    this.rimPale.copy(this.strawPale);
+    this.swardTone.copy(this.grassOlive).lerp(this.grassGold, 0.42);
     this.groundNoise = makeNoise(this.terrain.paintSeed());
 
     this.buildVariantGeos(mulberry32(0x9e1d77), this.cfg.bladeWide);
@@ -1133,7 +1234,7 @@ export class GrassSystem implements Subsystem {
 
   /** Re-key the atmosphere uniforms off the TOD spec (haze, shadow, rim). */
   private applyTod(tod: TimeOfDay): void {
-    const spec = TOD[tod];
+    const spec = fieldTimeOfDay(this.hunt.huntState().areaId, tod);
     const az = THREE.MathUtils.degToRad(spec.sunAzimuth);
     const el = THREE.MathUtils.degToRad(spec.sunElevation);
     for (const u of [this.openUniforms, this.coverUniforms]) {
@@ -1501,11 +1602,13 @@ export class GrassSystem implements Subsystem {
     const y = this.terrain.heightAt(px, pz) - 0.04;
     // Stubble rows share ONE field direction (drilled, harvested land);
     // everything else scatters its yaw freely.
-    const yaw = vi === V_OPEN ? ROW_YAW + (rng() - 0.5) * 0.3 : rng() * Math.PI * 2;
+    const yaw = vi === V_OPEN && this.art.rowYaw !== null
+      ? this.art.rowYaw + (rng() - 0.5) * 0.3
+      : rng() * Math.PI * 2;
     this.e.set((rng() - 0.5) * 0.16, yaw, (rng() - 0.5) * 0.16);
     this.q.setFromEuler(this.e);
     const sxz = vigor * (0.85 + rng() * 0.3);
-    this.s.set(sxz, vigor * (0.8 + rng() * 0.4), sxz);
+    this.s.set(sxz, vigor * (0.8 + rng() * 0.4) * this.art.heightScale, sxz);
     this.v.set(px, y, pz);
     this.m.compose(this.v, this.q, this.s);
 
@@ -1568,6 +1671,11 @@ export class GrassSystem implements Subsystem {
         // boost below + tussocks ON TOP of grass, never grass replaced
         // by dirt-and-reeds.
         const cs = this.coverAt(x, z);
+        // Open properties keep the same deterministic cover field, but their
+        // sward can be naturally more open than the tuned Quail Fields
+        // meadow. The profile only removes extra candidates on those maps;
+        // the shared ground fertility print remains unchanged.
+        if (this.art.bodyDensity < 1 && rng() > this.art.bodyDensity) continue;
         if (rng() < 0.35 * THREE.MathUtils.smoothstep(cs, 0.12, 0.6)) continue;
         // MEDIUM tier — the fringe ring: body tufts around a patch stand
         // taller and rankier, so cover grades patch -> fringe -> open the
@@ -1657,7 +1765,7 @@ export class GrassSystem implements Subsystem {
         // One stubble clump — VARIETY riding inside the tuft mass now, so
         // leaner than round 3: 3-8 stems, big heart, runt fringe, a shared
         // per-clump hue lean.
-        const n = Math.round((3.5 + rng() * 5.5) * (0.55 + 0.45 * edge));
+        const n = Math.round((3.5 + rng() * 5.5) * (0.55 + 0.45 * edge) * this.art.bodyDensity);
         const clumpR = 0.72 + rng() * 0.6 + edge * 0.25;
         const clumpOlive = rng() * 0.3;
         for (let i = 0; i < n; i++) {
@@ -1718,7 +1826,7 @@ export class GrassSystem implements Subsystem {
         if (Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT) continue;
         const s = this.coverAt(x, z);
         if (s < 0.08) continue;
-        if (rng() > THREE.MathUtils.smoothstep(s, 0.08, 0.7)) continue;
+        if (rng() > THREE.MathUtils.smoothstep(s, 0.08, 0.7) * this.art.coverDensity) continue;
         const trail = this.trailAt(x, z);
         if (trail > 0 && rng() < trail * 0.95) continue;
         const y = this.terrain.heightAt(x, z) - 0.05;
@@ -1727,7 +1835,7 @@ export class GrassSystem implements Subsystem {
         const sxz = (0.78 + rng() * 0.5) * (1 - 0.3 * trail);
         // Height rides cover strength: fringe tussocks knee-high, the
         // heart waist-high — the tier step a hunter reads at a glance.
-        const sy = (0.68 + 0.42 * s) * (0.85 + rng() * 0.35) * (1 - 0.4 * trail);
+        const sy = (0.68 + 0.42 * s) * (0.85 + rng() * 0.35) * this.art.heightScale * (1 - 0.4 * trail);
         this.s.set(sxz, sy, sxz);
         this.v.set(x, y, z);
         this.m.compose(this.v, this.q, this.s);

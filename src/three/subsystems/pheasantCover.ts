@@ -4,16 +4,7 @@ import { PROPERTY_PX_TO_M } from '../../game/landscape';
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
 
-interface CoverPatch {
-  cx: number;
-  cz: number;
-  hx: number;
-  hz: number;
-}
-
-interface HuntCoverQuery extends Subsystem {
-  coverPatches(): readonly CoverPatch[];
-}
+import { pheasantCoverAt, pheasantFields, pheasantHarvestAt, pheasantPlantClear, pheasantPonds } from './pheasantLandscape';
 
 function cellSeed(x: number, z: number, seed: number): number {
   let h = seed ^ Math.imul(x, 374761393) ^ Math.imul(z, 668265263);
@@ -21,7 +12,7 @@ function cellSeed(x: number, z: number, seed: number): number {
   return (h ^ (h >>> 16)) >>> 0;
 }
 
-function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble'): THREE.BufferGeometry {
+function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble', lite: boolean): THREE.BufferGeometry {
   const rng = mulberry32(kind === 'prairie' ? 0x51a7 : kind === 'cattail' ? 0xca77 : 0x57bb1e);
   const positions: number[] = [];
   const colors: number[] = [];
@@ -36,21 +27,21 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble'): THREE.BufferG
   const reed = new THREE.Color(0xe8d7a2);
   const head = new THREE.Color(0x7a5231);
 
-  const count = kind === 'prairie' ? 24 : kind === 'cattail' ? 13 : 16;
+  const count = kind === 'prairie' ? (lite ? 10 : 18) : kind === 'cattail' ? (lite ? 5 : 8) : (lite ? 7 : 12);
   for (let i = 0; i < count; i++) {
     const angle = (i / count) * Math.PI * 2 + (rng() - 0.5) * 0.42;
     const sx = Math.sin(angle);
     const sz = Math.cos(angle);
     const px = Math.cos(angle);
     const pz = -Math.sin(angle);
-    const root = rng() * (kind === 'stubble' ? 0.38 : kind === 'cattail' ? 0.5 : 0.78);
+    const root = rng() * (kind === 'stubble' ? 0.67 : kind === 'cattail' ? 0.55 : 0.66);
     const x = sx * root;
     const z = sz * root;
     const width = kind === 'cattail' ? 0.012 : 0.009 + rng() * 0.016;
     const height = kind === 'prairie'
-      ? 0.55 + rng() * 0.55
+      ? 0.46 + rng() * 0.65
       : kind === 'cattail'
-        ? 0.9 + rng() * 0.52
+        ? 1.55 + rng() * 0.64
         : 0.11 + rng() * 0.22;
     const lean = kind === 'stubble' ? 0.015 : 0.08 + rng() * (kind === 'cattail' ? 0.18 : 0.34);
     const curve = (rng() - 0.5) * (kind === 'cattail' ? 0.08 : 0.28);
@@ -97,166 +88,113 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble'): THREE.BufferG
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
+  geometry.userData = { kind: `pheasant-${kind}`, triangles: positions.length / 9 };
   return geometry;
 }
 
-/** Prairie grass, grain stubble, and genuine wet-cover reeds for Cattail Coverts. */
+/** Full-property grain stubble, protective grass and dense rooted wet margins. */
 export class PheasantCoverSystem implements Subsystem {
   readonly id = 'grass';
   private objects: THREE.InstancedMesh[] = [];
+  private batches: { mesh: THREE.InstancedMesh; center: THREE.Vector3; radius: number; range: number }[] = [];
   private geometries: THREE.BufferGeometry[] = [];
   private materials: THREE.Material[] = [];
-  private surface: GroundSample = {
-    height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0,
-  };
-  private matrix = new THREE.Matrix4();
-  private position = new THREE.Vector3();
-  private rotation = new THREE.Quaternion();
-  private euler = new THREE.Euler();
-  private scale = new THREE.Vector3();
-  private color = new THREE.Color();
+  private surface: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
   private world = { x: 0, z: 0 };
-
+  private wind = { value: 0 };
   constructor(private readonly landscape: LandscapeModel) {}
 
   init(ctx: Ctx): void {
-    const high = ctx.quality === 'high';
-    const prairieGeo = habitatGeometry('prairie');
-    const cattailGeo = habitatGeometry('cattail');
-    const stubbleGeo = habitatGeometry('stubble');
-    const material = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      vertexColors: true,
-      side: THREE.DoubleSide,
-      roughness: 1,
-      emissive: 0x7a6335,
-      emissiveIntensity: 0.12,
-    });
-    this.geometries.push(prairieGeo, cattailGeo, stubbleGeo);
-    this.materials.push(material);
-
-    const prairie = this.instanced(prairieGeo, material, high ? 16000 : 7200);
-    const cattails = this.instanced(cattailGeo, material, high ? 6200 : 2600);
-    const stubble = this.instanced(stubbleGeo, material, high ? 6200 : 2800);
-    const patches = ctx.get<HuntCoverQuery>('hunt3d').coverPatches();
-    const radius = 236;
-    const stepM = high ? 2.15 : 3.05;
-    const stepProperty = stepM / PROPERTY_PX_TO_M;
-    const minProperty = this.landscape.worldToProperty(-radius, -radius, { x: 0, y: 0 });
-    const maxProperty = this.landscape.worldToProperty(radius, radius, { x: 0, y: 0 });
-    const minCellX = Math.floor(minProperty.x / stepProperty);
-    const maxCellX = Math.ceil(maxProperty.x / stepProperty);
-    const minCellY = Math.floor(minProperty.y / stepProperty);
-    const maxCellY = Math.ceil(maxProperty.y / stepProperty);
-    const straw = new THREE.Color(0xffd995);
-    const amber = new THREE.Color(0xd89b55);
-    const olive = new THREE.Color(0xb6b16e);
-    const reed = new THREE.Color(0xc8b474);
-    let prairieCount = 0;
-    let cattailCount = 0;
-    let stubbleCount = 0;
-
-    for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
-      for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
-        const rng = mulberry32(cellSeed(cellX, cellY, this.landscape.area.terrain.seed));
-        const propertyX = (cellX + 0.1 + rng() * 0.8) * stepProperty;
-        const propertyY = (cellY + 0.1 + rng() * 0.8) * stepProperty;
-        if (
-          propertyX < this.landscape.area.world.x || propertyY < this.landscape.area.world.y
-          || propertyX > this.landscape.area.world.x + this.landscape.area.world.w
-          || propertyY > this.landscape.area.world.y + this.landscape.area.world.h
-        ) continue;
-        this.landscape.propertyToWorld(propertyX, propertyY, this.world);
-        const x = this.world.x;
-        const z = this.world.z;
-        if (Math.abs(x) > radius || Math.abs(z) > radius || Math.hypot(x, z - 40) < 3.2) continue;
-        const surface = this.landscape.surfaceAtWorld(x, z, this.surface);
-        let cover = 0;
-        for (const patch of patches) {
-          const dx = (x - patch.cx) / Math.max(1, patch.hx);
-          const dz = (z - patch.cz) / Math.max(1, patch.hz);
-          cover = Math.max(cover, 1 - Math.min(1, Math.hypot(dx, dz)));
-        }
-
-        // Cattails belong to actual wet depressions. Dense dry cover is grass,
-        // otherwise the whole prairie reads as a regiment of brown posts.
-        const wetChance = Math.max(0, surface.moisture - 0.32) * 1.15 + cover * surface.moisture * 0.18;
-        if (cattailCount < cattails.count && wetChance > 0.16 && rng() < wetChance) {
-          const vigor = 0.78 + surface.moisture * 0.42 + cover * 0.32 + rng() * 0.28;
-          const reedBedY = surface.height + Math.max(0, surface.moisture * 2.7 - 0.4);
-          this.write(cattails, cattailCount++, x, reedBedY, z, vigor, rng);
-          this.color.copy(reed).lerp(amber, 0.18 + rng() * 0.34).multiplyScalar(0.88 + rng() * 0.2);
-          cattails.setColorAt(cattailCount - 1, this.color);
+    const lite = ctx.quality === 'lite', area = this.landscape.area;
+    const geometries = { prairie: habitatGeometry('prairie', lite), cattail: habitatGeometry('cattail', lite), stubble: habitatGeometry('stubble', lite) };
+    this.geometries.push(...Object.values(geometries));
+    const material = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, side: THREE.DoubleSide });
+    material.onBeforeCompile = shader => {
+      shader.uniforms.uPheasantWind = this.wind;
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uPheasantWind;')
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+          #ifdef USE_INSTANCING
+          float phase = instanceMatrix[3].x * .15 + instanceMatrix[3].z * .11;
+          transformed.x += (sin(uPheasantWind * 1.35 + phase) * .028 + sin(uPheasantWind * .60 + phase * .32) * .018) * position.y * position.y;
+          transformed.z += sin(uPheasantWind * .8 + phase) * .018 * position.y;
+          #endif`);
+    };
+    material.customProgramCacheKey = () => 'pheasant-rooted-cover-wind-v2'; this.materials.push(material);
+    // Parcel batches are deliberately larger on the lite tier. The old 72px
+    // parcels produced up to 240 tiles × 3 instanced materials on this
+    // 1400×800 property, so a phone could spend more time submitting cover
+    // draws than rendering the actual hunt. 144px keeps high-tier culling
+    // reasonably tight; 216px reduces the mobile batch count to about one
+    // eighth while preserving the same deterministic plant distribution.
+    const fields = pheasantFields(area), ponds = pheasantPonds(this.landscape);
+    const TILE = lite ? 216 : 144, spacing = 2.8;
+    const straw = new THREE.Color(0xb8a477), amber = new THREE.Color(0xb18e59), olive = new THREE.Color(0x919872), reed = new THREE.Color(0xa99b76), color = new THREE.Color();
+    type Plant = { x: number; y: number; scale: number; angle: number; color: number };
+    for (let ty = area.world.y; ty < area.world.y + area.world.h; ty += TILE) for (let tx = area.world.x; tx < area.world.x + area.world.w; tx += TILE) {
+      const groups: Record<keyof typeof geometries, Plant[]> = { prairie: [], cattail: [], stubble: [] };
+      for (let row = 0; row < Math.ceil(TILE / spacing); row++) for (let column = 0; column < Math.ceil(TILE / spacing); column++) {
+        const cellX = tx + column * spacing, cellY = ty + row * spacing, rng = mulberry32(cellSeed(Math.round(cellX * 10), Math.round(cellY * 10), area.terrain.seed));
+        const x = cellX + rng() * Math.min(spacing, tx + TILE - cellX), y = cellY + rng() * Math.min(spacing, ty + TILE - cellY);
+        if (!pheasantPlantClear(area, x, y)) continue;
+        this.landscape.surfaceAtProperty(x, y, this.surface);
+        const { moisture, vegetation, height } = this.surface, cover = pheasantCoverAt(area, x, y);
+        const harvest = pheasantHarvestAt(area, x, y, fields), keep = rng();
+        const pond = ponds.find(p => Math.hypot((x - p.x) * PROPERTY_PX_TO_M / p.rx, (y - p.y) * PROPERTY_PX_TO_M / p.ry) < 1.48);
+        const depth = pond ? pond.waterY - height : -10;
+        // Rhizomes belong in mud, not on top of the water plane. Very deep
+        // open water remains open; the head and blades emerge on the margin.
+        if (pond && depth > -.65 && depth < .95 && moisture > .18 && rng() < .68 + moisture * .25) {
+          if (!lite || keep > .22) groups.cattail.push({ x, y, scale: .86 + rng() * .32, angle: rng() * Math.PI * 2, color: color.copy(reed).lerp(amber, rng() * .25).getHex() });
           continue;
         }
-
-        const fieldStripe = 0.5 + 0.5 * Math.sin(propertyX * 0.075 + Math.floor(propertyY / 72) * 1.7);
-        const stubbleChance = surface.moisture < 0.38 && cover < 0.2 ? 0.1 + fieldStripe * 0.24 : 0;
-        if (stubbleCount < stubble.count && rng() < stubbleChance) {
-          const vigor = 0.72 + rng() * 0.5;
-          this.write(stubble, stubbleCount++, x, surface.height - 0.02, z, vigor, rng);
-          this.color.copy(straw).lerp(amber, 0.16 + rng() * 0.25).multiplyScalar(0.92 + rng() * 0.16);
-          stubble.setColorAt(stubbleCount - 1, this.color);
+        if (pond && depth > .12) continue;
+        if (harvest > .3 && moisture < .36) {
+          // Parallel machinery rows supply agricultural scale. Gaps and a
+          // few taller grasses interrupt them along the habitat boundary.
+          const stripe = .5 + .5 * Math.cos((x * .99 + y * .10) * Math.PI * .88);
+          if (rng() < (.25 + stripe * .50) * harvest && (!lite || keep > .35))
+            groups.stubble.push({ x, y, scale: .80 + rng() * .55, angle: -.1 + (rng() - .5) * .12, color: color.copy(straw).lerp(amber, rng() * .35).getHex() });
+          continue;
         }
-
-        const grassChance = 0.58 + surface.vegetation * 0.22 + cover * 0.14 - surface.moisture * 0.04;
-        if (prairieCount < prairie.count && rng() < grassChance) {
-          const vigor = 0.6 + surface.vegetation * 0.24 + cover * 0.42 + rng() * 0.28;
-          this.write(prairie, prairieCount++, x, surface.height - 0.035, z, vigor, rng);
-          this.color.copy(straw).lerp(olive, surface.moisture * 0.42 + rng() * 0.2).lerp(amber, rng() * 0.16);
-          this.color.multiplyScalar(0.91 + rng() * 0.18);
-          prairie.setColorAt(prairieCount - 1, this.color);
+        const drift = .50 + Math.sin(x * .065 + Math.sin(y * .038) * 2.4) * .27 + Math.cos(y * .07) * .20;
+        const chance = (cover ? .90 : .10 + vegetation * .20) * (.34 + drift * .72);
+        if (rng() < chance && (!lite || keep > .30)) {
+          const scale = (cover ? .95 : .48) + rng() * .42;
+          groups.prairie.push({ x, y, scale, angle: rng() * Math.PI * 2, color: color.copy(straw).lerp(olive, moisture * .60 + rng() * .16).lerp(amber, rng() * .12).getHex() });
         }
       }
+      const matrix = new THREE.Matrix4(), position = new THREE.Vector3(), rotation = new THREE.Quaternion(), scale = new THREE.Vector3();
+      const normal = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), yaw = new THREE.Quaternion();
+      for (const kind of ['prairie', 'cattail', 'stubble'] as const) {
+        const plants = groups[kind]; if (!plants.length) continue;
+        const mesh = new THREE.InstancedMesh(geometries[kind], material, plants.length);
+        for (const [i, plant] of plants.entries()) {
+          this.landscape.propertyToWorld(plant.x, plant.y, this.world); this.landscape.surfaceAtProperty(plant.x, plant.y, this.surface);
+          normal.set(-this.surface.gradeX, 1, -this.surface.gradeZ).normalize(); rotation.setFromUnitVectors(up, normal);
+          yaw.setFromAxisAngle(up, plant.angle); rotation.multiply(yaw); scale.setScalar(plant.scale);
+          position.set(this.world.x, this.surface.height - .022, this.world.z);
+          mesh.setMatrixAt(i, matrix.compose(position, rotation, scale)); mesh.setColorAt(i, color.setHex(plant.color));
+        }
+        mesh.name = `Pheasant ${kind} parcel`; mesh.receiveShadow = true; mesh.computeBoundingSphere();
+        const range = kind === 'cattail' ? (lite ? 230 : 330) : kind === 'stubble' ? (lite ? 95 : 145) : (lite ? 130 : 195);
+        this.batches.push({ mesh, center: mesh.boundingSphere!.center.clone(), radius: mesh.boundingSphere!.radius + .2, range });
+        this.objects.push(mesh); ctx.scene.add(mesh);
+      }
     }
-
-    this.finish(prairie, prairieCount);
-    this.finish(cattails, cattailCount);
-    this.finish(stubble, stubbleCount);
-    ctx.scene.add(prairie, cattails, stubble);
-    this.objects.push(prairie, cattails, stubble);
+    this.update(ctx);
   }
 
-  private instanced(geometry: THREE.BufferGeometry, material: THREE.Material, capacity: number): THREE.InstancedMesh {
-    const mesh = new THREE.InstancedMesh(geometry, material, capacity);
-    mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3), 3);
-    mesh.receiveShadow = true;
-    mesh.matrixAutoUpdate = false;
-    return mesh;
-  }
-
-  private write(
-    mesh: THREE.InstancedMesh,
-    index: number,
-    x: number,
-    y: number,
-    z: number,
-    vigor: number,
-    rng: () => number,
-  ): void {
-    this.position.set(x, y, z);
-    this.euler.set((rng() - 0.5) * 0.06, rng() * Math.PI * 2, (rng() - 0.5) * 0.06);
-    this.rotation.setFromEuler(this.euler);
-    this.scale.set(vigor * (0.86 + rng() * 0.3), vigor, vigor * (0.86 + rng() * 0.3));
-    mesh.setMatrixAt(index, this.matrix.compose(this.position, this.rotation, this.scale));
-  }
-
-  private finish(mesh: THREE.InstancedMesh, count: number): void {
-    mesh.count = count;
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    if (count > 0) mesh.computeBoundingSphere();
+  update(ctx: Ctx): void {
+    this.wind.value = ctx.time;
+    for (const batch of this.batches) batch.mesh.visible = Math.hypot(ctx.camera.position.x - batch.center.x, ctx.camera.position.z - batch.center.z) < batch.range + batch.radius;
   }
 
   dispose(ctx: Ctx): void {
-    for (const object of this.objects) {
-      ctx.scene.remove(object);
-      object.dispose();
-    }
-    for (const geometry of this.geometries) geometry.dispose();
-    for (const material of this.materials) material.dispose();
-    this.objects.length = 0;
-    this.geometries.length = 0;
-    this.materials.length = 0;
+    // InstancedMesh has no renderer resource of its own; its shared geometry
+    // and material are released below. Removing the batches is enough here
+    // and keeps disposal compatible with the mobile Three.js build.
+    for (const object of this.objects) ctx.scene.remove(object);
+    for (const geometry of this.geometries) geometry.dispose(); for (const material of this.materials) material.dispose();
+    this.objects.length = 0; this.batches.length = 0; this.geometries.length = 0; this.materials.length = 0;
   }
 }

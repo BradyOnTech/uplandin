@@ -1,104 +1,187 @@
 import * as THREE from 'three';
-import { unlockAudio } from '../../audio';
+import { unlockAudio, playFootstep } from '../../audio';
+import type { LandscapeModel } from '../../game/landscape';
 import type { Ctx, Subsystem } from '../engine';
 import type { TerrainSystem } from './terrain';
+import type { Hunt3DSystem } from './hunt3d';
 
-/*
- * PLAYER subsystem: first-person hunter. WASD + pointer-lock mouse look,
- * eye height 1.62m, feet glued to the terrain heightfield, gentle walk
- * bob. Capture mode (?capture=1) skips pointer lock and lets the harness
- * place the camera directly.
- */
-
-const WALK_SPEED = 2.2; // m/s — a hunter's walk, not a soldier's sprint
+const WALK_SPEED = 2.2;
 const SPRINT_MULT = 1.9;
 const EYE = 1.62;
+const COLLISION_STEP_METERS = 0.09;
 
+/** Keyboard/mouse and touch express the same movement and recall intent. */
 export class PlayerSystem implements Subsystem {
   readonly id = 'player';
   private keys = new Set<string>();
-  private yaw = Math.PI; // face -z: into the field
-  // A slight natural downward gaze keeps the close-working dog and the
-  // cover immediately ahead in frame on first load. Mouse look remains
-  // fully free after pointer lock.
-  private pitch = -0.26;
+  private yaw = Math.PI;
+  private pitch = -0.16;
   private pos = new THREE.Vector3(0, 0, 40);
   private vel = new THREE.Vector3();
   private bobPhase = 0;
+  private stepDistance = 0;
   private captureMode = false;
   private recallPending = false;
-  private dir = new THREE.Vector3();
-  private right = new THREE.Vector3();
+  private abort = new AbortController();
+  private touchMove: { id: number; x: number; y: number; dx: number; dy: number } | null = null;
+  private touchLook: { id: number; x: number; y: number } | null = null;
+  private bounds?: { minX: number; maxX: number; minZ: number; maxZ: number };
+  private scenery?: Subsystem & { collisionCircles?: () => readonly { x: number; z: number; radius: number }[] };
+  private landmarks?: Subsystem & { collisionCircles?: () => readonly { x: number; z: number; radius: number }[] };
+  private hunt?: Hunt3DSystem;
+  constructor(private readonly landscape?: LandscapeModel) {}
 
   init(ctx: Ctx): void {
     this.captureMode = new URLSearchParams(location.search).has('capture');
+    // All authored properties now use their full heightfield. Keep the hunter
+    // inside the named parcel on every map, while specialized scenery still
+    // contributes its own collision circles below.
+    this.bounds = this.landscape ? this.landscape.worldBounds() : undefined;
     const canvas = ctx.renderer.domElement;
+    const signal = this.abort.signal;
+    const clear = () => { this.keys.clear(); this.touchMove = null; this.touchLook = null; this.vel.set(0, 0, 0); this.showStick(); };
+    ctx.events.addEventListener('pause', clear, { signal });
+    ctx.events.addEventListener('hunt-action', ((event: CustomEvent) => {
+      if (!ctx.paused && event.detail === 'recall') this.recallPending = true;
+    }) as EventListener, { signal });
+    window.addEventListener('blur', clear, { signal });
+    ctx.events.addEventListener('hunt-touch-look', ((event: CustomEvent<{dx:number;dy:number}>) => {
+      if (ctx.paused || this.captureMode) return;
+      this.yaw -= event.detail.dx * .004;
+      this.pitch = THREE.MathUtils.clamp(this.pitch - event.detail.dy * .004, -1.4, 1.4);
+    }) as EventListener, { signal });
     if (!this.captureMode) {
-      canvas.addEventListener('click', () => {
+      canvas.addEventListener('click', (event) => {
+        if (ctx.paused || event.pointerType === 'touch') return;
         unlockAudio();
-        canvas.requestPointerLock();
-      });
-      window.addEventListener('mousemove', (e) => {
-        if (document.pointerLockElement !== canvas) return;
-        this.yaw -= e.movementX * 0.0022;
-        this.pitch = THREE.MathUtils.clamp(this.pitch - e.movementY * 0.0022, -1.4, 1.4);
-      });
-      window.addEventListener('keydown', (e) => {
-        this.keys.add(e.code);
-        if (e.code === 'KeyQ' && !e.repeat) this.recallPending = true;
-      });
-      window.addEventListener('keyup', (e) => this.keys.delete(e.code));
+        if (document.pointerLockElement !== canvas) canvas.requestPointerLock()?.catch(() => undefined);
+      }, { signal });
+      window.addEventListener('mousemove', (event) => {
+        if (ctx.paused || document.pointerLockElement !== canvas) return;
+        this.yaw -= event.movementX * 0.0022;
+        this.pitch = THREE.MathUtils.clamp(this.pitch - event.movementY * 0.0022, -1.4, 1.4);
+      }, { signal });
+      window.addEventListener('keydown', (event) => {
+        if (ctx.paused || (event.target instanceof HTMLElement && /INPUT|SELECT|BUTTON/.test(event.target.tagName))) return;
+        this.keys.add(event.code);
+        if (event.code === 'KeyQ' && !event.repeat) this.recallPending = true;
+        if (['KeyW','KeyA','KeyS','KeyD','Space'].includes(event.code)) event.preventDefault();
+      }, { signal });
+      window.addEventListener('keyup', (event) => this.keys.delete(event.code), { signal });
+      canvas.addEventListener('pointerdown', (event) => {
+        if (event.pointerType !== 'touch' || ctx.paused) return;
+        event.preventDefault();
+        unlockAudio();
+        canvas.setPointerCapture(event.pointerId);
+        if (event.clientX < window.innerWidth * 0.45 && !this.touchMove) {
+          this.touchMove = { id: event.pointerId, x: event.clientX, y: event.clientY, dx: 0, dy: 0 };
+        } else if (!this.touchLook) this.touchLook = { id: event.pointerId, x: event.clientX, y: event.clientY };
+        this.showStick();
+      }, { signal });
+      canvas.addEventListener('pointermove', (event) => {
+        if (ctx.paused) return;
+        if (this.touchMove?.id === event.pointerId) {
+          const dx = (event.clientX - this.touchMove.x) / 58, dy = (event.clientY - this.touchMove.y) / 58;
+          const d = Math.max(1, Math.hypot(dx, dy));
+          this.touchMove.dx = dx / d; this.touchMove.dy = dy / d;
+          this.showStick();
+        } else if (this.touchLook?.id === event.pointerId) {
+          this.yaw -= (event.clientX - this.touchLook.x) * 0.004;
+          this.pitch = THREE.MathUtils.clamp(this.pitch - (event.clientY - this.touchLook.y) * 0.004, -1.4, 1.4);
+          this.touchLook.x = event.clientX; this.touchLook.y = event.clientY;
+        }
+      }, { signal });
+      const end = (event: PointerEvent) => {
+        if (this.touchMove?.id === event.pointerId) this.touchMove = null;
+        if (this.touchLook?.id === event.pointerId) this.touchLook = null;
+        this.showStick();
+      };
+      canvas.addEventListener('pointerup', end, { signal });
+      canvas.addEventListener('pointercancel', end, { signal });
+      canvas.addEventListener('lostpointercapture', end, { signal });
     }
     this.place(ctx);
   }
-
-  /** Shared hunt intent derived from the first-person input adapter. */
+  private showStick(): void {
+    const stick = document.getElementById('move-stick');
+    if (!stick) return;
+    stick.hidden = !this.touchMove;
+    if (this.touchMove) {
+      stick.style.left = `${this.touchMove.x}px`; stick.style.top = `${this.touchMove.y}px`;
+      stick.style.setProperty('--stick-x', `${this.touchMove.dx * 38}px`);
+      stick.style.setProperty('--stick-y', `${this.touchMove.dy * 38}px`);
+    }
+  }
   isRunning(): boolean {
     const moving = this.keys.has('KeyW') || this.keys.has('KeyA') || this.keys.has('KeyS') || this.keys.has('KeyD');
     return moving && (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'));
   }
-
-  consumeRecall(): boolean {
-    const pending = this.recallPending;
-    this.recallPending = false;
-    return pending;
-  }
-
-  /** Face a shared map heading: +x east, +y/world-z south. */
-  setHuntHeading(ctx: Ctx, heading: number): void {
-    this.yaw = -heading - Math.PI / 2;
-    this.place(ctx);
-  }
-
-  /** Capture harness: park the camera exactly here, looking there. */
+  consumeRecall(): boolean { const pending = this.recallPending; this.recallPending = false; return pending; }
+  setHuntHeading(ctx: Ctx, heading: number): void { this.yaw = -heading - Math.PI / 2; this.place(ctx); }
   setPose(ctx: Ctx, x: number, z: number, yawDeg: number, pitchDeg = 0): void {
-    this.pos.set(x, 0, z);
-    this.yaw = THREE.MathUtils.degToRad(yawDeg);
-    this.pitch = THREE.MathUtils.degToRad(pitchDeg);
-    this.place(ctx);
+    this.pos.set(x, 0, z); this.yaw = THREE.MathUtils.degToRad(yawDeg); this.pitch = THREE.MathUtils.degToRad(pitchDeg); this.place(ctx);
   }
-
   private place(ctx: Ctx): void {
-    const terrain = ctx.get<TerrainSystem>('terrain');
-    const ground = terrain.heightAt(this.pos.x, this.pos.z);
-    ctx.camera.position.set(this.pos.x, ground + EYE + Math.sin(this.bobPhase) * 0.035, this.pos.z);
+    const ground = ctx.get<TerrainSystem>('terrain').heightAt(this.pos.x, this.pos.z);
+    ctx.camera.position.set(this.pos.x, ground + EYE + Math.sin(this.bobPhase) * 0.018, this.pos.z);
     ctx.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
   }
-
   update(ctx: Ctx, dt: number): void {
-    if (!this.captureMode) {
-      const f = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
-      const s = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0);
-      const sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
-      this.dir.set(Math.sin(this.yaw), 0, Math.cos(this.yaw)).multiplyScalar(-f);
-      this.right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw)).multiplyScalar(-s);
-      this.vel.copy(this.dir).add(this.right);
-      if (this.vel.lengthSq() > 0) {
-        this.vel.normalize().multiplyScalar(WALK_SPEED * (sprint ? SPRINT_MULT : 1));
-        this.pos.addScaledVector(this.vel, dt);
-        this.bobPhase += dt * (sprint ? 11 : 7.5);
+    if (!this.captureMode && !ctx.paused) {
+      const f = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0) - (this.touchMove?.dy ?? 0);
+      const s = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0) + (this.touchMove?.dx ?? 0);
+      // Camera right is +X when yaw=0; movement matches the visible view.
+      this.vel.set(-Math.sin(this.yaw) * f + Math.cos(this.yaw) * s, 0, -Math.cos(this.yaw) * f - Math.sin(this.yaw) * s);
+      if (this.vel.lengthSq() > 0.0025) {
+        this.vel.clampLength(0, 1).multiplyScalar(WALK_SPEED * (this.isRunning() ? SPRINT_MULT : 1));
+        const oldX = this.pos.x, oldZ = this.pos.z;
+        if (this.bounds) {
+          if (!this.scenery) {
+            try {
+              const areaId = this.landscape?.area.id;
+              if (areaId === 'chukar-ridge') this.scenery = ctx.get('chukar-environment');
+              else if (areaId === 'quail-fields') this.scenery = ctx.get('quail-environment');
+            } catch { /* environment initializes after input */ }
+          }
+          this.landmarks ??= ctx.get('landmarks');
+          const obstacles = [this.scenery?.collisionCircles?.() ?? [], this.landmarks.collisionCircles?.() ?? []];
+          // A long frame can put both endpoints outside a thin fence. Resolve
+          // along the movement path before a step can reach the opposite side.
+          const steps = Math.max(1, Math.ceil(this.vel.length() * dt / COLLISION_STEP_METERS));
+          for (let step = 0; step < steps; step++) {
+            const stepX = this.pos.x, stepZ = this.pos.z;
+            this.pos.addScaledVector(this.vel, dt / steps);
+            this.pos.x = THREE.MathUtils.clamp(this.pos.x, this.bounds.minX + 1.5, this.bounds.maxX - 1.5);
+            this.pos.z = THREE.MathUtils.clamp(this.pos.z, this.bounds.minZ + 1.5, this.bounds.maxZ - 1.5);
+            // Adjacent fence circles overlap. A push from one must be checked
+            // against its neighbor before the next movement step.
+            for (let pass = 0; pass < 4; pass++) {
+              let corrected = false;
+              for (const circles of obstacles) for (const circle of circles) {
+                const dx = this.pos.x - circle.x, dz = this.pos.z - circle.z;
+                const distance = Math.hypot(dx, dz), radius = circle.radius + 0.32;
+                if (distance < radius - 1e-7) {
+                  if (distance < 0.001) { this.pos.x = stepX; this.pos.z = stepZ; }
+                  else { this.pos.x = circle.x + dx / distance * radius; this.pos.z = circle.z + dz / distance * radius; }
+                  corrected = true;
+                }
+              }
+              if (!corrected) break;
+            }
+          }
+        } else this.pos.addScaledVector(this.vel, dt);
+        const moved = Math.hypot(this.pos.x - oldX, this.pos.z - oldZ);
+        this.bobPhase += moved * 4.3;
+        this.stepDistance += moved;
+        if (this.stepDistance >= 0.86) {
+          this.stepDistance %= 0.86;
+          this.hunt ??= ctx.get<Hunt3DSystem>('hunt3d');
+          const inCover = this.hunt.coverPatches().some((patch) => Math.abs(this.pos.x - patch.cx) < patch.hx && Math.abs(this.pos.z - patch.cz) < patch.hz);
+          playFootstep(inCover, 0.10);
+        }
       }
     }
     this.place(ctx);
   }
+  dispose(): void { this.abort.abort(); this.keys.clear(); this.showStick(); }
 }

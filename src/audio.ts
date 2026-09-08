@@ -5,6 +5,17 @@
  */
 
 let ctx: AudioContext | null = null;
+let master: GainNode | null = null;
+let audioEnabled = true;
+
+export function setAudioEnabled(enabled: boolean): void {
+  audioEnabled = enabled;
+  if (master && ctx) master.gain.setTargetAtTime(enabled ? 1 : 0, ctx.currentTime, 0.08);
+}
+function output(c: AudioContext): GainNode {
+  if (!master) { master = c.createGain(); master.gain.value = audioEnabled ? 1 : 0; master.connect(c.destination); }
+  return master;
+}
 
 function ac(): AudioContext {
   ctx ??= new AudioContext();
@@ -13,12 +24,14 @@ function ac(): AudioContext {
 
 /** Call from any user gesture to satisfy mobile autoplay policies. */
 export function unlockAudio(): void {
+  if (typeof AudioContext === 'undefined' || !audioEnabled) return;
   const c = ac();
   if (c.state === 'suspended') void c.resume();
 }
 
 /** Returns the context only if it's actually allowed to play right now. */
 function ready(): AudioContext | null {
+  if (!audioEnabled || typeof AudioContext === 'undefined') return null;
   const c = ac();
   return c.state === 'running' ? c : null;
 }
@@ -47,7 +60,7 @@ function tone(freq: number, startIn: number, duration: number, opts: ToneOpts = 
   const gain = c.createGain();
   gain.gain.setValueAtTime(opts.volume ?? 0.25, t);
   gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
-  osc.connect(gain).connect(c.destination);
+  osc.connect(gain).connect(output(c));
   osc.start(t);
   osc.stop(t + duration + 0.05);
 }
@@ -65,7 +78,7 @@ function noise(startIn: number, duration: number, fromFreq: number, toFreq: numb
   const gain = c.createGain();
   gain.gain.setValueAtTime(volume, t);
   gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
-  src.connect(filter).connect(gain).connect(c.destination);
+  src.connect(filter).connect(gain).connect(output(c));
   src.start(t);
   src.stop(t + duration + 0.05);
 }
@@ -164,4 +177,32 @@ export function playFootstep(inCover: boolean, volume = 0.12): void {
 /** Soft head-up when the dog first hits scent — almost subliminal. */
 export function playScentCheck(): void {
   tone(520, 0, 0.05, { volume: 0.06, slideTo: 640 });
+}
+
+/** A quiet continuous field bed, stopped by the 3D lifecycle adapter. */
+export function startFieldAmbience(): { setPaused(paused: boolean): void; stop(): void } | null {
+  const c = ready();
+  if (!c) return null;
+  const source = c.createBufferSource();
+  source.buffer = noiseBuffer(c, 8);
+  source.loop = true;
+  const low = c.createBiquadFilter(); low.type = 'bandpass'; low.frequency.value = 650; low.Q.value = 0.45;
+  const gain = c.createGain(); gain.gain.value = 0.018;
+  source.connect(low).connect(gain).connect(output(c));
+  source.start();
+  return {
+    setPaused(paused) { gain.gain.setTargetAtTime(paused ? 0 : 0.018, c.currentTime, 0.4); },
+    stop() { source.stop(); source.disconnect(); low.disconnect(); gain.disconnect(); },
+  };
+}
+
+/** Distant, unlocated ambience. Never announces a hidden game bird. */
+export function playFieldSong(): void {
+  tone(1900, 0, 0.13, { volume: 0.012, slideTo: 2600 });
+  tone(2300, 0.24, 0.10, { volume: 0.009, slideTo: 1700 });
+}
+
+export function playActionClick(): void {
+  noise(0, 0.045, 2300, 550, 0.10);
+  tone(240, 0, 0.035, { type: 'triangle', volume: 0.04 });
 }

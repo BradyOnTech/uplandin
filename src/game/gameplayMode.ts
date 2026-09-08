@@ -19,6 +19,12 @@ import {
 } from './season';
 import { createHunt, type HuntState } from './state';
 import type { RNG } from './types';
+import { mulberry32 } from './math';
+import { huntStreamSeed, parseHuntSeed } from './huntSeed';
+import { QUAIL_FIELD_BIRD_COUNT, quailEncounterAnchors } from './quailEncounters';
+import { authoredEncounterAnchors } from './areaEncounters';
+import { HUNT_CHALLENGES, HUNT_CHALLENGE_KEY, parseHuntChallenge, type HuntChallenge } from './huntChallenge';
+import { huntingDoctrine } from './huntDoctrine';
 
 /** The renderer is a preference, never a separate player/profile. */
 export type GameplayMode = '2d' | '3d';
@@ -139,7 +145,8 @@ export function resolveThreeHuntProfile(
   }
 
   const params = new URLSearchParams(search);
-  const requestedBreed = params.get('breed') ?? 'english-setter';
+  const requestedBreed = params.get('breed')
+    ?? (launch === null && resolveThreeHuntArea(search, storage).id === 'quail-fields' ? 'gsp' : 'english-setter');
   const breedId = BREEDS.some((breed) => breed.id === requestedBreed)
     ? requestedBreed
     : 'english-setter';
@@ -155,10 +162,19 @@ export function resolveThreeHuntProfile(
 }
 
 export interface ThreeHuntSetup extends ThreeHuntProfile {
+  seed?: number;
+  challenge: HuntChallenge;
   launch: HuntLaunch | null;
   area: AreaConfig;
   hunt: HuntState;
   breed: BreedConfig;
+}
+
+export function resolveThreeHuntChallenge(search: string, storage: StorageLike | null = defaultStorage()): HuntChallenge {
+  if (!huntingDoctrine(resolveThreeHuntArea(search, storage).id).spatialEncounter) return 'balanced';
+  const params = new URLSearchParams(search);
+  if (params.has('challenge')) return parseHuntChallenge(params.get('challenge'));
+  try { return parseHuntChallenge(storage?.getItem(HUNT_CHALLENGE_KEY)); } catch { return 'balanced'; }
 }
 
 /** Resolve location identity without rolling weather, wind, or birds. */
@@ -184,24 +200,52 @@ export function createThreeHuntSetup(
   const launch = parseHuntLaunch(search);
   const profile = resolveThreeHuntProfile(search, storage);
   const dropPointId = parseDropPointId(search);
+  const challenge = resolveThreeHuntChallenge(search, storage);
+  const tuning = HUNT_CHALLENGES[challenge];
+  const resolvedArea = resolveThreeHuntArea(search, storage);
+  const seed = resolvedArea.id === 'quail-fields' ? parseHuntSeed(search) ?? Math.floor(rng() * 0x100000000) : undefined;
+  const environmentRng = seed === undefined ? rng : mulberry32(huntStreamSeed(seed, 0xe071));
+  // Authored non-Quail properties use their own stable encounter streams so
+  // route sampling cannot consume the weather/wind stream or change when a
+  // player revisits the same drop. The two drop entries get different, but
+  // repeatable, cover ordering.
+  const dropSalt = dropPointId === 'west-track' ? 0x4a9f : 0x17c3;
+  const authoredEncounterRng = mulberry32(huntStreamSeed(resolvedArea.terrain.seed, 0xa11c0a ^ dropSalt));
+  const authoredBirdRng = mulberry32(huntStreamSeed(resolvedArea.terrain.seed, 0xb17d7d ^ dropSalt));
+  const challengeOptions = {
+    stockingMult: tuning.stocking, encounterNerveMult: tuning.nerve,
+    ...(seed === undefined ? {
+      // Quail keeps its seeded calibration below. Other 3D properties use
+      // their authored route network to place cover encounters; 2D callers
+      // never pass this option and retain the original scatter behavior.
+      birdRng: authoredBirdRng,
+      coveyAnchors: authoredEncounterAnchors(resolvedArea, dropPointId, authoredEncounterRng),
+    } : {
+      birdCount: QUAIL_FIELD_BIRD_COUNT,
+      birdRng: mulberry32(huntStreamSeed(seed, 0xb17d)),
+      coveyAnchors: quailEncounterAnchors(resolvedArea, dropPointId, mulberry32(huntStreamSeed(seed, 0xc07e))),
+    }),
+  };
 
   if (launch?.kind === 'quick') {
     const quick = profile.quick ?? loadQuickConfig(storage);
     const area = resolveThreeHuntArea(search, storage);
-    const hunt = createHunt(area, rng, {
+    const hunt = createHunt(area, environmentRng, {
+      ...challengeOptions,
       wind: quick.wind === 'random' ? undefined : quick.wind,
       gunId: quick.gunId,
       condition: quick.weather === 'random' ? undefined : quick.weather,
       dropPointId,
     });
     hunt.quick = quick;
-    return { ...profile, launch, area, hunt, breed: getBreed(profile.breedId) };
+    return { ...profile, launch, area, hunt, challenge, seed, breed: getBreed(profile.breedId) };
   }
 
   if (launch?.kind === 'career') {
     const career = loadCareer(storage);
     const area = resolveThreeHuntArea(search, storage);
-    const hunt = createHunt(area, rng, {
+    const hunt = createHunt(area, environmentRng, {
+      ...challengeOptions,
       gunId: career.hunter.shotgunId,
       conditionBias: seasonalBias(career.date.week, area.conditionBias),
       mix: openMix(area, career.date.week),
@@ -209,11 +253,11 @@ export function createThreeHuntSetup(
       educatedMult: educatedNerveMult(career.date.week),
       dropPointId,
     });
-    return { ...profile, launch, area, hunt, breed: getBreed(profile.breedId) };
+    return { ...profile, launch, area, hunt, challenge, seed, breed: getBreed(profile.breedId) };
   }
 
-  // Standalone review/capture keeps the old deterministic showcase setup.
+  // Standalone visits use a consistent climate while the seed varies the hunt.
   const area = resolveThreeHuntArea(search, storage);
-  const hunt = createHunt(area, rng, { wind: 'breezy', condition: 'frost', dropPointId });
-  return { ...profile, launch, area, hunt, breed: getBreed(profile.breedId) };
+  const hunt = createHunt(area, environmentRng, { ...challengeOptions, wind: 'breezy', condition: 'frost', dropPointId });
+  return { ...profile, launch, area, hunt, challenge, seed, breed: getBreed(profile.breedId) };
 }

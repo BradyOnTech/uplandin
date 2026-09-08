@@ -1,6 +1,10 @@
+import { createQuailFlight, selectQuailEscapeCover, stepQuailFlight, type QuailFlight } from '../quailFlight';
+import { QUAIL_WORLD_SCALE, quailLaunchDelay } from '../quailPresentation';
+import { QuailFlushDebris } from '../quailFlushDebris';
 import * as THREE from 'three';
+import { buildBobwhiteBody, buildBobwhiteWing, poseBobwhiteFoldedWings } from '../assets/bobwhite';
 import { playFlush, playThud } from '../../audio';
-import { YOUNG_FLIGHT_MULT } from '../../game/birds';
+import { RELIGHT_CHANCE, YOUNG_FLIGHT_MULT } from '../../game/birds';
 import { mulberry32 } from '../../game/math';
 import {
   escapeVelocityFan,
@@ -11,69 +15,18 @@ import {
   type FlushBias,
 } from '../../game/shot';
 import { getSpecies, SPECIES, type SpeciesConfig } from '../../game/species';
+import { isSpatialEncounterArea } from '../../game/huntSimulation';
+import { huntingDoctrine } from '../../game/huntDoctrine';
 import type { Ctx, Subsystem } from '../engine';
-import { P, TOD, type TimeOfDay } from '../palette';
+import { P, fieldTimeOfDay, type TimeOfDay } from '../palette';
 import type { Hunt3DSystem } from './hunt3d';
 import type { TerrainSystem } from './terrain';
 
-/*
- * BIRDS subsystem — the covey rise, the game's arcade heart, in 3D.
- *
- * THE SIM MATH IS THE AUTHORITY. The 2D FlushScene pipeline (its docblock
- * + docs/TUNING.md) computes a rise in stages, and this file TRANSLATES
- * each stage to world space — it never reinvents a knob:
- *
- *  1. flushBias(walk-in px) from shot.ts sizes the rise (hunt3d records
- *     the walk-in distance when triggerFlush fires).
- *  2. WAVES: up to WAVE_MAX (FlushScene's MAX_AIRBORNE = 3) birds burst
- *     SIMULTANEOUSLY; the next wave rises only when the sky is clear and
- *     LAUNCH_GAP_MS has passed; ~18% are sleepers that pop 350–900 ms
- *     after their wave — the straggler at your feet.
- *  3. Per-bird velocity IS escapeVelocityFan(flight, shuffledLane, 3):
- *     species arc slice + FAN_SPREAD_PUSH + full-slice jitter, then the
- *     FlushScene layers: speed roll (0.85–1.3×, wild 0.95–1.4×), the
- *     per-flush break direction (±28 px/s drift), young-bird mult.
- *  4. Flight phases: after flight.glideAfterMs the quail locks wings and
- *     glideStep drives it; after levelAfterMs the rooster levels via
- *     levelStep. Both accelerate toward an exit — the tilted playfield.
- *  5. 3D TRANSLATION (the only new thing here): the 2D fan plane maps to
- *     world space around the ESCAPE BEARING — away from the hunter,
- *     bent DOWN THE WIND. 2D x (lateral px/s) rides the fan's right
- *     axis; 2D y (screen-down px/s) is climb; and a forward carry along
- *     the bearing supplies what the 2D view said with depth-shrink: a
- *     rising bird is a DEPARTING bird. Every airborne bird gains range
- *     from the hunter every tick — no hovering, ever.
- *  6. LOW BURST LAW (moment round): for the first ~1.5 s a rising bird's
- *     climb is capped under ~15 degrees of elevation — the covey blows
- *     OUT through the cover line and the horizon band, not straight up
- *     into empty sky; surplus climb becomes drive down the escape
- *     bearing, and the real lift unlocks as the burst turns downwind.
- *
- * CAPTURE COVEY STAGE: gameplay keeps the wave law verbatim (WAVE_MAX
- * birds up, sky must clear). Under ?capture=1 the harness stages the
- * FULL sim covey instead — one clustered launch staggered over ~0.8 s —
- * because the store-page frame is the whole covey blowing at once, and
- * the wave law exists for aiming readability the capture doesn't need.
- *
- * TIME: bird flight advances on the 30 Hz fixed tick (or step() under
- * ?capture=1 — the 2D game froze field time during a rise by switching
- * scenes; stepRise in the capture API is that same held breath: birds
- * fly, the pointing dog stands). All randomness comes from a local
- * per-rise mulberry32 stream. update() only writes transforms — a
- * captured rise is a pure function of the seed and the tick count.
- *
- * BODIES: low-poly bobwhite ~0.24 m — chunky hex-loft body (DARK russet
- * topside, pale buff belly — the palette's gamebird roles), dark cap
- * over a buff throat, SHORT ROUNDED wings (dark topside, buff underside,
- * beating a readable 3-POSITION up/mid/down cycle at the species'
- * flapRate), stub tail. NO emissive, NO rim: the bodies take the world's
- * light exactly like the dog — dark against the sky between camera and
- * sun, lit bellies when the sun catches them. ~150 tris a bird, 3 draw
- * calls (body+tail, wingL, wingR); 14-bird pool worst case ≈ 43 calls
- * with the launch-burst debris. A folded falling frame (wings pinned,
- * tumbling) ships now for the gun phase to call via downBird().
- *
- * Per-frame: transform writes only, zero allocations.
+/** Authored properties use continuous covey launches from actual bird
+ * positions. Each covey owns its escape basis and random stream; waiting for
+ * a pool slot cannot discard a bird or redirect a covey already airborne.
+ * Capture and live play use the same launch law. Flight advances on the fixed
+ * tick; render updates write mesh transforms.
  */
 
 /** Local streams — never ctx.rng (per-subsystem determinism law). */
@@ -126,7 +79,8 @@ const NUDGE_CLAMP_PX = 55;
 const NUDGE_GAIN = 0.35;
 const LAUNCH_JITTER_PX = 16;
 /**
- * Presentation scale on the 0.24 m body — the same tribute the 2D view
+ * Property-rise presentation scale on the 0.24 m body. Quail Fields uses
+ * QUAIL_WORLD_SCALE consistently in flight and on the ground. The old 2D view
  * paid with chunky sprites (its bobwhite spanned ~9% of the screen):
  * the silhouette must read GAMEBIRD at the 15-25 m a rise honestly
  * frames from, and a to-scale bobwhite is a 6-12 px speck there.
@@ -139,7 +93,7 @@ const GROUNDED_SCALE = 2.1;
 /** Tip-to-tip wingspan of the UNSCALED model (m) — telemetry only. */
 const SPAN_M = 0.308;
 
-export type BirdFamily = 'quail' | 'pheasant' | 'grouse' | 'woodcock';
+export type BirdFamily = 'quail' | 'partridge' | 'pheasant' | 'grouse' | 'woodcock' | 'chukar';
 
 export interface BirdShape {
   family: BirdFamily;
@@ -155,26 +109,69 @@ export interface BirdShape {
 
 export const BIRD_SHAPES: Record<BirdFamily, BirdShape> = {
   quail: { family: 'quail', bodyLength: 1, bodyWidth: 1, bodyDepth: 1, wingSpan: 1, wingChord: 1, tailLength: 1, tailWidth: 1, billLength: 1 },
+  // Hungarian partridge carry more shoulder and a squarer tail than a
+  // bobwhite. Keep the silhouette compact enough for a covey rise while
+  // giving the bench-country bird its own readable body in the sky.
+  partridge: { family: 'partridge', bodyLength: 1.12, bodyWidth: 1.22, bodyDepth: 1.18, wingSpan: 1.24, wingChord: 1.18, tailLength: 1.15, tailWidth: 1.24, billLength: 1.08 },
   pheasant: { family: 'pheasant', bodyLength: 1.32, bodyWidth: 1.13, bodyDepth: 1.05, wingSpan: 1.28, wingChord: 1.1, tailLength: 4.2, tailWidth: 0.7, billLength: 1.15 },
   grouse: { family: 'grouse', bodyLength: 1.16, bodyWidth: 1.34, bodyDepth: 1.24, wingSpan: 1.42, wingChord: 1.34, tailLength: 1.7, tailWidth: 1.85, billLength: 1 },
   woodcock: { family: 'woodcock', bodyLength: 1.05, bodyWidth: 1.04, bodyDepth: 1.13, wingSpan: 1.08, wingChord: 0.9, tailLength: 0.72, tailWidth: 0.85, billLength: 3.6 },
+  // Chukar carry a compact, deep chest and a longer, squared tail than a
+  // quail. The broad wing and red bill/head palette do the rest of the read
+  // at shooting distance; it should look like a mountain gamebird, not a
+  // recolored bobwhite.
+  chukar: { family: 'chukar', bodyLength: 1.02, bodyWidth: 1.16, bodyDepth: 1.12, wingSpan: 1.28, wingChord: 1.18, tailLength: 1.28, tailWidth: 1.18, billLength: 1.24 },
 };
 
 export function birdFamilyFor(speciesId: string): BirdFamily {
   if (speciesId === 'ringneck') return 'pheasant';
+  if (speciesId === 'hun') return 'partridge';
   if (speciesId === 'woodcock') return 'woodcock';
+  if (speciesId === 'chukar') return 'chukar';
   if (['ruffed-grouse', 'sharptail', 'prairie-chicken', 'blue-grouse'].includes(speciesId)) return 'grouse';
   return 'quail';
+}
+
+/** Keep the public four-rig family mapping stable while giving the major
+ * grouse countries slightly different proportions in the rendered mesh. */
+function birdShapeFor(speciesId: string): BirdShape {
+  const family = birdFamilyFor(speciesId);
+  const base = BIRD_SHAPES[family];
+  // The quail family shares the same low-poly construction, but not the
+  // same proportions. These small silhouette changes keep a desert runner,
+  // an oak-country topknot, a mountain bird, and a compact Mearns bird from
+  // reading as one recolored bobwhite when they cross the sky.
+  if (speciesId === 'california-quail') {
+    return { ...base, bodyLength: 1.03, bodyWidth: 1.02, bodyDepth: 1.02, wingSpan: 1.08, wingChord: 1.05, tailLength: 1.28, tailWidth: 1.08, billLength: 1.02 };
+  }
+  if (speciesId === 'gambels-quail') {
+    return { ...base, bodyLength: 1.02, bodyWidth: 1.08, bodyDepth: 1.06, wingSpan: 1.12, wingChord: 1.08, tailLength: 1.22, tailWidth: 1.12, billLength: 1.08 };
+  }
+  if (speciesId === 'scaled-quail') {
+    return { ...base, bodyLength: .98, bodyWidth: 1.1, bodyDepth: 1.08, wingSpan: 1.16, wingChord: 1.12, tailLength: 1.08, tailWidth: 1.12, billLength: 1.04 };
+  }
+  if (speciesId === 'mearns-quail') {
+    return { ...base, bodyLength: .9, bodyWidth: 1.08, bodyDepth: 1.12, wingSpan: 1.08, wingChord: 1.04, tailLength: .9, tailWidth: 1.02, billLength: 1.02 };
+  }
+  if (speciesId === 'mountain-quail') {
+    return { ...base, bodyLength: 1.08, bodyWidth: 1.1, bodyDepth: 1.08, wingSpan: 1.2, wingChord: 1.12, tailLength: 1.48, tailWidth: 1.18, billLength: 1.06 };
+  }
+  if (['sharptail', 'prairie-chicken'].includes(speciesId)) {
+    return { ...base, bodyLength: 1.2, bodyWidth: 1.18, bodyDepth: 1.12, wingSpan: 1.5, wingChord: 1.28, tailLength: 1.88, tailWidth: 1.38, billLength: 1.02 };
+  }
+  if (speciesId === 'blue-grouse') {
+    return { ...base, bodyLength: 1.24, bodyWidth: 1.38, bodyDepth: 1.28, wingSpan: 1.48, wingChord: 1.36, tailLength: 2.02, tailWidth: 1.58, billLength: 1.02 };
+  }
+  return base;
 }
 
 export function birdVisualScale(species: SpeciesConfig): number {
   return Math.sqrt((species.size ?? 0.62) / 0.62);
 }
 
-/** Forward carry along the escape bearing (m/s): what 2D said with
- *  depth-shrink. Ramps up as wings bite so range ALWAYS grows. */
+/** Minimum forward carry along the escape bearing (m/s). Species speed
+ * envelopes take over once the first wingbeats have found their rhythm. */
 const FWD_MIN = 3.5;
-const FWD_MAX = 9.0;
 const FWD_RAMP_MS = 1400;
 /** How hard the escape bearing bends downwind (0 = pure away). */
 const WIND_BIAS = 0.55;
@@ -239,8 +236,8 @@ export function pickBirdAlongRay(
     if (along <= 0 || along >= bestAlong) continue;
     const distanceSq = rx * rx + ry * ry + rz * rz;
     const perpendicular = Math.sqrt(Math.max(0, distanceSq - along * along));
-    // The low-poly birds are deliberately presentation-scaled; this radius
-    // gives their visible body/wings a fair close-range shotgun pattern.
+    // The minimum pattern is intentionally forgiving at close range. It is
+    // a gameplay allowance, independent of the bird's rendered wingspan.
     const patternRadius = Math.max(0.48, along * Math.tan(spreadRad));
     if (perpendicular <= patternRadius) {
       bestId = target.simId;
@@ -250,10 +247,22 @@ export function pickBirdAlongRay(
   return bestId;
 }
 
+interface FlightContext {
+  escX: number; escZ: number; rightX: number; rightZ: number;
+  hunterX: number; hunterZ: number; driftPx: number; rng: () => number;
+}
+
 interface Slot {
+  /** World-space escape profile. The implementation is shared with the
+   * original Quail flight controller, but the profile is now authored from
+   * each species' flight data and map doctrine. */
+  spatialFlight?: QuailFlight;
+  flight?: FlightContext;
   status: SlotStatus;
   simId: number;
   species: SpeciesConfig;
+  /** Young-of-year flight modifier copied from the simulation at launch. */
+  young: boolean;
   /** Sim-authority velocity in FLUSH px/s: x lateral, y screen-down. */
   vel: { x: number; y: number };
   /** Virtual 2D screen-x (px) — exitDirFor's frame of reference. */
@@ -371,7 +380,8 @@ export class BirdsSystem implements Subsystem {
   /** Sim bird ids already staged into this presentation. */
   private staged = new Set<number>();
   /** Launch queue (sim ids), ring buffer — covey order, like the 2D view. */
-  private queue = new Int32Array(32);
+  private queue: number[] = [];
+  private pendingFlights = new Map<number, FlightContext>();
   private qHead = 0;
   private qTail = 0;
   private riseActive = false;
@@ -400,12 +410,20 @@ export class BirdsSystem implements Subsystem {
   /* ----------------------- launch-burst debris ---------------------- */
   private debrisGeo?: THREE.BufferGeometry;
   private debrisMesh?: THREE.Mesh;
+  private debrisMat?: THREE.MeshLambertMaterial;
+  private refinedQuail = false;
   /** Per-particle dir (xyz) + speed, rolled per burst from the rise rng. */
   private debrisVel = new Float32Array(DEBRIS_N * 4);
   private debrisOx = 0;
   private debrisOy = 0;
   private debrisOz = 0;
   private debrisMs = -1;
+  private launchCover?: QuailFlushDebris;
+  /** World-space rises stay attached to their authored cover on all authored
+   * properties. Solitary pheasant/Chukar paths retain their dedicated
+   * screen-velocity rules because those profiles already encode level-out and
+   * downhill escape behavior. */
+  private spatialEncounter = false;
 
   /* ------------------------- hit feather burst ------------------------ */
   private featherGeo?: THREE.BufferGeometry;
@@ -423,6 +441,8 @@ export class BirdsSystem implements Subsystem {
     this.frozen = new URLSearchParams(location.search).has('capture');
     this.hunt = ctx.get<Hunt3DSystem>('hunt3d');
     this.terrain = ctx.get<TerrainSystem>('terrain');
+    this.refinedQuail = this.hunt.areaConfig().id === 'quail-fields';
+    this.spatialEncounter = isSpatialEncounterArea(this.hunt.areaConfig().id);
 
     this.mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     // Moment round, item 1: NO emissive, NO rim — the ember-speck read
@@ -451,7 +471,7 @@ export class BirdsSystem implements Subsystem {
         );
     };
     const applyTod = (tod: TimeOfDay): void => {
-      const spec = TOD[tod];
+      const spec = fieldTimeOfDay(this.hunt.huntState().areaId,tod);
       const silh = spec.grassLumCap < 1;
       const lowSun = THREE.MathUtils.clamp(1 - (spec.sunElevation - 2) / 13, 0, 1);
       const el = THREE.MathUtils.degToRad(spec.sunElevation);
@@ -465,7 +485,10 @@ export class BirdsSystem implements Subsystem {
     ctx.events.addEventListener('tod', ((e: CustomEvent) => applyTod(e.detail)) as EventListener);
 
     this.buildPool(ctx);
-    this.buildDebris(ctx);
+    if (this.spatialEncounter) {
+      this.launchCover = new QuailFlushDebris(ctx.quality, (x, z) => this.terrain.heightAt(x, z));
+      ctx.scene.add(this.launchCover.mesh);
+    } else this.buildDebris(ctx);
     this.buildFeathers(ctx);
 
     // Tooling-only family gallery: a frozen, live-material bird at honest
@@ -569,6 +592,7 @@ export class BirdsSystem implements Subsystem {
         status: 'idle',
         simId: -1,
         species: getSpecies('bobwhite'),
+        young: false,
         vel: { x: 0, y: 0 },
         sxPx: SCREEN_CX,
         exitDir: 0,
@@ -596,7 +620,7 @@ export class BirdsSystem implements Subsystem {
   }
 
   private buildSpeciesGeometry(species: SpeciesConfig, hen: boolean): void {
-    const shape = BIRD_SHAPES[birdFamilyFor(species.id)];
+    const shape = birdShapeFor(species.id);
     const muted = hen ? 0.68 : 1;
     const back = new THREE.Color(species.palette.body).lerp(new THREE.Color(P.warmGray), hen ? 0.5 : 0.16);
     const backDim = back.clone().multiplyScalar(0.76);
@@ -607,9 +631,9 @@ export class BirdsSystem implements Subsystem {
     const wingTop = back.clone().multiplyScalar(0.9);
     const wingTopDim = wingTop.clone().multiplyScalar(0.8);
     const wingUnder = belly.clone().multiplyScalar(0.78);
-    const body = this.buildBodyGeo(back, backDim, belly, cap, throat, tail, shape);
-    const wingL = this.buildWingGeo(-1, wingTop, wingTopDim, wingUnder, shape);
-    const wingR = this.buildWingGeo(1, wingTop, wingTopDim, wingUnder, shape);
+    const body = species.id === 'bobwhite' ? buildBobwhiteBody() : this.buildBodyGeo(back, backDim, belly, cap, throat, tail, shape);
+    const wingL = species.id === 'bobwhite' ? buildBobwhiteWing(-1) : this.buildWingGeo(-1, wingTop, wingTopDim, wingUnder, shape);
+    const wingR = species.id === 'bobwhite' ? buildBobwhiteWing(1) : this.buildWingGeo(1, wingTop, wingTopDim, wingUnder, shape);
     this.geos.push(body, wingL, wingR);
     const spanM = 2 * (0.03 * shape.bodyWidth + 0.124 * shape.wingSpan);
     this.speciesGeos.set(`${species.id}${hen ? ':hen' : ''}`, { body, wingL, wingR, shape, spanM });
@@ -783,7 +807,8 @@ export class BirdsSystem implements Subsystem {
     this.debrisGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     this.debrisGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     this.debrisGeo.setIndex(new THREE.BufferAttribute(idx, 1));
-    this.debrisMesh = new THREE.Mesh(this.debrisGeo, this.mat!);
+    if (this.refinedQuail) this.debrisMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, flatShading: true });
+    this.debrisMesh = new THREE.Mesh(this.debrisGeo, this.debrisMat ?? this.mat!);
     this.debrisMesh.castShadow = this.debrisMesh.receiveShadow = false;
     this.debrisMesh.frustumCulled = false;
     this.debrisMesh.visible = false;
@@ -801,6 +826,15 @@ export class BirdsSystem implements Subsystem {
       opacity: 0.95,
       depthWrite: false,
     });
+    if (this.refinedQuail) this.featherMat.onBeforeCompile = shader => {
+      // Small tapered down feathers instead of untextured square point sprites.
+      shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+        vec2 featherUV = gl_PointCoord * 2.0 - 1.0;
+        float featherEdge = 1.0 - abs(featherUV.y) - abs(featherUV.x) * 2.5;
+        if (featherEdge <= 0.0) discard;
+        diffuseColor.a *= smoothstep(0.0, 0.2, featherEdge);
+      `);
+    };
     this.featherPoints = new THREE.Points(this.featherGeo, this.featherMat);
     this.featherPoints.frustumCulled = false;
     this.featherPoints.visible = false;
@@ -845,15 +879,28 @@ export class BirdsSystem implements Subsystem {
     // 1. Detect newly flushed sim birds -> stage a rise (covey order).
     const simBirds = this.hunt.huntState().birds;
     let newRise = false;
-    for (let i = 0; i < simBirds.length; i++) {
-      const b = simBirds[i];
-      if (b.state !== 'flushed' || this.staged.has(b.id)) continue;
-      this.staged.add(b.id);
-      this.queue[this.qTail % this.queue.length] = b.id;
-      this.qTail++;
-      if (!this.riseActive) newRise = true;
+    const newCoveys = new Map<number, typeof simBirds>();
+    for (const bird of simBirds) {
+      if (bird.state === 'hidden' && this.spatialEncounter) this.staged.delete(bird.id);
+      if (bird.state !== 'flushed' || this.staged.has(bird.id)) continue;
+      this.staged.add(bird.id);
+      if (this.spatialEncounter) {
+        const covey = newCoveys.get(bird.coveyId) ?? [];
+        covey.push(bird); newCoveys.set(bird.coveyId, covey);
+      } else {
+        this.queue[this.qTail++] = bird.id;
+        if (!this.riseActive) newRise = true;
+      }
     }
-    if (newRise) {
+    if (this.spatialEncounter) {
+      for (const covey of newCoveys.values()) {
+        this.stageRise(covey);
+        const flight: FlightContext = { escX:this.escX,escZ:this.escZ,rightX:this.rightX,rightZ:this.rightZ,
+          hunterX:this.hunterX,hunterZ:this.hunterZ,driftPx:this.driftPx,rng:this.riseRng };
+        for (const bird of covey) { this.queue[this.qTail++] = bird.id; this.pendingFlights.set(bird.id,flight); }
+        if (!this.frozen) playFlush();
+      }
+    } else if (newRise) {
       this.stageRise(simBirds);
       if (!this.frozen) playFlush();
     }
@@ -872,9 +919,12 @@ export class BirdsSystem implements Subsystem {
         continue;
       }
       if (s.status === 'waiting') {
-        anyAloft = true; // a pending sleeper blocks the next wave, as in 2D
+        anyAloft = true;
         s.delayMs -= dtMs;
-        if (s.delayMs <= 0) s.status = 'flying';
+        if (s.delayMs <= 0) {
+          s.status = 'flying';
+          this.disturbLaunchCover(s);
+        }
         continue;
       }
       if (s.status === 'falling') {
@@ -895,54 +945,82 @@ export class BirdsSystem implements Subsystem {
       anyAloft = true;
       s.airMs += dtMs;
       const fl = s.species.flight;
-      // Flight phases — the sim's own exit drive mutates the sim-space vel.
-      if (fl.glideAfterMs !== undefined && s.airMs > fl.glideAfterMs) {
-        if (s.exitDir === 0) s.exitDir = exitDirFor(s.vel.x, s.sxPx);
-        glideStep(s.vel, s.exitDir, dt);
-        s.gliding = true;
-      }
-      if (fl.levelAfterMs !== undefined && s.airMs > fl.levelAfterMs) {
-        if (s.exitDir === 0) s.exitDir = exitDirFor(s.vel.x, s.sxPx);
-        levelStep(s.vel, s.exitDir, dt);
-      }
-      s.wobblePh += dt * 9;
-      const latPx = s.vel.x + Math.sin(s.wobblePh) * fl.wobble * s.wobbleMult;
-      s.sxPx += s.vel.x * dt;
-      // 3D translation: lateral px on the fan's right axis, climb from
-      // screen-y, forward carry along the escape bearing (ramping as the
-      // wings bite). Range from the hunter grows every single tick.
-      const fwd = FWD_MIN + (FWD_MAX - FWD_MIN) * Math.min(1, s.airMs / FWD_RAMP_MS);
-      // Lateral ramp (iteration 3): the 2D fan speeds are instant-on —
-      // honest on a flat screen, but in world space they tore the covey
-      // 20 m wide inside a second. The burst leaves as ONE explosion and
-      // the fan opens as the wings bite (full authority by 1.5 s).
-      const latK = 0.5 + 0.5 * Math.min(1, s.airMs / 1500);
-      const latM = latPx * FLUSH_PX_TO_M * latK;
-      s.vxW = this.escX * fwd + this.rightX * latM;
-      s.vzW = this.escZ * fwd + this.rightZ * latM;
-      s.vyW = -s.vel.y * FLUSH_PX_TO_M_V;
-      // LOW BURST LAW (moment round, item 2): cap the climb under ~15 deg
-      // for the first 1.5 s, unlocking over the next 1.3 — the covey
-      // crosses COVER and HORIZON, then lifts away downwind. Surplus
-      // climb is not thrown away: it becomes drive down the escape
-      // bearing, so the burst reads VIOLENT, not clipped.
-      const horizV = Math.hypot(s.vxW, s.vzW);
-      const free = Math.min(1, Math.max(0, (s.airMs - LOW_MS) / CLIMB_RAMP_MS));
-      const climbCap = horizV * (LOW_ELEV_TAN + free * 1.8);
-      if (s.vyW > climbCap) {
-        const excess = s.vyW - climbCap;
-        s.vyW = climbCap;
-        s.vxW += this.escX * excess * 0.4;
-        s.vzW += this.escZ * excess * 0.4;
-      }
-      // A bobwhite tops out near 18 m/s over the ground — the transfer
-      // must not turn the burst into artillery (iteration 2: 0.85 of the
-      // freed climb sent birds 20 m in 0.8 s).
-      const hv2 = Math.hypot(s.vxW, s.vzW);
-      if (hv2 > 18.5) {
-        const k = 18.5 / hv2;
-        s.vxW *= k;
-        s.vzW *= k;
+      const doctrine = huntingDoctrine(this.hunt.areaConfig().id);
+      const flight = s.flight!;
+      if (s.spatialFlight) {
+        stepQuailFlight(s.spatialFlight,s,dt,(x,z)=>this.terrain.heightAt(x,z));
+      } else {
+        // Legacy scenes retain screen-space velocity and exit-drive shaping.
+        if (fl.glideAfterMs !== undefined && s.airMs > fl.glideAfterMs) {
+          if (s.exitDir === 0) s.exitDir = exitDirFor(s.vel.x, s.sxPx);
+          glideStep(s.vel, s.exitDir, dt);
+          s.gliding = true;
+        }
+        if (fl.levelAfterMs !== undefined && s.airMs > fl.levelAfterMs) {
+          if (s.exitDir === 0) s.exitDir = exitDirFor(s.vel.x, s.sxPx);
+          levelStep(s.vel, s.exitDir, dt);
+        }
+        s.wobblePh += dt * 9;
+        const latPx = s.vel.x + Math.sin(s.wobblePh) * fl.wobble * doctrine.flight.wobble * s.wobbleMult;
+        s.sxPx += s.vel.x * dt;
+        // 3D translation: lateral px on the fan's right axis, climb from
+        // screen-y, forward carry along the escape bearing (ramping as the
+        // wings bite). Range from the hunter grows every single tick.
+        // Spatial rises still honor the species' authored speed envelope. The
+        // old common 3.5→9 m/s impulse made woodcock, pheasant, and Chukar
+        // share the same pace once they left the cover. Keep a gentle wing-in
+        // ramp, then let each species' glide/level beat shape the carry.
+        const speedT = Math.min(1, s.airMs / FWD_RAMP_MS);
+        const speciesFwd = (fl.speedMin + (fl.speedMax - fl.speedMin) * speedT) * .055;
+        const glideK = fl.glideAfterMs !== undefined && s.airMs > fl.glideAfterMs ? .84 : 1;
+        const levelK = fl.levelAfterMs !== undefined && s.airMs > fl.levelAfterMs ? 1.1 : 1;
+        const fwd = Math.max(FWD_MIN, speciesFwd) * doctrine.flight.carry *
+          (s.young ? YOUNG_FLIGHT_MULT : 1) * glideK * levelK;
+        // Lateral ramp (iteration 3): the 2D fan speeds are instant-on —
+        // honest on a flat screen, but in world space they tore the covey
+        // 20 m wide inside a second. The burst leaves as ONE explosion and
+        // the fan opens as the wings bite (full authority by 1.5 s).
+        const latK = 0.5 + 0.5 * Math.min(1, s.airMs / 1500);
+        const latM = latPx * FLUSH_PX_TO_M * latK * doctrine.flight.lateral;
+        s.vxW = flight.escX * fwd + flight.rightX * latM;
+        s.vzW = flight.escZ * fwd + flight.rightZ * latM;
+        s.vyW = -s.vel.y * FLUSH_PX_TO_M_V * doctrine.flight.climb;
+        // LOW BURST LAW (moment round, item 2): cap the climb under ~15 deg
+        // for the first 1.5 s, unlocking over the next 1.3 — the covey
+        // crosses COVER and HORIZON, then lifts away downwind. Surplus
+        // climb is not thrown away: it becomes drive down the escape
+        // bearing, so the burst reads VIOLENT, not clipped.
+        const horizV = Math.hypot(s.vxW, s.vzW);
+        // The low, downhill Chukar break belongs to the bird, not the map.
+        // Chukar can appear as a small share on another property, while a
+        // Hun or other bycatch bird can share Chukar Ridge. Keep the terrain
+        // doctrine's wet-bottom/canyon pacing for those properties, but do
+        // not let a map label rewrite another species' flight envelope.
+        const downhillFlight = s.species.flightDirection === 'downhill';
+        const lowMs = downhillFlight ? 550
+          : doctrine.style === 'bottoms' || doctrine.style === 'canyon' ? 750 : LOW_MS;
+        const climbRampMs = downhillFlight ? 900
+          : doctrine.style === 'bottoms' || doctrine.style === 'canyon' ? 850 : CLIMB_RAMP_MS;
+        const lowElevationTan = downhillFlight ? Math.tan(9 * Math.PI / 180)
+          : doctrine.style === 'bottoms' ? Math.tan(28 * Math.PI / 180)
+            : doctrine.style === 'canyon' ? Math.tan(24 * Math.PI / 180) : LOW_ELEV_TAN;
+        const free = Math.min(1, Math.max(0, (s.airMs - lowMs) / climbRampMs));
+        const climbCap = horizV * (lowElevationTan + free * (downhillFlight ? 1.05 : 1.8));
+        if (s.vyW > climbCap) {
+          const excess = s.vyW - climbCap;
+          s.vyW = climbCap;
+          s.vxW += flight.escX * excess * 0.4;
+          s.vzW += flight.escZ * excess * 0.4;
+        }
+        // A bobwhite tops out near 18 m/s over the ground — the transfer
+        // must not turn the burst into artillery (iteration 2: 0.85 of the
+        // freed climb sent birds 20 m in 0.8 s).
+        const hv2 = Math.hypot(s.vxW, s.vzW);
+        if (hv2 > 18.5) {
+          const k = 18.5 / hv2;
+          s.vxW *= k;
+          s.vzW *= k;
+        }
       }
       s.x += s.vxW * dt;
       s.z += s.vzW * dt;
@@ -951,32 +1029,33 @@ export class BirdsSystem implements Subsystem {
       if (s.y < g + 0.25) {
         s.y = g + 0.25;
         if (s.airMs > LAND_MIN_AIR_MS) {
-          // Glided out and put down — gone from the presentation. The SIM
-          // decides escape/relight; we never write bird state.
+          // Preserve the visible put-down so following the flight leads to
+          // the same cover for this survivor. Range/time exits below
+          // have no landing and cannot silently reappear elsewhere.
           s.status = 'done';
           s.root.visible = false;
-          this.hunt.resolveBird(s.simId, 'escaped');
+          this.hunt.resolveBird(s.simId, 'escaped', this.spatialEncounter ? { x: s.x, z: s.z } : undefined);
           continue;
         }
       }
-      const rx = s.x - this.hunterX;
-      const rz = s.z - this.hunterZ;
-      if (rx * rx + rz * rz > GONE_RANGE * GONE_RANGE || s.airMs > MAX_AIR_MS) {
+      const rx = s.x - flight.hunterX;
+      const rz = s.z - flight.hunterZ;
+      if ((!s.spatialFlight?.target && rx * rx + rz * rz > GONE_RANGE * GONE_RANGE) || s.airMs > MAX_AIR_MS) {
         s.status = 'done';
         s.root.visible = false;
         this.hunt.resolveBird(s.simId, 'escaped');
       }
     }
 
-    // 3. Wave launcher — FlushScene.tryLaunch translated: next wave only
-    //    when the sky is clear and the gap has passed.
-    if (!anyAloft && this.qHead < this.qTail && this.riseMs - this.lastLaunchMs >= LAUNCH_GAP_MS) {
+    // Spatial properties launch every available bird from its real cover;
+    // queue order is still deterministic when a covey is larger than the pool.
+    if (this.qHead < this.qTail && (this.spatialEncounter || (!anyAloft && this.riseMs - this.lastLaunchMs >= LAUNCH_GAP_MS))) {
       this.launchWave(simBirds);
     }
     if (this.riseActive && !anyAloft && this.qHead >= this.qTail) {
       let quiet = true;
       for (let i = 0; i < POOL; i++) {
-        if (this.slots[i].status === 'falling') quiet = false;
+        if (['falling', 'flying', 'waiting'].includes(this.slots[i].status)) quiet = false;
       }
       if (quiet) {
         this.riseActive = false; // the sky settled
@@ -985,6 +1064,7 @@ export class BirdsSystem implements Subsystem {
     }
 
     // 4. Debris clock.
+    this.launchCover?.advance(dtMs);
     if (this.debrisMs >= 0) {
       this.debrisMs += dtMs;
       if (this.debrisMs > DEBRIS_LIFE_MS) this.debrisMs = -1;
@@ -1008,15 +1088,22 @@ export class BirdsSystem implements Subsystem {
   }
 
   /** A covey just blew: roll the rise's character (bias, break direction,
-   *  escape bearing bent down the wind) from a fresh per-rise stream. */
-  private stageRise(simBirds: readonly { id: number; pos: { x: number; y: number } }[]): void {
+   *  escape bearing bent down the wind) from a fresh per-rise stream.
+   *
+   * Spatial properties pass the actual covey that flushed. Keeping this
+   * parameter scoped to that group matters: the rise must leave the cover the
+   * player just watched, rather than inheriting a centroid from every hidden
+   * bird in the property. The non-spatial shooting view still passes its full
+   * queued population because its fan is intentionally scene-local.
+   */
+  private stageRise(stageBirds: readonly { id: number; pos: { x: number; y: number } }[]): void {
     this.riseActive = true;
     this.riseSeq++;
     this.riseMs = 0;
     this.lastLaunchMs = -Infinity;
     this.riseRng = mulberry32((RISE_SEED + this.riseSeq * 0x9e3779b9) >>> 0);
     const info = this.hunt.lastFlushInfo();
-    this.bias = flushBias(info ? info.distPx : 25, this.riseRng);
+    this.bias = this.spatialEncounter ? {min:.9,max:1.15,kind:'earned'} : flushBias(info ? info.distPx : 25, this.riseRng);
     this.driftPx = (this.riseRng() - 0.5) * DRIFT_SPAN_PX;
 
     // Covey centroid (queued birds) and hunter, in world meters — the
@@ -1026,13 +1113,13 @@ export class BirdsSystem implements Subsystem {
     let sx = 0;
     let sy = 0;
     let n = 0;
-    for (let q = this.qHead; q < this.qTail; q++) {
-      const id = this.queue[q % this.queue.length];
-      for (let i = 0; i < simBirds.length; i++) {
-        if (simBirds[i].id === id) {
-          sx += simBirds[i].pos.x;
-          sy += simBirds[i].pos.y;
-          this.hunt.simToWorld(simBirds[i].pos.x, simBirds[i].pos.y, this.w2);
+    for (let q = this.spatialEncounter ? 0 : this.qHead; q < (this.spatialEncounter ? stageBirds.length : this.qTail); q++) {
+      const id = this.spatialEncounter ? stageBirds[q].id : this.queue[q];
+      for (let i = 0; i < stageBirds.length; i++) {
+        if (stageBirds[i].id === id) {
+          sx += stageBirds[i].pos.x;
+          sy += stageBirds[i].pos.y;
+          this.hunt.simToWorld(stageBirds[i].pos.x, stageBirds[i].pos.y, this.w2);
           cx += this.w2.x;
           cz += this.w2.z;
           n++;
@@ -1055,7 +1142,10 @@ export class BirdsSystem implements Subsystem {
     this.hunterX = this.w2.x;
     this.hunterZ = this.w2.z;
     // Escape bearing: away from the gun, bent DOWN THE WIND (sim wind
-    // blows toward angle a: sim x -> world x, sim y -> world z).
+    // blows toward angle a: sim x -> world x, sim y -> world z). Species
+    // specific terrain responses are applied per slot in launchWave; this
+    // shared basis keeps a covey clustered without making the map override
+    // a bycatch bird's own flight language.
     let ax = cx - this.hunterX;
     let az = cz - this.hunterZ;
     const al = Math.hypot(ax, az) || 1;
@@ -1072,19 +1162,102 @@ export class BirdsSystem implements Subsystem {
     this.rightZ = this.escX;
   }
 
-  /** One wave: up to WAVE_MAX birds burst together on shuffled lanes.
-   *  CAPTURE COVEY STAGE (moment round, item 2): under ?capture=1 the
-   *  whole queued covey launches in this one call instead — clustered,
-   *  staggered inside ~0.8 s — the full-covey explosion the store-page
-   *  frame needs. Gameplay keeps the wave law verbatim. */
+  /**
+   * Translate the shared shooting-view flight envelope into a world-space
+   * escape profile. The old renderer only created this profile on Quail
+   * Fields, which made a Hun, grouse, or woodcock rise fall back to the same
+   * generic screen-velocity path. Keep the low-poly controller and its
+   * deterministic stream, but derive speed, turn, height, and wingbeat
+   * character from the species and the property's doctrine.
+   *
+   * Ringnecks and Chukar intentionally stay on the generic path: their
+   * existing `levelAfterMs` and terrain-specific break treatments are more
+   * specific than this cover-following controller. The launch context still
+   * applies Chukar's downhill basis per bird.
+   */
+  private spatialFlightFor(
+    species: SpeciesConfig,
+    escapeX: number,
+    escapeZ: number,
+    doctrine: ReturnType<typeof huntingDoctrine>,
+    rng: () => number,
+    young: boolean,
+  ): QuailFlight | undefined {
+    if (!this.spatialEncounter || species.id === 'ringneck' || species.id === 'chukar') return undefined;
+
+    const profile = createQuailFlight(escapeX, escapeZ, rng, false);
+    const fl = species.flight;
+    // FlightStyle speed is shared with the 2D shooting view. Preserve its
+    // ordering while translating to plausible metres/second for the field.
+    const speedMin = Math.max(FWD_MIN, fl.speedMin * 0.12 * doctrine.flight.carry);
+    const speedMax = Math.max(speedMin + 0.8, fl.speedMax * 0.12 * doctrine.flight.carry);
+    profile.speed = (speedMin + rng() * (speedMax - speedMin)) * (young ? YOUNG_FLIGHT_MULT : 1);
+
+    // High-climbing birds keep more air under the body; timber birds break
+    // more erratically, while each property still supplies the carry.
+    const climb = THREE.MathUtils.clamp(fl.climb * doctrine.flight.climb, 0.2, 1.6);
+    profile.clearance = 0.9 + climb * (species.timber ? 2.8 : 3.3) + rng() * 0.65;
+
+    const bearingSpread = THREE.MathUtils.clamp(
+      (0.12 + fl.wobble / 190) * (species.timber ? 1.1 : 1) * Math.max(0.65, doctrine.flight.lateral),
+      0.1,
+      0.7,
+    );
+    profile.bearing = Math.atan2(escapeZ, escapeX) + (rng() - 0.5) * bearingSpread;
+    const bendRange = THREE.MathUtils.clamp(
+      (0.06 + fl.wobble / 220) * doctrine.flight.wobble * (species.timber ? 1.2 : 1),
+      0.04,
+      0.52,
+    );
+    profile.bend = (rng() - 0.5) * bendRange;
+    // No glide field means a bird keeps flapping until it leaves the readable
+    // envelope. Covey species with a glide phase still settle into cover.
+    profile.glideAt = fl.glideAfterMs === undefined
+      ? Number.POSITIVE_INFINITY
+      : Math.max(0.75, fl.glideAfterMs / 1000);
+    return profile;
+  }
+
+  /**
+   * Give a bird's flight its species-owned terrain response while preserving
+   * the covey's shared burst basis. Chukar are the first authored example:
+   * they break down the fall line on a sloped property. Keeping this at the
+   * per-slot seam matters on mixed properties, where a Hun or another
+   * bycatch bird must not inherit Chukar Ridge's downhill escape.
+   */
+  private flightContextForSpecies(base: FlightContext, species: SpeciesConfig): FlightContext {
+    if (species.flightDirection !== 'downhill') return base;
+    const slope = this.hunt.areaConfig().slope;
+    if (slope === undefined) return base;
+    const downhillX = -Math.cos(slope);
+    const downhillZ = -Math.sin(slope);
+    const escapeX = base.escX * 0.52 + downhillX * 0.48;
+    const escapeZ = base.escZ * 0.52 + downhillZ * 0.48;
+    const length = Math.hypot(escapeX, escapeZ) || 1;
+    const escX = escapeX / length;
+    const escZ = escapeZ / length;
+    return {
+      ...base,
+      escX,
+      escZ,
+      rightX: -escZ,
+      rightZ: escX,
+    };
+  }
+
+  /** Launch the available covey from its actual positions in a tight burst.
+   * Each authored property uses the same spatial queue, while its doctrine
+   * controls the impulse and the family controller below controls the shape. */
   private launchWave(simBirds: readonly {
     id: number;
     pos: { x: number; y: number };
     young?: boolean;
+    single?: boolean;
     speciesId: string;
     sex?: 'hen' | 'rooster';
   }[]): void {
     this.lastLaunchMs = this.riseMs;
+    const doctrine = huntingDoctrine(this.hunt.areaConfig().id);
     // Shuffled lanes per wave (Fisher-Yates on the rise stream).
     for (let i = 2; i > 0; i--) {
       const j = Math.floor(this.riseRng() * (i + 1));
@@ -1092,13 +1265,12 @@ export class BirdsSystem implements Subsystem {
       this.laneBuf[i] = this.laneBuf[j];
       this.laneBuf[j] = t;
     }
-    const waveN = this.frozen ? this.qTail - this.qHead : WAVE_MAX;
+    const waveN = this.frozen || this.spatialEncounter ? this.qTail - this.qHead : WAVE_MAX;
     let bx = 0;
     let bz = 0;
     let launched = 0;
     for (let k = 0; k < waveN && this.qHead < this.qTail; k++) {
-      const id = this.queue[this.qHead % this.queue.length];
-      this.qHead++;
+      const id = this.queue[this.qHead];
       let sim: (typeof simBirds)[number] | null = null;
       for (let i = 0; i < simBirds.length; i++) {
         if (simBirds[i].id === id) {
@@ -1106,7 +1278,7 @@ export class BirdsSystem implements Subsystem {
           break;
         }
       }
-      if (!sim) continue;
+      if (!sim) { this.qHead++; this.pendingFlights.delete(id); continue; }
       let slot: Slot | null = null;
       for (let i = 0; i < POOL; i++) {
         if (this.slots[i].status === 'idle' || this.slots[i].status === 'done') {
@@ -1114,17 +1286,34 @@ export class BirdsSystem implements Subsystem {
           break;
         }
       }
-      if (!slot) break; // airborne budget is law
+      if (!slot) break; // Keep the queued id until a presentation slot is free.
+      this.qHead++;
+      const flight = this.pendingFlights.get(id);
+      this.pendingFlights.delete(id);
+      const baseFlight = flight ?? {escX:this.escX,escZ:this.escZ,rightX:this.rightX,rightZ:this.rightZ,hunterX:this.hunterX,hunterZ:this.hunterZ,driftPx:this.driftPx,rng:this.riseRng};
+      const rng = flight?.rng ?? this.riseRng;
       const species = getSpecies(sim.speciesId);
+      // A covey shares its burst clock, but the bird still owns its terrain
+      // response. In particular, Chukar use the fall line while Hun bycatch
+      // on the same property keeps the common gun-away/wind bearing.
+      const speciesFlight = this.flightContextForSpecies(baseFlight, species);
+      slot.flight = speciesFlight;
       const lane = this.laneBuf[k % 3];
-      // STAGE 3, verbatim: the species fan slice for this lane...
-      const v = escapeVelocityFan(species.flight, lane, WAVE_MAX, this.riseRng);
+      // Spatial rises start at the real cover position. Their first impulse
+      // still carries the species' hunting language: woodcock climb, chukar
+      // stay flat, and pheasants carry hard across the next line.
+      const v = this.spatialEncounter
+        ? {
+            x: (12 + species.flight.wobble * 0.16) * (this.riseRng() - 0.5) * doctrine.flight.lateral,
+            y: -(42 + this.riseRng() * 28) * doctrine.flight.climb * (0.72 + species.flight.climb * 0.28),
+          }
+        : escapeVelocityFan(species.flight, lane, WAVE_MAX, this.riseRng);
       // ...hot and lazy rolls (wild rises come out hotter)...
-      const roll = (this.bias.kind === 'wild' ? 0.95 : 0.85) + this.riseRng() * 0.45;
+      const roll = (!this.spatialEncounter && this.bias.kind === 'wild' ? 0.95 : 0.85) + rng() * 0.45;
       v.x *= roll;
       v.y *= roll;
       // ...the per-flush break direction...
-      v.x += this.driftPx;
+      v.x += flight?.driftPx ?? this.driftPx;
       // ...and the young-bird wings.
       if (sim.young) {
         v.x *= YOUNG_FLIGHT_MULT;
@@ -1133,6 +1322,7 @@ export class BirdsSystem implements Subsystem {
       slot.vel.x = v.x;
       slot.vel.y = v.y;
       slot.simId = id;
+      slot.young = !!sim.young;
       this.applySpeciesAppearance(slot, species, sim.sex);
       slot.sxPx = SCREEN_CX + (lane - 1) * SLOT_SPREAD_PX;
       slot.exitDir = 0;
@@ -1142,42 +1332,73 @@ export class BirdsSystem implements Subsystem {
       // "not covey GPS" law) + launch jitter, plus a hair of depth along
       // the escape axis so the burst isn't a picket line.
       const projPx =
-        (sim.pos.x - this.originSimX) * this.rightX + (sim.pos.y - this.originSimY) * this.rightZ;
+        (sim.pos.x - this.originSimX) * speciesFlight.rightX + (sim.pos.y - this.originSimY) * speciesFlight.rightZ;
       const nudgePx = Math.max(-NUDGE_CLAMP_PX, Math.min(NUDGE_CLAMP_PX, projPx * NUDGE_GAIN));
       const offM =
-        ((lane - 1) * SLOT_SPREAD_PX + nudgePx + (this.riseRng() * 2 - 1) * LAUNCH_JITTER_PX) *
+        ((lane - 1) * SLOT_SPREAD_PX + nudgePx + (rng() * 2 - 1) * LAUNCH_JITTER_PX) *
         LAUNCH_PX_TO_M;
       // Capture covey stage deepens the cluster: 12 birds off 3 lanes
       // need the depth axis or the burst reads as a picket line.
-      const alongM = (this.riseRng() * 2 - 1) * (this.frozen ? 1.7 : 0.7);
-      slot.x = this.originX + this.rightX * offM + this.escX * alongM;
-      slot.z = this.originZ + this.rightZ * offM + this.escZ * alongM;
+      const alongM = (rng() * 2 - 1) * (this.frozen ? 1.7 : 0.7);
+      slot.x = this.originX + speciesFlight.rightX * offM + speciesFlight.escX * alongM;
+      slot.z = this.originZ + speciesFlight.rightZ * offM + speciesFlight.escZ * alongM;
+      if (this.spatialEncounter) {
+        this.hunt.simToWorld(sim.pos.x, sim.pos.y, this.w2);
+        slot.x = this.w2.x; slot.z = this.w2.z;
+      }
       slot.y = this.terrain.heightAt(slot.x, slot.z) + 0.2;
-      slot.vxW = this.escX * FWD_MIN;
-      slot.vzW = this.escZ * FWD_MIN;
+      slot.vxW = speciesFlight.escX * FWD_MIN;
+      slot.vzW = speciesFlight.escZ * FWD_MIN;
       slot.vyW = -v.y * FLUSH_PX_TO_M_V;
+      slot.spatialFlight = this.spatialFlightFor(
+        species,
+        speciesFlight.escX,
+        speciesFlight.escZ,
+        doctrine,
+        rng,
+        !!sim.young,
+      );
+      if (slot.spatialFlight && species.coveyApproach === true && !sim.single && rng() <= RELIGHT_CHANCE) {
+        slot.spatialFlight.target = selectQuailEscapeCover(
+          slot.x,
+          slot.z,
+          speciesFlight.escX,
+          speciesFlight.escZ,
+          this.hunt.coverPatches(),
+          rng,
+        );
+      }
       slot.airMs = 0;
       slot.wobblePh = launched * 2.1;
-      slot.wobbleMult = 0.6 + this.riseRng();
+      slot.wobbleMult = 0.6 + rng();
       slot.gliding = false;
-      if (this.frozen) {
+      if (this.spatialEncounter) {
+        slot.delayMs = quailLaunchDelay(launched, waveN, rng);
+      } else if (this.frozen) {
         // Capture covey stage: clustered staggered launch across ~0.8 s
         // — the first birds are 10 m out while the last still blow from
         // the grass. (The sleeper roll stays a gameplay beat.)
-        slot.delayMs = launched === 0 ? 0 : this.riseRng() * CAPTURE_STAGGER_MS;
+        slot.delayMs = launched === 0 ? 0 : rng() * CAPTURE_STAGGER_MS;
       } else {
         // The sleeper: rises a beat after its wave.
-        const sleeper = this.riseRng() < SLEEPER_CHANCE;
-        slot.delayMs = sleeper ? SLEEPER_MIN_MS + this.riseRng() * SLEEPER_RAND_MS : 0;
+        const sleeper = rng() < SLEEPER_CHANCE;
+        slot.delayMs = sleeper ? SLEEPER_MIN_MS + rng() * SLEEPER_RAND_MS : 0;
       }
       const sleeper = slot.delayMs > 0;
       slot.status = sleeper ? 'waiting' : 'flying';
       slot.root.visible = !sleeper;
+      if (!sleeper) this.disturbLaunchCover(slot);
       bx += slot.x;
       bz += slot.z;
       launched++;
     }
-    if (launched > 0) this.burstDebris(bx / launched, bz / launched);
+    if (this.qHead === this.qTail) { this.queue.length = 0; this.qHead = this.qTail = 0; }
+    if (launched > 0 && !this.spatialEncounter) this.burstDebris(bx / launched, bz / launched);
+  }
+
+  private disturbLaunchCover(slot: Slot): void {
+    this.launchCover?.launch(slot.x, slot.z, slot.flight?.escX ?? 0, slot.flight?.escZ ?? 0,
+      (slot.simId * 0x9e3779b9 + this.riseSeq * 0x85ebca6b) >>> 0);
   }
 
   private burstDebris(x: number, z: number): void {
@@ -1228,6 +1449,20 @@ export class BirdsSystem implements Subsystem {
     return this.riseActive;
   }
 
+  /** A marking dog's visual attention: prioritize its falling birds, otherwise
+   * watch the airborne group. Writes into caller storage without allocations. */
+  markingTarget(ids: readonly number[], out: THREE.Vector3): boolean {
+    out.set(0,0,0); let count=0; let falling=false;
+    for (const slot of this.slots) {
+      if (!ids.includes(slot.simId) || (slot.status!=='flying' && slot.status!=='falling')) continue;
+      if (slot.status==='falling' && !falling) { out.set(0,0,0);count=0;falling=true; }
+      if (falling && slot.status!=='falling') continue;
+      out.x+=slot.x;out.y+=slot.y;out.z+=slot.z;count++;
+    }
+    if (count) out.multiplyScalar(1/count);
+    return count>0;
+  }
+
   /** Capture telemetry: airborne birds (world m). Allocates — tooling only.
    *  sizeM is the SCALED wingspan: the harness projects it to pixels. */
   airborne(): {
@@ -1241,7 +1476,7 @@ export class BirdsSystem implements Subsystem {
       if (s.status === 'flying' || s.status === 'falling' || s.status === 'waiting') {
         out.push({
           simId: s.simId, x: s.x, y: s.y, z: s.z, airMs: s.airMs, status: s.status,
-          sizeM: s.spanM * RISE_SCALE * s.visualScale,
+          sizeM: s.spanM * (this.refinedQuail ? QUAIL_WORLD_SCALE : RISE_SCALE) * s.visualScale,
         });
       }
     }
@@ -1255,6 +1490,13 @@ export class BirdsSystem implements Subsystem {
       if (this.slots[i].status === 'grounded') ids.push(this.slots[i].simId);
     }
     return ids;
+  }
+
+  /** Read-only presentation positions, so a carried bird can be checked against its socket. */
+  carriedTransforms(): { simId: number; x: number; y: number; z: number }[] {
+    const birds = this.hunt.huntState().birds;
+    return this.slots.filter(slot => slot.status === 'grounded' && birds.some(bird => bird.id === slot.simId && bird.state === 'carried'))
+      .map(slot => ({ simId: slot.simId, x: slot.root.position.x, y: slot.root.position.y, z: slot.root.position.z }));
   }
 
   /**
@@ -1278,9 +1520,24 @@ export class BirdsSystem implements Subsystem {
     out.r = r;
   }
 
+  /** Read-only effect budget and actual launch count for field review. */
+  launchCoverAudit(): { launches: number; visible: number; capacity: number } | null {
+    return this.launchCover?.audit() ?? null;
+  }
+
   /* ------------------------------ render ----------------------------- */
 
+  private foldWings(slot: Slot): void {
+    if (this.refinedQuail && slot.species.id === 'bobwhite') {
+      poseBobwhiteFoldedWings(slot.wingL, slot.wingR);
+    } else {
+      slot.wingL.rotation.set(0, 0.9, -1.35, 'XYZ');
+      slot.wingR.rotation.set(0, -0.9, 1.35, 'XYZ');
+    }
+  }
+
   update(ctx: Ctx, _dt: number): void {
+    this.launchCover?.render();
     const simBirds = this.hunt.huntState().birds;
     for (let i = 0; i < POOL; i++) {
       const s = this.slots[i];
@@ -1308,32 +1565,32 @@ export class BirdsSystem implements Subsystem {
             this.terrain.heightAt(this.carryW.x, this.carryW.z) + 0.58,
             this.carryW.z + Math.sin(dog.heading) * 0.32,
           );
-          s.root.scale.setScalar(GROUNDED_SCALE * s.visualScale);
+          const visual = ctx.get<Subsystem & { mouthWorld?: (out: THREE.Vector3) => boolean }>(carrierSlot === 0 ? 'dog' : 'dog2');
+          visual.mouthWorld?.(s.root.position);
+          s.root.scale.setScalar((this.refinedQuail ? QUAIL_WORLD_SCALE : GROUNDED_SCALE) * s.visualScale);
           // Carry the bird crosswise in the mouth, wings folded.
           s.root.rotation.set(0.12, dogYaw + Math.PI / 2, 0.42);
-          s.wingL.rotation.set(0, 0.9, -1.35);
-          s.wingR.rotation.set(0, -0.9, 1.35);
+          this.foldWings(s);
           continue;
         }
       }
       s.root.position.set(s.x, s.y, s.z);
-      s.root.scale.setScalar((s.status === 'grounded' ? GROUNDED_SCALE : RISE_SCALE) * s.visualScale);
+      s.root.scale.setScalar((this.refinedQuail ? QUAIL_WORLD_SCALE : s.status === 'grounded' ? GROUNDED_SCALE : RISE_SCALE) * s.visualScale);
       if (s.status === 'grounded') {
         // Folded bird remains marked in the grass until the dog picks it up.
         s.root.rotation.set(0, s.root.rotation.y, 1.2);
-        s.wingL.rotation.set(0, 0.9, -1.35);
-        s.wingR.rotation.set(0, -0.9, 1.35);
+        this.foldWings(s);
         continue;
       }
       if (s.status === 'falling') {
         // Folded frame: wings pinned to the body, tumbling — dead weight.
         s.root.rotation.set(s.airMs * 0.001 * TUMBLE_RAD_PER_S, s.root.rotation.y, 0.5);
-        s.wingL.rotation.set(0, 0.9, -1.35);
-        s.wingR.rotation.set(0, -0.9, 1.35);
+        this.foldWings(s);
         continue;
       }
       // Nose along the world velocity; pitch climbs with the burst and
-      // flattens into the glide — steep then flat, the quail signature.
+      // flattens into the glide. The profile controls how much each species
+      // climbs before it settles or leaves the readable envelope.
       const hSpeed = Math.hypot(s.vxW, s.vzW);
       const yaw = Math.atan2(s.vxW, s.vzW);
       const pitch = THREE.MathUtils.clamp(Math.atan2(s.vyW, Math.max(hSpeed, 0.3)), -0.5, 1.1);
@@ -1344,13 +1601,12 @@ export class BirdsSystem implements Subsystem {
         s.wingL.rotation.set(0, 0, -0.16);
         s.wingR.rotation.set(0, 0, 0.16);
       } else {
-        // Wingbeat at the species' flapRate, keyed to airMs — a visible
-        // 3-POSITION beat (up / mid / down with dwell at each, moment
-        // round item 1): three readable frames at 20 m, like the 2D
-        // sprite flapped, and deterministic under capture stepping.
+        // World-space rises use continuous wingbeats. Legacy screen-space
+        // waves retain the stepped pose so their silhouettes stay readable.
         const hz = s.species.flight.flapRate ?? 14;
         const ph = Math.sin((s.airMs / 1000) * hz * Math.PI * 2 + s.wobblePh * 0.35);
-        const ang = ph > 0.33 ? 0.88 : ph < -0.33 ? -0.78 : 0.1;
+        const beatAmplitude = 0.58 + s.species.flight.climb * 0.28 + (s.species.timber ? 0.06 : 0);
+        const ang = s.spatialFlight ? .05 + ph * beatAmplitude : ph > 0.33 ? 0.88 : ph < -0.33 ? -0.78 : 0.1;
         s.wingL.rotation.set(0, 0, -ang);
         s.wingR.rotation.set(0, 0, ang);
       }
@@ -1371,6 +1627,24 @@ export class BirdsSystem implements Subsystem {
           const px = this.debrisOx + this.debrisVel[i * 4] * spd * t;
           const py = this.debrisOy + this.debrisVel[i * 4 + 1] * spd * t - 4.9 * t * t;
           const pz = this.debrisOz + this.debrisVel[i * 4 + 2] * spd * t;
+          if (this.refinedQuail) {
+            // Real walk-in rises can happen close to the camera. Duff is a
+            // few centimetres long, never a 32 cm opaque presentation card.
+            const length = (0.012 + (i % 5) * 0.0045) * fade;
+            const width = (0.003 + (i % 3) * 0.001) * fade;
+            const azimuth = i * 2.399 + t * (2 + i % 3);
+            const pitch = i * 0.71 + t * 4;
+            const lx = Math.cos(azimuth) * Math.sin(pitch) * length;
+            const ly = Math.cos(pitch) * length;
+            const lz = Math.sin(azimuth) * Math.sin(pitch) * length;
+            const wx = Math.sin(azimuth) * width, wz = -Math.cos(azimuth) * width;
+            const o = i * 12;
+            arr[o] = px - lx; arr[o + 1] = py - ly; arr[o + 2] = pz - lz;
+            arr[o + 3] = px + wx; arr[o + 4] = py; arr[o + 5] = pz + wz;
+            arr[o + 6] = px + lx; arr[o + 7] = py + ly; arr[o + 8] = pz + lz;
+            arr[o + 9] = px - wx; arr[o + 10] = py; arr[o + 11] = pz - wz;
+            continue;
+          }
           // Big enough to read at the 15-20 m the rise frames from.
           const sz = 0.16 * fade;
           const o = i * 12;
@@ -1388,16 +1662,20 @@ export class BirdsSystem implements Subsystem {
           arr[o + 11] = pz + sz * 0.6;
         }
         attr.needsUpdate = true;
+        if (this.refinedQuail) this.debrisGeo!.computeVertexNormals();
       }
     }
   }
 
   dispose(ctx: Ctx): void {
+    this.launchCover?.dispose();
+    this.launchCover = undefined;
     for (const s of this.slots) ctx.scene.remove(s.root);
     this.slots.length = 0;
     if (this.debrisMesh) ctx.scene.remove(this.debrisMesh);
     if (this.featherPoints) ctx.scene.remove(this.featherPoints);
     this.debrisGeo?.dispose();
+    this.debrisMat?.dispose();
     this.featherGeo?.dispose();
     this.featherMat?.dispose();
     this.debrisGeo = undefined;

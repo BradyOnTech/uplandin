@@ -1,0 +1,50 @@
+{
+  "version": 2,
+  "units": "metres",
+  "source": "assets/source/quail-kit/sand-plum-kit.blend",
+  "status": "prototype; integrated in South Gate cover groups; visual review required",
+  "assets": [
+    {
+      "id": "sand-plum-open-high",
+      "triangles": 1824,
+      "materials": 2,
+      "meshes": 2,
+      "bytes": 134068
+    },
+    {
+      "id": "sand-plum-open-lite",
+      "triangles": 1248,
+      "materials": 2,
+      "meshes": 2,
+      "bytes": 88272
+    },
+    {
+      "id": "sand-plum-low-high",
+      "triangles": 1824,
+      "materials": 2,
+      "meshes": 2,
+      "bytes": 134256
+    },
+    {
+      "id": "sand-plum-low-lite",
+      "triangles": 1248,
+      "materials": 2,
+      "meshes": 2,
+      "bytes": 88456
+    },
+    {
+      "id": "sand-plum-tall-high",
+      "triangles": 1824,
+      "materials": 2,
+      "meshes": 2,
+      "bytes": 134212
+    },
+    {
+      "id": "sand-plum-tall-lite",
+      "triangles": 1248,
+      "materials": 2,
+      "meshes": 2,
+      "bytes": 88416
+    }
+  ]
+}
