@@ -47,6 +47,7 @@ interface ToneOpts {
   type?: OscillatorType;
   volume?: number;
   slideTo?: number;
+  destination?: AudioNode;
 }
 
 function tone(freq: number, startIn: number, duration: number, opts: ToneOpts = {}): void {
@@ -60,12 +61,13 @@ function tone(freq: number, startIn: number, duration: number, opts: ToneOpts = 
   const gain = c.createGain();
   gain.gain.setValueAtTime(opts.volume ?? 0.25, t);
   gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
-  osc.connect(gain).connect(output(c));
+  osc.connect(gain).connect(opts.destination ?? output(c));
+  osc.onended = () => { osc.disconnect(); gain.disconnect(); };
   osc.start(t);
   osc.stop(t + duration + 0.05);
 }
 
-function noise(startIn: number, duration: number, fromFreq: number, toFreq: number, volume: number): void {
+function noise(startIn: number, duration: number, fromFreq: number, toFreq: number, volume: number, destination?: AudioNode, onEnded?: () => void): void {
   const c = ready();
   if (!c) return;
   const t = c.currentTime + startIn;
@@ -78,7 +80,8 @@ function noise(startIn: number, duration: number, fromFreq: number, toFreq: numb
   const gain = c.createGain();
   gain.gain.setValueAtTime(volume, t);
   gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
-  src.connect(filter).connect(gain).connect(output(c));
+  src.connect(filter).connect(gain).connect(destination ?? output(c));
+  src.onended = () => { src.disconnect(); filter.disconnect(); gain.disconnect(); onEnded?.(); };
   src.start(t);
   src.stop(t + duration + 0.05);
 }
@@ -116,23 +119,31 @@ export function playBlip(): void {
 }
 
 /** Rooster pheasant cackling on the rise: raspy descending squawks. */
-export function playCackle(volume = 1): void {
+export function playCackle(volume = 1, destination?: AudioNode): void {
   for (let i = 0; i < 4; i++) {
-    tone(340 - i * 28, i * 0.09, 0.07, { type: 'square', volume: 0.14 * volume, slideTo: 190 - i * 15 });
+    tone(340 - i * 28, i * 0.09, 0.07, { type: 'square', volume: 0.14 * volume, slideTo: 190 - i * 15, destination });
   }
 }
 
 /** One physical pheasant launch: heavy first beats, then receding wing wash.
  * Distance affects loudness without changing bird state or random streams. */
-export function playPheasantFlush(distanceM: number, rooster: boolean): void {
+export function playPheasantFlush(distanceM: number, rooster: boolean, pan = 0): void {
+  const c = ready();
+  if (!c) return;
+  const direction = c.createStereoPanner();
+  direction.pan.value = Number.isFinite(pan) ? Math.max(-1, Math.min(1, pan)) : 0;
+  direction.connect(output(c));
   const proximity = 1 / (1 + Math.max(0, distanceM) / 18);
-  noise(0, .18, 2600, 600, .42 * proximity);
+  noise(0, .18, 2600, 600, .42 * proximity, direction);
   for (let beat = 0; beat < 8; beat++) {
     const envelope = Math.exp(-beat * .19) * proximity;
-    noise(beat * .085, .065, 1700, 380, .48 * envelope);
-    tone(105, beat * .085, .055, {type:'triangle',volume:.08 * envelope,slideTo:65});
+    // The final wing wash ends after all tones and the optional cackle.
+    // Its audio-clock completion releases the shared routing node.
+    noise(beat * .085, .065, 1700, 380, .48 * envelope, direction,
+      beat === 7 ? () => direction.disconnect() : undefined);
+    tone(105, beat * .085, .055, {type:'triangle',volume:.08 * envelope,slideTo:65,destination:direction});
   }
-  if (rooster) playCackle(proximity);
+  if (rooster) playCackle(proximity, direction);
 }
 
 /** Woodcock wing twitter: rapid high chirps as it towers. */

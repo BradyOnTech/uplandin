@@ -369,6 +369,7 @@ export class BirdsSystem implements Subsystem {
 
   private hunt!: Hunt3DSystem;
   private terrain!: TerrainSystem;
+  private listener?: THREE.Camera;
   private frozen = false;
 
   private fallEuler = new THREE.Euler();
@@ -450,6 +451,7 @@ export class BirdsSystem implements Subsystem {
   private carryW = { x: 0, z: 0 };
 
   init(ctx: Ctx): void {
+    this.listener = ctx.camera;
     this.coverEvents = ctx.events;
     this.frozen = new URLSearchParams(location.search).has('capture');
     this.hunt = ctx.get<Hunt3DSystem>('hunt3d');
@@ -1455,9 +1457,13 @@ export class BirdsSystem implements Subsystem {
 
   private disturbLaunchCover(slot: Slot): void {
     if (!this.frozen && this.spatialEncounter && slot.species.id === 'ringneck') {
-      const distance = Math.hypot(slot.x - (slot.flight?.hunterX ?? this.hunterX),
-        slot.z - (slot.flight?.hunterZ ?? this.hunterZ));
-      playPheasantFlush(distance, slot.sex === 'rooster');
+      const dx = slot.x - (this.listener?.position.x ?? slot.flight?.hunterX ?? this.hunterX);
+      const dz = slot.z - (this.listener?.position.z ?? slot.flight?.hunterZ ?? this.hunterZ);
+      const distance = Math.hypot(dx, dz), yaw = this.listener?.rotation.y ?? 0;
+      // The camera's local +X is the listener's right. Use the actual
+      // takeoff moment, so a delayed second bird respects a recent turn.
+      const pan = distance > .001 ? (dx * Math.cos(yaw) - dz * Math.sin(yaw)) / distance : 0;
+      playPheasantFlush(distance, slot.sex === 'rooster', pan);
     }
     this.coverEvents?.dispatchEvent(new CustomEvent('bird-cover-disturbance', {
       detail: { x: slot.x, z: slot.z },

@@ -15,7 +15,7 @@ function fixture() {
   const system = new BirdsSystem();
   const runtime = system as unknown as {
     tickBirds(dt: number): void; downBird(id: number): boolean; slots: Array<Record<string, any>>;
-    refinedQuail: boolean; spatialEncounter: boolean; frozen: boolean; hunt: unknown; terrain: unknown;
+    listener?: THREE.Camera; refinedQuail: boolean; spatialEncounter: boolean; frozen: boolean; hunt: unknown; terrain: unknown;
     applySpeciesAppearance: unknown; burstDebris: unknown; launchCover?: QuailFlushDebris; coverEvents?: EventTarget;
   };
   runtime.refinedQuail = true; runtime.spatialEncounter = true; runtime.frozen = true;
@@ -113,12 +113,27 @@ describe('continuous Quail coveys', () => {
         f.add(1,1,4,0); f.birds[0].speciesId='ringneck';f.birds[0].sex=sex;
         f.runtime.applySpeciesAppearance=(slot: any,species:any,sex:any)=>{slot.species=species;slot.sex=sex;};
         f.runtime.tickBirds(1000/30);
-        expect(sound).toHaveBeenLastCalledWith(4,sex==='rooster');
+        expect(sound).toHaveBeenLastCalledWith(4,sex==='rooster',1);
         for(let i=0;i<10;i++)f.runtime.tickBirds(1000/30);
       }
       expect(sound).toHaveBeenCalledTimes(2);
       expect(flutter).not.toHaveBeenCalled();
     } finally {sound.mockRestore();flutter.mockRestore();}
+  });
+  it('positions a delayed pheasant sound against the current listener rather than the original flush camera', () => {
+    const sound=vi.spyOn(audio,'playPheasantFlush').mockImplementation(()=>{});
+    try {
+      const f=fixture();f.add(1,1,4,0);f.birds[0].speciesId='ringneck';
+      f.runtime.tickBirds(1000/30); // Frozen first launch is silent.
+      expect(sound).not.toHaveBeenCalled();
+      const slot=f.runtime.slots[0];Object.assign(slot,{status:'waiting',delayMs:30,x:4,z:0});
+      const camera=new THREE.PerspectiveCamera();camera.position.set(12,2,0);
+      f.runtime.listener=camera;f.runtime.frozen=false;f.runtime.tickBirds(1000/30);
+      expect(sound).toHaveBeenLastCalledWith(8,false,-1);
+      Object.assign(slot,{status:'waiting',delayMs:30});camera.rotation.y=Math.PI/2;
+      f.runtime.tickBirds(1000/30);
+      expect(sound.mock.calls.at(-1)![2]).toBeCloseTo(0,6);
+    } finally {sound.mockRestore();}
   });
   it('disturbs each actual launch once, including late birds, without changing flight or stagger at either quality', () => {
     const reference = fixture();

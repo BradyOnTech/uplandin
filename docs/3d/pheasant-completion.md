@@ -189,3 +189,13 @@ Initial timing checks used this MacBookPro18,3, Apple M1 Pro, 16 GiB memory, Chr
 These measure requestAnimationFrame scheduling alongside the active render loop, corroborated by the engine's advancing rendered-frame counter. They are not GPU timer queries, display-scanout proof, moving-hunt stress measurements, low-end laptop qualification or phone evidence. No performance optimization is claimed. The next performance review should include traversal, active dog work, launches and repeated sessions; actual phone hardware is still required.
 
 All 609 tests across 85 files, TypeScript checking and the production build pass. The existing large-bundle warning remains. The full production goal remains incomplete.
+
+**Directional physical flush audio**
+
+A physical pheasant launch now places its wing burst and optional rooster cackle in stereo using the current camera position and yaw at actual takeoff. Previously the launch sound was centered and distance used the original flush camera, which could be stale for a delayed bird. The default audio API remains centered for callers without a direction. One shared panner handles the short launch burst and disconnects on the final wing-wash completion; source, filter and gain nodes also disconnect after playback. Mute and gesture unlock remain in force. This is launch-time left/right placement, not continuous moving-source tracking or full front/back spatial audio.
+
+An actual browser OfflineAudioContext rendered the procedural rooster launch at three meters with pan -0.8, 0 and +0.8. The measured left/right RMS amplitudes were 0.01651/0.00262, 0.01167/0.01167 and 0.00264/0.01664 respectively. This verifies stereo channel routing, not perceived realism or headphone/speaker quality. The review temporarily substituted an offline context in isolated module instances and restored the normal constructor afterward. An initial decimal-valued module-query suffix triggered a Vite loader error; integer query suffixes resolved the review harness, without an application-source workaround.
+
+Focused coverage exercises the current camera for delayed takeoff, turn-relative pan, silent frozen review, shared routing, node cleanup and muting. Natural listening review, the sound palette and actual phone output remain open.
+
+All 611 tests across 86 files, TypeScript checking and the production build pass. The existing large-bundle warning remains.
