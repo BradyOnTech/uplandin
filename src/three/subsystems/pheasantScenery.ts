@@ -86,9 +86,37 @@ export class PheasantScenerySystem implements Subsystem {
       color: 0xd9dcd4,
       roughness: 0.86,
       transparent: true,
-      opacity: 0.88,
+      opacity: ctx.get<Hunt3DSystem>('hunt3d').condition() === 'snow' ? 0.82 : 0.38,
+      depthWrite: false,
       side: THREE.DoubleSide,
     });
+    snowMaterial.customProgramCacheKey = () => 'seasonal-ground-feather-v1';
+    snowMaterial.onBeforeCompile = shader => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec2 vSeasonUV;\nvarying vec2 vSeasonGround;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSeasonUV = uv;\nvSeasonGround = position.xz;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `#include <common>
+          varying vec2 vSeasonUV;
+          varying vec2 vSeasonGround;
+          float frostNoise(vec2 p) {
+            vec2 i = floor(p), f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            vec4 h = fract(sin(vec4(dot(i, vec2(127.1, 311.7)),
+              dot(i + vec2(1., 0.), vec2(127.1, 311.7)),
+              dot(i + vec2(0., 1.), vec2(127.1, 311.7)),
+              dot(i + vec2(1., 1.), vec2(127.1, 311.7)))) * 43758.5453);
+            return mix(mix(h.x, h.y, f.x), mix(h.z, h.w, f.x), f.y);
+          }
+        `)
+        .replace('#include <color_fragment>', `#include <color_fragment>
+          float grain = frostNoise(vSeasonGround * 3.2);
+          float fringe = frostNoise(vSeasonGround * 1.3);
+          float edge = length(vSeasonUV * 2.0 - 1.0);
+          diffuseColor.a *= (1.0 - smoothstep(.42, .94, edge + (fringe - .5) * .24))
+            * mix(.22, 1.0, smoothstep(.18, .78, grain));
+        `);
+    };
     const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x6a573f, roughness: 1, flatShading: true });
     const branchMaterial = new THREE.MeshStandardMaterial({ color: 0x514331, roughness: 1, flatShading: true });
     const foliageMaterials = [0xb18a34, 0xc29b3c, 0x8f7e38].map((color) => new THREE.MeshStandardMaterial({
@@ -332,6 +360,7 @@ export class PheasantScenerySystem implements Subsystem {
     const condition = ctx.get<Hunt3DSystem>('hunt3d').condition();
     if (condition !== 'snow' && condition !== 'frost') return;
     const positions: number[] = [];
+    const uvs: number[] = [];
     const ponds = pheasantPonds(this.landscape);
     const radius = 220;
     const stepM = condition === 'snow' ? 18 : 25;
@@ -361,6 +390,8 @@ export class PheasantScenerySystem implements Subsystem {
         for (let i = 0; i < segments; i++) {
           const a = i / segments * Math.PI * 2;
           const b = (i + 1) / segments * Math.PI * 2;
+          uvs.push(.5, .5, .5 + Math.cos(a) * .5, .5 + Math.sin(a) * .5,
+            .5 + Math.cos(b) * .5, .5 + Math.sin(b) * .5);
           positions.push(
             this.world.x, surface.height + 0.045, this.world.z,
             this.world.x + Math.cos(a) * rx,
@@ -376,6 +407,7 @@ export class PheasantScenerySystem implements Subsystem {
     if (positions.length === 0) return;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
     const mesh = new THREE.Mesh(geometry, material);

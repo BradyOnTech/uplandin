@@ -231,6 +231,12 @@ Returned to the Pheasant approaches after the Alder work. The old South Gate hea
 
 Walked forward for twelve seconds from South Gate in Standard and West Track in Lightweight. Evidence: `output/playwright/pheasant-aligned-south.png` and `output/playwright/pheasant-aligned-west.png`. The slough/pothole sits beside the approach instead of directly ahead; South Gate also reveals the homestead along the edge. West Track showed the dog tracking a runner at 19 yards. These are entry walks, not full encounters. Bright ground patches in both views were traced to seasonal frost/snow overlay geometry; their solid pale shapes still look artificial and need refinement. No mobile hardware run in this pass.
 
+**Seasonal ground blending**
+
+Seasonal patches now use a feathered radial edge with irregular mottling instead of solid pale polygons. Frost has lower opacity than snow, letting the soil show through. The existing geometry and pond clearance remain; the material adds no textures or draw calls and no longer writes transparent patches into the depth buffer.
+
+Repeated twelve-second entry walks from West Track in Lightweight and South Gate in Standard. Evidence: `output/playwright/pheasant-feathered-frost-west.png` and `output/playwright/pheasant-feathered-frost-south.png`. The conspicuous white plates are gone in these views. Frost is now subtle; the overall scene still needs stronger vegetation grouping, ground variation and shelterbelt composition. Compilation and production build pass with existing chunk warnings, and the reviewed browser page reported no warnings or errors. No simulation tests were rerun for this material-only change. Snow-specific visibility and mobile shader cost remain unreviewed.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.
