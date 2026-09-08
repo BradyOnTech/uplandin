@@ -276,6 +276,8 @@ export class PheasantCoverSystem implements Subsystem {
   private surface: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
   private world = { x: 0, z: 0 };
   private wind = { value: 0 };
+  private hunt!: Hunt3DSystem;
+  private dogBodies = { value: [new THREE.Vector4(0, 0, 0, 0), new THREE.Vector4(0, 0, 0, 0)] };
   private hunterPosition = { value: new THREE.Vector2() };
   private abort = new AbortController();
   private disturbanceCursor = 0;
@@ -292,7 +294,8 @@ export class PheasantCoverSystem implements Subsystem {
       this.disturbances.value[this.disturbanceCursor].set(x, z, ctx.time, 2.6);
       this.disturbanceCursor = (this.disturbanceCursor + 1) % this.disturbances.value.length;
     }) as EventListener, { signal: this.abort.signal });
-    const hunt = ctx.get<Hunt3DSystem>('hunt3d').huntState();
+    this.hunt = ctx.get<Hunt3DSystem>('hunt3d');
+    const hunt = this.hunt.huntState();
     this.windDirection.value.set(Math.cos(hunt.wind), Math.sin(hunt.wind));
     this.windStrength.value = hunt.windStrength === 'calm' ? .35 : hunt.windStrength === 'strong' ? 1.7 : 1;
     const geometries = { prairie: habitatGeometry('prairie', lite), cattail: habitatGeometry('cattail', lite), stubble: habitatGeometry('stubble', lite), litter: habitatGeometry('litter', lite) };
@@ -304,9 +307,10 @@ export class PheasantCoverSystem implements Subsystem {
       shader.uniforms.uPheasantWind = this.wind;
       shader.uniforms.uCoverDisturbance = this.disturbances;
       shader.uniforms.uCoverHunter = this.hunterPosition;
+      shader.uniforms.uCoverDogs = this.dogBodies;
       shader.uniforms.uPheasantWindDirection = this.windDirection;
       shader.uniforms.uPheasantWindStrength = this.windStrength;
-      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uPheasantWind;\nuniform vec2 uPheasantWindDirection;\nuniform float uPheasantWindStrength;\nuniform vec4 uCoverDisturbance[4];\nuniform vec2 uCoverHunter;\nattribute vec3 bladeRoot;')
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uPheasantWind;\nuniform vec2 uPheasantWindDirection;\nuniform float uPheasantWindStrength;\nuniform vec4 uCoverDisturbance[4];\nuniform vec2 uCoverHunter;\nuniform vec4 uCoverDogs[2];\nattribute vec3 bladeRoot;')
         .replace('#include <begin_vertex>', `#include <begin_vertex>
           #ifdef USE_INSTANCING
           float phase = instanceMatrix[3].x * .15 + instanceMatrix[3].z * .11;
@@ -326,6 +330,28 @@ export class PheasantCoverSystem implements Subsystem {
           float bodyBend = bodyPart * 1.2;
           transformed.xz += bodyLocal * position.y * sin(bodyBend);
           transformed.y -= position.y * (1.0 - cos(bodyBend));
+          // Capsule contact follows the visible dog body, never its scent target.
+          // Roots remain fixed and surrounding habitat stays fully opaque.
+          vec2 rootWorld = (instanceMatrix * vec4(bladeRoot, 1.0)).xz;
+          float dogContact = 0.0;
+          vec2 dogDirection = vec2(0.0);
+          for (int dogIndex = 0; dogIndex < 2; dogIndex++) {
+            vec4 dog = uCoverDogs[dogIndex];
+            if (dot(dog.zw, dog.zw) < .5) continue;
+            vec2 relative = rootWorld - dog.xy;
+            vec2 away = relative - dog.zw * clamp(dot(relative, dog.zw), -.45, .45);
+            float contact = 1.0 - smoothstep(.18, .85, length(away));
+            if (contact > dogContact) {
+              dogContact = contact;
+              dogDirection = away / max(length(away), .08);
+            }
+          }
+          vec2 dogLocal = vec2(dot(normalize(instanceMatrix[0].xz), dogDirection),
+            dot(normalize(instanceMatrix[2].xz), dogDirection));
+          // Overlapping bodies must not add bends and fold stems below ground.
+          float dogBend = dogContact * .95 * (1.0 - bodyPart);
+          transformed.xz += dogLocal * position.y * sin(dogBend);
+          transformed.y -= position.y * (1.0 - cos(dogBend));
           for (int i = 0; i < 4; i++) {
             vec4 disturbance = uCoverDisturbance[i];
             float age = uPheasantWind - disturbance.z;
@@ -341,7 +367,7 @@ export class PheasantCoverSystem implements Subsystem {
           }
           #endif`);
     };
-    material.customProgramCacheKey = () => 'pheasant-rooted-cover-wind-v5'; this.materials.push(material);
+    material.customProgramCacheKey = () => 'pheasant-rooted-cover-wind-v6'; this.materials.push(material);
     // Keep the same habitat footprint in both tiers. Distance changes blade
     // complexity, not the height or presence of protective cover.
     const fields = pheasantFields(area), ponds = pheasantPonds(this.landscape);
@@ -481,6 +507,13 @@ export class PheasantCoverSystem implements Subsystem {
   update(ctx: Ctx): void {
     this.wind.value = ctx.time;
     this.hunterPosition.value.set(ctx.camera.position.x, ctx.camera.position.z);
+    for (let slot = 0; slot < this.dogBodies.value.length; slot++) {
+      const body = this.dogBodies.value[slot];
+      if (slot >= this.hunt.dogCount()) { body.set(0, 0, 0, 0); continue; }
+      this.hunt.dogRenderWorld(ctx.fixedAlpha, this.world, slot);
+      const heading = this.hunt.dogRenderHeading(ctx.fixedAlpha, slot);
+      body.set(this.world.x, this.world.z, Math.cos(heading), Math.sin(heading));
+    }
     for (const batch of this.batches) {
       // Distance to the actual parcel footprint avoids keeping an entire
       // diagonal sphere in the most expensive detail tier.
