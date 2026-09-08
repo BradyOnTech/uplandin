@@ -114,7 +114,7 @@ class Batch {
 }
 
 export function createSportingShotgun(action: 'pump' | 'semi-auto'): SportingShotgun {
-  const root = new THREE.Group(); root.name = action === 'pump' ? 'Quail sporting pump' : 'Quail sporting semiautomatic';
+  const root = new THREE.Group(); root.name = action === 'pump' ? 'Sporting pump' : 'Sporting semiautomatic';
   const materials = {
     steel: new THREE.MeshStandardMaterial({ color: 0x2d3945, metalness: .32, roughness: .50 }),
     edge: new THREE.MeshStandardMaterial({ color: 0x45515b, metalness: .4, roughness: .53 }),

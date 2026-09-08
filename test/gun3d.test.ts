@@ -9,6 +9,31 @@ vi.mock('../src/audio', () => ({ playShot: vi.fn(), unlockAudio: vi.fn(), playAc
 describe('3D shotgun action', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it.each(['pheasant-coverts', 'quail-fields', 'chukar-ridge'])('shows the equipped sporting action on %s with its bead on the shot ray', areaId => {
+    for (const gunId of ['semi-auto', 'remington-870']) {
+      vi.stubGlobal('window', new EventTarget());
+      vi.stubGlobal('location', { search: '?capture' });
+      vi.stubGlobal('document', { getElementById: () => null });
+      const hunt = { huntState: () => ({ areaId, gunId, birds: [] }),
+        dog: () => ({ state: 'quartering', pointedBirdId: null }), dogCount: () => 1 };
+      const camera = new THREE.PerspectiveCamera(70, 1.6, .1, 1000);
+      camera.position.set(14, 8, -20); camera.rotation.set(.2, -.4, 0, 'YXZ'); camera.updateMatrixWorld();
+      const ctx = { scene: new THREE.Scene(), camera, renderer: { domElement: new EventTarget() },
+        events: new EventTarget(), quality: 'high', timeOfDay: 'noon', time: 0, paused: false,
+        get: (id: string) => ({ hunt3d: hunt, birds: { riseSequence: () => 0 }, terrain: { heightAt: () => 0 } }[id]),
+      } as unknown as Ctx;
+      const gun = new GunSystem(); gun.init(ctx);
+      const audit = (window as unknown as { __gunAudit: { setState(mode: string): void; viewmodel(): { model: string; beadNdc: { x: number; y: number } } } }).__gunAudit;
+      audit.setState('mount'); gun.update(ctx, 0);
+      const view = audit.viewmodel();
+      expect(view.model).toBe(gunId === 'semi-auto' ? 'Sporting semiautomatic' : 'Sporting pump');
+      expect(gun.shellsRemaining()).toBe(3);
+      expect(Math.abs(view.beadNdc.x)).toBeLessThan(.002);
+      expect(Math.abs(view.beadNdc.y)).toBeLessThan(.002);
+      gun.dispose(ctx);
+    }
+  });
+
   it.each(['tree', 'terrain', 'open'])('consumes a shell and resolves only a clear shot (%s)', obstruction => {
     const blocked = obstruction !== 'open';
     vi.stubGlobal('window', new EventTarget());

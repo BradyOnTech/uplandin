@@ -14,7 +14,7 @@ import { createSportingShotgun, type SportingShotgun } from '../assets/shotgun';
 /*
  * GUN subsystem — the player finally exists.
  *
- * Quail Fields' configured pump/semiautomatic uses the sporting walnut/steel
+ * The equipped pump/semiautomatic uses the sporting walnut/steel
  * asset with separate gloved hands and visible cosmetic shell loading. The
  * legacy low-poly SIDE-BY-SIDE shotgun viewmodel (the upland classic: two
  * muzzles and a broad breech face silhouette wider than any over/under
@@ -350,7 +350,7 @@ export class GunSystem implements Subsystem {
     this.todHandler = ((e: CustomEvent) => applyTod(e.detail)) as EventListener;
     ctx.events.addEventListener('tod', this.todHandler);
 
-    if (this.hunt.huntState().areaId === 'quail-fields' && (this.gun.id === 'semi-auto' || this.gun.id === 'remington-870')) {
+    if (this.gun.id === 'semi-auto' || this.gun.id === 'remington-870') {
       this.sporting = createSportingShotgun(this.gun.id === 'remington-870' ? 'pump' : 'semi-auto');
       this.rig.add(this.sporting.root);
       this.rig.scale.setScalar(1);
