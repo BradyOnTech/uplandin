@@ -58,8 +58,10 @@ export function pheasantPointGuidance(dogDistanceM: number, dogHeading: number):
   if (dogDistanceM > 12) return 'Walk toward the point. Watch above the cover and identify the rooster before firing.';
   // The dog's body direction is observable; never aim this cue at a hidden bird.
   // Dog headings use +x east and +y south in property coordinates.
-  const direction = fieldCompassHeading(-dogHeading - Math.PI / 2).cardinal;
-  return `Dog facing ${direction}. Walk past its nose into cover; identify the bird before firing.`;
+  const heading = fieldCompassHeading(-dogHeading - Math.PI / 2);
+  const direction = `${heading.cardinal} ${String(heading.degrees).padStart(3, '0')}°`;
+  if (dogDistanceM > 3) return `Dog facing ${direction}. Close to the dog first, then follow its nose into cover.`;
+  return `Follow the dog's nose ${direction} into cover. Identify the bird before firing.`;
 }
 
 export function pointApproachCue(dogDistanceM: number, running: boolean, areaId = ''): string {
