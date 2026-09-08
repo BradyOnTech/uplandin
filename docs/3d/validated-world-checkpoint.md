@@ -319,6 +319,12 @@ Ray inspection of the West vista traced the pale band to the camera-following de
 
 Extended the real SkySystem ordering regression to both Chukar quality modes while retaining checks for Quail and unchanged properties. All six focused checks, compilation and build pass with existing chunk warnings. Evidence: `output/playwright/chukar-background-depth.png` (assisted static Lightweight viewpoint) and `output/playwright/chukar-background-depth-high.png` (eighteen-second Standard walk). The farther slope and vegetation are now visible. A pale horizon transition remains and needs separate treatment; this correction does not establish a finished background composition. The Standard page reported no warnings or errors. No new geometry or rendering passes were added, and no mobile benchmark was performed.
 
+**Chukar fog and redundant lowland strip**
+
+Follow-up ray checks showed the remaining seam was not missing ridge geometry: some pale pixels belonged to fogged real terrain, contrasting with warmer background haze. Matched Chukar background haze to the actual scene fog color. A first comparison still showed a tan strip from the nearest decorative landform, so removed that redundant layer; Chukar already renders terrain beyond the property. Three mountain layers remain behind the world, saving one mesh and its 2,048 triangles. Other properties are unchanged.
+
+Assisted Standard viewpoint evidence: `output/playwright/chukar-real-terrain-background.png`; `chukar-haze-match.png` is the intermediate color-only pass. The conspicuous tan band is gone and the far slope transitions more continuously into the background. The skyline remains simple, and other viewing directions and times of day still need review. All six sky-ordering checks, compilation and build pass with existing chunk warnings. No complete encounter or mobile hardware review was repeated for this background change.
+
 **Next work, in order**
 
 1. Use the Seed 1 South reference route to judge environment improvements from arrival through the known runner encounter. Review a full encounter with ordinary aiming separately; the assisted reference does not establish input usability.

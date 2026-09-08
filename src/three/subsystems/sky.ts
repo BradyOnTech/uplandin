@@ -400,18 +400,16 @@ const QUAIL_RIDGES: RidgeProfile = {
 
 const CHUKAR_RIDGES: RidgeProfile = {
   layers: [
-    { radius: 255, base: 1, amp: 32, far: 0, fogMix: 0.02, hazeAmt: 0.3, jag: 0.08, freqs: [3, 7, 17], noiseScale: 0.72, land: true },
     { radius: 350, base: 12, amp: 78, far: 0.12, fogMix: 0.08, hazeAmt: 0.5, jag: 0.12, freqs: [3, 8, 21], noiseScale: 0.78 },
     { radius: 515, base: 24, amp: 102, far: 0.52, fogMix: 0.15, hazeAmt: 0.76, jag: 0.18, freqs: [4, 9, 23], noiseScale: 0.62 },
     { radius: 735, base: 34, amp: 132, far: 0.72, fogMix: 0.22, hazeAmt: 0.94, jag: 0.2, freqs: [3, 7, 19], noiseScale: 0.55 },
   ],
   features: [
-    [{ c: -28, h: 0.75, sl: 28, sr: 38 }, { c: 78, h: 0.62, sl: 32, sr: 25 }, { c: 168, h: 0.58, sl: 30, sr: 34 }],
     [{ c: -34, h: .85, sl: 12, sr: 26 }, { c: 52, h: .72, sl: 15, sr: 27 }, { c: 101, h: 1.05, sl: 9, sr: 20 }, { c: 124, h: -.28, sl: 7, sr: 10 }, { c: 150, h: .8, sl: 15, sr: 25 }],
     [{ c: -58, h: .72, sl: 20, sr: 32 }, { c: 38, h: .64, sl: 26, sr: 18 }, { c: 119, h: .95, sl: 13, sr: 25 }, { c: 164, h: .62, sl: 17, sr: 28 }],
     [{ c: -80, h: 0.62, sl: 42, sr: 55 }, { c: 20, h: 0.7, sl: 45, sr: 58 }, { c: 126, h: 0.65, sl: 40, sr: 52 }],
   ],
-  segments: [1024, 896, 640, 512],
+  segments: [896, 640, 512],
   treeCount: 0,
   verticalFollow: 0.72,
 };
@@ -978,7 +976,9 @@ export class SkySystem implements Subsystem {
           .lerp(this.ridgeFar, this.ridgeProfile.layers[l].far)
           .lerp(this.fogCol, this.ridgeProfile.layers[l].fogMix);
       }
-      (ru.uHaze.value as THREE.Color).copy(this.hazeCol);
+      // Chukar's exposed downhill terrain already fades to the scene fog.
+      // Match that colour at the backdrop base to avoid a contrasting band.
+      (ru.uHaze.value as THREE.Color).copy(this.areaId === 'chukar-ridge' ? this.fogCol : this.hazeCol);
       (ru.uSpill.value as THREE.Color).setHex(spec.hotBand);
       ru.uSpillStrength.value = spec.hotStrength * 0.55 * (1 - 0.55 * this.ridgeProfile.layers[l].far);
       (ru.uSunXZ.value as THREE.Vector2).set(sx / sunFlatLen, sz / sunFlatLen);
