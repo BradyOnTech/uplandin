@@ -251,6 +251,26 @@ function geometryFor(kind: HabitatKind, style: HuntStyle): THREE.BufferGeometry 
     if (style === 'alpine-edge') return new THREE.ConeGeometry(1, 2, 7, 2);
     return canopyGeometry(style);
   }
+  if (kind === 'reed' && style === 'bottoms') {
+    const positions: number[] = [];
+    for (let i = 0; i < 7; i++) {
+      const angle = i * 2.4, height = .4 + (i % 3) * .15;
+      const stalk = new THREE.ConeGeometry(.022, height, 4, 1).toNonIndexed();
+      stalk.translate(0, height / 2, 0);
+      stalk.rotateZ(Math.sin(angle) * .22);
+      stalk.translate(Math.cos(angle) * .16, 0, Math.sin(angle) * .16);
+      positions.push(...Array.from(stalk.getAttribute('position').array));
+      stalk.dispose();
+      const x = Math.cos(angle), z = Math.sin(angle);
+      positions.push(x * .08, .05, z * .08,
+        x * .08 - z * .035, height * .5, z * .08 + x * .035,
+        x * .42, height * .38, z * .42);
+    }
+    const clump = new THREE.BufferGeometry();
+    clump.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    clump.computeVertexNormals();
+    return clump;
+  }
   if (kind === 'reed') {
     const geo = new THREE.ConeGeometry(.035, 1, 5, 1);
     geo.translate(0, .5, 0); return geo;

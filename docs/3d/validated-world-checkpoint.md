@@ -157,6 +157,12 @@ Removed the separate mud strip, which bridged over the basin and left an angular
 
 Reviewed assisted pool views in both display modes. Evidence: `output/playwright/woodcock-terrain-shore-lite.png` and `output/playwright/woodcock-shore-cleared-high.png`. The floating rim is gone. Standard review still shows a thin vertical object near the water that needs tracing to its source; shoreline clutter is not fully resolved. Six focused checks pass, including level water, basin height and texture fallback. Compilation passes after the final habitat exclusion; the production build passed before that last exclusion. The previous full-suite result remains 553 tests. No mobile or full encounter validation in this pass.
 
+**Reed identification and shore walk**
+
+Traced the thin object with a temporary browser ray inspection: it was shared reed habitat instance 349 on the near bank, not a tree in the water. The one-cone reed looked like a pole. Bottoms reeds now use seven shorter, uneven stems with spreading blades in one shared geometry. No inspection hooks were added to the repository; temporary browser prototype changes were restored or cleared by reload.
+
+Evidence: `output/playwright/woodcock-reed-clumps.png` and `output/playwright/woodcock-shore-walk.png`. Started from the assisted review position and used normal forward input for ten seconds. The player entered the pool at normal speed, confirming that water traversal still lacks a distinct response. The final Standard view reported 49 draws, 591,964 triangles, a 10-millisecond 95th-percentile frame interval and a 158.2-millisecond maximum interval; no mobile inference is justified. Compilation and build pass with existing chunk warnings. This visual-only change did not rerun simulation tests. Next gameplay work should define shallow-water movement and dog behavior rather than hide this gap with more scenery.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.
