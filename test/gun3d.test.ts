@@ -9,18 +9,20 @@ vi.mock('../src/audio', () => ({ playShot: vi.fn(), unlockAudio: vi.fn(), playAc
 describe('3D shotgun action', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it.each([true, false])('consumes a shell and only resolves a hit with an open shot (blocked=%s)', blocked => {
+  it.each(['tree', 'terrain', 'open'])('consumes a shell and resolves only a clear shot (%s)', obstruction => {
+    const blocked = obstruction !== 'open';
     vi.stubGlobal('window', new EventTarget());
     vi.stubGlobal('location', { search: '' });
     vi.stubGlobal('document', { getElementById: () => null });
     const target = { simId: 5, x: 0, y: 0, z: -12, status: 'flying' };
     const hunt = { dog: () => ({ state: 'quartering', pointedBirdId: null }), dogCount: () => 1, huntState: () => ({ gunId: 'over-under', birds: [] }), resolveBird: vi.fn(() => true) };
-    const habitat = { blocksShot: vi.fn(() => blocked) };
+    const habitat = { blocksShot: vi.fn(() => obstruction === 'tree') };
     const birds = { riseSequence: () => 1, isRiseActive: () => true, downBird: vi.fn(), shootRay: (origin: THREE.Vector3, direction: THREE.Vector3, spread: number, visible: (candidate: typeof target) => boolean) =>
       pickBirdAlongRay([target], origin, direction, spread, visible) };
     const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), renderer: { domElement: new EventTarget() },
       events: new EventTarget(), quality: 'high', timeOfDay: 'noon', time: 10, paused: false,
-      get: (id: string) => ({ hunt3d: hunt, birds, 'property-habitat': habitat, terrain: { heightAt: () => 0 } }[id]),
+      get: (id: string) => ({ hunt3d: hunt, birds, 'property-habitat': habitat,
+        terrain: { heightAt: (_x: number, z: number) => obstruction === 'terrain' ? Math.max(0, 2 - Math.abs(z + 6)) : 0 } }[id]),
     } as unknown as Ctx;
     vi.stubGlobal('document', { getElementById: () => null, pointerLockElement: ctx.renderer.domElement });
     const gun = new GunSystem(); gun.init(ctx);
@@ -28,7 +30,7 @@ describe('3D shotgun action', () => {
     const click = Object.assign(new Event('mousedown'), { button: 0 });
     window.dispatchEvent(click);
     expect(gun.shellsRemaining()).toBe(1);
-    expect(habitat.blocksShot).toHaveBeenCalledOnce();
+    expect(habitat.blocksShot).toHaveBeenCalledTimes(obstruction === 'terrain' ? 0 : 1);
     expect(hunt.resolveBird).toHaveBeenCalledTimes(blocked ? 0 : 1);
     expect(birds.downBird).toHaveBeenCalledTimes(blocked ? 0 : 1);
     gun.dispose(ctx);

@@ -7,6 +7,7 @@ import type { BirdsSystem } from './birds';
 import type { Hunt3DSystem } from './hunt3d';
 import type { TerrainSystem } from './terrain';
 import type { PropertyHabitatSystem } from './propertyHabitat';
+import { terrainBlocksShot } from '../shotVisibility';
 import { createSportingShotgun, type SportingShotgun } from '../assets/shotgun';
 
 /*
@@ -540,7 +541,8 @@ export class GunSystem implements Subsystem {
       ctx.camera.position,
       this.fwd,
       this.gun.spread / 400,
-      target => !habitat?.blocksShot?.(ctx.camera.position, target),
+      target => !terrainBlocksShot(ctx.camera.position, target, (x, z) => this.terrain.heightAt(x, z))
+        && !habitat?.blocksShot?.(ctx.camera.position, target),
     );
     const hit = birdId !== null && this.hunt.resolveBird(birdId, 'downed');
     if (hit && birdId !== null) {

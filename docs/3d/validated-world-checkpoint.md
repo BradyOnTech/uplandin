@@ -99,6 +99,12 @@ Inspection confirmed the gun selected airborne birds solely from the shot patter
 
 New checks cover a shot through a real trunk, a shot above it, a target before it, hidden rendering cells, and disposal. Gun integration checks confirm that both blocked and open shots consume a shell, while only the open shot resolves a downed bird. Compilation and the production build pass. The earlier assisted browser delivery predates this obstruction rule and does not prove a successful shot with it enabled. Terrain, rocks, buildings, and other maps' scenery are still outside this new trunk check and need further review.
 
+**Terrain shot obstruction**
+
+Shots now check the shared terrain heightfield before checking woodland trunks. Candidate paths are sampled at half-metre horizontal intervals, with a four-centimetre grazing tolerance. This applies across properties independently of rendering quality or terrain LOD. A ridge between two otherwise exposed endpoints blocks the shot; a clear rising shot above it does not. Sampling is an approximation, not exact triangle intersection, and runs only when firing at an in-pattern target.
+
+Checks cover intervening crests, rising and downhill shots, vertical paths, grazing tolerance, and gun integration. A terrain-blocked shot consumes ammunition without resolving a hit. Compilation and the production build pass. This pass did not repeat the browser encounter; the earlier successful assisted shot predates terrain and trunk obstruction. Rock and building obstruction, ordinary aiming, and the feel of flight opportunities remain outstanding.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.
