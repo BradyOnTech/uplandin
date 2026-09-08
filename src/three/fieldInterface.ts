@@ -1,3 +1,4 @@
+import { bindTouchActionControl } from './touchActionControl';
 import { bindTouchShotControl } from './touchShotControl';
 import { HUNT_CHALLENGES, HUNT_CHALLENGE_KEY, parseHuntChallenge } from '../game/huntChallenge';
 import { resolveThreeHuntChallenge } from '../game/gameplayMode';
@@ -151,15 +152,15 @@ export class FieldInterface {
           events: this.engine.ctx.events });
         continue;
       }
-      button.addEventListener('click', () => {
-        if (this.engine.ctx.paused) return;
+      bindTouchActionControl(button, { signal, enabled: () => !this.engine.ctx.paused,
+        events: this.engine.ctx.events, activate: () => {
         let action = button.dataset.action;
         if (action === 'aim') {
           const next = button.getAttribute('aria-pressed') !== 'true';
           button.setAttribute('aria-pressed', String(next)); action = next ? 'mount' : 'lower';
         }
         this.engine.ctx.events.dispatchEvent(new CustomEvent('hunt-action', { detail: action }));
-      }, { signal });
+      } });
     }
   }
   loading = (id: string, current: number, total: number): void => {
