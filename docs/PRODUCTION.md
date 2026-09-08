@@ -1,5 +1,7 @@
 # Uplandin — Production Roadmap (executable)
 
+For the approved Quail Fields 3D production work, use [the 3D slice plan](3d/PRODUCTION-SLICE.md). The roadmap below records the original 2D pixel-art pipeline and is not the acceptance standard for the 3D slice.
+
 Living plan from **current main** to a production-quality, visually
 seamless GBA-scale hunting game. Companion to `docs/ART.md` (prompts +
 style) and `docs/DESIGN.md` (sim). Check items off as they ship.

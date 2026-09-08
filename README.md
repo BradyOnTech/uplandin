@@ -8,9 +8,10 @@ Phaser 3, Three.js, and Vite. Installable as a PWA: serve the
 production build over HTTPS, open it on your phone, and "Add to Home
 Screen" — it runs fullscreen landscape and boots from cache offline.
 
-**Status: the full design plan plus shared 2D/3D hunting is shipped.** The
-living spec is [docs/DESIGN.md](docs/DESIGN.md); this
-README is the summary.
+**Status: shared 2D/3D hunting is implemented; the 3D art is still being refined.**
+The current milestone is one complete Quail Fields hunt with a rigged GSP.
+See the [3D production slice](docs/3d/PRODUCTION-SLICE.md) for scope and open quality gates,
+and [docs/DESIGN.md](docs/DESIGN.md) for the broader game design.
 
 ## Playing
 
@@ -20,6 +21,12 @@ npm run dev     # Vite dev server (usually http://localhost:5173)
 npm test        # Vitest suite over the pure sim
 npm run build   # production build
 ```
+
+For the current 3D slice, run `npm run dev:3d` and open `/index3d.html`.
+The standalone Quail field defaults to the liver-and-white GSP and morning light.
+`?drop=west-track` selects the second truck drop; `?quality=lite` selects lighter rendering.
+Saved Career and Quick Hunt launches retain their selected dogs and gear.
+Physical mobile readiness remains unverified; the 3D interface now includes touch controls.
 
 Two modes from the title screen:
 
@@ -121,7 +128,9 @@ Dev helpers: `?doglevel=N` on the URL runs career hunts at that dog level
 
 ## What's left
 
-- **Production polish** — executable roadmap in [`docs/PRODUCTION.md`](docs/PRODUCTION.md)
+- **3D production slice** — [Quail Fields plan and quality gates](docs/3d/PRODUCTION-SLICE.md),
+  [engine contract](ARCHITECTURE-3D.md), and [Blender GSP source](docs/3d/gsp-asset.md).
+- **2D production polish** — historical roadmap in [`docs/PRODUCTION.md`](docs/PRODUCTION.md)
   (AI-only art finish path; no human pixel-artist gate). Style + prompts:
   [`docs/ART.md`](docs/ART.md). In-engine so far: SP flush plate, bobwhite,
   English Setter (4-frame gait + point), SP tiles, bitmap font, cover edge
