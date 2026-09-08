@@ -97,7 +97,7 @@ export class PropertyTrailsSystem implements Subsystem {
     this.geometry.setIndex(indices);
     this.geometry.computeVertexNormals();
     this.material = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, transparent: true, opacity, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-    this.material.customProgramCacheKey = () => 'property-route-soft-shoulder-v1';
+    this.material.customProgramCacheKey = () => `property-route-soft-shoulder-v2-${areaId === 'pheasant-coverts'}`;
     this.material.onBeforeCompile = shader => {
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nattribute float routeEdge; varying float vRouteEdge; varying vec2 vRouteWorld;')
@@ -107,6 +107,16 @@ export class PropertyTrailsSystem implements Subsystem {
         .replace('#include <color_fragment>', `#include <color_fragment>
           float shoulder = abs(vRouteEdge) + sin(vRouteWorld.x * 2.1 + sin(vRouteWorld.y * 1.7)) * .07;
           diffuseColor.a *= 1.0 - smoothstep(.5, 1.0, shoulder);
+          ${areaId === 'pheasant-coverts' ? `
+          // Wheel wear belongs inside the existing farm lane. The center
+          // and soft shoulders retain more of the underlying grass color.
+          float wander = sin(vRouteWorld.x * .31 + vRouteWorld.y * .23) * .016;
+          float wheelDistance = abs(abs(vRouteEdge + wander) - .43);
+          float wheelWear = 1.0 - smoothstep(.065, .15, wheelDistance);
+          float brokenWear = .78 + .22 * sin(vRouteWorld.x * 1.9 + vRouteWorld.y * 1.3);
+          diffuseColor.a *= .18 + wheelWear * brokenWear * 2.0;
+          diffuseColor.rgb *= mix(1.0, .83, wheelWear);
+          ` : ''}
           diffuseColor.rgb *= .97 + .06 * sin(vRouteWorld.x * 3.7) * sin(vRouteWorld.y * 4.1);
         `);
     };

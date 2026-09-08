@@ -257,3 +257,14 @@ The first implementation exposed a quality-tier regression: omitted Lightweight 
 The assisted West Track view at (97.95,156.69), yaw 0, pitch -8, morning, is recorded in `output/playwright/pheasant-harvest-fringe-before.png`, `pheasant-harvest-fringe-after.png` and `pheasant-harvest-fringe-lite.png`. Standard reported 1,755,431 triangles before and 1,756,269 after at 137 draws. Lightweight reported 1,023,508 triangles and 107 draws. The visual change fills some abrupt bare verge gaps without a new material or draw batch. These are static shape comparisons, not complete hunt or mobile performance evidence.
 
 All 616 tests across 86 files, TypeScript checking and production build pass; the existing large-bundle warning remains. Track shoulders, broader habitat composition and full ordinary-hunt acceptance remain open.
+
+
+**Farm-lane wear and readable low-sun light**
+
+The existing Pheasant route ribbon now emphasizes two softly edged wheel-wear bands, leaving more ground color visible along its center and shoulders. This is surface wear, not a physical rut depression. Slight width and wear variation keeps the bands from being completely uniform. The change uses the existing geometry/material pass and does not widen the route or remove vegetation. Other properties retain their prior route shader.
+
+The staged West Track view at (32,75), yaw -138, pitch -8, morning, is recorded in `output/playwright/pheasant-track-wear.png`; the earlier plain-lane comparison is `pheasant-verge-before.png`. The evening Lightweight review exposed a larger palette problem: inherited saturated key light made vegetation orange while shaded ground became nearly black. Pheasant dawn/evening now use a softer warm key, a lighter blue-gray sky ambient and stronger ambient contribution. The sun angle, sky, time progression and other properties are unchanged.
+
+`pheasant-track-wear-evening-lite.png` records the pre-adjustment evening light; `pheasant-evening-balanced.png` and `pheasant-dawn-balanced.png` show the revised low-sun balance. The evening comparison retains 134 draws and 823,543 triangles. This improves visible ground detail and keeps warmth in the foliage; it does not establish ordinary bird-identification acceptance at low sun.
+
+TypeScript checking and production build pass after both edits; the existing large-bundle warning remains. No new tests were added for these visual-only changes. The previous full-suite result remains 616 passing tests, predating this pass. Walking-height composition and complete hunts remain the next evidence priority.

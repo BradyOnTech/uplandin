@@ -571,7 +571,8 @@ const PHEASANT_TOD = Object.fromEntries((Object.keys(TOD) as TimeOfDay[]).map((t
   } : tod === 'dawn' || tod === 'evening' ? {
     skyTop: 0x536d82, skyMid: 0xa7afb0, skyHorizon: 0xd7b69b,
     fogColor: 0xa9b2b2, fogDensity: .00225, fillColor: 0x9cb6c9,
-    fillIntensity: .48, ambientGround: 0x69645e, ambientIntensity: .84,
+    sunColor: 0xffcf96, sunIntensity: 2.7,
+    fillIntensity: .48, ambientSky: 0xabb8c3, ambientGround: 0x69645e, ambientIntensity: 1.18,
     floraWarm: .23, floraCool: .55, exposure: 1.01,
   } : {
     skyTop: 0x3b536b, skyMid: 0x7d8e9f, skyHorizon: 0xbca39d,
