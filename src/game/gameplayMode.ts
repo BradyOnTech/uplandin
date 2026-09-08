@@ -1,4 +1,5 @@
-import { getArea, type AreaConfig } from './areas';
+import { areaBirdCount, getArea, type AreaConfig } from './areas';
+import { getSpecies } from './species';
 import { BREEDS, getBreed, type BreedConfig } from './breeds';
 import {
   activeDog,
@@ -219,6 +220,16 @@ export function createThreeHuntSetup(
       // their authored route network to place cover encounters; 2D callers
       // never pass this option and retain the original scatter behavior.
       birdRng: authoredBirdRng,
+      // The old acreage formula can yield fewer birds than one Chukar or
+      // Hun covey. A full 3D property needs more than one opportunity even
+      // after an opening covey escapes. Weights are shares of birds, so the
+      // harmonic mean matches spawnBirds' covey-weight conversion.
+      birdCount: Math.max(areaBirdCount(resolvedArea), Math.round(3 *
+        resolvedArea.speciesMix.reduce((sum, entry) => sum + entry.weight, 0) /
+        resolvedArea.speciesMix.reduce((sum, entry) => {
+          const species = getSpecies(entry.speciesId);
+          return sum + entry.weight / ((species.coveyMin + species.coveyMax) / 2);
+        }, 0))),
       coveyAnchors: authoredEncounterAnchors(resolvedArea, dropPointId, authoredEncounterRng),
     } : {
       birdCount: QUAIL_FIELD_BIRD_COUNT,

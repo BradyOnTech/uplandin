@@ -37,6 +37,12 @@ The vegetation pass varies shelterbelt spacing, mature-tree breadth, and sapling
 
 Desktop browser telemetry at the stationary South Gate: Lightweight reported 140 draws and 197,268 triangles at 1228×750; Standard reported 148 draws and 472,912 triangles at 1842×1125. Both recorded a recent 95th-percentile frame interval around 10.2 ms, over different sample durations. These are scene baselines on this desktop, not a controlled before/after benchmark, phone measurement, GPU-time measurement, or encounter stress test.
 
+**Chukar cross-map review**
+
+The South Gate approach has a clear sidehill and uphill dog behavior, but sparse sage/bunchgrass and dark repeated rock ribs leave the setting unfinished. A 22-second walk followed by observation ended the original hunt with eight birds lost: acreage stocking had supplied only one covey. Added a non-Quail 3D stocking baseline of three expected groups, using the same bird-share to covey-share conversion as spawning. The existing acreage count remains the lower bound, and challenge multipliers still apply. Tests verify another spatially separated opportunity after the opening covey on Chukar, Hun, and Sharptail properties at both gates and all challenges.
+
+Repeated the same Chukar walk: a covey rose, escaped, and the session returned to hunting. Evidence is in `output/playwright/chukar-bench-review.png` before and `output/playwright/chukar-after-opening-escape.png` after. All 530 tests pass. The complete shot/retrieve loop remains unverified; improving the rocky-map vegetation and landform presentation remains necessary.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.
