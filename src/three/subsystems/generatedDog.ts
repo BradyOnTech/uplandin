@@ -1,3 +1,5 @@
+import { LandscapeModel } from '../../game/landscape';
+import { ShallowWater } from '../../game/shallowWater';
 import * as THREE from 'three';
 import type { Ctx, Subsystem } from '../engine';
 import type { Hunt3DSystem } from './hunt3d';
@@ -24,11 +26,12 @@ export class GeneratedDogSystem implements Subsystem {
     if(!this.motion)return null;
     const mouth=new THREE.Vector3();this.mouthWorld(mouth);
     return {source:'generated-gsp',version:1,frame:this.auditFrame,state:this.hunt.dog().state,moving:this.motion.moving,speed:this.speed,gait:this.motion.gait,
-      clamped:this.motion.clamped,stats:this.motion.asset.stats,root:this.motion.asset.root.position.toArray(),mouth:mouth.toArray(),feet:this.motion.contactSnapshot()};
+      swimming:this.motion.swimming,clamped:this.motion.clamped,stats:this.motion.asset.stats,root:this.motion.asset.root.position.toArray(),mouth:mouth.toArray(),feet:this.motion.contactSnapshot()};
   };
   init(ctx:Ctx){
     this.hunt=ctx.get<Hunt3DSystem>('hunt3d');const terrain=ctx.get<TerrainSystem>('terrain');
-    this.motion=new GeneratedFieldMotion(ctx.quality,(x,z)=>terrain.heightAt(x,z));ctx.scene.add(this.motion.asset.root);
+    const water=new ShallowWater(new LandscapeModel(this.hunt.areaConfig(),this.hunt.dropPoint().id));
+    this.motion=new GeneratedFieldMotion(ctx.quality,(x,z)=>terrain.heightAt(x,z),(x,z)=>water.depthAtWorld(x,z));ctx.scene.add(this.motion.asset.root);
     (window as unknown as {__generatedDogAudit?:unknown}).__generatedDogAudit=this.audit;
   }
   update(ctx:Ctx,dt:number){

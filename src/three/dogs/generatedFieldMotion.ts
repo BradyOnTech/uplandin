@@ -24,13 +24,31 @@ export class GeneratedFieldMotion {
   private transitionFree=[false,false,false,false];
   private pose: {node:THREE.Bone;previousPosition:THREE.Vector3;previousRotation:THREE.Quaternion;fromPosition:THREE.Vector3;fromRotation:THREE.Quaternion}[];
   private groundNormal(x:number,z:number,out:THREE.Vector3) {const e=.04;return out.set(this.ground(x-e,z)-this.ground(x+e,z),2*e,this.ground(x,z-e)-this.ground(x,z+e)).normalize();}
-  constructor(detail:'high'|'lite',private ground:(x:number,z:number)=>number) {
+  swimming=false;
+  constructor(detail:'high'|'lite',private ground:(x:number,z:number)=>number,private waterDepth:(x:number,z:number)=>number=()=>0) {
     this.asset=createGeneratedGsp(detail,true);
     this.pose=Object.values(this.asset.joints).map(node=>({node,previousPosition:node.position.clone(),previousRotation:node.quaternion.clone(),fromPosition:node.position.clone(),fromRotation:node.quaternion.clone()}));
   }
   update(x:number,z:number,yaw:number,dt:number,moving:boolean,point:boolean) {
     const root=this.asset.root,ground=this.ground(x,z),distance=this.placed?Math.hypot(x-this.last.x,z-this.last.z):0;
-    const reset=!this.placed||distance>3;
+    const depth=this.waterDepth(x,z);
+    const wasSwimming=this.swimming;
+    this.swimming=depth>(wasSwimming?.38:.48);
+    if(this.swimming){
+      this.cycle=(this.cycle+Math.max(0,dt)*1.25)%1;
+      this.gait='walk';
+      this.asset.setLocomotion('walk',this.cycle);
+      // Keep the torso afloat while submerged paws paddle freely. Ground
+      // contact solving would otherwise pin the body to the basin floor.
+      root.position.set(x,ground+Math.max(0,depth-.4),z);root.rotation.set(0,yaw,0);
+      root.updateMatrixWorld(true);
+      this.feet.forEach((foot,i)=>{foot.locked=false;foot.initialized=false;this.asset.paws[i].getWorldPosition(foot.target);});
+      this.pointPresence=0;this.clamped=0;this.wasMoving=true;
+      this.last.set(x,ground,z);this.lastYaw=yaw;this.placed=true;
+      this.pose.forEach(p=>{p.previousPosition.copy(p.node.position);p.previousRotation.copy(p.node.quaternion);});
+      return;
+    }
+    const reset=!this.placed||distance>3||wasSwimming;
     const turnRate=reset||dt<=0?0:Math.abs(Math.atan2(Math.sin(yaw-this.lastYaw),Math.cos(yaw-this.lastYaw)))/dt;
     const pivoting=turnRate>1;
     const wasRaised=!this.wasMoving&&this.pointPresence>0;

@@ -175,6 +175,12 @@ The existing water material now draws up to eight expanding, fading ripple rings
 
 Reviewed Lightweight mode with an assisted downward view and normal forward input. Evidence: `output/playwright/woodcock-wading-ripples.png` and `output/playwright/woodcock-ripples-settled.png`. Rings appeared during movement and disappeared after stopping. Compilation and production build pass with existing chunk warnings. No simulation tests rerun for this presentation change. This close view also exposes unfinished dog water height and the weapon intersecting the water when looking down; neither is fixed by ripple feedback. Mobile shader cost remains unmeasured.
 
+**Generated GSP initial flotation**
+
+The generated dog's motion controller now releases terrain contacts in deeper water and positions its body relative to the surface. It restores ground contacts on returning to shore. Entry and exit depths differ slightly to prevent rapid switching. The current paddle is a time-driven reuse of the walking cycle, not an authored swimming gait; swimming speed and AI remain unchanged. This is an initial presentation fix, not finished dog water behavior.
+
+Sixteen generated-motion checks pass, including flotation and recovery to shore; compilation and build pass with existing chunk warnings. Browser review explicitly used `breed=gsp&dog=generated`. Earlier water screenshots without a breed parameter used the default setter and do not validate generated-dog changes. Evidence: `output/playwright/woodcock-generated-gsp-afloat.png`; the audit reported swimming active and all feet unlocked. The first attempted screenshot exercised the setter and was rejected as proof. Transparent water still exposes the leg cycle and shadow, and rigged/legacy dogs retain their old behavior. No mobile or full hunt validation in this pass.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

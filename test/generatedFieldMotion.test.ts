@@ -175,3 +175,18 @@ it('changes from walk through trot and canter to gallop while accelerating on a 
   }
   expect([...gaits]).toEqual(['walk','trot','canter','gallop']);expect(clamps).toBe(0);motion.dispose();
 });
+
+it('releases ground contacts in deep water and restores them on shore',()=>{
+  let depth=.75;
+  const motion=new GeneratedFieldMotion('lite',()=>2,()=>depth);
+  motion.update(0,0,0,1/30,true,false);
+  expect(motion.swimming).toBe(true);
+  expect(motion.asset.root.position.y).toBeCloseTo(2.35);
+  expect(motion.contactSnapshot().every(foot=>!foot.locked)).toBe(true);
+  depth=0;
+  for(let i=0;i<20;i++)motion.update(0,0,0,1/30,false,false);
+  expect(motion.swimming).toBe(false);
+  expect(motion.asset.root.position.y).toBeCloseTo(2);
+  expect(motion.contactSnapshot().every(foot=>Number.isFinite(foot.groundGap))).toBe(true);
+  motion.dispose();
+});
