@@ -181,6 +181,12 @@ The generated dog's motion controller now releases terrain contacts in deeper wa
 
 Sixteen generated-motion checks pass, including flotation and recovery to shore; compilation and build pass with existing chunk warnings. Browser review explicitly used `breed=gsp&dog=generated`. Earlier water screenshots without a breed parameter used the default setter and do not validate generated-dog changes. Evidence: `output/playwright/woodcock-generated-gsp-afloat.png`; the audit reported swimming active and all feet unlocked. The first attempted screenshot exercised the setter and was rejected as proof. Transparent water still exposes the leg cycle and shadow, and rigged/legacy dogs retain their old behavior. No mobile or full hunt validation in this pass.
 
+**Dedicated generated paddle pose**
+
+Replaced the swimming branch's walking-cycle reuse with submerged elliptical paw targets and a steady torso. The legs remain folded through recovery and never request planted contacts. A full-cycle check verifies finite paw positions, underwater paw travel and zero unreachable leg targets; all 17 generated-motion checks pass. Compilation and build pass with existing chunk warnings.
+
+Reviewed the generated GSP from the assisted Beaver Pond position. Evidence: `output/playwright/woodcock-gsp-paddle.png`; the live audit reported swimming active and zero clamped targets. This is still an initial authored paddle, not a biomechanically validated swimming animation. Body immersion, transitions, travel speed, wake effects and legacy dog support remain unfinished. No complete swimming retrieve or mobile run was performed.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

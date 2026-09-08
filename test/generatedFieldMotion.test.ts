@@ -190,3 +190,20 @@ it('releases ground contacts in deep water and restores them on shore',()=>{
   expect(motion.contactSnapshot().every(foot=>Number.isFinite(foot.groundGap))).toBe(true);
   motion.dispose();
 });
+
+it('keeps the swimming torso steady and paddles without ground contacts across a full cycle',()=>{
+  const motion=new GeneratedFieldMotion('lite',()=>0,()=>.75);
+  let minPaw=Infinity,maxPaw=-Infinity;
+  for(let i=0;i<120;i++){
+    motion.update(0,0,0,1/120,false,false);
+    expect(motion.clamped).toBe(0);
+    expect(motion.asset.joints.body.position.y).toBeCloseTo(-.025);
+    const feet=motion.contactSnapshot();
+    expect(feet.every(foot=>!foot.locked)).toBe(true);
+    minPaw=Math.min(minPaw,feet[0].actual[1]);maxPaw=Math.max(maxPaw,feet[0].actual[1]);
+    expect(feet.every(foot=>foot.actual.every(Number.isFinite))).toBe(true);
+  }
+  expect(maxPaw-minPaw).toBeGreaterThan(.07);
+  expect(maxPaw).toBeLessThan(.75);
+  motion.dispose();
+});

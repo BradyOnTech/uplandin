@@ -37,13 +37,13 @@ export class GeneratedFieldMotion {
     if(this.swimming){
       this.cycle=(this.cycle+Math.max(0,dt)*1.25)%1;
       this.gait='walk';
-      this.asset.setLocomotion('walk',this.cycle);
+      this.clamped=this.asset.setSwimming(this.cycle);
       // Keep the torso afloat while submerged paws paddle freely. Ground
       // contact solving would otherwise pin the body to the basin floor.
       root.position.set(x,ground+Math.max(0,depth-.4),z);root.rotation.set(0,yaw,0);
       root.updateMatrixWorld(true);
       this.feet.forEach((foot,i)=>{foot.locked=false;foot.initialized=false;this.asset.paws[i].getWorldPosition(foot.target);});
-      this.pointPresence=0;this.clamped=0;this.wasMoving=true;
+      this.pointPresence=0;this.wasMoving=true;
       this.last.set(x,ground,z);this.lastYaw=yaw;this.placed=true;
       this.pose.forEach(p=>{p.previousPosition.copy(p.node.position);p.previousRotation.copy(p.node.quaternion);});
       return;

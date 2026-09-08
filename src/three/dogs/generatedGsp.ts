@@ -304,6 +304,29 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
     root.updateMatrixWorld(true);skeleton.update();if(!live){skin.computeBoundingBox();skin.computeBoundingSphere();}
     return {stride:locomotion.stride*strideScale,feet:locomotion.feet,clamped};
   };
+  /** Submerged paddling targets: no stance phase or planted ground plane. */
+  const setSwimming = (cycle: number) => {
+    for (const {node,position,rotation} of rest) { node.position.copy(position); node.quaternion.copy(rotation); }
+    body.position.y = -.025;
+    let clamped = 0;
+    chains.forEach((leg,i) => {
+      const phase = (cycle + [0, .5, .58, .08][i]) * Math.PI * 2;
+      const reach = Math.sin(phase) * (i < 2 ? .105 : .075);
+      const footY = .14 + (1 + Math.cos(phase)) * .055;
+      solveTwoBone(footY + leg.distalLength - leg.upper.position.y - body.position.y,
+        leg.footZ + reach, leg.upperLength, leg.lowerLength, i < 2 ? -1 : 1, solution);
+      if (solution.clamped) clamped++;
+      leg.upper.rotation.x = leg.upperAngle - solution.upper;
+      leg.lower.rotation.x = leg.lowerAngle - solution.lowerAbsolute - leg.upper.rotation.x;
+      leg.distal.rotation.x = leg.distalAngle - leg.upper.rotation.x - leg.lower.rotation.x;
+      leg.paw.rotation.x = -.18 * Math.sin(phase) - leg.upper.rotation.x - leg.lower.rotation.x - leg.distal.rotation.x;
+    });
+    neck.rotation.x = -.08; head.rotation.x = -.04;
+    tail.rotation.x = -.08;
+    root.updateMatrixWorld(true); skeleton.update();
+    if (!live) { skin.computeBoundingBox(); skin.computeBoundingSphere(); }
+    return clamped;
+  };
   const hip=new THREE.Vector3(),wrist=new THREE.Vector3(),direction=new THREE.Vector3(),bendAxis=new THREE.Vector3(),elbow=new THREE.Vector3(),aim=new THREE.Vector3(),normalLocal=new THREE.Vector3();
   const inverse=new THREE.Quaternion(),parentWorld=new THREE.Quaternion(),desiredWorld=new THREE.Quaternion(),rootWorld=new THREE.Quaternion();
   const up=new THREE.Vector3(0,1,0),forward=new THREE.Vector3(0,0,1);
@@ -350,7 +373,7 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
     body.position.y=Math.max(-.14,allowed);root.updateMatrixWorld(true);return body.position.y;
   };
   setPose('stand');
-  return { root, joints, paws, setPose, setLocomotion, solveWorldFeet, fitBodyToFeet, material, skin, skeleton,
+  return { root, joints, paws, setPose, setLocomotion, setSwimming, solveWorldFeet, fitBodyToFeet, material, skin, skeleton,
     stats: { triangles: geometries.reduce((n,g) => n + g.getAttribute('position').count / 3,0), meshes: geometries.length, materials: 1, geometryBytes: geometries.reduce((n,g) => n + Object.values(g.attributes).reduce((s,a) => s + a.array.byteLength,0),0) },
     dispose() { geometries.forEach(g => g.dispose()); material.dispose(); skeleton.dispose(); root.removeFromParent(); },
   };
