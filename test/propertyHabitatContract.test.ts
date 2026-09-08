@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { AREAS, getArea } from '../src/game/areas';
-import { LandscapeModel } from '../src/game/landscape';
+import { LandscapeModel, PROPERTY_PX_TO_M } from '../src/game/landscape';
 import { PropertyTrailsSystem } from '../src/three/subsystems/propertyTrails';
 import { pheasantPonds, samplePheasantHarvest } from '../src/three/subsystems/pheasantLandscape';
 import type { Ctx } from '../src/three/engine';
@@ -70,6 +70,23 @@ describe('authored habitat contracts', () => {
     const south = new LandscapeModel(area, 'south-gate'), west = new LandscapeModel(area, 'west-track');
     expect(pheasantPonds(south)).toEqual(pheasantPonds(west));
     expect(pheasantPonds(south)).toHaveLength(area.landmarks.filter(l => l.kind === 'pond').length);
+  });
+
+  it('keeps pheasant access routes on the pond shoulders, with room for both track edges', () => {
+    const area = getArea('pheasant-coverts');
+    const landscape = new LandscapeModel(area);
+    for (const trail of area.trails) for (let i = 1; i < trail.points.length; i++) {
+      const a = trail.points[i - 1], b = trail.points[i];
+      const steps = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y));
+      for (let step = 0; step <= steps; step++) {
+        const x = a.x + (b.x - a.x) * step / steps;
+        const y = a.y + (b.y - a.y) * step / steps;
+        for (const pond of pheasantPonds(landscape)) {
+          const radius = Math.hypot((x - pond.x) * PROPERTY_PX_TO_M / pond.rx, (y - pond.y) * PROPERTY_PX_TO_M / pond.ry);
+          expect(radius, `${trail.id} crosses ${pond.landmarkId}`).toBeGreaterThan(1.2);
+        }
+      }
+    }
   });
 
   it('keeps cover uncut and feathers the verge before a fully harvested parcel', () => {

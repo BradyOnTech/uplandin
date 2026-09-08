@@ -15,11 +15,13 @@ The first browser review after re-enabling tests shows a functioning prototype w
 
 Reviewed Cattail Coverts from the South Gate at midday in Standard and Lightweight display modes on the desktop browser. The path no longer breaks into large floating triangles. Shelterbelts give the distant field boundaries recognizable structure. Lightweight retains those landmarks but loses considerable grass fullness.
 
-The foreground remains too bare and uniformly brown. The distant trees still need more natural grouping and silhouette variation. Most significantly, the authored South Slough route currently goes through the pond anchor instead of following its shore. Rendering fixes have made this route-design problem easier to see. The dog remains visibly provisional.
+The foreground remains too bare and uniformly brown. The distant trees still need more natural grouping and silhouette variation. The dog remains visibly provisional.
+
+The following route pass replaced both pond-crossing entry lines with shoulder approaches, retaining connections through the homestead, fence, and central junction. Sampling every segment verifies a minimum normalized pond radius of 1.2, leaving space outside the main water footprint. Reviewed both entry views and the survey in the browser. The survey now displays Pheasant pond footprints and reed margins at map scale instead of point markers. This also exposes another habitat mismatch: some existing cover rectangles overlap open water. Those shared habitat definitions need correction before judging the first encounter.
 
 **Next work, in order**
 
-1. Reauthor Pheasant routes around water and actual cover edges; verify the same choices on the survey map and on foot. Preserve connected access from both gates.
+1. Align Pheasant habitat with water: remove open-water overlap from huntable cover and establish coherent shoulder vegetation. Then walk the revised routes from both gates; entry screenshots and geometric route checks are not a completed walk-through.
 2. Establish one convincing entry-to-cover sequence with better ground litter, grouped vegetation, recognizable wet margins, and varied shelterbelt spacing. Judge it at walking height in both display modes.
 3. Walk a complete Pheasant encounter and compare it with Quail and Chukar. Check that route choice, running birds, dog relocation, and escape directions support different decisions.
 4. Measure frame cost and loading behavior on representative mobile hardware before making mobile-readiness claims.

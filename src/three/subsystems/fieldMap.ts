@@ -1,5 +1,6 @@
 import { huntingDoctrine } from '../../game/huntDoctrine';
-import { LandscapeModel, type GroundSample } from '../../game/landscape';
+import { LandscapeModel, PROPERTY_PX_TO_M, type GroundSample } from '../../game/landscape';
+import { pheasantPonds } from './pheasantLandscape';
 import type { Ctx, Subsystem } from '../engine';
 import type { Hunt3DSystem } from './hunt3d';
 
@@ -182,6 +183,18 @@ export class FieldMapSystem implements Subsystem {
       g.strokeRect(x, y, patch.w * scale, patch.h * scale);
     }
 
+    // Show the physical water footprint, so a shore route is a readable
+    // choice rather than a mysterious detour around a five-pixel pin.
+    const ponds = area.id === 'pheasant-coverts' && this.landscape ? pheasantPonds(this.landscape) : [];
+    for (const pond of ponds) {
+      const [x, y] = point(pond.x, pond.y);
+      const rx = pond.rx / PROPERTY_PX_TO_M * scale, ry = pond.ry / PROPERTY_PX_TO_M * scale;
+      g.fillStyle = '#84916766';
+      g.beginPath(); g.ellipse(x, y, rx * 1.2, ry * 1.2, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#58878dbb'; g.strokeStyle = '#a3c2bc99'; g.lineWidth = 1;
+      g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); g.fill(); g.stroke();
+    }
+
     // Authored walking network. The line treatment follows the physical
     // hunting line: a water edge, switchback, timber finger, shade lane, or
     // remembered return should be legible before the player reaches it.
@@ -203,8 +216,12 @@ export class FieldMapSystem implements Subsystem {
     for (const landmark of area.landmarks) {
       const [x, y] = point(landmark.position.x, landmark.position.y);
       g.fillStyle = landmark.kind === 'pond' ? '#79a8aa' : landmark.kind === 'barn' ? '#c28a63' : '#e1d6ad';
-      g.beginPath(); g.arc(x, y, landmark.kind === 'pond' ? 5 : 3, 0, Math.PI * 2); g.fill();
-      if (scale > .22) { g.fillStyle = '#e6e0c8cc'; g.fillText(landmark.name, x + 7, y + 3); }
+      const pond = ponds.find(p => p.landmarkId === landmark.id);
+      if (!pond) { g.beginPath(); g.arc(x, y, landmark.kind === 'pond' ? 5 : 3, 0, Math.PI * 2); g.fill(); }
+      if (scale > .22) {
+        g.fillStyle = '#e6e0c8cc';
+        g.fillText(landmark.name, x + (pond ? pond.rx / PROPERTY_PX_TO_M * scale + 5 : 7), y + 3);
+      }
     }
     const drop = this.hunt.dropPoint();
     const [truckX, truckY] = point(drop.position.x, drop.position.y);

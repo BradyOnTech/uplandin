@@ -228,6 +228,9 @@ function pheasantGeography(w: number, h: number) {
   const westPothole = pointOffDrop(west, 106, -8);
   const oldHomestead = pointOffDrop(south, 156, -72);
   const northFence = pointOffDrop(west, 168, 48);
+  const southShoulder = pointOffDrop(south, 94, -64);
+  const westShoulder = pointOffDrop(west, 108, 62);
+  const junction = base.trails[0].points.at(-1)!;
   const landmarks = [
     ...base.landmarks,
     { id: 'south-slough', name: 'South Slough', kind: 'pond' as const, position: southSlough },
@@ -242,10 +245,9 @@ function pheasantGeography(w: number, h: number) {
     // run a line, relocate at the next pocket, and use the fence as a stop;
     // these are physical routes shared by the survey map and ground ribbon.
     trails: [
-      ...base.trails,
-      { id: 'south-slough-line', points: [south.position, pointOffDrop(south, 56, 2), southSlough, pointOffDrop(south, 126, 26)] },
-      { id: 'west-pothole-line', points: [west.position, pointOffDrop(west, 62, -5), westPothole, pointOffDrop(west, 148, 18)] },
-      { id: 'homestead-fence-edge', points: [southSlough, oldHomestead, northFence] },
+      { id: 'south-slough-line', points: [south.position, pointOffDrop(south, 32, -27), pointOffDrop(south, 58, -52), southShoulder, pointOffDrop(south, 128, -66), oldHomestead, junction] },
+      { id: 'west-pothole-line', points: [west.position, pointOffDrop(west, 35, 28), pointOffDrop(west, 68, 55), westShoulder, pointOffDrop(west, 145, 62), northFence, junction] },
+      { id: 'homestead-fence-edge', points: [oldHomestead, northFence] },
     ] satisfies AreaTrail[],
   };
 }
