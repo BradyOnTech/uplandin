@@ -12,6 +12,30 @@ function seeded(seed: number, salt: number): number {
   return (h ^ (h >>> 13)) >>> 0;
 }
 
+/** Broad broken foliage masses shared by every cottonwood branch tip. */
+function cottonwoodFoliageGeometry(): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const clusters = [
+    [-.52, -.12, .08, .70, .38, .65],
+    [.25, .02, -.20, .82, .43, .69],
+    [.72, -.22, .22, .48, .31, .54],
+    [-.12, .38, .05, .59, .32, .52],
+    [-.23, -.38, -.45, .54, .28, .43],
+  ];
+  for (const [x, y, z, sx, sy, sz] of clusters) {
+    const source = new THREE.IcosahedronGeometry(1, 0);
+    source.scale(sx, sy, sz);
+    source.translate(x, y, z);
+    positions.push(...Array.from(source.getAttribute('position').array));
+    source.dispose();
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
 function irregularDisc(rx: number, rz: number, seed: number, y = 0): THREE.BufferGeometry {
   const rng = mulberry32(seed);
   const segments = 96;
@@ -274,7 +298,7 @@ export class PheasantScenerySystem implements Subsystem {
     root.add(trunk);
 
     const branchGeo = new THREE.CylinderGeometry(0.11, 0.25, 1, 7, 2);
-    const crownGeo = new THREE.IcosahedronGeometry(1, 2);
+    const crownGeo = cottonwoodFoliageGeometry();
     this.geometries.push(branchGeo, crownGeo);
     const up = new THREE.Vector3(0, 1, 0);
     const branchMatrices: THREE.Matrix4[] = [];
@@ -317,7 +341,7 @@ export class PheasantScenerySystem implements Subsystem {
           height * (0.09 + rng() * 0.055),
           height * (0.12 + rng() * 0.06),
         );
-        canopyEuler.set(rng(), rng() * Math.PI, rng());
+        canopyEuler.set((rng() - .5) * .35, rng() * Math.PI, (rng() - .5) * .35);
         canopyQuaternion.setFromEuler(canopyEuler);
         canopyMatrices[materialIndex].push(matrix.compose(canopyPosition, canopyQuaternion, canopyScale).clone());
       }

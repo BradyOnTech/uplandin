@@ -269,6 +269,12 @@ Terrain beneath standing habitat now uses a cooler olive grass/litter tone, feat
 
 The first pass was too subtle under warm lighting. The revised contrast is visible at the known Seed 1 flush viewpoint in both display modes: `output/playwright/pheasant-ground-cover-contrast.png` and `output/playwright/pheasant-ground-cover-contrast-high.png`. These are assisted static visual comparisons using setPose and renderOnce, not replayed encounters; HUD/dog state is from fresh entry and must not be interpreted as gameplay evidence. Standing cover reads as a cooler band against cut ground, though plant silhouettes and open-ground density still need improvement. Compilation and build pass with existing chunk warnings; the reviewed page had no browser warnings or errors. No simulation tests rerun for this terrain-color-only pass.
 
+**Cottonwood crown silhouette**
+
+Replaced the round cottonwood branch-tip spheres with five overlapping, flattened foliage masses per cluster, and limited cluster tilt to retain a broad canopy. The branches are more visible and the tree has an irregular outline. Shelterbelt crowns retain their separate upright form. The shared cluster contains 100 triangles versus 180 in the prior sphere, verified against the installed Three.js geometry. Instance count, draw calls and materials are unchanged.
+
+Reviewed after twenty-four seconds of walking from South Gate in both modes: `output/playwright/pheasant-cottonwood-broken-crown.png` and `output/playwright/pheasant-cottonwood-broken-crown-high.png`. The prominent tree no longer reads as round balls, though foliage is still a stylized solid mass and close bark/branch detail remains limited. Compilation and build pass with existing chunk warnings, and the reviewed page had no browser warnings or errors. No simulation tests rerun for this geometry-only change. The triangle reduction is not a mobile hardware performance measurement.
+
 **Next work, in order**
 
 1. Use the Seed 1 South reference route to judge environment improvements from arrival through the known runner encounter. Review a full encounter with ordinary aiming separately; the assisted reference does not establish input usability.
