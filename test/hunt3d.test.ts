@@ -301,7 +301,7 @@ describe('Hunt3DSystem live start', () => {
   });
 
   it('retrieves from the rendered landing point and credits the dog', () => {
-    vi.stubGlobal('location', { search: '?breed=english-setter' });
+    vi.stubGlobal('location', { search: '?breed=english-setter&area=pheasant-coverts' });
     const ctx = liveCtx();
     const hunt = liveHunt();
     hunt.init(ctx);
@@ -327,15 +327,28 @@ describe('Hunt3DSystem live start', () => {
 
     let sawRetrieving = false;
     let sawCarrying = false;
+    let pickupGapM = Infinity;
+    let deliveryGapM = Infinity;
     const birdState = () => hunt.huntState().birds[0].state;
     const dogState = () => hunt.dog().state;
     for (let i = 0; i < 1200 && birdState() !== 'retrieved'; i++) {
+      const prior = birdState();
       hunt.step(ctx, 1);
+      if (prior === 'downed' && birdState() === 'carried') {
+        pickupGapM = Math.hypot(dog.pos.x - landedSim.x, dog.pos.y - landedSim.y) * .9144;
+        expect(hunt.huntState().dogWork[0].retrieves).toBe(0);
+      }
+      if (prior === 'carried' && birdState() === 'retrieved') {
+        deliveryGapM = Math.hypot(dog.pos.x - hunt.huntState().hunterPos.x,
+          dog.pos.y - hunt.huntState().hunterPos.y) * .9144;
+      }
       sawRetrieving ||= dogState() === 'retrieving';
       sawCarrying ||= birdState() === 'carried' && hunt.dog().carryingBirdId === bird.id;
     }
     expect(sawRetrieving).toBe(true);
     expect(sawCarrying).toBe(true);
+    expect(pickupGapM).toBeLessThanOrEqual(.65);
+    expect(deliveryGapM).toBeLessThanOrEqual(1);
     expect(birdState()).toBe('retrieved');
     expect(Math.hypot(
       hunt.dog().pos.x - hunt.huntState().hunterPos.x,

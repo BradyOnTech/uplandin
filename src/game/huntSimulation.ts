@@ -168,6 +168,10 @@ export class HuntSimulation {
       const retrievedBefore = this.hunt.birds.filter((bird) => bird.state === 'retrieved').length;
       const motion = input.dogMotion?.[i];
       const env: DogEnv = {
+        // The mouth sits forward of the dog root; leave room to settle at
+        // the fall and beside the handler without demanding center overlap.
+        pickupRange: spatialEncounter ? .65 / PROPERTY_PX_TO_M : undefined,
+        deliveryRange: spatialEncounter ? 1 / PROPERTY_PX_TO_M : undefined,
         hunterPos: this.hunt.hunterPos,
         windAngle: this.hunt.wind,
         scentMult: wind.scent * weather.scent,

@@ -33,7 +33,7 @@ describe('dog local prop detours', () => {
     }
     expect(Math.hypot(goal.x-pos.x,goal.y-pos.y)).toBeLessThan(.15);
   });
-  it('keeps a retrieve and delivery objective while detouring through the real dog update', () => {
+  it.each([false,true])('keeps a retrieve and delivery objective while detouring (physical ranges: %s)', physical => {
     const area=getArea('quail-fields'),landscape=new LandscapeModel(area);
     const log=QUAIL_GROUND_PROPS[1];
     const hunter={x:log.x-12,y:log.y};
@@ -43,7 +43,8 @@ describe('dog local prop detours', () => {
     let carrying=false;
     const delivered=()=>bird.state==='retrieved';
     for(let i=0;i<2400 && !delivered();i++) {
-      dog.update(1000/30,[bird],{hunterPos:hunter,movementScale:.08,obstacles});
+      dog.update(1000/30,[bird],{hunterPos:hunter,movementScale:.08,obstacles,
+        pickupRange: physical ? .65 / .9144 : undefined, deliveryRange: physical ? 1 / .9144 : undefined});
       carrying ||= dog.carryingBirdId===bird.id;
       for(const o of obstacles)expect(Math.hypot(dog.pos.x-o.x,dog.pos.y-o.y)).toBeGreaterThanOrEqual(o.radius+.3-1e-7);
     }

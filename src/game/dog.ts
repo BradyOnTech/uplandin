@@ -276,6 +276,9 @@ export function castAimPoint(
 
 /** Environment the dog is hunting in for this tick. */
 export interface DogEnv {
+  /** Physical pickup and handoff distances in property yards; legacy defaults otherwise. */
+  pickupRange?: number;
+  deliveryRange?: number;
   obstacles?: readonly DogObstacle[];
   hunterPos?: Vec2;
   /** Presentation-space pace multiplier; AI clocks still advance in real time. */
@@ -583,7 +586,7 @@ export class Dog {
       }
 
       if (target.state === 'downed') {
-        if (dist(this.pos, target.pos) > RETRIEVE_RANGE) {
+        if (dist(this.pos, target.pos) > (env.pickupRange ?? RETRIEVE_RANGE)) {
           this.gait = 'trot';
           this.retrieveHoldMs = 0;
           this.heading = Math.atan2(target.pos.y - this.pos.y, target.pos.x - this.pos.x);
@@ -618,7 +621,7 @@ export class Dog {
       // its shared position lets both renderers put the fall in the mouth.
       target.pos.x = this.pos.x;
       target.pos.y = this.pos.y;
-      if (!env.hunterPos || dist(this.pos, env.hunterPos) <= RETRIEVE_RANGE) {
+      if (!env.hunterPos || dist(this.pos, env.hunterPos) <= (env.deliveryRange ?? RETRIEVE_RANGE)) {
         this.gait = 'still';
         this.retrieveHoldMs += dtMs;
         if (this.retrieveHoldMs >= RETRIEVE_DELIVERY_HOLD_MS) {
