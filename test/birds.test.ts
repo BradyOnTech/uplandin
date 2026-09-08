@@ -380,10 +380,10 @@ describe('updateBirds (runners)', () => {
     expect(b.pos.x).toBeGreaterThan(480); // and definitely not the old field edge
   });
 
-  it('slope bias: runners on a hillside angle uphill', () => {
+  it('slope bias: chukar runners on a hillside angle uphill', () => {
     // Uphill is north (-y). Dog approaches from the west; an unbiased bird
     // would run due east — a hillside bird angles north as it goes.
-    const b = bird({ pos: { x: 300, y: 200 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
+    const b = bird({ speciesId: 'chukar', pos: { x: 300, y: 200 }, runs: true, runEnergy: RUNNER_MAX_ENERGY });
     for (let i = 0; i < 20; i++) {
       updateBirds(50, [b], { x: b.pos.x - 20, y: 200 }, { slopeAngle: -Math.PI / 2 });
     }

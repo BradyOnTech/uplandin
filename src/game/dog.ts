@@ -774,7 +774,7 @@ export class Dog {
       // from the physical edge they are meant to hunt; the softer pull on
       // woods and open country preserves natural casts when a patch sits
       // beside, rather than directly on, a route.
-      const routePull = routeCastPull(doctrine.style, env.huntAreaId);
+      const routePull = routeCastPull(this.doctrineFor(env).style, env.huntAreaId);
       if (routePull > 0 && env.trails && env.trails.length > 0) {
         const routePoint = nearestTrailPoint(
           { x: rectCx(patch), y: rectCy(patch) },

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getArea } from '../src/game/areas';
 import { LandscapeModel } from '../src/game/landscape';
 import type { Ctx, Quality } from '../src/three/engine';
@@ -8,6 +8,7 @@ import { applyQuailSurfaceDetail, buildQuailTerrainGeometry, QuailTerrain } from
 import { applyQuailTrackGroundLod, groundQuailTrackGeometry, QUAIL_GROUND_DIVISIONS, quailGroundNearDistance, quailGroundTileAt, quailGroundUsesNear } from '../src/three/subsystems/quailGroundGeometry';
 
 const area = getArea('quail-fields');
+afterEach(() => vi.restoreAllMocks());
 function terrainRays(landscape: LandscapeModel, divisions: number) {
   const meshes = new Map<string, THREE.Mesh>(); const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
   const ray = new THREE.Raycaster();
@@ -78,10 +79,13 @@ describe('Quail road height follows rendered terrain LOD', () => {
     road.dispose();
   });
 
-  it.each<Quality>(['high', 'lite'])('switches actual terrain and road height at the same %s tile threshold', (quality) => {
+  it.each<Quality>(['high', 'lite'])('switches actual terrain and road height at the same %s tile threshold', async (quality) => {
+    // Image decoding belongs to the browser; exercise real terrain creation
+    // and LOD selection with an already decoded texture at this boundary.
+    vi.spyOn(THREE.TextureLoader.prototype, 'loadAsync').mockResolvedValue(new THREE.Texture());
     const landscape = new LandscapeModel(area); const terrain = new QuailTerrain(landscape);
     const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera();
-    const ctx = { scene, camera, quality } as Ctx; terrain.init(ctx);
+    const ctx = { scene, camera, quality } as Ctx; await terrain.init(ctx);
     const tile = quailGroundTileAt(landscape, 763.934, 276.164), threshold = quailGroundNearDistance(quality);
     const near = scene.getObjectByName(`Quail terrain ${tile.x},${tile.y} near`) as THREE.Mesh;
     const far = scene.getObjectByName(`Quail terrain ${tile.x},${tile.y} far`) as THREE.Mesh;

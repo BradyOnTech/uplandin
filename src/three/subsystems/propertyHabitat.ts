@@ -408,7 +408,7 @@ export class PropertyHabitatSystem implements Subsystem {
         let pick: HabitatKind | null = null;
         let cursor = rng();
         for (const kind of profile.kinds) {
-          const chance = (profile.chances[kind] ?? 0) * (kind === 'reed' ? .55 + moisture * .9 : kind === 'shrub' ? .8 + cover * .45 : 1);
+          const chance = (profile.chances[kind] ?? 0) * (kind === 'reed' ? .55 + moisture * .9 : kind === 'shrub' ? .8 + (cover ? .45 : 0) : 1);
           if (cursor < chance) { pick = kind; break; }
           cursor -= chance;
         }

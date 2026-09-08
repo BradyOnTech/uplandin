@@ -17,11 +17,11 @@ it('changes opportunity and nerve while preserving the balanced baseline and dog
   expect(relaxed.hunt.birds[0].pos).toEqual(normal.hunt.birds[0].pos);
 });
 
-it('honors an explicit choice before preferences, safely defaults, and scopes the setting to Quail Fields',()=>{
+it('honors an explicit choice before preferences and safely defaults on every property',()=>{
   const storage={getItem:(key:string)=>key===HUNT_CHALLENGE_KEY?'wild':null,setItem:()=>{throw Error('Setup must not mutate saves');}};
   expect(resolveThreeHuntChallenge('?area=quail-fields',storage)).toBe('wild');
   expect(resolveThreeHuntChallenge('?area=quail-fields&challenge=relaxed',storage)).toBe('relaxed');
   expect(resolveThreeHuntChallenge('?area=quail-fields&challenge=unknown',storage)).toBe('balanced');
-  expect(resolveThreeHuntChallenge('?area=grouse-woods&challenge=wild',storage)).toBe('balanced');
+  expect(resolveThreeHuntChallenge('?area=grouse-woods&challenge=wild',storage)).toBe('wild');
   expect(resolveThreeHuntChallenge('?area=quail-fields',{getItem:()=>{throw Error('Unavailable');},setItem:()=>{}})).toBe('balanced');
 });

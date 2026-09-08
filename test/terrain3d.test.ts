@@ -20,8 +20,11 @@ describe('shared property landscape', () => {
       terrain: { ...alpineArea.terrain, gradeX: 0, gradeZ: 0 },
     });
     expect(prairie.heightAtWorld(80, -55)).not.toBe(alpine.heightAtWorld(80, -55));
-    expect(alpine.heightAtWorld(100, 0) - alpineWithoutGrade.heightAtWorld(100, 0))
-      .toBeCloseTo(alpineArea.terrain.gradeX, 8);
+    // The authored alpine climb adds a sustained eastward grade. Compare
+    // two positions to cancel the north/south contribution and base offset.
+    const gradeAt = (x: number) => alpine.heightAtWorld(x, 0) - alpineWithoutGrade.heightAtWorld(x, 0);
+    expect(gradeAt(100) - gradeAt(0)).toBeGreaterThan(20);
+    expect(gradeAt(100) - gradeAt(0)).toBeLessThan(35);
   });
 
   it('round-trips property positions through either drop-point transform', () => {

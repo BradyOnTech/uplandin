@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { BirdsSystem } from '../src/three/subsystems/birds';
 import type { Bird } from '../src/game/birds';
 import { getSpecies } from '../src/game/species';
+import { getArea } from '../src/game/areas';
 import { QuailFlushDebris } from '../src/three/quailFlushDebris';
 
 // Exercise the actual fixed flight loop without allocating renderer geometry.
@@ -12,11 +13,11 @@ function fixture() {
   const system = new BirdsSystem();
   const runtime = system as unknown as {
     tickBirds(dt: number): void; slots: Array<Record<string, any>>;
-    refinedQuail: boolean; frozen: boolean; hunt: unknown; terrain: unknown;
+    refinedQuail: boolean; spatialEncounter: boolean; frozen: boolean; hunt: unknown; terrain: unknown;
     applySpeciesAppearance: unknown; burstDebris: unknown; launchCover?: QuailFlushDebris;
   };
-  runtime.refinedQuail = true; runtime.frozen = true;
-  runtime.hunt = { huntState: () => ({ birds, hunterPos: {x:0,y:0}, wind:0 }),
+  runtime.refinedQuail = true; runtime.spatialEncounter = true; runtime.frozen = true;
+  runtime.hunt = { areaConfig: () => getArea('quail-fields'), huntState: () => ({ birds, hunterPos: {x:0,y:0}, wind:0 }),
     simToWorld: (x:number,y:number,out:{x:number;z:number}) => Object.assign(out,{x,z:y}),
     coverPatches: () => [], lastFlushInfo: () => null, finishRise, resolveBird: vi.fn(), recordFallWorld: vi.fn() };
   runtime.terrain = { heightAt: () => 0 };
@@ -58,9 +59,9 @@ describe('continuous Quail coveys', () => {
     f.add(2, 1, 0, 2);
     f.runtime.tickBirds(1000 / 30);
     const landing = f.runtime.slots.find(s => s.simId === 1)!;
-    landing.quailFlight.target = { x: 75, z: 12 };
+    landing.spatialFlight.target = { x: 75, z: 12 };
     const leaving = f.runtime.slots.find(s => s.simId === 2)!;
-    leaving.quailFlight.target = undefined;
+    leaving.spatialFlight.target = undefined;
     for (let i = 0; i < 14 * 30; i++) f.runtime.tickBirds(1000 / 30);
     expect(resolveBird).toHaveBeenCalledWith(1, 'escaped', { x: landing.x, z: landing.z });
     expect(Math.hypot(landing.x - 75, landing.z - 12)).toBeLessThan(.5);

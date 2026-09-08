@@ -243,8 +243,8 @@ function pheasantGeography(w: number, h: number) {
     // these are physical routes shared by the survey map and ground ribbon.
     trails: [
       ...base.trails,
-      { id: 'south-slough-line', points: [south, pointOffDrop(south, 56, 2), southSlough, pointOffDrop(south, 126, 26)] },
-      { id: 'west-pothole-line', points: [west, pointOffDrop(west, 62, -5), westPothole, pointOffDrop(west, 148, 18)] },
+      { id: 'south-slough-line', points: [south.position, pointOffDrop(south, 56, 2), southSlough, pointOffDrop(south, 126, 26)] },
+      { id: 'west-pothole-line', points: [west.position, pointOffDrop(west, 62, -5), westPothole, pointOffDrop(west, 148, 18)] },
       { id: 'homestead-fence-edge', points: [southSlough, oldHomestead, northFence] },
     ] satisfies AreaTrail[],
   };
@@ -297,8 +297,8 @@ function chukarGeography(w: number, h: number) {
   return {
     ...base,
     trails: [
-      { id: 'south-switchback', points: [south, { x: south.x - 30, y: south.y - 46 }, lower, { x: w * .58, y: h * .66 }, middle] },
-      { id: 'west-switchback', points: [west, { x: west.x + 52, y: west.y + 22 }, westBench, { x: w * .42, y: h * .37 }, middle] },
+      { id: 'south-switchback', points: [south.position, { x: south.position.x - 30, y: south.position.y - 46 }, lower, { x: w * .58, y: h * .66 }, middle] },
+      { id: 'west-switchback', points: [west.position, { x: west.position.x + 52, y: west.position.y + 22 }, westBench, { x: w * .42, y: h * .37 }, middle] },
       { id: 'upper-bench', points: [middle, { x: w * .67, y: h * .47 }, upper] },
     ] satisfies AreaTrail[],
   };

@@ -7,9 +7,9 @@ import {
 } from '../src/three/subsystems/birds';
 
 describe('modular 3D bird families', () => {
-  it('maps every species onto one of the four shared flight rigs', () => {
+  it('gives partridge and chukar their own rigs alongside the shared bird families', () => {
     expect(SPECIES.map((species) => birdFamilyFor(species.id))).toEqual([
-      'quail', 'pheasant', 'grouse', 'woodcock', 'grouse', 'quail', 'quail',
+      'quail', 'pheasant', 'grouse', 'woodcock', 'grouse', 'partridge', 'chukar',
       'grouse', 'grouse', 'quail', 'quail', 'quail', 'quail', 'quail',
     ]);
   });

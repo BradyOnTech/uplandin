@@ -57,11 +57,10 @@ describe('Quail survey map', () => {
     expect(JSON.stringify(area)).toBe(before);
   });
 
-  it('leaves other prairie properties on their existing map rendering', () => {
+  it('renders relief for other prairie properties using their shared landform', () => {
     const otherPrairie = { ...getArea('quail-fields'), id: 'other-prairie-property' };
     const recorded = recorder();
-    expect(drawPropertyRelief(recorded.graphics, otherPrairie, { x: 0, y: 0, w: 267, h: 143 })).toBe(false);
-    expect(recorded.cells).toHaveLength(0);
-    expect(recorded.contours).toHaveLength(0);
+    expect(drawPropertyRelief(recorded.graphics, otherPrairie, { x: 0, y: 0, w: 267, h: 143 })).toBe(true);
+    expect(recorded.cells.length).toBeGreaterThan(0);
   });
 });

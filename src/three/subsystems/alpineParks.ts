@@ -51,7 +51,7 @@ function frostCapGeometry(): THREE.BufferGeometry {
   return geometry;
 }
 
-interface HuntConditionQuery {
+interface HuntConditionQuery extends Subsystem {
   readonly id: string;
   condition(): Condition;
 }
