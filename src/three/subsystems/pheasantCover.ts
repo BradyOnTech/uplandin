@@ -12,7 +12,7 @@ function cellSeed(x: number, z: number, seed: number): number {
   return (h ^ (h >>> 16)) >>> 0;
 }
 
-function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble', lite: boolean): THREE.BufferGeometry {
+function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lite: boolean): THREE.BufferGeometry {
   const rng = mulberry32(kind === 'prairie' ? 0x51a7 : kind === 'cattail' ? 0xca77 : 0x57bb1e);
   const positions: number[] = [];
   const colors: number[] = [];
@@ -27,7 +27,26 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble', lite: boolean)
   const reed = new THREE.Color(0xe8d7a2);
   const head = new THREE.Color(0x7a5231);
 
-  const count = kind === 'prairie' ? (lite ? 8 : 18) : kind === 'cattail' ? (lite ? 5 : 8) : (lite ? 7 : 12);
+  if (kind === 'litter') {
+    // Fallen stems form small, broken mats, rather than upright miniature
+    // grass. Broad enough to read at walking height, with no alpha texture.
+    for (let i = 0; i < 10; i++) {
+      const angle = rng() * Math.PI * 2, length = .18 + rng() * .50;
+      const x = (rng() - .5) * 1.8, z = (rng() - .5) * 1.8;
+      const dx = Math.cos(angle), dz = Math.sin(angle), width = .015 + rng() * .025;
+      const y = .035 + rng() * .018;
+      push([
+        x - dz * width, y, z + dx * width,
+        x + dz * width, y, z - dx * width,
+        x + dx * length + dz * width * .25, y + .01, z + dz * length - dx * width * .25,
+        x - dz * width, y, z + dx * width,
+        x + dx * length + dz * width * .25, y + .01, z + dz * length - dx * width * .25,
+        x + dx * length - dz * width * .25, y + .01, z + dz * length + dx * width * .25,
+      ], straw.clone().lerp(olive, rng() * .45).multiplyScalar(.68 + rng() * .18));
+    }
+  }
+
+  const count = kind === 'litter' ? 0 : kind === 'prairie' ? (lite ? 8 : 18) : kind === 'cattail' ? (lite ? 5 : 8) : (lite ? 7 : 12);
   for (let i = 0; i < count; i++) {
     const angle = (i / count) * Math.PI * 2 + (rng() - 0.5) * 0.42;
     const sx = Math.sin(angle);
@@ -126,7 +145,7 @@ export class PheasantCoverSystem implements Subsystem {
 
   init(ctx: Ctx): void {
     const lite = ctx.quality === 'lite', area = this.landscape.area;
-    const geometries = { prairie: habitatGeometry('prairie', lite), cattail: habitatGeometry('cattail', lite), stubble: habitatGeometry('stubble', lite) };
+    const geometries = { prairie: habitatGeometry('prairie', lite), cattail: habitatGeometry('cattail', lite), stubble: habitatGeometry('stubble', lite), litter: habitatGeometry('litter', lite) };
     this.geometries.push(...Object.values(geometries));
     const material = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, side: THREE.DoubleSide });
     material.onBeforeCompile = shader => {
@@ -150,9 +169,9 @@ export class PheasantCoverSystem implements Subsystem {
     const harvestSample = { amount: 0, row: 0, angle: 0 };
     const TILE = lite ? 216 : 144, spacing = 2.8;
     const straw = new THREE.Color(0xb8a477), amber = new THREE.Color(0xb18e59), olive = new THREE.Color(0x919872), reed = new THREE.Color(0xa99b76), color = new THREE.Color();
-    type Plant = { x: number; y: number; scale: number; angle: number; color: number; low?: boolean };
+    type Plant = { x: number; y: number; scale: number; angle: number; color: number; low?: boolean; spread?: number };
     for (let ty = area.world.y; ty < area.world.y + area.world.h; ty += TILE) for (let tx = area.world.x; tx < area.world.x + area.world.w; tx += TILE) {
-      const groups: Record<keyof typeof geometries, Plant[]> = { prairie: [], cattail: [], stubble: [] };
+      const groups: Record<keyof typeof geometries, Plant[]> = { prairie: [], cattail: [], stubble: [], litter: [] };
       for (let row = 0; row < Math.ceil(TILE / spacing); row++) for (let column = 0; column < Math.ceil(TILE / spacing); column++) {
         const cellX = tx + column * spacing, cellY = ty + row * spacing, rng = mulberry32(cellSeed(Math.round(cellX * 10), Math.round(cellY * 10), area.terrain.seed));
         const x = cellX + rng() * Math.min(spacing, tx + TILE - cellX), y = cellY + rng() * Math.min(spacing, ty + TILE - cellY);
@@ -170,6 +189,14 @@ export class PheasantCoverSystem implements Subsystem {
           continue;
         }
         if (pond && depth > .12) continue;
+        // Separate seed avoids shifting the established standing vegetation.
+        // Keep mats patchy and on dry ground; they share the cover material.
+        const litterRng = mulberry32(cellSeed(Math.round(x * 10), Math.round(y * 10), area.terrain.seed ^ 0x1177e));
+        if (moisture < .48 && litterRng() < (cover ? .28 : harvest > .3 ? .42 : .55)) {
+          groups.litter.push({ x, y, scale: .9 + litterRng() * .8,
+            angle: harvest > .3 ? harvestSample.angle : litterRng() * Math.PI * 2,
+            color: color.copy(straw).lerp(olive, moisture * .45).getHex() });
+        }
         if (harvest > .3 && moisture < .36) {
           // Parallel machinery rows supply agricultural scale. Gaps and a
           // few taller grasses interrupt them along the habitat boundary.
@@ -190,25 +217,37 @@ export class PheasantCoverSystem implements Subsystem {
         const chance = (cover ? .94 : .23 + vegetation * .28) * (.34 + drift * .72);
         if (rng() < chance && (!lite || keep > .30)) {
           const scale = (cover ? .95 : .60) + rng() * .42;
-          groups.prairie.push({ x, y, scale, angle: rng() * Math.PI * 2, color: color.copy(straw).lerp(olive, moisture * .60 + rng() * .16).lerp(amber, rng() * .12).getHex() });
+          groups.prairie.push({ x, y, scale, spread: cover ? 1.45 : 1, angle: rng() * Math.PI * 2, color: color.copy(straw).lerp(olive, moisture * .60 + rng() * .16).lerp(amber, rng() * .12).getHex() });
         }
       }
       const matrix = new THREE.Matrix4(), position = new THREE.Vector3(), rotation = new THREE.Quaternion(), scale = new THREE.Vector3();
       const normal = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), yaw = new THREE.Quaternion();
-      for (const kind of ['prairie', 'cattail', 'stubble'] as const) {
-        const plants = groups[kind]; if (!plants.length) continue;
+      for (const kind of ['prairie', 'cattail', 'stubble', 'litter'] as const) {
+        // Fallen stems are only useful close to the player. Small spatial
+        // groups avoid drawing an entire field for a few nearby pieces.
+        const partitions = new Map<string, Plant[]>();
+        for (const plant of groups[kind]) {
+          const key = kind === 'litter' ? `${Math.floor(plant.x / 52)},${Math.floor(plant.y / 52)}` : 'parcel';
+          let partition = partitions.get(key);
+          if (!partition) { partition = []; partitions.set(key, partition); }
+          partition.push(plant);
+        }
+        for (const plants of partitions.values()) {
         const mesh = new THREE.InstancedMesh(geometries[kind], material, plants.length);
         for (const [i, plant] of plants.entries()) {
           this.landscape.propertyToWorld(plant.x, plant.y, this.world); this.landscape.surfaceAtProperty(plant.x, plant.y, this.surface);
           normal.set(-this.surface.gradeX, 1, -this.surface.gradeZ).normalize(); rotation.setFromUnitVectors(up, normal);
-          yaw.setFromAxisAngle(up, plant.angle); rotation.multiply(yaw); scale.set(plant.scale * (plant.low ? 1.15 : 1), plant.scale * (plant.low ? .30 : 1), plant.scale * (plant.low ? 1.15 : 1));
+          yaw.setFromAxisAngle(up, plant.angle); rotation.multiply(yaw);
+          const spread = plant.low ? 1.15 : plant.spread ?? 1;
+          scale.set(plant.scale * spread, plant.scale * (plant.low ? .30 : 1), plant.scale * spread);
           position.set(this.world.x, this.surface.height - .022, this.world.z);
           mesh.setMatrixAt(i, matrix.compose(position, rotation, scale)); mesh.setColorAt(i, color.setHex(plant.color));
         }
         mesh.name = `Pheasant ${kind} parcel`; mesh.receiveShadow = true; mesh.computeBoundingSphere();
-        const range = kind === 'cattail' ? (lite ? 230 : 330) : kind === 'stubble' ? (lite ? 95 : 145) : (lite ? 130 : 195);
+        const range = kind === 'litter' ? (lite ? 18 : 28) : kind === 'cattail' ? (lite ? 230 : 330) : kind === 'stubble' ? (lite ? 95 : 145) : (lite ? 130 : 195);
         this.batches.push({ mesh, center: mesh.boundingSphere!.center.clone(), radius: mesh.boundingSphere!.radius + .2, range });
         this.objects.push(mesh); ctx.scene.add(mesh);
+        }
       }
     }
     this.update(ctx);
@@ -220,10 +259,7 @@ export class PheasantCoverSystem implements Subsystem {
   }
 
   dispose(ctx: Ctx): void {
-    // InstancedMesh has no renderer resource of its own; its shared geometry
-    // and material are released below. Removing the batches is enough here
-    // and keeps disposal compatible with the mobile Three.js build.
-    for (const object of this.objects) ctx.scene.remove(object);
+    for (const object of this.objects) { ctx.scene.remove(object); object.dispose(); }
     for (const geometry of this.geometries) geometry.dispose(); for (const material of this.materials) material.dispose();
     this.objects.length = 0; this.batches.length = 0; this.geometries.length = 0; this.materials.length = 0;
   }

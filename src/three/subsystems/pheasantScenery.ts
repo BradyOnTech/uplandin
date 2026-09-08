@@ -12,10 +12,14 @@ function seeded(seed: number, salt: number): number {
   return (h ^ (h >>> 13)) >>> 0;
 }
 
-/** Broad broken foliage masses shared by every cottonwood branch tip. */
-function cottonwoodFoliageGeometry(): THREE.BufferGeometry {
+/** Broken foliage masses: upright windbreaks and spreading cottonwoods. */
+function clusteredFoliageGeometry(kind: 'cottonwood' | 'windbreak'): THREE.BufferGeometry {
   const positions: number[] = [];
-  const clusters = [
+  const clusters = kind === 'windbreak' ? [
+    [-.34, -.35, .10, .72, .66, .63],
+    [.30, -.06, -.18, .70, .61, .70],
+    [.05, .57, .10, .50, .57, .50],
+  ] : [
     [-.52, -.12, .08, .70, .38, .65],
     [.25, .02, -.20, .82, .43, .69],
     [.72, -.22, .22, .48, .31, .54],
@@ -210,18 +214,7 @@ export class PheasantScenerySystem implements Subsystem {
 
   private buildShelterbelts(ctx: Ctx, trunkMaterial: THREE.Material, foliageMaterials: THREE.Material[]): void {
     const trunkGeo = new THREE.CylinderGeometry(.09, .23, 1, 5);
-    const crownGeo = new THREE.IcosahedronGeometry(1, 1);
-    // A tapered, uneven crown gives these windbreak trees a different
-    // silhouette from the broad cottonwoods at the water.
-    const vertices = crownGeo.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < vertices.count; i++) {
-      const x = vertices.getX(i), y = vertices.getY(i), z = vertices.getZ(i);
-      const taper = 1 - Math.max(0, y) * .38;
-      const ripple = 1 + Math.sin(x * 7 + y * 3 + z * 5) * .12;
-      vertices.setXYZ(i, x * taper * ripple, y, z * taper * ripple);
-    }
-    crownGeo.computeVertexNormals();
-    crownGeo.computeBoundingSphere();
+    const crownGeo = clusteredFoliageGeometry('windbreak');
     this.geometries.push(trunkGeo, crownGeo);
     const stems: THREE.Matrix4[] = [];
     const crowns = foliageMaterials.map(() => [] as THREE.Matrix4[]);
@@ -258,6 +251,13 @@ export class PheasantScenerySystem implements Subsystem {
             this.world.z + Math.sin(angle) * spread);
           scale.set(height * (.16 + rng() * .06) * breadth, height * (.20 + rng() * .08), height * (.14 + rng() * .06) * breadth);
           crowns[i % crowns.length].push(matrix.compose(position, rotation, scale).clone());
+          if (!young && lobe < 3) {
+            const base = new THREE.Vector3(this.world.x, ground.height + height * .36, this.world.z);
+            const tip = position.clone(); tip.y -= height * .05;
+            const direction = tip.clone().sub(base), length = direction.length();
+            const fork = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+            stems.push(new THREE.Matrix4().compose(base.add(tip).multiplyScalar(.5), fork, new THREE.Vector3(.45, length, .45)));
+          }
         }
       }
     }
@@ -298,7 +298,7 @@ export class PheasantScenerySystem implements Subsystem {
     root.add(trunk);
 
     const branchGeo = new THREE.CylinderGeometry(0.11, 0.25, 1, 7, 2);
-    const crownGeo = cottonwoodFoliageGeometry();
+    const crownGeo = clusteredFoliageGeometry('cottonwood');
     this.geometries.push(branchGeo, crownGeo);
     const up = new THREE.Vector3(0, 1, 0);
     const branchMatrices: THREE.Matrix4[] = [];
