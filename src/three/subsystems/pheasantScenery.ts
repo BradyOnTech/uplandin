@@ -16,9 +16,9 @@ function seeded(seed: number, salt: number): number {
 function clusteredFoliageGeometry(kind: 'cottonwood' | 'windbreak'): THREE.BufferGeometry {
   const positions: number[] = [];
   const clusters = kind === 'windbreak' ? [
-    [-.34, -.35, .10, .72, .66, .63],
-    [.30, -.06, -.18, .70, .61, .70],
-    [.05, .57, .10, .50, .57, .50],
+    [-.34, -.22, .10, .78, .63, .67],
+    [.30, -.02, -.18, .75, .62, .72],
+    [.02, .44, .10, .60, .58, .56],
   ] : [
     [-.52, -.12, .08, .70, .38, .65],
     [.25, .02, -.20, .82, .43, .69],
@@ -27,7 +27,16 @@ function clusteredFoliageGeometry(kind: 'cottonwood' | 'windbreak'): THREE.Buffe
     [-.23, -.38, -.45, .54, .28, .43],
   ];
   for (const [x, y, z, sx, sy, sz] of clusters) {
-    const source = new THREE.IcosahedronGeometry(1, 0);
+    // Thirty-two broad facets per mass keep a low-poly canopy, but avoid the
+    // triangular pyramid silhouette of the old twenty-face seed shape.
+    // Coherent displacement keeps duplicated face vertices watertight.
+    const source = new THREE.OctahedronGeometry(1, 1);
+    const vertices = source.getAttribute('position');
+    for (let i = 0; i < vertices.count; i++) {
+      const vx=vertices.getX(i), vy=vertices.getY(i), vz=vertices.getZ(i);
+      const bulge=1+.10*Math.sin(vx*5+z*3)*Math.cos(vz*4+y*5)+.06*Math.sin(vy*7+x*4);
+      vertices.setXYZ(i, vx*bulge+vy*.10, vy*bulge, vz*bulge);
+    }
     source.scale(sx, sy, sz);
     source.translate(x, y, z);
     positions.push(...Array.from(source.getAttribute('position').array));
