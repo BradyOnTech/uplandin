@@ -25,6 +25,7 @@ import type { HuntState } from './state';
 import type { RNG, Vec2 } from './types';
 import { windMults } from './wind';
 import { quailPointApproach } from './quailApproach';
+import { pheasantApproach } from './pheasantApproach';
 import { HUNT_CHALLENGES, type HuntChallenge } from './huntChallenge';
 import { huntHabitatAffinity, huntingDoctrine } from './huntDoctrine';
 import { LandscapeModel, type GroundSample } from './landscape';
@@ -241,6 +242,15 @@ export class HuntSimulation {
         .map((dog) => dog.pointedBirdId)
         .filter((id): id is number => id !== null);
       const disturbed = birdsDisturbedByHunter(this.hunt.birds, this.hunt.hunterPos, true, pointedIds);
+      if (spatialEncounter) {
+        // Even a runner can sit at a cover end or during its recovery. A
+        // hunter who reaches the actual bird can put it up without a point.
+        disturbed.push(...this.hunt.birds.filter(bird => bird.state === 'hidden'
+          && bird.speciesId === 'ringneck' && !pointedIds.includes(bird.id)
+          && dist(bird.pos, this.hunt.hunterPos) <= Math.min(5.5,
+            pheasantApproach(bird.id, 0, false).flushRadius)));
+        disturbed.sort((a, b) => dist(a.pos, this.hunt.hunterPos) - dist(b.pos, this.hunt.hunterPos) || a.id - b.id);
+      }
       if (disturbed.length > 0) {
         const event = this.flushBird(disturbed[0].id, 'spook', null);
         if (event) events.push(event);
@@ -270,6 +280,9 @@ export class HuntSimulation {
       if (pointed) {
         const species = getSpecies(pointed.speciesId);
         nerveMult *= species.pointNerveMult ?? 1;
+        if (spatialEncounter && species.id === 'ringneck') {
+          nerveMult *= pheasantApproach(pointed.id, dist(this.hunt.hunterPos, pointed.pos), !!input.hunterRunning).nerveScale;
+        }
         const coveyApproach = spatialEncounter && species.coveyApproach === true;
         if (coveyApproach) {
           nerveMult *= quailPointApproach(pointed.coveyId, dog.pressure, !!input.hunterRunning).nerveScale;
@@ -293,7 +306,9 @@ export class HuntSimulation {
       const coveyApproach = spatialEncounter && species?.coveyApproach === true;
       const radius = bird && coveyApproach
         ? quailPointApproach(bird.coveyId, dog.pressure, !!input.hunterRunning).flushRadius * HUNT_CHALLENGES[this.challenge].approach * (species?.pointRadiusMult ?? 1)
-        : doctrine.pointRadius * (species?.pointRadiusMult ?? 1);
+        : bird && spatialEncounter && species?.id === 'ringneck'
+          ? pheasantApproach(bird.id, dist(this.hunt.hunterPos, bird.pos), !!input.hunterRunning).flushRadius
+          : doctrine.pointRadius * (species?.pointRadiusMult ?? 1);
       const trigger = bird && coveyApproach
         ? this.hunt.birds.filter(candidate => candidate.state === 'hidden' && candidate.coveyId === bird.coveyId)
           .sort((a,b)=>dist(this.hunt.hunterPos,a.pos)-dist(this.hunt.hunterPos,b.pos))[0]

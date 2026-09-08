@@ -7,14 +7,15 @@ import { HuntSimulation } from '../src/game/huntSimulation';
 import { mulberry32 } from '../src/game/math';
 import { createHunt } from '../src/game/state';
 import { LandscapeModel } from '../src/game/landscape';
+import { pheasantApproach } from '../src/game/pheasantApproach';
 
-function pointedSimulation(hunterDistance: number, continuousEncounter = false) {
-  const area = getArea('quail-fields');
+function pointedSimulation(hunterDistance: number, continuousEncounter = false, areaId = 'quail-fields', speciesId = 'bobwhite') {
+  const area = getArea(areaId);
   const hunt = createHunt(area, mulberry32(11), { wind: 'calm', condition: 'mild' });
   const bird: Bird = {
     id: 9001,
     coveyId: 77,
-    speciesId: 'bobwhite',
+    speciesId,
     pos: { x: 300, y: 300 },
     state: 'hidden',
     runs: false,
@@ -38,6 +39,35 @@ function pointedSimulation(hunterDistance: number, continuousEncounter = false) 
 }
 
 describe('HuntSimulation shared orchestration', () => {
+  it('allows a tight pheasant to hold through a quiet walk and flush at the actual boots with point credit', () => {
+    const f = pointedSimulation(40, true, 'pheasant-coverts', 'ringneck');
+    const id = Array.from({length: 100}, (_, i) => i + 1).find(id => pheasantApproach(id, 40, false).kind === 'tight')!;
+    f.bird.id = id; f.dog.pointedBirdId = id; f.bird.nerveMs = 5000;
+    for (let distance = 40; distance >= 6; distance -= .1) {
+      const events = f.simulation.update(40, {hunterPos: {x: 300 - distance, y: 300}});
+      expect(events.some(e => e.type === 'covey-flushed')).toBe(false);
+    }
+    const radius = pheasantApproach(id, 0, false).flushRadius;
+    const events = f.simulation.update(16, {hunterPos: {x: 300 - radius + .1, y: 300}});
+    expect(events).toContainEqual(expect.objectContaining({type:'covey-flushed', cause:'proximity', pointCredit:true}));
+  });
+  it('keeps wary pheasants and sprinting approaches capable of a distant break', () => {
+    for (const running of [false, true]) {
+      const f = pointedSimulation(20, true, 'pheasant-coverts', 'ringneck');
+      const id = Array.from({length: 100}, (_, i) => i + 1).find(id => pheasantApproach(id, 20, false).flushRadius > 22)!;
+      f.bird.id = id; f.dog.pointedBirdId = id;
+      const events = f.simulation.update(16, {hunterPos:f.hunt.hunterPos, hunterRunning:running});
+      expect(events).toContainEqual(expect.objectContaining({type:'covey-flushed', cause:running ? 'spook' : 'proximity', pointCredit:!running}));
+    }
+  });
+  it('flushes an unpointed resting pheasant underfoot without awarding a point', () => {
+    const f = pointedSimulation(7, true, 'pheasant-coverts', 'ringneck');
+    f.dog.pos = {x: 600, y: 600}; f.dog.state = 'quartering'; f.dog.pointedBirdId = null;
+    f.bird.runs = true; f.bird.restingMs = 2000;
+    const events = f.simulation.update(16, {hunterPos:{x:299, y:300}});
+    expect(events).toContainEqual(expect.objectContaining({type:'covey-flushed', cause:'spook', pointCredit:false}));
+  });
+
   it('uses the actual Chukar cross-slope elevation for continuous encounters', () => {
     const area = getArea('chukar-ridge');
     const land = new LandscapeModel(area, 'south-gate');

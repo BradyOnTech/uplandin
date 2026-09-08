@@ -58,6 +58,15 @@ describe('continuous Quail coveys', () => {
       f.runtime.launchCover!.dispose();
     }
   });
+  it('gives an underfoot pheasant a stronger upward break than a distant bird', () => {
+    const close = fixture(), far = fixture();
+    close.add(1, 1, 3, 0); far.add(1, 1, 40, 0);
+    for (const f of [close, far]) {
+      f.birds[0].speciesId = 'ringneck';
+      f.runtime.tickBirds(1000 / 30);
+    }
+    expect(close.runtime.slots[0].vyW).toBeGreaterThan(far.runtime.slots[0].vyW * 1.3);
+  });
   it('lets pheasants punch above tall cover before leveling out without changing a low covey launch', () => {
     const pheasant = fixture(), quail = fixture();
     for (const f of [pheasant, quail]) f.add(1, 1, 40, 20);

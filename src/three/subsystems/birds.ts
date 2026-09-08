@@ -1359,6 +1359,12 @@ export class BirdsSystem implements Subsystem {
       slot.vxW = speciesFlight.escX * FWD_MIN;
       slot.vzW = speciesFlight.escZ * FWD_MIN;
       slot.vyW = -v.y * FLUSH_PX_TO_M_V;
+      if (this.spatialEncounter && species.id === 'ringneck') {
+        const distance = Math.hypot(slot.x - speciesFlight.hunterX, slot.z - speciesFlight.hunterZ);
+        // Close birds break upward; distant birds carry away sooner. Keep
+        // the actual launch location and random individual impulse intact.
+        slot.vyW *= THREE.MathUtils.lerp(1.25, .85, THREE.MathUtils.smoothstep(distance, 5, 28));
+      }
       slot.spatialFlight = this.spatialFlightFor(
         species,
         speciesFlight.escX,
@@ -1617,9 +1623,14 @@ export class BirdsSystem implements Subsystem {
         // World-space rises use continuous wingbeats. Legacy screen-space
         // waves retain the stepped pose so their silhouettes stay readable.
         const hz = s.species.flight.flapRate ?? 14;
-        const ph = Math.sin((s.airMs / 1000) * hz * Math.PI * 2 + s.wobblePh * 0.35);
-        const beatAmplitude = 0.58 + s.species.flight.climb * 0.28 + (s.species.timber ? 0.06 : 0);
-        const ang = s.spatialFlight ? .05 + ph * beatAmplitude : ph > 0.33 ? 0.88 : ph < -0.33 ? -0.78 : 0.1;
+        const pheasant = this.spatialEncounter && s.species.id === 'ringneck';
+        const seconds = s.airMs / 1000;
+        const burst = pheasant ? Math.exp(-seconds / .55) : 0;
+        // Integrate the decaying opening cadence so the phase never jumps.
+        const cycles = seconds * hz + (pheasant ? 1.1 * (1 - burst) : 0);
+        const ph = Math.sin(cycles * Math.PI * 2 + s.wobblePh * 0.35);
+        const beatAmplitude = 0.58 + s.species.flight.climb * 0.28 + (s.species.timber ? 0.06 : 0) + burst * .28;
+        const ang = s.spatialFlight || pheasant ? .05 + ph * beatAmplitude : ph > 0.33 ? 0.88 : ph < -0.33 ? -0.78 : 0.1;
         s.wingL.rotation.set(0, 0, -ang);
         s.wingR.rotation.set(0, 0, ang);
       }
