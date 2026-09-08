@@ -366,6 +366,10 @@ function woodcockGeography(w: number, h: number) {
   const p = (x: number, y: number): Vec2 => ({ x: w * x, y: h * y });
   return {
     ...base,
+    dropPoints: [south, west].map((drop, index) => {
+      const next = index === 0 ? p(.42, .78) : p(.21, .56);
+      return { ...drop, heading: Math.atan2(next.y - drop.position.y, next.x - drop.position.x) };
+    }),
     // Woodcock country is a wet-bottom chain: the handler moves between
     // alder pockets and pond edges rather than crossing the high ground.
     trails: [

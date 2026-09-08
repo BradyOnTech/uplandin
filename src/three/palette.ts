@@ -612,7 +612,7 @@ const GROUSE_WOODS_TOD = patchedTod({
 });
 const WOODCOCK_BOTTOMS_TOD = patchedTod({
   morning: { skyTop: 0x506d79, skyMid: 0xa3b8ae, skyHorizon: 0xc8cdb9, fogColor: 0xaab9ae, fogDensity: .0038, sunAzimuth: 105, sunIntensity: 1.8, fillColor: 0xa5c0bf, fillIntensity: .55, ambientSky: 0x9bb3ac, ambientGround: 0x526453, ambientIntensity: .98, ridge: 0x526960, ridgeFar: 0x8ea69b, landform: 0x64765d, floraWarm: .16, floraCool: .6, exposure: 1.03 },
-  noon: { skyTop: 0x4f7180, skyMid: 0x93b4b2, skyHorizon: 0xd0cdb8, fogColor: 0xa5b8b0, fogDensity: .0032, sunAzimuth: 110, sunIntensity: 2.05, fillColor: 0xa5bec0, fillIntensity: .42, ambientSky: 0x94afa9, ambientGround: 0x506453, ambientIntensity: .88, ridge: 0x4e6a63, ridgeFar: 0x8ba9a0, landform: 0x5f765f, floraWarm: .2, floraCool: .6, exposure: .98 },
+  noon: { skyTop: 0x4f7180, skyMid: 0x93b4b2, skyHorizon: 0xd0cdb8, fogColor: 0xa5b8b0, fogDensity: .0032, sunAzimuth: 110, sunIntensity: 1.65, fillColor: 0xa5bec0, fillIntensity: .65, ambientSky: 0xc0d0c8, ambientGround: 0x919583, ambientIntensity: 1.4, ridge: 0x4e6a63, ridgeFar: 0x8ba9a0, landform: 0x5f765f, floraWarm: .2, floraCool: .6, exposure: 1.03 },
   evening: { skyTop: 0x536879, skyMid: 0x9ba49f, skyHorizon: 0xc8b09a, fogColor: 0x989f9a, fogDensity: .0052, fillColor: 0x8ea9ba, fillIntensity: .92, ambientSky: 0x859ba4, ambientGround: 0x4f554c, ambientIntensity: 1.08, ridge: 0x4a5859, ridgeFar: 0x7b9096, landform: 0x505c52, floraWarm: .18, floraCool: .67, exposure: 1.18 },
 });
 

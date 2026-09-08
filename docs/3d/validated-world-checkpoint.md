@@ -121,6 +121,12 @@ Walked the South Gate in Standard and West Track in Lightweight. Evidence: `outp
 
 The final lightweight walk reported 66 draws and 242,422 triangles, with no browser warnings or errors. The denser Standard pass reported 91 draws and 507,380 triangles before the final trunk-width adjustment. These are desktop samples, not mobile acceptance. Compilation and build pass. No new tests or full-suite rerun accompanied this visual-only pass; the last full suite remains 548 passing tests.
 
+**Alder arrival alignment and noon fill**
+
+Both Woodcock drop headings now derive from the first segment of their authored approach instead of the old generic junction. West Track changed from approximately 72 to 84 degrees; a repeated 12-second forward walk follows the route instead of heading into its planted shoulder. The route-heading contract now covers both Woodcock entries as well as Chukar, with 22 focused checks passing.
+
+Raised the Woodcock noon sky/ground fill and reduced direct sun intensity to keep the overcast corridor readable. Reviewed the same West Track walk in Lightweight mode, captured in `output/playwright/woodcock-overcast-west.png`. The path and nearby dog are clearer. The long planting bands still read too regularly, and wet soil/pool transitions need further work; this is not finished wetland composition. Compilation and build pass. The final browser console had no errors and one 5.3-millisecond simulation-budget warning. Other times of day and mobile hardware were not reviewed in this pass.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.

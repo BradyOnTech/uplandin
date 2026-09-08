@@ -11,8 +11,8 @@ import { createThreeHuntSetup } from '../src/game/gameplayMode';
 import { pheasantPondObstacles, pheasantPondRadii } from '../src/game/pheasantHabitat';
 
 describe('authored habitat contracts', () => {
-  it('faces each Chukar entry along its first switchback', () => {
-    const area = getArea('chukar-ridge');
+  it.each(['chukar-ridge', 'woodcock-bottoms'])('faces each %s entry along its first authored route segment', areaId => {
+    const area = getArea(areaId);
     for (const drop of area.dropPoints) {
       const route = area.trails.find(t => t.points[0].x === drop.position.x && t.points[0].y === drop.position.y)!;
       const next = route.points[1], dx = next.x - drop.position.x, dy = next.y - drop.position.y;
