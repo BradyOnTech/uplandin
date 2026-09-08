@@ -5,8 +5,9 @@ const clamp = (n: number) => Math.max(0, Math.min(1, n));
 /** Vertical offset from the sampled pond basin floor used by all Pheasant water surfaces. */
 export const PHEASANT_WATER_LEVEL_OFFSET = 2.95;
 export interface PheasantField { x: number; y: number; rx: number; ry: number; angle: number }
+export interface PheasantHarvestSample { amount: number; row: number; angle: number }
 export interface PheasantBelt { x: number; y: number; angle: number; length: number; count: number }
-export interface PheasantPond { x: number; y: number; rx: number; ry: number; waterY: number }
+export interface PheasantPond { landmarkId: string; x: number; y: number; rx: number; ry: number; waterY: number }
 
 /** Harvested feeding fields are visual management units. They never alter the
  * shared hunting rectangles or stocking; tall habitat remains authoritative. */
@@ -22,14 +23,38 @@ export function pheasantCoverAt(area: AreaConfig, x: number, y: number): boolean
 /** Reusable by terrain paint: zero means cover/unharvested, one means the
  * interior of a cut field. The width is feathered over an eight-yard verge. */
 export function pheasantHarvestAt(area: AreaConfig, x: number, y: number, fields = pheasantFields(area)): number {
-  if (pheasantCoverAt(area, x, y)) return 0;
-  let result = 0;
-  for (const field of fields) {
-    const dx = x - field.x, dy = y - field.y, c = Math.cos(field.angle), s = Math.sin(field.angle);
-    const u = dx * c + dy * s, v = -dx * s + dy * c;
-    result = Math.max(result, clamp(Math.min(field.rx - Math.abs(u), field.ry - Math.abs(v)) / 8));
+  return samplePheasantHarvest(area, x, y, fields, { amount: 0, row: 0, angle: 0 }).amount;
+}
+
+/** One field orientation for the cut ground and its stubble. Supply a reused
+ * output and cached fields during construction of terrain or plant batches. */
+export function samplePheasantHarvest(
+  area: AreaConfig, x: number, y: number, fields: readonly PheasantField[], out: PheasantHarvestSample,
+): PheasantHarvestSample {
+  out.amount = 0; out.row = 0; out.angle = 0;
+  let coverDistance = Infinity;
+  for (const patch of area.patches) {
+    const dx = Math.max(patch.x - x, 0, x - patch.x - patch.w);
+    const dy = Math.max(patch.y - y, 0, y - patch.y - patch.h);
+    coverDistance = Math.min(coverDistance, Math.hypot(dx, dy));
   }
-  return result;
+  if (coverDistance === 0) return out;
+  // Leave a soft uncut verge around gameplay cover. Both the ground painter
+  // and the plants read this, so low-density mobile cover keeps its edge.
+  const verge = clamp(coverDistance / 7);
+  const coverFade = verge * verge * (3 - 2 * verge);
+  for (const field of fields) {
+    const dx = x - field.x, dy = y - field.y;
+    const c = Math.cos(field.angle), s = Math.sin(field.angle);
+    const u = dx * c + dy * s, v = -dx * s + dy * c;
+    const amount = clamp(Math.min(field.rx - Math.abs(u), field.ry - Math.abs(v)) / 8) * coverFade;
+    if (amount <= out.amount) continue;
+    out.amount = amount;
+    out.row = v;
+    // Local +Z follows the rows; Three.js yaw maps +Z toward +X.
+    out.angle = Math.PI / 2 - field.angle;
+  }
+  return out;
 }
 
 export function pheasantTrackDistance(area: AreaConfig, x: number, y: number): number {
@@ -51,6 +76,7 @@ export function pheasantPlantClear(area: AreaConfig, x: number, y: number, radiu
 
 export function pheasantPonds(landscape: LandscapeModel): PheasantPond[] {
   return landscape.area.landmarks.filter(l => l.kind === 'pond').map(l => ({
+    landmarkId: l.id,
     x: l.position.x, y: l.position.y, rx: l.id === 'area-feature' ? 34 : 43, ry: l.id === 'area-feature' ? 23 : 29,
     waterY: landscape.heightAtProperty(l.position.x, l.position.y) + PHEASANT_WATER_LEVEL_OFFSET,
   }));

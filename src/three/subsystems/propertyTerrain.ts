@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import type { TerrainKind } from '../../game/areas';
-import type { LandscapeModel } from '../../game/landscape';
+import { PROPERTY_PX_TO_M, type GroundSample, type LandscapeModel } from '../../game/landscape';
 import type { Ctx, Quality } from '../engine';
 import { buildQuailTerrainGeometry } from './quailTerrain';
 import { quailGroundNearDistance, quailGroundTiles, quailGroundUsesNear } from './quailGroundGeometry';
 import { fieldTimeOfDay, type TimeOfDay } from '../palette';
+import { pheasantFields, pheasantPonds, samplePheasantHarvest } from './pheasantLandscape';
 
 type Paint = (landscape: LandscapeModel, x: number, y: number, out: THREE.Color) => THREE.Color;
 
@@ -93,7 +94,43 @@ function hash(x: number, y: number, seed: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
 }
 
-function paintFor(kind: TerrainKind, seed: number, areaId: string): Paint {
+/** Continuous in property coordinates, including tile edges and drop changes.
+ * Broad color masses should survive a change in terrain tessellation. */
+function groundNoise(x: number, y: number, seed: number): number {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  const fx = x - ix, fy = y - iy;
+  const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+  const a = hash(ix, iy, seed), b = hash(ix + 1, iy, seed);
+  const c = hash(ix, iy + 1, seed), d = hash(ix + 1, iy + 1, seed);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+
+interface GroundFinish {
+  soil: number;
+  stone: number;
+  litter: number;
+  soilStrength: number;
+  stoneStrength: number;
+  litterStrength: number;
+  wetStrength: number;
+}
+
+/** Material identities stay restrained within the existing art palette.
+ * These are baked colors, with no extra render passes or texture downloads. */
+const GROUND_FINISH: Record<TerrainKind, GroundFinish> = {
+  prairie: { soil: 0x95805c, stone: 0xaca18a, litter: 0xa28b57, soilStrength: .23, stoneStrength: .2, litterStrength: .22, wetStrength: .4 },
+  wetland: { soil: 0x62513d, stone: 0x858778, litter: 0x978454, soilStrength: .2, stoneStrength: .15, litterStrength: .33, wetStrength: .65 },
+  woods: { soil: 0x55483a, stone: 0x81857a, litter: 0x8a704d, soilStrength: .3, stoneStrength: .32, litterStrength: .42, wetStrength: .42 },
+  rimrock: { soil: 0xa39172, stone: 0xb0a28c, litter: 0x958453, soilStrength: .4, stoneStrength: .65, litterStrength: .18, wetStrength: .25 },
+  desert: { soil: 0xc49e71, stone: 0xa28a70, litter: 0x847044, soilStrength: .55, stoneStrength: .46, litterStrength: .2, wetStrength: .3 },
+  canyon: { soil: 0xa66f50, stone: 0xb58e6e, litter: 0x78613c, soilStrength: .4, stoneStrength: .55, litterStrength: .4, wetStrength: .28 },
+  alpine: { soil: 0x7b7462, stone: 0xb0b2a5, litter: 0x665a43, soilStrength: .25, stoneStrength: .66, litterStrength: .33, wetStrength: .4 },
+  'oak-savanna': { soil: 0xb39662, stone: 0x9f947b, litter: 0x79623b, soilStrength: .4, stoneStrength: .3, litterStrength: .42, wetStrength: .28 },
+};
+
+function paintFor(property: LandscapeModel): Paint {
+  const { kind, seed } = property.area.terrain;
+  const areaId = property.area.id;
   const base = PALETTE[kind];
   const overrides = AREA_PALETTE_OVERRIDES[areaId];
   const palette = {
@@ -102,22 +139,62 @@ function paintFor(kind: TerrainKind, seed: number, areaId: string): Paint {
     light: overrides?.light === undefined ? base.light : new THREE.Color(overrides.light),
     wet: overrides?.wet === undefined ? base.wet : new THREE.Color(overrides.wet),
   };
+  const finish = GROUND_FINISH[kind];
+  const soil = new THREE.Color(finish.soil);
+  const stone = new THREE.Color(finish.stone);
+  const litter = new THREE.Color(areaId === 'woodcock-bottoms' ? 0x65583f : finish.litter);
+  const fields = areaId === 'pheasant-coverts' ? pheasantFields(property.area) : [];
+  const ponds = areaId === 'pheasant-coverts' ? pheasantPonds(property) : [];
+  const harvestSample = { amount: 0, row: 0, angle: 0 };
+  const cutStraw = new THREE.Color(0xb8a477);
+  const cutSoil = new THREE.Color(0x927551);
+  const bankMud = new THREE.Color(0x514936);
+  const reedLitter = new THREE.Color(0x8d8055);
+  // Geometry construction is synchronous; reuse one sampler per painter.
+  const surface: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
   return (landscape, x, y, out) => {
-    const surface = landscape.surfaceAtProperty(x, y, {
-      height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0,
-    });
-    const broad = hash(x * 0.045 + 12, y * 0.045 + 41, seed);
-    const meso = hash(x * 0.21 + 73, y * 0.21 + 19, seed ^ 0x2e15);
-    const fine = hash(x * 0.9 + 7, y * 0.9 + 31, seed ^ 0xb0bde7);
+    landscape.surfaceAtProperty(x, y, surface);
+    const broad = groundNoise(x * .012 + 12, y * .012 + 41, seed);
+    const meso = groundNoise(x * .052 + 73, y * .052 + 19, seed ^ 0x2e15);
     const slope = THREE.MathUtils.clamp(surface.slope * 1.15, 0, 1);
     const rock = THREE.MathUtils.clamp(surface.rockiness * 0.88 + slope * 0.16, 0, 1);
     const moisture = THREE.MathUtils.clamp(surface.moisture, 0, 1);
     const fertility = THREE.MathUtils.clamp(surface.vegetation, 0, 1);
     out.copy(palette.dark).lerp(palette.mid, 0.32 + broad * 0.46);
     out.lerp(palette.light, fertility * (0.12 + meso * 0.18));
-    out.lerp(palette.wet, moisture * (0.22 + (1 - broad) * 0.28));
-    out.lerp(palette.dark, rock * 0.28);
-    out.multiplyScalar(0.91 + meso * 0.14 + fine * 0.055);
+    // Bare openings, accumulated litter, and exposed shoulders respond to
+    // the same ground sample that places habitat. Keep fine grain in the
+    // fragment shader, where it is independent of the near/far vertex grid.
+    const dry = 1 - moisture;
+    const exposure = THREE.MathUtils.smoothstep(rock, .2, .8);
+    out.lerp(soil, dry * (1 - fertility) * finish.soilStrength);
+    out.lerp(litter, fertility * dry * (1 - slope) * (.35 + meso * .65) * finish.litterStrength);
+    out.lerp(palette.wet, moisture * (.45 + (1 - broad) * .55) * finish.wetStrength);
+    out.lerp(stone, exposure * finish.stoneStrength);
+    if (fields.length > 0) {
+      samplePheasantHarvest(landscape.area, x, y, fields, harvestSample);
+      // Match the dry-ground cutoff used by stubble placement, feathered
+      // into the wet fringe so harvested rectangles do not paint over mud.
+      const harvest = harvestSample.amount * (1 - THREE.MathUtils.smoothstep(moisture, .25, .36));
+      const swath = .5 + .5 * Math.sin(harvestSample.row * Math.PI / 24);
+      out.lerp(cutSoil, harvest * .4);
+      out.lerp(cutStraw, harvest * (.25 + swath * .2));
+    }
+    for (const pond of ponds) {
+      const radius = Math.hypot((x - pond.x) * PROPERTY_PX_TO_M / pond.rx,
+        (y - pond.y) * PROPERTY_PX_TO_M / pond.ry);
+      const footprint = 1 - THREE.MathUtils.smoothstep(radius, 1.08, 1.48);
+      if (footprint <= 0) continue;
+      const aboveWater = surface.height - pond.waterY;
+      const mud = 1 - THREE.MathUtils.smoothstep(aboveWater, -.15, 1.05);
+      // Follow the elevation of the real bank. Water remains level while
+      // its mud and reed-litter fringe follows the sloping basin shoulders.
+      out.lerp(bankMud, footprint * mud * .7);
+      const fringe = THREE.MathUtils.smoothstep(aboveWater, .1, .7)
+        * (1 - THREE.MathUtils.smoothstep(aboveWater, 1.2, 2.4));
+      out.lerp(reedLitter, footprint * fringe * .35);
+    }
+    out.multiplyScalar(.96 + meso * .08);
     return out;
   };
 }
@@ -145,7 +222,7 @@ export class PropertyTerrain {
   };
 
   constructor(private readonly landscape: LandscapeModel) {
-    this.paint = paintFor(landscape.area.terrain.kind, landscape.area.terrain.seed, landscape.area.id);
+    this.paint = paintFor(landscape);
     this.material = new THREE.MeshLambertMaterial({ vertexColors: true });
     const uniforms = this.light;
     this.material.customProgramCacheKey = () => `property-surface-v1-${landscape.area.terrain.kind}`;

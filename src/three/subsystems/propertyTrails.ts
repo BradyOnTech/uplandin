@@ -34,19 +34,15 @@ export class PropertyTrailsSystem implements Subsystem {
         : doctrine.style === 'woods' || doctrine.style === 'bottoms' ? 0x48513e
           : doctrine.style === 'desert-wash' || doctrine.style === 'canyon' ? 0x806b4d
             : doctrine.style === 'alpine-edge' ? 0x596157 : 0x75684c;
-    const opacity = areaId === 'sharptail-prairie' ? .58
+    const opacity = areaId === 'pheasant-coverts' ? .46 : areaId === 'sharptail-prairie' ? .58
       : areaId === 'valley-oaks' ? .68 : .78;
-    const positions: number[] = [], colors: number[] = [], indices: number[] = [];
+    const positions: number[] = [], colors: number[] = [], indices: number[] = [], edges: number[] = [];
     const tint = new THREE.Color(color);
     const sample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
     let vertex = 0;
     for (const trail of this.landscape.area.trails) {
       if (trail.points.length < 2) continue;
-      const worldPoints = trail.points.map((point) => ({
-        x: (point.x - this.landscape.dropPoint.position.x) * PROPERTY_PX_TO_M,
-        z: (point.y - this.landscape.dropPoint.position.y) * PROPERTY_PX_TO_M + 40,
-        y: this.landscape.heightAtProperty(point.x, point.y) + .012,
-      }));
+      const worldPoints = this.sampleTrail(trail.points);
       const normals = worldPoints.map((_point, index) => {
         const before = worldPoints[Math.max(0, index - 1)];
         const after = worldPoints[Math.min(worldPoints.length - 1, index + 1)];
@@ -77,8 +73,12 @@ export class PropertyTrailsSystem implements Subsystem {
       });
       for (let i = 0; i < worldPoints.length; i++) {
         const point = worldPoints[i], normal = normals[i];
-        positions.push(point.x - normal.x, point.y, point.z - normal.z, point.x + normal.x, point.y, point.z + normal.z);
-        const areaPoint = trail.points[i];
+        for (const side of [-1, 1]) {
+          const x = point.x + normal.x * side, z = point.z + normal.z * side;
+          positions.push(x, this.landscape.heightAtWorld(x, z) + .035, z);
+          edges.push(side);
+        }
+        const areaPoint = this.landscape.worldToProperty(point.x, point.z, { x: 0, y: 0 });
         const wet = this.landscape.surfaceAtProperty(areaPoint.x, areaPoint.y, sample).moisture;
         const pointTint = tint.clone().lerp(new THREE.Color(0x5b6046), wet * .22);
         for (let p = 0; p < 2; p++) colors.push(pointTint.r, pointTint.g, pointTint.b);
@@ -93,9 +93,23 @@ export class PropertyTrailsSystem implements Subsystem {
     this.geometry = new THREE.BufferGeometry();
     this.geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     this.geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    this.geometry.setAttribute('routeEdge', new THREE.Float32BufferAttribute(edges, 1));
     this.geometry.setIndex(indices);
     this.geometry.computeVertexNormals();
-    this.material = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, transparent: true, opacity });
+    this.material = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, transparent: true, opacity, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    this.material.customProgramCacheKey = () => 'property-route-soft-shoulder-v1';
+    this.material.onBeforeCompile = shader => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float routeEdge; varying float vRouteEdge; varying vec2 vRouteWorld;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRouteEdge = routeEdge; vRouteWorld = (modelMatrix * vec4(position, 1.0)).xz;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vRouteEdge; varying vec2 vRouteWorld;')
+        .replace('#include <color_fragment>', `#include <color_fragment>
+          float shoulder = abs(vRouteEdge) + sin(vRouteWorld.x * 2.1 + sin(vRouteWorld.y * 1.7)) * .07;
+          diffuseColor.a *= 1.0 - smoothstep(.5, 1.0, shoulder);
+          diffuseColor.rgb *= .97 + .06 * sin(vRouteWorld.x * 3.7) * sin(vRouteWorld.y * 4.1);
+        `);
+    };
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.name = `${this.landscape.area.name} worn routes`;
     this.mesh.receiveShadow = true;
@@ -115,11 +129,7 @@ export class PropertyTrailsSystem implements Subsystem {
       const trackHalfWidth = 0.095;
       for (const trail of this.landscape.area.trails) {
         if (trail.points.length < 2) continue;
-        const worldPoints = trail.points.map((point) => ({
-          x: (point.x - this.landscape.dropPoint.position.x) * PROPERTY_PX_TO_M,
-          z: (point.y - this.landscape.dropPoint.position.y) * PROPERTY_PX_TO_M + 40,
-          y: this.landscape.heightAtProperty(point.x, point.y) + 0.032,
-        }));
+        const worldPoints = this.sampleTrail(trail.points);
         for (let i = 1; i < worldPoints.length; i++) {
           const a = worldPoints[i - 1];
           const b = worldPoints[i];
@@ -132,14 +142,12 @@ export class PropertyTrailsSystem implements Subsystem {
           for (const side of [-1, 1]) {
             const cx = nx * trackOffset * side;
             const cz = nz * trackOffset * side;
-            const tx = (dx / length) * trackHalfWidth;
-            const tz = (dz / length) * trackHalfWidth;
-            detailPositions.push(
-              a.x + cx - tx, a.y, a.z + cz - tz,
-              a.x + cx + tx, a.y, a.z + cz + tz,
-              b.x + cx - tx, b.y, b.z + cz - tz,
-              b.x + cx + tx, b.y, b.z + cz + tz,
-            );
+            const tx = nx * trackHalfWidth;
+            const tz = nz * trackHalfWidth;
+            for (const point of [a, b]) for (const edge of [-1, 1]) {
+              const x = point.x + cx + tx * edge, z = point.z + cz + tz * edge;
+              detailPositions.push(x, this.landscape.heightAtWorld(x, z) + .05, z);
+            }
             detailIndices.push(
               detailVertex, detailVertex + 1, detailVertex + 2,
               detailVertex + 1, detailVertex + 3, detailVertex + 2,
@@ -169,6 +177,23 @@ export class PropertyTrailsSystem implements Subsystem {
         ctx.scene.add(this.detailMesh);
       }
     }
+  }
+
+  /** Sample both long grades and cross-slope shoulders instead of bridging
+   * a hundred metres of terrain with one flat quad. */
+  private sampleTrail(points: readonly { x: number; y: number }[]): { x: number; z: number }[] {
+    const sampled: { x: number; z: number }[] = [];
+    for (let i = 1; i < points.length; i++) {
+      const a = points[i - 1], b = points[i];
+      const distance = Math.hypot(b.x - a.x, b.y - a.y) * PROPERTY_PX_TO_M;
+      if (distance < .001) continue;
+      const steps = Math.ceil(distance / 1.5);
+      for (let step = sampled.length ? 1 : 0; step <= steps; step++) {
+        const t = step / steps;
+        sampled.push(this.landscape.propertyToWorld(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, { x: 0, z: 0 }));
+      }
+    }
+    return sampled;
   }
 
   update(_ctx: Ctx): void { /* static */ }

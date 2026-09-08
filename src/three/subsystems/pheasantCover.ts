@@ -4,7 +4,7 @@ import { PROPERTY_PX_TO_M } from '../../game/landscape';
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
 
-import { pheasantCoverAt, pheasantFields, pheasantHarvestAt, pheasantPlantClear, pheasantPonds } from './pheasantLandscape';
+import { pheasantCoverAt, pheasantFields, samplePheasantHarvest, pheasantPlantClear, pheasantPonds } from './pheasantLandscape';
 
 function cellSeed(x: number, z: number, seed: number): number {
   let h = seed ^ Math.imul(x, 374761393) ^ Math.imul(z, 668265263);
@@ -37,7 +37,7 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble', lite: boolean)
     const root = rng() * (kind === 'stubble' ? 0.67 : kind === 'cattail' ? 0.55 : 0.66);
     const x = sx * root;
     const z = sz * root;
-    const width = kind === 'cattail' ? 0.012 : 0.009 + rng() * 0.016;
+    const width = kind === 'cattail' ? 0.018 : kind === 'prairie' ? 0.025 + rng() * 0.030 : 0.014 + rng() * 0.018;
     const height = kind === 'prairie'
       ? 0.46 + rng() * 0.65
       : kind === 'cattail'
@@ -127,6 +127,7 @@ export class PheasantCoverSystem implements Subsystem {
     // reasonably tight; 216px reduces the mobile batch count to about one
     // eighth while preserving the same deterministic plant distribution.
     const fields = pheasantFields(area), ponds = pheasantPonds(this.landscape);
+    const harvestSample = { amount: 0, row: 0, angle: 0 };
     const TILE = lite ? 216 : 144, spacing = 2.8;
     const straw = new THREE.Color(0xb8a477), amber = new THREE.Color(0xb18e59), olive = new THREE.Color(0x919872), reed = new THREE.Color(0xa99b76), color = new THREE.Color();
     type Plant = { x: number; y: number; scale: number; angle: number; color: number };
@@ -138,7 +139,8 @@ export class PheasantCoverSystem implements Subsystem {
         if (!pheasantPlantClear(area, x, y)) continue;
         this.landscape.surfaceAtProperty(x, y, this.surface);
         const { moisture, vegetation, height } = this.surface, cover = pheasantCoverAt(area, x, y);
-        const harvest = pheasantHarvestAt(area, x, y, fields), keep = rng();
+        samplePheasantHarvest(area, x, y, fields, harvestSample);
+        const harvest = harvestSample.amount, keep = rng();
         const pond = ponds.find(p => Math.hypot((x - p.x) * PROPERTY_PX_TO_M / p.rx, (y - p.y) * PROPERTY_PX_TO_M / p.ry) < 1.48);
         const depth = pond ? pond.waterY - height : -10;
         // Rhizomes belong in mud, not on top of the water plane. Very deep
@@ -151,15 +153,15 @@ export class PheasantCoverSystem implements Subsystem {
         if (harvest > .3 && moisture < .36) {
           // Parallel machinery rows supply agricultural scale. Gaps and a
           // few taller grasses interrupt them along the habitat boundary.
-          const stripe = .5 + .5 * Math.cos((x * .99 + y * .10) * Math.PI * .88);
+          const stripe = .5 + .5 * Math.cos(harvestSample.row * Math.PI * .88);
           if (rng() < (.25 + stripe * .50) * harvest && (!lite || keep > .35))
-            groups.stubble.push({ x, y, scale: .80 + rng() * .55, angle: -.1 + (rng() - .5) * .12, color: color.copy(straw).lerp(amber, rng() * .35).getHex() });
+            groups.stubble.push({ x, y, scale: .80 + rng() * .55, angle: harvestSample.angle + (rng() - .5) * .12, color: color.copy(straw).lerp(amber, rng() * .35).getHex() });
           continue;
         }
         const drift = .50 + Math.sin(x * .065 + Math.sin(y * .038) * 2.4) * .27 + Math.cos(y * .07) * .20;
-        const chance = (cover ? .90 : .10 + vegetation * .20) * (.34 + drift * .72);
+        const chance = (cover ? .94 : .23 + vegetation * .28) * (.34 + drift * .72);
         if (rng() < chance && (!lite || keep > .30)) {
-          const scale = (cover ? .95 : .48) + rng() * .42;
+          const scale = (cover ? .95 : .60) + rng() * .42;
           groups.prairie.push({ x, y, scale, angle: rng() * Math.PI * 2, color: color.copy(straw).lerp(olive, moisture * .60 + rng() * .16).lerp(amber, rng() * .12).getHex() });
         }
       }

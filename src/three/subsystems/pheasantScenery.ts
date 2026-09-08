@@ -1,11 +1,10 @@
 import * as THREE from 'three';
-import type { AreaLandmark } from '../../game/areas';
 import type { GroundSample, LandscapeModel } from '../../game/landscape';
 import { PROPERTY_PX_TO_M } from '../../game/landscape';
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
 import type { Hunt3DSystem } from './hunt3d';
-import { PHEASANT_WATER_LEVEL_OFFSET } from './pheasantLandscape';
+import { pheasantPlantClear, pheasantPonds, pheasantShelterbelts } from './pheasantLandscape';
 
 function seeded(seed: number, salt: number): number {
   let h = seed ^ Math.imul(salt, 0x9e3779b1);
@@ -62,7 +61,6 @@ export class PheasantScenerySystem implements Subsystem {
       opacity: 0.86,
       side: THREE.DoubleSide,
     });
-    const bankMaterial = new THREE.MeshStandardMaterial({ color: 0x4c432a, roughness: 1, side: THREE.DoubleSide });
     const snowMaterial = new THREE.MeshStandardMaterial({
       color: 0xd9dcd4,
       roughness: 0.86,
@@ -82,41 +80,36 @@ export class PheasantScenerySystem implements Subsystem {
     const fenceMaterial = new THREE.MeshStandardMaterial({ color: 0x776854, roughness: 1, flatShading: true });
     const wireMaterial = new THREE.MeshStandardMaterial({ color: 0x343836, roughness: 0.92 });
     this.materials.push(
-      waterMaterial, bankMaterial, snowMaterial, trunkMaterial, branchMaterial,
+      waterMaterial, snowMaterial, trunkMaterial, branchMaterial,
       ...foliageMaterials, fenceMaterial, wireMaterial,
     );
 
-    const visiblePonds: Array<{ landmark: AreaLandmark; x: number; z: number }> = [];
-    for (const landmark of this.landscape.area.landmarks) {
-      if (landmark.kind !== 'pond') continue;
-      this.landscape.propertyToWorld(landmark.position.x, landmark.position.y, this.world);
-      // Pheasant Coverts is a full property. Keep every authored pothole in
-      // the world so the player can read the wetland chain from the field,
-      // rather than getting a drop-centered “hero pond” and an empty horizon.
-      if (Math.abs(this.world.x) > 680 || Math.abs(this.world.z) > 520) continue;
-      visiblePonds.push({ landmark, x: this.world.x, z: this.world.z });
-    }
+    // Use the same footprint and water level as rooted cattail placement.
+    // All authored ponds remain present whichever gate starts the hunt;
+    // ordinary frustum culling handles distant surfaces.
+    const visiblePonds = pheasantPonds(this.landscape).map(pond => {
+      const world = this.landscape.propertyToWorld(pond.x, pond.y, { x: 0, z: 0 });
+      return { ...pond, x: world.x, z: world.z };
+    });
 
     for (let i = 0; i < visiblePonds.length; i++) {
       const pond = visiblePonds[i];
-      const major = pond.landmark.id !== 'area-feature';
-      const rx = major ? 39 + (i % 2) * 5 : 31;
-      const rz = major ? 25 + ((i + 1) % 2) * 4 : 21;
-      const bankGeo = irregularDisc(rx + 3.4, rz + 3.1, seeded(this.landscape.area.terrain.seed, i * 7 + 1));
+      const major = pond.landmarkId !== 'area-feature';
+      const rx = pond.rx;
+      const rz = pond.ry;
       const waterGeo = irregularDisc(rx, rz, seeded(this.landscape.area.terrain.seed, i * 7 + 2));
-      this.geometries.push(bankGeo, waterGeo);
+      this.geometries.push(waterGeo);
       // The landform carves a full basin beneath the water. Fill it almost
       // to the surrounding grade so the slough remains visible from a
       // hunter's eye on the entry swell instead of hiding behind its rim.
-      const waterY = this.landscape.heightAtWorld(pond.x, pond.z) + PHEASANT_WATER_LEVEL_OFFSET;
-      const bank = new THREE.Mesh(bankGeo, bankMaterial);
-      bank.position.set(pond.x, waterY - 0.055, pond.z);
-      bank.receiveShadow = true;
+      const waterY = pond.waterY;
+      // Mud belongs on the sampled terrain (PropertyTerrain paints it).
+      // A flat brown disc below the water floated through sloped banks.
       const water = new THREE.Mesh(waterGeo, waterMaterial);
       water.position.set(pond.x, waterY, pond.z);
       water.receiveShadow = true;
-      ctx.scene.add(bank, water);
-      this.objects.push(bank, water);
+      ctx.scene.add(water);
+      this.objects.push(water);
 
       // Cottonwoods claim the drier shoulder beside each huntable slough.
       if (major) {
@@ -137,8 +130,72 @@ export class PheasantScenerySystem implements Subsystem {
       }
     }
 
+    this.buildShelterbelts(ctx, trunkMaterial, foliageMaterials);
     this.buildSeasonalGround(ctx, snowMaterial);
     this.buildFence(ctx, fenceMaterial, wireMaterial, castShadow);
+  }
+
+  private buildShelterbelts(ctx: Ctx, trunkMaterial: THREE.Material, foliageMaterials: THREE.Material[]): void {
+    const trunkGeo = new THREE.CylinderGeometry(.09, .23, 1, 5);
+    const crownGeo = new THREE.IcosahedronGeometry(1, 1);
+    // A tapered, uneven crown gives these windbreak trees a different
+    // silhouette from the broad cottonwoods at the water.
+    const vertices = crownGeo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < vertices.count; i++) {
+      const x = vertices.getX(i), y = vertices.getY(i), z = vertices.getZ(i);
+      const taper = 1 - Math.max(0, y) * .38;
+      const ripple = 1 + Math.sin(x * 7 + y * 3 + z * 5) * .12;
+      vertices.setXYZ(i, x * taper * ripple, y, z * taper * ripple);
+    }
+    crownGeo.computeVertexNormals();
+    crownGeo.computeBoundingSphere();
+    this.geometries.push(trunkGeo, crownGeo);
+    const stems: THREE.Matrix4[] = [];
+    const crowns = foliageMaterials.map(() => [] as THREE.Matrix4[]);
+    const position = new THREE.Vector3(), scale = new THREE.Vector3();
+    const rotation = new THREE.Quaternion(), matrix = new THREE.Matrix4();
+    const rng = mulberry32(seeded(this.landscape.area.terrain.seed, 641));
+    for (const belt of pheasantShelterbelts(this.landscape.area)) {
+      for (let i = 0; i < belt.count; i++) {
+        const along = (i / (belt.count - 1) - .5) * belt.length;
+        const across = (rng() - .5) * 6;
+        const x = belt.x + Math.cos(belt.angle) * along - Math.sin(belt.angle) * across;
+        const y = belt.y + Math.sin(belt.angle) * along + Math.cos(belt.angle) * across;
+        if (!pheasantPlantClear(this.landscape.area, x, y, 2)) continue;
+        const ground = this.landscape.surfaceAtProperty(x, y, this.surface);
+        if (ground.moisture > .72 || ground.slope > .4) continue;
+        this.landscape.propertyToWorld(x, y, this.world);
+        const height = 5.5 + rng() * 5.5;
+        rotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng() * Math.PI * 2);
+        position.set(this.world.x, ground.height + height * .36, this.world.z);
+        scale.set(.8 + rng() * .4, height * .72, .8 + rng() * .4);
+        stems.push(matrix.compose(position, rotation, scale).clone());
+        for (let lobe = 0; lobe < 4; lobe++) {
+          const angle = lobe * 2.4 + rng() * .5;
+          const spread = lobe === 3 ? .15 : height * .13;
+          position.set(this.world.x + Math.cos(angle) * spread,
+            ground.height + height * (lobe === 3 ? .83 : .56 + rng() * .15),
+            this.world.z + Math.sin(angle) * spread);
+          scale.set(height * (.16 + rng() * .06), height * (.20 + rng() * .08), height * (.14 + rng() * .06));
+          crowns[(i + lobe) % crowns.length].push(matrix.compose(position, rotation, scale).clone());
+        }
+      }
+    }
+    const addBatch = (geometry: THREE.BufferGeometry, material: THREE.Material, matrices: THREE.Matrix4[], name: string) => {
+      if (!matrices.length) return;
+      const mesh = new THREE.InstancedMesh(geometry, material, matrices.length);
+      matrices.forEach((transform, i) => mesh.setMatrixAt(i, transform));
+      mesh.name = name;
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.receiveShadow = true;
+      // Distant structural planting stays out of the shadow pass at both
+      // tiers. Four shared batches retain the same landmarks on mobile.
+      mesh.computeBoundingSphere();
+      ctx.scene.add(mesh);
+      this.objects.push(mesh);
+    };
+    addBatch(trunkGeo, trunkMaterial, stems, 'Pheasant shelterbelt trunks');
+    crowns.forEach((transforms, i) => addBatch(crownGeo, foliageMaterials[i], transforms, 'Pheasant shelterbelt crowns'));
   }
 
   private buildCottonwood(
