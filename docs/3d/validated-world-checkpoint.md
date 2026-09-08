@@ -105,6 +105,14 @@ Shots now check the shared terrain heightfield before checking woodland trunks. 
 
 Checks cover intervening crests, rising and downhill shots, vertical paths, grazing tolerance, and gun integration. A terrain-blocked shot consumes ammunition without resolving a hit. Compilation and the production build pass. This pass did not repeat the browser encounter; the earlier successful assisted shot predates terrain and trunk obstruction. Rock and building obstruction, ordinary aiming, and the feel of flight opportunities remain outstanding.
 
+**Assisted encounter with obstruction enabled**
+
+Repeated the West Track approach on `c0e9378` with terrain and trunk checks active. The dog held scent at 28 yards, resumed with the handler, and pointed at 23 yards. The assisted shooter waited until the bird had been airborne for more than 450 milliseconds. The first shot missed; the second downed the bird. The dog recovered it, returned carrying it, delivered it, and resumed hunting. The HUD ended at `Bag 1 / Down 0 / Shells 1`, then normal R-key input restored `Shells 3` while keeping the bag at one.
+
+Aim direction was supplied from airborne telemetry through the development camera helper; movement, mounting, firing, and reloading used normal inputs. No flush, bird-down, or delivery helper was used. The first miss cannot be attributed specifically to obstruction because aim timing also changed. This demonstrates that a complete assisted encounter remains possible with obstruction enabled, not that ordinary aiming or target acquisition is ready. The airborne bird remains difficult to pick out in a still image against the repeated trunks, which deserves a dedicated readability review.
+
+Evidence: `output/playwright/grouse-obstruction-aim-0.png`, `output/playwright/grouse-obstruction-aim-1.png`, and `output/playwright/grouse-obstruction-delivery.png`. The browser reported no errors and one 2.1-millisecond simulation warning; telemetry's maximum simulation tick was 2.5 milliseconds and maximum frame interval was 50.2 milliseconds. No code changed in this verification pass, so the previous 548-test and build results remain the latest checks. Mobile performance is still unverified.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.
