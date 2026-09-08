@@ -5,7 +5,7 @@ import { mulberry32 } from '../../game/math';
 import type { Vec2 } from '../../game/types';
 import type { Ctx, Subsystem } from '../engine';
 
-type Pond = {
+export type Pond = {
   px: number;
   py: number;
   rx: number;
@@ -95,7 +95,7 @@ function pointAlongTrail(trail: AreaTrail, distance: number): { point: Vec2; tan
   return null;
 }
 
-function irregularPuddleGeometry(
+export function irregularPuddleGeometry(
   puddles: readonly Pond[],
   landscape: LandscapeModel,
   bank: boolean,
@@ -103,14 +103,15 @@ function irregularPuddleGeometry(
   const positions: number[] = [];
   const colors: number[] = [];
   const indices: number[] = [];
-  const segments = bank ? 16 : 18;
+  const segments = 24;
   const world = { x: 0, z: 0 };
   const sample: GroundSample = { ...SAMPLE };
   const color = new THREE.Color();
   let vertex = 0;
 
   for (const pond of puddles) {
-    const rng = mulberry32(pond.seed ^ (bank ? 0x71e2 : 0x84b3));
+    const rng = mulberry32(pond.seed ^ 0x84b3);
+    const detailRng = mulberry32(pond.seed ^ 0x71e2);
     const inner: Array<{ x: number; y: number; z: number }> = [];
     const outer: Array<{ x: number; y: number; z: number }> = [];
     for (let i = 0; i < segments; i++) {
@@ -126,8 +127,8 @@ function irregularPuddleGeometry(
       const localY = pond.py + alongX * pondSin + alongY * pondCos;
       landscape.propertyToWorld(localX, localY, world);
       if (bank) {
-        inner.push({ x: world.x, y: pond.waterY - 0.035, z: world.z });
-        const outerScale = 1.13 + rng() * 0.11;
+        inner.push({ x: world.x, y: pond.waterY, z: world.z });
+        const outerScale = 1.13 + detailRng() * 0.11;
         const outerAlongX = c * pond.rx * outerScale * wobble;
         const outerAlongY = s * pond.rz * outerScale * wobble;
         const outerX = pond.px + outerAlongX * pondCos - outerAlongY * pondSin;
@@ -162,7 +163,7 @@ function irregularPuddleGeometry(
     // A fan with a small, deterministic color shift gives the water a low
     // polygon rhythm without adding a second surface or texture lookup.
     landscape.propertyToWorld(pond.px, pond.py, world);
-    const centerY = pond.waterY + 0.01;
+    const centerY = pond.waterY;
     positions.push(world.x, centerY, world.z);
     const centerColor = new THREE.Color(0x507c79);
     colors.push(centerColor.r, centerColor.g, centerColor.b);
@@ -495,7 +496,7 @@ export class WetBottomsSystem implements Subsystem {
     }
   }
 
-  private buildPonds(high: boolean): Pond[] {
+  private buildPonds(_high: boolean): Pond[] {
     const area = this.landscape.area;
     const feature = area.landmarks.find(landmark => landmark.id === 'area-feature' && landmark.kind === 'pond');
     const ponds: Pond[] = [];
@@ -507,13 +508,13 @@ export class WetBottomsSystem implements Subsystem {
       ponds.push({ px, py, rx, rz, angle: (seed % 17) * 0.13, waterY, seed, hero });
     };
 
-    if (feature) add(feature.position.x, feature.position.y, high ? 31 : 27, high ? 20 : 17, seeded(area.terrain.seed, 3), true);
+    if (feature) add(feature.position.x, feature.position.y, 31, 20, seeded(area.terrain.seed, 3), true);
     const chain = area.trails.find(trail => trail.id === 'pond-chain')
       ?? area.trails.find(trail => trail.id.includes('bottom'))
       ?? area.trails[0];
     if (chain) {
       const length = trailLength(chain);
-      const count = Math.min(high ? 7 : 5, Math.max(3, Math.floor(length / 42)));
+      const count = Math.min(7, Math.max(3, Math.floor(length / 42)));
       const rng = mulberry32(seeded(area.terrain.seed, 0x504f4e44));
       for (let i = 0; i < count; i++) {
         const distance = length * (0.18 + (i + rng() * 0.22) / count);
@@ -590,8 +591,9 @@ export class WetBottomsSystem implements Subsystem {
         const angle = rng() * Math.PI * 2;
         const radiusX = pond.rx * (1.01 + rng() * 0.24);
         const radiusZ = pond.rz * (1.01 + rng() * 0.24);
-        const px = pond.px + Math.cos(angle) * radiusX;
-        const py = pond.py + Math.sin(angle) * radiusZ;
+        const x = Math.cos(angle) * radiusX, z = Math.sin(angle) * radiusZ;
+        const px = pond.px + x * Math.cos(pond.angle) - z * Math.sin(pond.angle);
+        const py = pond.py + x * Math.sin(pond.angle) + z * Math.cos(pond.angle);
         if (px < area.world.x + 2 || py < area.world.y + 2 || px > area.world.x + area.world.w - 2 || py > area.world.y + area.world.h - 2) continue;
         this.landscape.surfaceAtProperty(px, py, this.sample);
         this.landscape.propertyToWorld(px, py, this.world);

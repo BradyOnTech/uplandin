@@ -139,6 +139,12 @@ Replaced each single alder trunk with three diverging stems baked into one share
 
 Repeated the 12-second West Track approach in Lightweight mode. Evidence: `output/playwright/woodcock-stools-sedge-lite.png`. The alder silhouette now reads as a branching thicket; cover remains too regularly tied to the straight route, and the wetland still needs more convincing ground-level mass and pool transitions. Final desktop sample: 97 draws, 252,722 triangles, 9.8-millisecond 95th-percentile frame interval, and a 141.8-millisecond maximum interval. That outlier is not diagnosed, and this is not a mobile readiness claim. Compilation and production build pass with existing chunk warnings. This geometry-only pass did not rerun simulation tests. Alder collisions and shot obstruction remain outstanding.
 
+**Joined Woodcock shorelines**
+
+A direct pool inspection exposed different random outlines and segment counts for water and mud banks. Both now share the same 24-point boundary and elevation, with independent outer-bank randomness. Pond dimensions and chain positions are now identical across display quality. Sedge placement respects each pond's rotation. A focused test verifies exact edge joins for two rotated, differently sized pools; compilation and build pass with existing chunk warnings.
+
+Evidence: `output/playwright/woodcock-pool-before.png` and `output/playwright/woodcock-pool-joined-clear.png`. These use development-camera positioning, not a completed walking encounter. The first revised camera position was obscured by foliage; moved aside to inspect the shoreline. The gaps are corrected, but the pools still look like flat surfaces laid over terrain. Basin shaping, matching ground paint, and excluding dry vegetation from water remain necessary before this becomes a convincing wet margin. No full-suite or mobile run in this pass.
+
 **Next work, in order**
 
 1. Walk the revised Pheasant approaches from both gates and inspect running-bird and dog behavior around water; entry screenshots and initial-placement checks are not a completed walk-through.
