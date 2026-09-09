@@ -3,14 +3,27 @@ import { describe, expect, it } from 'vitest';
 import { AREAS, getArea } from '../src/game/areas';
 import { LandscapeModel, PROPERTY_PX_TO_M } from '../src/game/landscape';
 import { PropertyTrailsSystem } from '../src/three/subsystems/propertyTrails';
-import { pheasantCoverFringeAt, pheasantCoverAt, pheasantPonds, samplePheasantHarvest } from '../src/three/subsystems/pheasantLandscape';
+import { pheasantCoverFringeAt, pheasantCoverAt, pheasantFields, pheasantPonds, samplePheasantHarvest } from '../src/three/subsystems/pheasantLandscape';
 import type { Ctx } from '../src/three/engine';
 import { spawnBirds } from '../src/game/birds';
 import { mulberry32 } from '../src/game/math';
 import { createThreeHuntSetup } from '../src/game/gameplayMode';
-import { pheasantPondObstacles, pheasantPondRadii } from '../src/game/pheasantHabitat';
+import { pheasantPondObstacles, pheasantPondRadii, pheasantWestHarvest } from '../src/game/pheasantHabitat';
 
 describe('authored habitat contracts', () => {
+  it('shares the West Pothole cut field between habitat and ground while retaining its dry shore', () => {
+    const area = getArea('pheasant-coverts'), field = pheasantWestHarvest(area.landmarks)!;
+    for (const patch of area.patches) {
+      expect(patch.x < field.x + field.w && patch.x + patch.w > field.x &&
+        patch.y < field.y + field.h && patch.y + patch.h > field.y).toBe(false);
+    }
+    const center = samplePheasantHarvest(area, field.x + field.w / 2, field.y + field.h / 2,
+      pheasantFields(area), { amount: 0, row: 0, angle: 0 });
+    expect(center.amount).toBe(1);
+    const pond = area.landmarks.find(l => l.id === 'west-pothole')!;
+    const shoreY = pond.position.y + (pheasantPondRadii(pond.id).rz * 1.15 + 5) / PROPERTY_PX_TO_M + 8;
+    expect(pheasantCoverAt(area, pond.position.x, shoreY)).toBe(true);
+  });
   it.each(['chukar-ridge', 'woodcock-bottoms', 'pheasant-coverts'])('faces each %s entry along its first authored route segment', areaId => {
     const area = getArea(areaId);
     for (const drop of area.dropPoints) {
