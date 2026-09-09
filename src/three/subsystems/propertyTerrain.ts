@@ -29,7 +29,7 @@ const PALETTE = {
  * systems have had a chance to establish the scene.
  */
 const AREA_PALETTE_OVERRIDES: Record<string, Partial<Record<'dark' | 'mid' | 'light' | 'wet', number>>> = {
-  'pheasant-coverts': { dark: 0x4c4b33, mid: 0x8f7b48, light: 0xbfa36b, wet: 0x4f6658 },
+  'pheasant-coverts': { dark: 0x575642, mid: 0xa58c60, light: 0xcbb483, wet: 0x4f6658 },
   'woodcock-bottoms': { dark: 0x494a38, mid: 0x77755a, light: 0x9c9772, wet: 0x48594b },
   'grouse-woods': { dark: 0x625540, mid: 0x8c815d, light: 0xb5a376, wet: 0x56684b },
   'sharptail-prairie': { dark: 0x756444, mid: 0xa68f59, light: 0xc8b77e, wet: 0x6c7154 },
@@ -148,11 +148,11 @@ function paintFor(property: LandscapeModel): Paint {
   const wetPools = areaId === 'woodcock-bottoms' ? wetPondLayout(property.area) : [];
   const ponds = areaId === 'pheasant-coverts' ? pheasantPonds(property) : [];
   const harvestSample = { amount: 0, row: 0, angle: 0 };
-  const cutStraw = new THREE.Color(0xb8a477);
-  const cutSoil = new THREE.Color(0x927551);
+  const cutStraw = new THREE.Color(0xcab384);
+  const cutSoil = new THREE.Color(0x866b50);
   const bankMud = new THREE.Color(0x514936);
   const reedLitter = new THREE.Color(0x8d8055);
-  const standingGrass = new THREE.Color(0x596747);
+  const standingGrass = new THREE.Color(0x65734f);
   // Geometry construction is synchronous; reuse one sampler per painter.
   const surface: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
   return (landscape, x, y, out) => {
@@ -299,7 +299,7 @@ export class PropertyTerrain {
         texture.anisotropy = ctx.quality === 'high' ? 4 : 2;
         texture.needsUpdate = true;
         this.soil.value = texture;
-        this.soilStrength.value = wetSoil ? .32 : .82;
+        this.soilStrength.value = wetSoil ? .32 : .60;
       } catch (error) {
         // The baked habitat paint remains usable if an optional art asset
         // cannot load; a missing texture must not prevent entering a hunt.

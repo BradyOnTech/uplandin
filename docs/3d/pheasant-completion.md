@@ -596,3 +596,9 @@ The review browser did not cache an actual away-and-Back navigation, so that att
 A built-in image-generation edit of the current South Gate field view is saved at `output/art-direction/pheasant-field-target.png`, with its exact prompt at `pheasant-field-target-prompt.txt` in the same folder. This is generated concept art, not implemented graphics or performance evidence.
 
 The useful direction is distinct worn soil versus pale stubble, stronger warm/cool material separation, and substantial grouped standing cover. Preserve the game's actual habitat layout and species-specific grass/reed forms: some concept plants look too much like corn, and its increased near-field density is not a validated geometry budget. Use the concept to guide coherent material and silhouette changes rather than adding more procedural noise. The source already has multi-scale ground detail; more noise alone is not the needed improvement.
+
+**Pheasant ground material separation**
+
+Dry-ground and cut-straw colors are lighter, cut soil is browner, and standing-cover bases retain a cooler green. The existing grit texture's blend strength is reduced from .82 to .60 so it does not dominate the material palette. An experimental warmer route tint was rejected; routes retain their prior color. Habitat placement and geometry are unchanged.
+
+Matching staged South Gate views at (0,40), yaw 30.8, pitch -12 are `output/audit/field-material-before.png` and `field-material-after.png`; both have 237 calls and 831,811 triangles. `field-material-lite-evening.png` checks the other tier in evening light. The change is modest and does not yet reproduce the concept's substantial vegetation masses. TypeScript checking and build pass with the existing bundle warning. No new tests were warranted for this palette-only change.
