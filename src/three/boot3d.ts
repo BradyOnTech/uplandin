@@ -1,3 +1,4 @@
+import { bindFieldPageLifecycle } from './pageLifecycle';
 import { enableOfflineHunts } from './offline';
 import { prepareHuntUrl } from '../game/huntSeed';
 import { FieldInterface, preferredQuality } from './fieldInterface';
@@ -283,5 +284,7 @@ function readTelemetry() {
     simMs: hunt.simMs(),
   };
 }
-window.addEventListener('pagehide', () => { fieldInterface.dispose(); engine.dispose(); }, { once: true });
-window.addEventListener('pageshow', (event) => { if (event.persisted) location.reload(); });
+bindFieldPageLifecycle(window, () => {
+  fieldInterface.pause();
+  if (!engine.ctx.paused) engine.pause(true);
+}, () => { fieldInterface.dispose(); engine.dispose(); });

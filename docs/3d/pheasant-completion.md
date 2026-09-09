@@ -584,3 +584,9 @@ A fresh West Track seed-87 Balanced morning outing used an 844-by-390 touch-enab
 Touch Reload restored three shells and lowered the gun. Pause and Return to the field worked, End hunt showed zero retrieved, one point flush, one escaped bird, and two minutes afield. Hunt again produced fresh seed 3334035512 while retaining property, entry, challenge, light, and quality; the fresh gun was lowered with three shells. Results evidence: `output/audit/touch-missed-hunt-results.png`. The review context was then closed.
 
 This adds live touch-emulation evidence for a missed encounter and the complete replay path. It does not prove real-phone performance, unassisted hunting, comfortable thumb tracking, or touch cancellation during an active rise. No production changes or further tests were warranted by this successful flow.
+
+**Retain a hunt when the browser restores a cached document**
+
+The boot lifecycle previously disposed every departing page and reloaded any cached restoration. Cached departures now pause and retain the hunt; cached returns stay on the pause card until the player resumes. Final noncached departures still dispose resources once. Repeated cached visits retain their handlers. Ordinary background visibility/blur and graphics-context interruption were already handled and required no change.
+
+The review browser did not cache an actual away-and-Back navigation, so that attempt restarted normally and cannot prove cached restoration. A separate live dispatch of persisted pagehide/pageshow events preserved exact hunter and dog positions, showed Return to the field, and resumed without the previously held movement key staying active. This is simulated lifecycle integration, not actual mobile back-forward-cache evidence. The focused regression covers repeated cached visits and final single disposal. All 665 tests, TypeScript checking, and production build pass with the existing bundle warning.
