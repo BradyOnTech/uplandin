@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Ctx } from '../src/three/engine';
 import { GunSystem } from '../src/three/subsystems/gun';
-import { pickBirdAlongRay } from '../src/three/subsystems/birds';
 
 vi.mock('../src/audio', () => ({ playShot: vi.fn(), unlockAudio: vi.fn(), playActionClick: vi.fn() }));
 
@@ -42,8 +41,7 @@ describe('3D shotgun action', () => {
     const target = { simId: 5, x: 0, y: 0, z: -12, status: 'flying' };
     const hunt = { dog: () => ({ state: 'quartering', pointedBirdId: null }), dogCount: () => 1, huntState: () => ({ gunId: 'over-under', birds: [] }), resolveBird: vi.fn(() => true) };
     const habitat = { blocksShot: vi.fn(() => obstruction === 'tree') };
-    const birds = { riseSequence: () => 1, isRiseActive: () => true, downBird: vi.fn(), shootRay: (origin: THREE.Vector3, direction: THREE.Vector3, spread: number, visible: (candidate: typeof target) => boolean) =>
-      pickBirdAlongRay([target], origin, direction, spread, visible) };
+    const birds = { riseSequence: () => 1, isRiseActive: () => true, downBird: vi.fn(), shotTargets: () => [target] };
     const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), renderer: { domElement: new EventTarget() },
       events: new EventTarget(), quality: 'high', timeOfDay: 'noon', time: 10, paused: false,
       get: (id: string) => ({ hunt3d: hunt, birds, 'property-habitat': habitat,
@@ -56,10 +54,47 @@ describe('3D shotgun action', () => {
     const click = Object.assign(new Event('mousedown'), { button: 0 });
     window.dispatchEvent(click);
     expect(gun.shellsRemaining()).toBe(1);
+    expect(hunt.resolveBird).not.toHaveBeenCalled();
+    ctx.time += .05; gun.fixedUpdate(ctx, 50); gun.update(ctx, .05);
     expect(habitat.blocksShot).toHaveBeenCalledTimes(obstruction === 'terrain' ? 0 : 1);
     expect(hunt.resolveBird).toHaveBeenCalledTimes(blocked ? 0 : 1);
     expect(birds.downBird).toHaveBeenCalledTimes(blocked ? 0 : 1);
     gun.dispose(ctx);
+  });
+
+  it('keeps crossing outcomes consistent with 30 Hz birds across render rates and trigger phases', () => {
+    for (const fps of [30, 60, 120]) for (const phase of [0, .008, .025]) for (const lead of [0, 1.8]) {
+      vi.stubGlobal('window', new EventTarget()); vi.stubGlobal('location', { search: '' });
+      const target = { simId: 5, x: 0, y: 0, z: -30, status: 'flying' };
+      const hunt = { dog: () => ({ state: 'quartering' }), dogCount: () => 1,
+        huntState: () => ({ gunId: 'over-under', birds: [] }), resolveBird: vi.fn(() => true) };
+      const birds = { riseSequence: () => 1, isRiseActive: () => true, shotTargets: () => [target],
+        downBird: () => { target.status = 'falling'; } };
+      const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), renderer: { domElement: new EventTarget() },
+        events: new EventTarget(), quality: 'high', timeOfDay: 'noon', time: 10, paused: false,
+        get: (id: string) => ({ hunt3d: hunt, birds, terrain: { heightAt: () => -10 } }[id]),
+      } as unknown as Ctx;
+      vi.stubGlobal('document', { getElementById: () => null, pointerLockElement: ctx.renderer.domElement });
+      const gun = new GunSystem(); gun.init(ctx);
+      (gun as unknown as { mountT: number }).mountT = 1;
+      ctx.camera.lookAt(lead, 0, -30); ctx.camera.updateMatrixWorld();
+      // Fire at different offsets since the last fixed bird tick.
+      let accumulator = phase;
+      window.dispatchEvent(Object.assign(new Event('mousedown'), { button: 0 }));
+      ctx.paused = true; gun.fixedUpdate(ctx, 1000);
+      expect(hunt.resolveBird).not.toHaveBeenCalled(); ctx.paused = false;
+      for (let frame = 0; frame < fps / 3; frame++) {
+        ctx.time += 1/fps; accumulator += 1/fps;
+        while (accumulator >= 1/30) {
+          target.x += 18/30;
+          gun.fixedUpdate(ctx, 1000/30);
+          accumulator -= 1/30;
+        }
+        gun.update(ctx, 1/fps);
+      }
+      expect(hunt.resolveBird.mock.calls.length, `fps=${fps}, phase=${phase}, lead=${lead}`).toBe(lead ? 1 : 0);
+      gun.dispose(ctx);
+    }
   });
 
   it.each(['fire', 'lower', 'pause', 'reload', 'no-rise', 'changed-rise', 'expired', 'cooldown'])(
@@ -67,7 +102,7 @@ describe('3D shotgun action', () => {
       vi.stubGlobal('window', new EventTarget());vi.stubGlobal('location', { search: '' });
       vi.stubGlobal('document', { getElementById: () => null, querySelector: () => null });
       let active = scenario !== 'no-rise', sequence = 1;
-      const birds = { riseSequence: () => sequence, isRiseActive: () => active, shootRay: vi.fn(() => null) };
+      const birds = { riseSequence: () => sequence, isRiseActive: () => active, shotTargets: () => [] };
       const hunt = { huntState: () => ({ gunId: 'semi-auto', birds: [] }), dog: () => ({ state: 'quartering' }), dogCount: () => 1 };
       const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), renderer: { domElement: new EventTarget() },
         events: new EventTarget(), quality: 'high', timeOfDay: 'noon', time: 1, paused: false,
@@ -100,7 +135,7 @@ describe('3D shotgun action', () => {
     vi.stubGlobal('window', new EventTarget());
     vi.stubGlobal('location', { search: '' });
     vi.stubGlobal('document', { getElementById: () => null, querySelector: () => null });
-    const birds = { riseSequence: () => 0, isRiseActive: () => true, shootRay: () => null };
+    const birds = { riseSequence: () => 0, isRiseActive: () => true, shotTargets: () => [] };
     const hunt = { huntState: () => ({ gunId: 'semi-auto', birds: [] }), dog: () => ({ state: 'quartering' }), dogCount: () => 1 };
     const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), renderer: { domElement: new EventTarget() },
       events: new EventTarget(), quality: 'high', timeOfDay: 'noon', time: 0, paused: false,

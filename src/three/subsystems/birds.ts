@@ -1511,6 +1511,9 @@ export class BirdsSystem implements Subsystem {
     return false;
   }
 
+  /** Live positions for swept shot collision; callers must copy retained samples. */
+  shotTargets(): readonly RayBirdTarget[] { return this.slots; }
+
   /** Select the first live target inside the camera-centered shot pattern. */
   shootRay(
     origin: { x: number; y: number; z: number },

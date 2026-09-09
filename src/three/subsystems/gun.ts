@@ -9,6 +9,7 @@ import type { Hunt3DSystem } from './hunt3d';
 import type { TerrainSystem } from './terrain';
 import type { PropertyHabitatSystem } from './propertyHabitat';
 import { terrainBlocksShot } from '../shotVisibility';
+import { TravellingShot } from '../shotPattern';
 import { createSportingShotgun, type SportingShotgun } from '../assets/shotgun';
 
 /*
@@ -254,6 +255,7 @@ export class GunSystem implements Subsystem {
   private reticle: HTMLElement | null = null;
   private shotCallout: HTMLElement | null = null;
   private shotCalloutUntil = 0;
+  private shots: { pattern: TravellingShot; visible: (target: { x: number; y: number; z: number }) => boolean }[] = [];
 
   // Preallocated scratch.
   private prevCam = new THREE.Vector3();
@@ -582,27 +584,36 @@ export class GunSystem implements Subsystem {
     try { habitat = ctx.get<PropertyHabitatSystem>('property-habitat'); } catch { /* bespoke properties use their own scenery */ }
     let wetBottoms: WetBottomsSystem | undefined;
     try { wetBottoms = ctx.get<WetBottomsSystem>('woodcock-wet-bottoms'); } catch { /* other properties */ }
-    let flora: Subsystem & { blocksShot?: (origin: THREE.Vector3, target: { x: number; y: number; z: number }) => boolean } | undefined;
+    let flora: Subsystem & { blocksShot?: (origin: { x: number; y: number; z: number }, target: { x: number; y: number; z: number }) => boolean } | undefined;
     try { flora = ctx.get('flora'); } catch { /* properties without dedicated flora */ }
-    const birdId = this.birds.shootRay(
-      ctx.camera.position,
-      this.fwd,
-      this.gun.spread / 400,
-      target => !terrainBlocksShot(ctx.camera.position, target, (x, z) => this.terrain.heightAt(x, z))
-        && !habitat?.blocksShot?.(ctx.camera.position, target)
-        && !wetBottoms?.blocksShot?.(ctx.camera.position, target)
-        && !flora?.blocksShot?.(ctx.camera.position, target),
-    );
-    const hit = birdId !== null && this.hunt.resolveBird(birdId, 'downed');
-    if (hit && birdId !== null) {
-      this.birds.downBird(birdId);
-    }
-    if (this.shotCallout) {
-      this.shotCallout.textContent = hit ? 'HIT!' : 'MISS';
-      this.shotCallout.classList.toggle('miss', !hit);
-      this.shotCallout.hidden = false;
-      this.shotCalloutUntil = ctx.time + (hit ? 0.8 : 0.55);
-    }
+    const pattern = new TravellingShot(ctx.camera.position, this.fwd, this.gun.spread / 400, this.birds.shotTargets());
+    const origin = pattern.origin;
+    this.shots.push({ pattern,
+      visible: target => !terrainBlocksShot(origin, target, (x, z) => this.terrain.heightAt(x, z))
+        && !habitat?.blocksShot?.(origin, target)
+        && !wetBottoms?.blocksShot?.(origin, target)
+        && !flora?.blocksShot?.(origin, target),
+    });
+  }
+
+  // Birds are registered before the gun: sweep against their newly advanced
+  // fixed-tick positions, never against uneven render-frame snapshots.
+  fixedUpdate(ctx: Ctx, dtMs: number): void {
+    if (ctx.paused || !this.shots.length) return;
+    const targets = this.birds.shotTargets();
+    this.shots = this.shots.filter(shot => {
+      const birdId = shot.pattern.advance(dtMs / 1000, targets, shot.visible);
+      if (!shot.pattern.done) return true;
+      const hit = birdId !== null && this.hunt.resolveBird(birdId, 'downed');
+      if (hit && birdId !== null) this.birds.downBird(birdId);
+      if (this.shotCallout) {
+        this.shotCallout.textContent = hit ? 'HIT!' : 'MISS';
+        this.shotCallout.classList.toggle('miss', !hit);
+        this.shotCallout.hidden = false;
+        this.shotCalloutUntil = ctx.time + (hit ? .8 : .55);
+      }
+      return false;
+    });
   }
 
   /* ------------------------------- build ------------------------------- */
@@ -946,6 +957,7 @@ export class GunSystem implements Subsystem {
   }
 
   dispose(ctx: Ctx): void {
+    this.shots = [];
     this.pendingTrigger = null;
     this.inputAbort.abort();
     ctx.scene.remove(this.root);
