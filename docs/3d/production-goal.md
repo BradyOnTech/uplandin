@@ -1,40 +1,29 @@
 # Complete low-poly hunting experience
 
-The active goal is the full user-approved scope in the September 8 goal objective, with Pheasant Coverts as the reference experience and subsequent application to the other species. A small passing change, a staged screenshot, or a successful scripted encounter does not complete this goal. Previous turn produced implementation and verified evidence; this continuation remains progress, not completion.
+Pheasant Coverts is the benchmark for the full user-approved September 8 objective. Completion means an ordinary, uninterrupted hunt that feels convincing, exciting, readable, and worth replaying, followed by species-specific application elsewhere. The benchmark remains unproven. Functional tests, staged views, assisted shots, and emulated phones cannot establish it independently.
 
-**Required outcomes and evidence**
+**Current evidence and remaining work**
 
-| Outcome | Required evidence | Current status |
+| Required outcome | Established evidence | Still required |
 | --- | --- | --- |
-| Exciting natural hunts | Ordinary uninterrupted hunts across seeds and routes; close, runner, wary, hen and follow-up presentations; meaningful wind, approach and dog handling | Incomplete; approach integration defects fixed, natural distribution not established |
-| Finished birds | Readable rooster/hen anatomy, wings, tail, takeoff, banking and falling or landing during play | Dedicated model, banking and momentum-based fall implemented; ordinary identification and complete presentation acceptance remain open |
-| Cohesive environment | Walking-height review of vegetation shapes, transitions, terrain, landmarks, materials and lighting in both quality tiers | Dense habitat established; close silhouettes and composition still incomplete |
-| Finished dog | Convincing search, track, relocate, point, break, find and return; explicit procedural asset acceptance review | Procedural carry and assisted return improved; provisional model and ordinary retrieve acceptance unresolved |
-| Finished controls and sound | Sustained laptop aim/track/mount/recoil/reload review; deliberate flush, cackle, cover, dog and environmental sound review | Keyboard path improved; complete tactile and audio review open |
-| Performance and reliability | Measured ordinary laptop and actual phone performance, loading, repeated sessions, both entries, varied lighting, misses and retrieves | Static and short traversal M1 Pro frame-cadence samples exist; full hunts and actual phone validation incomplete |
-| Reference and transfer | Cohesive Pheasant hunt through final retrieve/results that warrants replay, then species-specific application elsewhere | Pheasant benchmark not achieved; no broad completion claim |
+| Exciting natural hunts | Natural close rooster rises, hens, points, tracking and recovery observed across several seeds and both entries; runner approach and whistle handling corrected | Uninterrupted ordinary play across routes; judge encounter distribution, anticipation, meaningful wind/approach, distant escapes and follow-up birds |
+| Finished bird presentation | Species geometry, wing motion, banking and momentum-based falling; moving close rooster recognizable in West-87 recording | Unassisted rooster/hen acquisition across backgrounds, distance and presentation; final motion acceptance |
+| Cohesive environment | Dense pheasant habitat, terrain variation, material transitions, autumn vegetation and horizon/canopy improvements in both quality tiers | A sustained walking-height composition review; identify the biggest remaining scene-level weaknesses before further asset detail |
+| Finished dog | Natural shot-to-pickup-to-carry-to-delivery observed with assisted aiming; terrain-contact and movement checks; GSP head and hind-chain refinement | Current procedural asset remains unaccepted; moving field review of search, track, relocate, point, break, find and return before more breeds |
+| Finished controls, shooting and sound | Laptop keyboard path; travelling patterns reward crossing lead; nearby movement audio; touch-emulated miss/reload/results/replay | Human aiming and tracking feel, recoil/reload rhythm, deliberate listening, comfortable touch tracking and cancellation during a rise |
+| Performance and reliability | Active lightweight M1 Pro traversal over 107 seconds; both entries/light tiers represented in bounded hunt reviews; fresh replay verified | Ordinary lower-end laptop and actual phone performance, sustained/thermal behavior, loading and repeated complete hunts |
+| Benchmark and transfer | Functional pheasant loop is playable through results; new visits vary seeds | Player acceptance of one cohesive pheasant experience, then species-specific application; other maps must not become reskins |
 
-**Next evidence-driven work**
+**Priority for the next pass**
 
-First fix the actual encounter pipeline before judging frequency: 3D walking movement was previously aliased away, and runtime bird IDs changed temperament on same-seed restarts. Focused integration regressions now exercise those defects. The runner audit found an inherited speed of 42 property yards per second, about 38.4 meters per second. Continuous ringnecks now use 4.8 meters per second while preserving rest/energy clocks and 2D rules. Controlled cover-end scenarios produce opportunities while straight broad-cover pursuit remains difficult. Natural multi-seed balance remains unverified. The latest West replay reached a natural rise but foreground blade shapes still heavily screened it; arching leaves and upper stalks now replace close sheet-like grass. The new natural rise still overlaps the background trees. A true cover-edge route produced a clearer sky-backed rooster, but the paused shot missed and a replay did not reproduce its timing. An assisted forced-down review now connects the corrected momentum-based fall through pickup, visible return and one bird retrieved in Field notes. It does not complete natural shooting or retrieve acceptance. Folded pheasant wings, carry scale and impact-relative tumbling have been corrected; the carried neck now relaxes through a shared morph. A subsequent explicitly selected generated-GSP review also completed an assisted return; the earlier omitted-breed URL had loaded the legacy dog. The provisional dog still needs ordinary-play visual acceptance.
+Get player judgment on the current build's largest remaining gap: environment, dog, or encounter/shooting feel. A feedback question is pending in the task. Use that judgment to choose one substantial pass with a visible before/after outcome. While waiting, address only demonstrated problems; do not generate more minor refinements or repeat successful assisted fixtures merely to accumulate evidence.
 
-Then review multiple ordinary hunts from both entries and list their three largest weaknesses. Fix those before expanding maps. Stage art views only for shape and lighting decisions; label teleported cameras, forced events, telemetry-assisted aiming and simulation stepping. Do not count those as ordinary hunting proof.
+The previously listed encounter-ID, movement-aliasing, runner-speed, recall, and physical-retrieve defects have already been addressed. Do not treat those older chronological findings as current instructions to fix them again. Natural shooting and recovery now have assisted functional evidence. What is still missing is ordinary unassisted quality acceptance, not the existence of a working recovery path.
 
-Retain dense pheasant habitat and the browser/mobile direction. Do not solve acquisition by clearing a target corridor, highlighting every bird, or forcing every encounter to be close. Actual mobile hardware evidence remains required by the goal; an emulated viewport cannot replace it.
+Actual phone evidence needs an actual device. New touch visits already default to Lightweight unless the player or URL selects another tier; retain that choice. Browser touch emulation proves only the interactions and layouts exercised. Do not clear dense cover, highlight every bird, or force every rise close to make automated checks easier.
 
-**Evidence location**
+**Evidence and checkpoints**
 
-The chronological record is in `docs/3d/pheasant-completion.md`. Tests and build reports prove only their covered behavior. The latest model comparison is under `output/playwright/pheasant-model-rooster-side.png` and `pheasant-model-hen-side.png`. These are assisted frozen previews at approximately eight meters, not new hunts.
+The detailed record is `docs/3d/pheasant-completion.md`. Recent implementation checkpoints are `7526c27` (travelling shot patterns), `699e7c8` (physical movement audio), `fc799b2` (GSP proportions), and `7427be4` (landscape phone layout). Checkpoint `588a4b2` records touch-emulated miss-to-replay evidence. The last full suite passed 664 tests; later CSS-only work passed its build and focused browser review.
 
-
-**Latest review priorities**
-
-West Track seed 17 produced three point flushes in a four-minute real-control session, with no bagged birds. Observation gaps prevented acquiring every rise; this is not the uninterrupted completion benchmark. It did expose conflicting distance advice and a dog pursuing scent beyond useful handler range. Shared guidance and a generous continuous-Pheasant tracking hold now pass browser and integration checks. Replay varied routes and seeds to judge whether those changes improve participation without creating repeated artificial stops.
-
-The same walking review exposed rectangular cattail heads and repetitive broad cover transitions. Cattail heads now have near volume and cheaper crossed middle silhouettes, with measured additional geometry and a short local traversal check. Harvest/fringe vegetation now follows the terrain paint continuously rather than cutting off whole cells. Farm lanes now show paired surface wear, and Pheasant low-sun lighting preserves more ground detail. Track vegetation shoulders and broader habitat grouping still need refinement while retaining dense cover. Bird acquisition, tactile shooting, ordinary return, deliberate listening and actual phone performance remain required.
-
-
-South Gate seed 23 at evening reached a natural point and allowed closing to the dog, but its recorded rise was not acquired during tool observation gaps. Close-point text now distinguishes reaching the dog from working ahead of its nose and uses the dog's facing direction. Revalidate that guidance in a fresh hunt before treating it as an improvement to encounter completion. Successful ordinary shooting and recovery are still missing from the current presentation acceptance evidence.
-
-
-A natural West seed-7 frame sequence recorded a hen-flush cue without a clearly identifiable forward-view bird. Off-axis flight remains a hypothesis; use revealed-airborne projection diagnostics during a future rise to distinguish it from concealment. The same audit fixed a separate first-flight-tick overwrite of the intended close-flush vertical impulse. Its persistence now has regression proof, but complete ordinary shooting/recovery remains the priority.
+Key artifacts include `output/playwright/west87-balanced-rise-short.mp4`, `output/playwright/travelling-shot-delivery.png`, `output/audit/field-sound-review.wav`, `output/audit/dog-point-profile-after.png`, and `output/audit/phone-landscape-after.png`. Each has the limitations described in the detailed record. No artifact or checkpoint constitutes overall production acceptance.
