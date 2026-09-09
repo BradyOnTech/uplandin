@@ -127,3 +127,22 @@ body.field-paused #touch-controls,body.field-paused #field-map-toggle { display:
 #touch-controls .fire { width:72px; height:72px; touch-action:none; }
 #touch-controls .fire small { display:block; font-size:9px; margin-top:3px; }
 #touch-controls .fire[data-tracking=true] { background:#f0d69c; box-shadow:0 0 0 3px #fff8,inset 0 2px 5px #0002; }
+
+/* Landscape phones need a clear horizon and room for a tracking thumb. */
+@media (pointer:coarse) {
+  #field-map-toggle kbd { display:none; }
+}
+@media (pointer:coarse) and (orientation:landscape) and (max-height:550px) {
+  #hunt-hud { width:270px; padding:8px 10px; }
+  #field-identity { padding-bottom:3px; }
+  .field-property-name { font-size:13px; }
+  #hunt-tally { margin-top:4px; }
+  #hunt-phase { margin-top:4px; }
+  #dog-locator { margin-top:4px; min-height:30px; padding-block:3px; }
+  #hunt-beacon { margin-top:4px; }
+  #field-method-live { display:none; }
+  #touch-controls { bottom:max(14px,env(safe-area-inset-bottom)); right:max(14px,env(safe-area-inset-right)); gap:8px; }
+  #touch-controls button { min-height:48px; padding-block:10px; }
+  #touch-controls .fire { width:72px; height:72px; }
+  #end-hunt { top:max(12px,env(safe-area-inset-top)); bottom:auto; right:max(86px,calc(env(safe-area-inset-right) + 74px)); min-height:44px; padding:10px 12px; }
+}
