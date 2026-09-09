@@ -105,7 +105,7 @@ it('acquires pointing presence over time while keeping supporting feet grounded'
       supports[j].target.copy(f.target);supports[j].step=f.step;
     });
   }
-  expect(motion.asset.joints.neck.rotation.x).toBeCloseTo(.26);
+  expect(motion.asset.joints.neck.rotation.x).toBeCloseTo(.16);
   expect(motion.asset.joints.tail.rotation.x).toBeCloseTo(.20);
   motion.update(0,0,0,1/60,false,false);
   expect(motion.asset.joints.neck.rotation.x).toBeGreaterThan(0);

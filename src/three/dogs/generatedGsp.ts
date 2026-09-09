@@ -143,26 +143,26 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
   surface(head, s => {
     // One continuous skull, cheek and muzzle surface. The long nasal bridge
     // and shallow stop avoid the former domed forehead and separate snout.
-    s.loft([[0,.006,-.072,.037,.037,.042],[0,.011,-.048,.051,.047,.049],
-      [0,.012,-.012,.064,.048,.052],[0,.006,.026,.064,.042,.055],
+    s.loft([[0,.006,-.072,.037,.037,.042],[0,.008,-.048,.049,.035,.044],
+      [0,.008,-.012,.060,.041,.049],[0,.005,.026,.060,.037,.052],
       [0,-.003,.056,.054,.032,.054],[0,-.008,.077,.046,.030,.047],
       [0,-.006,.111,.042,.029,.039],[0,-.003,.145,.035,.027,.032],
-      [0,-.002,.171,.031,.024,.027]], LIVER);
-    s.loft([[0,-.001,.166,.031,.024,.027],[0,.001,.18,.030,.022,.023]], NOSE);
+      [0,-.002,.171,.035,.024,.027]], LIVER);
+    s.loft([[0,-.001,.166,.035,.024,.027],[0,.001,.18,.034,.022,.023]], NOSE);
     // A restrained lip line describes the jaw at close range.
     for (const side of [-1, 1]) s.loft([[side*.034,-.027,.102,.0016,.0020],
       [side*.033,-.030,.142,.0015,.0018],[side*.027,-.024,.165,.0010,.0013]], NOSE);
     // Small eyes sit at the skull/muzzle transition, without white cartoon sclera.
-    for (const side of [-1, 1]) s.loft([[side*.060,.019,.027,.0025,.0031],
-      [side*.058,.019,.037,.0027,.0026]], EYE);
+    for (const side of [-1, 1]) s.loft([[side*.057,.017,.027,.0025,.0031],
+      [side*.055,.017,.037,.0027,.0026]], EYE);
   }, .78);
   for (const side of [-1, 1]) {
-    const ear = joint(side < 0 ? 'ear-left' : 'ear-right', head, [side*.058,.021,-.012]);
+    const ear = joint(side < 0 ? 'ear-left' : 'ear-right', head, [side*.052,.019,-.012]);
     // Thin leather rolls out from the skull, then hangs against the cheek;
     // the narrow rounded tip is not the bottom edge of a solid paddle.
-    surface(ear, s => s.loft([[side*.011,-.140,.046,.0035,.007],
-      [side*.018,-.129,.037,.005,.018],[side*.022,-.104,.022,.0055,.033],
-      [side*.020,-.070,.008,.006,.040],[side*.012,-.034,-.002,.006,.036],
+    surface(ear, s => s.loft([[side*.006,-.110,.041,.0025,.007],
+      [side*.010,-.100,.033,.0035,.017],[side*.012,-.081,.020,.004,.027],
+      [side*.011,-.054,.008,.0045,.033],[side*.007,-.027,-.002,.0045,.030],
       [0,0,0,.0045,.024]], LIVER, 'y'), .82);
   }
   const tail = joint('tail', body, [0,.578,-.366]);
@@ -171,8 +171,8 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
   for (let i = 0; i < 4; i++) {
     const fore = i < 2, side = i % 2 ? 1 : -1, prefix = `${fore ? 'front' : 'hind'}-${side < 0 ? 'left' : 'right'}`;
     const upper = joint(prefix, body, [side*.068,.515,fore ? .205 : -.292]);
-    const upperEnd: Point = [0,fore ? -.195 : -.205,fore ? -.055 : .126];
-    const lowerEnd: Point = [0,fore ? -.25 : -.17,fore ? .062 : -.145];
+    const upperEnd: Point = [0,fore ? -.195 : -.205,fore ? -.055 : .090];
+    const lowerEnd: Point = [0,fore ? -.25 : -.17,fore ? .062 : -.110];
     const distalEnd: Point = [0,fore ? -.048 : -.117,fore ? .012 : .016];
     const lower = joint(prefix+'-lower', upper, upperEnd);
     const distal = joint(prefix+'-distal', lower, lowerEnd);
@@ -257,9 +257,9 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
       const t = THREE.MathUtils.clamp(presence, 0, 1);
       // Reach through the neck with a nearly level muzzle and a lifted,
       // still tail. The feet remain controlled by the field contact solver.
-      neck.rotation.x = .26 * t;
-      head.rotation.x = -.20 * t;
-      neck.position.z += .018 * t;
+      neck.rotation.x = .16 * t;
+      head.rotation.x = -.16 * t;
+      neck.position.z += .045 * t;
       // Keep the elbow bend on the same side as the gait/ground solver.
       // The former positive lower-arm fold forced a reversal during release.
       joints['front-left'].rotation.x = .40 * t;
