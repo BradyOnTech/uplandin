@@ -233,6 +233,27 @@ export function playFootstep(inCover: boolean, volume = 0.12): void {
   }
 }
 
+/** Dry stems brushing clothing; quieter than the launch burst. */
+export function playCoverBrush(volume = .035): void {
+  if (volume <= .001) return;
+  noise(0, .13, 2100, 650, volume);
+  noise(.055, .09, 1250, 420, volume * .65);
+}
+
+/** Nearby paws and stems, located at the dog rather than a UI cue. */
+export function playDogMovement(inCover: boolean, volume: number, pan: number): void {
+  const c = ready();
+  if (!c || volume <= .001) return;
+  const routing = c.createStereoPanner();
+  routing.pan.value = Math.max(-1, Math.min(1, pan));
+  routing.connect(output(c));
+  noise(0, .045, inCover ? 450 : 1000, 140, volume * .55, routing);
+  noise(.055, .04, inCover ? 380 : 800, 120, volume * .4, routing);
+  // The final sound owns routing cleanup, including when rendering stops.
+  noise(.07, .11, inCover ? 1900 : 700, 420, volume * (inCover ? .7 : .15), routing,
+    () => routing.disconnect());
+}
+
 /** Soft head-up when the dog first hits scent — almost subliminal. */
 export function playScentCheck(): void {
   tone(520, 0, 0.05, { volume: 0.06, slideTo: 640 });

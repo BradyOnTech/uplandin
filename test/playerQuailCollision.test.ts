@@ -10,7 +10,7 @@ import { buildQuailFenceGeometry } from '../src/three/subsystems/quailFences';
 import { deriveQuailEntrances } from '../src/three/subsystems/quailEntrances';
 import { PropertyHabitatSystem } from '../src/three/subsystems/propertyHabitat';
 
-vi.mock('../src/audio', () => ({ unlockAudio: vi.fn(), playFootstep: vi.fn() }));
+vi.mock('../src/audio', () => ({ unlockAudio: vi.fn(), playFootstep: vi.fn(), playCoverBrush: vi.fn() }));
 
 const cleanup: (() => void)[] = [];
 beforeEach(() => {

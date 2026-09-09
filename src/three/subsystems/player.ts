@@ -1,6 +1,6 @@
 import { ShallowWater, wadingSpeedMultiplier } from '../../game/shallowWater';
 import * as THREE from 'three';
-import { unlockAudio, playFootstep } from '../../audio';
+import { unlockAudio, playFootstep, playCoverBrush } from '../../audio';
 import type { LandscapeModel } from '../../game/landscape';
 import type { Ctx, Subsystem } from '../engine';
 import type { TerrainSystem } from './terrain';
@@ -204,6 +204,7 @@ export class PlayerSystem implements Subsystem {
           this.hunt ??= ctx.get<Hunt3DSystem>('hunt3d');
           const inCover = this.hunt.coverPatches().some((patch) => Math.abs(this.pos.x - patch.cx) < patch.hx && Math.abs(this.pos.z - patch.cz) < patch.hz);
           playFootstep(inCover, 0.10);
+          if (inCover) playCoverBrush();
         }
       }
     }

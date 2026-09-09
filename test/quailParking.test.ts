@@ -9,7 +9,7 @@ import { PlayerSystem } from '../src/three/subsystems/player';
 import { deriveQuailEntrances, deriveQuailParkingPose } from '../src/three/subsystems/quailEntrances';
 import { buildQuailFenceGeometry } from '../src/three/subsystems/quailFences';
 
-vi.mock('../src/audio', () => ({ unlockAudio: vi.fn(), playFootstep: vi.fn(), playWhistle: vi.fn() }));
+vi.mock('../src/audio', () => ({ unlockAudio: vi.fn(), playFootstep: vi.fn(), playCoverBrush: vi.fn(), playWhistle: vi.fn() }));
 const cleanup: (() => void)[] = [];
 beforeEach(() => {
   vi.stubGlobal('window', new EventTarget());
