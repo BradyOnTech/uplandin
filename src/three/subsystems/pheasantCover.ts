@@ -198,7 +198,7 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
           push([
             cx,y,cz,
             cx+px*reach,height*(t+.07),cz+pz*reach,
-            cx+px*reach*.72,height*(t+.025),cz+pz*reach*.72,
+            cx+px*reach*.88,height*(t+.062),cz+pz*reach*.88,
           ],seedTone);
         }
       } else {
@@ -445,10 +445,21 @@ export class PheasantCoverSystem implements Subsystem {
               if (fringeRng() > fringe * .85 * (1 - cut)) continue;
             }
             if (pond && pond.waterY - this.landscape.heightAtProperty(cx, cy) > .12) continue;
-            const wave = .5 + .5 * Math.sin(cx * .038 + Math.sin(cy * .051));
+            // Stand-scale variation is shared by neighboring roots. Independent
+            // per-plant randomness alone makes a field read as one uniform hedge.
+            // Warped bands create broad upright stands and spreading, weathered
+            // bunches, retaining every root and substantial core height.
+            const stand = THREE.MathUtils.smoothstep(
+              Math.sin(cx * .071 + Math.sin(cy * .047) * 2.1)
+              * Math.cos(cy * .063 + Math.sin(cx * .029)), -.55, .55);
+            const weathered = THREE.MathUtils.smoothstep(
+              Math.sin(cx * .12 + cy * .057 + Math.sin(cy * .11)), .15, .85) * (1 - stand);
+            const coreHeight = 1.45 + stand * .35;
             groups.prairie.push({ x: cx, y: cy, scale: .94 + rng() * .22,
-              height: core ? 1.45 + wave * .35 : .50 + fringe * .75, spread: 1.2, angle: rng() * Math.PI * 2,
-              color: color.copy(straw).lerp(olive, moisture * .6 + wave * .18).lerp(amber, rng() * .16).getHex() });
+              height: core ? coreHeight : .50 + fringe * .75,
+              spread: 1.16 + weathered * .28, angle: rng() * Math.PI * 2,
+              color: color.copy(straw).lerp(olive, Math.min(.65, moisture * .6 + stand * .42))
+                .lerp(amber, rng() * .16 + weathered * .32).getHex() });
           }
           continue;
         }
