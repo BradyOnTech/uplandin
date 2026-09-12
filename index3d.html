@@ -62,15 +62,22 @@
         <div class="field-divider"></div>
         <p id="loading-status" role="status">Preparing the field…</p>
         <progress id="loading-progress" max="1" value="0" aria-label="Loading the field"></progress>
+        <button id="enter-field" class="primary" type="button" hidden>Enter the field <span aria-hidden="true">↗</span></button>
+        <button id="retry-field" type="button" hidden>Reload the field</button>
+        <section id="shotgun-options" aria-labelledby="shotgun-label" hidden>
+          <label id="shotgun-label" for="shotgun-setting">Shotgun</label>
+          <select id="shotgun-setting" aria-describedby="shotgun-equipped" disabled></select>
+          <p id="shotgun-equipped"></p>
+          <a id="shotgun-rack" href="./shotguns3d.html" target="_blank" rel="noopener">3D Gun Rack <span aria-hidden="true">↗</span></a>
+          <p id="shotgun-status" role="status" aria-live="polite"></p>
+        </section>
         <div id="field-instructions" hidden>
           <p class="desktop-instructions"><kbd>W A S D</kbd> Walk <span>·</span> <kbd>Shift</kbd> Run <span>·</span> <kbd>Q</kbd> Whistle <span>·</span> <kbd>M</kbd> Survey map</p>
           <p class="desktop-instructions"><kbd>F</kbd> Toggle aim · <kbd>Space</kbd> Shoot · <kbd>R</kbd> Reload.<br>Mouse: hold right button to aim, left button to shoot.</p>
           <p class="touch-instructions">Drag left to walk, right to look. Tap Survey for the route map. Tap Aim, then drag Fire to track and release to shoot. Whistle brings your dog back.</p>
-          <p>Swing ahead of crossing birds. Longer shots need more lead; let distant birds go.</p>
+          <p>You can fire whenever the gun is raised. Swing ahead of crossing birds; let distant birds go.</p>
           <p class="field-tip">Work the edges into the wind. When your dog holds point, walk in steadily.</p>
         </div>
-        <button id="enter-field" class="primary" type="button" hidden>Enter the field <span aria-hidden="true">↗</span></button>
-        <button id="retry-field" type="button" hidden>Reload the field</button>
         <div id="field-options">
           <label id="property-option">Property <select id="property-setting">
             <option value="quail-fields">Quail Fields</option>

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>The gun rack · Uplandin</title>
+  <link rel="icon" type="image/png" href="./icon-192.png">
+</head>
+<body>
+  <main>
+    <section class="rack" aria-labelledby="rack-title">
+      <a class="back" href="./index.html">← Uplandin</a>
+      <p class="eyebrow">FIELD EQUIPMENT / 01</p>
+      <h1 id="rack-title">The gun rack</h1>
+      <p class="intro">Four actions. A different way to carry the field.</p>
+      <div id="gun-choices" role="group" aria-label="Choose a shotgun"></div>
+      <div class="gun-copy" aria-live="polite">
+        <h2 id="gun-name"></h2>
+        <p id="gun-description"></p>
+        <dl><div><dt>Capacity</dt><dd id="capacity"></dd></div><div><dt>Career unlock</dt><dd id="unlock"></dd></div></dl>
+      </div>
+      <a id="try-gun" class="primary" href="./index3d.html?area=pheasant-coverts">Try in Pheasant Coverts <span aria-hidden="true">↗</span></a>
+      <p class="footnote">All four are available in Quick Hunt. This field preview starts a separate hunt.</p>
+    </section>
+    <section class="stage" aria-label="Interactive shotgun view">
+      <div class="stage-heading"><span id="action-label">PUMP ACTION</span><span>LOW-POLY FIELD SERIES</span></div>
+      <div id="viewport"><canvas id="shotgun-view" tabindex="0" aria-label="3D shotgun. Drag to rotate, scroll or pinch to zoom. Use the view buttons for fixed angles."></canvas></div>
+      <div class="stage-footer">
+        <p class="gesture-hint">Drag to rotate · Scroll or pinch to zoom</p>
+        <div class="view-controls" role="group" aria-label="Viewing angle">
+          <button type="button" data-view="profile">Side</button><button type="button" data-view="top">Above</button><button type="button" data-view="breech">Breech</button><button type="button" data-view="muzzle">Barrels</button><button type="button" data-view="three-quarter">Reset view</button>
+        </div>
+        <div class="motion-controls">
+          <button type="button" id="cycle-action">Cycle action</button><button type="button" id="play-reload">Play reload</button>
+          <label class="reload-slider">Reload <input id="reload-phase" type="range" min="0" max="1" step="0.001" value="0"></label>
+        </div>
+        <p id="motion-status" role="status">Ready</p>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="/src/three/shotgunViewer.ts"></script>
+</body>
+</html>

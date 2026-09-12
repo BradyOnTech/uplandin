@@ -1,13 +1,17 @@
 import { bindTouchActionControl } from './touchActionControl';
 import { bindTouchShotControl } from './touchShotControl';
 import { HUNT_CHALLENGES, HUNT_CHALLENGE_KEY, parseHuntChallenge } from '../game/huntChallenge';
-import { resolveThreeHuntChallenge } from '../game/gameplayMode';
+import { parseHuntLaunch, resolveThreeHuntChallenge } from '../game/gameplayMode';
+import { GUNS, getGun, unlockedGuns } from '../game/guns';
+import { loadCareer, saveCareer } from '../game/career';
+import { loadQuickConfig, saveQuickConfig } from '../game/quick';
 import { setAudioEnabled, unlockAudio } from '../audio';
 import type { LandscapeModel } from '../game/landscape';
 import type { Engine, Quality } from './engine';
 import type { TimeOfDay } from './palette';
 import { huntingDoctrine } from '../game/huntDoctrine';
 import { getSpecies } from '../game/species';
+import type { GunSystem } from './subsystems/gun';
 
 /** Lifecycle UI owns pause and preferences, never hunt outcomes. */
 export class FieldInterface {
@@ -22,6 +26,7 @@ export class FieldInterface {
   private progress = document.getElementById('loading-progress') as HTMLProgressElement;
   private touch = matchMedia('(pointer: coarse)').matches;
   private capture = new URLSearchParams(location.search).has('capture');
+  private launch = parseHuntLaunch(location.search);
   constructor(private engine: Engine, landscape: LandscapeModel) {
     const signal = this.abort.signal;
     document.body.classList.toggle('capture', this.capture);
@@ -56,6 +61,9 @@ export class FieldInterface {
     },{signal});
     this.engine.pause(!this.capture);
     this.enter.addEventListener('click', () => this.resume(), { signal });
+    document.getElementById('shotgun-setting')!.addEventListener('change', (event) => {
+      this.changeShotgun((event.target as HTMLSelectElement).value);
+    }, { signal });
     document.getElementById('retry-field')!.addEventListener('click', () => location.reload(), { signal });
     document.getElementById('pause-hunt')!.addEventListener('click', () => this.pause(), { signal });
     document.addEventListener('keydown', (event) => {
@@ -65,7 +73,8 @@ export class FieldInterface {
         if (this.engine.ctx.paused) this.resume(); else this.pause();
       }
       if (event.code === 'Tab' && !this.overlay.hidden) {
-        const focusable = Array.from(this.overlay.querySelectorAll<HTMLElement>('button:not([hidden]),select,input,a'));
+        const focusable = Array.from(this.overlay.querySelectorAll<HTMLElement>('button,select,input,a'))
+          .filter(element => !element.closest('[hidden]') && !element.matches(':disabled') && element.getClientRects().length > 0);
         const first = focusable[0], last = focusable[focusable.length - 1];
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -96,6 +105,7 @@ export class FieldInterface {
     }, { signal });
     canvas.addEventListener('webglcontextrestored', () => {
       this.lostContext = false; this.engine.renderOnce();
+      this.refreshShotgunMenu();
       this.status.textContent = 'The field is ready again.'; this.enter.hidden = false;
       document.getElementById('retry-field')!.hidden = true;
     }, { signal });
@@ -163,6 +173,44 @@ export class FieldInterface {
       } });
     }
   }
+  private refreshShotgunMenu(): void {
+    if (!this.readyState) return;
+    const gun = getGun(this.engine.ctx.get<GunSystem>('gun').equippedGunId());
+    const choices = this.launch?.kind === 'career' ? unlockedGuns(loadCareer().hunter.level) : GUNS;
+    const select = document.getElementById('shotgun-setting') as HTMLSelectElement;
+    select.replaceChildren(...choices.map(choice => {
+      const option = document.createElement('option');
+      option.value = choice.id; option.textContent = choice.name;
+      return option;
+    }));
+    select.value = gun.id;
+    select.disabled = this.lostContext || this.complete;
+    document.getElementById('shotgun-options')!.hidden = false;
+    document.getElementById('shotgun-equipped')!.textContent = `${gun.name} · ${gun.shells}-shell capacity`;
+    const rack = document.getElementById('shotgun-rack') as HTMLAnchorElement;
+    rack.href = `./shotguns3d.html?gun=${encodeURIComponent(gun.id)}`;
+  }
+  private changeShotgun(id: string): void {
+    if (!this.readyState || !this.engine.ctx.paused || this.complete || this.lostContext) return;
+    // Read the current save at the moment of choice; opening the rack or
+    // another tab must not make this menu write back an old career snapshot.
+    const career = this.launch?.kind === 'career' ? loadCareer() : null;
+    const choices = career ? unlockedGuns(career.hunter.level) : GUNS;
+    if (!choices.some(gun => gun.id === id) || !this.engine.ctx.get<GunSystem>('gun').equipGun(this.engine.ctx, id)) {
+      this.refreshShotgunMenu();
+      return;
+    }
+    if (career) {
+      career.hunter.shotgunId = id; saveCareer(career);
+    } else if (this.launch?.kind === 'quick') {
+      saveQuickConfig({ ...loadQuickConfig(), gunId: id });
+    } else {
+      const url = new URL(location.href); url.searchParams.set('gun', id); history.replaceState(null, '', url);
+    }
+    this.refreshShotgunMenu();
+    document.getElementById('shotgun-status')!.textContent = `${getGun(id).name} equipped. ${this.entered ? 'Return to' : 'Enter'} the field when ready.`;
+    this.engine.renderOnce();
+  }
   loading = (id: string, current: number, total: number): void => {
     const names: Record<string,string> = {
       terrain: 'Shaping the land',
@@ -189,7 +237,8 @@ export class FieldInterface {
     light.disabled=false;light.value=this.engine.ctx.timeOfDay;
     this.overlay.hidden = this.capture;
     this.status.hidden = true; this.progress.hidden = true;
-    document.getElementById('field-instructions')!.hidden = false;
+    document.getElementById('field-instructions')!.hidden = this.entered;
+    this.refreshShotgunMenu();
     this.enter.hidden = false;
     const mapToggle=document.getElementById('field-map-toggle') as HTMLButtonElement|null;
     if (mapToggle) mapToggle.hidden=this.capture || !this.entered;
@@ -214,12 +263,16 @@ export class FieldInterface {
     if (document.pointerLockElement) document.exitPointerLock();
     document.body.classList.add('field-paused');
     this.overlay.hidden = false;
+    this.refreshShotgunMenu();
+    document.getElementById('shotgun-status')!.textContent = '';
     this.enter.innerHTML = 'Return to the field <span aria-hidden="true">↗</span>';
     this.enter.focus();
   }
   private resume(): void {
     if (!this.readyState || this.complete || this.lostContext) return;
     this.entered = true; unlockAudio();
+    this.overlay.classList.add('field-has-entered');
+    document.getElementById('field-instructions')!.hidden = true;
     const property=document.getElementById('property-setting') as HTMLSelectElement|null;
     if(property)property.disabled=true;
     this.overlay.hidden = true;

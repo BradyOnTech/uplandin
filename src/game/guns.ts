@@ -28,12 +28,12 @@ export const GUNS: GunConfig[] = [
   },
   {
     id: 'semi-auto',
-    name: 'Semi-auto',
+    name: 'Browning A5',
     shells: 3,
     cooldownMs: 250,
     spread: 14,
     unlockLevel: 3,
-    blurb: 'three shells, quick cycling',
+    blurb: 'humpback semi-auto, quick cycling',
   },
   {
     id: 'over-under',

@@ -31,7 +31,7 @@ describe('3D shotgun action', () => {
   });
 
   it.each(['pheasant-coverts', 'quail-fields', 'chukar-ridge'])('shows the equipped sporting action on %s with its bead on the shot ray', areaId => {
-    for (const gunId of ['semi-auto', 'remington-870']) {
+    for (const gunId of ['semi-auto', 'remington-870', 'over-under', 'side-by-side']) {
       vi.stubGlobal('window', new EventTarget());
       vi.stubGlobal('location', { search: '?capture' });
       vi.stubGlobal('document', { getElementById: () => null });
@@ -47,8 +47,9 @@ describe('3D shotgun action', () => {
       const audit = (window as unknown as { __gunAudit: { setState(mode: string): void; viewmodel(): { model: string; beadNdc: { x: number; y: number } } } }).__gunAudit;
       audit.setState('mount'); gun.update(ctx, 0);
       const view = audit.viewmodel();
-      expect(view.model).toBe(gunId === 'semi-auto' ? 'Sporting semiautomatic' : 'Sporting pump');
-      expect(gun.shellsRemaining()).toBe(3);
+      expect(view.model).toBe(({ 'semi-auto': 'Sporting semiautomatic', 'remington-870': 'Sporting pump',
+        'over-under': 'Sporting over/under', 'side-by-side': 'Sporting side-by-side' })[gunId]);
+      expect(gun.shellsRemaining()).toBe(gunId === 'over-under' || gunId === 'side-by-side' ? 2 : 3);
       expect(Math.abs(view.beadNdc.x)).toBeLessThan(.002);
       expect(Math.abs(view.beadNdc.y)).toBeLessThan(.002);
       gun.dispose(ctx);
@@ -120,7 +121,7 @@ describe('3D shotgun action', () => {
     }
   });
 
-  it.each(['fire', 'lower', 'pause', 'reload', 'no-rise', 'changed-rise', 'expired', 'cooldown'])(
+  it.each(['fire', 'lower', 'pause', 'reload', 'no-rise', 'changed-rise', 'ended-rise', 'expired', 'cooldown'])(
     'handles rapid F + Space during mount safely: %s', scenario => {
       vi.stubGlobal('window', new EventTarget());vi.stubGlobal('location', { search: '' });
       vi.stubGlobal('document', { getElementById: () => null, querySelector: () => null });
@@ -143,16 +144,99 @@ describe('3D shotgun action', () => {
       if (scenario === 'pause') { ctx.paused=true;ctx.events.dispatchEvent(new Event('pause'));ctx.paused=false;key('KeyF'); }
       if (scenario === 'reload') key('KeyR'); // Even a full-gun reload request cancels a queued trigger.
       if (scenario === 'changed-rise') sequence++;
-      if (scenario === 'no-rise') active=true;
+      if (scenario === 'ended-rise') active=false;
       if (scenario === 'expired') step(.26);
       else for(let i=0;i<12;i++)step(1/60);
-      expect(gun.shellsRemaining()).toBe(scenario==='fire'?2:3);
+      expect(gun.shellsRemaining()).toBe(['fire','no-rise','changed-rise','ended-rise'].includes(scenario)?2:3);
       for(let i=0;i<60;i++)step(1/60);
-      expect(gun.shellsRemaining()).toBe(scenario==='fire'?2:3);
+      expect(gun.shellsRemaining()).toBe(['fire','no-rise','changed-rise','ended-rise'].includes(scenario)?2:3);
       // A new deliberate trigger after cooldown still works normally.
-      key('Space');expect(gun.shellsRemaining()).toBe(scenario==='fire'?1:2);
+      key('Space');expect(gun.shellsRemaining()).toBe(['fire','no-rise','changed-rise','ended-rise'].includes(scenario)?1:2);
       gun.dispose(ctx);
     });
+
+  it.each(['remington-870', 'semi-auto', 'over-under', 'side-by-side'])(
+    'fires the equipped %s without an airborne bird through keyboard, mouse and touch intent', gunId => {
+      for (const input of ['keyboard', 'mouse', 'touch']) {
+        vi.stubGlobal('window', new EventTarget()); vi.stubGlobal('location', { search: '' });
+        const reticle = { hidden: true };
+        vi.stubGlobal('document', { getElementById: (id: string) => id === 'reticle' ? reticle : null, querySelector: () => null });
+        const birds = { riseSequence: () => 0, isRiseActive: () => false, shotTargets: () => [] };
+        const hunt = { huntState: () => ({ gunId, birds: [] }), dog: () => ({ state: 'quartering' }), dogCount: () => 1 };
+        const canvas = new EventTarget();
+        const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), renderer: { domElement: canvas },
+          events: new EventTarget(), quality: 'high', timeOfDay: 'noon', time: 1, paused: false,
+          get: (id: string) => ({ hunt3d: hunt, birds, terrain: { heightAt: () => 0 } }[id]),
+        } as unknown as Ctx;
+        const gun = new GunSystem(); gun.init(ctx);
+        const key = (code: string) => window.dispatchEvent(Object.assign(new Event('keydown'), { code, key: code === 'KeyF' ? 'f' : ' ' }));
+        const mouse = (button: number) => { const event = Object.assign(new Event('mousedown'), { button }); Object.defineProperty(event, 'target', { value: canvas }); window.dispatchEvent(event); };
+        const touch = (detail: string) => ctx.events.dispatchEvent(Object.assign(new Event('hunt-action'), { detail }));
+        if (input === 'keyboard') key('KeyF'); else if (input === 'mouse') mouse(2); else touch('mount');
+        ctx.time += .2; gun.update(ctx, .2);
+        const capacity = gun.shellCapacity();
+        const trigger = () => input === 'keyboard' ? key('Space') : input === 'mouse' ? mouse(0) : touch('fire');
+        trigger();
+        expect(gun.shellsRemaining()).toBe(capacity - 1);
+        expect(reticle.hidden).toBe(false);
+        gun.update(ctx, .03); expect(gun.recoilOffset().z).toBeGreaterThan(0);
+        ctx.paused = true; trigger(); expect(gun.shellsRemaining()).toBe(capacity - 1);
+        gun.dispose(ctx);
+      }
+    });
+
+  it.each(['remington-870', 'semi-auto'])('a new flush cannot bypass the %s action cooldown', gunId => {
+    vi.stubGlobal('window', new EventTarget()); vi.stubGlobal('location', { search: '' });
+    vi.stubGlobal('document', { getElementById: () => null, querySelector: () => null });
+    let sequence = 0;
+    const birds = { riseSequence: () => sequence, isRiseActive: () => true, shotTargets: () => [] };
+    const hunt = { huntState: () => ({ gunId, birds: [] }) };
+    const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), renderer: { domElement: new EventTarget() },
+      events: new EventTarget(), quality: 'high', timeOfDay: 'noon', time: 1, paused: false,
+      get: (id: string) => ({ hunt3d: hunt, birds, terrain: { heightAt: () => 0 } }[id]),
+    } as unknown as Ctx;
+    const gun = new GunSystem(); gun.init(ctx);
+    const key = (code: string) => window.dispatchEvent(Object.assign(new Event('keydown'), { code, key: code === 'KeyF' ? 'f' : ' ' }));
+    key('KeyF'); ctx.time += .2; gun.update(ctx, .2); key('Space');
+    expect(gun.shellsRemaining()).toBe(2);
+    sequence++; ctx.time += .02; gun.update(ctx, .02); key('Space');
+    expect(gun.shellsRemaining()).toBe(2);
+    ctx.time += .5; gun.update(ctx, .5); key('Space'); expect(gun.shellsRemaining()).toBe(1);
+    gun.dispose(ctx);
+  });
+
+  it('changes guns only while paused without restarting the hunt or refilling stowed shells', () => {
+    vi.stubGlobal('window', new EventTarget()); vi.stubGlobal('location', { search: '' });
+    vi.stubGlobal('document', { getElementById: () => null, querySelector: () => null });
+    const state = { gunId: 'remington-870', birds: [{ id: 42 }], hunterPos: { x: 12, y: 28 }, downed: 2, fieldSessionEnded: false };
+    const hunt = { huntState: () => state };
+    const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), renderer: { domElement: new EventTarget() },
+      events: new EventTarget(), quality: 'high', timeOfDay: 'noon', time: 1, paused: false,
+      get: (id: string) => ({ hunt3d: hunt, birds: { shotTargets: () => [] }, terrain: { heightAt: () => 0 } }[id]),
+    } as unknown as Ctx;
+    const gun = new GunSystem(); gun.init(ctx);
+    const key = (code: string) => window.dispatchEvent(Object.assign(new Event('keydown'), { code, key: code === 'KeyF' ? 'f' : code === 'KeyR' ? 'r' : ' ' }));
+    key('KeyF'); ctx.time += .2; gun.update(ctx, .2); key('Space');
+    expect(gun.shellsRemaining()).toBe(2);
+    expect(gun.equipGun(ctx, 'over-under')).toBe(false);
+    key('KeyR'); expect(gun.isReloading()).toBe(true);
+    ctx.paused = true; ctx.events.dispatchEvent(new Event('pause'));
+    expect(gun.equipGun(ctx, 'unknown')).toBe(false);
+    const birdReference = state.birds, hunterReference = state.hunterPos;
+    for (const id of ['over-under', 'side-by-side', 'semi-auto']) {
+      expect(gun.equipGun(ctx, id)).toBe(true);
+      expect(gun.equippedGunId()).toBe(id); expect(state.gunId).toBe(id);
+      expect(gun.shellsRemaining()).toBe(id === 'semi-auto' ? 3 : 2);
+      expect(gun.isReloading()).toBe(false); expect(gun.mountProgress()).toBe(0);
+    }
+    expect(gun.equipGun(ctx, 'remington-870')).toBe(true);
+    expect(gun.shellsRemaining()).toBe(2);
+    expect(gun.equipGun(ctx, 'remington-870')).toBe(true);
+    expect(gun.shellsRemaining()).toBe(2);
+    expect(state.birds).toBe(birdReference); expect(state.hunterPos).toBe(hunterReference); expect(state.downed).toBe(2);
+    state.fieldSessionEnded = true; expect(gun.equipGun(ctx, 'over-under')).toBe(false);
+    gun.dispose(ctx);
+  });
 
   it('supports latched keyboard aim and a single shot per Space press without mouse buttons', () => {
     vi.stubGlobal('window', new EventTarget());

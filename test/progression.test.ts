@@ -46,7 +46,7 @@ describe('hunter progression', () => {
   it('every unlock is announced at some level', () => {
     const all = Array.from({ length: 10 }, (_, i) => unlocksAtLevel(i + 1)).flat();
     expect(all.join(' ')).toContain('truck');
-    expect(all.join(' ')).toContain('Semi-auto');
+    expect(all.join(' ')).toContain('Browning A5');
     expect(all.join(' ')).toContain('side-by-side');
     expect(all.join(' ')).toContain('beeper');
     expect(all.join(' ')).toContain('GPS + map');

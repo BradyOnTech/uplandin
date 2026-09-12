@@ -81,7 +81,7 @@ describe('gameplay mode and shared hunt launch', () => {
     added.career.hunter.shotgunId = 'over-under';
     saveCareer(added.career, storage);
 
-    const setup = createThreeHuntSetup('?play=career&area=grouse-woods', mulberry32(4), storage);
+    const setup = createThreeHuntSetup('?play=career&area=grouse-woods&gun=side-by-side', mulberry32(4), storage);
     expect(setup.area.id).toBe('grouse-woods');
     expect(setup.breed.id).toBe('english-setter');
     expect(setup.level).toBe(6);
@@ -96,7 +96,8 @@ describe('gameplay mode and shared hunt launch', () => {
       breedId: 'gsp', level: 3, areaId: 'quail-fields', wind: 'strong',
       gunId: 'over-under', gearTier: 2, breed2Id: 'none', weather: 'frost',
     }, storage);
-    const setup = createThreeHuntSetup('?play=quick', mulberry32(7), storage);
+    const setup = createThreeHuntSetup('?play=quick&gun=side-by-side', mulberry32(7), storage);
+    expect(setup.hunt.gunId).toBe('over-under');
     expect(setup.breed.id).toBe('gsp');
     expect(setup.level).toBe(3);
     expect(setup.hunt.windStrength).toBe('strong');
@@ -122,6 +123,17 @@ describe('gameplay mode and shared hunt launch', () => {
     }, storage);
     const profile = resolveThreeHuntProfile('?play=quick', storage);
     expect(profile.brace).toMatchObject({ breedId: 'english-setter', level: 5 });
+  });
+
+  it('selects every rack gun for a standalone field preview without changing a saved setup', () => {
+    const storage = memoryStorage();
+    const before = { ...storage.data };
+    for (const gunId of ['remington-870', 'semi-auto', 'over-under', 'side-by-side']) {
+      const setup = createThreeHuntSetup(`?area=pheasant-coverts&gun=${gunId}`, mulberry32(7), storage);
+      expect(setup.hunt.gunId).toBe(gunId);
+    }
+    expect(createThreeHuntSetup('?gun=unknown', mulberry32(7), storage).hunt.gunId).toBe('remington-870');
+    expect(storage.data).toEqual(before);
   });
 
   it('keeps the standalone 3D review fallback on the English Setter', () => {

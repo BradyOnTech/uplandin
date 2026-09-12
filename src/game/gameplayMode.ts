@@ -26,6 +26,7 @@ import { QUAIL_FIELD_BIRD_COUNT, quailEncounterAnchors } from './quailEncounters
 import { authoredEncounterAnchors } from './areaEncounters';
 import { HUNT_CHALLENGES, HUNT_CHALLENGE_KEY, parseHuntChallenge, type HuntChallenge } from './huntChallenge';
 import { huntingDoctrine } from './huntDoctrine';
+import { getGun } from './guns';
 
 /** The renderer is a preference, never a separate player/profile. */
 export type GameplayMode = '2d' | '3d';
@@ -271,6 +272,7 @@ export function createThreeHuntSetup(
 
   // Standalone visits use a consistent climate while the seed varies the hunt.
   const area = resolveThreeHuntArea(search, storage);
-  const hunt = createHunt(area, environmentRng, { ...challengeOptions, wind: 'breezy', condition: 'frost', dropPointId });
+  const hunt = createHunt(area, environmentRng, { ...challengeOptions, wind: 'breezy', condition: 'frost', dropPointId,
+    gunId: getGun(new URLSearchParams(search).get('gun') ?? '').id });
   return { ...profile, launch, area, hunt, challenge, seed, breed: getBreed(profile.breedId) };
 }
