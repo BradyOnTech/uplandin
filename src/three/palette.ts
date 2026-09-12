@@ -6,6 +6,15 @@
  * in subsystem code — import from here so the world stays one print.
  */
 
+/** Pheasant country shares one dry straw / cool wetland / autumn tree palette. */
+export const PHEASANT_MATERIALS = {
+  bark: 0x756b59, branch: 0x625b4e,
+  foliage: [0xbd9c55, 0xbaa260, 0x87916a],
+  straw: 0xc3b58a, amber: 0xb79a6d, olive: 0x919d7b, reed: 0xbaad8c,
+  drySoil: 0x8d7860, cutStraw: 0xcab68f, bankMud: 0x595449,
+  reedLitter: 0x98906e, standingFloor: 0x70795c,
+} as const;
+
 export const P = {
   // Ground and vegetation
   straw: 0xaa9554,
@@ -564,15 +573,15 @@ const PHEASANT_TOD = Object.fromEntries((Object.keys(TOD) as TimeOfDay[]).map((t
   ...(tod === 'morning' || tod === 'noon' ? {
     skyTop: 0x4c7180, skyMid: 0x9eb4b7, skyHorizon: 0xd8cfb5,
     fogColor: 0xb4c0bc, fogDensity: tod === 'noon' ? .00155 : .0019,
-    sunColor: 0xffe5c0, fillColor: 0xaec7cd, fillIntensity: .52,
-    ambientSky: 0xc0d1d3, ambientGround: 0xa39d85, ambientIntensity: 1.35,
+    sunColor: 0xffead0, fillColor: 0xb6c9d0, fillIntensity: .44,
+    ambientSky: 0xc0d1d3, ambientGround: 0x8c927e, ambientIntensity: 1.18,
     ridge: 0x53665b, ridgeFar: 0x95a9aa, landform: 0x75816d,
     floraWarm: .25, floraCool: .52, exposure: .97,
   } : tod === 'dawn' || tod === 'evening' ? {
     skyTop: 0x536d82, skyMid: 0xa7afb0, skyHorizon: 0xd7b69b,
     fogColor: 0xa9b2b2, fogDensity: .00225, fillColor: 0x9cb6c9,
-    sunColor: 0xffcf96, sunIntensity: 2.7,
-    fillIntensity: .48, ambientSky: 0xabb8c3, ambientGround: 0x69645e, ambientIntensity: 1.18,
+    sunColor: 0xffdab0, sunIntensity: 2.7,
+    fillIntensity: .48, ambientSky: 0xabb8c3, ambientGround: 0x696b62, ambientIntensity: 1.15,
     floraWarm: .23, floraCool: .55, exposure: 1.01,
   } : {
     skyTop: 0x3b536b, skyMid: 0x7d8e9f, skyHorizon: 0xbca39d,

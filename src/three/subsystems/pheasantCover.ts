@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { PHEASANT_MATERIALS } from '../palette';
 import type { GroundSample, LandscapeModel } from '../../game/landscape';
 import { PROPERTY_PX_TO_M } from '../../game/landscape';
 import { mulberry32 } from '../../game/math';
@@ -11,6 +12,11 @@ function cellSeed(x: number, z: number, seed: number): number {
   let h = seed ^ Math.imul(x, 374761393) ^ Math.imul(z, 668265263);
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return (h ^ (h >>> 16)) >>> 0;
+}
+
+function standVigor(x: number, y: number): number {
+  return THREE.MathUtils.smoothstep(Math.sin(x * .071 + Math.sin(y * .047) * 2.1)
+    * Math.cos(y * .063 + Math.sin(x * .029)), -.55, .55);
 }
 
 function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lite: boolean, distant = false, medium = false): THREE.BufferGeometry {
@@ -289,6 +295,22 @@ export class PheasantCoverSystem implements Subsystem {
   private windStrength = { value: 1 };
   constructor(private readonly landscape: LandscapeModel) {}
 
+  /** Approximate crown height above the local soil for released stems.
+   * Samples the same stands as placement; no hidden animal information. */
+  launchHeightAt(x: number, z: number): number {
+    const property = this.landscape.worldToProperty(x, z, { x: 0, y: 0 });
+    if (!pheasantPlantClear(this.landscape.area, property.x, property.y)) return .15;
+    const surface = this.landscape.surfaceAtWorld(x, z, this.surface);
+    for (const pond of pheasantPonds(this.landscape)) {
+      const radius = Math.hypot((property.x - pond.x) * PROPERTY_PX_TO_M / pond.rx,
+        (property.y - pond.y) * PROPERTY_PX_TO_M / pond.ry);
+      const depth = pond.waterY - surface.height;
+      if (radius < 1.48 && depth > -1.4 && depth < .95 && surface.moisture > .10) return 2.25;
+    }
+    if (pheasantCoverAt(this.landscape.area, property.x, property.y)) return (1.45 + standVigor(property.x, property.y) * .35) * 1.1;
+    return .3 + pheasantCoverFringeAt(this.landscape.area, property.x, property.y) * 1.1;
+  }
+
   init(ctx: Ctx): void {
     const lite = ctx.quality === 'lite', area = this.landscape.area;
     ctx.events.addEventListener('bird-cover-disturbance', ((event: CustomEvent<{ x: number; z: number }>) => {
@@ -305,7 +327,7 @@ export class PheasantCoverSystem implements Subsystem {
     const distant = { prairie: habitatGeometry('prairie', true, true), cattail: habitatGeometry('cattail', true, true) };
     const middle = { prairie: habitatGeometry('prairie', lite, false, true), cattail: habitatGeometry('cattail', lite, false, true) };
     this.geometries.push(...Object.values(geometries), ...Object.values(middle), ...Object.values(distant));
-    const material = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x81714b, emissiveIntensity: .12, vertexColors: true, side: THREE.DoubleSide });
+    const material = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x8d8061, emissiveIntensity: .085, vertexColors: true, side: THREE.DoubleSide });
     material.onBeforeCompile = shader => {
       shader.uniforms.uPheasantWind = this.wind;
       shader.uniforms.uCoverDisturbance = this.disturbances;
@@ -377,7 +399,7 @@ export class PheasantCoverSystem implements Subsystem {
     const harvestSample = { amount: 0, row: 0, angle: 0 };
     const fringeHarvestSample = { amount: 0, row: 0, angle: 0 };
     const TILE = 168, spacing = 2.8;
-    const straw = new THREE.Color(0xb8a477), amber = new THREE.Color(0xb18e59), olive = new THREE.Color(0x919872), reed = new THREE.Color(0xa99b76), color = new THREE.Color();
+    const straw = new THREE.Color(PHEASANT_MATERIALS.straw), amber = new THREE.Color(PHEASANT_MATERIALS.amber), olive = new THREE.Color(PHEASANT_MATERIALS.olive), reed = new THREE.Color(PHEASANT_MATERIALS.reed), color = new THREE.Color();
     type Plant = { x: number; y: number; scale: number; angle: number; color: number; low?: boolean; spread?: number; height?: number };
     for (let ty = area.world.y; ty < area.world.y + area.world.h; ty += TILE) for (let tx = area.world.x; tx < area.world.x + area.world.w; tx += TILE) {
       const groups: Record<keyof typeof geometries, Plant[]> = { prairie: [], cattail: [], stubble: [], litter: [] };
@@ -449,9 +471,7 @@ export class PheasantCoverSystem implements Subsystem {
             // per-plant randomness alone makes a field read as one uniform hedge.
             // Warped bands create broad upright stands and spreading, weathered
             // bunches, retaining every root and substantial core height.
-            const stand = THREE.MathUtils.smoothstep(
-              Math.sin(cx * .071 + Math.sin(cy * .047) * 2.1)
-              * Math.cos(cy * .063 + Math.sin(cx * .029)), -.55, .55);
+            const stand = standVigor(cx, cy);
             const weathered = THREE.MathUtils.smoothstep(
               Math.sin(cx * .12 + cy * .057 + Math.sin(cy * .11)), .15, .85) * (1 - stand);
             const coreHeight = 1.45 + stand * .35;

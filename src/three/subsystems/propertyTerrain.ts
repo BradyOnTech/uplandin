@@ -1,11 +1,12 @@
 import { wetPondLayout, wetPondRadius } from '../../game/wetPonds';
+import { pheasantHomesteadYard } from '../../game/pheasantHabitat';
 import * as THREE from 'three';
 import type { TerrainKind } from '../../game/areas';
 import { PROPERTY_PX_TO_M, type GroundSample, type LandscapeModel } from '../../game/landscape';
 import type { Ctx, Quality } from '../engine';
 import { buildQuailTerrainGeometry } from './quailTerrain';
 import { quailGroundNearDistance, quailGroundTiles, quailGroundUsesNear } from './quailGroundGeometry';
-import { fieldTimeOfDay, type TimeOfDay } from '../palette';
+import { PHEASANT_MATERIALS, fieldTimeOfDay, type TimeOfDay } from '../palette';
 import { pheasantFields, pheasantPonds, samplePheasantHarvest } from './pheasantLandscape';
 
 type Paint = (landscape: LandscapeModel, x: number, y: number, out: THREE.Color) => THREE.Color;
@@ -147,12 +148,14 @@ function paintFor(property: LandscapeModel): Paint {
   const fields = areaId === 'pheasant-coverts' ? pheasantFields(property.area) : [];
   const wetPools = areaId === 'woodcock-bottoms' ? wetPondLayout(property.area) : [];
   const ponds = areaId === 'pheasant-coverts' ? pheasantPonds(property) : [];
+  const farmyard = areaId === 'pheasant-coverts' ? pheasantHomesteadYard(property.area.landmarks) : undefined;
+  const yardSoil = new THREE.Color(0x99907a), yardGravel = new THREE.Color(0xb8af96);
   const harvestSample = { amount: 0, row: 0, angle: 0 };
-  const cutStraw = new THREE.Color(0xcab384);
-  const cutSoil = new THREE.Color(0x866b50);
-  const bankMud = new THREE.Color(0x514936);
-  const reedLitter = new THREE.Color(0x8d8055);
-  const standingGrass = new THREE.Color(0x65734f);
+  const cutStraw = new THREE.Color(PHEASANT_MATERIALS.cutStraw);
+  const cutSoil = new THREE.Color(PHEASANT_MATERIALS.drySoil);
+  const bankMud = new THREE.Color(areaId === 'pheasant-coverts' ? PHEASANT_MATERIALS.bankMud : 0x514936);
+  const reedLitter = new THREE.Color(PHEASANT_MATERIALS.reedLitter);
+  const standingGrass = new THREE.Color(PHEASANT_MATERIALS.standingFloor);
   // Geometry construction is synchronous; reuse one sampler per painter.
   const surface: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
   return (landscape, x, y, out) => {
@@ -178,13 +181,14 @@ function paintFor(property: LandscapeModel): Paint {
       // Standing habitat retains a cooler grass-and-litter base even where
       // individual blades disappear at distance. Feather the rectangle edge
       // over a broad verge rather than outlining the encounter volume.
-      let coverDistance = Infinity;
+      let coverDistanceSquared = Infinity;
       for (const patch of landscape.area.patches) {
         const dx = Math.max(patch.x - x, 0, x - patch.x - patch.w);
         const dy = Math.max(patch.y - y, 0, y - patch.y - patch.h);
-        coverDistance = Math.min(coverDistance, Math.hypot(dx, dy) * PROPERTY_PX_TO_M);
+        coverDistanceSquared = Math.min(coverDistanceSquared, dx * dx + dy * dy);
+        if (coverDistanceSquared === 0) break;
       }
-      const standing = 1 - THREE.MathUtils.smoothstep(coverDistance, 0, 9);
+      const standing = 1 - THREE.MathUtils.smoothstep(Math.sqrt(coverDistanceSquared) * PROPERTY_PX_TO_M, 0, 9);
       out.lerp(standingGrass, standing * (.72 + meso * .16));
       samplePheasantHarvest(landscape.area, x, y, fields, harvestSample);
       // Match the dry-ground cutoff used by stubble placement, feathered
@@ -212,6 +216,12 @@ function paintFor(property: LandscapeModel): Paint {
       const radius = wetPondRadius(pond, x, y);
       const edge = 1 - THREE.MathUtils.smoothstep(radius, 1.0, 1.65);
       out.lerp(bankMud, edge * .8);
+    }
+    if (farmyard) {
+      const distance = Math.hypot(Math.max(farmyard.x - x, 0, x - farmyard.x - farmyard.w),
+        Math.max(farmyard.y - y, 0, y - farmyard.y - farmyard.h));
+      const maintained = 1 - THREE.MathUtils.smoothstep(distance, 0, 5);
+      out.lerp(yardSoil, maintained * .92).lerp(yardGravel, maintained * (.10 + meso * .20));
     }
     out.multiplyScalar(.96 + meso * .08);
     return out;

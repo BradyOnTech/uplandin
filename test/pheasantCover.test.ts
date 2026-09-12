@@ -3,8 +3,40 @@ import { describe, expect, it } from 'vitest';
 import { getArea } from '../src/game/areas';
 import { LandscapeModel } from '../src/game/landscape';
 import type { Ctx } from '../src/three/engine';
-import { pheasantFields, pheasantHarvestAt, pheasantCoverFringeAt } from '../src/three/subsystems/pheasantLandscape';
+import { pheasantFields, pheasantHarvestAt, pheasantCoverFringeAt, pheasantTrackDistance } from '../src/three/subsystems/pheasantLandscape';
 import { PheasantCoverSystem } from '../src/three/subsystems/pheasantCover';
+import { pheasantWestFence } from '../src/game/pheasantHabitat';
+
+describe('Pheasant launch vegetation', () => {
+  it('preserves the clearance decision at route corners when remote segments are skipped', () => {
+    const area = getArea('pheasant-coverts');
+    for (const trail of area.trails) for (const corner of trail.points) {
+      for (const dx of [-12, -3, 0, 3, 12]) for (const dy of [-12, -3, 0, 3, 12]) {
+        const distance = pheasantTrackDistance(area, corner.x + dx, corner.y + dy);
+        for (const bound of [2.8, 4.1]) {
+          const limited = pheasantTrackDistance(area, corner.x + dx, corner.y + dy, bound);
+          expect(limited).toBeCloseTo(Math.min(bound, distance), 10);
+          expect(limited < bound).toBe(distance < bound);
+        }
+      }
+    }
+  });
+  it('uses local standing cover and maintained yard consistently from either entry', () => {
+    const area = getArea('pheasant-coverts'), end = pheasantWestFence(area.landmarks)[1];
+    const barn = area.landmarks.find(l => l.id === 'old-homestead')!;
+    const heights: number[][] = [];
+    for (const drop of ['south-gate', 'west-track']) {
+      const landscape = new LandscapeModel(area, drop), cover = new PheasantCoverSystem(landscape);
+      heights.push([{ x: end.x - 24, y: end.y - 18 }, barn.position].map(p => {
+        const world = landscape.propertyToWorld(p.x, p.y, { x: 0, z: 0 });
+        return cover.launchHeightAt(world.x, world.z);
+      }));
+    }
+    expect(heights[0][0]).toBeGreaterThan(1.5);
+    expect(heights[0][1]).toBeLessThan(.3);
+    for (let i = 0; i < heights[0].length; i++) expect(heights[1][i]).toBeCloseTo(heights[0][i], 9);
+  });
+});
 
 describe('Pheasant close ground layer', () => {
   it('culls remote litter and releases instance and shared resources on leaving the field', () => {
@@ -36,7 +68,7 @@ describe('Pheasant close ground layer', () => {
     expect(instanceDisposals).toBe(count);
     expect(geometryDisposals).toBe(geometries.size);
     expect(materialDisposals).toBe(materials.size);
-  });
+  }, 15000); // Full-property construction/cleanup, matching the standing-cover test's worker budget.
 });
 
 

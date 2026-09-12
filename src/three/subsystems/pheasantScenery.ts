@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { buildPrairieCanopy } from '../assets/prairieCanopy';
+import { PHEASANT_MATERIALS } from '../palette';
 import type { GroundSample, LandscapeModel } from '../../game/landscape';
 import { PROPERTY_PX_TO_M } from '../../game/landscape';
 import { pheasantWestFence } from '../../game/pheasantHabitat';
@@ -11,43 +13,6 @@ function seeded(seed: number, salt: number): number {
   let h = seed ^ Math.imul(salt, 0x9e3779b1);
   h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
   return (h ^ (h >>> 13)) >>> 0;
-}
-
-/** Broken foliage masses: upright windbreaks and spreading cottonwoods. */
-function clusteredFoliageGeometry(kind: 'cottonwood' | 'windbreak'): THREE.BufferGeometry {
-  const positions: number[] = [];
-  const clusters = kind === 'windbreak' ? [
-    [-.34, -.22, .10, .78, .63, .67],
-    [.30, -.02, -.18, .75, .62, .72],
-    [.02, .44, .10, .60, .58, .56],
-  ] : [
-    [-.52, -.12, .08, .70, .38, .65],
-    [.25, .02, -.20, .82, .43, .69],
-    [.72, -.22, .22, .48, .31, .54],
-    [-.12, .38, .05, .59, .32, .52],
-    [-.23, -.38, -.45, .54, .28, .43],
-  ];
-  for (const [x, y, z, sx, sy, sz] of clusters) {
-    // Thirty-two broad facets per mass keep a low-poly canopy, but avoid the
-    // triangular pyramid silhouette of the old twenty-face seed shape.
-    // Coherent displacement keeps duplicated face vertices watertight.
-    const source = new THREE.OctahedronGeometry(1, 1);
-    const vertices = source.getAttribute('position');
-    for (let i = 0; i < vertices.count; i++) {
-      const vx=vertices.getX(i), vy=vertices.getY(i), vz=vertices.getZ(i);
-      const bulge=1+.10*Math.sin(vx*5+z*3)*Math.cos(vz*4+y*5)+.06*Math.sin(vy*7+x*4);
-      vertices.setXYZ(i, vx*bulge+vy*.10, vy*bulge, vz*bulge);
-    }
-    source.scale(sx, sy, sz);
-    source.translate(x, y, z);
-    positions.push(...Array.from(source.getAttribute('position').array));
-    source.dispose();
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.computeVertexNormals();
-  geometry.computeBoundingSphere();
-  return geometry;
 }
 
 function irregularDisc(rx: number, rz: number, seed: number, y = 0): THREE.BufferGeometry {
@@ -173,14 +138,15 @@ export class PheasantScenerySystem implements Subsystem {
             * mix(.22, 1.0, smoothstep(.18, .78, grain));
         `);
     };
-    const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x6a573f, roughness: 1, flatShading: true });
-    const branchMaterial = new THREE.MeshStandardMaterial({ color: 0x514331, roughness: 1, flatShading: true });
-    const foliageMaterials = [0xb18a34, 0xc29b3c, 0x8f7e38].map((color) => new THREE.MeshStandardMaterial({
+    const trunkMaterial = new THREE.MeshStandardMaterial({ color: PHEASANT_MATERIALS.bark, roughness: 1, flatShading: true });
+    const branchMaterial = new THREE.MeshStandardMaterial({ color: PHEASANT_MATERIALS.branch, roughness: 1, flatShading: true });
+    const foliageMaterials = PHEASANT_MATERIALS.foliage.map((color) => new THREE.MeshStandardMaterial({
       color,
       roughness: 1,
       flatShading: true,
       emissive: color,
-      emissiveIntensity: 0.045,
+      emissiveIntensity: 0.025,
+      vertexColors: true,
     }));
     const fenceMaterial = new THREE.MeshStandardMaterial({ color: 0x776854, roughness: 1, flatShading: true });
     const wireMaterial = new THREE.MeshStandardMaterial({ color: 0x343836, roughness: 0.92 });
@@ -243,7 +209,7 @@ export class PheasantScenerySystem implements Subsystem {
 
   private buildShelterbelts(ctx: Ctx, trunkMaterial: THREE.Material, foliageMaterials: THREE.Material[]): void {
     const trunkGeo = new THREE.CylinderGeometry(.09, .23, 1, 5);
-    const crownGeo = clusteredFoliageGeometry('windbreak');
+    const crownGeo = buildPrairieCanopy('windbreak');
     this.geometries.push(trunkGeo, crownGeo);
     const stems: THREE.Matrix4[] = [];
     const crowns = foliageMaterials.map(() => [] as THREE.Matrix4[]);
@@ -251,6 +217,7 @@ export class PheasantScenerySystem implements Subsystem {
     const rotation = new THREE.Quaternion(), matrix = new THREE.Matrix4();
     const rng = mulberry32(seeded(this.landscape.area.terrain.seed, 641));
     for (const belt of pheasantShelterbelts(this.landscape.area)) {
+      const rng = mulberry32(seeded(this.landscape.area.terrain.seed, Math.round(belt.x * 73 + belt.y * 97)));
       const plantingCount = Math.ceil(belt.count * 1.65);
       for (let i = 0; i < plantingCount; i++) {
         const t = i / (plantingCount - 1);
@@ -273,13 +240,13 @@ export class PheasantScenerySystem implements Subsystem {
         scale.set(.8 + rng() * .4, height * .72, .8 + rng() * .4);
         this.obstacles.push({ x: this.world.x, z: this.world.z, radius: .23 * Math.max(scale.x, scale.z) });
         stems.push(matrix.compose(position, rotation, scale).clone());
-        for (let lobe = 0; lobe < 4; lobe++) {
+        for (let lobe = 0; lobe < 3; lobe++) {
           const angle = lobe * 2.4 + rng() * .5;
-          const spread = lobe === 3 ? .15 : height * .13;
+          const spread = height * (lobe === 2 ? .10 : .18);
           position.set(this.world.x + Math.cos(angle) * spread,
-            ground.height + height * (lobe === 3 ? .83 : .56 + rng() * .15),
+            ground.height + height * (.61 + lobe * .07 + rng() * .035),
             this.world.z + Math.sin(angle) * spread);
-          scale.set(height * (.16 + rng() * .06) * breadth, height * (.20 + rng() * .08), height * (.14 + rng() * .06) * breadth);
+          scale.set(height * (.21 + rng() * .06) * breadth, height * (.28 + rng() * .06), height * (.19 + rng() * .06) * breadth);
           crowns[i % crowns.length].push(matrix.compose(position, rotation, scale).clone());
           if (!young && lobe < 3) {
             const base = new THREE.Vector3(this.world.x, ground.height + height * .36, this.world.z);
@@ -359,7 +326,7 @@ export class PheasantScenerySystem implements Subsystem {
     root.add(trunk);
 
     const branchGeo = new THREE.CylinderGeometry(0.11, 0.25, 1, 7, 2);
-    const crownGeo = clusteredFoliageGeometry('cottonwood');
+    const crownGeo = buildPrairieCanopy('cottonwood');
     this.geometries.push(branchGeo, crownGeo);
     const up = new THREE.Vector3(0, 1, 0);
     const branchMatrices: THREE.Matrix4[] = [];
