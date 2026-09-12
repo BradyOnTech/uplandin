@@ -1,4 +1,4 @@
-import { buildPheasantBody, buildPheasantWing, buildPheasantTail, posePheasantFoldedWings } from '../assets/pheasant';
+import { buildPheasantBody, buildPheasantWing, buildPheasantTail, posePheasantFoldedWings, pheasantWingbeat } from '../assets/pheasant';
 import { createQuailFlight, selectQuailEscapeCover, stepQuailFlight, type QuailFlight } from '../quailFlight';
 import { QUAIL_WORLD_SCALE, quailLaunchDelay } from '../quailPresentation';
 import { QuailFlushDebris } from '../quailFlushDebris';
@@ -281,6 +281,7 @@ interface Slot {
   vyW: number;
   vzW: number;
   airMs: number;
+  previousAirMs?: number;
   bank?: number;
   bankYaw?: number;
   fallPose?: { startMs: number; rotation: THREE.Euler; groundedMs?: number };
@@ -684,6 +685,8 @@ export class BirdsSystem implements Subsystem {
     slot.body.updateMorphTargets();
     slot.wingLMesh.geometry = geometry.wingL;
     slot.wingRMesh.geometry = geometry.wingR;
+    slot.wingLMesh.updateMorphTargets();
+    slot.wingRMesh.updateMorphTargets();
     slot.wingL.position.set(
       -0.03 * geometry.shape.bodyWidth,
       0.016 * geometry.shape.bodyDepth,
@@ -990,6 +993,7 @@ export class BirdsSystem implements Subsystem {
       }
       // flying
       anyAloft = true;
+      s.previousAirMs = s.airMs;
       s.airMs += dtMs;
       const fl = s.species.flight;
       const doctrine = huntingDoctrine(this.hunt.areaConfig().id);
@@ -1432,6 +1436,7 @@ export class BirdsSystem implements Subsystem {
         );
       }
       slot.airMs = 0;
+      slot.previousAirMs = 0;
       slot.fallPose = undefined;
       slot.bank = 0;
       slot.bankYaw = undefined;
@@ -1630,6 +1635,8 @@ export class BirdsSystem implements Subsystem {
 
   private foldWings(slot: Slot): void {
     if (slot.species.id === 'ringneck') {
+      if (slot.wingLMesh.morphTargetInfluences) slot.wingLMesh.morphTargetInfluences[0] = 0;
+      if (slot.wingRMesh.morphTargetInfluences) slot.wingRMesh.morphTargetInfluences[0] = 0;
       posePheasantFoldedWings(slot.wingL, slot.wingR);
     } else if (this.refinedQuail && slot.species.id === 'bobwhite') {
       poseBobwhiteFoldedWings(slot.wingL, slot.wingR);
@@ -1734,18 +1741,29 @@ export class BirdsSystem implements Subsystem {
         // Wings locked in the set-wing dihedral — the glide read.
         s.wingL.rotation.set(0, 0, -0.16);
         s.wingR.rotation.set(0, 0, 0.16);
+        if (s.species.id === 'ringneck') {
+          s.wingLMesh.morphTargetInfluences![0] = 0;
+          s.wingRMesh.morphTargetInfluences![0] = 0;
+        }
+      } else if (this.spatialEncounter && s.species.id === 'ringneck') {
+        // A fast pheasant beat otherwise has only three held poses at the
+        // 30 Hz simulation rate. Interpolate its visual clock at render
+        // frequency; capture still samples the exact requested sim pose.
+        const wingMs = this.frozen ? s.airMs : THREE.MathUtils.lerp(s.previousAirMs ?? s.airMs, s.airMs, ctx.fixedAlpha ?? 1);
+        const beat = pheasantWingbeat(wingMs / 1000, s.species.flight.flapRate ?? 14, s.species.flight.climb, s.wobblePh * .35);
+        s.wingL.rotation.set(0, 0, -beat.angle);
+        s.wingR.rotation.set(0, 0, beat.angle);
+        s.wingLMesh.morphTargetInfluences![0] = beat.recovery;
+        s.wingRMesh.morphTargetInfluences![0] = beat.recovery;
       } else {
         // World-space rises use continuous wingbeats. Legacy screen-space
         // waves retain the stepped pose so their silhouettes stay readable.
         const hz = s.species.flight.flapRate ?? 14;
-        const pheasant = this.spatialEncounter && s.species.id === 'ringneck';
         const seconds = s.airMs / 1000;
-        const burst = pheasant ? Math.exp(-seconds / .55) : 0;
-        // Integrate the decaying opening cadence so the phase never jumps.
-        const cycles = seconds * hz + (pheasant ? 1.1 * (1 - burst) : 0);
+        const cycles = seconds * hz;
         const ph = Math.sin(cycles * Math.PI * 2 + s.wobblePh * 0.35);
-        const beatAmplitude = 0.58 + s.species.flight.climb * 0.28 + (s.species.timber ? 0.06 : 0) + burst * .28;
-        const ang = s.spatialFlight || pheasant ? .05 + ph * beatAmplitude : ph > 0.33 ? 0.88 : ph < -0.33 ? -0.78 : 0.1;
+        const beatAmplitude = 0.58 + s.species.flight.climb * 0.28 + (s.species.timber ? 0.06 : 0);
+        const ang = s.spatialFlight ? .05 + ph * beatAmplitude : ph > 0.33 ? 0.88 : ph < -0.33 ? -0.78 : 0.1;
         s.wingL.rotation.set(0, 0, -ang);
         s.wingR.rotation.set(0, 0, ang);
       }

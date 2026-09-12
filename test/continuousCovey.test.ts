@@ -24,12 +24,46 @@ function fixture() {
     coverPatches: () => [], lastFlushInfo: () => null, finishRise, resolveBird: vi.fn(), recordFallWorld: vi.fn() };
   runtime.terrain = { heightAt: () => 0 };
   runtime.applySpeciesAppearance = (slot: { species: unknown }, species: unknown) => { slot.species = species; }; runtime.burstDebris = () => {};
-  runtime.slots = Array.from({length:14},()=>({status:'idle',root:new THREE.Group(),vel:{x:0,y:0},species:getSpecies('bobwhite')}));
+  runtime.slots = Array.from({length:14},()=>({status:'idle',root:new THREE.Group(),vel:{x:0,y:0},species:getSpecies('bobwhite'),
+    wingLMesh:{morphTargetInfluences:[0]},wingRMesh:{morphTargetInfluences:[0]}}));
   const add = (id:number,coveyId:number,x:number,y:number) => birds.push({id,coveyId,pos:{x,y},state:'flushed',speciesId:'bobwhite',runs:false,runEnergy:0,restingMs:0,nerveMs:0});
   return { runtime, birds, add, finishRise };
 }
 
 describe('continuous Quail coveys', () => {
+  it('releases the recovery fold when a pheasant glides or falls', () => {
+    const f=fixture();f.add(1,1,4,0);f.birds[0].speciesId='ringneck';f.runtime.tickBirds(1000/30);
+    const slot=f.runtime.slots[0];
+    Object.assign(slot,{body:new THREE.Mesh(),wingL:new THREE.Group(),wingR:new THREE.Group(),visualScale:1,airMs:80,wobblePh:2,gliding:false});
+    const render=()=> (f.runtime as unknown as {update(ctx:unknown,dt:number):void}).update({},0);
+    render();
+    expect(slot.wingLMesh.morphTargetInfluences[0]).toBeGreaterThan(.99);
+    expect(slot.wingRMesh.morphTargetInfluences[0]).toBe(slot.wingLMesh.morphTargetInfluences[0]);
+    slot.gliding=true;render();
+    expect(slot.wingLMesh.morphTargetInfluences[0]).toBe(0);
+    expect(slot.wingRMesh.morphTargetInfluences[0]).toBe(0);
+    slot.gliding=false;render();
+    expect(slot.wingLMesh.morphTargetInfluences[0]).toBeGreaterThan(.99);
+    slot.status='falling';render();
+    expect(slot.wingLMesh.morphTargetInfluences[0]).toBe(0);
+    expect(slot.wingRMesh.morphTargetInfluences[0]).toBe(0);
+  });
+  it('interpolates the live wing clock between ticks while capture holds the exact pose', () => {
+    const f=fixture();f.add(1,1,4,0);f.birds[0].speciesId='ringneck';f.runtime.tickBirds(1000/30);
+    const slot=f.runtime.slots[0];
+    Object.assign(slot,{body:new THREE.Mesh(),wingL:new THREE.Group(),wingR:new THREE.Group(),visualScale:1,airMs:80,previousAirMs:80-1000/30,wobblePh:2,gliding:false});
+    const render=(alpha:number)=> (f.runtime as unknown as {update(ctx:unknown,dt:number):void}).update({fixedAlpha:alpha},0);
+    f.runtime.frozen=true;render(0);const exact=slot.wingR.rotation.z;
+    f.runtime.frozen=false;render(0);const before=slot.wingR.rotation.z;
+    render(.5);const middle=slot.wingR.rotation.z;
+    render(1);const after=slot.wingR.rotation.z;
+    expect(before).not.toBeCloseTo(middle,4);
+    expect(middle).not.toBeCloseTo(after,4);
+    expect(after).toBeCloseTo(exact,10);
+    expect(slot.airMs).toBe(80);
+    const position=slot.root.position.clone();render(.25);expect(slot.root.position.equals(position)).toBe(true);
+    f.runtime.frozen=true;render(.5);expect(slot.wingR.rotation.z).toBeCloseTo(exact,10);
+  });
   it('renders restrained fixed-clock pheasant banking through heading wrap and settles on straight flight', () => {
     const f=fixture();f.add(1,1,4,0);f.birds[0].speciesId='ringneck';f.runtime.tickBirds(1000/30);
     const slot=f.runtime.slots[0];Object.assign(slot,{body:new THREE.Mesh(),wingL:new THREE.Group(),wingR:new THREE.Group(),visualScale:1});

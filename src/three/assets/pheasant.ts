@@ -102,7 +102,39 @@ export function buildPheasantWing(side:-1|1,hen=false):THREE.BufferGeometry {
     const tone=(i%3===0?buff:hen?buff:copper).clone().lerp(dark,i/9*.35);
     parts.push(feather(length,.024,tone).rotateY(-side*(.12+i*.045)).translate(side*x,-.001,.027-i*.002));
   }
-  return join(parts);
+  const geo=join(parts);
+  // The hand folds at the wrist during recovery. Keep the shoulder fixed,
+  // retaining one mesh and shared topology instead of a rigid paddle or a
+  // separate draw call for every feather. The power stroke uses the complete
+  // rounded wing; the recovery target brings the primaries in and aft.
+  const recovery=geo.clone(), p=recovery.getAttribute('position');
+  for(let i=0;i<p.count;i++) {
+    const x=p.getX(i), span=side*x, beyondWrist=Math.max(0,span-.064);
+    const angle=.95*THREE.MathUtils.smoothstep(span,.064,.116);
+    p.setX(i,side*(span-beyondWrist*(1-Math.cos(angle))));
+    p.setZ(i,p.getZ(i)-beyondWrist*Math.sin(angle));
+    p.setY(i,p.getY(i)+beyondWrist*.18);
+  }
+  recovery.computeVertexNormals();
+  geo.morphAttributes.position=[p.clone()];
+  geo.morphAttributes.normal=[recovery.getAttribute('normal').clone()];
+  geo.morphAttributes.position[0].name='recovery-fold';
+  recovery.dispose();
+  geo.computeBoundingSphere();
+  return geo;
+}
+
+/** Same launch cadence as flight, with a narrow recovery and broad drive.
+ * Values depend only on the flight clock, so pause and capture agree. */
+export function pheasantWingbeat(seconds:number,hz:number,climb:number,phaseOffset=0):{angle:number;recovery:number} {
+  const burst=Math.exp(-Math.max(0,seconds)/.55);
+  const phase=(seconds*hz+1.1*(1-burst))*Math.PI*2+phaseOffset;
+  return {
+    angle:.05+Math.sin(phase)*(.58+climb*.28+burst*.28),
+    // Positive angular velocity raises the wings. Open before the next
+    // downward drive, rather than keeping the span rigid throughout.
+    recovery:THREE.MathUtils.smoothstep(Math.cos(phase),-.15,.8),
+  };
 }
 
 /** Sweep flight feathers aft against the flanks instead of lifting them. */
