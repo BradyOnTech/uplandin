@@ -37,6 +37,16 @@ it('distinguishes closing on Pheasant tracking from a quiet approach to a finish
   expect(pointApproachCue(40, false, 'pheasant-coverts')).toBe('ON POINT · WALK IN QUIETLY');
 });
 
+it('distinguishes a finished local search from a deliberate whistle heel without masking bird work', () => {
+  const dog = { state: 'heel' as const, scentStage: 'none' as const, carryingBirdId: null, searchAreaChecked: true };
+  expect(dogWorkLabel(dog, 'pheasant-coverts')).toBe('DOG READY TO MOVE ON');
+  expect(dogWorkLabel({ ...dog, state: 'recalled' }, 'pheasant-coverts')).toBe('DOG REJOINING');
+  expect(dogWorkLabel({ ...dog, searchAreaChecked: false }, 'pheasant-coverts')).toBe('DOG AT HEEL');
+  expect(dogWorkLabel({ ...dog, state: 'tracking', scentStage: 'checking' }, 'pheasant-coverts')).toBe('SCENT CHECK');
+  expect(dogWorkLabel({ ...dog, state: 'pointing' }, 'pheasant-coverts')).toBe('DOG ON POINT');
+  expect(dogWorkLabel({ ...dog, state: 'retrieving', carryingBirdId: 0 }, 'pheasant-coverts')).toBe('DOG RETURNING');
+});
+
 it('describes pheasant scent stages without assuming a hidden bird is running', () => {
   const dog = { state: 'tracking' as const, scentStage: 'checking' as const, carryingBirdId: null };
   for (const [stage,label] of [['checking','SCENT CHECK'],['locating','LOCATING SCENT'],

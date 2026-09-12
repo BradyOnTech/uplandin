@@ -98,7 +98,7 @@ const SEARCH_LABELS: Record<string, string> = {
   'valley-oaks': 'DOG CASTING OAK SKIRTS',
 };
 
-export function dogWorkLabel(dog: { state: DogState; scentStage: DogScentStage; carryingBirdId: number | null; waitingForHandler?: boolean }, areaId = ''): string {
+export function dogWorkLabel(dog: { state: DogState; scentStage: DogScentStage; carryingBirdId: number | null; waitingForHandler?: boolean; searchAreaChecked?: boolean }, areaId = ''): string {
   const style = huntingDoctrine(areaId).style;
   if (dog.carryingBirdId !== null) return 'DOG RETURNING';
   if (dog.state === 'pointing') return 'DOG ON POINT';
@@ -129,8 +129,8 @@ export function dogWorkLabel(dog: { state: DogState; scentStage: DogScentStage; 
   }
   if (dog.state === 'marking') return 'DOG MARKING THE RISE';
   if (dog.state === 'retrieving') return 'DOG HUNTING DEAD';
-  if (dog.state === 'recalled') return 'DOG COMING IN';
-  if (dog.state === 'heel') return 'DOG AT HEEL';
+  if (dog.state === 'recalled') return dog.searchAreaChecked ? 'DOG REJOINING' : 'DOG COMING IN';
+  if (dog.state === 'heel') return dog.searchAreaChecked ? 'DOG READY TO MOVE ON' : 'DOG AT HEEL';
   if (dog.state === 'honoring') return 'DOG BACKING POINT';
   if (dog.state === 'breaking') return 'DOG CHASING';
   if (dog.state === 'quartering') return SEARCH_LABELS[areaId] ?? 'DOG SEARCHING';

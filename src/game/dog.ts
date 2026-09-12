@@ -16,6 +16,7 @@ import type { AreaTrail } from './areas';
 import { clamp, dist, turnToward } from './math';
 import type { RNG, Vec2 } from './types';
 import { huntDoctrineForStyle, huntingDoctrine, type HuntStyle } from './huntDoctrine';
+import { PROPERTY_PX_TO_M } from './worldUnits';
 
 export type DogState =
   | 'marking'
@@ -114,6 +115,8 @@ const COVER_GRACE = 9; // weave carrying the dog this far past the edge still co
 const COVER_WEAVE_MULT = 1.7; // busier, tighter serpentine inside cover
 /** Perimeter lap speed while edge-working (fraction of perimeter per second). */
 const COVER_EDGE_LAP_RATE = 0.35;
+const LOCAL_COVER_BEAT = 12; // property yards: check a reachable part of a large stand
+const SEARCH_MOVE_ON = 8 / PROPERTY_PX_TO_M;
 /**
  * How completely the dog checks cover before calling it empty, by level:
  * a first-season pup pops out of the ragweed early and leaves birds behind;
@@ -399,6 +402,14 @@ export class Dog {
   private coverEdgeT = 0;
   /** Patch index → ms until the dog considers it worth re-checking. */
   private checkedCovers = new Map<number, number>();
+  private localCoverBeat: { key: string; rect: Rect; index: number } | null = null;
+  private checkedLocalBeats = new Set<string>();
+  private checkedSearchPosition: Vec2 | null = null;
+  private searchHunterCheckpoint: Vec2 | null = null;
+  private stationarySearchMs = 0;
+  private emptySearchMs = 0;
+  /** A finite, scent-free local check has finished; this is not a point. */
+  get searchAreaChecked(): boolean { return this.checkedSearchPosition !== null; }
   /** ms left of the first-scent freeze. */
   private scentStageMs = 0;
   private scentStageTotalMs = 0;
@@ -497,6 +508,28 @@ export class Dog {
 
     // The whistle only carries so far — a big-running dog can be out of earshot.
     const hearsWhistle = !env.hunterPos || dist(this.pos, env.hunterPos) <= (env.whistleRange ?? WHISTLE_RANGE);
+    if (this.localPheasantSearch(env)) {
+      const hunter = env.hunterPos;
+      if (hunter && (!this.searchHunterCheckpoint || dist(hunter, this.searchHunterCheckpoint) >= 2)) {
+        this.searchHunterCheckpoint = { ...hunter };
+        this.stationarySearchMs = 0;
+      } else if (this.state === 'quartering') this.stationarySearchMs += dtMs;
+      else this.stationarySearchMs = 0;
+      if (this.checkedSearchPosition) {
+        if (env.recall && hearsWhistle) {
+          // Q during an automatic return makes this a deliberate recall.
+          // A subsequent walk must not silently cast that dog again.
+          this.checkedSearchPosition = null;
+        } else if ((hunter && dist(hunter, this.checkedSearchPosition) >= SEARCH_MOVE_ON)
+          || this.nearestBirdWithin(birds, 'downed', Infinity, env.reservedRetrieveIds)
+          || this.nearestHiddenBird(birds, env)) {
+          // Automatic waiting keeps ordinary scent and retrieve priorities.
+          this.checkedSearchPosition = null;
+          this.state = 'quartering';
+          this.emptySearchMs = this.stationarySearchMs = 0;
+        }
+      }
+    }
     if (env.recall && hearsWhistle && (this.state === 'quartering' || this.state === 'tracking' || this.state === 'marking')) {
       if (this.state === 'marking') { this.markingBirdIds = []; this.needsSearch = true; }
       this.state = 'recalled';
@@ -799,6 +832,18 @@ export class Dog {
     this.work(dtMs * (env.drainMult ?? 1));
     this.tickCoverMemory(dtMs);
     const patch = this.chooseCover(env);
+    const localBeat = this.localCoverBeat !== null;
+    const workDt = localBeat ? dt : movementDt;
+    const grace = localBeat ? 1.5 : COVER_GRACE;
+    this.emptySearchMs = patch ? 0 : this.emptySearchMs + dtMs;
+    if (this.localPheasantSearch(env) && env.hunterPos && this.stationarySearchMs >= 30_000
+      && ((!patch && this.emptySearchMs >= 12_000) || this.stationarySearchMs >= 75_000)) {
+      this.checkedSearchPosition = { ...env.hunterPos };
+      this.localCoverBeat = null; this.coverIdx = null;
+      this.state = 'recalled';
+      this.gait = 'run';
+      return;
+    }
 
     // Working keeps a grace margin: the serpentine naturally swings a body
     // length past the edge, and flapping back to "casting" there would
@@ -806,7 +851,7 @@ export class Dog {
     const working =
       patch &&
       rectContains(
-        { x: patch.x - COVER_GRACE, y: patch.y - COVER_GRACE, w: patch.w + COVER_GRACE * 2, h: patch.h + COVER_GRACE * 2 },
+        { x: patch.x - grace, y: patch.y - grace, w: patch.w + grace * 2, h: patch.h + grace * 2 },
         this.pos,
       );
 
@@ -814,14 +859,14 @@ export class Dog {
       // Casting: purposeful trot to the aim point (center, or downwind edge
       // when the dog knows wind), only a hint of weave.
       this.gait = 'trot';
-      this.weavePhase += movementDt * WEAVE_RATE;
-      const aimPt = castAimPoint(patch, env.windAngle, windCraftTier(this.profile.level));
+      this.weavePhase += workDt * WEAVE_RATE;
+      const aimPt = castAimPoint(patch, env.windAngle, localBeat ? 0 : windCraftTier(this.profile.level));
       // Route-aware casting is what turns the authored lines into dog work.
       // Pheasant, desert, bench, and ridge dogs should arrive at the cover
       // from the physical edge they are meant to hunt; the softer pull on
       // woods and open country preserves natural casts when a patch sits
       // beside, rather than directly on, a route.
-      const routePull = routeCastPull(this.doctrineFor(env).style, env.huntAreaId);
+      const routePull = localBeat ? 0 : routeCastPull(this.doctrineFor(env).style, env.huntAreaId);
       if (routePull > 0 && env.trails && env.trails.length > 0) {
         const routePoint = nearestTrailPoint(
           { x: rectCx(patch), y: rectCy(patch) },
@@ -835,7 +880,7 @@ export class Dog {
         }
       }
       const aim = Math.atan2(aimPt.y - this.pos.y, aimPt.x - this.pos.x);
-      this.heading = turnToward(this.heading, aim, COVER_TURN_RATE * movementDt);
+      this.heading = turnToward(this.heading, aim, COVER_TURN_RATE * workDt);
       // Range correction answers real time so a presentation pace scale
       // cannot also make the dog take seconds to turn back into view.
       this.steerToAnchor(dt, env.workAnchor ?? env.hunterPos, this.effectiveRangeRadius(env));
@@ -853,7 +898,11 @@ export class Dog {
       this.gait = 'run';
       this.coverWorkMsLeft -= dtMs;
       if (this.coverWorkMsLeft <= 0) {
-        this.checkedCovers.set(this.coverIdx!, COVER_REVISIT_MS);
+        if (this.localCoverBeat) {
+          this.checkedLocalBeats.add(this.localCoverBeat.key);
+          if (this.checkedLocalBeats.size > 256) this.checkedLocalBeats.delete(this.checkedLocalBeats.values().next().value!);
+          this.localCoverBeat = null;
+        } else this.checkedCovers.set(this.coverIdx!, COVER_REVISIT_MS);
         this.coverIdx = null;
         this.coverEdgeMsLeft = 0;
         return;
@@ -861,25 +910,25 @@ export class Dog {
       if (this.coverEdgeMsLeft > 0) {
         this.coverEdgeMsLeft -= dtMs;
         // Snap to the rim first, then lap: birds sit edges, so stay on them.
-        const onRim = distToRectEdge(patch, this.pos) <= COVER_EDGE_MARGIN + 2;
+        const onRim = distToRectEdge(patch, this.pos) <= (localBeat ? 2 : COVER_EDGE_MARGIN + 2);
         if (!onRim) {
           this.coverEdgeT = nearestPerimeterT(patch, this.pos);
         } else {
-          this.coverEdgeT = (this.coverEdgeT + movementDt * COVER_EDGE_LAP_RATE) % 1;
+          this.coverEdgeT = (this.coverEdgeT + workDt * (localBeat ? .12 : COVER_EDGE_LAP_RATE)) % 1;
         }
         const edgePt = perimeterPoint(patch, this.coverEdgeT);
         const aim = Math.atan2(edgePt.y - this.pos.y, edgePt.x - this.pos.x);
-        this.heading = turnToward(this.heading, aim, COVER_TURN_RATE * 2.4 * movementDt);
+        this.heading = turnToward(this.heading, aim, COVER_TURN_RATE * 2.4 * workDt);
         this.steerToAnchor(dt, env.workAnchor ?? env.hunterPos, this.effectiveRangeRadius(env));
         this.advance(this.heading, this.workingSpeed(env, this.speed) * (onRim ? 1 : 1.15) * movementDt);
         return;
       }
       // Interior comb: tight serpentine with a soft pull toward the core
       // (pups spend almost all their budget here).
-      this.weavePhase += movementDt * WEAVE_RATE * COVER_WEAVE_MULT;
+      this.weavePhase += workDt * WEAVE_RATE * COVER_WEAVE_MULT;
       const toCore = Math.atan2(rectCy(patch) - this.pos.y, rectCx(patch) - this.pos.x);
-      this.heading = turnToward(this.heading, toCore, 0.9 * movementDt);
-      this.steerInsideRect(movementDt, patch);
+      this.heading = turnToward(this.heading, toCore, 0.9 * workDt);
+      this.steerInsideRect(workDt, patch, localBeat ? Math.min(2, patch.w * .2, patch.h * .2) : COVER_EDGE_MARGIN);
       this.steerToAnchor(dt, env.workAnchor ?? env.hunterPos, this.effectiveRangeRadius(env));
       this.advance(this.heading + Math.sin(this.weavePhase) * this.weave, this.workingSpeed(env, this.speed) * movementDt);
       return;
@@ -954,6 +1003,7 @@ export class Dog {
    * pup calls a big CRP field checked long before it is.
    */
   private chooseCover(env: DogEnv): Rect | null {
+    if (this.localPheasantSearch(env)) return this.chooseLocalCoverBeat(env);
     const patches = env.patches ?? [];
     const anchor = env.workAnchor ?? env.hunterPos;
     const doctrine = this.doctrineFor(env);
@@ -1026,6 +1076,52 @@ export class Dog {
     return p;
   }
 
+  private localPheasantSearch(env: DogEnv): boolean {
+    return env.rangeRadius !== undefined && this.doctrineFor(env).style === 'pheasant';
+  }
+
+  /** Search reachable pieces of the habitat union, never concealed birds.
+   * Whole-patch centers can lie hundreds of yards beyond a nearby edge. */
+  private chooseLocalCoverBeat(env: DogEnv): Rect | null {
+    const anchor = env.workAnchor ?? env.hunterPos;
+    if (!anchor) return null;
+    const range = this.effectiveRangeRadius(env);
+    if (this.localCoverBeat) {
+      const r = this.localCoverBeat.rect;
+      if (dist({ x: rectCx(r), y: rectCy(r) }, anchor) <= range * 1.15) return r;
+      this.localCoverBeat = null; this.coverIdx = null;
+    }
+    let best: { key: string; rect: Rect; index: number } | null = null;
+    let bestScore = Infinity;
+    for (const [index, patch] of (env.patches ?? []).entries()) {
+      const left = Math.max(patch.x, anchor.x - range), right = Math.min(patch.x + patch.w, anchor.x + range);
+      const top = Math.max(patch.y, anchor.y - range), bottom = Math.min(patch.y + patch.h, anchor.y + range);
+      if (left >= right || top >= bottom) continue;
+      for (let gx = Math.floor(left / LOCAL_COVER_BEAT); gx <= Math.floor(right / LOCAL_COVER_BEAT); gx++) {
+        for (let gy = Math.floor(top / LOCAL_COVER_BEAT); gy <= Math.floor(bottom / LOCAL_COVER_BEAT); gy++) {
+          const key = `${gx}:${gy}`;
+          if (this.checkedLocalBeats.has(key)) continue;
+          const x = Math.max(patch.x, gx * LOCAL_COVER_BEAT), y = Math.max(patch.y, gy * LOCAL_COVER_BEAT);
+          const w = Math.min(patch.x + patch.w, (gx + 1) * LOCAL_COVER_BEAT) - x;
+          const h = Math.min(patch.y + patch.h, (gy + 1) * LOCAL_COVER_BEAT) - y;
+          if (w < 1 || h < 1) continue;
+          const center = { x: x + w / 2, y: y + h / 2 };
+          if (dist(center, anchor) > range - .5) continue;
+          const score = dist(this.pos, center) + (env.trails?.length ? distanceToTrail(center, env.trails) * .62 : 0)
+            + (1 - (env.coverAffinity?.(center) ?? .5)) * 30;
+          if (score < bestScore) { bestScore = score; best = { key, rect: { x, y, w, h }, index }; }
+        }
+      }
+    }
+    if (!best) { this.coverIdx = null; return null; }
+    this.localCoverBeat = best; this.coverIdx = best.index;
+    this.coverWorkMsLeft = clamp(Math.max(best.rect.w, best.rect.h) * 550, 3200, 8000) * coverThoroughness(this.level);
+    this.coverEdgeMsLeft = this.coverWorkMsLeft * Math.min(.78, coverEdgeFraction(this.level) + this.doctrineFor(env).dogEdgeBias);
+    this.coverEdgeT = nearestPerimeterT(best.rect, this.pos);
+    this.heading = Math.atan2(rectCy(best.rect) - this.pos.y, rectCx(best.rect) - this.pos.x);
+    return best.rect;
+  }
+
   /**
    * Resolve the property doctrine at the movement seam. The adapter may
    * supply a presentation-space range, but the property still owns how far
@@ -1042,13 +1138,13 @@ export class Dog {
   }
 
   /** While working cover, bounce off the patch edges instead of the field's. */
-  private steerInsideRect(dt: number, r: Rect): void {
+  private steerInsideRect(dt: number, r: Rect, margin = COVER_EDGE_MARGIN): void {
     let tx = 0;
     let ty = 0;
-    if (this.pos.x < r.x + COVER_EDGE_MARGIN) tx = 1;
-    else if (this.pos.x > r.x + r.w - COVER_EDGE_MARGIN) tx = -1;
-    if (this.pos.y < r.y + COVER_EDGE_MARGIN) ty = 1;
-    else if (this.pos.y > r.y + r.h - COVER_EDGE_MARGIN) ty = -1;
+    if (this.pos.x < r.x + margin) tx = 1;
+    else if (this.pos.x > r.x + r.w - margin) tx = -1;
+    if (this.pos.y < r.y + margin) ty = 1;
+    else if (this.pos.y > r.y + r.h - margin) ty = -1;
     if (tx === 0 && ty === 0) return;
     const toward = Math.atan2(ty || Math.sin(this.heading) * 0.2, tx || Math.cos(this.heading) * 0.2);
     this.heading = turnToward(this.heading, toward, EDGE_TURN_RATE * 1.4 * dt);
@@ -1070,7 +1166,9 @@ export class Dog {
    */
   onFlush(rng: RNG, toward: Vec2, watchBirdIds?: readonly number[]): boolean {
     if (watchBirdIds && this.state === 'breaking') return true;
-    if (watchBirdIds && ['retrieving', 'recalled', 'heel'].includes(this.state)) return false;
+    if (watchBirdIds && ['retrieving', 'recalled', 'heel'].includes(this.state) && !this.searchAreaChecked) return false;
+    if (this.searchAreaChecked && (this.state === 'recalled' || this.state === 'heel')) this.state = 'quartering';
+    this.checkedSearchPosition = null;
     if (rng() >= breedBreakChance(this.profile.breed, this.profile.level)) {
       // A neighboring rise does not resolve this dog's separate point.
       // Keep the nose line and target until its own bird moves or flushes.
@@ -1097,7 +1195,10 @@ export class Dog {
 
   /** Release a heeled dog to hunt again. */
   castOff(): void {
-    if (this.state === 'heel') this.state = 'quartering';
+    if (this.state === 'heel') {
+      this.state = 'quartering'; this.checkedSearchPosition = null;
+      this.emptySearchMs = this.stationarySearchMs = 0;
+    }
   }
 
   /** A young dog on point may creep forward — and bump the bird. */

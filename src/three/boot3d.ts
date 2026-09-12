@@ -173,6 +173,7 @@ declare global {
           gait: string;
           scentStage: string;
           scentProgress: number;
+          searchAreaChecked: boolean;
           carryingBirdId: number | null;
         };
         hunter: { x: number; y: number; z: number };
@@ -238,6 +239,7 @@ engine.start(fieldInterface.loading).then((started) => {
           gait: h.dog().gait,
           scentStage: h.dog().scentStage,
           scentProgress: h.dog().scentProgress,
+          searchAreaChecked: h.dog().searchAreaChecked,
           carryingBirdId: h.dog().carryingBirdId,
         },
         hunter: { x: hunterW.x, y: engine.ctx.camera.position.y, z: hunterW.z },

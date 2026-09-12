@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Ctx } from '../src/three/engine';
 import { getBreed } from '../src/game/breeds';
+import { Dog, type DogEnv } from '../src/game/dog';
 import { LandscapeModel } from '../src/game/landscape';
 import { parseDropPointId, resolveThreeHuntArea } from '../src/game/gameplayMode';
 import {
@@ -401,6 +402,34 @@ describe('Hunt3DSystem live start', () => {
   it('keeps physical presentation pace ordered track < trot < run', () => {
     expect(liveMovementScaleForGait('track')).toBeLessThan(liveMovementScaleForGait('trot'));
     expect(liveMovementScaleForGait('trot')).toBeLessThan(liveMovementScaleForGait('run'));
+  });
+
+  it.each(['english-setter', 'gsp'])('lets a %s close on a sprinting handler during an open cast', breedId => {
+    const breed = getBreed(breedId);
+    const dog = new Dog({ x: 1000, y: 1000 }, { breed, level: 8 }, () => .5,
+      { x: 0, y: 0, w: 5000, h: 5000 });
+    // One valid cover destination isolates real cast movement from scent,
+    // collisions and search selection. The handler advances at the actual
+    // PlayerSystem dry-ground sprint while the dog is initially10m behind.
+    const scale = .9144, hunter = { x: 1000 + 10 / scale, y: 1000 };
+    const env: DogEnv = {
+      patches: [{ x: 1075, y: 990, w: 20, h: 20 }],
+      hunterPos: hunter, workAnchor: { x: hunter.x + 14 / scale, y: 1000 },
+      rangeRadius: 500, huntAreaId: 'pheasant-coverts', windAngle: 0,
+    };
+    let phase = 0, previous = { ...dog.pos }, travel = 0;
+    for (let tick = 0; tick < 150; tick++) {
+      hunter.x += 4.18 / scale / 30;
+      env.workAnchor!.x = hunter.x + 14 / scale;
+      phase += Math.PI * 2 * breed.motion.surgeHz / 30;
+      env.movementScale = liveMovementScaleForDog(dog.gait, dog.state, breed.motion, phase);
+      dog.update(1000 / 30, [], env);
+      expect(dog.state).toBe('quartering'); expect(dog.gait).toBe('trot');
+      travel += Math.hypot(dog.pos.x - previous.x, dog.pos.y - previous.y) * scale;
+      previous = { ...dog.pos };
+    }
+    expect(travel / 5).toBeGreaterThan(5.4);
+    expect((hunter.x - dog.pos.x) * scale).toBeLessThan(2);
   });
 
   it('compensates the shared stalk factor so a scenting dog can lead a walking hunter', () => {

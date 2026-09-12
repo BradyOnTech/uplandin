@@ -70,10 +70,10 @@ const LIVE_DOG_RELEASE_MOVE_PX = 1;
 /** 2D's 75 px/s reads as 69 m/s under the 3D yard mapping. */
 const LIVE_DOG_MOVEMENT_SCALE = 0.05;
 /**
- * The 2D sim speed was authored in screen pixels, so one universal 3D
- * scale made the cast "trot" faster than the cover "run" and turned the
- * scent track into a 5 m/s crouch. These are presentation pace scales;
- * behavior timing and the authoritative state machine remain unchanged.
+ * The 2D sim speed was authored in screen pixels. Held/retrieve trots and
+ * low scent work need separate world-space scales. An active cover-bound
+ * cast is resolved below by intent, not the legacy "trot" label. Behavior
+ * timing and the authoritative state machine remain unchanged.
  */
 const LIVE_DOG_TROT_SCALE = 0.025;
 const LIVE_DOG_TRACK_SCALE = 0.014;
@@ -97,8 +97,12 @@ export function liveMovementScaleForDog(
   pacePhase: number,
 ): number {
   const activelySearching = state === 'quartering' && (gait === 'run' || gait === 'trot');
-  const base = state === 'tracking' && gait === 'track'
-    ? LIVE_DOG_STALK_SCALE
+  // A purposeful cast must gain on a sprinting handler. Treating the sim's
+  // cast label as a gentle trot halved translation to about 3 m/s. The shared
+  // CAST_SPEED_MULT now supplies its modest lead over controlled cover work;
+  // renderers select canter/gallop from actual displacement, not this label.
+  const base = activelySearching ? LIVE_DOG_MOVEMENT_SCALE
+    : state === 'tracking' && gait === 'track' ? LIVE_DOG_STALK_SCALE
     : liveMovementScaleForGait(gait);
   return base * huntPaceMultiplier(motion, pacePhase, activelySearching);
 }

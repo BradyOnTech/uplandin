@@ -13,7 +13,7 @@ it('only plants feet on the terrain while changing speed and entering point',()=
     }
     motion.dispose();
   }
-  for(const frames of [121,150,179])for(const speed of [.6,1.8,3.2,5.6]) {
+  for(const frames of [121,150,179])for(const speed of [.6,1.8,3.2,5.6,7.8]) {
     const motion=new GeneratedFieldMotion('lite',(x,z)=>.025*x+.018*z);let z=0;
     for(let f=0;f<frames+60;f++) {
       const moving=f<frames;if(moving)z+=speed/60;
@@ -49,7 +49,7 @@ it.each([.3,.6,1])('repositions diagonal feet through a %s-second half turn on a
     expect(paired).toBeGreaterThan(0);motion.dispose();
   }
 });
-it.each([.6,1.8,3.2,5.6])('settles into point without a one-frame paw snap after moving at %s m/s',speed=>{
+it.each([.6,1.8,3.2,5.6,7.8])('settles into point without a one-frame paw snap after moving at %s m/s',speed=>{
   for(const frames of [121,150,179]) {
     const motion=new GeneratedFieldMotion('lite',()=>0);let z=0;
     for(let f=0;f<frames;f++){z+=speed/60;motion.update(0,z,0,1/60,true,false);}
@@ -168,7 +168,7 @@ it('settles from walking into a point with one corrective step at a time',()=>{
 it('changes from walk through trot and canter to gallop while accelerating on a slope',()=>{
   const motion=new GeneratedFieldMotion('lite',(x,z)=>.02*x+.015*z),gaits=new Set<string>();let z=0,clamps=0;
   for(let f=0;f<360;f++) {
-    const speed=Math.min(6.8,f/60*1.4);z+=speed/60;
+    const speed=Math.min(8.0,f/60*1.4);z+=speed/60;
     motion.update(.03*Math.sin(z*.1),z,0,1/60,true,false);gaits.add(motion.gait);clamps+=motion.clamped;
     expect(motion.asset.joints.body.position.y).toBeGreaterThanOrEqual(-.14);
     motion.feet.forEach((foot,i)=>expect(motion.asset.paws[i].getWorldPosition(new THREE.Vector3()).distanceTo(foot.target)).toBeLessThan(.0001));
