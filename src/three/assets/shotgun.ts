@@ -129,14 +129,20 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
     steel: new THREE.MeshStandardMaterial({ color: 0x354047, metalness: .22, roughness: .72, flatShading: true }),
     edge: new THREE.MeshStandardMaterial({ color: 0x51585a, metalness: .30, roughness: .65, flatShading: true }),
     black: new THREE.MeshStandardMaterial({ color: 0x131919, metalness: .12, roughness: .82 }),
-    wood: new THREE.MeshStandardMaterial({ color: 0x70503a, roughness: .86, flatShading: true }),
-    grain: new THREE.MeshStandardMaterial({ color: 0x49382b, roughness: .9 }),
+    wood: new THREE.MeshStandardMaterial({ name: 'Walnut', color: sideBySide ? 0x48342a : 0x70503a,
+      roughness: sideBySide ? .67 : .86, flatShading: true }),
+    grain: new THREE.MeshStandardMaterial({ name: 'Walnut grain', color: sideBySide ? 0x30251f : 0x49382b,
+      roughness: sideBySide ? .76 : .9 }),
     glove: new THREE.MeshStandardMaterial({ color: 0xa28f69, roughness: .96 }),
     seam: new THREE.MeshStandardMaterial({ color: 0x766747, roughness: .94 }),
     cuff: new THREE.MeshStandardMaterial({ color: 0x414b3d, roughness: 1, flatShading: true }),
     brass: new THREE.MeshStandardMaterial({ color: 0xb89c55, metalness: .48, roughness: .4 }),
     shell: new THREE.MeshStandardMaterial({ color: 0x9e382b, roughness: .61 }),
+    ...(double ? { receiver: new THREE.MeshStandardMaterial({
+      color: sideBySide ? 0x969d98 : 0xb4bcb9, metalness: .48, roughness: .51, flatShading: true,
+    }) } : {}),
   };
+  const actionMetal = materials.receiver ?? materials.edge;
   const b = new Batch();
   const barrelBatch = double ? new Batch() : b;
   const bores = sideBySide ? [{ x: -.0124, y: .007 }, { x: .0124, y: .007 }]
@@ -154,17 +160,26 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
   }
   // The paired barrels share a restrained rib; the bead remains on the
   // same local sight line for every action and the same gameplay camera.
-  barrelBatch.box([sideBySide ? .007 : .0045, .0028, .635], [0, .026, -.455], materials.steel);
-  for (let i = 0; i < 7; i++) barrelBatch.box([.004, .007, .008], [0, .021, -.17 - i * .088], materials.steel);
+  // The Venus carries a solid center rib between its parallel barrels;
+  // the Silver Pigeon's ventilated rib remains above the stacked pair.
+  barrelBatch.box([sideBySide ? .007 : .0045, sideBySide ? .021 : .0028, .635], [0, sideBySide ? .0169 : .026, -.455], materials.steel);
+  if (!sideBySide) for (let i = 0; i < 7; i++) barrelBatch.box([.004, .007, .008], [0, .021, -.17 - i * .088], materials.steel);
   const bead = new THREE.Vector3(0, .030, -.766);
   barrelBatch.sphere([.0025, .0025, .0025], [bead.x, bead.y, bead.z], materials.brass);
   // The A5's flat elevated sight plane ends in a square rear step above
   // the wrist; it is a humpback profile, not a rounded autoloader shoulder.
-  b.add(loft(double ? [
-    { z: .060, y: -.005, width: .018, height: .022 },
-    { z: .021, y: -.006, width: sideBySide ? .028 : .023, height: sideBySide ? .024 : .035 },
-    { z: -.105, y: -.006, width: sideBySide ? .029 : .023, height: sideBySide ? .024 : .035 },
-    { z: -.128, y: -.008, width: sideBySide ? .027 : .022, height: sideBySide ? .021 : .030 },
+  const receiverProfile: Ring[] = sideBySide ? [
+    { z: .059, y: -.006, width: .016, height: .019 },
+    { z: .018, y: -.005, width: .0265, height: .025 },
+    { z: -.066, y: -.005, width: .027, height: .025 },
+    { z: -.105, y: -.006, width: .0255, height: .023 },
+    { z: -.132, y: -.009, width: .023, height: .020 },
+  ] : double ? [
+    { z: .059, y: -.004, width: .017, height: .022 },
+    { z: .023, y: -.007, width: .021, height: .032 },
+    { z: -.090, y: -.007, width: .021, height: .032 },
+    { z: -.117, y: -.007, width: .020, height: .030 },
+    { z: -.132, y: -.011, width: .018, height: .025 },
   ] : action === 'semi-auto' ? [
     { z: .073, y: -.004, width: .020, height: .023 },
     { z: .070, y: .010, width: .024, height: .040 },
@@ -176,42 +191,109 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
     { z: .045, y: .002, width: .023, height: .026 },
     { z: -.100, y: .002, width: .024, height: .026 },
     { z: -.130, y: .003, width: .019, height: .020 },
-  ], 12, true), double ? materials.edge : materials.steel);
+  ];
+  b.add(loft(receiverProfile, 12, !sideBySide), double ? actionMetal : materials.steel);
   if (!double) {
   b.box([.002, .019, .078], [.0245, .006, -.037], materials.black);
   b.box([.028, .0015, .061], [0, -.0255, -.015], materials.black);
   b.box([.018, .001, .048], [0, -.0266, -.014], materials.edge);
   } else {
-    // Hinge pins and broad action cheeks give each double a readable action.
-    b.box([sideBySide ? .039 : .032, .015, .052], [0, -.033, -.134], materials.edge);
+    // Rounded action knuckles replace the old rectangular cheek blocks.
+    // The shallow Venus is a round-body boxlock; the 686 has a narrow,
+    // deeper silver action wrapped around the lower barrel's hinge.
+    b.add(loft(sideBySide ? [
+      { z: -.105, y: -.018, width: .023, height: .012 },
+      { z: -.129, y: -.017, width: .023, height: .010 },
+      { z: -.151, y: -.016, width: .021, height: .008 },
+      { z: -.164, y: -.014, width: .018, height: .006 },
+    ] : [
+      { z: -.110, y: -.026, width: .017, height: .013 },
+      { z: -.144, y: -.030, width: .019, height: .013 },
+      { z: -.160, y: -.032, width: .015, height: .008 },
+    ], 12), actionMetal);
     for (const side of [-1, 1]) {
-      b.add(new THREE.CylinderGeometry(.0075, .0075, .0015, 10), materials.black,
-        [side * (sideBySide ? .020 : .0165), -.030, -.147], [0, 0, Math.PI / 2]);
-      b.box([.0012, sideBySide ? .019 : .029, .072], [side * (sideBySide ? .0295 : .0235), -.003, -.027], materials.steel);
+      b.add(new THREE.CylinderGeometry(sideBySide ? .0048 : .007, sideBySide ? .0048 : .007, .0015, 10), materials.edge,
+        [side * (sideBySide ? .0225 : .0185), sideBySide ? -.020 : -.029, sideBySide ? -.129 : -.143], [0, 0, Math.PI / 2]);
+      // Restrained scroll-shaped cuts catch light at rack distance without
+      // a photorealistic texture or a dark rectangular imitation sideplate.
+      const onAction = (y: number, z: number): V3 => {
+        const i = receiverProfile.findIndex((ring, index) => index > 0 && ring.z <= z);
+        const a = receiverProfile[Math.max(0, i - 1)], c = receiverProfile[Math.max(1, i)];
+        const t = THREE.MathUtils.clamp((z - a.z) / (c.z - a.z), 0, 1);
+        const width = THREE.MathUtils.lerp(a.width, c.width, t);
+        const height = THREE.MathUtils.lerp(a.height, c.height, t);
+        const normalizedY = Math.abs((y - THREE.MathUtils.lerp(a.y, c.y, t)) / height);
+        const power = sideBySide ? 1 : .44;
+        // Follow the actual twelve-sided loft face rather than an ellipse
+        // approximation, so the engraving cannot float over a rounded cheek.
+        const ys = [0, .5 ** power, (Math.sqrt(3) / 2) ** power, 1];
+        const xs = [1, (Math.sqrt(3) / 2) ** power, .5 ** power, 0];
+        let face = 0;
+        while (face < 2 && normalizedY > ys[face + 1]) face++;
+        const x = width * THREE.MathUtils.lerp(xs[face], xs[face + 1],
+          THREE.MathUtils.clamp((normalizedY - ys[face]) / (ys[face + 1] - ys[face]), 0, 1));
+        return [side * (x + .00012), y, z];
+      };
+      for (const z of [-.019, -.066]) b.add(tube([
+        onAction(-.003, z + .012), onAction(.000, z + .005), onAction(-.004, z - .006),
+        onAction(-.012, z - .008), onAction(-.015, z), onAction(-.010, z + .004),
+      ], [.00042, .00045, .00042, .00038, .00038, .0003], 4), materials.edge);
     }
   }
   // Walnut joins the action with a slim wrist and a dropped comb.
-  b.add(loft([
+  const stockProfile: Ring[] = sideBySide ? [
+    { z: .052, y: -.006, width: .0175, height: .019 },
+    { z: .084, y: -.012, width: .0145, height: .017 },
+    { z: .132, y: -.021, width: .016, height: .017 },
+    { z: .171, y: -.027, width: .018, height: .020 },
+    { z: .204, y: -.021, width: .022, height: .032 },
+    { z: .228, y: -.026, width: .024, height: .039 },
+    { z: .320, y: -.046, width: .026, height: .049 },
+    { z: .408, y: -.063, width: .026, height: .060 },
+    { z: .449, y: -.067, width: .0245, height: .058 },
+  ] : [
     { z: .052, y: -.004, width: .019, height: .020 },
     { z: .085, y: -.014, width: .017, height: .023 },
-    { z: .125, y: sideBySide ? -.022 : -.033, width: .019, height: sideBySide ? .019 : .026 },
-    { z: .165, y: sideBySide ? -.025 : -.034, width: .023, height: sideBySide ? .024 : .030 },
+    { z: .125, y: -.033, width: .019, height: .026 },
+    { z: .165, y: -.034, width: .023, height: .030 },
     { z: .26, y: -.041, width: .025, height: .041 },
     { z: .42, y: -.065, width: .025, height: .062 },
     { z: .447, y: -.066, width: .025, height: .061 },
-  ], 12), materials.wood);
-  b.add(loft([{ z: .446, y: -.066, width: .026, height: .063 }, { z: .459, y: -.066, width: .026, height: .062 }], 12), materials.black);
+  ];
+  b.add(loft(stockProfile, 12), materials.wood);
+  if (action === 'over-under') {
+    // The field 686's swept pistol grip drops behind the trigger hand;
+    // the Venus keeps an uninterrupted English wrist instead.
+    b.add(loft([
+      { z: .123, y: -.043, width: .017, height: .012 },
+      { z: .148, y: -.063, width: .021, height: .033 },
+      { z: .169, y: -.065, width: .0215, height: .029 },
+      { z: .190, y: -.047, width: .022, height: .018 },
+    ], 12), materials.wood);
+  }
+  b.add(loft(sideBySide ? [
+    { z: .448, y: -.067, width: .025, height: .059 },
+    { z: .459, y: -.067, width: .025, height: .059 },
+  ] : [{ z: .446, y: -.066, width: .026, height: .063 }, { z: .459, y: -.066, width: .026, height: .062 }], 12), materials.black);
   const foreBatch = new Batch();
   const foreSections: Ring[] = action === 'pump' ? [
     { z: -.180, y: -.025, width: .021, height: .021 },
     { z: -.192, y: -.025, width: .028, height: .027 },
     { z: -.309, y: -.023, width: .027, height: .025 },
     { z: -.334, y: -.022, width: .019, height: .019 },
+  ] : sideBySide ? [
+    { z: -.124, y: -.009, width: .024, height: .012 },
+    { z: -.170, y: -.014, width: .025, height: .015 },
+    { z: -.267, y: -.011, width: .0225, height: .013 },
+    { z: -.330, y: -.003, width: .018, height: .009 },
+    { z: -.352, y: .002, width: .008, height: .005 },
   ] : double ? [
-    { z: -.124, y: sideBySide ? -.019 : -.032, width: sideBySide ? .027 : .019, height: .017 },
-    { z: -.169, y: sideBySide ? -.025 : -.035, width: sideBySide ? .028 : .023, height: .020 },
-    { z: -.276, y: -.027, width: .024, height: .020 },
-    { z: -.347, y: -.019, width: .014, height: .012 },
+    { z: -.124, y: -.032, width: .019, height: .017 },
+    { z: -.170, y: -.038, width: .023, height: .022 },
+    { z: -.275, y: -.035, width: .023, height: .020 },
+    { z: -.324, y: -.022, width: .016, height: .013 },
+    { z: -.344, y: -.025, width: .017, height: .014 },
+    { z: -.354, y: -.015, width: .011, height: .008 },
   ] : [
     { z: -.133, y: -.026, width: .023, height: .023 },
     { z: -.157, y: -.027, width: .027, height: .027 },
@@ -230,14 +312,65 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
   foreBatch.add(loft(seated, 12, true), materials.wood);
   // Three restrained inlaid grain lines and shallow grip grooves add scale
   // without a noisy or photorealistic texture in the painted landscape.
-  for (const side of [-1, 1]) {
+  for (const side of sideBySide ? [] : [-1, 1]) {
     for (let i = 0; i < 3; i++) {
       b.add(tube([[side * .025, -.03 - i * .008, .19], [side * .0259, -.035 - i * .011, .28], [side * .0245, -.046 - i * .011, .411]], [.00055, .00065, .0004], 4), materials.grain);
       if (!double) foreBatch.add(tube([[side * .023, -.016 - i * .008, (action === 'pump' ? -.198 : -.165) + foreOffset], [side * .0265, -.014 - i * .008, -.24 + foreOffset], [side * .0225, -.012 - i * .006, (action === 'pump' ? -.315 : -.34) + foreOffset]], [.0005, .00065, .0004], 4), materials.grain);
     }
   }
+  if (sideBySide) {
+    // Wide, tapered figure follows the stock and foreend surfaces. These
+    // irregular ribbons read as walnut growth rather than three black cuts;
+    // they share one existing material and require no texture or shader.
+    const addWalnutFigure = (batch: Batch, rings: Ring[], from: number, to: number, count: number, squared: boolean) => {
+      const positions: number[] = [], indices: number[] = [];
+      const point = (z: number, ny: number, side: number): V3 => {
+        let index = rings.findIndex((ring, i) => i > 0 && z >= Math.min(ring.z, rings[i - 1].z) && z <= Math.max(ring.z, rings[i - 1].z));
+        if (index < 1) index = rings.length - 1;
+        const a = rings[index - 1], c = rings[index];
+        const t = THREE.MathUtils.clamp((z - a.z) / (c.z - a.z), 0, 1);
+        const height = THREE.MathUtils.lerp(a.height, c.height, t);
+        const power = squared ? .44 : 1;
+        const ys = [0, .5 ** power, (Math.sqrt(3) / 2) ** power, 1];
+        const xs = [1, (Math.sqrt(3) / 2) ** power, .5 ** power, 0];
+        let face = 0;
+        while (face < 2 && Math.abs(ny) > ys[face + 1]) face++;
+        const x = THREE.MathUtils.lerp(a.width, c.width, t) * THREE.MathUtils.lerp(xs[face], xs[face + 1],
+          (Math.abs(ny) - ys[face]) / (ys[face + 1] - ys[face]));
+        return [side * (x + .00010), THREE.MathUtils.lerp(a.y, c.y, t) + height * ny, z];
+      };
+      for (const side of [-1, 1]) for (let stripe = 0; stripe < count; stripe++) {
+        const start = from + (to - from) * (.012 + (stripe % 3) * .027);
+        const end = to - (to - from) * (.014 + ((stripe + 1) % 3) * .012);
+        const base = -.69 + stripe * 1.35 / (count - 1);
+        const offset = positions.length / 3;
+        // Include every stock profile break: a ribbon must turn with the
+        // comb and wrist instead of bridging across them in open air.
+        const samples = [...new Set([...Array.from({ length: 13 }, (_, i) => i / 12),
+          ...rings.map(ring => (ring.z - start) / (end - start)).filter(t => t > 0 && t < 1)])].sort((a, c) => a - c);
+        for (let segment = 0; segment < samples.length; segment++) {
+          const t = samples[segment], z = THREE.MathUtils.lerp(start, end, t);
+          const center = base + .105 * Math.sin(t * Math.PI + stripe * .64) + .04 * Math.sin(t * Math.PI * 2 + stripe);
+          const half = (.014 + (stripe % 3) * .009) * Math.sin(t * Math.PI) * (.65 + .35 * Math.sin(t * Math.PI + stripe) ** 2);
+          positions.push(...point(z, center - half, side), ...point(z, center + half, side));
+          if (segment < samples.length - 1) {
+            const a = offset + segment * 2;
+            if (side * Math.sign(to - from) > 0) indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+            else indices.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+          }
+        }
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setIndex(indices); geometry.computeVertexNormals();
+      batch.add(geometry, materials.grain);
+    };
+    addWalnutFigure(b, stockProfile, .072, .445, 7, false);
+    addWalnutFigure(foreBatch, seated, -.130, -.337, 5, true);
+  }
   b.add(tube([[0, -.025, .017], [0, -.047, .018], [0, -.059, .032], [0, -.062, .072], [0, -.044, .096]], [.004, .0035, .003, .0032, .004], 8), materials.black);
-  b.add(tube([[0, -.028, .04], [0, -.044, .038], [0, -.052, .047]], [.002, .002, .002], 6), materials.edge);
+  b.add(tube([[0, -.028, .04], [0, -.044, .038], [0, -.052, .047]], [.002, .002, .002], 6), action === 'over-under' ? materials.brass : materials.edge);
+  if (sideBySide) b.add(tube([[0, -.028, .062], [0, -.044, .060], [0, -.052, .069]], [.002, .002, .002], 6), materials.edge);
   root.add(b.build('Walnut stock, vented rib, blued steel'));
   const hinge = new THREE.Group(); hinge.name = 'Break-action hinge';
   const barrelAssembly = new THREE.Group(); barrelAssembly.name = 'Break-action barrel assembly';
@@ -262,7 +395,8 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
 
   function supportHand(): THREE.Group {
     const h = new Batch();
-    h.add(loft([{ z: -.195, y: -.054, width: .026, height: .016 }, { z: -.216, y: -.054, width: .034, height: .019 }, { z: -.278, y: -.05, width: .030, height: .018 }, { z: -.291, y: -.046, width: .021, height: .013 }], 10), materials.glove);
+    const palmLift = sideBySide ? .010 : 0;
+    h.add(loft([{ z: -.195, y: -.054 + palmLift, width: .026, height: .016 }, { z: -.216, y: -.054 + palmLift, width: .034, height: .019 }, { z: -.278, y: -.05 + palmLift, width: .030, height: .018 }, { z: -.291, y: -.046 + palmLift, width: .021, height: .013 }], 10), materials.glove);
     for (let i = 0; i < 4; i++) {
       const z = -.279 + i * .021;
       h.add(tube([[.015, -.059, z], [.037, -.045, z], [.041, -.020, z], [.031, -.002, z], [.017, .003, z]], [.009, .0085, .008, .0075, .006], 8), materials.glove);

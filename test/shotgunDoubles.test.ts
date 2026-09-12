@@ -10,7 +10,7 @@ describe('distinct sporting doubles', () => {
     const model = createSportingShotgun(action, { hands: false });
     const forend = model.root.getObjectByName('Walnut forend')!;
     const wood = forend.children.find(object => object instanceof THREE.Mesh &&
-      (object.material as THREE.MeshStandardMaterial).color.getHex() === 0x70503a)!;
+      (object.material as THREE.MeshStandardMaterial).name === 'Walnut')!;
     const barrels = model.root.getObjectByName('Paired barrels and rib') ?? model.root.getObjectByName('Walnut stock, vented rib, blued steel')!;
     model.update(0, 0, 0, 0, 0); model.root.updateMatrixWorld(true);
     const down = new THREE.Raycaster(), up = new THREE.Raycaster();
@@ -149,6 +149,39 @@ describe('distinct sporting doubles', () => {
     expect(top(-.150)).toBeLessThan(.032);
     expect(model.bead.toArray()).toEqual([0, .030, -.766]);
     model.dispose();
+  });
+
+  it('keeps the Venus straight wrist and splinter foreend distinct from the Silver Pigeon pistol grip', () => {
+    const venus = createSportingShotgun('side-by-side', { hands: false });
+    const beretta = createSportingShotgun('over-under', { hands: false });
+    const ray = new THREE.Raycaster();
+    const underside = (model: typeof venus, group: string, z: number) => {
+      model.root.updateMatrixWorld(true);
+      ray.set(new THREE.Vector3(0, -.2, z), new THREE.Vector3(0, 1, 0));
+      return ray.intersectObject(model.root.getObjectByName(group)!, true)[0].point.y;
+    };
+    const body = 'Walnut stock, vented rib, blued steel';
+    expect(underside(venus, body, .16) - underside(beretta, body, .16)).toBeGreaterThan(.035);
+    expect(underside(venus, 'Walnut forend', -.25) - underside(beretta, 'Walnut forend', -.25)).toBeGreaterThan(.025);
+    venus.dispose(); beretta.dispose();
+  });
+
+  it('gives the Venus two physical triggers and the Silver Pigeon one within their open guards', () => {
+    for (const action of doubles) {
+      const model = createSportingShotgun(action, { hands: false });
+      model.root.updateMatrixWorld(true);
+      const body = model.root.getObjectByName('Walnut stock, vented rib, blued steel')!;
+      const ray = new THREE.Raycaster();
+      const hits = (z: number) => {
+        ray.set(new THREE.Vector3(-.1, -.042, z), new THREE.Vector3(1, 0, 0));
+        return ray.intersectObject(body, true);
+      };
+      expect(hits(.039).length).toBeGreaterThan(0);
+      expect(hits(.061).length > 0).toBe(action === 'side-by-side');
+      // The space between blades remains an opening, not a solid guard fill.
+      expect(hits(.050)).toHaveLength(0);
+      model.dispose();
+    }
   });
 
   it.each(doubles)('%s holds a zero-time staged pose and releases shared resources once', action => {

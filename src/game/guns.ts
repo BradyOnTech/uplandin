@@ -37,7 +37,7 @@ export const GUNS: GunConfig[] = [
   },
   {
     id: 'over-under',
-    name: 'Over/under',
+    name: 'Beretta 686 Silver Pigeon',
     shells: 2,
     cooldownMs: 0,
     spread: 16,
@@ -46,7 +46,7 @@ export const GUNS: GunConfig[] = [
   },
   {
     id: 'side-by-side',
-    name: 'Handmade side-by-side',
+    name: 'RFM Venus',
     shells: 2,
     cooldownMs: 0,
     spread: 18,

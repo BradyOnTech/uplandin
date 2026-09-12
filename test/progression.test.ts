@@ -47,7 +47,8 @@ describe('hunter progression', () => {
     const all = Array.from({ length: 10 }, (_, i) => unlocksAtLevel(i + 1)).flat();
     expect(all.join(' ')).toContain('truck');
     expect(all.join(' ')).toContain('Browning A5');
-    expect(all.join(' ')).toContain('side-by-side');
+    expect(all.join(' ')).toContain('RFM Venus');
+    expect(all.join(' ')).toContain('Beretta 686 Silver Pigeon');
     expect(all.join(' ')).toContain('beeper');
     expect(all.join(' ')).toContain('GPS + map');
     expect(all.join(' ')).toContain('dog box');

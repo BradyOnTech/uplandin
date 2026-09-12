@@ -47,10 +47,20 @@ Aimed firing in 3D now works without active flying birds. Keyboard, mouse and to
 | --- | --- | --- | --- |
 | Remington 870 pump | 3 shells | Level 1 | 500 milliseconds |
 | Browning A5 | 3 shells | Level 3 | 250 milliseconds |
-| Over/under | 2 shells | Level 5 | No added delay |
-| Handmade side-by-side | 2 shells | Level 8 | No added delay |
+| Beretta 686 Silver Pigeon | 2 shells | Level 5 | No added delay |
+| RFM Venus | 2 shells | Level 8 | No added delay |
 
 All four are available in Quick Hunt. A standalone `index3d.html?gun=...` preview uses the requested valid gun; an invalid value falls back to the pump. Career and Quick Hunt retain their saved selections even if a `gun` parameter is present. The rack's field links do not edit the saved equipment. The pause/entry Shotgun selector changes the equipped model in place, preserves the live hunt and remembers the shells in each stowed gun. It cancels an interrupted reload without refilling that gun. Explicit choices persist to the Quick setup or unlocked career loadout; standalone selection updates the current URL.
+
+**Requested double-gun references**
+
+The subsequent double-gun pass models the side-by-side after [Upland Gun Company's RFM Venus](https://uplandguncompany.com/product/rfm-venus/) and the over/under after the [Beretta 686 Silver Pigeon I field gun](https://www.beretta.com/en/firearms/firearms-family/silver-pigeon). These are procedural low-poly interpretations. The Venus uses a rounded silver boxlock, slender English wrist, tapered splinter forend, solid center rib and two visible triggers. Following the user's further feedback, its stock and forend use darker satin walnut with tapered grain following their surfaces, a fuller comb and rounded butt. The fore-end iron blends into the wood instead of hanging below it as a rectangular foot. The Beretta uses a brighter slim silver receiver, shaped hinge shoulders, swept pistol grip, curved forend nose and gold-toned single trigger. Both have restrained engraving details.
+
+The Venus reference is the manufacturer's customizable English-stock configuration. Beretta's current official mounted photo establishes the action/forend shape; its 2021 hunting catalogue supplies the clean profile and gold-trigger trim. Reference files and catalogue provenance are retained in `output/playwright/beretta-686-reference-sources.json`. Names update through the shared gun roster; save IDs, unlocks, capacity, spread, firing and reload timing stay intact.
+
+The [UGC gallery](https://uplandguncompany.com/the-gun-room-gallery/) supplies clearer walnut and splinter-forend references; `output/playwright/venus-reference-sources.json` records those and the RFM factory closeups. The factory photo uses an alternate Prince-of-Wales grip; our Venus retains the requested English configuration.
+
+This follow-up passes 69 focused tests across five files, TypeScript and the production build. Browser review covers both rack silhouettes, underside views and fixed field carry/mount/reload poses, with no page errors. The portrait side view now fits the complete gun; the full Beretta name fits the phone selector and wraps in the rack choices without horizontal overflow. These are staged visual and emulated layout checks. `output/playwright/doubles-reference-review.json` and `doubles-reference-*.png` supersede earlier double-gun appearance captures. `venus-refinement-before-*.png` preserves the lighter first Venus interpretation. The grain uses existing material batches without external textures; the existing reload budget of fewer than 4,000 triangles and at most 25 draws still passes.
 
 **Rack interface**
 

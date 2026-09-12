@@ -54,7 +54,7 @@ function quickBreedName(id: string): string {
 function quickGunName(id: string): string {
   const names: Record<string, string> = {
     'remington-870': 'REMINGTON 870',
-    'side-by-side': 'SIDE-BY-SIDE',
+    'side-by-side': 'RFM VENUS',
   };
   return names[id] ?? getGun(id).name;
 }

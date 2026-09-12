@@ -7,8 +7,8 @@ import './shotgunViewer.css';
 const descriptions: Record<string, { action: string; copy: string }> = {
   'remington-870': { action: 'PUMP ACTION', copy: 'A ribbed walnut forend travels with the support hand to work the action. A single barrel sits above the magazine tube.' },
   'semi-auto': { action: 'BROWNING A5 · SEMIAUTOMATIC', copy: 'The signature humpback receiver meets a long walnut forend and single sighting rib. The bolt cycles while the support grip stays planted.' },
-  'over-under': { action: 'OVER / UNDER', copy: 'Two vertically stacked barrels, a deep receiver and a slim forend. The barrels hinge down to expose the chambers for reloading.' },
-  'side-by-side': { action: 'SIDE BY SIDE', copy: 'Paired horizontal barrels, a broad boxlock and a straight walnut stock. The wider sighting plane gives this double its own character.' },
+  'over-under': { action: 'OVER / UNDER', copy: 'Modeled after the Beretta 686 Silver Pigeon: a slim silver action, engraved details and a curved walnut pistol grip beneath stacked barrels.' },
+  'side-by-side': { action: 'SIDE BY SIDE', copy: 'Modeled after Upland Gun Company’s RFM Venus: dark figured walnut, a straight English stock, rounded silver action, slender forend and paired triggers.' },
 };
 const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const viewport = el<HTMLDivElement>('viewport');
@@ -60,7 +60,8 @@ function render(now: number) {
 }
 function invalidate() { if (!raf) raf = requestAnimationFrame(render); }
 function setView(name: string) {
-  const distance = Math.max(2, 2.15 / Math.max(.6, camera.aspect));
+  // Leave room for the complete side profile on narrow portrait stages.
+  const distance = Math.max(2, 2.6 / Math.max(.6, camera.aspect));
   camera.position.copy(presetDirections[name]).normalize().multiplyScalar(distance).add(controls.target);
   controls.update(); invalidate();
 }
