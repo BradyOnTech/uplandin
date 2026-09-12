@@ -2,6 +2,7 @@ import { huntingDoctrine } from '../../game/huntDoctrine';
 import { fieldCompassHeading } from '../dogLocator';
 import { LandscapeModel, PROPERTY_PX_TO_M, type GroundSample } from '../../game/landscape';
 import { pheasantPonds } from './pheasantLandscape';
+import { pheasantWestFence, pheasantWestHarvestParcels } from '../../game/pheasantHabitat';
 import type { Ctx, Subsystem } from '../engine';
 import type { Hunt3DSystem } from './hunt3d';
 
@@ -184,6 +185,14 @@ export class FieldMapSystem implements Subsystem {
         g.fillRect(ox + col * cellW * scale, oy + row * cellH * scale, cellW * scale + .6, cellH * scale + .6);
       }
     }
+    // Cut ground is useful approach information, independent of concealed birds.
+    if (area.id === 'pheasant-coverts') {
+      g.fillStyle = '#c5ad7544';
+      for (const field of pheasantWestHarvestParcels(area.landmarks)) {
+        const [x, y] = point(field.x, field.y);
+        g.fillRect(x, y, field.w * scale, field.h * scale);
+      }
+    }
     // Cover footprints remain the clearest layer over the relief wash.
     const coverFill = doctrine.style === 'pheasant' ? '#a7a06a66'
       : doctrine.style === 'woods' || doctrine.style === 'bottoms' ? '#52705680'
@@ -222,6 +231,18 @@ export class FieldMapSystem implements Subsystem {
       g.stroke();
     }
     g.setLineDash([]);
+
+    if (area.id === 'pheasant-coverts') {
+      const fence = pheasantWestFence(area.landmarks);
+      g.strokeStyle = '#b6c0ac'; g.lineWidth = 1.5;
+      g.beginPath();
+      fence.forEach((p, i) => { const [x, y] = point(p.x, p.y); if (i === 0) g.moveTo(x, y); else g.lineTo(x, y); });
+      g.stroke();
+      for (const p of fence) {
+        const [x, y] = point(p.x, p.y);
+        g.beginPath(); g.moveTo(x, y - 3); g.lineTo(x, y + 3); g.stroke();
+      }
+    }
 
     // Landmarks are a navigation language, not decorative GPS pins.
     g.font = '9px -apple-system, sans-serif';

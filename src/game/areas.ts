@@ -3,7 +3,7 @@ import { scatterRects, type Rect } from './field';
 import { mulberry32 } from './math';
 import type { SpeciesShare } from './species';
 import type { Vec2 } from './types';
-import { pheasantDryCover, pheasantShoreCover } from './pheasantHabitat';
+import { pheasantDryCover, pheasantShoreCover, pheasantWestFence } from './pheasantHabitat';
 
 export type LandmarkKind = 'gate' | 'windmill' | 'barn' | 'pond' | 'fence';
 
@@ -228,17 +228,18 @@ function pheasantGeography(w: number, h: number) {
   const southSlough = pointOffDrop(south, 92, 4);
   const westPothole = pointOffDrop(west, 106, -8);
   const oldHomestead = pointOffDrop(south, 156, -72);
-  const northFence = pointOffDrop(west, 168, 48);
   const southShoulder = pointOffDrop(south, 94, -64);
   const westShoulder = pointOffDrop(west, 108, 62);
+  const westFieldEntry = pointOffDrop(west, 68, 55);
   const junction = base.trails[0].points.at(-1)!;
   const landmarks = [
     ...base.landmarks,
     { id: 'south-slough', name: 'South Slough', kind: 'pond' as const, position: southSlough },
     { id: 'west-pothole', name: 'West Pothole', kind: 'pond' as const, position: westPothole },
     { id: 'old-homestead', name: 'Old Homestead', kind: 'barn' as const, position: oldHomestead },
-    { id: 'north-fence', name: 'North Fence', kind: 'fence' as const, position: northFence },
   ] satisfies AreaLandmark[];
+  const northFence = pheasantWestFence(landmarks).at(-1)!;
+  landmarks.push({ id: 'north-fence', name: 'North Fence', kind: 'fence', position: northFence });
   return {
     ...base,
     dropPoints: [south, west].map((drop, index) => {
@@ -250,12 +251,15 @@ function pheasantGeography(w: number, h: number) {
       ...scatterRects(world(w, h), { count: 30, minW: 90, maxW: 170, minH: 28, maxH: 50 }, mulberry32(22)),
       ...pheasantShoreCover(landmarks),
     ], landmarks),
-    // Pheasant routes follow water and the outer edge of cover. The dog can
-    // run a line, relocate at the next pocket, and use the fence as a stop;
-    // these are physical routes shared by the survey map and ground ribbon.
+    // Work the live shore from the entry, or heel across the cut field and
+    // approach its end from open ground. Neither route dictates a bird's
+    // outcome: runners can turn through the connected rim on either side.
     trails: [
       { id: 'south-slough-line', points: [south.position, pointOffDrop(south, 32, -27), pointOffDrop(south, 58, -52), southShoulder, pointOffDrop(south, 128, -66), oldHomestead, junction] },
-      { id: 'west-pothole-line', points: [west.position, pointOffDrop(west, 35, 28), pointOffDrop(west, 68, 55), westShoulder, pointOffDrop(west, 145, 62), northFence, junction] },
+      { id: 'west-pothole-line', points: [west.position, pointOffDrop(west, 35, 28), westFieldEntry, westShoulder, pointOffDrop(west, 145, 62), northFence, junction] },
+      { id: 'west-harvest-flank', points: [westFieldEntry,
+        { x: westPothole.x - 40, y: westPothole.y + 98 },
+        { x: westPothole.x + 106, y: westPothole.y + 108 }, northFence] },
       { id: 'homestead-fence-edge', points: [oldHomestead, northFence] },
     ] satisfies AreaTrail[],
   };

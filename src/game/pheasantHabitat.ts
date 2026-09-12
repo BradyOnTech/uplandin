@@ -1,5 +1,6 @@
 import type { AreaLandmark } from './areas';
 import type { Rect } from './field';
+import type { Vec2 } from './types';
 import { PROPERTY_PX_TO_M } from './worldUnits';
 
 /** The cut feeding field below West Pothole's dry shoulder. Shared by
@@ -8,6 +9,52 @@ export function pheasantWestHarvest(landmarks: readonly AreaLandmark[]): Rect | 
   const pond = landmarks.find(l => l.id === 'west-pothole');
   if (!pond) return undefined;
   return { x: pond.position.x - 70, y: pond.position.y + 72, w: 140, h: 90 };
+}
+
+/** The same managed headlands bound the visible crop, initial holds and
+ * covered running routes. The open east field makes the fence end real. */
+export function pheasantWestHarvestParcels(landmarks: readonly AreaLandmark[]): Rect[] {
+  const main = pheasantWestHarvest(landmarks);
+  if (!main) return [];
+  return [
+    main,
+    { x: main.x + main.w, y: main.y, w: 72, h: main.h },
+    { x: main.x + main.w + 72, y: main.y - 154, w: 76, h: main.h + 154 },
+  ];
+}
+
+/** A fence on the dry edge of the cover tongue, with its eastern end in
+ * the open headland. The landmark, trail and rendered posts share it. */
+export function pheasantWestFence(landmarks: readonly AreaLandmark[]): Vec2[] {
+  const pond = landmarks.find(l => l.id === 'west-pothole');
+  if (!pond) return [];
+  return [
+    { x: pond.position.x + 52, y: pond.position.y + 64 },
+    { x: pond.position.x + 142, y: pond.position.y + 64 },
+  ];
+}
+
+function pheasantWestPocket(landmarks: readonly AreaLandmark[]): { boundary: Rect; cover: Rect[] } | undefined {
+  const pond = landmarks.find(l => l.id === 'west-pothole');
+  if (!pond) return undefined;
+  const { x, y } = pond.position;
+  const { rx, rz } = pheasantPondRadii(pond.id);
+  const a = (rx * 1.15 + 5) / PROPERTY_PX_TO_M;
+  const b = (rz * 1.15 + 5) / PROPERTY_PX_TO_M;
+  return {
+    boundary: { x: x - 94, y: y - 82, w: 312, h: 244 },
+    cover: [
+      // Overlapping corners allow a pressured bird to turn around the pond
+      // rather than stop at a rectangle seam. The whole rim stays dense.
+      { x: x - a - 18, y: y - b - 8, w: 18, h: b * 2 + 16 },
+      { x: x + a, y: y - b - 8, w: 18, h: b * 2 + 16 },
+      { x: x - a - 4, y: y - b - 16, w: a * 2 + 8, h: 16 },
+      { x: x - a - 4, y: y + b, w: a * 2 + 8, h: 16 },
+      // A substantial dry finger leads toward the visible fence end. It
+      // has lateral room, but no accidental bridge to the next property stand.
+      { x: x + a - 2, y: y + b - 8, w: 132 - a, h: 24 },
+    ],
+  };
 }
 
 function subtractCover(patches: readonly Rect[], cut: Rect): Rect[] {
@@ -41,8 +88,14 @@ export function pheasantPondObstacles(id: string): { x: number; z: number; radiu
 export function pheasantDryCover(patches: readonly Rect[], landmarks: readonly AreaLandmark[]): Rect[] {
   const ponds = landmarks.filter(l => l.kind === 'pond');
   let result = patches.map(p => ({ ...p }));
-  const westField = pheasantWestHarvest(landmarks);
-  if (westField) result = subtractCover(result, westField);
+  const west = pheasantWestPocket(landmarks);
+  if (west) {
+    // Own this hunting location as a whole. Previously overlapping random
+    // rectangles carried its southern shore far beyond the visible fence.
+    result = subtractCover(result, west.boundary);
+    result.push(...west.cover);
+  }
+  for (const field of pheasantWestHarvestParcels(landmarks)) result = subtractCover(result, field);
   for (const pond of ponds) {
     const { rx, rz } = pheasantPondRadii(pond.id);
     const halfX = (rx * 1.15 + 3) / PROPERTY_PX_TO_M;

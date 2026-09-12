@@ -1,6 +1,6 @@
 import type { AreaConfig } from '../../game/areas';
 import { PROPERTY_PX_TO_M, type LandscapeModel } from '../../game/landscape';
-import { pheasantPondRadii, pheasantWestHarvest } from '../../game/pheasantHabitat';
+import { pheasantPondRadii, pheasantWestHarvest, pheasantWestHarvestParcels } from '../../game/pheasantHabitat';
 
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
 /** Vertical offset from the sampled pond basin floor used by all Pheasant water surfaces. */
@@ -12,12 +12,15 @@ export interface PheasantPond { landmarkId: string; x: number; y: number; rx: nu
 
 /** Broad feeding-field paint plus the shared authored West Pothole harvest.
  * Terrain and stubble always yield to the authoritative standing habitat. */
-export function pheasantFields(area: AreaConfig): PheasantField[] {
-  const fields = [[.23, .72, .17, .13, -.08], [.62, .80, .17, .13, .12], [.75, .43, .15, .15, -.15], [.34, .27, .20, .13, .08]]
+function broadPheasantFields(area: AreaConfig): PheasantField[] {
+  return [[.23, .72, .17, .13, -.08], [.62, .80, .17, .13, .12], [.75, .43, .15, .15, -.15], [.34, .27, .20, .13, .08]]
     .map(([x, y, rx, ry, angle]) => ({ x: area.world.x + area.world.w * x, y: area.world.y + area.world.h * y, rx: area.world.w * rx, ry: area.world.h * ry, angle }));
-  const west = pheasantWestHarvest(area.landmarks);
-  if (west) fields.push({ x: west.x + west.w / 2, y: west.y + west.h / 2, rx: west.w / 2, ry: west.h / 2, angle: 0 });
-  return fields;
+}
+
+export function pheasantFields(area: AreaConfig): PheasantField[] {
+  return [...broadPheasantFields(area), ...pheasantWestHarvestParcels(area.landmarks).map(field => ({
+    x: field.x + field.w / 2, y: field.y + field.h / 2, rx: field.w / 2, ry: field.h / 2, angle: 0,
+  }))];
 }
 
 export function pheasantCoverAt(area: AreaConfig, x: number, y: number): boolean {
@@ -101,12 +104,12 @@ export function pheasantPonds(landscape: LandscapeModel): PheasantPond[] {
 }
 
 export function pheasantShelterbelts(area: AreaConfig): PheasantBelt[] {
-  const result = pheasantFields(area).map((field, i) => ({ x: field.x, y: field.y - field.ry - 10, angle: field.angle,
+  const result = broadPheasantFields(area).map((field, i) => ({ x: field.x, y: field.y - field.ry - 10, angle: field.angle,
     length: Math.min(180, field.rx * 1.25), count: i % 2 ? 10 : 13 }));
   const west = pheasantWestHarvest(area.landmarks);
   // The west track bends along the north edge; plant inside the cut field
   // so the new shelterbelt frames that route instead of crossing its ruts.
-  if (west) result[result.length - 1].y = west.y + 14;
+  if (west) result.push({ x: west.x + west.w / 2, y: west.y + 14, angle: 0, length: Math.min(180, west.w * .625), count: 13 });
   const barn = area.landmarks.find(l => l.kind === 'barn');
   if (barn) result.push({ x: barn.position.x - 32, y: barn.position.y + 9, angle: 1.36, length: 83, count: 9 });
   return result;

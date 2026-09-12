@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { GroundSample, LandscapeModel } from '../../game/landscape';
 import { PROPERTY_PX_TO_M } from '../../game/landscape';
+import { pheasantWestFence } from '../../game/pheasantHabitat';
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
 import type { Hunt3DSystem } from './hunt3d';
@@ -504,15 +505,15 @@ export class PheasantScenerySystem implements Subsystem {
   }
 
   private buildFence(ctx: Ctx, postMaterial: THREE.Material, wireMaterial: THREE.Material, castShadow: boolean): void {
-    const landmark = this.landscape.area.landmarks.find((candidate) => candidate.id === 'north-fence')
-      ?? this.landscape.area.landmarks.find((candidate) => candidate.kind === 'barn');
-    if (!landmark) return;
-    this.landscape.propertyToWorld(landmark.position.x, landmark.position.y, this.world);
-    if (Math.abs(this.world.x) > 330 || Math.abs(this.world.z) > 330) return;
+    const line = pheasantWestFence(this.landscape.area.landmarks);
+    if (line.length < 2) return;
+    const start = this.landscape.propertyToWorld(line[0].x, line[0].y, { x: 0, z: 0 });
+    const end = this.landscape.propertyToWorld(line[1].x, line[1].y, { x: 0, z: 0 });
+    const length = Math.hypot(end.x - start.x, end.z - start.z);
     const postGeo = new THREE.BoxGeometry(0.16, 1.65, 0.16);
     const spanGeo = new THREE.BoxGeometry(1, 0.025, 0.025);
     this.geometries.push(postGeo, spanGeo);
-    const count = 17;
+    const count = Math.max(2, Math.ceil(length / 7.2) + 1);
     const posts = new THREE.InstancedMesh(postGeo, postMaterial, count);
     const wires = new THREE.InstancedMesh(spanGeo, wireMaterial, (count - 1) * 2);
     const matrix = new THREE.Matrix4();
@@ -522,11 +523,10 @@ export class PheasantScenerySystem implements Subsystem {
     const xAxis = new THREE.Vector3(1, 0, 0);
     const direction = new THREE.Vector3();
     const points: THREE.Vector3[] = [];
-    const angle = 0.34;
     for (let i = 0; i < count; i++) {
-      const offset = (i - (count - 1) / 2) * 7.2;
-      const x = this.world.x + Math.cos(angle) * offset;
-      const z = this.world.z + Math.sin(angle) * offset;
+      const t = i / (count - 1);
+      const x = start.x + (end.x - start.x) * t;
+      const z = start.z + (end.z - start.z) * t;
       const y = this.landscape.heightAtWorld(x, z);
       points.push(new THREE.Vector3(x, y, z));
       position.set(x, y + 0.79, z);
@@ -546,6 +546,8 @@ export class PheasantScenerySystem implements Subsystem {
         wires.setMatrixAt(wireIndex++, matrix.compose(position, quaternion, scale));
       }
     }
+    posts.name = 'West Pothole fence posts';
+    wires.name = 'West Pothole fence wires';
     posts.castShadow = castShadow;
     wires.castShadow = castShadow;
     posts.matrixAutoUpdate = false;

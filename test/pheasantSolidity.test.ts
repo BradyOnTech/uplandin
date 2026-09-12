@@ -5,6 +5,7 @@ import { LandscapeModel } from '../src/game/landscape';
 import type { Ctx } from '../src/three/engine';
 import { PheasantScenerySystem } from '../src/three/subsystems/pheasantScenery';
 import { PlayerSystem } from '../src/three/subsystems/player';
+import { pheasantWestFence } from '../src/game/pheasantHabitat';
 
 vi.mock('../src/audio', () => ({ unlockAudio: vi.fn(), playFootstep: vi.fn(), playCoverBrush: vi.fn() }));
 describe('solid Pheasant trees', () => {
@@ -22,6 +23,15 @@ describe('solid Pheasant trees', () => {
         landmarks: { collisionCircles: () => [] }, hunt3d: { condition: () => 'mild', coverPatches: () => [] } }[id]),
     } as unknown as Ctx;
     scenery.init(ctx);
+    const posts = ctx.scene.getObjectByName('West Pothole fence posts') as THREE.InstancedMesh;
+    const fence = pheasantWestFence(landscape.area.landmarks);
+    const postMatrix = new THREE.Matrix4(), postPosition = new THREE.Vector3();
+    for (const [index, expected] of [[0, fence[0]], [posts.count - 1, fence[1]]] as const) {
+      posts.getMatrixAt(index, postMatrix); postPosition.setFromMatrixPosition(postMatrix);
+      const property = landscape.worldToProperty(postPosition.x, postPosition.z, { x: 0, y: 0 });
+      expect(property.x).toBeCloseTo(expected.x, 3);
+      expect(property.y).toBeCloseTo(expected.y, 3);
+    }
     const trees = scenery.collisionCircles();
     expect(trees.length).toBeGreaterThan(30);
     for (const tree of [trees[0], trees[2]]) {
