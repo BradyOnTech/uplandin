@@ -478,8 +478,11 @@ export class PheasantCoverSystem implements Subsystem {
             groups.prairie.push({ x: cx, y: cy, scale: .94 + rng() * .22,
               height: core ? coreHeight : .50 + fringe * .75,
               spread: 1.16 + weathered * .28, angle: rng() * Math.PI * 2,
-              color: color.copy(straw).lerp(olive, Math.min(.65, moisture * .6 + stand * .42))
-                .lerp(amber, rng() * .16 + weathered * .32).getHex() });
+              // Broad cool vigorous stands and buff weathered stretches read
+              // as plant communities; small independent tint noise must not
+              // flatten their shared color back into one straw-colored hedge.
+              color: color.copy(straw).lerp(olive, Math.min(.85, moisture * .6 + stand * .78))
+                .lerp(amber, rng() * .06 + weathered * .32).getHex() });
           }
           continue;
         }

@@ -30,7 +30,7 @@ const PALETTE = {
  * systems have had a chance to establish the scene.
  */
 const AREA_PALETTE_OVERRIDES: Record<string, Partial<Record<'dark' | 'mid' | 'light' | 'wet', number>>> = {
-  'pheasant-coverts': { dark: 0x575642, mid: 0xa58c60, light: 0xcbb483, wet: 0x4f6658 },
+  'pheasant-coverts': { dark: 0x545b46, mid: 0xa28e63, light: 0xd0b98a, wet: 0x49645a },
   'woodcock-bottoms': { dark: 0x494a38, mid: 0x77755a, light: 0x9c9772, wet: 0x48594b },
   'grouse-woods': { dark: 0x625540, mid: 0x8c815d, light: 0xb5a376, wet: 0x56684b },
   'sharptail-prairie': { dark: 0x756444, mid: 0xa68f59, light: 0xc8b77e, wet: 0x6c7154 },
@@ -149,7 +149,7 @@ function paintFor(property: LandscapeModel): Paint {
   const wetPools = areaId === 'woodcock-bottoms' ? wetPondLayout(property.area) : [];
   const ponds = areaId === 'pheasant-coverts' ? pheasantPonds(property) : [];
   const farmyard = areaId === 'pheasant-coverts' ? pheasantHomesteadYard(property.area.landmarks) : undefined;
-  const yardSoil = new THREE.Color(0x99907a), yardGravel = new THREE.Color(0xb8af96);
+  const yardSoil = new THREE.Color(0x8c8b78), yardGravel = new THREE.Color(0xbcb49e);
   const harvestSample = { amount: 0, row: 0, angle: 0 };
   const cutStraw = new THREE.Color(PHEASANT_MATERIALS.cutStraw);
   const cutSoil = new THREE.Color(PHEASANT_MATERIALS.drySoil);
@@ -189,14 +189,18 @@ function paintFor(property: LandscapeModel): Paint {
         if (coverDistanceSquared === 0) break;
       }
       const standing = 1 - THREE.MathUtils.smoothstep(Math.sqrt(coverDistanceSquared) * PROPERTY_PX_TO_M, 0, 9);
-      out.lerp(standingGrass, standing * (.72 + meso * .16));
+      // Broad cool litter beneath the standing crop separates the habitat
+      // from sunlit harvested soil even as individual stems recede in view.
+      out.lerp(standingGrass, standing * (.75 + meso * .18));
       samplePheasantHarvest(landscape.area, x, y, fields, harvestSample);
       // Match the dry-ground cutoff used by stubble placement, feathered
       // into the wet fringe so harvested rectangles do not paint over mud.
       const harvest = harvestSample.amount * (1 - THREE.MathUtils.smoothstep(moisture, .25, .36));
       const swath = .5 + .5 * Math.sin(harvestSample.row * Math.PI / 24);
-      out.lerp(cutSoil, harvest * .5);
-      out.lerp(cutStraw, harvest * (.42 + swath * .24));
+      // Long machine swaths follow the existing field orientation. Their
+      // large scale survives the distant terrain grid without fine striping.
+      out.lerp(cutSoil, harvest * .82);
+      out.lerp(cutStraw, harvest * (.36 + swath * .43));
     }
     for (const pond of ponds) {
       const radius = Math.hypot((x - pond.x) * PROPERTY_PX_TO_M / pond.rx,
@@ -207,10 +211,10 @@ function paintFor(property: LandscapeModel): Paint {
       const mud = 1 - THREE.MathUtils.smoothstep(aboveWater, -.15, 1.05);
       // Follow the elevation of the real bank. Water remains level while
       // its mud and reed-litter fringe follows the sloping basin shoulders.
-      out.lerp(bankMud, footprint * mud * .7);
+      out.lerp(bankMud, footprint * mud * .84);
       const fringe = THREE.MathUtils.smoothstep(aboveWater, .1, .7)
         * (1 - THREE.MathUtils.smoothstep(aboveWater, 1.2, 2.4));
-      out.lerp(reedLitter, footprint * fringe * .35);
+      out.lerp(reedLitter, footprint * fringe * .48);
     }
     for (const pond of wetPools) {
       const radius = wetPondRadius(pond, x, y);
@@ -221,7 +225,7 @@ function paintFor(property: LandscapeModel): Paint {
       const distance = Math.hypot(Math.max(farmyard.x - x, 0, x - farmyard.x - farmyard.w),
         Math.max(farmyard.y - y, 0, y - farmyard.y - farmyard.h));
       const maintained = 1 - THREE.MathUtils.smoothstep(distance, 0, 5);
-      out.lerp(yardSoil, maintained * .92).lerp(yardGravel, maintained * (.10 + meso * .20));
+      out.lerp(yardSoil, maintained * .94).lerp(yardGravel, maintained * (.12 + meso * .34));
     }
     out.multiplyScalar(.96 + meso * .08);
     return out;
@@ -309,7 +313,9 @@ export class PropertyTerrain {
         texture.anisotropy = ctx.quality === 'high' ? 4 : 2;
         texture.needsUpdate = true;
         this.soil.value = texture;
-        this.soilStrength.value = wetSoil ? .32 : .60;
+        // Ground identity comes from broad habitat paint; keep the repeating
+        // grit subordinate so the farm and open cut fields retain clear masses.
+        this.soilStrength.value = wetSoil ? .32 : .40;
       } catch (error) {
         // The baked habitat paint remains usable if an optional art asset
         // cannot load; a missing texture must not prevent entering a hunt.

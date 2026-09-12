@@ -214,10 +214,12 @@ export class PheasantScenerySystem implements Subsystem {
     const stems: THREE.Matrix4[] = [];
     const crowns = foliageMaterials.map(() => [] as THREE.Matrix4[]);
     const position = new THREE.Vector3(), scale = new THREE.Vector3();
-    const rotation = new THREE.Quaternion(), matrix = new THREE.Matrix4();
+    const rotation = new THREE.Quaternion(), crownRotation = new THREE.Quaternion(), matrix = new THREE.Matrix4();
+    const crownEuler = new THREE.Euler();
     const rng = mulberry32(seeded(this.landscape.area.terrain.seed, 641));
     for (const belt of pheasantShelterbelts(this.landscape.area)) {
       const rng = mulberry32(seeded(this.landscape.area.terrain.seed, Math.round(belt.x * 73 + belt.y * 97)));
+      const cohortPhase = seeded(this.landscape.area.terrain.seed, Math.round(belt.x * 31 + belt.y * 53)) / 0x100000000;
       const plantingCount = Math.ceil(belt.count * 1.65);
       for (let i = 0; i < plantingCount; i++) {
         const t = i / (plantingCount - 1);
@@ -233,23 +235,40 @@ export class PheasantScenerySystem implements Subsystem {
         if (ground.moisture > .72 || ground.slope > .4) continue;
         this.landscape.propertyToWorld(x, y, this.world);
         const young = rng() < .28;
-        const height = young ? 3.5 + rng() * 2.5 : 8 + rng() * 5;
+        // Surviving windbreaks have stretches of older, spreading trees and
+        // narrower replacements. Share their stature and autumn color across
+        // neighboring roots instead of alternating a palette tree by tree.
+        // Keep the existing random draws: crown edits must not move trunks.
+        const growth = rng();
+        const maturity = .5 + .5 * Math.sin((t * 2.2 + cohortPhase) * Math.PI * 2);
+        const height = young ? 3.5 + growth * 2.5 : 7.8 + growth * 2.6 + maturity * 3.2;
         const breadth = young ? .78 : 1.16 + rng() * .32;
-        rotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng() * Math.PI * 2);
+        const heading = rng() * Math.PI * 2;
+        const cohort = Math.floor(t * 3.2 + cohortPhase * 3) % crowns.length;
+        rotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), heading);
         position.set(this.world.x, ground.height + height * .36, this.world.z);
         scale.set(.8 + rng() * .4, height * .72, .8 + rng() * .4);
         this.obstacles.push({ x: this.world.x, z: this.world.z, radius: .23 * Math.max(scale.x, scale.z) });
         stems.push(matrix.compose(position, rotation, scale).clone());
         for (let lobe = 0; lobe < 3; lobe++) {
-          const angle = lobe * 2.4 + rng() * .5;
-          const spread = height * (lobe === 2 ? .10 : .18);
+          const turn = rng(), rise = rng(), width = rng(), depth = rng(), fullness = rng();
+          const angle = heading + lobe * 2.4 + turn * .5;
+          // One dominant leader and two unequal side boughs make a complete
+          // silhouette. Equal overlapping lobes made every tree an umbrella.
+          const spread = height * (lobe === 0 ? .045 : lobe === 1 ? .23 : .16) * (young ? .55 : .85 + maturity * .15);
+          const shoulder = young ? [.69, .52, .84][lobe] : [.75, .56, .68][lobe];
           position.set(this.world.x + Math.cos(angle) * spread,
-            ground.height + height * (.61 + lobe * .07 + rng() * .035),
+            ground.height + height * (shoulder + rise * .04),
             this.world.z + Math.sin(angle) * spread);
-          scale.set(height * (.21 + rng() * .06) * breadth, height * (.28 + rng() * .06), height * (.19 + rng() * .06) * breadth);
-          crowns[i % crowns.length].push(matrix.compose(position, rotation, scale).clone());
-          if (!young && lobe < 3) {
-            const base = new THREE.Vector3(this.world.x, ground.height + height * .36, this.world.z);
+          const widthFactor = (young ? [.20, .17, .13] : [.28, .235, .205])[lobe];
+          const heightFactor = (young ? [.36, .25, .22] : [.34, .23, .28])[lobe];
+          scale.set(height * (widthFactor + width * .045) * breadth,
+            height * (heightFactor + depth * .045), height * (widthFactor * .86 + fullness * .045) * breadth);
+          crownEuler.set((turn - .5) * .22, angle, (rise - .5) * .18);
+          crownRotation.setFromEuler(crownEuler);
+          crowns[cohort].push(matrix.compose(position, crownRotation, scale).clone());
+          if (!young) {
+            const base = new THREE.Vector3(this.world.x, ground.height + height * (.30 + lobe * .045), this.world.z);
             const tip = position.clone(); tip.y -= height * .05;
             const direction = tip.clone().sub(base), length = direction.length();
             const fork = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
