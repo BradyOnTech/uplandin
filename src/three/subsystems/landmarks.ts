@@ -1,4 +1,4 @@
-import { createPheasantHomestead } from './pheasantHomestead';
+import { createPheasantHomestead, PHEASANT_HOMESTEAD_OBSTACLES } from './pheasantHomestead';
 import * as THREE from 'three';
 import { pheasantPondObstacles } from '../../game/pheasantHabitat';
 import type { AreaLandmark } from '../../game/areas';
@@ -47,8 +47,28 @@ export class LandmarksSystem implements Subsystem {
   private chukar?:ReturnType<typeof createChukarLandmarks>;
   private landscape?: LandscapeModel;
   private obstacles: { x: number; z: number; radius: number }[] = [];
+  private shotSolids: THREE.Mesh[] = [];
+  private shotRay = new THREE.Raycaster();
+  private shotStart = new THREE.Vector3();
+  private shotDirection = new THREE.Vector3();
+  private shotHits: THREE.Intersection[] = [];
 
   collisionCircles(): readonly { x: number; z: number; radius: number }[] { return this.obstacles; }
+
+  /** Pheasant farm construction is solid to a travelling shot. Ray-test the
+   * actual walls/roof/bin, so the empty sky above them stays shootable. */
+  blocksShot(origin: { x: number; y: number; z: number }, target: { x: number; y: number; z: number }): boolean {
+    if (!this.shotSolids.length) return false;
+    this.shotStart.set(origin.x, origin.y, origin.z);
+    this.shotDirection.set(target.x - origin.x, target.y - origin.y, target.z - origin.z);
+    const distance = this.shotDirection.length();
+    if (distance <= .001) return false;
+    this.shotRay.set(this.shotStart, this.shotDirection.multiplyScalar(1 / distance));
+    this.shotRay.near = .001; this.shotRay.far = distance;
+    this.shotHits.length = 0;
+    this.shotRay.intersectObjects(this.shotSolids, false, this.shotHits);
+    return this.shotHits.length > 0;
+  }
 
   init(ctx: Ctx): void {
     const hunt = ctx.get<Hunt3DSystem>('hunt3d');
@@ -79,17 +99,26 @@ export class LandmarksSystem implements Subsystem {
         continue;
       }
       const ground = terrain.heightAt(world.x, world.z);
-      const root = this.quail
+      const pheasantFarm = areaId === 'pheasant-coverts' && landmark.kind === 'barn';
+      const root = pheasantFarm
+        ? createPheasantHomestead(MAT.homestead, (x, z) => terrain.heightAt(world.x + x, world.z + z) - ground)
+        : this.quail
         ? landmark.kind === 'windmill' ? createQuailWindmill((x, z) => terrain.heightAt(world.x + x, world.z + z) - ground) : this.buildLandmark(landmark)
         : this.buildLandmark(landmark);
       root.position.set(world.x, ground, world.z);
       ctx.scene.add(root);
       this.objects.push(root);
+      if (pheasantFarm) {
+        root.updateMatrixWorld(true);
+        root.traverse(object => { if (object instanceof THREE.Mesh) this.shotSolids.push(object); });
+        for (const solid of PHEASANT_HOMESTEAD_OBSTACLES)
+          this.obstacles.push({ x: world.x + solid.x, z: world.z + solid.z, radius: solid.radius });
+      }
       // The named set pieces are part of the traversable world. Keep the
       // hunter and dog from walking through a hut, corral, or tower on the
       // generic property pass; bespoke Quail/Chukar systems already provide
       // their own more detailed collision shapes.
-      if (!this.quail && !this.chukar) {
+      if (!this.quail && !this.chukar && !pheasantFarm) {
         const radius = landmark.kind === 'barn' ? 7.8
           : landmark.kind === 'fence' ? 5.2
             : landmark.kind === 'windmill' ? 2.8 : 0;
@@ -163,6 +192,7 @@ export class LandmarksSystem implements Subsystem {
     for (const geometry of geometries) geometry.dispose();
     for (const material of materials) material.dispose();
     this.objects.length = 0; this.obstacles.length = 0; this.rotor = undefined;
+    this.shotSolids.length = 0; this.shotHits.length = 0;
     this.landscape = undefined;
   }
 

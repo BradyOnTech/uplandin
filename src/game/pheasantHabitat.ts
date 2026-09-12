@@ -34,6 +34,80 @@ export function pheasantWestFence(landmarks: readonly AreaLandmark[]): Vec2[] {
   ];
 }
 
+/** The Slough has a wet interior and a cut eastern headland. Unlike the
+ * bounded West Pothole finger, its north neck leads into the farm shelterbelt. */
+export function pheasantSouthHarvestParcels(landmarks: readonly AreaLandmark[]): Rect[] {
+  const pond = landmarks.find(l => l.id === 'south-slough');
+  if (!pond) return [];
+  const { x, y } = pond.position;
+  return [
+    { x: x + 142, y: y - 108, w: 82, h: 208 },
+    { x: x - 60, y: y + 64, w: 202, h: 42 },
+  ];
+}
+
+export function pheasantHomesteadHarvestParcels(landmarks: readonly AreaLandmark[]): Rect[] {
+  const barn = landmarks.find(l => l.id === 'old-homestead');
+  if (!barn) return [];
+  const { x, y } = barn.position;
+  return [
+    { x: x - 160, y: y - 106, w: 80, h: 168 },
+    { x: x - 80, y: y - 132, w: 210, h: 38 },
+    { x: x - 32, y: y - 51, w: 101, h: 50 },
+  ];
+}
+
+/** A maintained yard, not standing bird habitat or planted stubble. */
+export function pheasantHomesteadYard(landmarks: readonly AreaLandmark[]): Rect | undefined {
+  const barn = landmarks.find(l => l.id === 'old-homestead');
+  if (!barn) return undefined;
+  return { x: barn.position.x - 34, y: barn.position.y - 28, w: 76, h: 74 };
+}
+
+export function pheasantManagedParcels(landmarks: readonly AreaLandmark[]): Rect[] {
+  return [...pheasantWestHarvestParcels(landmarks), ...pheasantSouthHarvestParcels(landmarks),
+    ...pheasantHomesteadHarvestParcels(landmarks)];
+}
+
+function pheasantSouthPocket(landmarks: readonly AreaLandmark[]): { boundary: Rect; cover: Rect[] } | undefined {
+  const pond = landmarks.find(l => l.id === 'south-slough');
+  if (!pond) return undefined;
+  const { x, y } = pond.position;
+  const { rx, rz } = pheasantPondRadii(pond.id);
+  const a = (rx * 1.15 + 5) / PROPERTY_PX_TO_M;
+  const b = (rz * 1.15 + 5) / PROPERTY_PX_TO_M;
+  return {
+    boundary: { x: x - 94, y: y - 114, w: 318, h: 224 },
+    cover: [
+      { x: x - a - 20, y: y - b - 8, w: 20, h: b * 2 + 16 },
+      { x: x + a, y: y - b - 8, w: 22, h: b * 2 + 16 },
+      { x: x - a - 4, y: y - b - 18, w: a * 2 + 8, h: 18 },
+      { x: x - a - 4, y: y + b, w: a * 2 + 8, h: 18 },
+      // A wide dry neck joins the Homestead's rough eastern windbreak.
+      // It lets a runner change locations instead of every shore being a trap.
+      { x: x + 10, y: y - 98, w: 48, h: 62 },
+      { x: x + a - 2, y: y - b - 6, w: 65, h: 28 },
+    ],
+  };
+}
+
+function pheasantHomesteadPocket(landmarks: readonly AreaLandmark[]): { boundary: Rect; cover: Rect[] } | undefined {
+  const barn = landmarks.find(l => l.id === 'old-homestead');
+  if (!barn) return undefined;
+  const { x, y } = barn.position;
+  return {
+    boundary: { x: x - 164, y: y - 136, w: 306, h: 194 },
+    cover: [
+      // Rough grass below the three-sided farm windbreak, with a broad
+      // internal field and an open yard. The western leg has an exposed end;
+      // the eastern leg connects into the Slough's north neck.
+      { x: x - 66, y: y - 79, w: 25, h: 124 },
+      { x: x - 66, y: y - 82, w: 166, h: 26 },
+      { x: x + 77, y: y - 70, w: 23, h: 62 },
+    ],
+  };
+}
+
 function pheasantWestPocket(landmarks: readonly AreaLandmark[]): { boundary: Rect; cover: Rect[] } | undefined {
   const pond = landmarks.find(l => l.id === 'west-pothole');
   if (!pond) return undefined;
@@ -88,14 +162,19 @@ export function pheasantPondObstacles(id: string): { x: number; z: number; radiu
 export function pheasantDryCover(patches: readonly Rect[], landmarks: readonly AreaLandmark[]): Rect[] {
   const ponds = landmarks.filter(l => l.kind === 'pond');
   let result = patches.map(p => ({ ...p }));
-  const west = pheasantWestPocket(landmarks);
-  if (west) {
+  const pockets = [pheasantWestPocket(landmarks), pheasantSouthPocket(landmarks), pheasantHomesteadPocket(landmarks)]
+    .filter((p): p is { boundary: Rect; cover: Rect[] } => !!p);
+  for (const pocket of pockets) {
     // Own this hunting location as a whole. Previously overlapping random
     // rectangles carried its southern shore far beyond the visible fence.
-    result = subtractCover(result, west.boundary);
-    result.push(...west.cover);
+    result = subtractCover(result, pocket.boundary);
   }
-  for (const field of pheasantWestHarvestParcels(landmarks)) result = subtractCover(result, field);
+  // Clear random cover first, then join authored pockets. Their overlapping
+  // boundaries must not cut the intentional Slough-to-shelterbelt connection.
+  for (const pocket of pockets) result.push(...pocket.cover);
+  for (const field of pheasantManagedParcels(landmarks)) result = subtractCover(result, field);
+  const yard = pheasantHomesteadYard(landmarks);
+  if (yard) result = subtractCover(result, yard);
   for (const pond of ponds) {
     const { rx, rz } = pheasantPondRadii(pond.id);
     const halfX = (rx * 1.15 + 3) / PROPERTY_PX_TO_M;

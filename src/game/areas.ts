@@ -229,6 +229,11 @@ function pheasantGeography(w: number, h: number) {
   const westPothole = pointOffDrop(west, 106, -8);
   const oldHomestead = pointOffDrop(south, 156, -72);
   const southShoulder = pointOffDrop(south, 94, -64);
+  const southApproach = pointOffDrop(south, 32, -27);
+  // Trails meet at the front of the farmyard, never through the barn itself.
+  const homesteadYard = { x: oldHomestead.x + 8, y: oldHomestead.y + 30 };
+  const homesteadFarCorner = { x: oldHomestead.x + 110, y: oldHomestead.y - 94 };
+  const sloughNeck = { x: southSlough.x + 76, y: southSlough.y - 104 };
   const westShoulder = pointOffDrop(west, 108, 62);
   const westFieldEntry = pointOffDrop(west, 68, 55);
   const junction = base.trails[0].points.at(-1)!;
@@ -243,7 +248,7 @@ function pheasantGeography(w: number, h: number) {
   return {
     ...base,
     dropPoints: [south, west].map((drop, index) => {
-      const next = index === 0 ? pointOffDrop(south, 32, -27) : pointOffDrop(west, 35, 28);
+      const next = index === 0 ? southApproach : pointOffDrop(west, 35, 28);
       return { ...drop, heading: Math.atan2(next.y - drop.position.y, next.x - drop.position.x) };
     }),
     landmarks,
@@ -255,12 +260,35 @@ function pheasantGeography(w: number, h: number) {
     // approach its end from open ground. Neither route dictates a bird's
     // outcome: runners can turn through the connected rim on either side.
     trails: [
-      { id: 'south-slough-line', points: [south.position, pointOffDrop(south, 32, -27), pointOffDrop(south, 58, -52), southShoulder, pointOffDrop(south, 128, -66), oldHomestead, junction] },
+      { id: 'south-slough-line', points: [south.position, southApproach, pointOffDrop(south, 58, -52), southShoulder, homesteadYard] },
+      // The field-side circuit can get the handler ahead of the east shore;
+      // the neck remains live cover connecting this wetland to the farm.
+      { id: 'south-headland-flank', points: [southApproach,
+        { x: southSlough.x - 28, y: southSlough.y + 80 },
+        { x: southSlough.x + 112, y: southSlough.y + 80 },
+        { x: southSlough.x + 164, y: southSlough.y + 28 },
+        { x: southSlough.x + 152, y: southSlough.y - 66 }, sloughNeck, homesteadFarCorner] },
+      { id: 'slough-neck-line', points: [homesteadYard,
+        { x: southSlough.x - 24, y: southSlough.y - 66 },
+        { x: southSlough.x + 14, y: southSlough.y - 68 }, sloughNeck] },
+      // Work the sheltered inside edge, or circle through cut ground around
+      // the exposed western end. Both routes return to the same farm corner.
+      { id: 'homestead-shelterbelt-line', points: [homesteadYard,
+        { x: oldHomestead.x - 34, y: oldHomestead.y + 30 },
+        { x: oldHomestead.x - 34, y: oldHomestead.y - 46 },
+        { x: oldHomestead.x + 60, y: oldHomestead.y - 46 }, homesteadFarCorner, junction] },
+      { id: 'homestead-field-loop', points: [homesteadYard,
+        { x: oldHomestead.x - 34, y: oldHomestead.y + 30 },
+        { x: oldHomestead.x - 34, y: oldHomestead.y + 62 },
+        { x: oldHomestead.x - 90, y: oldHomestead.y + 62 },
+        { x: oldHomestead.x - 90, y: oldHomestead.y - 106 },
+        { x: oldHomestead.x + 110, y: oldHomestead.y - 106 }, homesteadFarCorner] },
       { id: 'west-pothole-line', points: [west.position, pointOffDrop(west, 35, 28), westFieldEntry, westShoulder, pointOffDrop(west, 145, 62), northFence, junction] },
       { id: 'west-harvest-flank', points: [westFieldEntry,
         { x: westPothole.x - 40, y: westPothole.y + 98 },
         { x: westPothole.x + 106, y: westPothole.y + 108 }, northFence] },
-      { id: 'homestead-fence-edge', points: [oldHomestead, northFence] },
+      { id: 'homestead-fence-edge', points: [homesteadFarCorner,
+        { x: oldHomestead.x - 90, y: oldHomestead.y - 106 }, northFence] },
     ] satisfies AreaTrail[],
   };
 }

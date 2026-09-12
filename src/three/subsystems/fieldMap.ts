@@ -2,7 +2,7 @@ import { huntingDoctrine } from '../../game/huntDoctrine';
 import { fieldCompassHeading } from '../dogLocator';
 import { LandscapeModel, PROPERTY_PX_TO_M, type GroundSample } from '../../game/landscape';
 import { pheasantPonds } from './pheasantLandscape';
-import { pheasantWestFence, pheasantWestHarvestParcels } from '../../game/pheasantHabitat';
+import { pheasantHomesteadYard, pheasantManagedParcels, pheasantWestFence } from '../../game/pheasantHabitat';
 import type { Ctx, Subsystem } from '../engine';
 import type { Hunt3DSystem } from './hunt3d';
 
@@ -188,9 +188,14 @@ export class FieldMapSystem implements Subsystem {
     // Cut ground is useful approach information, independent of concealed birds.
     if (area.id === 'pheasant-coverts') {
       g.fillStyle = '#c5ad7544';
-      for (const field of pheasantWestHarvestParcels(area.landmarks)) {
+      for (const field of pheasantManagedParcels(area.landmarks)) {
         const [x, y] = point(field.x, field.y);
         g.fillRect(x, y, field.w * scale, field.h * scale);
+      }
+      const yard = pheasantHomesteadYard(area.landmarks);
+      if (yard) {
+        const [x, y] = point(yard.x, yard.y);
+        g.fillStyle = '#c6bc9b77'; g.fillRect(x, y, yard.w * scale, yard.h * scale);
       }
     }
     // Cover footprints remain the clearest layer over the relief wash.
