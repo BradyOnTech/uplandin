@@ -1,0 +1,62 @@
+import { readFileSync } from 'node:fs';
+import { describe,expect,it } from 'vitest';
+import { getArea } from '../src/game/areas';
+import { chukarBrowBlockers,chukarBrows } from '../src/game/chukarLandscape';
+import { LandscapeModel,PROPERTY_PX_TO_M } from '../src/game/landscape';
+
+const area=getArea('chukar-ridge'),landscape=new LandscapeModel(area);
+const sample=()=>({height:0,slope:0,gradeX:0,gradeZ:0,rockiness:0,vegetation:0,moisture:0});
+
+describe('Chukar authored route',()=>{
+  it('climbs from a gentle entry to an elevated, huntable overlook',()=>{
+    const entry=area.dropPoints[0].position,overlook=area.landmarks.find(l=>l.id==='rim-overlook')!.position;
+    expect(landscape.surfaceAtProperty(entry.x,entry.y,sample()).slope).toBeLessThan(.2);
+    expect(landscape.heightAtProperty(overlook.x,overlook.y)-landscape.heightAtProperty(entry.x,entry.y)).toBeGreaterThan(60);
+    for(const name of ['lower-sage-bench','rim-overlook']){
+      const p=area.landmarks.find(l=>l.id===name)!.position;
+      expect(landscape.surfaceAtProperty(p.x,p.y,sample()).slope).toBeLessThan(.35);
+    }
+  });
+  it('keeps a walking corridor clear of solid brows along every mapped route',()=>{
+    const blockers=chukarBrowBlockers(area);
+    for(const trail of area.trails)for(let i=1;i<trail.points.length;i++){
+      const a=trail.points[i-1],b=trail.points[i],dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy);
+      for(const rock of blockers){
+        const t=Math.max(0,Math.min(1,((rock.x-a.x)*dx+(rock.y-a.y)*dy)/(length*length)));
+        const clearance=Math.hypot(a.x+dx*t-rock.x,a.y+dy*t-rock.y)*PROPERTY_PX_TO_M-rock.radius;
+        expect(clearance,`${trail.id} at ${rock.x},${rock.y}`).toBeGreaterThan(1.2);
+      }
+      for(let along=0;along<=length;along+=4){
+        const t=along/length;
+        expect(landscape.surfaceAtProperty(a.x+dx*t,a.y+dy*t,sample()).slope,trail.id).toBeLessThan(.75);
+      }
+    }
+  });
+  it('stocks real bench cover while keeping solid rock feet out of habitat',()=>{
+    for(const brow of chukarBrows(area))expect(area.patches.some(p=>brow.x>=p.x&&brow.x<=p.x+p.w&&brow.y>=p.y&&brow.y<=p.y+p.h),brow.id).toBe(false);
+    for(const [x,y] of [[700,550],[900,397],[1000,240]])expect(area.patches.some(p=>x>=p.x&&x<=p.x+p.w&&y>=p.y&&y<=p.y+p.h)).toBe(true);
+  });
+  it('connects the overlook return to the climb and keeps the tank reachable',()=>{
+    const climb=area.trails.find(t=>t.id==='south-switchback')!,loop=area.trails.find(t=>t.id==='rim-return')!;
+    expect(climb.points).toContainEqual(loop.points.at(-1));
+    expect(area.trails.find(t=>t.id==='tank-traverse')!.points.at(-1)).toEqual(area.landmarks.find(l=>l.id==='area-feature')!.position);
+  });
+});
+
+describe('Chukar editable rock exports',()=>{
+  it.each(['basalt-brow','weathered-shelf','split-shoulder'])('%s exports painted geometry with a cheaper lightweight form',name=>{
+    const triangles:number[]=[];
+    for(const detail of ['high','lite']){
+      const bytes=readFileSync(`public/models/chukar-kit/${name}-${detail}.glb`);
+      expect(bytes.readUInt32LE(0)).toBe(0x46546c67);
+      const gltf=JSON.parse(bytes.subarray(20,20+bytes.readUInt32LE(12)).toString());
+      expect(gltf.meshes).toHaveLength(1);
+      const primitives=gltf.meshes[0].primitives;expect(primitives).toHaveLength(1);
+      expect(primitives[0].attributes.COLOR_0).toBeDefined();
+      expect(primitives[0].attributes.NORMAL).toBeDefined();
+      triangles.push(gltf.accessors[primitives[0].indices].count/3);
+      expect(bytes.byteLength).toBeLessThan(110_000);
+    }
+    expect(triangles[0]).toBeLessThan(1500);expect(triangles[1]).toBeLessThan(triangles[0]*.65);
+  });
+});

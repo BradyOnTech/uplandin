@@ -14,10 +14,13 @@ export default defineConfig({
       const files = [
         'index.html', 'index3d.html', 'shotguns3d.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
         'textures/terrain/prairie-painted.webp',
+        'textures/terrain/chukar-dry-ground.webp',
         ...Object.keys(bundle).filter(name => /\.(js|css)$/.test(name)),
         'models/quail-kit/prop-manifest.json',
         ...['slab', 'split-log', 'fallen-limb'].flatMap(habit => ['high', 'lite'].map(detail => `models/quail-kit/ground-prop-${habit}-${detail}.glb`)),
         'models/quail-kit/tree-manifest.json',
+        'models/chukar-kit/manifest.json',
+        ...['basalt-brow','weathered-shelf','split-shoulder'].flatMap(name=>['high','lite'].map(detail=>`models/chukar-kit/${name}-${detail}.glb`)),
         ...['upright', 'spreading', 'leaning'].flatMap(habit => ['high', 'lite'].map(detail => `models/quail-kit/field-tree-${habit}-${detail}.glb`)),
         'models/quail-kit/manifest.json',
         ...['open', 'low', 'tall'].flatMap(habit => ['high', 'lite'].map(detail => `models/quail-kit/sand-plum-${habit}-${detail}.glb`)),

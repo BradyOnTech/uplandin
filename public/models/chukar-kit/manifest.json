@@ -1,0 +1,72 @@
+{
+  "units": "metres",
+  "source": "assets/source/chukar-kit/basalt-kit.blend",
+  "assets": [
+    {
+      "id": "basalt-brow-high",
+      "triangles": 1076,
+      "bytes": 82220,
+      "materials": 1,
+      "dimensions": [
+        23.382221221923828,
+        12.172760009765625,
+        8.704292297363281
+      ]
+    },
+    {
+      "id": "basalt-brow-lite",
+      "triangles": 592,
+      "bytes": 46056,
+      "materials": 1,
+      "dimensions": [
+        23.382221221923828,
+        12.03040885925293,
+        8.689371109008789
+      ]
+    },
+    {
+      "id": "weathered-shelf-high",
+      "triangles": 1076,
+      "bytes": 82232,
+      "materials": 1,
+      "dimensions": [
+        22.362594604492188,
+        12.308701515197754,
+        7.657882213592529
+      ]
+    },
+    {
+      "id": "weathered-shelf-lite",
+      "triangles": 592,
+      "bytes": 46064,
+      "materials": 1,
+      "dimensions": [
+        22.193580627441406,
+        12.16379165649414,
+        7.657882213592529
+      ]
+    },
+    {
+      "id": "split-shoulder-high",
+      "triangles": 1076,
+      "bytes": 82228,
+      "materials": 1,
+      "dimensions": [
+        22.074432373046875,
+        11.461730003356934,
+        8.81336784362793
+      ]
+    },
+    {
+      "id": "split-shoulder-lite",
+      "triangles": 592,
+      "bytes": 46060,
+      "materials": 1,
+      "dimensions": [
+        21.392597198486328,
+        11.328883171081543,
+        8.81336784362793
+      ]
+    }
+  ]
+}

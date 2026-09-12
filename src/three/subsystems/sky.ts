@@ -412,9 +412,9 @@ const QUAIL_RIDGES: RidgeProfile = {
 
 const CHUKAR_RIDGES: RidgeProfile = {
   layers: [
-    { radius: 350, base: 12, amp: 78, far: 0.12, fogMix: 0.08, hazeAmt: 0.5, jag: 0.12, freqs: [3, 8, 21], noiseScale: 0.78 },
-    { radius: 515, base: 24, amp: 102, far: 0.52, fogMix: 0.15, hazeAmt: 0.76, jag: 0.18, freqs: [4, 9, 23], noiseScale: 0.62 },
-    { radius: 735, base: 34, amp: 132, far: 0.72, fogMix: 0.22, hazeAmt: 0.94, jag: 0.2, freqs: [3, 7, 19], noiseScale: 0.55 },
+    { radius: 620, base: -4, amp: 40, far: 0.12, fogMix: 0.08, hazeAmt: 0.5, jag: 0.12, freqs: [3, 8, 21], noiseScale: 0.48 },
+    { radius: 900, base: 15, amp: 73, far: 0.52, fogMix: 0.15, hazeAmt: 0.76, jag: 0.18, freqs: [4, 9, 23], noiseScale: 0.42 },
+    { radius: 1250, base: 32, amp: 110, far: 0.72, fogMix: 0.22, hazeAmt: 0.94, jag: 0.2, freqs: [3, 7, 19], noiseScale: 0.38 },
   ],
   features: [
     [{ c: -34, h: .85, sl: 12, sr: 26 }, { c: 52, h: .72, sl: 15, sr: 27 }, { c: 101, h: 1.05, sl: 9, sr: 20 }, { c: 124, h: -.28, sl: 7, sr: 10 }, { c: 150, h: .8, sl: 15, sr: 25 }],

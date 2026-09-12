@@ -4,12 +4,14 @@ import { PROPERTY_PX_TO_M, type GroundSample, type LandscapeModel } from '../../
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
 import { chukarLandmarkClearance } from './chukarLandmarks';
+import { chukarBrows, chukarBrowBlockers, chukarGroundZones } from '../../game/chukarLandscape';
+import { loadChukarKit } from '../assets/chukarKit';
 
 const TILE = 80;
 const TRACK_HALF_WIDTH_M = .8;
-const STONE = [0xb39b78, 0x8c8573, 0x9f896c, 0x7a776d];
-const SAGE = [0x819483, 0x9ba18b, 0x71887d];
-const STRAW = [0xb9a477, 0xc3af83, 0xa0926a, 0x919779];
+const STONE = [0x878073, 0x6e716b, 0x968a76, 0x75766d];
+const SAGE = [0x9aa68b, 0xa6ad92, 0x899e90];
+const STRAW = [0xc6a66d, 0xd0b67e, 0xb9a376, 0xb8ab80];
 const SAMPLE: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
 function seed(x: number, y: number, salt = 0): number {
@@ -18,7 +20,6 @@ function seed(x: number, y: number, salt = 0): number {
 
 interface Plant { x: number; y: number; yaw: number; sx: number; sy: number; sz: number; color: number }
 interface Batch { mesh: THREE.InstancedMesh; range: number; radius: number; center: THREE.Vector3; shadow: boolean }
-interface Formation { x: number; y: number; yaw: number; length: number; height: number; seed: number }
 
 /** Property-space distance keeps the same paths open from either parking place. */
 export function chukarTrackDistance(area: AreaConfig, x: number, y: number): number {
@@ -33,24 +34,6 @@ export function chukarTrackDistance(area: AreaConfig, x: number, y: number): num
 
 function coverAt(area: AreaConfig, x: number, y: number, margin = 0): boolean {
   return area.patches.some(p => x >= p.x - margin && x <= p.x + p.w + margin && y >= p.y - margin && y <= p.y + p.h + margin);
-}
-
-/** Broad sedimentary ribs with broken shoulders. They flank the hunt instead
- * of erecting a repeated wall directly across the walking/working corridor. */
-function formations(area: AreaConfig): Formation[] {
-  const result: Formation[] = [];
-  for (const [i, drop] of area.dropPoints.entries()) {
-    const f = { x: Math.cos(drop.heading), y: Math.sin(drop.heading) }, r = { x: -f.y, y: f.x };
-    for (let n = 0; n < 3; n++) {
-      const distance = 92 + n * 84, side = (n % 2 ? -1 : 1) * (55 + n * 16);
-      result.push({ x: drop.position.x + f.x * distance + r.x * side, y: drop.position.y + f.y * distance + r.y * side,
-        yaw: Math.atan2(r.y, r.x) + (n - 1) * .22, length: 30 + n * 16, height: 4.5 + n * 2.8, seed: 217 + i * 53 + n * 19 });
-    }
-  }
-  for (const [i, [x, y, length, height]] of [[.23, .18, 56, 9], [.48, .20, 78, 13], [.69, .45, 62, 10], [.86, .23, 76, 15], [.87, .70, 52, 8]].entries()) {
-    result.push({ x: area.world.x + area.world.w * x, y: area.world.y + area.world.h * y, yaw: -.36 + i * .11, length, height, seed: 691 + i * 93 });
-  }
-  return result;
 }
 
 /** A fractured seven-sided slab with broad, uneven bedding planes. */
@@ -114,15 +97,24 @@ function sageGeometry(lite: boolean): THREE.BufferGeometry {
 
 function grassGeometry(lite: boolean): THREE.BufferGeometry {
   const positions: number[] = [], colors: number[] = [], rng = mulberry32(578);
-  for (let blade = 0; blade < (lite ? 8 : 14); blade++) {
-    const az = blade * 2.399, height = .28 + rng() * .40, reach = .13 + rng() * .17, width = (lite ? .032 : .022) + rng() * .014;
-    const x = Math.sin(az) * .07, z = Math.cos(az) * .07;
+  for (let blade = 0; blade < (lite ? 12 : 22); blade++) {
+    const az = blade * 2.399, height = .24 + rng() * .43, reach = .18 + rng() * .23, width = (lite ? .022 : .014) + rng() * .014;
+    const x = Math.sin(az) * .11, z = Math.cos(az) * .11;
     const base = [x, 0, z], mid = [x + Math.sin(az) * reach * .30, height * .76, z + Math.cos(az) * reach * .30];
     const a = [mid[0] + Math.cos(az) * width, mid[1], mid[2] - Math.sin(az) * width];
     const b = [mid[0] - Math.cos(az) * width, mid[1], mid[2] + Math.sin(az) * width];
     const tip = [x + Math.sin(az) * reach, height * (blade % 3 ? .86 : 1), z + Math.cos(az) * reach];
     for (const [triangle, stages] of [[[base, b, a], [0, .76, .76]], [[a, b, tip], [.76, .76, 1]]] as const)
       for (const [i, p] of triangle.entries()) { positions.push(...p); const shade = .59 + stages[i] * .42; colors.push(shade, shade, shade * .94); }
+    if(blade%5===0){
+      const stem=[x+Math.sin(az)*reach*.3,height*1.42,z+Math.cos(az)*reach*.3];
+      const shoulder=[stem[0]-.018,stem[1]*.83,stem[2]],other=[stem[0]+.018,stem[1]*.83,stem[2]];
+      for(const p of [base,shoulder,stem,base,stem,other]){positions.push(...p);colors.push(.92,.88,.76);}
+      for(const side of [-1,1]){
+        const seedTip=[stem[0]+side*.07,stem[1]*.97,stem[2]+.04],seedBase=[stem[0]+side*.012,stem[1]*.84,stem[2]];
+        for(const p of [seedBase,seedTip,stem]){positions.push(...p);colors.push(1.03,.97,.83);}
+      }
+    }
   }
   const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); geometry.computeVertexNormals(); geometry.computeBoundingSphere();
@@ -151,13 +143,28 @@ export class ChukarEnvironmentSystem implements Subsystem {
     if (x < area.world.x + margin || y < area.world.y + margin || x > area.world.x + area.world.w - margin || y > area.world.y + area.world.h - margin) return false;
     if (chukarTrackDistance(area, x, y) < TRACK_HALF_WIDTH_M + .35 + radius) return false;
     if (area.dropPoints.some(d => Math.hypot(x - d.position.x, y - d.position.y) * PROPERTY_PX_TO_M < 10 + radius)) return false;
-    if (area.landmarks.some(l => Math.hypot(x - l.position.x, y - l.position.y) * PROPERTY_PX_TO_M < 14 + radius)) return false;
+    if (area.landmarks.some(l => !['lower-sage-bench','split-shoulder','rim-overlook'].includes(l.id)&&Math.hypot(x - l.position.x, y - l.position.y) * PROPERTY_PX_TO_M < 14 + radius)) return false;
     if (this.landmarkClearance.some(l => Math.hypot(x - l.x, y - l.y) * PROPERTY_PX_TO_M < l.radius + radius)) return false;
     return !keepHabitat || !coverAt(area, x, y, margin + 3);
   }
 
   private batch(geometry: THREE.BufferGeometry, material: THREE.Material, plants: Plant[], range: number, shadow: boolean, rock = false): void {
     if (!plants.length) return;
+    const authored=geometry.userData.kind==='chukar-authored-basalt';
+    if(authored&&plants.length===1){
+      // Fit only the foot to the sidehill; preserve the authored upper face.
+      // Sinking the entire broad asset to its lowest corner erased most of
+      // its height on a climbing slope.
+      const p=plants[0],center=this.landscape.propertyToWorld(p.x,p.y,{x:0,z:0});
+      const base=this.landscape.heightAtProperty(p.x,p.y),c=Math.cos(p.yaw),s=Math.sin(p.yaw);
+      geometry=geometry.clone();const vertices=geometry.getAttribute('position');
+      for(let i=0;i<vertices.count;i++){
+        const x=vertices.getX(i)*p.sx,z=vertices.getZ(i)*p.sz,y=vertices.getY(i);
+        const ground=this.landscape.heightAtWorld(center.x+x*c+z*s,center.z-x*s+z*c);
+        vertices.setY(i,y+(ground-base)/p.sy*(1-y*.55));
+      }
+      vertices.needsUpdate=true;geometry.computeVertexNormals();geometry.computeBoundingBox();geometry.computeBoundingSphere();this.geometries.add(geometry);
+    }
     const mesh = new THREE.InstancedMesh(geometry, material, plants.length), matrix = new THREE.Matrix4(), position = new THREE.Vector3();
     const rotation = new THREE.Quaternion(), scale = new THREE.Vector3(), color = new THREE.Color(), normal = new THREE.Vector3();
     const up = new THREE.Vector3(0, 1, 0), yaw = new THREE.Quaternion(), axis = new THREE.Vector3(0, 1, 0);
@@ -169,14 +176,14 @@ export class ChukarEnvironmentSystem implements Subsystem {
         // Bury the foot below its lowest corner on a sidehill; no floating
         // downhill corners or flat support disks beneath the geology.
         const radius = Math.max(p.sx, p.sz) * .42;
-        for (const [dx, dz] of [[radius, 0], [-radius, 0], [0, radius], [0, -radius]])
+        if(!authored)for (const [dx, dz] of [[radius, 0], [-radius, 0], [0, radius], [0, -radius]])
           ground = Math.min(ground, this.landscape.heightAtWorld(this.world.x + dx, this.world.z + dz));
         rotation.setFromAxisAngle(axis, p.yaw);
       } else {
         normal.set(-this.sample.gradeX, 1, -this.sample.gradeZ).normalize(); rotation.setFromUnitVectors(up, normal);
         yaw.setFromAxisAngle(axis, p.yaw); rotation.multiply(yaw);
       }
-      position.set(this.world.x, ground - (talus ? Math.min(.012, p.sy * .08) : rock ? .10 : .018), this.world.z); scale.set(p.sx, p.sy, p.sz);
+      position.set(this.world.x, ground - (talus ? Math.min(.012, p.sy * .08) : authored ? .3 : rock ? .10 : .018), this.world.z); scale.set(p.sx, p.sy, p.sz);
       mesh.setMatrixAt(i, matrix.compose(position, rotation, scale)); mesh.setColorAt(i, color.setHex(p.color));
       if (rock && ground + p.sy - this.sample.height > .75)
         this.obstacles.push({ x: this.world.x, z: this.world.z, radius: Math.min(p.sx, p.sz) * .37 });
@@ -185,15 +192,20 @@ export class ChukarEnvironmentSystem implements Subsystem {
     this.root.add(mesh); this.batches.push({ mesh, range, radius: mesh.boundingSphere!.radius, center: mesh.boundingSphere!.center.clone(), shadow });
   }
 
-  init(ctx: Ctx): void {
+  async init(ctx: Ctx): Promise<void> {
     const lite = ctx.quality === 'lite', area = this.landscape.area;
     this.root.name = 'Chukar Ridge — sage benches and broken rimrock'; ctx.scene.add(this.root);
+    const brows=await loadChukarKit(ctx.quality);
     const stones = [0, 1, 2].map(i => chukarStoneGeometry(i)), gravel = chukarStoneGeometry(3, true), grass = grassGeometry(lite), sage = sageGeometry(lite);
-    for (const geometry of [...stones, gravel, grass, sage]) this.geometries.add(geometry);
+    for (const geometry of [...brows,...stones, gravel, grass, sage]) this.geometries.add(geometry);
     const rockMat = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true,
-      emissive: 0x555b54, emissiveIntensity: .12 });
+      emissive: 0x555b54, emissiveIntensity: .08 });
+    // A restrained cool floor keeps the shaded basalt planes readable when
+    // the route looks across the unlit side of a brow.
+    const browMat = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true,
+      emissive: 0x5c6670, emissiveIntensity: .24 });
     const leafMat = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, side: THREE.DoubleSide });
-    this.materials.add(rockMat); this.materials.add(leafMat);
+    this.materials.add(rockMat); this.materials.add(browMat); this.materials.add(leafMat);
     leafMat.onBeforeCompile = shader => {
       shader.uniforms.uChukarWind = this.wind;
       shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uChukarWind;')
@@ -206,11 +218,18 @@ export class ChukarEnvironmentSystem implements Subsystem {
     };
     leafMat.customProgramCacheKey = () => 'chukar-open-sage-wind-v1';
 
-    // Each formation has a strong central rib and lower detached shoulders;
-    // loose stone spills downslope from its foot, rather than random boulders
-    // being distributed at equal density everywhere.
-    for (const formation of formations(area)) {
-      const rng = mulberry32(formation.seed), ribs: Plant[] = [], apron: Plant[] = [];
+    for(const formation of chukarBrows(area)){
+      this.batch(brows[formation.variant],browMat,[{x:formation.x,y:formation.y,sx:formation.length*PROPERTY_PX_TO_M,
+        sy:formation.height,sz:formation.depth,yaw:-formation.angle,color:0xffffff}],1250,true,true);
+      // A chain of small collision discs follows the face, leaving the
+      // bench beside it open. One enormous disc would block the entire shelf.
+    }
+    for(const blocker of chukarBrowBlockers(area)){
+      const p=this.landscape.propertyToWorld(blocker.x,blocker.y,{x:0,z:0});this.obstacles.push({...p,radius:blocker.radius});
+    }
+    // Loose stone spills downslope from each authored formation's foot.
+    for (const formation of chukarBrows(area).map(b=>({...b,yaw:b.angle,seed:seed(Math.round(b.x),Math.round(b.y))}))) {
+      const rng = mulberry32(formation.seed), apron: Plant[] = [];
       for (let n = 0; n < 7; n++) {
         if (n === 5 && rng() < .5) continue;
         const u = n / 6 - .5, x = formation.x + Math.cos(formation.yaw) * u * formation.length,
@@ -218,10 +237,6 @@ export class ChukarEnvironmentSystem implements Subsystem {
         const width = formation.length / 6 * (1.05 + rng() * .4), depth = 5 + rng() * 3;
         if (!this.clear(x, y, Math.max(width, depth) * .6, true)) continue;
         this.landscape.surfaceAtProperty(x, y, this.sample);
-        const height = Math.min(width * .48, formation.height * (.24 + (1 - Math.abs(u) * 1.75) * .30) * (.82 + rng() * .25));
-        // Local X follows the formation. The old quarter-turn put the long
-        // face across the rib and exaggerated its fence-post silhouette.
-        ribs.push({ x, y, sx: width, sy: height, sz: depth, yaw: -formation.yaw + (rng() - .5) * .12, color: STONE[n % STONE.length] });
         const slopeLength = Math.hypot(this.sample.gradeX, this.sample.gradeZ) || 1;
         const dx = -this.sample.gradeX / slopeLength, dy = -this.sample.gradeZ / slopeLength;
         for (let chip = 0; chip < (lite ? 5 : 9); chip++) {
@@ -230,11 +245,13 @@ export class ChukarEnvironmentSystem implements Subsystem {
           if (this.clear(px, py, size * .65)) apron.push({ x: px, y: py, sx: size * 1.5, sy: size * .45, sz: size, yaw: rng() * Math.PI, color: STONE[chip % STONE.length] });
         }
       }
-      this.batch(stones[formation.seed % 3], rockMat, ribs, 1250, true, true);
+      // The Blender kit owns each brow; loose chips connect its foot to the
+      // shared talus ground. Do not stack a second procedural wall over it.
       this.batch(gravel, rockMat, apron, lite ? 150 : 230, false, true);
     }
 
-    const spacing = 3.8;
+    const spacing = 2.35;
+    const zones={talus:0,shelter:0};
     const rockDensityScale = (spacing / 5.4) ** 2;
     for (let ty = area.world.y; ty < area.world.y + area.world.h; ty += TILE) for (let tx = area.world.x; tx < area.world.x + area.world.w; tx += TILE) {
       const bunches: Plant[] = [], bushes: Plant[] = [], chips: Plant[] = [], outcrops: Plant[] = [];
@@ -244,23 +261,25 @@ export class ChukarEnvironmentSystem implements Subsystem {
         if (!this.clear(x, y, .5)) continue;
         this.landscape.surfaceAtProperty(x, y, this.sample);
         const { slope, rockiness, vegetation } = this.sample;
-        const patch = coverAt(area, x, y), band = clamp(.48 + Math.sin(x * .027 + Math.sin(y * .016) * 2) * .30 + Math.cos(y * .034) * .21);
+        chukarGroundZones(x,y,zones);
+        const patch = coverAt(area, x, y), band = clamp(.48 + Math.sin(x * .027 + Math.sin(y * .016) * 2) * .30 + Math.cos(y * .034) * .21+zones.shelter*.25-zones.talus*.25);
         const qualityKeep = rng();
+        let planted=false;
         if (rng() < (.07 + vegetation * .80 + (patch ? .18 : 0)) * (.30 + band * .82) && slope < .95) {
-          const size = .82 + rng() * .80 + (patch ? .32 : 0);
-          if (!lite || qualityKeep > .28) bunches.push({ x, y, sx: size, sy: size, sz: size, yaw: rng() * Math.PI * 2, color: STRAW[Math.floor(rng() * STRAW.length)] });
+          const size = 1.05 + rng() * .65 + (patch ? .20 : 0);
+          if (!lite || qualityKeep > .28){bunches.push({ x, y, sx: size, sy: size, sz: size, yaw: rng() * Math.PI * 2, color: STRAW[Math.floor(rng() * STRAW.length)] });planted=true;}
         }
-        if (rng() < (.018 + vegetation * .15 + (patch ? .06 : 0)) * band && slope < .82 && rockiness < .76) {
+        if (rng() < (.028 + vegetation * .19 + (patch ? .06 : 0)+zones.shelter*.1) * band && slope < .82 && rockiness < .76&&!planted) {
           const size = .95 + rng() * .90;
-          if (!lite || qualityKeep > .30) bushes.push({ x, y, sx: size * 1.22, sy: size, sz: size * 1.12, yaw: rng() * Math.PI * 2, color: SAGE[Math.floor(rng() * SAGE.length)] });
+          if (!lite || qualityKeep > .30){bushes.push({ x, y, sx: size * 1.22, sy: size, sz: size * 1.12, yaw: rng() * Math.PI * 2, color: SAGE[Math.floor(rng() * SAGE.length)] });planted=true;}
         }
         // Low talus needs a continuous scattering, not the sparse density
         // reserved for large outcrops. Keep the trail clearance above.
-        if (rng() < (.26 + rockiness * .40) * (1 - band * .32)) {
+        if (rng() < (.17 + rockiness * .35+zones.talus*.2) * (1 - band * .32)) {
           const size = .18 + rng() * .44;
-          if (!lite || qualityKeep > .40) chips.push({ x, y, sx: size * 1.5, sy: size * .43, sz: size, yaw: rng() * Math.PI * 2, color: STONE[Math.floor(rng() * STONE.length)] });
+          if ((!lite || qualityKeep > .40)&&!planted) chips.push({ x, y, sx: size * 1.5, sy: size * .43, sz: size, yaw: rng() * Math.PI * 2, color: STONE[Math.floor(rng() * STONE.length)] });
         }
-        if (rng() < (.0015 + rockiness * .012) * rockDensityScale && this.clear(x, y, 2.8, true)) {
+        if (rng() < (.0015 + rockiness * .012) * rockDensityScale && !planted && this.clear(x, y, 2.8, true)) {
           const size = 1.4 + rng() * 2.3;
           outcrops.push({ x, y, sx: size * 1.7, sy: size * .75, sz: size, yaw: Math.atan2(this.sample.gradeX, this.sample.gradeZ) + Math.PI / 2, color: STONE[Math.floor(rng() * STONE.length)] });
         }
@@ -283,7 +302,7 @@ export class ChukarEnvironmentSystem implements Subsystem {
         const halfWidth = TRACK_HALF_WIDTH_M / PROPERTY_PX_TO_M;
         const x = a.x + dx * t + rx * across * halfWidth, y = a.y + dy * t + ry * across * halfWidth;
         this.landscape.propertyToWorld(x, y, this.world);
-        return { p: [this.world.x, this.landscape.heightAtProperty(x, y) + .035, this.world.z], c: i === 0 || i === 3 ? edge : dust, alpha: i === 0 || i === 3 ? 0 : .6 };
+        return { p: [this.world.x, this.landscape.heightAtProperty(x, y) + .035, this.world.z], c: i === 0 || i === 3 ? edge : dust, alpha: i === 0 || i === 3 ? 0 : .36 };
       });
       for (let i = 0; i < count; i++) {
         const near = row(i / count), far = row((i + 1) / count);

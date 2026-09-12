@@ -3,24 +3,30 @@ import { PROPERTY_PX_TO_M, type LandscapeModel } from '../../game/landscape';
 import type { Ctx } from '../engine';
 import { buildQuailTerrainGeometry } from './quailTerrain';
 import { quailGroundTiles, quailGroundUsesNear } from './quailGroundGeometry';
+import { chukarGroundZones } from '../../game/chukarLandscape';
 
-const earth = new THREE.Color(0x9d8a70), dust = new THREE.Color(0xbea886);
-const stone = new THREE.Color(0x8d8980), shade = new THREE.Color(0x6d716b), sage = new THREE.Color(0x7e8771);
+const earth = new THREE.Color(0xb59b70), dust = new THREE.Color(0xcbb17d);
+const stone = new THREE.Color(0x85857a), shade = new THREE.Color(0x7f816e), sage = new THREE.Color(0xa1a17c);
+const zones={talus:0,shelter:0};
 const sample = {height:0,slope:0,gradeX:0,gradeZ:0,rockiness:0,vegetation:0,moisture:0};
 
 /** World-anchored scree detail, filtered before individual chips become subpixel. */
-function applyScreeDetail(material: THREE.MeshLambertMaterial, landscape: LandscapeModel): void {
+function applyScreeDetail(material: THREE.MeshLambertMaterial, landscape: LandscapeModel,texture:THREE.Texture): void {
   const origin = landscape.worldToProperty(0, 0, { x: 0, y: 0 });
-  material.customProgramCacheKey = () => 'chukar-scree-v1';
+  material.customProgramCacheKey = () => 'chukar-painted-scree-v2';
   material.onBeforeCompile = shader => {
     shader.uniforms.uScreeOrigin = { value: new THREE.Vector2(origin.x * PROPERTY_PX_TO_M, origin.y * PROPERTY_PX_TO_M) };
+    shader.uniforms.uChukarEarth={value:texture};
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec2 vScreeGround;')
-      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvScreeGround = (modelMatrix * vec4(transformed, 1.)).xz;');
+      .replace('#include <common>', '#include <common>\nvarying vec2 vScreeGround; varying float vRockFace; varying float vRockHeight;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvec3 screeWorld=(modelMatrix * vec4(transformed, 1.)).xyz;vScreeGround=screeWorld.xz;vRockHeight=screeWorld.y;vRockFace=1.-smoothstep(.45,.86,normal.y);');
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
         varying vec2 vScreeGround;
+        varying float vRockFace;
+        varying float vRockHeight;
         uniform vec2 uScreeOrigin;
+        uniform sampler2D uChukarEarth;
         float screeHash(vec2 p) {
           vec3 h = fract(vec3(p.xyx) * .1031);
           h += dot(h, h.yzx + 33.33);
@@ -36,7 +42,16 @@ function applyScreeDetail(material: THREE.MeshLambertMaterial, landscape: Landsc
         vec2 ground = vScreeGround + uScreeOrigin;
         float deposit = screeNoise(ground * .17);
         float soil = screeNoise(ground * 1.4);
-        diffuseColor.rgb *= .89 + deposit * .16 + soil * .10;
+        diffuseColor.rgb *= .94 + deposit * .08 + soil * .045;
+        float paintRange=1.-smoothstep(22.,115.,length(vScreeGround-cameraPosition.xz));
+        if(paintRange>0.){
+          vec3 closePaint=texture2D(uChukarEarth,ground/5.5).rgb;
+          vec3 broadPaint=texture2D(uChukarEarth,mat2(.8,-.6,.6,.8)*ground/13.+.37).rgb;
+          float paintValue=dot(mix(closePaint,broadPaint,.23),vec3(.28,.55,.17));
+          diffuseColor.rgb *= mix(1.,clamp(paintValue*1.85,.60,1.23),paintRange*.83);
+        }
+        float rockBand=smoothstep(.06,.18,fract(vRockHeight*.16+screeNoise(ground*.075)*.2));
+        diffuseColor.rgb *= mix(vec3(1.),vec3(.79,.84,.88)*(.76+.24*rockBand),vRockFace*.8);
         vec2 cells = mat2(.8,-.6,.6,.8) * ground * 2.4;
         vec2 cell = floor(cells);
         float seed = screeHash(cell);
@@ -54,7 +69,7 @@ function applyScreeDetail(material: THREE.MeshLambertMaterial, landscape: Landsc
         float exposed = smoothstep(.2,.6,deposit) * step(.19,seed);
         float facet = local.x + local.y * .55 > 0. ? 1.22 : .87;
         diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.02,1.07,1.14) * facet,
-          chip * exposed * range * resolved * .9);
+          chip * exposed * range * resolved * .38);
       `);
   };
 }
@@ -63,9 +78,12 @@ function paint(landscape:LandscapeModel,x:number,y:number,out:THREE.Color):THREE
   const surface=landscape.surfaceAtProperty(x,y,sample);
   const sweep=.5+.25*Math.sin(x*.019+Math.cos(y*.011)*1.5)+.25*Math.cos(y*.016-x*.007);
   const bedding=.5+.5*Math.sin(surface.height*.63+x*.003);
-  out.copy(earth).lerp(dust,.22+sweep*.28);
+  chukarGroundZones(x,y,zones);
+  out.copy(earth).lerp(dust,.25+sweep*.32);
   out.lerp(sage,surface.vegetation*(1-surface.rockiness)*.34);
   out.lerp(stone,surface.rockiness*(.55+bedding*.30));
+  out.lerp(stone,zones.talus*.42);
+  out.lerp(sage,zones.shelter*.32);
   out.lerp(shade,Math.min(.34,surface.slope*.27));
   return out.multiplyScalar(.89+sweep*.14+bedding*.04);
 }
@@ -77,8 +95,12 @@ export class ChukarTerrain {
   private distant:THREE.Mesh[]=[];
   private material=new THREE.MeshLambertMaterial({vertexColors:true});
   private nearDistance=170;
-  constructor(private landscape:LandscapeModel){applyScreeDetail(this.material,landscape);}
-  init(ctx:Ctx):void {
+  private texture?:THREE.Texture;
+  constructor(private landscape:LandscapeModel){}
+  async init(ctx:Ctx):Promise<void> {
+    this.texture=await new THREE.TextureLoader().loadAsync(`${import.meta.env.BASE_URL}textures/terrain/chukar-dry-ground.webp`);
+    this.texture.wrapS=this.texture.wrapT=THREE.RepeatWrapping;this.texture.anisotropy=4;
+    applyScreeDetail(this.material,this.landscape,this.texture);
     this.nearDistance=ctx.quality==='high'?170:125;
     // Chukar used to keep the high-tier 64-cell near grid on mobile even
     // though the other property terrain paths lower their detail there. The
@@ -111,6 +133,6 @@ export class ChukarTerrain {
   dispose(ctx:Ctx):void {
     for(const tile of this.tiles)for(const mesh of [tile.near,tile.far]){ctx.scene.remove(mesh);mesh.geometry.dispose();}
     for(const mesh of this.distant){ctx.scene.remove(mesh);mesh.geometry.dispose();}
-    this.material.dispose();this.tiles.length=0;this.distant.length=0;
+    this.texture?.dispose();this.material.dispose();this.tiles.length=0;this.distant.length=0;
   }
 }

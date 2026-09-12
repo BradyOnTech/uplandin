@@ -4,6 +4,7 @@ import { LandscapeModel, PROPERTY_PX_TO_M, type GroundSample } from '../../game/
 import { pheasantHomesteadYard, pheasantWestFence } from '../../game/pheasantHabitat';
 import type { Vec2 } from '../../game/types';
 import { pheasantCoverFringeAt, pheasantFields, pheasantPonds, pheasantShelterbelts, samplePheasantHarvest } from '../subsystems/pheasantLandscape';
+import { chukarBrows } from '../../game/chukarLandscape';
 
 export interface SurveyView { center: Vec2; zoom: number }
 export interface SurveyTransform { scale: number; x: number; y: number }
@@ -137,6 +138,13 @@ export function createSurveyAtlas(area:AreaConfig):{canvas:HTMLCanvasElement;con
     g.beginPath();for(const [x1,y1,x2,y2]of surveyContours(raster,level)){g.moveTo(x1*canvas.width,y1*canvas.height);g.lineTo(x2*canvas.width,y2*canvas.height);}g.stroke();
   }
   const pheasant=area.id==='pheasant-coverts',fields=pheasant?pheasantFields(area):[],sample={amount:0,row:0,angle:0};
+  if(area.id==='chukar-ridge')for(const brow of chukarBrows(area)){
+    const [x,y]=point(brow.x,brow.y),half=brow.length*sx*.5,depth=brow.depth/PROPERTY_PX_TO_M*sy;
+    g.save();g.translate(x,y);g.rotate(brow.angle);g.fillStyle='#808575b8';g.strokeStyle='#606c58';g.lineWidth=1;
+    g.beginPath();g.moveTo(-half,-depth*.32);g.lineTo(-half*.7,-depth*.5);g.lineTo(half*.72,-depth*.39);
+    g.lineTo(half,depth*.12);g.lineTo(half*.65,depth*.42);g.lineTo(-half*.8,depth*.38);g.closePath();g.fill();g.stroke();
+    g.strokeStyle='#485844bb';for(let xx=-half*.75;xx<half*.85;xx+=7){g.beginPath();g.moveTo(xx,depth*.27);g.lineTo(xx-2,depth*.65);g.stroke();}g.restore();
+  }
   // Small cartographic marks follow the real habitat union; rectangle seams disappear.
   for(let y=5;y<area.world.h;y+=7)for(let x=5;x<area.world.w;x+=7){
     const px=area.world.x+x+(grain(x,y)-.5)*4,py=area.world.y+y+(grain(y,x)-.5)*4;
