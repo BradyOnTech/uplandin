@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { LocomotionGait } from './locomotion';
 import { createGeneratedGsp, GENERATED_STRIDE } from './generatedGsp';
+import { GeneratedScentMotion, fieldPerformance, type GeneratedFieldIntent } from './generatedScentMotion';
 
 export interface GeneratedRetrievePose { stage: 'pickup' | 'carry' | 'deliver'; holdMs: number; }
 
@@ -19,6 +20,7 @@ export class GeneratedFieldMotion {
   private nominal=new THREE.Vector3();
   private bodyHeight=0;
   private pointPresence=0;
+  readonly scentMotion=new GeneratedScentMotion();
   private pickupPresence=0;
   private carryPresence=0;
   private deliverPresence=0;
@@ -34,7 +36,7 @@ export class GeneratedFieldMotion {
     this.asset=createGeneratedGsp(detail,true);
     this.pose=Object.values(this.asset.joints).map(node=>({node,previousPosition:node.position.clone(),previousRotation:node.quaternion.clone(),fromPosition:node.position.clone(),fromRotation:node.quaternion.clone()}));
   }
-  update(x:number,z:number,yaw:number,dt:number,moving:boolean,point:boolean,retrieve?:GeneratedRetrievePose) {
+  update(x:number,z:number,yaw:number,dt:number,moving:boolean,point:boolean,retrieve?:GeneratedRetrievePose,field?:GeneratedFieldIntent) {
     const root=this.asset.root,ground=this.ground(x,z),distance=this.placed?Math.hypot(x-this.last.x,z-this.last.z):0;
     const depth=this.waterDepth(x,z);
     const wasSwimming=this.swimming;
@@ -49,6 +51,7 @@ export class GeneratedFieldMotion {
       root.updateMatrixWorld(true);
       this.feet.forEach((foot,i)=>{foot.locked=false;foot.initialized=false;this.asset.paws[i].getWorldPosition(foot.target);});
       this.pointPresence=0;this.pickupPresence=0;this.carryPresence=0;this.deliverPresence=0;this.wasMoving=true;
+      this.scentMotion.reset();
       this.last.set(x,ground,z);this.lastYaw=yaw;this.placed=true;
       this.pose.forEach(p=>{p.previousPosition.copy(p.node.position);p.previousRotation.copy(p.node.quaternion);});
       return;
@@ -57,8 +60,12 @@ export class GeneratedFieldMotion {
     const turnRate=reset||dt<=0?0:Math.abs(Math.atan2(Math.sin(yaw-this.lastYaw),Math.cos(yaw-this.lastYaw)))/dt;
     const pivoting=turnRate>1;
     const wasRaised=!this.wasMoving&&this.pointPresence>0;
-    this.pointPresence=reset ? (point&&!moving?1:0)
-      : moving ? 0 : THREE.MathUtils.clamp(this.pointPresence+(point?1:-1)*dt/.28,0,1);
+    const locking=!retrieve&&fieldPerformance(field)==='locking';
+    const pointTarget=moving?0:point?1:locking?THREE.MathUtils.clamp(field!.scentProgress,0,1):0;
+    // Locking already has a shared, finite clock. Lift during that beat and
+    // carry its progress into point instead of starting a second point entry.
+    const pointStep=Math.max(0,dt)/(locking?.18:.28);
+    this.pointPresence=reset?pointTarget:moving?0:this.pointPresence+THREE.MathUtils.clamp(pointTarget-this.pointPresence,-pointStep,pointStep);
     if(reset){this.feet.forEach(f=>{f.locked=false;f.initialized=false;f.step=0;});this.cycle=0;}
     root.position.set(x,ground,z);root.rotation.y=yaw;
     const speed=!reset&&dt>0?distance/dt:0;
@@ -135,6 +142,7 @@ export class GeneratedFieldMotion {
     this.clamped=this.asset.solveWorldFeet(this.targets,this.normals,posedFoot);
     if(posedFoot>=0)this.asset.paws[posedFoot].getWorldPosition(this.feet[posedFoot].target);
     this.pose.forEach(p=>{p.previousPosition.copy(p.node.position);p.previousRotation.copy(p.node.quaternion);});
+    this.scentMotion.update(this.asset,retrieve?undefined:field,moving,this.pointPresence,dt,reset);
     // Retrieval is an upper-body layer. Foot targets and locomotion remain
     // authoritative below; entering a pickup never slides the planted paws.
     const action = point ? undefined : retrieve?.stage;
