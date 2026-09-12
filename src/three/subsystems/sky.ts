@@ -3,6 +3,7 @@ import type { LandscapeModel } from '../../game/landscape';
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
 import { fieldTimeOfDay, type TimeOfDay } from '../palette';
+import { samplePheasantSkyline } from '../pheasantSkyline';
 
 /*
  * SKY subsystem: graded dome, sun disc + glow, layered distant ridges,
@@ -427,17 +428,15 @@ const CHUKAR_RIDGES: RidgeProfile = {
 
 const PHEASANT_RIDGES: RidgeProfile = {
   layers: [
-    { radius: 260, base: -1.5, amp: 12, far: 0, fogMix: 0.02, hazeAmt: 0.3, jag: 0.02, freqs: [3, 8, 19], noiseScale: 0.4, land: true, trees: 4, treeHaze: .25 },
-    { radius: 390, base: 3, amp: 34, far: 0.22, fogMix: 0.12, hazeAmt: 0.58, jag: 0.03, freqs: [2, 7, 17], noiseScale: 0.35, trees: 5, treeHaze: .4 },
-    { radius: 560, base: 8, amp: 58, far: 0.62, fogMix: 0.2, hazeAmt: 0.78, jag: 0.04, freqs: [3, 6, 15], noiseScale: 0.28 },
+    { radius: 420, base: 0, amp: 14, far: 0, fogMix: 0.02, hazeAmt: 0.3, jag: 0, freqs: [3, 8, 19], noiseScale: 0, land: true, treeHaze: .16 },
+    { radius: 750, base: 0, amp: 28, far: 0.38, fogMix: 0.12, hazeAmt: 0.58, jag: 0, freqs: [2, 7, 17], noiseScale: 0, treeHaze: .28 },
+    { radius: 1200, base: 0, amp: 42, far: 0.78, fogMix: 0.2, hazeAmt: 0.78, jag: 0, freqs: [3, 6, 15], noiseScale: 0 },
   ],
-  features: [
-    [{ c: -20, h: 0.5, sl: 35, sr: 55 }, { c: 118, h: 0.4, sl: 45, sr: 32 }],
-    [{ c: 10, h: 0.55, sl: 32, sr: 52 }, { c: 150, h: 0.65, sl: 38, sr: 30 }],
-    [{ c: -65, h: 0.55, sl: 48, sr: 32 }, { c: 110, h: 0.8, sl: 30, sr: 52 }],
-  ],
+  // Pheasant's authored contours and separated shelterbelts are sampled
+  // below. They must not inherit the generic mountain profile generator.
+  features: [[], [], []],
   segments: [768, 640, 512],
-  treeCount: 96,
+  treeCount: 0,
   verticalFollow: .7,
 };
 
@@ -846,6 +845,12 @@ export class SkySystem implements Subsystem {
               treeFrac = THREE.MathUtils.clamp(rise / layer.trees, 0, 1);
             }
           }
+        }
+        if (this.areaId === 'pheasant-coverts') {
+          const prairie = samplePheasantSkyline(l, theta);
+          h = prairie.crest;
+          treeBase = prairie.ground;
+          treeFrac = Math.min(1, prairie.crown / 8);
         }
         // Land ring may sink below the plain (isolated masses); real ridge
         // bands keep their floor so the skyline never gaps.
