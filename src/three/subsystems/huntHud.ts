@@ -97,11 +97,11 @@ export class HuntHudSystem implements Subsystem {
       this.panel.prepend(this.fieldIdentity);
       this.fieldMethod = document.createElement('div');
       this.fieldMethod.id = 'field-method-live';
-      this.fieldMethod.setAttribute('aria-label', `Hunting method: ${doctrine.method}`);
+      this.fieldMethod.setAttribute('aria-label', `Hunting method: ${this.hunt.falconry ? 'Goshawk from the fist' : doctrine.method}`);
       const methodLabel = document.createElement('span');
       methodLabel.className = 'field-method-label'; methodLabel.textContent = 'METHOD';
       const methodCopy = document.createElement('span');
-      methodCopy.className = 'field-method-copy'; methodCopy.textContent = doctrine.method;
+      methodCopy.className = 'field-method-copy'; methodCopy.textContent = this.hunt.falconry ? 'GOSHAWK · FROM THE FIST' : doctrine.method;
       this.fieldMethod.append(methodLabel, methodCopy);
       this.panel.append(this.fieldMethod);
       this.guidance = document.createElement('div'); this.guidance.id = 'field-guidance';
@@ -154,7 +154,8 @@ export class HuntHudSystem implements Subsystem {
       else if (bird.state === 'retrieved') retrieved++;
     }
 
-    const tally = `Bag ${retrieved} · Down ${downOnGround} · Shells ${this.gun.shellsRemaining()}/${this.gun.shellCapacity()}`;
+    const hawk=this.hunt.falconry;
+    const tally = hawk ? `Bag ${hawk.recovered} · Flights ${hawk.flights} · Catches ${hawk.catches}` : `Bag ${retrieved} · Down ${downOnGround} · Shells ${this.gun.shellsRemaining()}/${this.gun.shellCapacity()}`;
     if (retrieved > this.lastRetrieved) this.deliveryNoticeUntil = this.fieldTime + 3;
     this.lastRetrieved = retrieved;
     if (tally !== this.lastTally) {
@@ -174,13 +175,13 @@ export class HuntHudSystem implements Subsystem {
     if (this.panel && encounter !== this.lastEncounter) {
       this.panel.dataset.encounter = encounter; this.lastEncounter = encounter;
     }
-    if (this.endButton) this.endButton.disabled = rise || downOnGround > 0;
+    if (this.endButton) this.endButton.disabled = rise || downOnGround > 0 || !!(hawk && !hawk.canEnd);
     const shells = this.gun.shellsRemaining();
     const capacity = this.gun.shellCapacity();
     const trackingGuidance = trackedDog?.state === 'tracking'
       ? trackingApproachGuidance(dogRange, hunt.areaId, trackedDog.scentStage, trackedDog.waitingForHandler) : null;
     const trackingCue = trackingGuidance?.headline ?? null;
-    const phase = this.gun.isReloading()
+    const phase = hawk ? (hawk.phase === 'fist' ? (trackedDog?.state === 'pointing' ? 'DOG ON POINT · WALK IN FOR THE FLUSH' : trackedDog?.state === 'heel' ? 'HAWK ON FIST · Q SENDS DOG HUNTING' : 'HAWK ON FIST · WORKING COVER') : hawk.phase === 'on-quarry' || hawk.phase === 'settling' ? 'HAWK HAS QUARRY · MAKE IN' : hawk.phase === 'returning' ? 'HAWK RETURNING' : 'GOSHAWK IN PURSUIT') : this.gun.isReloading()
       ? `RELOADING · ${shells}/${capacity}`
       : rise
         ? `${this.hunt.riseLabel() ?? 'BIRD FLUSH'} · shells ${shells}/${capacity}${shells === 0 ? ' · R RELOAD' : ''}`
@@ -254,7 +255,12 @@ export class HuntHudSystem implements Subsystem {
       }
       if (this.guidance) {
         let cue = '';
-        if (!rise && trackedDog?.state === 'pointing' && hunt.areaId === 'pheasant-coverts')
+        if (hawk && !hawk.canEnd) cue = hawk.phase === 'on-quarry' || hawk.phase === 'settling'
+          ? 'Keep the dog at heel. Walk to the hawk and make in.'
+          : hawk.phase === 'returning' ? 'Let the hawk return before sending the dog hunting.'
+          : 'The dog is coming to heel. Watch the flight, or recall your hawk.';
+        else if (hawk && trackedDog?.state === 'pointing') cue = 'Walk toward the point. Follow the dog’s nose, then face the rise and offer a slip.';
+        else if (!rise && trackedDog?.state === 'pointing' && hunt.areaId === 'pheasant-coverts')
           cue = pheasantPointGuidance(dogRange, trackedDog.heading);
         else if (!rise && trackingGuidance) cue = trackingGuidance.detail;
         else if (!rise && trackedDog?.searchAreaChecked && (trackedDog.state === 'recalled' || trackedDog.state === 'heel'))
@@ -275,7 +281,7 @@ export class HuntHudSystem implements Subsystem {
       }
     }
 
-    const complete = huntComplete(hunt) && !rise;
+    const complete = huntComplete(hunt) && !rise && (!hawk || hawk.canEnd);
     if (complete && !this.summaryShown) {
       this.summaryShown = true;
       const careerResult = this.hunt.settleCareer();
@@ -294,7 +300,10 @@ export class HuntHudSystem implements Subsystem {
           ? ` · ${careerResult.dogAwards.map((award) => `${award.name} +${award.gained} XP`).join(' · ')}` +
             ` · hunter +${careerResult.hunterGained} XP · ${careerResult.weeks} week${careerResult.weeks === 1 ? '' : 's'} passed`
           : '';
-        if (hunt.areaId === 'pheasant-coverts') {
+        if (hawk) {
+          const title=this.summary?.querySelector('h2'); if(title)title.textContent='Falconry field notes';
+          this.summaryCopy.textContent=`Flights ${hawk.flights} · Catches ${hawk.catches} · Recovered ${hawk.recovered} · Unsuccessful flights ${hawk.misses} · Recalls ${hawk.recalls} · Points held ${pointFlushes}`;
+        } else if (hunt.areaId === 'pheasant-coverts') {
           const title = this.summary?.querySelector('h2');
           if (title) title.textContent = 'Field notes';
           renderFieldNotes(this.summaryCopy, hunt, this.hunt.dogCount(), this.fieldTime,

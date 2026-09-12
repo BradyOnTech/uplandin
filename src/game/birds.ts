@@ -6,7 +6,7 @@ import type { RNG, Vec2 } from './types';
 import type { RunnerStyle } from './huntDoctrine';
 import { PROPERTY_PX_TO_M } from './worldUnits';
 
-export type BirdState = 'hidden' | 'flushed' | 'downed' | 'carried' | 'escaped' | 'retrieved';
+export type BirdState = 'hidden' | 'flushed' | 'downed' | 'carried' | 'held' | 'escaped' | 'retrieved';
 
 export interface Bird {
   id: number;

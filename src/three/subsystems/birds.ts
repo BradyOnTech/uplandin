@@ -17,6 +17,7 @@ import {
 } from '../../game/shot';
 import { getSpecies, SPECIES, type SpeciesConfig } from '../../game/species';
 import { isSpatialEncounterArea } from '../../game/huntSimulation';
+import { evadeGoshawk, type QuarryTarget } from '../../game/falconry';
 import { huntingDoctrine } from '../../game/huntDoctrine';
 import type { Ctx, Subsystem } from '../engine';
 import { P, fieldTimeOfDay, type TimeOfDay } from '../palette';
@@ -1084,6 +1085,8 @@ export class BirdsSystem implements Subsystem {
           s.vzW *= k;
         }
       }
+      const hawk = this.hunt.falconry;
+      if (hawk?.targetId === s.simId && (hawk.phase === 'launching' || hawk.phase === 'chasing')) evadeGoshawk(s, s.simId, hawk.position);
       this.updatePheasantBank(s, dt);
       s.x += s.vxW * dt;
       s.z += s.vzW * dt;
@@ -1526,6 +1529,17 @@ export class BirdsSystem implements Subsystem {
       }
     }
     return false;
+  }
+
+  quarryTargets(): QuarryTarget[] {
+    return this.slots.filter(s => s.status === 'flying').map(s => ({ id:s.simId,x:s.x,y:s.y,z:s.z,vx:s.vxW,vy:s.vyW,vz:s.vzW }));
+  }
+
+  holdQuarry(id: number, x: number, y: number, z: number): void {
+    const slot = this.slots.find(s => s.simId === id && s.status !== 'idle' && s.status !== 'done');
+    if (!slot) return;
+    slot.status = 'grounded'; slot.x=x; slot.y=y; slot.z=z;
+    slot.launchSound?.stop(); slot.launchSound=undefined;
   }
 
   /** Live positions for swept shot collision; callers must copy retained samples. */

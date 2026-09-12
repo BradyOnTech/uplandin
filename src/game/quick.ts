@@ -12,6 +12,8 @@ import type { WindStrength } from './wind';
  * slot; this is the free-play switch (and the debugging surface).
  */
 export interface QuickConfig {
+  /** First falconry slice: one finished GSP on Cattail Coverts, in 3D. */
+  huntingMethod?: 'shotgun' | 'goshawk';
   breedId: string;
   level: number;
   areaId: string;
@@ -51,7 +53,9 @@ export function cycleId<T>(list: T[], current: T, dir: 1 | -1): T {
 /** Sanitize a stored/edited config back to legal values. */
 export function normalizeQuickConfig(cfg: Partial<QuickConfig>): QuickConfig {
   const base = defaultQuickConfig();
+  if (cfg.huntingMethod === 'goshawk') cfg = { ...cfg, breedId: 'gsp', level: LEVEL_CAP, breed2Id: 'none', areaId: 'pheasant-coverts' };
   return {
+    ...(cfg.huntingMethod ? { huntingMethod: cfg.huntingMethod === 'goshawk' ? 'goshawk' as const : 'shotgun' as const } : {}),
     breedId: BREEDS.some((b) => b.id === cfg.breedId) ? cfg.breedId! : base.breedId,
     level: clamp(Math.round(cfg.level ?? base.level), 1, LEVEL_CAP),
     areaId: AREAS.some((a) => a.id === cfg.areaId) ? cfg.areaId! : base.areaId,

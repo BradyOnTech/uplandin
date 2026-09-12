@@ -1,3 +1,4 @@
+import { GoshawkFlight } from '../../game/falconry';
 import { ShallowWater } from '../../game/shallowWater';
 import { quailGroundPropObstacles } from './quailGroundProps';
 import { getDropPoint, type AreaConfig, type DropPoint } from '../../game/areas';
@@ -188,6 +189,7 @@ export class Hunt3DSystem implements Subsystem {
   private careerSettled = false;
   private gearTier = 0;
   private seedValue?: number;
+  falconry: GoshawkFlight | null = null;
 
   constructor(private readonly landscape: LandscapeModel) {}
 
@@ -205,6 +207,7 @@ export class Hunt3DSystem implements Subsystem {
       : [];
     this.area = setup.area;
     this.hunt = setup.hunt;
+    this.falconry = this.hunt.huntingMethod === 'goshawk' ? new GoshawkFlight() : null;
     const drop = getDropPoint(this.area, this.hunt.dropPointId);
     if (this.landscape.area.id !== this.area.id || this.landscape.dropPoint.id !== drop.id) {
       throw new Error(
@@ -393,6 +396,7 @@ export class Hunt3DSystem implements Subsystem {
       hunterPos: hunterPos,
       hunterRunning: player.isRunning(),
       recall,
+      holdDogs: this.falconry?.holdsDog,
       whistleRange: this.gearTier >= 3 ? Infinity : undefined,
       dogMotion: this.liveDogMotions,
     });
@@ -543,6 +547,12 @@ export class Hunt3DSystem implements Subsystem {
     return resolved;
   }
 
+  bindQuarryWorld(id: number, x: number, z: number): boolean {
+    return this.simulation.bindQuarry(id, this.worldToSim(x,z,{x:0,y:0}));
+  }
+
+  recoverQuarry(id: number): boolean { return this.simulation.recoverQuarry(id); }
+
   /** Convert a presentation-space ground contact into the shared fall. */
   recordFallWorld(birdId: number, worldX: number, worldZ: number): boolean {
     const position = this.worldToSim(worldX, worldZ, { x: 0, y: 0 });
@@ -561,6 +571,7 @@ export class Hunt3DSystem implements Subsystem {
 
   /** Close a world-space field session without inventing escapes from untouched cover. */
   endHunt(): number {
+    if (this.falconry && !this.falconry.canEnd) return 0;
     if (isSpatialEncounterArea(this.area.id)) {
       endFieldSession(this.hunt);
       return 0;

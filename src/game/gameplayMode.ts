@@ -10,7 +10,7 @@ import {
   type StorageLike,
 } from './career';
 import { gearTierFor, twoDogUnlocked } from './progression';
-import { loadQuickConfig, type QuickConfig } from './quick';
+import { loadQuickConfig, normalizeQuickConfig, type QuickConfig } from './quick';
 import {
   ageMult,
   educatedNerveMult,
@@ -64,11 +64,12 @@ export function saveGameplayMode(
 
 export type HuntLaunch =
   | { kind: 'career'; areaId: string }
-  | { kind: 'quick' };
+  | { kind: 'quick'; method?: 'goshawk' };
 
 export function build3DHuntHref(launch: HuntLaunch, dropPointId?: string): string {
   const params = new URLSearchParams({ play: launch.kind });
   if (launch.kind === 'career') params.set('area', launch.areaId);
+  if (launch.kind === 'quick' && launch.method) params.set('method', launch.method);
   if (dropPointId) params.set('drop', dropPointId);
   return `./index3d.html?${params.toString()}`;
 }
@@ -79,7 +80,7 @@ export function parseDropPointId(search: string): string | undefined {
 
 export function parseHuntLaunch(search: string): HuntLaunch | null {
   const params = new URLSearchParams(search);
-  if (params.get('play') === 'quick') return { kind: 'quick' };
+  if (params.get('play') === 'quick') return params.get('method') === 'goshawk' ? { kind: 'quick', method: 'goshawk' } : { kind: 'quick' };
   if (params.get('play') === 'career') {
     const areaId = params.get('area');
     if (areaId) return { kind: 'career', areaId };
@@ -109,7 +110,7 @@ export function resolveThreeHuntProfile(
 ): ThreeHuntProfile {
   const launch = parseHuntLaunch(search);
   if (launch?.kind === 'quick') {
-    const quick = loadQuickConfig(storage);
+    const quick = normalizeQuickConfig({ ...loadQuickConfig(storage), ...(launch.method ? { huntingMethod: launch.method } : {}) });
     return {
       breedId: quick.breedId,
       level: quick.level,
@@ -185,7 +186,7 @@ export function resolveThreeHuntArea(
   storage: StorageLike | null = defaultStorage(),
 ): AreaConfig {
   const launch = parseHuntLaunch(search);
-  if (launch?.kind === 'quick') return getArea(loadQuickConfig(storage).areaId);
+  if (launch?.kind === 'quick') return getArea(launch.method === 'goshawk' ? 'pheasant-coverts' : loadQuickConfig(storage).areaId);
   if (launch?.kind === 'career') return getArea(launch.areaId);
   return getArea(new URLSearchParams(search).get('area') ?? 'quail-fields');
 }
@@ -252,6 +253,7 @@ export function createThreeHuntSetup(
       dropPointId,
     });
     hunt.quick = quick;
+    hunt.huntingMethod = quick.huntingMethod === 'goshawk' ? 'goshawk' : 'shotgun';
     return { ...profile, launch, area, hunt, challenge, seed, breed: getBreed(profile.breedId) };
   }
 

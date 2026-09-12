@@ -307,6 +307,7 @@ export interface DogEnv {
   scentMult?: number;
   /** A whistle blast this tick. Never breaks a point or a retrieve. */
   recall?: boolean;
+  holdForRaptor?: boolean;
   /** How far the recall carries; GPS+map gear recalls at any range. */
   whistleRange?: number;
   /** Where a packmate stands on point — a finished dog stops and backs. */
@@ -505,6 +506,15 @@ export class Dog {
     // Default presentation; branches below overwrite for cast/track/still.
     this.gait = 'run';
     this.scentCheck = false;
+
+    if (env.holdForRaptor) {
+      this.checkedSearchPosition = null;
+      if (this.state !== 'heel' && this.state !== 'recalled') {
+        this.state = 'recalled'; this.pointedBirdId = null;
+        this.markingBirdIds = []; this.checkedSearchPosition = null;
+        this.resetScentApproach();
+      }
+    }
 
     // The whistle only carries so far — a big-running dog can be out of earshot.
     const hearsWhistle = !env.hunterPos || dist(this.pos, env.hunterPos) <= (env.whistleRange ?? WHISTLE_RANGE);

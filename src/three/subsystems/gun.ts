@@ -125,6 +125,7 @@ export class GunSystem implements Subsystem {
     this.terrain = ctx.get<TerrainSystem>('terrain');
     this.gun = getGun(this.hunt.huntState().gunId);
     this.shells = this.gun.shells;
+    if (this.hunt.falconry) return;
     this.reticle = document.getElementById('reticle');
     this.shotCallout = document.getElementById('shot-callout');
 
@@ -286,6 +287,7 @@ export class GunSystem implements Subsystem {
 
   /** Change equipment on the paused field, retaining the hunt and each gun's shells. */
   equipGun(ctx: Ctx, gunId: string): boolean {
+    if (this.hunt.falconry) return false;
     const next = GUNS.find(gun => gun.id === gunId);
     if (!ctx.paused || !this.sporting || !next || this.hunt.huntState().fieldSessionEnded) return false;
     if (next.id === this.gun.id) return true;
@@ -365,6 +367,7 @@ export class GunSystem implements Subsystem {
   }
 
   private fire(ctx: Ctx): void {
+    if (this.hunt.falconry) return;
     if (ctx.paused || this.isReloading()) return;
     if (this.shells <= 0) {
       this.beginReload();
@@ -452,6 +455,7 @@ export class GunSystem implements Subsystem {
   }
 
   update(ctx: Ctx, dt: number): void {
+    if (this.hunt.falconry) return;
     const cam = ctx.camera;
     const snap = this.frozen;
 

@@ -303,3 +303,8 @@ export function playActionClick(): void {
   noise(0, 0.045, 2300, 550, 0.10);
   tone(240, 0, 0.035, { type: 'triangle', volume: 0.04 });
 }
+
+/** Close wing pressure, kept quiet enough to hear the quarry flush. */
+export function playHawkWingbeat(volume = .08): void {
+  noise(0, .14, 700, 180, volume);
+}

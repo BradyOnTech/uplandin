@@ -73,7 +73,7 @@ export class PlayerSystem implements Subsystem {
           let hint = document.getElementById('mouse-look-fallback');
           if (!hint && active) {
             hint = document.createElement('div'); hint.id = 'mouse-look-fallback';
-            hint.textContent = 'Drag to look · F toggles aim · Space shoots';
+            hint.textContent = document.body.classList.contains('falconry-hunt') ? 'Drag to look · Space slips the hawk' : 'Drag to look · F toggles aim · Space shoots';
             document.getElementById('controls')?.append(hint);
           }
           if (hint) hint.hidden = !active;
@@ -140,6 +140,15 @@ export class PlayerSystem implements Subsystem {
   setPose(ctx: Ctx, x: number, z: number, yawDeg: number, pitchDeg = 0): void {
     this.waterDepth = this.water?.depthAtWorld(x, z) ?? 0;
     this.pos.set(x, 0, z); this.yaw = THREE.MathUtils.degToRad(yawDeg); this.pitch = THREE.MathUtils.degToRad(pitchDeg); this.place(ctx);
+  }
+  /** Optional handler-view tracking; movement and mouse look remain grounded. */
+  watchWorld(ctx: Ctx, target: {x:number;y:number;z:number}, dt: number): void {
+    const dx=target.x-ctx.camera.position.x,dz=target.z-ctx.camera.position.z;
+    const yaw=Math.atan2(-dx,-dz),pitch=Math.atan2(target.y-ctx.camera.position.y,Math.hypot(dx,dz));
+    const blend=1-Math.exp(-dt*7);
+    this.yaw+=Math.atan2(Math.sin(yaw-this.yaw),Math.cos(yaw-this.yaw))*blend;
+    this.pitch+=(THREE.MathUtils.clamp(pitch,-1.2,1.2)-this.pitch)*blend;
+    this.place(ctx);
   }
   private place(ctx: Ctx): void {
     const ground = ctx.get<TerrainSystem>('terrain').heightAt(this.pos.x, this.pos.z);

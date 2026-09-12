@@ -13,6 +13,8 @@ import { DogSystem } from './subsystems/dog';
 import { GeneratedDogSystem } from './subsystems/generatedDog';
 import { RiggedDogSystem } from './subsystems/riggedDog';
 import { BirdsSystem } from './subsystems/birds';
+import { FalconrySystem } from './subsystems/falconry';
+import './falconry.css';
 import { GunSystem } from './subsystems/gun';
 import { HuntHudSystem } from './subsystems/huntHud';
 import { FieldMapSystem } from './subsystems/fieldMap';
@@ -82,6 +84,7 @@ if (launchProfile.brace) {
   engine.register(new DogSystem(braceVisualBreed, braceCoat, 1));
 }
 engine.register(new BirdsSystem());
+engine.register(new FalconrySystem());
 engine.register(new GunSystem());
 engine.register(new HuntHudSystem());
 engine.register(new FieldAudioSystem());
@@ -210,6 +213,7 @@ engine.start(fieldInterface.loading).then((started) => {
       for (let tick = 0; tick < ticks; tick++) {
         engine.ctx.get<Hunt3DSystem>('hunt3d').step(engine.ctx, 1);
         engine.ctx.get<BirdsSystem>('birds').step(engine.ctx, 1);
+        engine.ctx.get<FalconrySystem>('falconry').step(engine.ctx, 1000/30);
       }
     },
     stepRise: (ticks) => engine.ctx.get<BirdsSystem>('birds').step(engine.ctx, ticks),
@@ -276,6 +280,7 @@ function readTelemetry() {
   const pointedWorld = pointed ? hunt.simToWorld(pointed.pos.x, pointed.pos.y, { x: 0, z: 0 }) : null;
   return {
     ...engine.telemetry(),
+    falconry: hunt.falconry ? {phase:hunt.falconry.phase, position:{...hunt.falconry.position}, targetId:hunt.falconry.targetId, flights:hunt.falconry.flights, catches:hunt.falconry.catches, recovered:hunt.falconry.recovered, misses:hunt.falconry.misses, recalls:hunt.falconry.recalls} : null,
     camera: { x: camera.position.x, y: camera.position.y, z: camera.position.z,
       yawDeg: camera.rotation.y * 180 / Math.PI, pitchDeg: camera.rotation.x * 180 / Math.PI, fov: camera.fov },
     dog: { ...position, heading: dog.heading, state: dog.state, scentStage: dog.scentStage, carryingBirdId: dog.carryingBirdId },

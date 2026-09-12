@@ -22,6 +22,7 @@ export function emptyDogWork(): DogWork {
 }
 
 export interface HuntState {
+  huntingMethod?: 'shotgun' | 'goshawk';
   areaId: string;
   dropPointId: string;
   birds: Bird[];
@@ -157,7 +158,7 @@ export function endHuntEarly(hunt: HuntState): number {
  * hunts retain endHuntEarly; this policy is selected by the 3D adapter.
  */
 export function endFieldSession(hunt: HuntState): boolean {
-  if (hunt.birds.some((bird) => bird.state === 'flushed' || bird.state === 'downed' || bird.state === 'carried')) {
+  if (hunt.birds.some((bird) => bird.state === 'flushed' || bird.state === 'downed' || bird.state === 'carried' || bird.state === 'held')) {
     return false;
   }
   hunt.fieldSessionEnded = true;
