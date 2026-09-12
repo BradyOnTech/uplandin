@@ -315,13 +315,12 @@ function pheasantLandform(area: AreaConfig): LandformAdapter {
       z: (landmark.position.y - canonical.position.y) * PROPERTY_PX_TO_M + HUNT_WORLD_ANCHOR.z,
       ...pheasantPondRadii(landmark.id),
     }));
-  const wetnessAt = (x: number, z: number): number => {
-    let wetness = 0;
+  const nearestPondRadius = (x: number, z: number): number => {
+    let radius = Infinity;
     for (const pond of ponds) {
-      const d = Math.hypot((x - pond.x) / pond.rx, (z - pond.z) / pond.rz);
-      wetness = Math.max(wetness, Math.exp(-Math.pow(d, 3.2)));
+      radius = Math.min(radius, Math.hypot((x - pond.x) / pond.rx, (z - pond.z) / pond.rz));
     }
-    return wetness;
+    return radius;
   };
   return {
     heightAt(x, z, profile, noise) {
@@ -339,16 +338,18 @@ function pheasantLandform(area: AreaConfig): LandformAdapter {
       }
       // Preserve pond floors AND their existing shoreline, then ease into
       // dry upland relief. Shared water levels and walking barriers stay put.
-      let dryBlend = 1;
-      for (const pond of ponds) {
-        const radius = Math.hypot((x - pond.x) / pond.rx, (z - pond.z) / pond.rz);
-        const t = Math.max(0, Math.min(1, (radius - 1.5) / 1.2));
-        dryBlend = Math.min(dryBlend, t * t * (3 - 2 * t));
-      }
-      return profile.baseHeight + broad + swales + hummocks + dropRise - wetnessAt(x, z) * 3.2 + authored * dryBlend;
+      // Both influences are monotonic in normalized pond radius: the nearest
+      // pond supplies maximum wetness and minimum dry relief. Evaluating that
+      // radius once preserves the surface while avoiding repeated hypot,
+      // power and exponential calls for every terrain/vegetation sample.
+      const radius = nearestPondRadius(x, z);
+      const t = Math.max(0, Math.min(1, (radius - 1.5) / 1.2));
+      const dryBlend = t * t * (3 - 2 * t);
+      const wetness = Math.exp(-Math.pow(radius, 3.2));
+      return profile.baseHeight + broad + swales + hummocks + dropRise - wetness * 3.2 + authored * dryBlend;
     },
     surfaceAt(x, z, _height, slope, _gradeX, _gradeZ, noise, out) {
-      const wet = Math.max(wetnessAt(x, z), noise(x * 0.018 + 4400, z * 0.018 + 4400) * 0.28);
+      const wet = Math.max(Math.exp(-Math.pow(nearestPondRadius(x, z), 3.2)), noise(x * 0.018 + 4400, z * 0.018 + 4400) * 0.28);
       const fertility = noise(x * 0.028 + 360, z * 0.028 + 360) * 0.58
         + noise(x * 0.095 + 1900, z * 0.095 + 1900) * 0.42;
       out.rockiness = Math.max(0, Math.min(1, (slope - 0.26) * 0.5));
