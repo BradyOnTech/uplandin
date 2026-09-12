@@ -16,7 +16,7 @@ Pheasant Coverts is the benchmark for the full user-approved September 8 objecti
 
 **Priority for the next pass**
 
-The user explicitly asked to stop spending disproportionate time on minor refinements. The integrated location, skyline and wing-motion pass is now implemented. Next play through the West Pothole shoreline and open-field approaches, including identification, a shooting opportunity, and return. Judge whether reading the cover and moving ahead produces understandable choices, whether the moving dog can be followed, and whether rises remain varied and exciting. Correct substantial problems exposed by that review; do not resume isolated blade, feather or reporting-tool work by default. Preserve tall, dense core cover. Player feedback remains pending and can redirect this priority.
+The user explicitly declined playing a test now and approved a coordinated batch of world art, South Slough/Old Homestead locations, flush presentation, and first-person shotgun/hands. That implementation and internal review are complete; see `docs/3d/pheasant-presentation-batch.md`. Do not make further progress conditional on a user play session. Their next choice can focus on the remaining dog communication, environmental soundscape, meaningful conditions or loading/rendering efficiency. Ordinary aiming/hunt acceptance and actual phone performance remain required for the broader benchmark, rather than completion criteria for this bounded batch. Preserve tall, dense core cover and avoid returning to isolated blade, feather or reporting-tool work by default.
 
 **Evidence that led to the location pass**
 
