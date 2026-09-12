@@ -93,3 +93,17 @@ it('lifts broken stems into tall cover while keeping the same fixed rendering po
   expect(tall.mesh.visible).toBe(false);
   low.dispose(); tall.dispose();
 });
+
+it('releases fragments at the local cover crown for reeds and open stubble without changing travel', () => {
+  const crown = (x: number) => x > 0 ? 2.25 : .25;
+  const effect = new QuailFlushDebris('lite', () => 10, 'tall-cover', crown);
+  effect.launch(5, 0, 1, 0, 73); effect.launch(-5, 0, 1, 0, 73); effect.render();
+  const p = effect.mesh.geometry.attributes.position;
+  for (let i = 0; i < 8; i++) {
+    const tallY = (p.getY(i * 4) + p.getY(i * 4 + 2)) * .5 - 10;
+    const lowY = (p.getY((i + 8) * 4) + p.getY((i + 8) * 4 + 2)) * .5 - 10;
+    expect(tallY).toBeGreaterThan(2.25 * .65); expect(tallY).toBeLessThan(2.25 * .95);
+    expect(tallY / lowY).toBeCloseTo(9, 3);
+  }
+  effect.dispose();
+});

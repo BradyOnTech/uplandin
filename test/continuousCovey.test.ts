@@ -147,7 +147,7 @@ describe('continuous Quail coveys', () => {
         f.add(1,1,4,0); f.birds[0].speciesId='ringneck';f.birds[0].sex=sex;
         f.runtime.applySpeciesAppearance=(slot: any,species:any,sex:any)=>{slot.species=species;slot.sex=sex;};
         f.runtime.tickBirds(1000/30);
-        expect(sound).toHaveBeenLastCalledWith(Math.hypot(4,.2),sex==='rooster',expect.objectContaining({x:4,y:.2,z:0}));
+        expect(sound).toHaveBeenLastCalledWith(Math.hypot(4,.2),sex==='rooster',expect.objectContaining({x:4,y:.2,z:0}),expect.objectContaining({flapRate:9,phaseOffset:0,seed:expect.any(Number)}));
         for(let i=0;i<10;i++)f.runtime.tickBirds(1000/30);
       }
       expect(sound).toHaveBeenCalledTimes(2);
@@ -155,7 +155,7 @@ describe('continuous Quail coveys', () => {
     } finally {sound.mockRestore();flutter.mockRestore();}
   });
   it('updates a launched sound with moving bird and listener, then stops it on slot reuse', () => {
-    const handle={active:true,updateSpatial:vi.fn(),stop:vi.fn()};
+    const handle={active:true,updateSpatial:vi.fn((_distance:number,direction:any)=>({...direction})),updateCoverSpatial:vi.fn(),stop:vi.fn()};
     const sound=vi.spyOn(audio,'playPheasantFlush').mockReturnValue(handle);
     try {
       const f=fixture();f.runtime.frozen=false;f.add(1,1,4,0);f.birds[0].speciesId='ringneck';
@@ -165,7 +165,7 @@ describe('continuous Quail coveys', () => {
       const render=()=> (f.runtime as unknown as {update(ctx:unknown,dt:number):void}).update({camera},0);
       render();expect(handle.updateSpatial).toHaveBeenLastCalledWith(Math.hypot(4,.2),expect.objectContaining({x:4,y:.2,z:0}));
       camera.rotation.y=Math.PI;render();expect(handle.updateSpatial.mock.calls.at(-1)![1].x).toBeCloseTo(-4);
-      slot.x=8;camera.position.x=2;render();expect(handle.updateSpatial.mock.calls.at(-1)![0]).toBe(Math.hypot(6,.2));expect(handle.updateSpatial.mock.calls.at(-1)![1].x).toBeCloseTo(-6);
+      slot.x=8;camera.position.x=2;render();expect(handle.updateCoverSpatial).toHaveBeenLastCalledWith(Math.hypot(2,.2),expect.objectContaining({x:-2,y:.2,z:expect.any(Number)}));expect(handle.updateSpatial.mock.calls.at(-1)![0]).toBe(Math.hypot(6,.2));expect(handle.updateSpatial.mock.calls.at(-1)![1].x).toBeCloseTo(-6);
       camera.position.set(0,0,0);camera.rotation.set(0,0,0);Object.assign(slot,{x:0,y:0,z:-4});
       render();expect(handle.updateSpatial.mock.calls.at(-1)![1].z).toBe(-4);
       camera.rotation.y=Math.PI;render();expect(handle.updateSpatial.mock.calls.at(-1)![1].z).toBeCloseTo(4);
@@ -174,6 +174,17 @@ describe('continuous Quail coveys', () => {
       slot.status='done';f.add(2,2,9,0);f.birds[1].speciesId='ringneck';f.runtime.tickBirds(1000/30);
       expect(handle.stop).toHaveBeenCalledOnce();
       handle.active=false;render();expect(slot.launchSound).toBeUndefined();
+    } finally {sound.mockRestore();}
+  });
+  it('ends airborne wing and call audio when the bird is hit', () => {
+    const handle={active:true,updateSpatial:vi.fn(),stop:vi.fn()};
+    const sound=vi.spyOn(audio,'playPheasantFlush').mockReturnValue(handle);
+    try {
+      const f=fixture();f.runtime.frozen=false;f.add(1,1,4,0);f.birds[0].speciesId='ringneck';
+      f.runtime.tickBirds(1000/30);expect(sound).toHaveBeenCalledOnce();
+      expect(f.runtime.downBird(1)).toBe(true);expect(handle.stop).toHaveBeenCalledOnce();
+      expect(f.runtime.slots[0].launchSound).toBeUndefined();
+      expect(f.runtime.downBird(1)).toBe(false);expect(handle.stop).toHaveBeenCalledOnce();
     } finally {sound.mockRestore();}
   });
   it('positions a delayed pheasant sound against the current listener rather than the original flush camera', () => {
@@ -185,7 +196,7 @@ describe('continuous Quail coveys', () => {
       const slot=f.runtime.slots[0];Object.assign(slot,{status:'waiting',delayMs:30,x:4,z:0});
       const camera=new THREE.PerspectiveCamera();camera.position.set(12,2,0);
       f.runtime.listener=camera;f.runtime.frozen=false;f.runtime.tickBirds(1000/30);
-      expect(sound).toHaveBeenLastCalledWith(Math.hypot(8,1.8),false,expect.objectContaining({x:-8,y:-1.8,z:0}));
+      expect(sound).toHaveBeenLastCalledWith(Math.hypot(8,1.8),false,expect.objectContaining({x:-8,y:-1.8,z:0}),expect.objectContaining({flapRate:9}));
       Object.assign(slot,{status:'waiting',delayMs:30});camera.rotation.y=Math.PI/2;
       f.runtime.tickBirds(1000/30);
       expect(sound.mock.calls.at(-1)![2]!.x).toBeCloseTo(0,6);

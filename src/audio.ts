@@ -1,3 +1,4 @@
+import { synthesizePheasantLaunch, PHEASANT_AUDIO_RATE, type PheasantLaunchVoice } from './three/pheasantFlushAudio';
 /**
  * Procedural sound effects — no audio assets, everything is synthesized
  * with WebAudio. Mobile browsers require a user gesture before audio can
@@ -132,52 +133,68 @@ export interface SoundDirection { x: number; y: number; z: number }
 export interface PheasantFlushSound {
   readonly active: boolean;
   updateSpatial(distanceM: number, direction: SoundDirection): void;
+  updateCoverSpatial?(distanceM: number, direction: SoundDirection): void;
   stop(): void;
 }
 
-export function playPheasantFlush(distanceM: number, rooster: boolean, source: SoundDirection = { x: 0, y: 0, z: -1 }): PheasantFlushSound | undefined {
+export function playPheasantFlush(distanceM: number, rooster: boolean,
+  source: SoundDirection = { x: 0, y: 0, z: -1 }, voice: PheasantLaunchVoice = {}): PheasantFlushSound | undefined {
   const c = ready();
   if (!c) return;
-  const direction = c.createPanner(), distanceGain = c.createGain();
-  direction.panningModel = 'HRTF';
-  direction.rolloffFactor = 0; // The existing distance gain owns attenuation.
-  const position = (source: SoundDirection, smooth: boolean) => {
-    const length = Math.hypot(source.x, source.y, source.z);
-    const valid = Number.isFinite(length) && length > .001;
-    const values = valid ? [source.x / length, source.y / length, source.z / length] : [0, 0, -1];
-    [direction.positionX, direction.positionY, direction.positionZ].forEach((param, i) => {
-      if (smooth) param.setTargetAtTime(values[i], c.currentTime, .025);
-      else param.value = values[i];
-    });
-  };
   const proximity = (distance: number) => 1 / (1 + (Number.isFinite(distance) ? Math.max(0, distance) : 0) / 18);
-  position(source, false);
-  distanceGain.gain.value = proximity(distanceM);
-  distanceGain.connect(direction).connect(output(c));
-  let active = true;
+  const route = () => {
+    const direction = c.createPanner(), distanceGain = c.createGain();
+    direction.panningModel = 'HRTF';
+    direction.rolloffFactor = 0;
+    distanceGain.connect(direction).connect(output(c));
+    const position = (distance: number, offset: SoundDirection, smooth: boolean) => {
+      const length = Math.hypot(offset.x, offset.y, offset.z);
+      const valid = Number.isFinite(length) && length > .001;
+      const x = valid ? offset.x / length : 0, y = valid ? offset.y / length : 0, z = valid ? offset.z / length : -1;
+      if (smooth) {
+        direction.positionX.setTargetAtTime(x, c.currentTime, .025);
+        direction.positionY.setTargetAtTime(y, c.currentTime, .025);
+        direction.positionZ.setTargetAtTime(z, c.currentTime, .025);
+        distanceGain.gain.setTargetAtTime(proximity(distance), c.currentTime, .025);
+      } else {
+        direction.positionX.value = x; direction.positionY.value = y; direction.positionZ.value = z;
+        distanceGain.gain.value = proximity(distance);
+      }
+    };
+    position(distanceM, source, false);
+    return { direction, distanceGain, position };
+  };
+  const wings = route(), cover = route();
+  let active = true, coverActive = true;
+  const sources: AudioBufferSourceNode[] = [];
+  const releaseCover = () => {
+    if (!coverActive) return;
+    coverActive = false;
+    cover.distanceGain.disconnect(); cover.direction.disconnect();
+  };
   const handle: PheasantFlushSound = {
     get active() { return active; },
-    updateSpatial(distance, nextDirection) {
-      if (!active) return;
-      position(nextDirection, true);
-      distanceGain.gain.setTargetAtTime(proximity(distance), c.currentTime, .025);
-    },
+    updateSpatial(distance, nextDirection) { if (active) wings.position(distance, nextDirection, true); },
+    updateCoverSpatial(distance, nextDirection) { if (active && coverActive) cover.position(distance, nextDirection, true); },
     stop() {
       if (!active) return;
       active = false;
-      distanceGain.disconnect(); direction.disconnect();
+      for (const source of sources) { source.stop(); source.disconnect(); }
+      releaseCover();
+      wings.distanceGain.disconnect(); wings.direction.disconnect();
     },
   };
-  noise(0, .18, 2600, 600, .42, distanceGain);
-  for (let beat = 0; beat < 8; beat++) {
-    const envelope = Math.exp(-beat * .19);
-    // Audio-clock completion releases both shared routing nodes, even if
-    // the game stops rendering before this final wing wash finishes.
-    noise(beat * .085, .065, 1700, 380, .48 * envelope, distanceGain,
-      beat === 7 ? () => handle.stop() : undefined);
-    tone(105, beat * .085, .055, {type:'triangle',volume:.08 * envelope,slideTo:65,destination:distanceGain});
-  }
-  if (rooster) playCackle(1, distanceGain);
+  const samples = synthesizePheasantLaunch(rooster, voice);
+  const play = (data: Float32Array, destination: AudioNode, ended: () => void) => {
+    const buffer = c.createBuffer(1, data.length, PHEASANT_AUDIO_RATE);
+    buffer.getChannelData(0).set(data);
+    const node = c.createBufferSource(); node.buffer = buffer;
+    node.connect(destination); sources.push(node);
+    node.onended = () => { node.disconnect(); ended(); };
+    node.start();
+  };
+  play(samples.cover, cover.distanceGain, releaseCover);
+  play(samples.flight, wings.distanceGain, () => handle.stop());
   return handle;
 }
 

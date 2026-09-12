@@ -25,7 +25,8 @@ export class QuailFlushDebris {
   private visibleCount = 0;
 
   constructor(quality: Quality, private readonly ground: (x: number, z: number) => number,
-    private readonly profile: 'ground' | 'tall-cover' = 'ground') {
+    private readonly profile: 'ground' | 'tall-cover' = 'ground',
+    private readonly crownHeight?: (x: number, z: number) => number) {
     this.capacity = quality === 'lite' ? 56 : 112;
     this.piecesPerBird = profile === 'tall-cover' ? (quality === 'lite' ? 8 : 14) : (quality === 'lite' ? 4 : 8);
     this.fragments = Array.from({ length: this.capacity }, () => ({
@@ -57,6 +58,7 @@ export class QuailFlushDebris {
   launch(x: number, z: number, forwardX: number, forwardZ: number, seed: number): void {
     const rng = mulberry32(seed ^ 0x7b315a);
     const base = this.ground(x, z);
+    const crown = this.crownHeight?.(x, z);
     this.launchCount++;
     for (let i = 0; i < this.piecesPerBird; i++) {
       const piece = this.fragments[this.cursor];
@@ -67,7 +69,10 @@ export class QuailFlushDebris {
       piece.age = 0;
       piece.life = .85 + rng() * .65;
       piece.x = x + Math.cos(angle) * .12;
-      piece.y = base + (this.profile === 'tall-cover' ? .75 + rng() * .5 : .12 + rng() * .2);
+      const heightRoll = rng();
+      piece.y = base + (this.profile === 'tall-cover'
+        ? crown !== undefined && Number.isFinite(crown) ? Math.max(.12, crown) * (.65 + heightRoll * .30) : .75 + heightRoll * .5
+        : .12 + heightRoll * .2);
       piece.z = z + Math.sin(angle) * .12;
       piece.vx = Math.cos(angle) * outward + forwardX * .65;
       piece.vy = 1.5 + rng() * 2.9;

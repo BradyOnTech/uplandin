@@ -1,3 +1,4 @@
+import { pheasantWingPhase } from '../pheasantWingMotion';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -128,7 +129,7 @@ export function buildPheasantWing(side:-1|1,hen=false):THREE.BufferGeometry {
  * Values depend only on the flight clock, so pause and capture agree. */
 export function pheasantWingbeat(seconds:number,hz:number,climb:number,phaseOffset=0):{angle:number;recovery:number} {
   const burst=Math.exp(-Math.max(0,seconds)/.55);
-  const phase=(seconds*hz+1.1*(1-burst))*Math.PI*2+phaseOffset;
+  const phase=pheasantWingPhase(seconds,hz,phaseOffset);
   return {
     angle:.05+Math.sin(phase)*(.58+climb*.28+burst*.28),
     // Positive angular velocity raises the wings. Open before the next

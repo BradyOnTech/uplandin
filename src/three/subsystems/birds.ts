@@ -261,6 +261,9 @@ interface Slot {
    * each species' flight data and map doctrine. */
   spatialFlight?: QuailFlight;
   launchSound?: PheasantFlushSound;
+  launchOriginX?: number;
+  launchOriginY?: number;
+  launchOriginZ?: number;
   flight?: FlightContext;
   status: SlotStatus;
   simId: number;
@@ -372,6 +375,7 @@ export class BirdsSystem implements Subsystem {
   private hunt!: Hunt3DSystem;
   private terrain!: TerrainSystem;
   private soundOffset = new THREE.Vector3();
+  private coverSoundOffset = new THREE.Vector3();
   private soundInverse = new THREE.Quaternion();
   private listener?: THREE.Camera;
   private frozen = false;
@@ -505,8 +509,10 @@ export class BirdsSystem implements Subsystem {
 
     this.buildPool(ctx);
     if (this.spatialEncounter) {
+      const pheasant = this.hunt.areaConfig().id === 'pheasant-coverts';
+      const cover = pheasant ? ctx.get<Subsystem & { launchHeightAt?(x: number, z: number): number }>('grass') : undefined;
       this.launchCover = new QuailFlushDebris(ctx.quality, (x, z) => this.terrain.heightAt(x, z),
-        this.hunt.areaConfig().id === 'pheasant-coverts' ? 'tall-cover' : 'ground');
+        pheasant ? 'tall-cover' : 'ground', cover?.launchHeightAt ? (x, z) => cover.launchHeightAt!(x, z) : undefined);
       ctx.scene.add(this.launchCover.mesh);
     } else this.buildDebris(ctx);
     this.buildFeathers(ctx);
@@ -1473,7 +1479,11 @@ export class BirdsSystem implements Subsystem {
       if (this.listener) offset.sub(this.listener.position).applyQuaternion(this.listener.quaternion.clone().invert());
       else offset.sub(new THREE.Vector3(this.hunterX, 0, this.hunterZ));
       slot.launchSound?.stop();
-      slot.launchSound = playPheasantFlush(offset.length(), slot.sex === 'rooster', offset);
+      slot.launchOriginX = slot.x; slot.launchOriginY = slot.y; slot.launchOriginZ = slot.z;
+      slot.launchSound = playPheasantFlush(offset.length(), slot.sex === 'rooster', offset, {
+        seed: (slot.simId * 0x9e3779b9 + this.riseSeq * 0x85ebca6b) >>> 0,
+        flapRate: slot.species.flight.flapRate ?? 9, phaseOffset: slot.wobblePh * .35,
+      });
     }
     this.coverEvents?.dispatchEvent(new CustomEvent('bird-cover-disturbance', {
       detail: { x: slot.x, z: slot.z },
@@ -1506,6 +1516,8 @@ export class BirdsSystem implements Subsystem {
       const s = this.slots[i];
       if (s.simId === simId && s.status === 'flying') {
         s.status = 'falling';
+        s.launchSound?.stop();
+        s.launchSound = undefined;
         if (this.spatialEncounter && s.species.id === 'ringneck') {
           s.fallPose = { startMs: s.airMs, rotation: s.root.rotation.clone() };
         }
@@ -1659,6 +1671,14 @@ export class BirdsSystem implements Subsystem {
           this.soundInverse.copy(ctx.camera.quaternion).invert();
           this.soundOffset.applyQuaternion(this.soundInverse);
           s.launchSound.updateSpatial(distance, this.soundOffset);
+          // The broken stems stay behind as the wings pull away. Update
+          // their bearing for head turns and walking without moving the source.
+          if (s.launchOriginX !== undefined) {
+            this.coverSoundOffset.set(s.launchOriginX, s.launchOriginY!, s.launchOriginZ!).sub(ctx.camera.position);
+            const coverDistance = this.coverSoundOffset.length();
+            this.coverSoundOffset.applyQuaternion(this.soundInverse);
+            s.launchSound.updateCoverSpatial?.(coverDistance, this.coverSoundOffset);
+          }
         }
       }
       const visible = s.status === 'flying' || s.status === 'falling' || s.status === 'grounded';
