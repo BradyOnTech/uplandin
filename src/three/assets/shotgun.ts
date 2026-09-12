@@ -8,6 +8,8 @@ export interface SportingShotgun {
   root: THREE.Group;
   /** Rig-local bead position, used to verify the camera's actual sight line. */
   bead: THREE.Vector3;
+  /** Cosmetic action clock starts on the shot, independently of frame rate. */
+  fire(): void;
   update(reloadElapsed: number, reloadDuration: number, missingShells: number, recoil: number, dt: number): void;
   dispose(): void;
 }
@@ -116,14 +118,14 @@ class Batch {
 export function createSportingShotgun(action: 'pump' | 'semi-auto'): SportingShotgun {
   const root = new THREE.Group(); root.name = action === 'pump' ? 'Sporting pump' : 'Sporting semiautomatic';
   const materials = {
-    steel: new THREE.MeshStandardMaterial({ color: 0x2d3945, metalness: .32, roughness: .50 }),
-    edge: new THREE.MeshStandardMaterial({ color: 0x45515b, metalness: .4, roughness: .53 }),
+    steel: new THREE.MeshStandardMaterial({ color: 0x354047, metalness: .22, roughness: .72, flatShading: true }),
+    edge: new THREE.MeshStandardMaterial({ color: 0x51585a, metalness: .30, roughness: .65, flatShading: true }),
     black: new THREE.MeshStandardMaterial({ color: 0x131919, metalness: .12, roughness: .82 }),
-    wood: new THREE.MeshStandardMaterial({ color: 0x68452f, roughness: .62 }),
-    grain: new THREE.MeshStandardMaterial({ color: 0x482d1f, roughness: .63 }),
-    glove: new THREE.MeshStandardMaterial({ color: 0xb49b70, roughness: .90 }),
+    wood: new THREE.MeshStandardMaterial({ color: 0x70503a, roughness: .86, flatShading: true }),
+    grain: new THREE.MeshStandardMaterial({ color: 0x49382b, roughness: .9 }),
+    glove: new THREE.MeshStandardMaterial({ color: 0xa28f69, roughness: .96 }),
     seam: new THREE.MeshStandardMaterial({ color: 0x766747, roughness: .94 }),
-    cuff: new THREE.MeshStandardMaterial({ color: 0x414b3d, roughness: 1 }),
+    cuff: new THREE.MeshStandardMaterial({ color: 0x414b3d, roughness: 1, flatShading: true }),
     brass: new THREE.MeshStandardMaterial({ color: 0xb89c55, metalness: .48, roughness: .4 }),
     shell: new THREE.MeshStandardMaterial({ color: 0x9e382b, roughness: .61 }),
   };
@@ -204,45 +206,84 @@ export function createSportingShotgun(action: 'pump' | 'semi-auto'): SportingSho
   }
   const left = supportHand(); root.add(left);
   const h = new Batch();
-  h.sphere([.019, .030, .042], [.030, -.035, .112], materials.glove);
+  h.add(loft([
+    { z: .081, y: -.037, x: .027, width: .014, height: .019 },
+    { z: .104, y: -.043, x: .030, width: .020, height: .027 },
+    { z: .137, y: -.051, x: .029, width: .018, height: .025 },
+    { z: .154, y: -.056, x: .027, width: .015, height: .020 },
+  ], 10), materials.glove);
   // Three curled grip fingers, with a distinct index alongside the guard.
   for (let i = 0; i < 3; i++) {
     const z = .096 + i * .018;
     h.add(tube([[.034, -.025, z], [.039, -.043, z], [.026, -.060, z], [.006, -.063, z]], [.009, .009, .008, .0065], 8), materials.glove);
   }
   h.add(tube([[.033, -.021, .096], [.031, -.027, .071], [.018, -.037, .048], [.008, -.043, .050]], [.009, .008, .007, .006], 8), materials.glove);
-  h.add(tube([[.014, -.019, .119], [-.006, -.006, .103], [-.02, -.01, .077]], [.011, .010, .008], 8), materials.glove);
+  h.add(tube([[.020, -.026, .134], [.005, -.015, .119], [-.015, -.018, .103], [-.019, -.025, .090]], [.010, .009, .008, .0065], 8), materials.glove);
+  h.add(tube([[.046, -.039, .098], [.050, -.043, .117], [.044, -.054, .139]], [.0008, .0009, .0008], 4), materials.seam);
   h.add(loft([{ z: .15, y: -.053, width: .023, height: .023, x: .028 }, { z: .177, y: -.065, width: .029, height: .026, x: .028 }], 10), materials.seam);
   h.add(loft([{ z: .18, y: -.067, width: .032, height: .029, x: .028 }, { z: .28, y: -.108, width: .048, height: .039, x: .044 }], 10), materials.cuff);
   root.add(h.build('Right glove and canvas cuff'));
 
+  // A separate pinching grip holds a horizontal shell beneath the loading
+  // port. Reusing the broad forend grip here made the shell float in an open claw.
+  const loading = new THREE.Group(); loading.name = 'Loading grip'; root.add(loading);
+  const lh = new Batch();
+  lh.add(loft([{ z: .033, y: -.025, x: -.029, width: .019, height: .020 },
+    { z: -.005, y: -.019, x: -.025, width: .023, height: .018 },
+    { z: -.025, y: -.017, x: -.018, width: .017, height: .014 }], 10), materials.glove);
+  for (let i = 0; i < 3; i++) {
+    const z = -.019 + i * .014;
+    lh.add(tube([[-.026, -.025, z], [-.004, -.028, z], [.012, -.015, z], [.011, -.001, z]],
+      [.0075, .0075, .007, .006], 8), materials.glove);
+  }
+  lh.add(tube([[-.036, -.015, .022], [-.021, .007, .027], [-.001, .006, .032]], [.010, .009, .007], 8), materials.glove);
+  lh.add(loft([{ z: .031, y: -.028, x: -.029, width: .023, height: .022 },
+    { z: .052, y: -.035, x: -.035, width: .027, height: .025 }], 10), materials.seam);
+  lh.add(loft([{ z: .053, y: -.035, x: -.035, width: .031, height: .027 },
+    { z: .19, y: -.097, x: -.065, width: .041, height: .035 }], 10), materials.cuff);
+  loading.add(lh.build('Shell-loading left glove'));
   const shellBatch = new Batch();
-  shellBatch.add(new THREE.CylinderGeometry(.0084, .0084, .046, 12), materials.shell, [.025, -.046, -.011]);
-  shellBatch.add(new THREE.CylinderGeometry(.0088, .0088, .009, 12), materials.brass, [.025, -.073, -.011]);
-  const shell = shellBatch.build('Visible loading shell'); shell.visible = false; root.add(shell);
-  let lastRecoil = 0;
+  shellBatch.cylinder(.0084, .046, [0, 0, 0], materials.shell);
+  shellBatch.cylinder(.0088, .009, [0, 0, .027], materials.brass);
+  const shell = shellBatch.build('Visible loading shell'); loading.add(shell);
+  loading.visible = false;
   let pumpAge = 10;
+  const smooth = (n: number) => { const t = THREE.MathUtils.clamp(n, 0, 1); return t * t * (3 - 2 * t); };
   return {
     root, bead,
+    fire() { pumpAge = 0; },
     update(elapsed, duration, missing, recoil, dt) {
-      if (recoil > lastRecoil + .002 && lastRecoil < .003) pumpAge = 0;
-      lastRecoil = recoil; pumpAge += dt;
-      const pump = action === 'pump' ? .078 * Math.sin(Math.PI * THREE.MathUtils.clamp((pumpAge - .09) / .32, 0, 1)) : 0;
+      pumpAge += dt;
+      const pump = action === 'pump' ? .078 * (smooth((pumpAge - .08) / .14) - smooth((pumpAge - .22) / .22)) : 0;
       forend.position.z = pump;
       const reloading = duration > 0;
       const progress = reloading ? Math.min(1, elapsed / duration) : 0;
       const lift = reloading ? Math.min(1, progress / .20, (1 - progress) / .15) : 0;
       const shellPhase = (elapsed - .55) / .38;
-      const loading = reloading && shellPhase >= 0 && shellPhase < missing;
+      const loadingShell = reloading && shellPhase >= 0 && shellPhase < missing;
       const phase = shellPhase - Math.floor(shellPhase);
-      const insert = loading ? Math.sin(phase * Math.PI) : 0;
-      // The support hand leaves the forend and visibly brings each missing
-      // shell to the underside loading port. Capacity/timing remain in GunSystem.
-      left.position.set(.020 * lift, -.034 * lift + insert * .024, .238 * lift + (reloading ? 0 : pump));
-      left.rotation.z = -.34 * lift;
-      shell.visible = loading && phase < .78;
-      shell.position.set(-.020 * lift, -.055 + insert * .075, 0);
-      bolt.position.z = reloading ? .03 * Math.max(0, 1 - elapsed / .4) : action === 'pump' ? pump * .65 : Math.min(.055, Math.max(0, recoil * 1.7));
+      const insert = smooth(phase / .66);
+      const withdraw = smooth((phase - .78) / .22);
+      const returning = reloading && shellPhase >= missing - .22;
+      const returnMix = smooth((shellPhase - missing + .22) / .22);
+      left.visible = !loadingShell || returning;
+      left.position.set(-.055 * lift, -.13 * lift, .15 * lift + (reloading ? 0 : pump));
+      left.rotation.z = -.22 * lift;
+      // After the final insertion the open support grip returns from the
+      // port to the forend, finishing at the exact ready pose before the
+      // gameplay reload clock clears. There is no last-frame hand teleport.
+      if (returning) {
+        left.position.set(-.025 * (1 - returnMix), 0, .23 * (1 - returnMix));
+        left.rotation.z = 0;
+      }
+      loading.visible = loadingShell && !returning;
+      loading.position.set(-.065 * (1 - insert + withdraw), -.14 + .106 * insert - .10 * withdraw,
+        .09 - .10 * insert + .06 * withdraw);
+      loading.rotation.set(.12 * (1 - insert), 0, -.18 * (1 - insert));
+      shell.visible = phase < .78;
+      shell.position.set(0, .008 * smooth((phase - .55) / .23), -.022 * smooth((phase - .55) / .23));
+      bolt.position.z = reloading ? .03 * Math.max(0, 1 - elapsed / .4) : action === 'pump' ? pump * .65
+        : .055 * (smooth(pumpAge / .035) - smooth((pumpAge - .035) / .065));
     },
     dispose() {
       root.traverse((object) => { if (object instanceof THREE.Mesh) object.geometry.dispose(); });

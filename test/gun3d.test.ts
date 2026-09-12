@@ -8,6 +8,28 @@ vi.mock('../src/audio', () => ({ playShot: vi.fn(), unlockAudio: vi.fn(), playAc
 describe('3D shotgun action', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it('keeps recoil strength and recovery identical through fast, slow and uneven frames', () => {
+    const advance = (steps: number[]) => {
+      const gun = new GunSystem(); gun.kick(1);
+      for (const dt of steps) (gun as unknown as { advance(dt: number): void }).advance(dt);
+      return { ...gun.recoilOffset() };
+    };
+    for (const duration of [.1, .3, .6]) {
+      const reference = advance(Array.from({ length: Math.round(duration * 120) }, () => 1 / 120));
+      for (const fps of [10, 30, 60]) {
+        const slow = advance(Array.from({ length: Math.round(duration * fps) }, () => 1 / fps));
+        expect(slow.z).toBeCloseTo(reference.z, 10);
+        expect(slow.pitch).toBeCloseTo(reference.pitch, 10);
+      }
+      const uneven = advance([.013, .027, .06, ...(duration > .1 ? [duration - .1] : [])]);
+      expect(uneven.z).toBeCloseTo(reference.z, 10);
+      expect(uneven.pitch).toBeCloseTo(reference.pitch, 10);
+    }
+    expect(advance([.1]).z).toBeGreaterThan(0);
+    expect(advance([.1]).pitch).toBeGreaterThan(0);
+    expect(Math.abs(advance([.6]).z)).toBeLessThan(.002);
+  });
+
   it.each(['pheasant-coverts', 'quail-fields', 'chukar-ridge'])('shows the equipped sporting action on %s with its bead on the shot ray', areaId => {
     for (const gunId of ['semi-auto', 'remington-870']) {
       vi.stubGlobal('window', new EventTarget());
@@ -33,7 +55,7 @@ describe('3D shotgun action', () => {
     }
   });
 
-  it.each(['tree', 'pheasant-tree', 'terrain', 'open'])('consumes a shell and resolves only a clear shot (%s)', obstruction => {
+  it.each(['tree', 'pheasant-tree', 'landmark', 'terrain', 'open'])('consumes a shell and resolves only a clear shot (%s)', obstruction => {
     const blocked = obstruction !== 'open';
     vi.stubGlobal('window', new EventTarget());
     vi.stubGlobal('location', { search: '' });
@@ -45,6 +67,7 @@ describe('3D shotgun action', () => {
     const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), renderer: { domElement: new EventTarget() },
       events: new EventTarget(), quality: 'high', timeOfDay: 'noon', time: 10, paused: false,
       get: (id: string) => ({ hunt3d: hunt, birds, 'property-habitat': habitat,
+        landmarks: { blocksShot: () => obstruction === 'landmark' },
         flora: { blocksShot: () => obstruction === 'pheasant-tree' },
         terrain: { heightAt: (_x: number, z: number) => obstruction === 'terrain' ? Math.max(0, 2 - Math.abs(z + 6)) : 0 } }[id]),
     } as unknown as Ctx;

@@ -8,51 +8,19 @@ import type { BirdsSystem } from './birds';
 import type { Hunt3DSystem } from './hunt3d';
 import type { TerrainSystem } from './terrain';
 import type { PropertyHabitatSystem } from './propertyHabitat';
+import type { LandmarksSystem } from './landmarks';
 import { terrainBlocksShot } from '../shotVisibility';
 import { TravellingShot } from '../shotPattern';
 import { createSportingShotgun, type SportingShotgun } from '../assets/shotgun';
 
-/*
- * GUN subsystem — the player finally exists.
+/** First-person sporting gun and hands. The equipped pump/semiautomatic
+ * use articulated viewmodels; legacy doubles retain their existing mesh.
  *
- * The equipped pump/semiautomatic uses the sporting walnut/steel
- * asset with separate gloved hands and visible cosmetic shell loading. The
- * legacy low-poly SIDE-BY-SIDE shotgun viewmodel (the upland classic: two
- * muzzles and a broad breech face silhouette wider than any over/under
- * from the shooter's eye), flat-shaded boxes in palette walnut and
- * blued-steel tones, with a gloved forend hand cradling the splinter
- * forend and a trigger hand on the wrist. Firewatch's E3 frames put
- * hands and tools in the lower frame with the world beyond — that is
- * the whole brief.
- *
- * STATES (intent, not sim — the sim stays read-only through hunt3d):
- *  - CARRY: diagonal ready across the lower frame — stock low right,
- *    muzzles up-left. Distance-driven walk bob (the dog's law: motion
- *    keys to meters moved, never seconds) plus a breathing sway.
- *    SWAY NEVER SWING — the 2D gunAim law carried over: every offset is
- *    smoothed and clamped; the gun lags the view by a few hundredths of
- *    a radian and settles, it never pendulums.
- *  - MOUNT: on aim intent (right mouse held; the capture harness stages
- *    it via __gunAudit) the stock rises to the cheek in ~180 ms with a
- *    smoothstep ease and a small decaying sight-picture settle: barrels
- *    centered low, rib under the eye line, muzzle at the point of aim.
- *    While mounted, if the sim dog is POINTING, the barrels settle a
- *    few clamped hundredths of a radian toward the pointed bird (read
- *    through the hunt3d bridge — the gun answers the game's moment).
- *  - RECOIL hook: kick() + recoilOffset() are the surface the fx round
- *    drives later. The motion is live now — an underdamped spring kicks
- *    the gun rearward and the muzzles up, then recovers — no firing FX.
- *
- * LIGHTING: the same directional response family the dog wears (own
- * implementation — never imported): Lambert under the scene sun and
- * hemisphere, warm lift on sun-facing facets, shade facets multiplied
- * toward the hour's grassShadow tint, and a hot sun-colored rim at the
- * golden hours so the barrels catch the sunrise the way every other
- * silhouette in the field does.
- *
- * Both tiers identical (≈500 tris, ONE draw call — lite skips nothing).
- * Zero per-frame allocations; every vector preallocated. dispose()
- * releases the geometry and material.
+ * Inputs express mount/trigger/reload intent. Ammunition, cooldown and the
+ * travelling shot remain here, with shot targets swept on the bird clock.
+ * Cosmetic motion follows the render clock: distance-driven carry, an eased
+ * shoulder mount, and a frame-rate-independent damped recoil spring. At a
+ * settled sporting mount, the front bead lies on the camera's shot ray.
  */
 
 /** Mount time (s): cheek-weld rise, inside the 150-250 ms law. */
@@ -94,8 +62,8 @@ const RIG_SCALE = 1.18;
 // At a settled mount the bead is geometrically on the camera's shot ray.
 const SPORT_CARRY_POS = new THREE.Vector3(.19, -.285, -.50);
 const SPORT_CARRY_ROT = new THREE.Vector3(-.08, -.12, -.10);
-const SPORT_MOUNT_ROT = new THREE.Vector3(.045, 0, 0);
-const SPORT_MOUNT_POS = new THREE.Vector3(0, -(.030 * Math.cos(.045) + .766 * Math.sin(.045)), -.37);
+const SPORT_MOUNT_ROT = new THREE.Vector3(.085, 0, 0);
+const SPORT_MOUNT_POS = new THREE.Vector3(0, -(.030 * Math.cos(.085) + .766 * Math.sin(.085)), -.34);
 
 /* ------------------------------ geometry ------------------------------ */
 
@@ -496,6 +464,7 @@ export class GunSystem implements Subsystem {
   kick(strength: number): void {
     this.recVZ += KICK_Z * strength;
     this.recVP += KICK_PITCH * strength;
+    this.sporting?.fire();
   }
 
   /** Live recoil excursion (rearward meters, muzzle-up radians) — the
@@ -584,6 +553,8 @@ export class GunSystem implements Subsystem {
     try { habitat = ctx.get<PropertyHabitatSystem>('property-habitat'); } catch { /* bespoke properties use their own scenery */ }
     let wetBottoms: WetBottomsSystem | undefined;
     try { wetBottoms = ctx.get<WetBottomsSystem>('woodcock-wet-bottoms'); } catch { /* other properties */ }
+    let landmarks: LandmarksSystem | undefined;
+    try { landmarks = ctx.get<LandmarksSystem>('landmarks'); } catch { /* properties without solid landmarks */ }
     let flora: Subsystem & { blocksShot?: (origin: { x: number; y: number; z: number }, target: { x: number; y: number; z: number }) => boolean } | undefined;
     try { flora = ctx.get('flora'); } catch { /* properties without dedicated flora */ }
     const pattern = new TravellingShot(ctx.camera.position, this.fwd, this.gun.spread / 400, this.birds.shotTargets());
@@ -592,6 +563,7 @@ export class GunSystem implements Subsystem {
       visible: target => !terrainBlocksShot(origin, target, (x, z) => this.terrain.heightAt(x, z))
         && !habitat?.blocksShot?.(origin, target)
         && !wetBottoms?.blocksShot?.(origin, target)
+        && !landmarks?.blocksShot?.(origin, target)
         && !flora?.blocksShot?.(origin, target),
     });
   }
@@ -800,11 +772,16 @@ export class GunSystem implements Subsystem {
     }
     if (this.mountT <= 0) this.wasMounted = false;
     this.settleAge += dt;
-    // Recoil spring (underdamped): kick() injects velocity, this recovers.
-    this.recVZ += (-RECOIL_K * this.recZ - RECOIL_C * this.recVZ) * dt;
-    this.recZ += this.recVZ * dt;
-    this.recVP += (-RECOIL_K * this.recP - RECOIL_C * this.recVP) * dt;
-    this.recP += this.recVP * dt;
+    // Exact damped spring step: a slow mobile frame must not reverse the
+    // first kick or change recovery strength as Euler integration did.
+    const damping = RECOIL_C / 2;
+    const frequency = Math.sqrt(RECOIL_K - damping * damping);
+    const decay = Math.exp(-damping * dt), c = Math.cos(frequency * dt), s = Math.sin(frequency * dt) / frequency;
+    const z = this.recZ, vz = this.recVZ, p = this.recP, vp = this.recVP;
+    this.recZ = decay * (z * c + (vz + damping * z) * s);
+    this.recVZ = decay * (vz * c - (damping * vz + RECOIL_K * z) * s);
+    this.recP = decay * (p * c + (vp + damping * p) * s);
+    this.recVP = decay * (vp * c - (damping * vp + RECOIL_K * p) * s);
   }
 
   update(ctx: Ctx, dt: number): void {
