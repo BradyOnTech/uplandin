@@ -7,7 +7,7 @@ September 13, 2026. Playable environment and visual polish checkpoint, following
 With Vite running on port 4583:
 
 - [Play the south entry](http://127.0.0.1:4583/index3d.html?area=chukar-ridge&drop=south-gate&quality=high&tod=morning&dog=generated&seed=7701&challenge=balanced).
-- [Review six locations](http://127.0.0.1:4583/tools3d/chukar-world-review.html). Switch light and detail, turn the view, or run the camera route study. This development page uses the actual renderer and heightfield, with the hunt paused. It is not a substitute for playing a hunt or testing movement collision.
+- [Review seven locations](http://127.0.0.1:4583/tools3d/chukar-world-review.html). Switch light and detail, turn the view, or run the camera route study. This development page uses the actual renderer and heightfield, with the hunt paused. It is not a substitute for playing a hunt or testing movement collision.
 - Press M in the game for the property atlas. The new benches, contours, rock footprints and connected paths use the same geography as the world.
 
 **What changed**
@@ -30,6 +30,14 @@ Ground texture is quieter, cliff bedding is less uniform, and distant tablelands
 
 The path was partly buried because its height followed the analytic terrain rather than the rendered terrain triangles. It now fits the actual mesh in both detail levels and on either side of terrain tile boundaries. The review page also preserves the selected lighting after a reload and carries its light/detail choices into the play link. Playable landforms, route layout and stocking were not changed in this polish pass.
 
+**Geology correction after screenshot review**
+
+The screenshot review exposed two structural problems: rock pieces still used a repeated extruded-ring shape, and the distant terrain followed concentric terrace ramps. The kit now uses irregular fractured volumes with oblique faces, chipped corners and uneven crowns. Small outcrops and loose stone use the same shape language. The large formations sit deeper in their slopes to remove unsupported-looking undersides. Lightweight exports simplify the detailed rock surfaces rather than starting from a different primitive, preserving the main corners and silhouette.
+
+Across the canyon, broad rubble fans support broken escarpments. Gullies cut into both the slopes and the skyline; uneven crests and projecting spurs replace the smooth terrace humps. Rectangular sampling distributes vertices evenly over the outside terrain, with lightly faceted normals and boundary skirts. Mineral patches and descending weathering streaks remain visible after close ground texture fades. The farthest silhouette bands have more relief and less flat clipping at their base.
+
+The new **Rock face** staged view exposes the close formations and canyon together. **Rim Overlook** is the clearest comparison for the distant terrain. No new runtime texture downloads or scene draw passes were added. These changes affect scenery outside the parcel and rock presentation; mapped routes, bird stocking and playable terrain heights remain unchanged.
+
 **Editable asset workflow**
 
 - Source gallery: [basalt-kit.blend](../../../assets/source/chukar-kit/basalt-kit.blend).
@@ -51,7 +59,7 @@ To export after editing the saved Blender gallery:
 
 The first command regenerates and overwrites the source gallery. The second preserves saved mesh edits. Keep the six asset object names and the `chukar_asset` custom property. Each export is one mesh with one vertex-painted material. Runtime dimensions come from the authored formation layout; source units are metres. The game supplies lighting and material response.
 
-Each Standard mesh is 746–826 triangles and about 57–63 KB; each Lightweight mesh is 268–294 triangles and about 21–23 KB. The game loads three meshes for the selected tier: about 176 KB total for Standard or 65 KB for Lightweight. The source Blender file and source PNGs are not runtime downloads. All runtime kit exports and the ground WebP are included in the offline asset manifest.
+Each Standard mesh is 564–632 triangles and about 65–73 KB; each Lightweight mesh is 338–378 triangles and about 40–44 KB. The game loads three meshes for the selected tier: about 205 KB total for Standard or 124 KB for Lightweight. The source Blender file and source PNGs are not runtime downloads. All runtime kit exports and the ground WebP are included in the offline asset manifest.
 
 **Generated art**
 
@@ -63,24 +71,24 @@ Built-in image generation produced both images, without image references. Exact 
 
 **Verification**
 
-The full regression run passed 102 files and 771 tests during this pass. After the final plant geometry, terrain detail and lighting adjustments, the focused Chukar and ground-fitting checks passed 19 tests across two files. These include raycasting against the rendered near/far terrain under the path, asset and plant geometry budgets, and the existing route/cover constraints. The shared ground-fitting helper retains Quail's existing default settings.
+The final focused run passed 21 tests across the Chukar production and shared ground-fitting suites. Checks cover the route and habitat constraints, actual painted GLB exports and their budgets, paths following rendered terrain, plant detail tiers, continuous distant relief outside the parcel, finite/unit terrain normals, sampled surface heights and a combined horizon budget below 100,000 triangles. The shared ground-fitting helper retains Quail's defaults.
 
 The final `npm run build` passed TypeScript and the production build. The existing large JavaScript chunk warning remains.
 
-Browser review used the staged route locations, including both approaches, Sage Bench and Rim Overlook. Standard and Lightweight rendered, morning and evening were inspected, and the review page reported no console errors. This pass did not include a complete played hunt.
+Browser review inspected the Rock face, Sage Bench, Split Shoulder and Rim Overlook views. Standard and Lightweight rendered, and the close rocks were inspected in morning and evening light. This pass did not include a complete played hunt or physical mobile performance testing.
 
-At the same morning Sage Bench camera in the 1280 by 720 browser review after the final geometry changes:
+At the same morning Rock face camera in the 1280 by 720 browser review:
 
 | Tier | Submitted draws | Submitted triangles |
 | --- | ---: | ---: |
-| Standard | 156 | 1,530,366 |
-| Lightweight | 140 | 543,916 |
+| Standard | 153 | 1,483,944 |
+| Lightweight | 140 | 539,742 |
 
-These are renderer submission counters for a staged scene, including repeated rendering passes, not measured frame rate or a phone benchmark. Lightweight reduces this view's triangle submissions by about 64 percent. The counter is higher than the previous pass's differently positioned Rim Overlook capture; those two samples are not a valid before/after performance comparison.
+These are renderer submission counters, including repeated rendering passes, not measured frame rate. Lightweight reduces this view's triangle submissions by about 64 percent. At the existing Standard morning Rim Overlook camera, the counter changed from 1,271,618 to 1,299,988 triangles with the same 123 draws: about 2.2 percent more submitted geometry for the revised terrain and rocks. The shaders also do more surface work, which triangle counts do not measure.
 
 **What still needs refinement**
 
-The concept is still ahead of the in-game art. Broad slopes remain too uniform in places; transitions from major rocks to smaller rubble and soil need more deliberate composition. The next review should judge close plant silhouettes, the visible change to simpler distant crowns, rock contact and erosion detail, and the balance of empty ground against composed stands. The three rock families are more distinct now, but their placement and large color planes still need artistic scrutiny before this becomes the benchmark for other properties.
+The concept is still ahead of the in-game art. Broad playable slopes remain too uniform in places; transitions from major rocks to smaller rubble and soil need more deliberate composition. The next review should judge close plant silhouettes, the visible change to simpler distant crowns, the revised rock contact and erosion detail, and the balance of empty ground against composed stands. The new geology resolves the repeated blocks and smooth terrace silhouettes, but needs user art acceptance before this becomes the benchmark for other properties.
 
 A complete hunt still needs assessment for encounter pacing, high-side approach choices, dog navigation around the new rocks and return-to-truck flow. Route geometry tests and staged camera views do not establish those experiences. Physical mobile testing, sustained frame times, loading behavior on slower connections and long-session memory remain separate acceptance work.
 

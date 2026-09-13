@@ -4,6 +4,7 @@
 each exported rock has its origin at the middle of its buried foot.
 """
 import bpy
+import bmesh
 import json
 import math
 import random
@@ -44,35 +45,46 @@ def make_brow(variant, detail, material):
     def mass(spec, identity, rubble=False):
         cx,cy,width,depth,height,angle,lean=spec
         rng=random.Random(3911+variant*311+identity*101)
-        outline=[(-.52,-.30),(-.27,-.54),(.20,-.57),(.51,-.27),(.48,.23),(.14,.49),(-.41,.37)]
-        if detail=='lite': outline=[outline[i] for i in (0,2,3,4,6)]
-        n=len(outline);start=len(vertices)
-        rings=[(0,1.12),(.12,1.02),(.43,.98),(.48,.90),(.87,.88),(1,.69)]
-        if detail=='lite':rings=[(0,1.12),(.48,.94),(1,.70)]
-        if rubble:rings=[(0,1.08),(.63,.93),(1,.57)] if detail=='high' else [(0,1.08),(1,.68)]
+        # Fractured volumes, not extruded rings: each point varies in all
+        # three axes. The convex hull gives broad oblique break planes with
+        # chipped corners and an uneven crown, without a flat polygon lid.
+        bm=bmesh.new()
+        bmesh.ops.create_icosphere(bm,subdivisions=1 if rubble else 2,radius=1)
+        bm.verts.ensure_lookup_table()
         ca,sa=math.cos(angle),math.sin(angle)
-        for level,spread in rings:
-            for j,(ox,oy) in enumerate(outline):
-                lx=ox*width*spread+level*lean
-                ly=oy*depth*spread+level*math.sin(identity*2.1)*.5
-                # Tilted broken tops and unequal diagonal fractures give
-                # each large plane a readable direction without fine noise.
-                z=level*height+(ox*.65+math.sin(j*2.7+identity)*.20)*level
-                vertices.append((cx+lx*ca-ly*sa,cy+lx*sa+ly*ca,z))
-        shade_rng=random.Random(911+identity*51+variant*87)
-        base=(.435+shade_rng.random()*.035,.425+shade_rng.random()*.03,.392+shade_rng.random()*.024)
-        for ring in range(len(rings)-1):
-            for j in range(n):
-                nxt=(j+1)%n
-                faces.append((start+ring*n+j,start+ring*n+nxt,start+(ring+1)*n+nxt,start+(ring+1)*n+j))
-                shade=.89+shade_rng.random()*.23
-                # Broad weathered shoulders; darker lower fissures.
-                shade*=.83 if ring==0 else 1.12 if ring==len(rings)-2 else 1
-                colors.append(paint(base,shade))
-        faces.append(tuple(start+(len(rings)-1)*n+j for j in range(n)))
-        colors.append(paint((.565,.518,.425),.91+shade_rng.random()*.12))
-        faces.append(tuple(start+j for j in reversed(range(n))))
-        colors.append(paint(base,.67))
+        for v in bm.verts:
+            d=v.co.normalized()
+            warp=1+.12*math.sin(d.x*5.3+identity)+.08*math.sin(d.z*6.1+d.y*3.8+variant)
+            x=math.copysign(abs(d.x)**.86,d.x)*warp
+            y=math.copysign(abs(d.y)**.92,d.y)*warp
+            z=d.z*(.90+.12*math.sin(d.x*3.8+identity*.8))
+            # Different fracture directions break the crown and side profile.
+            x+=z*.24+z*z*math.sin(identity*1.8)*.15
+            y+=z*.18*math.cos(identity*2.1)
+            z=min(z,.81+x*.14-y*.11)
+            z=max(z,-.85+x*.09)
+            lx=x*width*.52+(z+.85)*lean*.5
+            ly=y*depth*.55
+            v.co=(cx+lx*ca-ly*sa,cy+lx*sa+ly*ca,(z+.85)*height/1.72)
+        points=[v.co.copy() for v in bm.verts]
+        bm.clear()
+        for point in points:bm.verts.new(point)
+        hull=bmesh.ops.convex_hull(bm,input=list(bm.verts),use_existing_faces=False)
+        bmesh.ops.delete(bm,geom=hull['geom_interior'],context='VERTS')
+        bm.verts.ensure_lookup_table();bm.verts.index_update();bm.normal_update()
+        start=len(vertices)
+        vertices.extend(tuple(v.co) for v in bm.verts)
+        base=(.465+variant*.009,.443+variant*.006,.397+variant*.006)
+        for face in bm.faces:
+            faces.append(tuple(start+v.index for v in face.verts))
+            center=face.calc_center_median()
+            # Coherent mineral weathering over multiple faces; restrained
+            # color differences let the lighting reveal the fracture planes.
+            stain=.035*math.sin(center.x*.7+center.z*.4)+.025*math.sin(center.y*1.3-center.z*.9)
+            exposure=max(0,face.normal.z)
+            shade=.94+stain+exposure*.14
+            colors.append(paint(base,shade))
+        bm.free()
 
     for i,spec in enumerate(profiles[variant]):mass(spec,i)
     # Large fallen wedges at the foot connect the brows to talus. Fixed
@@ -94,6 +106,13 @@ def make_brow(variant, detail, material):
     obj = bpy.data.objects.new(name, data)
     bpy.context.collection.objects.link(obj)
     obj.data.materials.append(material)
+    if detail=='lite':
+        # Simplify the authored fracture surface instead of starting from
+        # a different primitive; both tiers keep the same major corners.
+        bpy.context.view_layer.objects.active=obj
+        modifier=obj.modifiers.new('Preserve fracture silhouette','DECIMATE')
+        modifier.ratio=.60
+        bpy.ops.object.modifier_apply(modifier=modifier.name)
     return obj
 
 if '--export-only' in sys.argv:

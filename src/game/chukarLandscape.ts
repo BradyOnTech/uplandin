@@ -69,18 +69,34 @@ export function chukarAuthoredHeight(x:number,y:number):number {
     const along=dx*b.c+dy*b.s,across=-dx*b.s+dy*b.c;
     shoulders+=b.height*.32*Math.exp(-Math.pow(along/(b.length*.72),2)-Math.pow(across/34,2));
   }
-  // Beyond the parcel, a lower canyon separates actual eroded tablelands.
-  // These are sampled by the distant terrain, not camera-following walls.
-  let distant=0;
-  if(x>1400){
-    for(const [cx,cy,rx,ry,height] of [[1830,260,365,310,108],[1930,-620,480,360,150],[2040,1150,410,350,125]]){
-      const dx=x-cx+(y-cy)*.16,dy=y-cy;
-      const edge=Math.pow(Math.pow(Math.abs(dx/rx),3)+Math.pow(Math.abs(dy/ry),3),1/3)
-        +Math.sin(y*.012+x*.004)*.065+Math.sin(y*.027+x*.019)*.026;
-      distant+=height*((1-smooth(.82,1,edge))*.65+(1-smooth(.63,.75,edge))*.25+(1-smooth(.44,.58,edge))*.1);
-    }
+  return grade+shelves+valley+westernShoulder+folds+shoulders+chukarDistantRelief(x,y);
+}
+
+/** Eroded uplifts beyond the eastern parcel. Broad talus fans support a
+ * broken cap; radial gullies cut into the face and continue across its rim.
+ * A common heightfield keeps the silhouette stable between detail tiers. */
+export function chukarDistantRelief(x:number,y:number):number {
+  if(x<=1400)return 0;
+  let height=0;
+  const ramps=(a:number,b:number,r:number)=>saturate((b-r)/(b-a));
+  for(const [cx,cy,rx,ry,peak,phase] of [[1830,260,365,310,108,.4],[1930,-620,480,360,150,2.1],[2040,1150,410,350,125,4.7]]){
+    const dx=(x-cx+(y-cy)*.16)/rx,dy=(y-cy)/ry;
+    const angle=Math.atan2(dy,dx),radius=Math.hypot(dx,dy);
+    // Bays and projecting spurs have unequal spacing and depth.
+    const scallop=Math.sin(angle*5+phase)*.075+Math.sin(angle*9-phase)*.045;
+    const r=radius+scallop+Math.sin(x*.014+y*.009+phase)*.035;
+    if(r>1.34)continue;
+    const talus=ramps(.65,1.34,r)*.27;
+    const wall=ramps(.65,.90,r)*.47;
+    const cap=ramps(.12,.70,r)*.26;
+    const channels=Math.pow(.5+.5*Math.sin(angle*13+phase+radius*1.7),12);
+    const tributaries=Math.pow(.5+.5*Math.sin(angle*23-phase-radius*2.4),18);
+    const erosion=(channels*.24+tributaries*.07)*smooth(.18,.68,r)*ramps(.86,1.28,r);
+    const crest=(standNoise(x*.024+phase,y*.024)-.5)*.11*ramps(.64,.83,r);
+    height+=peak*Math.max(0,talus+wall+cap-erosion+crest);
   }
-  return grade+shelves+valley+westernShoulder+folds+shoulders+distant;
+  // No seam or changed navigation inside the playable parcel.
+  return height*smooth(1400,1480,x);
 }
 
 /** Deposits and plant stands share the same formation footprint. */

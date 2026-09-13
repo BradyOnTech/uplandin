@@ -420,9 +420,9 @@ const QUAIL_RIDGES: RidgeProfile = {
 
 const CHUKAR_RIDGES: RidgeProfile = {
   layers: [
-    { radius: 970, base: -4, amp: 40, far: 0.12, fogMix: 0.08, hazeAmt: 0.5, jag: 0.12, freqs: [3, 8, 21], noiseScale: 0.48 },
-    { radius: 1250, base: 10, amp: 73, far: 0.52, fogMix: 0.15, hazeAmt: 0.76, jag: 0.18, freqs: [4, 9, 23], noiseScale: 0.42 },
-    { radius: 1480, base: 18, amp: 110, far: 0.72, fogMix: 0.22, hazeAmt: 0.94, jag: 0.2, freqs: [3, 7, 19], noiseScale: 0.38 },
+    { radius: 970, base: -22, amp: 75, far: 0.12, fogMix: 0.08, hazeAmt: 0.5, jag: 0.12, freqs: [5, 17, 43], noiseScale: 0.75 },
+    { radius: 1250, base: -5, amp: 140, far: 0.52, fogMix: 0.15, hazeAmt: 0.76, jag: 0.18, freqs: [5, 14, 37], noiseScale: 0.85 },
+    { radius: 1480, base: 15, amp: 210, far: 0.72, fogMix: 0.22, hazeAmt: 0.94, jag: 0.2, freqs: [4, 13, 31], noiseScale: 0.80 },
   ],
   features: [
     [{ c: -34, h: .85, sl: 12, sr: 26 }, { c: 52, h: .72, sl: 15, sr: 27 }, { c: 101, h: 1.05, sl: 9, sr: 20 }, { c: 124, h: -.28, sl: 7, sr: 10 }, { c: 150, h: .8, sl: 15, sr: 25 }],
@@ -863,7 +863,7 @@ export class SkySystem implements Subsystem {
         }
         // Land ring may sink below the plain (isolated masses); real ridge
         // bands keep their floor so the skyline never gaps.
-        h = Math.max(h, layer.land ? -2.0 : l <= 1 ? 2.5 : 1.2);
+        h = Math.max(h, this.areaId==='chukar-ridge' ? -50 : layer.land ? -2.0 : l <= 1 ? 2.5 : 1.2);
         const x = Math.sin(theta) * layer.radius;
         const z = Math.cos(theta) * layer.radius;
         const top = i * 2;

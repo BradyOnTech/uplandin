@@ -5,6 +5,7 @@ import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
 import { chukarLandmarkClearance } from './chukarLandmarks';
 import { chukarBrows, chukarBrowBlockers, chukarGroundZones, chukarPlantStandAt } from '../../game/chukarLandscape';
+import { applyChukarRockWeathering } from './chukarRockMaterial';
 import { loadChukarKit } from '../assets/chukarKit';
 import { chukarGrassGeometry, chukarSageGeometry } from '../assets/chukarPlants';
 import { CHUKAR_GROUND_DETAIL } from './chukarTerrain';
@@ -39,33 +40,21 @@ function coverAt(area: AreaConfig, x: number, y: number, margin = 0): boolean {
   return area.patches.some(p => x >= p.x - margin && x <= p.x + p.w + margin && y >= p.y - margin && y <= p.y + p.h + margin);
 }
 
-/** A fractured seven-sided slab with broad, uneven bedding planes. */
+/** Loose fractures share the brows' oblique planes, without repeating the
+ * old horizontal ring bands at smaller scales. Opaque, instanced geometry. */
 export function chukarStoneGeometry(variant = 0, gravel = false): THREE.BufferGeometry {
-  const rng = mulberry32(seed(variant, 3, 31)), positions: number[] = [], colors: number[] = [];
-  const outline = gravel ? [[-.52, -.16], [-.24, -.43], [.31, -.39], [.52, .06], [.23, .45], [-.38, .31]]
-    : [[-.5, -.38], [-.19, -.56], [.45, -.44], [.56, -.06], [.39, .52], [-.14, .42], [-.54, .23]];
-  const rings = (gravel ? [0, .44, 1] : [0, .24, .29, .61, .67, 1]).map((y, ring) => outline.map(([x, z], n) => {
-    const spread = gravel ? (ring === 0 ? .82 : ring === 1 ? .88 + rng() * .1 : .42 + rng() * .19)
-      : [1.04, 1.03, .90, .88, .77, .71][ring];
-    return new THREE.Vector3(x * spread + y * .13, y + (y > 0 ? Math.sin(n * 2.7 + variant) * .035 : 0), z * spread - y * .08);
-  }));
-  const tri = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, shade: number) => {
-    for (const p of [a, b, c]) { positions.push(p.x, p.y, p.z); colors.push(shade, shade * .98, shade * .94); }
-  };
-  for (let ring = 0; ring < rings.length - 1; ring++) for (let n = 0; n < outline.length; n++) {
-    const next = (n + 1) % outline.length, shade = (ring % 2 ? .73 : .88) + rng() * .09;
-    tri(rings[ring][n], rings[ring + 1][next], rings[ring][next], shade);
-    tri(rings[ring][n], rings[ring + 1][n], rings[ring + 1][next], shade);
+  const geometry=new THREE.IcosahedronGeometry(1,gravel?0:1),positions=geometry.getAttribute('position');
+  const colors:number[]=[];
+  for(let i=0;i<positions.count;i++){
+    const x=positions.getX(i),y=positions.getY(i),z=positions.getZ(i);
+    const warp=1+.11*Math.sin(x*5.3+variant)+.08*Math.sin(z*6.1+y*3.8);
+    const h=Math.max(-.82+z*.08,Math.min(.83+x*.14-z*.11,y));
+    positions.setXYZ(i,(x*warp+h*.18)*.51,(h+.90)/1.88,(z*warp-h*.11)*.52);
+    const shade=.86+.05*Math.sin(x*3+z*4+variant)+Math.max(0,y)*.08;
+    colors.push(shade,shade*.98,shade*.94);
   }
-  const top = rings[rings.length - 1];
-  for (let n = 1; n < outline.length - 1; n++) {
-    tri(top[0], top[n + 1], top[n], .98 + rng() * .055);
-    tri(rings[0][0], rings[0][n], rings[0][n + 1], .72);
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); geometry.computeVertexNormals();
-  geometry.computeBoundingSphere(); geometry.userData = { kind: gravel ? 'chukar-talus' : 'chukar-bedded-rock', triangles: positions.length / 9 };
+  geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();geometry.userData={kind:gravel?'chukar-talus':'chukar-fractured-stone',triangles:positions.count/3};
   return geometry;
 }
 
@@ -132,7 +121,7 @@ export class ChukarEnvironmentSystem implements Subsystem {
         normal.set(-this.sample.gradeX, 1, -this.sample.gradeZ).normalize(); rotation.setFromUnitVectors(up, normal);
         yaw.setFromAxisAngle(axis, p.yaw); rotation.multiply(yaw);
       }
-      position.set(this.world.x, ground - (talus ? Math.min(.012, p.sy * .08) : authored ? .3 : rock ? .10 : .018), this.world.z); scale.set(p.sx, p.sy, p.sz);
+      position.set(this.world.x, ground - (talus ? Math.min(.012, p.sy * .08) : authored ? Math.max(.3,p.sy*.18) : rock ? .10 : .018), this.world.z); scale.set(p.sx, p.sy, p.sz);
       mesh.setMatrixAt(i, matrix.compose(position, rotation, scale)); mesh.setColorAt(i, color.setHex(p.color));
       if (rock && ground + p.sy - this.sample.height > .75)
         this.obstacles.push({ x: this.world.x, z: this.world.z, radius: Math.min(p.sx, p.sz) * .37 });
@@ -153,7 +142,8 @@ export class ChukarEnvironmentSystem implements Subsystem {
     // A restrained cool floor keeps the shaded basalt planes readable when
     // the route looks across the unlit side of a brow.
     const browMat = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true,
-      emissive: 0x5c6670, emissiveIntensity: .24 });
+      emissive: 0x5c6670, emissiveIntensity: .10 });
+    applyChukarRockWeathering(browMat);
     const leafMat = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, side: THREE.DoubleSide });
     this.materials.add(rockMat); this.materials.add(browMat); this.materials.add(leafMat);
     leafMat.onBeforeCompile = shader => {

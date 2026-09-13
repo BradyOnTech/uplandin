@@ -2,11 +2,11 @@ import * as THREE from 'three';
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
 import { getArea } from '../src/game/areas';
-import { chukarBrowBlockers,chukarBrows } from '../src/game/chukarLandscape';
+import { chukarBrowBlockers,chukarBrows,chukarDistantRelief } from '../src/game/chukarLandscape';
 import { LandscapeModel,PROPERTY_PX_TO_M } from '../src/game/landscape';
 import { groundQuailTrackGeometry,quailGroundTileAt } from '../src/three/subsystems/quailGroundGeometry';
 import { buildQuailTerrainGeometry } from '../src/three/subsystems/quailTerrain';
-import { CHUKAR_GROUND_DETAIL } from '../src/three/subsystems/chukarTerrain';
+import { CHUKAR_GROUND_DETAIL,buildChukarHorizonGeometry } from '../src/three/subsystems/chukarTerrain';
 import { chukarGrassGeometry,chukarSageGeometry } from '../src/three/assets/chukarPlants';
 
 const area=getArea('chukar-ridge'),landscape=new LandscapeModel(area);
@@ -98,5 +98,39 @@ describe('Chukar surface polish',()=>{
     expect(close.getAttribute('position').count/3).toBeLessThan(400);
     expect(Math.abs(a.y-b.y)).toBeLessThan(.16);expect(Math.abs(a.x-b.x)).toBeLessThan(.3);expect(Math.abs(a.z-b.z)).toBeLessThan(.3);
     close.dispose();distant.dispose();
+  });
+});
+
+
+describe('Chukar eroded horizon',()=>{
+  it('keeps distant relief outside the parcel with a continuous join',()=>{
+    for(let y=-1000;y<=1800;y+=40){
+      expect(chukarDistantRelief(1400,y)).toBe(0);
+      expect(chukarDistantRelief(1390,y)).toBe(0);
+      expect(chukarDistantRelief(1400.01,y)).toBeLessThan(.001);
+    }
+    expect(chukarDistantRelief(1830,260)).toBeGreaterThan(70);
+  });
+  it('samples the same landforms in both tiers within a bounded horizon budget',()=>{
+    const b=area.world,totals:number[]=[];
+    for(const quality of ['high','lite'] as const){
+      let triangles=0;
+      for(const [x,y,w,h] of [[b.x-1000,b.y-1000,b.w+2000,1000],[b.x-1000,b.y+b.h,b.w+2000,1000],
+        [b.x-1000,b.y,1000,b.h],[b.x+b.w,b.y,1000,b.h]]){
+        const geometry=buildChukarHorizonGeometry(landscape,x,y,w,h,CHUKAR_GROUND_DETAIL[quality].horizonSpacing);
+        const vertices=geometry.getAttribute('position'),normals=geometry.getAttribute('normal');
+        for(let i=0;i<vertices.count;i+=37){
+          expect(Number.isFinite(vertices.getY(i))).toBe(true);
+          expect(Math.hypot(normals.getX(i),normals.getY(i),normals.getZ(i))).toBeCloseTo(1,4);
+          const property=landscape.worldToProperty(vertices.getX(i),vertices.getZ(i),{x:0,y:0});
+          const offset=landscape.heightAtProperty(property.x,property.y)-vertices.getY(i);
+          // Either the authoritative surface or the 3 m boundary skirt.
+          expect(Math.min(Math.abs(offset),Math.abs(offset-3))).toBeLessThan(.002);
+        }
+        triangles+=vertices.count/3;geometry.dispose();
+      }
+      totals.push(triangles);
+    }
+    expect(totals[0]).toBeLessThan(100_000);expect(totals[1]).toBeLessThan(totals[0]*.5);
   });
 });
