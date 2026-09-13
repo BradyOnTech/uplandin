@@ -209,7 +209,7 @@ export function createThreeHuntSetup(
   const tuning = HUNT_CHALLENGES[challenge];
   const resolvedArea = resolveThreeHuntArea(search, storage);
   const isQuail = resolvedArea.id === 'quail-fields';
-  const seed = (isFalconryPractice(search) ? FALCONRY_PRACTICE.seed : parseHuntSeed(search)) ?? (isQuail ? Math.floor(rng() * 0x100000000) : undefined);
+  const seed = parseHuntSeed(search) ?? (isQuail || isFalconryPractice(search) ? Math.floor(rng() * 0x100000000) : undefined);
   const environmentRng = seed === undefined ? rng : mulberry32(huntStreamSeed(seed, 0xe071));
   // Authored non-Quail properties use their own stable encounter streams so
   // route sampling cannot consume the weather/wind stream or change when a
@@ -256,7 +256,7 @@ export function createThreeHuntSetup(
     });
     hunt.quick = quick;
     hunt.huntingMethod = quick.huntingMethod === 'goshawk' ? 'goshawk' : 'shotgun';
-    if (isFalconryPractice(search)) stageFalconryPractice(hunt);
+    if (isFalconryPractice(search)) stageFalconryPractice(hunt, seed!);
     return { ...profile, launch, area, hunt, challenge, seed, breed: getBreed(profile.breedId) };
   }
 

@@ -1,4 +1,5 @@
 import { isFalconryPractice } from '../../game/falconryPractice';
+import { nextHuntUrl } from '../../game/huntSeed';
 import * as THREE from 'three';
 import { playHawkWingbeat, playWhistle, unlockAudio } from '../../audio';
 import { selectSlipTarget, type FalconryEvent, type FlightPoint } from '../../game/falconry';
@@ -56,7 +57,7 @@ export class FalconrySystem implements Subsystem {
     window.addEventListener('keydown',e=>{
       if(ctx.paused||this.frozen||e.repeat||e.ctrlKey||e.metaKey||e.altKey||
         (e.target as HTMLElement)?.closest?.('button,input,select,textarea,[contenteditable="true"]')) return;
-      if(e.code==='KeyT' && isFalconryPractice(location.search)) {e.preventDefault();location.reload();return;}
+      if(e.code==='KeyT' && isFalconryPractice(location.search)) {e.preventDefault();location.assign(nextHuntUrl(location.href));return;}
       if(e.code==='Space') {e.preventDefault();this.intent='slip';}
       if(e.code==='KeyR') {e.preventDefault();this.intent='recall';}
       if(e.code==='KeyE') {e.preventDefault();this.intent='recover';}
@@ -73,7 +74,10 @@ export class FalconrySystem implements Subsystem {
     this.primary=button('Slip · Space',()=>{this.intent=this.hunt.falconry!.phase==='on-quarry'?'recover':'slip';});
     this.recallButton=button('Recall hawk · R',()=>{this.intent='recall';});
     this.followButton=button('Watch hawk · F',()=>{this.following=!this.following;});
-    if(isFalconryPractice(location.search)) button('Restart drill · T',()=>location.reload());
+    if(isFalconryPractice(location.search)) {
+      button('New drill · T',()=>location.assign(nextHuntUrl(location.href)));
+      button('Repeat setup',()=>location.reload());
+    }
     panel.append(label,this.status,actions);document.body.append(panel);this.panel=panel;
   }
 

@@ -1,6 +1,8 @@
 import type { HuntState } from './state';
 import { LandscapeModel } from './landscape';
 import { getArea } from './areas';
+import { mulberry32 } from './math';
+import { huntStreamSeed } from './huntSeed';
 
 /** Explicit practice only: never affects career or ordinary Quick Hunts. */
 export function isFalconryPractice(search: string): boolean {
@@ -16,10 +18,21 @@ export const FALCONRY_PRACTICE = {
   drop: 'south-gate',
 } as const;
 
-/** Stage the opportunity; pointing, flushing and flight still use normal AI. */
-export function stageFalconryPractice(hunt: HuntState): void {
-  const landscape = new LandscapeModel(getArea('pheasant-coverts'), FALCONRY_PRACTICE.drop);
+/** Keep every opportunity in the same nearby scent corridor. The visit seed
+ * also feeds the existing flight variation; there are no practice catch odds. */
+export function falconryPracticeQuarry(seed: number): { x: number; z: number } {
+  const rng = mulberry32(huntStreamSeed(seed, 0xfa1c));
   const { hunter, quarry } = FALCONRY_PRACTICE;
+  const bearing = Math.atan2(quarry.z - hunter.z, quarry.x - hunter.x) + (rng() - .5) * .22;
+  const distance = 28 + rng() * 3;
+  return { x: hunter.x + Math.cos(bearing) * distance, z: hunter.z + Math.sin(bearing) * distance };
+}
+
+/** Stage the opportunity; pointing, flushing and flight still use normal AI. */
+export function stageFalconryPractice(hunt: HuntState, seed: number): void {
+  const landscape = new LandscapeModel(getArea('pheasant-coverts'), FALCONRY_PRACTICE.drop);
+  const { hunter } = FALCONRY_PRACTICE;
+  const quarry = falconryPracticeQuarry(seed);
   hunt.hunterPos = landscape.worldToProperty(hunter.x, hunter.z, { x: 0, y: 0 });
   hunt.birds = [{
     id: 1, coveyId: 1, speciesId: 'ringneck', sex: 'rooster', state: 'hidden',

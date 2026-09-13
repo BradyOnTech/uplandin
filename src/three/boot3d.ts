@@ -47,7 +47,6 @@ import {
 // its hunt. Hunt again removes it; the following boot creates a fresh visit.
 if (isFalconryPractice(location.search)) {
   const url = new URL(location.href);
-  url.searchParams.set('seed', String(FALCONRY_PRACTICE.seed));
   url.searchParams.set('drop', FALCONRY_PRACTICE.drop);
   if (!url.searchParams.has('tod')) url.searchParams.set('tod', 'morning');
   history.replaceState(null, '', url);

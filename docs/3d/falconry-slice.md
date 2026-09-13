@@ -28,18 +28,31 @@ Touch retains movement and looking on the field and exposes separate hawk action
 
 **Fast practice drill**
 
-Open `http://127.0.0.1:4527/index3d.html?play=quick&method=goshawk&practice=slip`. This is a separate, visibly labeled practice setup on Cattail Coverts: one planted rooster about 31 yards ahead, a finished dog already in scent, a favorable breeze, frost, and balanced challenge. The fixed seed and South Gate coordinate frame keep restarts consistent. Morning is the default light.
+Open `http://127.0.0.1:4527/index3d.html?play=quick&method=goshawk&practice=slip`. This is a separate, visibly labeled practice setup on Cattail Coverts: one planted rooster 28–31 metres (about 31–34 yards) ahead, a finished dog already in scent, a favorable breeze, frost, and balanced challenge. A fresh visit seed varies the bird within a narrow corridor and supplies the existing flight variation; the South Gate coordinate frame stays fixed. Morning is the default light.
 
-Wait for the dog to point, walk toward it and continue in the direction of its nose, then face the flush and press Space. Press T or the in-field Restart drill button to reset at any stage; the summary also offers Restart drill. Reloading resets the whole drill. No career progress is saved.
+Wait for the dog to point, walk toward it and continue in the direction of its nose, then face the flush and press Space. Press T or New drill for a fresh nearby opportunity at any stage; the summary also offers New drill. Repeat setup or reloading preserves the current URL seed and stages that opportunity again. Your approach and slip timing still affect the flight. No career progress is saved.
 
 The rooster holds rather than running and has a one-minute nerve allowance on point. The dog establishes the point through normal scent AI. Ordinary flush, pursuit, escape, guarding and hand pickup rules remain in use. The starting hunter is outside the dog's normal handler exclusion distance. Ordinary Quick Hunts and career hunts retain their original spawns.
 
 | Before | After |
 | --- | --- |
 | Testing required searching the property before the first point. | The explicitly selected drill stages one nearby opportunity and casts off the dog automatically. |
-| Hunt again rerolled the visit. | Practice offers a repeatable restart from the field or summary. |
+| Hunt again rerolled the visit. | Practice offers a fresh nearby drill from the field or summary, plus an exact setup replay in the field. |
 
-`tools3d/falconry-playthrough.mjs catch 61 --practice` verified a point without hunter movement in 0.7 seconds, a slip about 9 seconds after entry, and hand pickup about 25 seconds after entry. It also verified a fresh point after the summary restart and reset through the T shortcut. The delayed-slip practice run also verified an escape, empty return, summary and both restart routes. These are automated diagnostic timings, not a device performance promise. The full suite passed 102 files and 764 tests, and the production build passed with the existing bundle-size advisory.
+The original fixed-seed `tools3d/falconry-playthrough.mjs catch 61 --practice` verified a point without hunter movement in 0.7 seconds, a slip about 9 seconds after entry, and hand pickup about 25 seconds after entry. It also verified a fresh point after the summary restart and reset through the T shortcut. The delayed-slip practice run also verified an escape, empty return, summary and both restart routes. These are automated diagnostic timings, not a device performance promise. The full suite passed 102 files and 764 tests, and the production build passed with the existing bundle-size advisory.
+
+**Modest practice variation**
+
+The drill retains one holding rooster, a finished dog, favorable scent and a nearby point. New visits choose a seed instead of forcing 61. Placement varies by roughly six degrees either side of the original bearing and stays 28–31 metres from the hunter. The bird renderer now derives its practice flight stream from that seed; ordinary hunts retain their established streams. Speed limits, catch radius, pursuit, escape and recovery rules are unchanged.
+
+| Before | After |
+| --- | --- |
+| Every practice visit forced seed 61 and the same bird position. | A new visit rolls a seed; the URL preserves it for reproduction. A bounded placement stream keeps the bird nearby. |
+| The flight renderer restarted from the same internal seed. | Practice flights use the visit seed for their existing impulse, break and drift variation. |
+| T and both restart buttons repeated the setup. | T, New drill and the summary button request a new seed; Repeat setup reloads the current one. |
+| Checks assumed fixed placement. | Unit checks cover bounded placement, seed variation, deterministic replay and normal-mode isolation. Browser checks cover quick points across five visits, exact setup replay, and a changed seed and placement after T. |
+
+`node tools3d/falconry-practice-variants.mjs` verified five distinct opportunities with points in 0.74–1.76 seconds after entry, without walking the hunter. These are diagnostic timings rather than device performance claims. Build and 23 focused tests passed. Browser evidence lives in `output/playwright/falconry/practice-variants.json`. The ordinary-input seed-61 playthrough completed the changed flight, catch hold despite recall, dog guarding, hand pickup, summary and fresh-seed restarts through both summary and T.
 
 **Implementation**
 

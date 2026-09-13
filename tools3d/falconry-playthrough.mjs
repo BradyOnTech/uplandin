@@ -100,16 +100,18 @@ try {
       await page.waitForFunction('!document.getElementById("hunt-summary").hidden',{timeout:30000});
       const final=await read();if(final.career!==initial.career)throw new Error('Practice changed career');
       await event('summary',final,true);
+      const previousSeed=new URL(page.url()).searchParams.get('seed');
       await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.click('#hunt-again')]);
       await page.waitForFunction('window.__ready3d === true',{timeout:60000});
       await page.click('#enter-field');
       await page.waitForFunction(()=>window.__api3d.hunt().dog.state==='pointing',{timeout:10000});
       const restarted=await read();
-      if(restarted.t.falconry.flights!==0||restarted.t.pointedBird.id!==pointTarget.id)throw new Error('Drill did not reset');
+      if(restarted.t.falconry.flights!==0||new URL(page.url()).searchParams.get('seed')===previousSeed)throw new Error('New drill did not reset and vary seed');
       await event('restarted-point',restarted,true);
+      const restartedSeed=new URL(page.url()).searchParams.get('seed');
       await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.keyboard.press('KeyT')]);
       await page.waitForFunction('window.__ready3d === true',{timeout:60000});
-      if((await read()).t.falconry.flights!==0)throw new Error('Keyboard restart failed');
+      if((await read()).t.falconry.flights!==0||new URL(page.url()).searchParams.get('seed')===restartedSeed)throw new Error('Keyboard new drill failed');
       manifest.keyboardRestart=true;manifest.passed=manifest.errors.length===0;break;
     }
     // A recalled hawk can land before the flushed bird finishes escaping or

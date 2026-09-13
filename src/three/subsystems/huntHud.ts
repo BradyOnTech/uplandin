@@ -133,9 +133,9 @@ export class HuntHudSystem implements Subsystem {
     }
     if (this.summary) this.summary.hidden = true;
     const options = { signal: this.abort.signal };
-    if (isFalconryPractice(location.search)) document.getElementById('hunt-again')!.textContent = 'Restart drill';
+    if (isFalconryPractice(location.search)) document.getElementById('hunt-again')!.textContent = 'New drill';
     document.getElementById('hunt-again')?.addEventListener('click', () => {
-      if (isFalconryPractice(location.search)) location.reload();
+      if (isFalconryPractice(location.search)) location.assign(nextHuntUrl(location.href));
       else if (['quail-fields', 'pheasant-coverts'].includes(this.hunt.huntState().areaId)) location.assign(nextHuntUrl(location.href));
       else location.reload();
     }, options);

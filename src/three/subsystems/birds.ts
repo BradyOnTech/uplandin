@@ -1,3 +1,5 @@
+import { isFalconryPractice, FALCONRY_PRACTICE } from '../../game/falconryPractice';
+import { huntStreamSeed, parseHuntSeed } from '../../game/huntSeed';
 import { birdFlightExpired } from '../../game/birdFlightLifetime';
 import { buildPheasantBody, buildPheasantWing, buildPheasantTail, posePheasantFoldedWings, pheasantWingbeat } from '../assets/pheasant';
 import { createQuailFlight, selectQuailEscapeCover, stepQuailFlight, type QuailFlight } from '../quailFlight';
@@ -405,6 +407,7 @@ export class BirdsSystem implements Subsystem {
   private qTail = 0;
   private riseActive = false;
   private riseSeq = 0;
+  private riseSeed = RISE_SEED;
   private riseRng: () => number = mulberry32(RISE_SEED);
   private bias: FlushBias = { min: 0.9, max: 1.15, kind: 'earned' };
   private driftPx = 0;
@@ -458,6 +461,10 @@ export class BirdsSystem implements Subsystem {
   private carryW = { x: 0, z: 0 };
 
   init(ctx: Ctx): void {
+    // Vary practice flights with the visit while preserving exact URL replays
+    // and the established flight streams of other hunt modes.
+    this.riseSeed = isFalconryPractice(location.search)
+      ? huntStreamSeed(parseHuntSeed(location.search) ?? FALCONRY_PRACTICE.seed, RISE_SEED) : RISE_SEED;
     this.listener = ctx.camera;
     this.coverEvents = ctx.events;
     this.frozen = new URLSearchParams(location.search).has('capture');
@@ -1166,7 +1173,7 @@ export class BirdsSystem implements Subsystem {
     this.riseSeq++;
     this.riseMs = 0;
     this.lastLaunchMs = -Infinity;
-    this.riseRng = mulberry32((RISE_SEED + this.riseSeq * 0x9e3779b9) >>> 0);
+    this.riseRng = mulberry32((this.riseSeed + this.riseSeq * 0x9e3779b9) >>> 0);
     const info = this.hunt.lastFlushInfo();
     this.bias = this.spatialEncounter ? {min:.9,max:1.15,kind:'earned'} : flushBias(info ? info.distPx : 25, this.riseRng);
     this.driftPx = (this.riseRng() - 0.5) * DRIFT_SPAN_PX;
