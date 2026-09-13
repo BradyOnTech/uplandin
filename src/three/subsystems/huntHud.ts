@@ -181,7 +181,7 @@ export class HuntHudSystem implements Subsystem {
     const trackingGuidance = trackedDog?.state === 'tracking'
       ? trackingApproachGuidance(dogRange, hunt.areaId, trackedDog.scentStage, trackedDog.waitingForHandler) : null;
     const trackingCue = trackingGuidance?.headline ?? null;
-    const phase = hawk ? (hawk.phase === 'fist' ? (trackedDog?.state === 'pointing' ? 'DOG ON POINT · WALK IN FOR THE FLUSH' : trackedDog?.state === 'heel' ? 'HAWK ON FIST · Q SENDS DOG HUNTING' : 'HAWK ON FIST · WORKING COVER') : hawk.phase === 'on-quarry' || hawk.phase === 'settling' ? 'HAWK HAS QUARRY · MAKE IN' : hawk.phase === 'returning' ? 'HAWK RETURNING' : 'GOSHAWK IN PURSUIT') : this.gun.isReloading()
+    const phase = hawk ? (hawk.phase === 'fist' ? (trackedDog?.state === 'pointing' ? 'DOG ON POINT · WALK IN FOR THE FLUSH' : trackedDog?.state === 'heel' ? 'HAWK ON FIST · Q SENDS DOG HUNTING' : 'HAWK ON FIST · WORKING COVER') : hawk.phase === 'on-quarry' || hawk.phase === 'settling' ? 'HAWK HAS QUARRY · WALK IN' : hawk.phase === 'picking-up' ? 'PICKING UP ONTO THE FIST' : hawk.phase === 'returning' ? 'HAWK RETURNING' : 'GOSHAWK IN PURSUIT') : this.gun.isReloading()
       ? `RELOADING · ${shells}/${capacity}`
       : rise
         ? `${this.hunt.riseLabel() ?? 'BIRD FLUSH'} · shells ${shells}/${capacity}${shells === 0 ? ' · R RELOAD' : ''}`
@@ -214,7 +214,7 @@ export class HuntHudSystem implements Subsystem {
       const dogBearing = dogRelativeBearing(dogDx, dogDz, yaw);
       const pointing = trackedDog.state === 'pointing';
       this.locator.classList.toggle('on-point', pointing);
-      const status = dogWorkLabel(trackedDog, hunt.areaId);
+      const status = trackedDog.raptorDuty === 'guarding' ? 'DOG GUARDING HAWK' : trackedDog.raptorDuty === 'approaching' ? 'DOG GOING TO HAWK' : dogWorkLabel(trackedDog, hunt.areaId);
       const distance = `${Math.round(dogRange / .9144)} YD`;
       // A continuous GPS bearing gives a useful heading when the dog is behind
       // cover; eight text sectors previously jumped by 45 degrees at a time.
@@ -256,7 +256,8 @@ export class HuntHudSystem implements Subsystem {
       if (this.guidance) {
         let cue = '';
         if (hawk && !hawk.canEnd) cue = hawk.phase === 'on-quarry' || hawk.phase === 'settling'
-          ? 'Keep the dog at heel. Walk to the hawk and make in.'
+          ? 'The dog waits beside the hawk. Walk in and pick up onto the fist.'
+          : hawk.phase === 'picking-up' ? 'Let your hawk step onto the glove.'
           : hawk.phase === 'returning' ? 'Let the hawk return before sending the dog hunting.'
           : 'The dog is coming to heel. Watch the flight, or recall your hawk.';
         else if (hawk && trackedDog?.state === 'pointing') cue = 'Walk toward the point. Follow the dog’s nose, then face the rise and offer a slip.';

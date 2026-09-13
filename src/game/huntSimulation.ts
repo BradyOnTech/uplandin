@@ -78,6 +78,7 @@ export interface HuntSimulationInput {
   whistleRange?: number;
   /** Hold the finished dog at heel while its hawk flies or holds quarry. */
   holdDogs?: boolean;
+  guardRaptor?: Vec2;
   /** Presentation-scale movement overrides; gameplay rules stay internal. */
   dogMotion?: readonly HuntDogMotion[];
 }
@@ -149,7 +150,7 @@ export class HuntSimulation {
     const huntStyle = doctrine.style;
     // The 2D scene handles cast-off itself. Continuous play uses the same
     // whistle once the pack is at heel, without immediately recalling it.
-    const castOff = this.continuousEncounter && !input.holdDogs && input.recall && this.dogs.every(dog => dog.state === 'heel');
+    const castOff = this.continuousEncounter && !input.holdDogs && !input.guardRaptor && input.recall && this.dogs.every(dog => dog.state === 'heel');
     if (castOff) for (const dog of this.dogs) dog.castOff();
 
     updateBirds(dtMs, this.hunt.birds, leadDog.pos, {
@@ -190,6 +191,7 @@ export class HuntSimulation {
         heelFollowRange: spatialEncounter ? 2 / PROPERTY_PX_TO_M : undefined,
         hunterPos: this.hunt.hunterPos,
         holdForRaptor: input.holdDogs,
+        guardRaptor: input.guardRaptor,
         windAngle: this.hunt.wind,
         scentMult: wind.scent * weather.scent,
         recall: !castOff && (input.recall ?? false),

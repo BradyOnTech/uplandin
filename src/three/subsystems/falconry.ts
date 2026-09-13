@@ -33,7 +33,10 @@ export class FalconrySystem implements Subsystem {
   private followButton?: HTMLButtonElement;
   private fist=new THREE.Vector3();
   private forward=new THREE.Vector3();
-  private offset=new THREE.Vector3(-.45,-.50,-.90);
+  private offset=new THREE.Vector3(-.43,-.48,-.88);
+  private lastHandler=new THREE.Vector3();
+  private movement=0;
+  private pickupFrom=new THREE.Vector3();
 
   init(ctx:Ctx):void {
     this.hunt=ctx.get<Hunt3DSystem>('hunt3d');
@@ -83,9 +86,9 @@ export class FalconrySystem implements Subsystem {
     for(const event of events){
       if(event.type==='bound') {
         this.hunt.bindQuarryWorld(event.birdId,event.position.x,event.position.z);
-        this.say('Bound. Bring the dog to heel and walk in.');
+        this.say('Bound. Your dog is going to the hawk. Walk in to pick up.');
       } else if(event.type==='recovered') {
-        this.hunt.recoverQuarry(event.birdId);this.say('Quarry recovered. Taking the hawk back onto the fist.');
+        this.hunt.recoverQuarry(event.birdId);this.say('Hawk on fist, quarry recovered. Q sends the dog hunting again.');
       } else if(event.type==='missed') this.say('The flight is over. Your goshawk is returning.');
       else if(event.type==='recalled') { playWhistle(); this.say('Recall given. Your goshawk is returning.'); }
       else this.say('Back on the fist. Q sends the dog hunting again.');
@@ -102,13 +105,16 @@ export class FalconrySystem implements Subsystem {
       const target=selectSlipTarget(fist,this.forward,targets,q=>this.visible(fist,q));
       if(target&&hawk.slip(fist,target)) { unlockAudio(); this.say('Away. Watch the flight.'); }
       else this.say(hawk.phase!=='fist'?'Your hawk is already away.':hawk.readyIn>0?'Let the hawk settle on the fist.':'Face a rising bird within 60 yards to offer a slip.');
-    } else if(this.intent==='recall') this.events(hawk.recall());
+    } else if(this.intent==='recall') {
+      this.events(hawk.recall());
+      if(['settling','on-quarry','picking-up'].includes(hawk.phase))this.say('Your hawk stays with the quarry. Walk in to pick it up.');
+    }
     else if(this.intent==='recover') {
       const dog=this.hunt.dog(),dogWorld=this.hunt.dogWorld({x:0,z:0});
-      const dogAtHeel=dog.state==='heel'&&Math.hypot(dogWorld.x-ctx.camera.position.x,dogWorld.z-ctx.camera.position.z)<3.5;
-      const events=hawk.recover(ctx.camera.position,dogAtHeel);
-      if(!events.length) this.say(hawk.phase!=='on-quarry'?'Wait until your hawk is settled with the quarry.':!dogAtHeel?'Wait for the dog to settle at heel.':'Walk within three yards, then make in.');
-      this.events(events);
+      const dogSettled=dog.raptorDuty==='guarding'&&Math.hypot(dogWorld.x-hawk.position.x,dogWorld.z-hawk.position.z)<3.5;
+      hawk.recover(ctx.camera.position,dogSettled);
+      if(hawk.phase==='picking-up') {this.pickupFrom.copy(hawk.position);this.following=false;this.say('Offer the glove. Your hawk steps up as you lift.');}
+      else this.say(hawk.phase!=='on-quarry'?'Wait until your hawk settles with the quarry.':!dogSettled?'Let the dog settle beside the hawk.':'Come within arm’s reach, then pick up.');
     }
     this.intent=null;
     this.events(hawk.step(dt,fist,targets,(x,z)=>this.terrain.heightAt(x,z)));
@@ -124,30 +130,44 @@ export class FalconrySystem implements Subsystem {
     if(hawk.phase==='fist')this.following=false;
     if(this.following)ctx.get<PlayerSystem>('player').watchWorld(ctx,hawk.position,dt);
     const fist=this.fistPosition(ctx);
+    const speed=this.lastHandler.lengthSq()===0?0:this.lastHandler.distanceTo(ctx.camera.position)/Math.max(.001,dt);
+    this.movement=THREE.MathUtils.damp(this.movement,Math.min(1,speed/2.2),7,dt);this.lastHandler.copy(ctx.camera.position);
     this.glove.root.position.copy(fist);this.glove.root.quaternion.copy(ctx.camera.quaternion);
     this.glove.root.rotateY(-.35);
     const flying=['launching','chasing','returning'].includes(hawk.phase);
-    if(hawk.phase==='fist'&&this.previousPhase!=='fist') {this.landingFrom.copy(this.hawk.root.position);this.landingBlend=0;}
+    if(hawk.phase==='fist'&&this.previousPhase!=='fist'&&this.previousPhase!=='picking-up') {this.landingFrom.copy(this.hawk.root.position);this.landingBlend=0;}
     this.landingBlend=Math.min(1,this.landingBlend+dt*4);
     this.hawk.root.position.copy(hawk.phase==='fist'?fist:hawk.position);
     if(hawk.phase==='fist'&&this.landingBlend<1)this.hawk.root.position.lerpVectors(this.landingFrom,fist,this.landingBlend*this.landingBlend*(3-2*this.landingBlend));
     this.previousPhase=hawk.phase;
-    if(hawk.phase==='fist'){this.hawk.root.quaternion.copy(ctx.camera.quaternion);this.hawk.root.rotateY(.95);}
+    if(hawk.phase==='fist'){this.hawk.root.rotation.set(0,ctx.camera.rotation.y+Math.PI,0);}
     else {this.hawk.root.rotation.set(0,Math.PI/2-hawk.heading,0);}
-    this.hawk.pose(this.time,flying,hawk.phase==='settling'||hawk.phase==='on-quarry');
+    if(hawk.phase==='picking-up') {
+      const progress=hawk.pickupProgress;
+      const reach=THREE.MathUtils.smoothstep(progress,0,.38);
+      const lift=THREE.MathUtils.smoothstep(progress,.38,1);
+      this.glove.root.position.lerpVectors(fist,this.pickupFrom,reach*(1-lift));
+      this.hawk.root.position.lerpVectors(this.pickupFrom,fist,lift);
+      const turn=THREE.MathUtils.smoothstep(progress,.18,.85);
+      const from=Math.PI/2-hawk.heading,to=ctx.camera.rotation.y+Math.PI;
+      this.hawk.root.rotation.set(0,from+Math.atan2(Math.sin(to-from),Math.cos(to-from))*turn,0);
+      this.landingBlend=1;
+    }
+    this.hawk.pose(this.time,flying,hawk.phase==='settling'||hawk.phase==='on-quarry',hawk.phase==='fist'?this.movement:0,dt);
     if(this.frozen)return;
     const range=Math.round(Math.hypot(ctx.camera.position.x-hawk.position.x,ctx.camera.position.z-hawk.position.z)/.9144);
     const descriptions={
       fist:this.hunt.dog().state==='heel' ? 'Hawk on fist. Q sends the dog hunting along the cattails.' : 'Work the dog along the cattails. Walk in on the point, then slip at the flush.',
       launching:'Away from the fist. The dog is coming to heel.',
       chasing:'Your goshawk has committed. Watch the chase or call it off.',
-      settling:'Bound. Let the hawk settle, then walk in with the dog at heel.',
-      'on-quarry':`Hawk on quarry · ${range} yd. Walk in, then make in to recover.`,
+      settling:'Bound. Your dog is going to lie beside the hawk. Walk in.',
+      'on-quarry':`Hawk on quarry · ${range} yd. Your dog waits nearby. Walk in and pick up.`,
+      'picking-up':'Picking up onto the fist. Your dog stays beside the quarry.',
       returning:`Returning to the glove · ${range} yd.`,
     };
     const text=this.time<this.messageUntil?this.message:descriptions[hawk.phase];
     if(this.status&&this.status.textContent!==text)this.status.textContent=text;
-    if(this.primary){this.primary.textContent=hawk.phase==='on-quarry'?'Make in · E':'Slip · Space';this.primary.disabled=!(hawk.phase==='fist'||hawk.phase==='on-quarry');}
+    if(this.primary){this.primary.textContent=hawk.phase==='on-quarry'?'Pick up · E':'Slip · Space';this.primary.disabled=!(hawk.phase==='fist'||hawk.phase==='on-quarry');}
     if(this.recallButton)this.recallButton.disabled=!['launching','chasing'].includes(hawk.phase);
     if(this.followButton){this.followButton.disabled=hawk.phase==='fist';this.followButton.setAttribute('aria-pressed',String(this.following));}
   }

@@ -178,6 +178,7 @@ declare global {
           scentProgress: number;
           searchAreaChecked: boolean;
           carryingBirdId: number | null;
+          raptorDuty: 'approaching' | 'guarding' | null;
         };
         hunter: { x: number; y: number; z: number };
         tally: { downed: number; retrieved: number; escaped: number; hidden: number; flushed: number };
@@ -245,6 +246,7 @@ engine.start(fieldInterface.loading).then((started) => {
           scentProgress: h.dog().scentProgress,
           searchAreaChecked: h.dog().searchAreaChecked,
           carryingBirdId: h.dog().carryingBirdId,
+          raptorDuty: h.dog().raptorDuty,
         },
         hunter: { x: hunterW.x, y: engine.ctx.camera.position.y, z: hunterW.z },
         tally: {

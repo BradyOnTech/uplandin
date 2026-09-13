@@ -65,14 +65,16 @@ try {
     if(outcome==='recall'&&!recallSent){await page.keyboard.press('KeyR');recallSent=true;}
   } else if(h.phase==='on-quarry'){
     if(outcome!=='catch')throw new Error('Expected an unsuccessful flight');
+    if(state.hunt.dog.raptorDuty==='guarding'&&!manifest.guarded){manifest.guarded=true;await event('dog-guarding',state,true);}
+    if(!manifest.testedNoRecall){await page.keyboard.press('KeyR');manifest.testedNoRecall=true;await sleep(70);if((await read()).t.falconry.phase!=='on-quarry')throw new Error('Recalled from quarry');}
     await look(h.position,state);
     const d=Math.hypot(h.position.x-state.t.camera.x,h.position.z-state.t.camera.z);
-    await move(d>1.8);
-    if(d<=1.8&&!recovered){await page.keyboard.press('KeyE');await sleep(100);recovered=(await read()).t.falconry.recovered===1;}
-  } else if(h.phase==='returning') {await move(false);await look(h.position,state);}
+    await move(d>1.1);
+    if(d<=1.1&&!recovered){if(!manifest.closePickup){manifest.closePickup=true;await event('pickup-close',state,true);await look({x:state.hunt.dog.x,y:h.position.y+.12,z:state.hunt.dog.z},state);await sleep(300);await event('guard-close',await read(),true);await look(h.position,await read());}await page.keyboard.press('KeyE');await sleep(100);recovered=(await read()).t.falconry.phase==='picking-up';}
+  } else if(h.phase==='picking-up') { await move(false); if(!manifest.pickupFrame){manifest.pickupFrame=true;await event('hand-pickup',state,true);} } else if(h.phase==='returning') {await move(false);await look(h.position,state);}
   if(slipped&&h.flights>0&&h.phase==='fist'){
     await move(false);
-    if(outcome==='catch'&&h.recovered!==1)throw new Error('The first offered flight did not produce a recovered catch');
+    if(outcome==='catch'&&(!manifest.guarded||h.recovered!==1))throw new Error('The first offered flight did not produce a recovered catch');
     if(outcome==='escape'&&h.misses!==1)throw new Error('Escape not counted');
     if(outcome==='recall'&&h.recalls!==1)throw new Error('Recall not counted');
     if(!sawPoint)throw new Error('No dog point observed');

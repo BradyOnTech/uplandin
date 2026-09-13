@@ -46,8 +46,8 @@ export class FieldInterface {
       document.getElementById('field-description')!.textContent='A goshawk on the fist. A finished pointing dog. Work the cattail edges together.';
       document.getElementById('field-method')!.textContent='GOSHAWK · FROM THE FIST · QUICK HUNT';
       const instructions=document.getElementById('field-instructions')!;
-      instructions.innerHTML='<p><kbd>W A S D</kbd> Walk · <kbd>Q</kbd> Whistle dog · <kbd>M</kbd> Survey map</p><p><kbd>Space</kbd> Slip · <kbd>R</kbd> Recall hawk · <kbd>F</kbd> Watch hawk · <kbd>E</kbd> Make in</p><p>Walk in on the point. Face a rising bird and slip your goshawk. The dog comes to heel while the hawk flies. On a catch, walk to the hawk with the dog at heel, then make in to recover.</p><p class="field-tip">After the hawk returns, whistle to send the dog hunting again. Touch: drag left to walk, right to look; use the hawk buttons below.</p>';
-      document.getElementById('controls')!.innerHTML='WASD move · Shift run · Q whistle · M survey map<br>Space slip · R recall hawk · F watch hawk · E make in';
+      instructions.innerHTML='<p><kbd>W A S D</kbd> Walk · <kbd>Q</kbd> Whistle dog · <kbd>M</kbd> Survey map</p><p><kbd>Space</kbd> Slip · <kbd>R</kbd> Recall hawk · <kbd>F</kbd> Watch hawk · <kbd>E</kbd> Pick up</p><p>Walk in on the point. Face a rising bird and slip your goshawk. The dog comes to heel while the hawk flies. On a catch, the dog lies beside the hawk. Walk within arm’s reach and pick the hawk up onto your fist.</p><p class="field-tip">After the hawk returns, whistle to send the dog hunting again. Touch: drag left to walk, right to look; use the hawk buttons below.</p>';
+      document.getElementById('controls')!.innerHTML='WASD move · Shift run · Q whistle · M survey map<br>Space slip · R recall hawk · F watch hawk · E pick up';
     }
     const mapToggle=document.getElementById('field-map-toggle') as HTMLButtonElement|null;
     if (mapToggle) mapToggle.hidden=this.capture || !this.entered;

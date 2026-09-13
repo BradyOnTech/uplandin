@@ -157,7 +157,8 @@ export class PlayerSystem implements Subsystem {
   }
   update(ctx: Ctx, dt: number): void {
     this.waterDepth = this.water?.depthAtWorld(this.pos.x, this.pos.z) ?? 0;
-    if (!this.captureMode && !ctx.paused) {
+    this.hunt ??= ctx.get<Hunt3DSystem>('hunt3d');
+    if (!this.captureMode && !ctx.paused && this.hunt.falconry?.phase !== 'picking-up') {
       const f = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0) - (this.touchMove?.dy ?? 0);
       const s = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0) + (this.touchMove?.dx ?? 0);
       // Camera right is +X when yaw=0; movement matches the visible view.

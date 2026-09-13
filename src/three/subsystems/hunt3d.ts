@@ -392,11 +392,13 @@ export class Hunt3DSystem implements Subsystem {
     const player = ctx.get<PlayerSystem>('player');
     const recall = player.consumeRecall();
     if (recall) playWhistle();
+    const guard = this.falconry?.guardPoint();
     const events = this.simulation.update(dtMs, {
       hunterPos: hunterPos,
       hunterRunning: player.isRunning(),
       recall,
       holdDogs: this.falconry?.holdsDog,
+      guardRaptor: guard ? this.worldToSim(guard.x,guard.z,{x:0,y:0}) : undefined,
       whistleRange: this.gearTier >= 3 ? Infinity : undefined,
       dogMotion: this.liveDogMotions,
     });

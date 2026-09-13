@@ -7,11 +7,13 @@ export interface QuarryTarget extends FlightPoint {
   id: number;
   vx: number; vy: number; vz: number;
 }
-export type GoshawkPhase = 'fist' | 'launching' | 'chasing' | 'settling' | 'on-quarry' | 'returning';
+export interface GoshawkAim { x: number; y: number; z: number }
+export type GoshawkGuidance = (subject: {position: FlightPoint; heading: number}, quarry: QuarryTarget) => GoshawkAim;
+export type GoshawkPhase = 'fist' | 'launching' | 'chasing' | 'settling' | 'on-quarry' | 'picking-up' | 'returning';
 export type FalconryEvent = { type: 'bound' | 'recovered'; birdId: number; position: FlightPoint }
   | { type: 'missed' | 'recalled' | 'returned' };
 export const GOSHAWK = {
-  slipRange: 55, catchRadius: .65, recoveryRange: 2.6,
+  slipRange: 55, catchRadius: .65, recoveryRange: 1.35, pickupSeconds: 1.15,
   launchSeconds: .42, maxPursuitSeconds: 12, speed: 23, acceleration: 13,
   turnRate: 2.5, returnSpeed: 15,
 } as const;
@@ -42,6 +44,7 @@ export function sweptSeparation(a: FlightPoint, b: FlightPoint): number {
 }
 
 export class GoshawkFlight {
+  constructor(private readonly guidance?: GoshawkGuidance) {}
   phase: GoshawkPhase = 'fist';
   position: FlightPoint = {x:0,y:0,z:0};
   velocity: FlightPoint = {x:0,y:0,z:0};
@@ -78,13 +81,23 @@ export class GoshawkFlight {
     return [{type:'recalled'}];
   }
 
-  recover(handler: FlightPoint, dogAtHeel: boolean): FalconryEvent[] {
-    if (this.phase!=='on-quarry' || this.targetId===null || !dogAtHeel ||
-      Math.hypot(handler.x-this.position.x,handler.z-this.position.z)>GOSHAWK.recoveryRange) return [];
-    const event: FalconryEvent={type:'recovered',birdId:this.targetId,position:{...this.position}};
-    this.recovered++; this.targetId=null; this.phase='returning'; this.phaseSeconds=0;
-    return [event];
+  recover(handler: FlightPoint, dogSettled: boolean): boolean {
+    if (this.phase!=='on-quarry' || this.targetId===null || !dogSettled ||
+      Math.hypot(handler.x-this.position.x,handler.z-this.position.z)>GOSHAWK.recoveryRange) return false;
+    this.phase='picking-up'; this.phaseSeconds=0;
+    return true;
   }
+
+  get pickupProgress(): number { return this.phase==='picking-up' ? clamp(this.phaseSeconds/GOSHAWK.pickupSeconds,0,1) : 0; }
+
+  /** The finished dog lies beside a bound hawk, clear of its feet and quarry. */
+  guardPoint(): FlightPoint | null {
+    if (!['settling','on-quarry','picking-up'].includes(this.phase)) return null;
+    return {x:this.position.x-Math.sin(this.heading)*2.4,y:this.position.y,z:this.position.z+Math.cos(this.heading)*2.4};
+  }
+
+  /** Read-only subject for a future detached flight camera. It owns no hunter input. */
+  flightSubject() { return {phase:this.phase,position:{...this.position},velocity:{...this.velocity},heading:this.heading,targetId:this.targetId}; }
 
   step(dt: number, fist: FlightPoint, targets: readonly QuarryTarget[], ground: (x:number,z:number)=>number): FalconryEvent[] {
     if (!(dt>0)) return [];
@@ -92,6 +105,13 @@ export class GoshawkFlight {
     this.phaseSeconds+=dt;
     if (this.phase==='fist') {this.position={...fist}; return [];}
     if (this.phase==='on-quarry') return [];
+    if (this.phase==='picking-up') {
+      if (this.phaseSeconds<GOSHAWK.pickupSeconds) return [];
+      const event: FalconryEvent={type:'recovered',birdId:this.targetId!,position:{...this.position}};
+      this.recovered++;this.targetId=null;this.phase='fist';this.readyIn=.8;
+      this.position={...fist};this.velocity={x:0,y:0,z:0};
+      return [event];
+    }
     if (this.phase==='settling') {
       const floor=ground(this.position.x,this.position.z)+.22;
       this.position.y=Math.max(floor,this.position.y-3*dt);
@@ -122,8 +142,8 @@ export class GoshawkFlight {
     }
     const before={...this.position};
     const lead=quarry ? clamp(distance(before,quarry)/55,.06,.38) : 0;
-    const tx=destination.x+(quarry?.vx ?? 0)*lead;
-    const tz=destination.z+(quarry?.vz ?? 0)*lead;
+    const aim=quarry && this.guidance ? this.guidance({position:{...before},heading:this.heading},{...quarry}) : {x:destination.x+(quarry?.vx ?? 0)*lead,y:destination.y+(quarry?.vy ?? 0)*lead,z:destination.z+(quarry?.vz ?? 0)*lead};
+    const tx=aim.x,tz=aim.z;
     const desired=Math.atan2(tz-before.z,tx-before.x);
     const turn=clamp(wrap(desired-this.heading),-GOSHAWK.turnRate*dt,GOSHAWK.turnRate*dt);
     this.heading+=turn;
@@ -133,7 +153,7 @@ export class GoshawkFlight {
     this.speed+=clamp(maxSpeed-this.speed,-18*dt,GOSHAWK.acceleration*dt);
     const nx=before.x+Math.cos(this.heading)*this.speed*dt;
     const nz=before.z+Math.sin(this.heading)*this.speed*dt;
-    const desiredY=Math.max(ground(nx,nz)+.25,destination.y+(quarry?.vy ?? 0)*lead);
+    const desiredY=Math.max(ground(nx,nz)+.25,aim.y);
     const ny=before.y+clamp(desiredY-before.y,-6*dt,7*dt);
     this.position={x:nx,y:Math.max(ground(nx,nz)+.2,ny),z:nz};
     this.velocity={x:(nx-before.x)/dt,y:(this.position.y-before.y)/dt,z:(nz-before.z)/dt};
