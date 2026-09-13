@@ -1,3 +1,4 @@
+import { isFalconryPractice } from '../../game/falconryPractice';
 import { huntComplete } from '../../game/state';
 import { nextHuntUrl } from '../../game/huntSeed';
 import { huntingDoctrine } from '../../game/huntDoctrine';
@@ -132,8 +133,10 @@ export class HuntHudSystem implements Subsystem {
     }
     if (this.summary) this.summary.hidden = true;
     const options = { signal: this.abort.signal };
+    if (isFalconryPractice(location.search)) document.getElementById('hunt-again')!.textContent = 'Restart drill';
     document.getElementById('hunt-again')?.addEventListener('click', () => {
-      if (['quail-fields', 'pheasant-coverts'].includes(this.hunt.huntState().areaId)) location.assign(nextHuntUrl(location.href));
+      if (isFalconryPractice(location.search)) location.reload();
+      else if (['quail-fields', 'pheasant-coverts'].includes(this.hunt.huntState().areaId)) location.assign(nextHuntUrl(location.href));
       else location.reload();
     }, options);
     document.getElementById('hunt-menu')?.addEventListener('click', () => location.assign('./index.html'), options);

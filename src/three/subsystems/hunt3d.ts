@@ -1,3 +1,4 @@
+import { isFalconryPractice, FALCONRY_PRACTICE } from '../../game/falconryPractice';
 import { GoshawkFlight } from '../../game/falconry';
 import { ShallowWater } from '../../game/shallowWater';
 import { quailGroundPropObstacles } from './quailGroundProps';
@@ -216,6 +217,10 @@ export class Hunt3DSystem implements Subsystem {
       );
     }
     ctx.get<PlayerSystem>('player').setHuntHeading(ctx, drop.heading);
+    if (isFalconryPractice(location.search)) {
+      const { hunter, quarry } = FALCONRY_PRACTICE;
+      ctx.get<PlayerSystem>('player').setPose(ctx, hunter.x, hunter.z, Math.atan2(hunter.x-quarry.x, hunter.z-quarry.z)*180/Math.PI, -8);
+    }
     const dogProfiles = [
       { breed: setup.breed, level: setup.level, ageMultiplier: setup.ageMultiplier },
       ...(setup.brace
@@ -323,26 +328,29 @@ export class Hunt3DSystem implements Subsystem {
     // one-time bridge the dog begins ~250 m away: technically in the
     // camera frustum, but sub-pixel and buried in grass. Place it five
     // meters ahead and two meters screen-left on the first LIVE tick.
+    // The explicit practice drill starts it 16 meters ahead, already in scent.
     // Recording uses the same placement. Only its clock is controlled by
     // the harness; hidden alternative mechanics invalidate gameplay evidence.
     let snappedSpawn = false;
     if (!this.liveSpawnSynced) {
+      const ahead = isFalconryPractice(location.search) ? 16 : LIVE_DOG_AHEAD_M;
       const leftX = -Math.cos(yaw);
       const leftZ = Math.sin(yaw);
       for (let slot = 0; slot < this.simDogs.length; slot++) {
         const dog = this.simDogs[slot];
         const side = slot === 0 ? 1 : -1;
         dog.pos.x = hunterPos.x +
-          (forwardX * LIVE_DOG_AHEAD_M + leftX * LIVE_DOG_LEFT_M * side) / PROPERTY_PX_TO_M;
+          (forwardX * ahead + leftX * LIVE_DOG_LEFT_M * side) / PROPERTY_PX_TO_M;
         dog.pos.y = hunterPos.y +
-          (forwardZ * LIVE_DOG_AHEAD_M + leftZ * LIVE_DOG_LEFT_M * side) / PROPERTY_PX_TO_M;
+          (forwardZ * ahead + leftZ * LIVE_DOG_LEFT_M * side) / PROPERTY_PX_TO_M;
         dog.state = 'heel';
         dog.gait = 'still';
         // Stand three-quarter at heel so the marked head/ear is readable,
         // rather than presenting a featureless white rump to the player.
         dog.heading = Math.atan2(forwardZ, forwardX) + LIVE_DOG_INTRO_ANGLE * side;
       }
-      this.liveIntroHolding = true;
+      this.liveIntroHolding = !isFalconryPractice(location.search);
+      if (!this.liveIntroHolding) for (const dog of this.simDogs) dog.castOff();
       this.liveIntroHunter.x = hunterPos.x;
       this.liveIntroHunter.y = hunterPos.y;
       this.liveSpawnSynced = true;

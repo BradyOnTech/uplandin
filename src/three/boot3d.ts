@@ -1,3 +1,4 @@
+import { isFalconryPractice, FALCONRY_PRACTICE } from '../game/falconryPractice';
 import { bindFieldPageLifecycle } from './pageLifecycle';
 import { enableOfflineHunts } from './offline';
 import { prepareHuntUrl } from '../game/huntSeed';
@@ -44,6 +45,13 @@ import {
 
 // Persist this visit's seed in its URL so display changes and reloads preserve
 // its hunt. Hunt again removes it; the following boot creates a fresh visit.
+if (isFalconryPractice(location.search)) {
+  const url = new URL(location.href);
+  url.searchParams.set('seed', String(FALCONRY_PRACTICE.seed));
+  url.searchParams.set('drop', FALCONRY_PRACTICE.drop);
+  if (!url.searchParams.has('tod')) url.searchParams.set('tod', 'morning');
+  history.replaceState(null, '', url);
+}
 if (['quail-fields', 'pheasant-coverts'].includes(resolveThreeHuntArea(location.search).id)) {
   const seeded = prepareHuntUrl(location.href);
   if (seeded.href !== location.href) history.replaceState(null, '', seeded);

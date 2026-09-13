@@ -1,3 +1,4 @@
+import { isFalconryPractice } from '../../game/falconryPractice';
 import * as THREE from 'three';
 import { playHawkWingbeat, playWhistle, unlockAudio } from '../../audio';
 import { selectSlipTarget, type FalconryEvent, type FlightPoint } from '../../game/falconry';
@@ -53,6 +54,7 @@ export class FalconrySystem implements Subsystem {
     window.addEventListener('keydown',e=>{
       if(ctx.paused||this.frozen||e.repeat||e.ctrlKey||e.metaKey||e.altKey||
         (e.target as HTMLElement)?.closest?.('button,input,select,textarea,[contenteditable="true"]')) return;
+      if(e.code==='KeyT' && isFalconryPractice(location.search)) {e.preventDefault();location.reload();return;}
       if(e.code==='Space') {e.preventDefault();this.intent='slip';}
       if(e.code==='KeyR') {e.preventDefault();this.intent='recall';}
       if(e.code==='KeyE') {e.preventDefault();this.intent='recover';}
@@ -62,13 +64,14 @@ export class FalconrySystem implements Subsystem {
 
   private createControls(ctx:Ctx):void {
     const panel=document.createElement('section');panel.id='falconry-controls';panel.setAttribute('aria-label','Goshawk controls');
-    const label=document.createElement('div');label.className='falconry-label';label.textContent='GOSHAWK · FROM THE FIST';
+    const label=document.createElement('div');label.className='falconry-label';label.textContent=isFalconryPractice(location.search)?'GOSHAWK · QUICK PRACTICE':'GOSHAWK · FROM THE FIST';
     this.status=document.createElement('div');this.status.id='falconry-status';this.status.setAttribute('aria-live','polite');
     const actions=document.createElement('div');actions.className='falconry-actions';
     const button=(label:string,action:()=>void)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.addEventListener('click',()=>{if(ctx.paused)return;action();ctx.renderer.domElement.focus();},{signal:this.abort.signal});actions.append(b);return b;};
     this.primary=button('Slip · Space',()=>{this.intent=this.hunt.falconry!.phase==='on-quarry'?'recover':'slip';});
     this.recallButton=button('Recall hawk · R',()=>{this.intent='recall';});
     this.followButton=button('Watch hawk · F',()=>{this.following=!this.following;});
+    if(isFalconryPractice(location.search)) button('Restart drill · T',()=>location.reload());
     panel.append(label,this.status,actions);document.body.append(panel);this.panel=panel;
   }
 

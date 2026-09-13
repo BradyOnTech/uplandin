@@ -26,6 +26,21 @@ The regular Quick Hunt screen also offers Goshawk in the Hunt loadout picker. Th
 
 Touch retains movement and looking on the field and exposes separate hawk action buttons. A missed slip does not automatically offer another bird. An unsuccessful flight returns the hawk; a successful one leaves it with its quarry until the handler walks in and picks it up. Recall cannot take the hawk off quarry. After return, whistle to restart the dog's search.
 
+**Fast practice drill**
+
+Open `http://127.0.0.1:4527/index3d.html?play=quick&method=goshawk&practice=slip`. This is a separate, visibly labeled practice setup on Cattail Coverts: one planted rooster about 31 yards ahead, a finished dog already in scent, a favorable breeze, frost, and balanced challenge. The fixed seed and South Gate coordinate frame keep restarts consistent. Morning is the default light.
+
+Wait for the dog to point, walk toward it and continue in the direction of its nose, then face the flush and press Space. Press T or the in-field Restart drill button to reset at any stage; the summary also offers Restart drill. Reloading resets the whole drill. No career progress is saved.
+
+The rooster holds rather than running and has a one-minute nerve allowance on point. The dog establishes the point through normal scent AI. Ordinary flush, pursuit, escape, guarding and hand pickup rules remain in use. The starting hunter is outside the dog's normal handler exclusion distance. Ordinary Quick Hunts and career hunts retain their original spawns.
+
+| Before | After |
+| --- | --- |
+| Testing required searching the property before the first point. | The explicitly selected drill stages one nearby opportunity and casts off the dog automatically. |
+| Hunt again rerolled the visit. | Practice offers a repeatable restart from the field or summary. |
+
+`tools3d/falconry-playthrough.mjs catch 61 --practice` verified a point without hunter movement in 0.7 seconds, a slip about 9 seconds after entry, and hand pickup about 25 seconds after entry. It also verified a fresh point after the summary restart and reset through the T shortcut. The delayed-slip practice run also verified an escape, empty return, summary and both restart routes. These are automated diagnostic timings, not a device performance promise. The full suite passed 102 files and 764 tests, and the production build passed with the existing bundle-size advisory.
+
 **Implementation**
 
 `src/game/falconry.ts` owns pursuit, commitment to one quarry, swept interception, recall, landing and handler recovery in metres and seconds. The existing 3D bird controller supplies live quarry positions and velocities; nearby quarry can jink in response to pursuit. Both advance on the existing fixed 30 Hz clock. This slice adds a shared pursuit model without moving the existing shotgun flight controller out of the 3D adapter.

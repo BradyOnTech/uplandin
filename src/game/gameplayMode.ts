@@ -1,3 +1,4 @@
+import { isFalconryPractice, FALCONRY_PRACTICE, stageFalconryPractice } from './falconryPractice';
 import { areaBirdCount, getArea, type AreaConfig } from './areas';
 import { getSpecies } from './species';
 import { BREEDS, getBreed, type BreedConfig } from './breeds';
@@ -75,7 +76,7 @@ export function build3DHuntHref(launch: HuntLaunch, dropPointId?: string): strin
 }
 
 export function parseDropPointId(search: string): string | undefined {
-  return new URLSearchParams(search).get('drop') ?? undefined;
+  return isFalconryPractice(search) ? FALCONRY_PRACTICE.drop : new URLSearchParams(search).get('drop') ?? undefined;
 }
 
 export function parseHuntLaunch(search: string): HuntLaunch | null {
@@ -174,6 +175,7 @@ export interface ThreeHuntSetup extends ThreeHuntProfile {
 }
 
 export function resolveThreeHuntChallenge(search: string, storage: StorageLike | null = defaultStorage()): HuntChallenge {
+  if (isFalconryPractice(search)) return 'balanced';
   if (!huntingDoctrine(resolveThreeHuntArea(search, storage).id).spatialEncounter) return 'balanced';
   const params = new URLSearchParams(search);
   if (params.has('challenge')) return parseHuntChallenge(params.get('challenge'));
@@ -207,7 +209,7 @@ export function createThreeHuntSetup(
   const tuning = HUNT_CHALLENGES[challenge];
   const resolvedArea = resolveThreeHuntArea(search, storage);
   const isQuail = resolvedArea.id === 'quail-fields';
-  const seed = parseHuntSeed(search) ?? (isQuail ? Math.floor(rng() * 0x100000000) : undefined);
+  const seed = (isFalconryPractice(search) ? FALCONRY_PRACTICE.seed : parseHuntSeed(search)) ?? (isQuail ? Math.floor(rng() * 0x100000000) : undefined);
   const environmentRng = seed === undefined ? rng : mulberry32(huntStreamSeed(seed, 0xe071));
   // Authored non-Quail properties use their own stable encounter streams so
   // route sampling cannot consume the weather/wind stream or change when a
@@ -254,6 +256,7 @@ export function createThreeHuntSetup(
     });
     hunt.quick = quick;
     hunt.huntingMethod = quick.huntingMethod === 'goshawk' ? 'goshawk' : 'shotgun';
+    if (isFalconryPractice(search)) stageFalconryPractice(hunt);
     return { ...profile, launch, area, hunt, challenge, seed, breed: getBreed(profile.breedId) };
   }
 

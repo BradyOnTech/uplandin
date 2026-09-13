@@ -1,3 +1,4 @@
+import { isFalconryPractice } from '../game/falconryPractice';
 import { bindTouchActionControl } from './touchActionControl';
 import { bindTouchShotControl } from './touchShotControl';
 import { HUNT_CHALLENGES, HUNT_CHALLENGE_KEY, parseHuntChallenge } from '../game/huntChallenge';
@@ -48,6 +49,11 @@ export class FieldInterface {
       const instructions=document.getElementById('field-instructions')!;
       instructions.innerHTML='<p><kbd>W A S D</kbd> Walk · <kbd>Q</kbd> Whistle dog · <kbd>M</kbd> Survey map</p><p><kbd>Space</kbd> Slip · <kbd>R</kbd> Recall hawk · <kbd>F</kbd> Watch hawk · <kbd>E</kbd> Pick up</p><p>Walk in on the point. Face a rising bird and slip your goshawk. The dog comes to heel while the hawk flies. On a catch, the dog lies beside the hawk. Walk within arm’s reach and pick the hawk up onto your fist.</p><p class="field-tip">After the hawk returns, whistle to send the dog hunting again. Touch: drag left to walk, right to look; use the hawk buttons below.</p>';
       document.getElementById('controls')!.innerHTML='WASD move · Shift run · Q whistle · M survey map<br>Space slip · R recall hawk · F watch hawk · E pick up';
+    }
+    if (isFalconryPractice(location.search)) {
+      document.getElementById('field-title')!.textContent='Cattail Coverts · Falconry practice';
+      document.getElementById('field-description')!.textContent='One planted rooster, about 31 yards ahead. Your dog starts in scent and establishes the point. Walk in, face the flush, and slip.';
+      this.overlay.querySelector('.field-tip')!.textContent='This drill uses a holding bird and a favorable wind. Catches and escapes play out normally. Press T in the field to restart, or use Restart drill after the flight.';
     }
     const mapToggle=document.getElementById('field-map-toggle') as HTMLButtonElement|null;
     if (mapToggle) mapToggle.hidden=this.capture || !this.entered;
@@ -144,7 +150,7 @@ export class FieldInterface {
     const sound = document.getElementById('sound-setting') as HTMLInputElement;
     const challenge = document.getElementById('challenge-setting') as HTMLSelectElement;
     const challengeHelp = document.getElementById('challenge-help')!;
-    document.getElementById('challenge-options')!.hidden = false;
+    document.getElementById('challenge-options')!.hidden = isFalconryPractice(location.search);
     challenge.value = resolveThreeHuntChallenge(location.search);
     challengeHelp.textContent = HUNT_CHALLENGES[parseHuntChallenge(challenge.value)].description;
     challenge.addEventListener('change', () => {

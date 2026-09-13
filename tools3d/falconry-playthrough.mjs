@@ -1,14 +1,15 @@
 /** Isolated automated browser test. Normal keyboard/mouse input, no state writes,
  * teleports, forced flushes or catches. Read-only telemetry assists aiming.
- * node tools3d/falconry-playthrough.mjs [catch|escape|recall] [seed]
+ * node tools3d/falconry-playthrough.mjs [catch|escape|recall] [seed] [--practice]
  */
 import puppeteer from 'puppeteer';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 const outcome=process.argv[2]??'catch',seed=process.argv[3]??'61';
+const practice=process.argv.includes('--practice');
 const out=resolve('output/playwright/falconry');mkdirSync(out,{recursive:true});
-const prefix=`${out}/${outcome}-${seed}`;
-const manifest={kind:'ordinary-gameplay-automated-input',outcome,seed,limitations:['Frame limiting disabled for this diagnostic; not a device performance benchmark.','Read-only telemetry guides mouse aiming; not a human usability study.','Procedural raptor asset; physical mobile performance not verified.'],events:[],errors:[]};
+const prefix=`${out}/${practice?'practice-':''}${outcome}-${seed}`;
+const manifest={kind:practice?'staged-practice-ordinary-gameplay-input':'ordinary-gameplay-automated-input',outcome,seed,limitations:['Frame limiting disabled for this diagnostic; not a device performance benchmark.','Read-only telemetry guides mouse aiming; not a human usability study.','Procedural raptor asset; physical mobile performance not verified.'],events:[],errors:[]};
 console.log('Launching test browser');
 const browser=await puppeteer.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required','--disable-frame-rate-limit','--disable-gpu-vsync']});
 console.log('Browser launched');
@@ -31,24 +32,27 @@ const event=async(name,state,screenshot=false)=>{manifest.events.push({name,seco
 const start=Date.now();
 try {
  console.log('Loading test hunt');
- await page.goto(`http://localhost:4527/index3d.html?play=quick&method=goshawk&seed=${seed}&tod=morning&quality=lite`,{waitUntil:'domcontentloaded'});
+ await page.goto(`http://localhost:4527/index3d.html?play=quick&method=goshawk&seed=${seed}&tod=morning&quality=lite${practice?'&practice=slip':''}`,{waitUntil:'domcontentloaded'});
  await page.bringToFront();
  console.log('Waiting for hunt initialization');
  await sleep(5000);
  await page.waitForFunction('window.__ready3d === true',{timeout:60000});
  console.log('Entering field');
  await page.click('#enter-field');await page.waitForFunction('document.pointerLockElement?.tagName === "CANVAS"',{timeout:5000});
+ const entered=Date.now();
  const initial=await read();await event('fist',initial,true);
  // Empty slip must neither consume a flight nor release a bird.
  await page.keyboard.press('Space');await sleep(100);
  if((await read()).t.falconry.flights!==0)throw new Error('Empty slip created a flight');
- await move(true);
+ if(!practice)await move(true);
  let sawPoint=false,slipped=false,recallSent=false,recovered=false,lastPhase='',pointTarget=null,lateUntil=0;
  while(Date.now()-start<240000){
   await sleep(60);let state=await read();const h=state.t.falconry;
+  if(practice&&!sawPoint&&Date.now()-entered>10000){await event('point-timeout',state);throw new Error('No nearby point within 10 seconds');}
   if(state.t.paused&&!state.summary)throw new Error('Unexpected pause');
   if(h.phase!==lastPhase){await event(h.phase,state,h.phase==='on-quarry');lastPhase=h.phase;}
   if(!sawPoint&&state.hunt.dog.state==='pointing'){
+    if(practice){manifest.pointSeconds=(Date.now()-entered)/1000;if(manifest.pointSeconds>10)throw new Error('Practice point took longer than 10 seconds');}
     sawPoint=true;pointTarget=state.t.pointedBird;await move(false);await event('point',state,true);
   }
   if(h.phase==='fist'&&!slipped){
@@ -78,6 +82,26 @@ try {
     if(outcome==='escape'&&h.misses!==1)throw new Error('Escape not counted');
     if(outcome==='recall'&&h.recalls!==1)throw new Error('Recall not counted');
     if(!sawPoint)throw new Error('No dog point observed');
+    if(practice){
+      if(!state.summary){
+        await page.waitForFunction(()=>!document.getElementById('hunt-summary').hidden||!document.getElementById('end-hunt').disabled,{timeout:30000});
+        if(!(await read()).summary){await page.evaluate(()=>document.exitPointerLock());await page.click('#end-hunt');}
+      }
+      await page.waitForFunction('!document.getElementById("hunt-summary").hidden',{timeout:30000});
+      const final=await read();if(final.career!==initial.career)throw new Error('Practice changed career');
+      await event('summary',final,true);
+      await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.click('#hunt-again')]);
+      await page.waitForFunction('window.__ready3d === true',{timeout:60000});
+      await page.click('#enter-field');
+      await page.waitForFunction(()=>window.__api3d.hunt().dog.state==='pointing',{timeout:10000});
+      const restarted=await read();
+      if(restarted.t.falconry.flights!==0||restarted.t.pointedBird.id!==pointTarget.id)throw new Error('Drill did not reset');
+      await event('restarted-point',restarted,true);
+      await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.keyboard.press('KeyT')]);
+      await page.waitForFunction('window.__ready3d === true',{timeout:60000});
+      if((await read()).t.falconry.flights!==0)throw new Error('Keyboard restart failed');
+      manifest.keyboardRestart=true;manifest.passed=manifest.errors.length===0;break;
+    }
     // A recalled hawk can land before the flushed bird finishes escaping or
     // the dog arrives. Wait for those ordinary field states before ending.
     await page.waitForFunction(()=>window.__api3d.hunt().dog.state==='heel'&&!document.getElementById('end-hunt').disabled,{timeout:30000});
