@@ -38,6 +38,8 @@ export class FalconrySystem implements Subsystem {
   private lastHandler=new THREE.Vector3();
   private movement=0;
   private pickupFrom=new THREE.Vector3();
+  private hawkLayer=-1;
+  private gloveLayer=-1;
 
   init(ctx:Ctx):void {
     this.hunt=ctx.get<Hunt3DSystem>('hunt3d');
@@ -157,6 +159,12 @@ export class FalconrySystem implements Subsystem {
       this.landingBlend=1;
     }
     this.hawk.pose(this.time,flying,hawk.phase==='settling'||hawk.phase==='on-quarry',hawk.phase==='fist'?this.movement:0,dt);
+    // Only the held view model ignores nearby reeds. Pursuit, quarry and the
+    // ground pickup remain in the world and retain normal cover occlusion.
+    const hawkLayer=hawk.phase==='fist'&&this.landingBlend===1?1:0;
+    const gloveLayer=hawk.phase==='picking-up'?0:1;
+    if(hawkLayer!==this.hawkLayer){this.hawk.root.traverse(o=>o.layers.set(hawkLayer));this.hawkLayer=hawkLayer;}
+    if(gloveLayer!==this.gloveLayer){this.glove.root.traverse(o=>o.layers.set(gloveLayer));this.gloveLayer=gloveLayer;}
     if(this.frozen)return;
     const range=Math.round(Math.hypot(ctx.camera.position.x-hawk.position.x,ctx.camera.position.z-hawk.position.z)/.9144);
     const descriptions={
@@ -173,6 +181,25 @@ export class FalconrySystem implements Subsystem {
     if(this.primary){this.primary.textContent=hawk.phase==='on-quarry'?'Pick up · E':'Slip · Space';this.primary.disabled=!(hawk.phase==='fist'||hawk.phase==='on-quarry');}
     if(this.recallButton)this.recallButton.disabled=!['launching','chasing'].includes(hawk.phase);
     if(this.followButton){this.followButton.disabled=hawk.phase==='fist';this.followButton.setAttribute('aria-pressed',String(this.following));}
+  }
+  renderOverlay(ctx:Ctx):void {
+    if(!this.hawk||!this.glove||(this.hawkLayer!==1&&this.gloveLayer!==1))return;
+    const {renderer,scene,camera}=ctx;
+    const mask=camera.layers.mask,autoClear=renderer.autoClear,background=scene.background;
+    const shadowUpdate=renderer.shadowMap.autoUpdate;
+    const lights: Array<[THREE.Object3D,number]>=[];
+    scene.traverse(o=>{if((o as THREE.Light).isLight){lights.push([o,o.layers.mask]);o.layers.enable(1);}});
+    try {
+      camera.layers.set(1);renderer.autoClear=false;scene.background=null;
+      // Reuse the world's lighting and shadow maps; the overlay must not
+      // replace those maps with a view-model-only shadow pass.
+      renderer.shadowMap.autoUpdate=false;
+      renderer.clearDepth();renderer.render(scene,camera);
+    } finally {
+      camera.layers.mask=mask;renderer.autoClear=autoClear;scene.background=background;
+      renderer.shadowMap.autoUpdate=shadowUpdate;
+      for(const [light,lightMask] of lights)light.layers.mask=lightMask;
+    }
   }
   dispose(ctx:Ctx):void {this.abort.abort();this.panel?.remove();if(this.hawk){ctx.scene.remove(this.hawk.root);this.hawk.dispose();}if(this.glove){ctx.scene.remove(this.glove.root);this.glove.dispose();}document.body.classList.remove('falconry-hunt');}
 }

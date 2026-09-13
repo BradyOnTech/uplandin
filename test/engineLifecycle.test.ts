@@ -7,6 +7,8 @@ vi.mock('three', async (original) => {
     shadowMap = { enabled: false, type: 0 };
     domElement: HTMLCanvasElement;
     dispose = vi.fn();
+    info = { autoReset: true, render: { calls: 0 }, reset: () => { this.info.render.calls = 0; } };
+    render = vi.fn(() => { if (this.info.autoReset) this.info.reset(); this.info.render.calls++; });
     constructor(options: { canvas: HTMLCanvasElement }) { this.domElement = options.canvas; }
     setPixelRatio() {}
     setSize() {}
@@ -21,6 +23,23 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('engine loading lifetime', () => {
+  it('renders overlays after the world and counts both passes on each frame', () => {
+    const engine = new Engine({} as HTMLCanvasElement, 'high');
+    const calls: number[] = [];
+    engine.register({ id: 'overlay', init() {}, renderOverlay(ctx) {
+      calls.push(ctx.renderer.info.render.calls);
+      ctx.renderer.render(ctx.scene, ctx.camera);
+    } });
+    engine.renderOnce();
+    expect(calls).toEqual([1]);
+    expect(engine.ctx.renderer.info.render.calls).toBe(2);
+    expect(engine.ctx.renderer.info.autoReset).toBe(true);
+    engine.renderOnce();
+    expect(calls).toEqual([1, 1]);
+    expect(engine.ctx.renderer.info.render.calls).toBe(2);
+    engine.dispose();
+  });
+
   it('releases late assets without restarting after leaving during loading', async () => {
     const engine = new Engine({} as HTMLCanvasElement, 'high');
     let finish!: () => void;

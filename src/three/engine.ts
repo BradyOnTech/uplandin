@@ -21,6 +21,8 @@ export interface Subsystem {
   init(ctx: Ctx): void | Promise<void>;
   fixedUpdate?(ctx: Ctx, dtMs: number): void;
   update?(ctx: Ctx, dt: number): void;
+  /** View models render after the world, with their own depth buffer. */
+  renderOverlay?(ctx: Ctx): void;
   dispose?(ctx: Ctx): void;
 }
 const FIXED_MS = 1000 / 30;
@@ -130,7 +132,7 @@ export class Engine {
       }
       this.ctx.fixedAlpha = this.accum / FIXED_MS;
       for (const sys of this.systems) sys.update?.(this.ctx, dt);
-      this.ctx.renderer.render(this.ctx.scene, this.ctx.camera);
+      this.renderFrame();
     }
     this.frameId = requestAnimationFrame(this.frame);
   };
@@ -142,7 +144,19 @@ export class Engine {
   renderOnce(): void {
     this.ctx.fixedAlpha = 1;
     for (const sys of this.systems) sys.update?.(this.ctx, 0);
-    this.ctx.renderer.render(this.ctx.scene, this.ctx.camera);
+    this.renderFrame();
+  }
+  private renderFrame(): void {
+    const { renderer, scene, camera } = this.ctx;
+    const autoReset = renderer.info.autoReset;
+    renderer.info.autoReset = false;
+    renderer.info.reset();
+    try {
+      renderer.render(scene, camera);
+      for (const sys of this.systems) sys.renderOverlay?.(this.ctx);
+    } finally {
+      renderer.info.autoReset = autoReset;
+    }
   }
   telemetry() {
     const count = Math.min(this.frameCount, this.frameTimes.length);

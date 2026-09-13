@@ -1,0 +1,5 @@
+import puppeteer from 'puppeteer';
+import {mkdirSync,writeFileSync} from 'node:fs';
+const tag=process.argv[2]||'after',out='output/playwright/goshawk';mkdirSync(out,{recursive:true});
+const browser=await puppeteer.launch({headless:true});const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(String(e)));await page.setViewport({width:1280,height:900,deviceScaleFactor:1});
+try{await page.goto('http://127.0.0.1:4527/tools3d/goshawk-review.html',{waitUntil:'networkidle0'});for(const view of ['back','side','front']){await page.click(`[data-view="${view}"]`);await new Promise(r=>setTimeout(r,300));await page.screenshot({path:`${out}/${tag}-${view}.png`});}await page.click('#flight');await new Promise(r=>setTimeout(r,1000));await page.screenshot({path:`${out}/${tag}-flight.png`});const state=await page.evaluate(()=>window.reviewState());writeFileSync(`${out}/${tag}.json`,JSON.stringify({errors,state},null,2));console.log({errors,state});if(errors.length)process.exitCode=1;}finally{await browser.close();}

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Goshawk · form and plumage</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#343d39;color:#eee9df;font:14px/1.5 system-ui,sans-serif}canvas{display:block}header{position:absolute;top:28px;left:32px;pointer-events:none}h1{font-family:Georgia,serif;font-weight:400;font-size:30px;margin:3px 0 6px}header small{color:#d4c398;letter-spacing:.15em;font-size:10px}header p{color:#c4cbc4;margin:0;max-width:320px}.toolbar{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap;justify-content:center;gap:6px;padding:10px;background:#202b26e8;border-radius:13px;box-shadow:0 4px 25px #0003;width:max-content;max-width:calc(100vw - 24px)}button,a{font:inherit;min-height:40px;padding:8px 14px;border:1px solid #bdc8b82b;border-radius:6px;color:#e8e8db;background:#465548;text-decoration:none;cursor:pointer;transition:background .15s,transform .15s}button:hover,a:hover{background:#576951}button:active{transform:scale(.96)}button:focus-visible,a:focus-visible{outline:2px solid #dfd0a8;outline-offset:3px}button[aria-pressed=true]{background:#ddd1b2;color:#26352b}.separator{width:1px;background:#fff2;margin:5px}.note{position:absolute;right:28px;top:30px;color:#acb9ac;font-size:12px}@media(max-width:650px){header{left:18px;top:18px}header p{max-width:230px;font-size:12px}h1{font-size:24px}.note{display:none}.toolbar{bottom:12px}button,a{padding:7px 10px}}
+</style>
+<header><small>UPLANDIN · RAPTOR STUDY</small><h1>Goshawk</h1><p>Drag to turn the view. Scroll to inspect the feather layers and grip.</p></header><span class="note">Same model used in the hunt</span>
+<nav class="toolbar" aria-label="Model review"><button data-view="back">Hunter’s view</button><button data-view="side">Side</button><button data-view="front">Front</button><span class="separator"></span><button id="flight" aria-pressed="false">Flight pose</button><button id="motion" aria-pressed="false">Play motion</button><a href="../index3d.html?play=quick&method=goshawk&practice=slip">Test hunt ↗</a></nav>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { createGoshawk,createFalconryGlove } from '../src/three/assets/goshawk.ts';
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;document.body.append(renderer.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x343d39);scene.add(new THREE.HemisphereLight(0xf1f1e7,0x5d6656,2.1));
+const key=new THREE.DirectionalLight(0xfff2d9,2.6);key.position.set(-2,3,-2);key.castShadow=true;key.shadow.mapSize.set(2048,2048);Object.assign(key.shadow.camera,{left:-1.2,right:1.2,top:1.2,bottom:-1.2,near:.1,far:10});key.shadow.bias=-.00008;key.shadow.normalBias=.002;scene.add(key);
+const fill=new THREE.DirectionalLight(0xcad9e2,1.5);fill.position.set(2,1,2);scene.add(fill);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.MeshStandardMaterial({color:0x343d39,roughness:1}));floor.rotation.x=-Math.PI/2;floor.position.y=-.46;floor.receiveShadow=true;scene.add(floor);
+const bird=createGoshawk(),glove=createFalconryGlove();scene.add(bird.root,glove.root);
+const camera=new THREE.PerspectiveCamera(33,1,.01,100);const controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,.11,0);controls.minDistance=.45;controls.maxDistance=3.5;controls.enableDamping=true;
+let view='back',flying=false,playing=false,time=2.2,last=performance.now();
+function setView(v){v=['back','side','front'].includes(v)?v:'back';view=v;const positions={back:[-.5,.38,-1.6],side:[1.65,.35,.2],front:[.42,.38,1.62]};camera.position.set(...positions[v]);controls.target.set(0,.11,0);controls.update();document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===v)));}
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));
+document.querySelector('#flight').onclick=e=>{flying=!flying;glove.root.visible=!flying;e.target.setAttribute('aria-pressed',String(flying));e.target.textContent=flying?'Perched pose':'Flight pose';};
+document.querySelector('#motion').onclick=e=>{playing=!playing;e.target.setAttribute('aria-pressed',String(playing));e.target.textContent=playing?'Pause motion':'Play motion';};
+function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();}addEventListener('resize',resize);resize();setView(new URLSearchParams(location.search).get('view')||'back');
+function frame(now){const dt=Math.min((now-last)/1000,.05);last=now;if(playing)time+=dt;bird.pose(time,flying,false,0,dt);controls.update();renderer.render(scene,camera);requestAnimationFrame(frame);}requestAnimationFrame(frame);window.reviewState=()=>({view,flying,playing,drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles});
+</script></html>

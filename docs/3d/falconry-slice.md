@@ -47,7 +47,7 @@ The rooster holds rather than running and has a one-minute nerve allowance on po
 
 A caught bird enters `held`, which the dog cannot retrieve. The hunt records the catch once, waits for the completed hand pickup before bag credit, and blocks ending the session while the hawk is away or quarry remains held. The dog returns toward the handler during the flight. After a catch it approaches a spot beside the hawk and takes a down stay, remaining there as the hunter walks in. A whistle does not release that stay while the hawk holds quarry. After pickup, whistle to resume hunting. Shotgun construction and input are disabled in falconry.
 
-The model and glove are editable procedural studies in `src/three/assets/goshawk.ts`. They can be replaced by a finished asset without changing hunt rules. The current bird is a juvenile with a brown back, streaked cream breast, pale eyebrow and yellow iris.
+The model and glove are editable procedural studies in `src/three/assets/goshawk.ts`. They can be replaced by a finished asset without changing hunt rules. The current bird uses pale cream and taupe plumage from the supplied references, with stronger streaks on the breast and nape, a pale eyebrow and yellow iris.
 
 **Validation**
 
@@ -97,6 +97,29 @@ The shared bird renderer was discarding flying quarry at 80 metres from the hunt
 Run `node tools3d/falconry-slip-matrix.mjs --window` or `--sides` for the input variations. `node tools3d/falconry-playthrough.mjs catch 61 --practice --slip-delay-ms=1000` exercises recovery after a longer flight. Tests use ordinary keyboard and mouse input; telemetry assists approach navigation, and exact airborne aiming is a separate explicit case. The browser frame-limit override is diagnostic, not performance evidence.
 
 The full one-second-slip playthrough also completed dog guarding, refusal to recall off quarry, the handler walk-in, hand pickup, summary, and both restart routes. The lifetime regression first failed under the original cutoff, then passed with the fix. The full suite passed 103 files and 767 tests; the production build passed with the existing bundle-size advisory.
+
+**Reference-based goshawk visuals**
+
+The pale cream-and-taupe reference direction keeps the bird readable against the dark Cattail Coverts vegetation. Stronger longitudinal breast and nape markings borrow the contrast of the fourth reference. This remains a stylized procedural model, with no pursuit or catch tuning changes in this pass.
+
+| Before | After |
+| --- | --- |
+| Round head, bulky facial pieces and a separate-looking collar. | `assets/goshawk.ts` uses a lower elongated crown, narrower neck, small lateral eyes, slim eyebrow, cere, nostrils and a continuously tapered hooked beak. |
+| Broad flat brown feather pieces. | Curved overlapping vanes follow the body surface, with cream margins, taupe mottling, darker breast and nape streaks, fine shafts and barbs. Textured underlying surfaces fill gaps between feathers. |
+| Folded wings read as broad plates. | Tapered wing shells carry staggered coverts and long primaries. Primary feathers fan through GPU morph targets during flight. |
+| Shorter blunt tail detail. | Twelve overlapping barred feathers form a long closed tail with a rounded end. |
+| Simplified legs and feet. | Feathered thighs, scaly yellow tarsi, three forward toes and a rear toe, curved talons, anklets and short jess ends refine the grip. |
+| Larger idle movements and rigid feather surfaces. | Subtle breathing, weight shifts, head scans, blinks, tail balance and wing settling animate articulated groups; static detail stays merged per joint and material. |
+| Nearby grass could cut through the held hawk. | `subsystems/falconry.ts` renders the held hawk and glove after clearing world depth, retaining their own self-occlusion and field lighting. Flying, grounded and lifting hawks remain in the world depth pass. |
+| The renderer had one pass and reset its counters per render. | `engine.ts` supports an optional overlay pass and counts all passes within each frame, including paused redraws. The lifecycle test verifies ordering and counter reset. |
+| Inspecting the bird required entering a hunt. | `tools3d/goshawk-review.html` offers rotation, zoom, back/side/front views, perched/flight poses, motion playback and a direct practice link, with keyboard focus, pressed states and touch-sized controls. |
+| No repeatable close-up image set. | `tools3d/review-goshawk.mjs` captures all three perched views and flight, with a page-error manifest under `output/playwright/goshawk/`. |
+
+Open `http://127.0.0.1:4527/tools3d/goshawk-review.html` while the worktree preview server runs. Run `node tools3d/review-goshawk.mjs after` to capture the same model used by the hunt. The page is a development review tool, not a production build entry.
+
+The review scene records 43 draw calls and about 102,000 triangles in the paused flight pose, compared with 35 calls and about 25,000 triangles before this pass. Those figures include the review scene, and are not a device performance benchmark. The more detailed model still needs sustained physical-device performance validation.
+
+The production build passed with the existing bundle-size advisory, and the full suite passed 103 files and 768 tests. Studio captures had no page errors. Fresh ordinary-input practice runs verified both catch and escape: the catch stayed on quarry despite waiting and recall, the dog guarded, the handler picked up, and the miss returned empty. Both completed summary and restart checks. The field screenshot also confirms that reeds no longer cut through the perched bird. One earlier diagnostic was interrupted by a development-server reload during editing; these results come from clean reruns after edits stopped.
 
 **Future flight views and control**
 
