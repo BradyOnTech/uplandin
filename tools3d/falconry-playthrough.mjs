@@ -69,6 +69,14 @@ try {
     if(outcome==='recall'&&!recallSent){await page.keyboard.press('KeyR');recallSent=true;}
   } else if(h.phase==='on-quarry'){
     if(outcome!=='catch')throw new Error('Expected an unsuccessful flight');
+    if(!manifest.checkedCatchHold){
+      await move(false);const position={...h.position};
+      await page.keyboard.press('KeyR');await sleep(10000);
+      const held=await read();
+      if(held.t.falconry.phase!=='on-quarry'||held.t.falconry.recovered!==0||JSON.stringify(held.t.falconry.position)!==JSON.stringify(position))throw new Error('Hawk returned from a catch without pickup');
+      manifest.checkedCatchHold=true;await event('catch-stays-without-pickup',held,true);
+    }
+
     if(state.hunt.dog.raptorDuty==='guarding'&&!manifest.guarded){manifest.guarded=true;await event('dog-guarding',state,true);}
     if(!manifest.testedNoRecall){await page.keyboard.press('KeyR');manifest.testedNoRecall=true;await sleep(70);if((await read()).t.falconry.phase!=='on-quarry')throw new Error('Recalled from quarry');}
     await look(h.position,state);

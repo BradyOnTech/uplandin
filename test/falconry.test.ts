@@ -39,6 +39,15 @@ describe('goshawk flights',()=>{
     expect(hawk.recover(fist,true)).toBe(false);
     expect(hawk.recall()).toEqual([]);
     expect(hawk.phase).toBe('on-quarry');
+    // Quarry disappears from the airborne target list after binding. Waiting,
+    // moving the glove and pressing recall must never invoke the miss return.
+    const boundPosition={...hawk.position};
+    for(let i=0;i<900;i++) {
+      expect(hawk.step(1/30,{x:i/10,y:2,z:10},[],ground)).toEqual([]);
+      expect(hawk.recall()).toEqual([]);
+      expect(hawk.phase).toBe('on-quarry');
+      expect(hawk.position).toEqual(boundPosition);
+    }
     const handler={...hawk.position,y:1.3};
     expect(hawk.recover(handler,false)).toBe(false);
     expect(hawk.recover({...handler,x:handler.x+1.5},true)).toBe(false);
