@@ -562,7 +562,7 @@ const CHUKAR_TOD = Object.fromEntries((Object.keys(QUAIL_TOD) as TimeOfDay[]).ma
     fogColor:0xb9c5ca,fogDensity:.00095,sunColor:0xffead0,
     sunAzimuth:tod==='morning'?45:28,fillColor:0xb1c7d4,fillIntensity:.44,ambientGround:0x948367,ambientIntensity:1.04,
     exposure:1.04,
-    ridge:0x53646f,ridgeFar:0x92a8bb,landform:0x80796b,cloudAmount:.14,
+    ridge:0x536a77,ridgeFar:0x93acbc,landform:0x80796b,cloudAmount:.23,hotStrength:.26,glowStrength:.34,
     floraWarm:.24,floraCool:.35,
   }:{fogDensity:.0018}),
 }])) as Record<TimeOfDay,TodSpec>;

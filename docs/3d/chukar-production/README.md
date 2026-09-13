@@ -1,6 +1,6 @@
 # Chukar Ridge environment production proof
 
-September 12, 2026. First playable environment pass, with editable source assets and a repeatable route review. This establishes the workflow; it is not final art acceptance or a claim of finished mobile performance.
+September 13, 2026. Playable environment and visual polish checkpoint, following the first route pass on September 12. Editable source assets and repeatable staged views support continued art review; this is not final art acceptance or a claim of finished mobile performance.
 
 **Play and review**
 
@@ -19,6 +19,16 @@ Ten authored rock brows establish the route's landmarks. The property has three 
 Three basalt mesh families replace the former procedural ribs. Their feet conform to the local slope, preserving the upper face instead of sinking the entire asset to the lowest ground corner. A chain of collision circles follows each formation. Nearby talus, protected sage and bunchgrass stands take their placement cues from the same brows. New bench cover participates in stocking; rock footprints are removed from cover patches. Existing seed outcomes can therefore change.
 
 Dry earth uses a generated painted texture, blended at two world scales and faded with distance. Warmer ground, a cooler shadow floor for basalt, Chukar-specific morning light and reduced decorative horizon walls support the new terrain. Other properties retain their existing environment treatments.
+
+**September 13 polish pass**
+
+The three rock families now have distinct, asymmetric profiles: a raised brow, broad overlapping shelves and a split shoulder with unequal masses. Tilted tops, weathered color planes and fallen wedges replace the repeated upright columns. The revised assets use fewer triangles and smaller downloads.
+
+Bunchgrass uses finer bent blades, a low thatch skirt and smaller seed heads. Sage has spreading woody stems and fuller compound crowns. Continuous stand patterns now guide both plant placement and the underlying ground tint, with bare talus and sheltered growth responding to the rock layout. Detailed plant forms stay near the camera; simpler opaque geometry handles the distance and Lightweight tier without adding alpha overdraw.
+
+Ground texture is quieter, cliff bedding is less uniform, and distant tablelands have less regular edges. Thin wind-shaped cloud banks and adjusted haze replace the generic cumulus treatment. Plant fill light varies with the time of day to preserve shaded detail without keeping the morning brightness at evening.
+
+The path was partly buried because its height followed the analytic terrain rather than the rendered terrain triangles. It now fits the actual mesh in both detail levels and on either side of terrain tile boundaries. The review page also preserves the selected lighting after a reload and carries its light/detail choices into the play link. Playable landforms, route layout and stocking were not changed in this polish pass.
 
 **Editable asset workflow**
 
@@ -41,7 +51,7 @@ To export after editing the saved Blender gallery:
 
 The first command regenerates and overwrites the source gallery. The second preserves saved mesh edits. Keep the six asset object names and the `chukar_asset` custom property. Each export is one mesh with one vertex-painted material. Runtime dimensions come from the authored formation layout; source units are metres. The game supplies lighting and material response.
 
-Each Standard mesh is 1,076 triangles and about 82 KB; each Lightweight mesh is 592 triangles and about 46 KB. The game loads three meshes for the selected tier. The source Blender file and source PNGs are not runtime downloads. All runtime kit exports and the ground WebP are included in the offline asset manifest.
+Each Standard mesh is 746–826 triangles and about 57–63 KB; each Lightweight mesh is 268–294 triangles and about 21–23 KB. The game loads three meshes for the selected tier: about 176 KB total for Standard or 65 KB for Lightweight. The source Blender file and source PNGs are not runtime downloads. All runtime kit exports and the ground WebP are included in the offline asset manifest.
 
 **Generated art**
 
@@ -53,24 +63,24 @@ Built-in image generation produced both images, without image references. Exact 
 
 **Verification**
 
-`npm test`: 102 files, 767 tests passed. New checks cover gentle arrival, elevated benches, mapped route slope and clearance from authored collision circles, shared habitat exclusions, route connections, and actual GLB structure and geometry budgets. Two older terrain-dependent fixtures now sample the intended steep property faces rather than the newly gentler arrival ground.
+The full regression run passed 102 files and 771 tests during this pass. After the final plant geometry, terrain detail and lighting adjustments, the focused Chukar and ground-fitting checks passed 19 tests across two files. These include raycasting against the rendered near/far terrain under the path, asset and plant geometry budgets, and the existing route/cover constraints. The shared ground-fitting helper retains Quail's existing default settings.
 
-`npm run build`: TypeScript and the production build passed. The existing large JavaScript chunk warning remains.
+The final `npm run build` passed TypeScript and the production build. The existing large JavaScript chunk warning remains.
 
-Browser review used the normal playable entry and atlas, plus staged views at the climbing shoulder, Sage Bench, Split Shoulder, Rim Overlook and western approach. Both detail tiers rendered; the review page reported no console errors. The atlas opened at the player and displayed the complete loop at whole-property zoom.
+Browser review used the staged route locations, including both approaches, Sage Bench and Rim Overlook. Standard and Lightweight rendered, morning and evening were inspected, and the review page reported no console errors. This pass did not include a complete played hunt.
 
-At the same morning Rim Overlook camera in the 1280 by 720 browser review, before the review footer layout adjustment:
+At the same morning Sage Bench camera in the 1280 by 720 browser review after the final geometry changes:
 
 | Tier | Submitted draws | Submitted triangles |
 | --- | ---: | ---: |
-| Standard | 144 | 975,388 |
-| Lightweight | 115 | 288,968 |
+| Standard | 156 | 1,530,366 |
+| Lightweight | 140 | 543,916 |
 
-Those are renderer submission counters for a staged scene, not measured frame rate or a phone benchmark. Geometry changes preserve the major silhouette while reducing this view's triangle submissions by about 70 percent.
+These are renderer submission counters for a staged scene, including repeated rendering passes, not measured frame rate or a phone benchmark. Lightweight reduces this view's triangle submissions by about 64 percent. The counter is higher than the previous pass's differently positioned Rim Overlook capture; those two samples are not a valid before/after performance comparison.
 
 **What still needs refinement**
 
-The concept is ahead of the current in-game art. Several open slopes still read too uniformly, some vegetation silhouettes look coarse at close range, and the rock families need more variation in their overall shapes. The next art pass should concentrate on a few deliberately composed plant stands, talus transitions and hero rock silhouettes along this route before spreading the kit to other properties.
+The concept is still ahead of the in-game art. Broad slopes remain too uniform in places; transitions from major rocks to smaller rubble and soil need more deliberate composition. The next review should judge close plant silhouettes, the visible change to simpler distant crowns, rock contact and erosion detail, and the balance of empty ground against composed stands. The three rock families are more distinct now, but their placement and large color planes still need artistic scrutiny before this becomes the benchmark for other properties.
 
 A complete hunt still needs assessment for encounter pacing, high-side approach choices, dog navigation around the new rocks and return-to-truck flow. Route geometry tests and staged camera views do not establish those experiences. Physical mobile testing, sustained frame times, loading behavior on slower connections and long-session memory remain separate acceptance work.
 

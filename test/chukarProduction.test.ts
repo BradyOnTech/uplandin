@@ -1,8 +1,13 @@
+import * as THREE from 'three';
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
 import { getArea } from '../src/game/areas';
 import { chukarBrowBlockers,chukarBrows } from '../src/game/chukarLandscape';
 import { LandscapeModel,PROPERTY_PX_TO_M } from '../src/game/landscape';
+import { groundQuailTrackGeometry,quailGroundTileAt } from '../src/three/subsystems/quailGroundGeometry';
+import { buildQuailTerrainGeometry } from '../src/three/subsystems/quailTerrain';
+import { CHUKAR_GROUND_DETAIL } from '../src/three/subsystems/chukarTerrain';
+import { chukarGrassGeometry,chukarSageGeometry } from '../src/three/assets/chukarPlants';
 
 const area=getArea('chukar-ridge'),landscape=new LandscapeModel(area);
 const sample=()=>({height:0,slope:0,gradeX:0,gradeZ:0,rockiness:0,vegetation:0,moisture:0});
@@ -58,5 +63,40 @@ describe('Chukar editable rock exports',()=>{
       expect(bytes.byteLength).toBeLessThan(110_000);
     }
     expect(triangles[0]).toBeLessThan(1500);expect(triangles[1]).toBeLessThan(triangles[0]*.65);
+  });
+});
+
+
+describe('Chukar surface polish',()=>{
+  it.each(['high','lite'] as const)('keeps the path on actual %s terrain triangles at both distances',quality=>{
+    const source=new THREE.BufferGeometry(),positions:number[]=[];
+    for(const [x,y] of [[656.3,572.7],[856.3,421.7],[1014.2,357.6]])for(const [dx,dy] of [[0,0],[.65,0],[0,.7]]){
+      const p=landscape.propertyToWorld(x+dx,y+dy,{x:0,z:0});positions.push(p.x,0,p.z);
+    }
+    source.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+    source.setAttribute('color',new THREE.Float32BufferAttribute(Array(positions.length/3*4).fill(1),4));
+    source.setIndex(Array.from({length:positions.length/3},(_,i)=>i));
+    const detail=CHUKAR_GROUND_DETAIL[quality],road=groundQuailTrackGeometry(landscape,source,detail);
+    const p=road.getAttribute('position'),far=road.getAttribute('quailFarGround');
+    const material=new THREE.MeshBasicMaterial({side:THREE.DoubleSide}),ray=new THREE.Raycaster();
+    for(const level of ['near','far'] as const)for(let i=0;i<p.count;i++){
+      const property=landscape.worldToProperty(p.getX(i),p.getZ(i),{x:0,y:0});
+      const tile=quailGroundTileAt(landscape,property.x,property.y);
+      const geometry=buildQuailTerrainGeometry(landscape,tile.x,tile.y,tile.width,tile.depth,detail[level]);
+      const mesh=new THREE.Mesh(geometry,material);mesh.updateMatrixWorld(true);
+      ray.set(new THREE.Vector3(p.getX(i),1000,p.getZ(i)),new THREE.Vector3(0,-1,0));
+      const hit=ray.intersectObject(mesh)[0];expect(hit).toBeDefined();
+      expect((level==='near'?p.getY(i):far.getX(i))-hit.point.y).toBeCloseTo(.032,4);geometry.dispose();
+    }
+    source.dispose();road.dispose();material.dispose();
+  });
+
+  it.each([chukarGrassGeometry,chukarSageGeometry])('reduces distant plant geometry while retaining height and spread',make=>{
+    const close=make(false),distant=make(true);close.computeBoundingBox();distant.computeBoundingBox();
+    const a=close.boundingBox!.getSize(new THREE.Vector3()),b=distant.boundingBox!.getSize(new THREE.Vector3());
+    expect(distant.getAttribute('position').count).toBeLessThan(close.getAttribute('position').count*.5);
+    expect(close.getAttribute('position').count/3).toBeLessThan(400);
+    expect(Math.abs(a.y-b.y)).toBeLessThan(.16);expect(Math.abs(a.x-b.x)).toBeLessThan(.3);expect(Math.abs(a.z-b.z)).toBeLessThan(.3);
+    close.dispose();distant.dispose();
   });
 });

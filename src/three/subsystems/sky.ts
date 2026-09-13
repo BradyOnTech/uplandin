@@ -43,6 +43,7 @@ uniform vec3 uCloudShade;
 uniform float uCloudAmt;
 uniform float uQuail;
 uniform float uPheasant;
+uniform float uChukar;
 varying vec3 vPos;
 
 /*
@@ -89,6 +90,13 @@ vec2 cloudLocal(vec2 ae, vec2 c, vec2 ms) {
 }
 
 float cloudField(vec2 ae) {
+  if (uChukar > 0.5) {
+    // Thin wind-shaped banks leave the open ridge skyline readable.
+    float f=prairieBank(cloudLocal(ae,vec2(-1.45,.37),vec2(1.05,2.4)));
+    f=max(f,prairieBank(cloudLocal(ae,vec2(2.1,.29),vec2(-1.3,2.9))));
+    f=max(f,prairieBank(cloudLocal(ae,vec2(.42,.19),vec2(1.8,3.3))));
+    return f;
+  }
   if (uPheasant > 0.5) {
     // Long, separated autumn banks leave open flight corridors between
     // layers instead of repeating the same outlined cumulus silhouette.
@@ -154,7 +162,7 @@ void main() {
   // so a low sun still burns through them instead of being pasted over.
   vec2 ae = vec2(atan(dir.x, dir.z), h);
   float cf = cloudField(ae);
-  float layered = max(uQuail, uPheasant);
+  float layered = max(max(uQuail, uPheasant),uChukar);
   float cm = smoothstep(mix(0.55, 0.45, layered), mix(0.60, 0.58, layered), cf) * uCloudAmt * smoothstep(0.05, 0.10, h);
   // Flat painted plates (round 5): fw-e3-5's cumulus is 2-3 VALUE STEPS
   // with hard undersides — not an airbrushed gradient (measured: our cloud
@@ -412,18 +420,18 @@ const QUAIL_RIDGES: RidgeProfile = {
 
 const CHUKAR_RIDGES: RidgeProfile = {
   layers: [
-    { radius: 620, base: -4, amp: 40, far: 0.12, fogMix: 0.08, hazeAmt: 0.5, jag: 0.12, freqs: [3, 8, 21], noiseScale: 0.48 },
-    { radius: 900, base: 15, amp: 73, far: 0.52, fogMix: 0.15, hazeAmt: 0.76, jag: 0.18, freqs: [4, 9, 23], noiseScale: 0.42 },
-    { radius: 1250, base: 32, amp: 110, far: 0.72, fogMix: 0.22, hazeAmt: 0.94, jag: 0.2, freqs: [3, 7, 19], noiseScale: 0.38 },
+    { radius: 970, base: -4, amp: 40, far: 0.12, fogMix: 0.08, hazeAmt: 0.5, jag: 0.12, freqs: [3, 8, 21], noiseScale: 0.48 },
+    { radius: 1250, base: 10, amp: 73, far: 0.52, fogMix: 0.15, hazeAmt: 0.76, jag: 0.18, freqs: [4, 9, 23], noiseScale: 0.42 },
+    { radius: 1480, base: 18, amp: 110, far: 0.72, fogMix: 0.22, hazeAmt: 0.94, jag: 0.2, freqs: [3, 7, 19], noiseScale: 0.38 },
   ],
   features: [
     [{ c: -34, h: .85, sl: 12, sr: 26 }, { c: 52, h: .72, sl: 15, sr: 27 }, { c: 101, h: 1.05, sl: 9, sr: 20 }, { c: 124, h: -.28, sl: 7, sr: 10 }, { c: 150, h: .8, sl: 15, sr: 25 }],
     [{ c: -58, h: .72, sl: 20, sr: 32 }, { c: 38, h: .64, sl: 26, sr: 18 }, { c: 119, h: .95, sl: 13, sr: 25 }, { c: 164, h: .62, sl: 17, sr: 28 }],
-    [{ c: -80, h: 0.62, sl: 42, sr: 55 }, { c: 20, h: 0.7, sl: 45, sr: 58 }, { c: 126, h: 0.65, sl: 40, sr: 52 }],
+    [{ c: -80, h: 0.62, sl: 16, sr: 25 }, { c: 20, h: 0.7, sl: 19, sr: 31 }, { c: 126, h: 0.65, sl: 16, sr: 24 }],
   ],
   segments: [896, 640, 512],
   treeCount: 0,
-  verticalFollow: 0.72,
+  verticalFollow: 0.35,
 };
 
 const PHEASANT_RIDGES: RidgeProfile = {
@@ -687,6 +695,7 @@ export class SkySystem implements Subsystem {
         uCloudLit: { value: new THREE.Color() },
         uCloudShade: { value: new THREE.Color() },
         uCloudAmt: { value: 0 },
+        uChukar: { value: this.areaId === 'chukar-ridge' ? 1 : 0 },
         uQuail: { value: this.quail ? 1 : 0 },
         uPheasant: { value: this.areaId === 'pheasant-coverts' ? 1 : 0 },
       },

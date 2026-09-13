@@ -25,67 +25,63 @@ def paint(rgb, value=1):
     return tuple(linear(max(0, min(1, c * value))) for c in rgb) + (1,)
 
 def make_brow(variant, detail, material):
-    rng = random.Random(3911 + variant * 311)
     vertices, faces, colors = [], [], []
-    # Connected irregular columns give a fractured rock mass. There are no
-    # separate stacked blocks, uniform horizontal gaps or repeated box caps.
-    count = 11
-    width = 19
-    outline = [(-.52,-.38),(-.18,-.57),(.39,-.45),(.56,-.03),(.36,.43),(-.28,.49),(-.57,.13)]
-    if detail == 'lite':
-        outline = [outline[i] for i in (0,1,2,4,5)]
-    n = len(outline)
-    for i in range(count):
-        shading = random.Random(711 + variant * 411 + i * 31)
-        u = i / (count - 1)
-        x = (u - .5) * width
-        envelope = .60 + .40 * math.sin(math.pi * (.12 + .76 * u))
-        if variant == 1:
-            envelope *= .86 + .14 * math.sin(u * 6 + 1)
-        elif variant == 2:
-            envelope *= .78 if i in (count // 2, count // 2 + 1) else 1
-        height = (7.2 + rng.random() * 2.0) * envelope
-        depth = 5.3 + rng.random() * 2.1
-        column_width = width / (count - 1) * (1.14 + rng.random() * .24)
-        cy = math.sin(u * 4.7 + variant) * .8
-        start = len(vertices)
-        rings = [(0,1.14),(.09,1.05),(.48,1),(.53,.94),(.92,.87),(1,.76)] if detail == 'high' else [(0,1.1),(.48,1),(.91,.88),(1,.76)]
-        lean = (rng.random() - .5) * .65
-        for level, spread in rings:
+    # Hand-arranged major masses. Each family has a different silhouette;
+    # irregular widths and setbacks avoid the old row of equal columns.
+    # x, y, width, depth, height, rotation, lean
+    profiles = [
+        [(-8, .5, 6.2, 6.3, 2.5, -.18, .5), (-4.8, .7, 6.7, 6.5, 5.5, .12, -.5),
+         (-.8, 1.1, 7.4, 7.7, 9.4, -.09, -.7), (3.6, .4, 5.1, 6.4, 7.2, .24, .6),
+         (7.1, .8, 5.8, 5.2, 4.3, -.2, .2), (-1.9, -2.4, 5.2, 3.5, 3.1, -.12, .35)],
+        [(-7.8, .6, 6.6, 6.2, 3.2, -.17, .4), (-3.2, 1.2, 8.4, 7.2, 6.1, .08, -.3),
+         (2.4, 1.3, 8.9, 6.8, 6.5, -.06, -.7), (7.6, .2, 5.3, 5.8, 4.7, .25, .3),
+         (-2.8, -2.1, 8.2, 4.4, 2.3, -.1, .5), (4.4, -2.4, 6.5, 3.8, 2.8, .08, .35)],
+        [(-8.1, .3, 6.0, 5.3, 2.7, -.25, .3), (-4.5, 1.0, 6.0, 7.2, 8.6, -.16, -.8),
+         (-1.3, 1.8, 4.2, 6.3, 9.8, .24, -.65), (2.8, 1.6, 4.8, 6.5, 5.0, -.13, .4),
+         (6.0, .7, 6.3, 6.1, 7.5, .15, .7), (9.0, -.1, 4.5, 4.3, 3.0, -.24, .3),
+         (-.4, -2.8, 5.2, 3.6, 2.0, -.05, .4)],
+    ]
+    def mass(spec, identity, rubble=False):
+        cx,cy,width,depth,height,angle,lean=spec
+        rng=random.Random(3911+variant*311+identity*101)
+        outline=[(-.52,-.30),(-.27,-.54),(.20,-.57),(.51,-.27),(.48,.23),(.14,.49),(-.41,.37)]
+        if detail=='lite': outline=[outline[i] for i in (0,2,3,4,6)]
+        n=len(outline);start=len(vertices)
+        rings=[(0,1.12),(.12,1.02),(.43,.98),(.48,.90),(.87,.88),(1,.69)]
+        if detail=='lite':rings=[(0,1.12),(.48,.94),(1,.70)]
+        if rubble:rings=[(0,1.08),(.63,.93),(1,.57)] if detail=='high' else [(0,1.08),(1,.68)]
+        ca,sa=math.cos(angle),math.sin(angle)
+        for level,spread in rings:
             for j,(ox,oy) in enumerate(outline):
-                # Broad planes stay quiet; small opposing offsets form
-                # cracks and chamfered upper lips without pebble noise.
-                vertices.append((x + ox * column_width * spread + level * lean,
-                    cy + oy * depth * spread + math.sin(i * 2.3) * level * .35,
-                    level * height + (math.sin(j * 1.3 + i) * .16 if level > 0 else 0)))
-        base = (.37 + rng.random() * .045, .36 + rng.random() * .038, .335 + rng.random() * .03)
-        for ring in range(len(rings) - 1):
+                lx=ox*width*spread+level*lean
+                ly=oy*depth*spread+level*math.sin(identity*2.1)*.5
+                # Tilted broken tops and unequal diagonal fractures give
+                # each large plane a readable direction without fine noise.
+                z=level*height+(ox*.65+math.sin(j*2.7+identity)*.20)*level
+                vertices.append((cx+lx*ca-ly*sa,cy+lx*sa+ly*ca,z))
+        shade_rng=random.Random(911+identity*51+variant*87)
+        base=(.435+shade_rng.random()*.035,.425+shade_rng.random()*.03,.392+shade_rng.random()*.024)
+        for ring in range(len(rings)-1):
             for j in range(n):
-                nxt = (j + 1) % n
-                a,b,c,d = start+ring*n+j,start+ring*n+nxt,start+(ring+1)*n+nxt,start+(ring+1)*n+j
-                faces.append((a,b,c,d))
-                colors.append(paint(base, .80 + shading.random() * .26 + (.14 if ring == len(rings)-2 else 0)))
-        faces.append(tuple(start + (len(rings)-1)*n + j for j in range(n)))
-        colors.append(paint((.48,.445,.377), .95 + shading.random() * .12))
-        faces.append(tuple(start + j for j in reversed(range(n))))
-        colors.append(paint(base,.7))
-    # Broken foot slabs interrupt the continuous face and tie the formation
-    # into loose talus. Major fragments are identical in both quality tiers.
-    rubble = random.Random(721 + variant * 67)
+                nxt=(j+1)%n
+                faces.append((start+ring*n+j,start+ring*n+nxt,start+(ring+1)*n+nxt,start+(ring+1)*n+j))
+                shade=.89+shade_rng.random()*.23
+                # Broad weathered shoulders; darker lower fissures.
+                shade*=.83 if ring==0 else 1.12 if ring==len(rings)-2 else 1
+                colors.append(paint(base,shade))
+        faces.append(tuple(start+(len(rings)-1)*n+j for j in range(n)))
+        colors.append(paint((.565,.518,.425),.91+shade_rng.random()*.12))
+        faces.append(tuple(start+j for j in reversed(range(n))))
+        colors.append(paint(base,.67))
+
+    for i,spec in enumerate(profiles[variant]):mass(spec,i)
+    # Large fallen wedges at the foot connect the brows to talus. Fixed
+    # composition in both tiers; lightweight removes subdivisions only.
+    rubble=random.Random(721+variant*67)
     for i in range(7):
-        cx=(i/6-.5)*18+(rubble.random()-.5)*1.8
-        cy=-3.9-rubble.random()*1.5
-        rx=1.1+rubble.random()*1.4;ry=1.1+rubble.random()*1.2;h=.6+rubble.random()*2.5
-        start=len(vertices)
-        for level,spread in [(0,1.06),(.68,.9),(1,.58)]:
-            for j in range(6):
-                angle=j*math.pi/3+.25
-                vertices.append((cx+math.cos(angle)*rx*spread+level*.28,cy+math.sin(angle)*ry*spread,level*h))
-        for ring in range(2):
-            for j in range(6):
-                nxt=(j+1)%6;faces.append((start+ring*6+j,start+ring*6+nxt,start+(ring+1)*6+nxt,start+(ring+1)*6+j))
-                colors.append(paint((.40,.39,.35),.85+((i+j)%4)*.05))
-        faces.append(tuple(start+12+j for j in range(6)));colors.append(paint((.51,.47,.39)))
+        x=(i/6-.5)*19+(rubble.random()-.5)*2
+        mass((x,-3.1-rubble.random()*1.4,2.0+rubble.random()*2.4,2.3+rubble.random()*1.7,
+              .5+rubble.random()*1.45,(rubble.random()-.5)*.8,.35),30+i,True)
     name = ['basalt-brow','weathered-shelf','split-shoulder'][variant] + '-' + detail
     data = bpy.data.meshes.new(name)
     data.from_pydata(vertices, [], faces)

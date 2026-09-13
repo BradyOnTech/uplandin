@@ -4,14 +4,17 @@ import { PROPERTY_PX_TO_M, type GroundSample, type LandscapeModel } from '../../
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
 import { chukarLandmarkClearance } from './chukarLandmarks';
-import { chukarBrows, chukarBrowBlockers, chukarGroundZones } from '../../game/chukarLandscape';
+import { chukarBrows, chukarBrowBlockers, chukarGroundZones, chukarPlantStandAt } from '../../game/chukarLandscape';
 import { loadChukarKit } from '../assets/chukarKit';
+import { chukarGrassGeometry, chukarSageGeometry } from '../assets/chukarPlants';
+import { CHUKAR_GROUND_DETAIL } from './chukarTerrain';
+import { groundQuailTrackGeometry, applyQuailTrackGroundLod } from './quailGroundGeometry';
 
 const TILE = 80;
 const TRACK_HALF_WIDTH_M = .8;
 const STONE = [0x878073, 0x6e716b, 0x968a76, 0x75766d];
-const SAGE = [0x9aa68b, 0xa6ad92, 0x899e90];
-const STRAW = [0xc6a66d, 0xd0b67e, 0xb9a376, 0xb8ab80];
+const SAGE = [0x788870, 0x89937a, 0x6d8272];
+const STRAW = [0xc9a86a, 0xd9bc80, 0xb8a476, 0xc7b387];
 const SAMPLE: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
 function seed(x: number, y: number, salt = 0): number {
@@ -19,7 +22,7 @@ function seed(x: number, y: number, salt = 0): number {
 }
 
 interface Plant { x: number; y: number; yaw: number; sx: number; sy: number; sz: number; color: number }
-interface Batch { mesh: THREE.InstancedMesh; range: number; radius: number; center: THREE.Vector3; shadow: boolean }
+interface Batch { mesh: THREE.InstancedMesh; range: number; radius: number; center: THREE.Vector3; shadow: boolean; nearGeometry: THREE.BufferGeometry; farGeometry?: THREE.BufferGeometry; detailRange: number }
 
 /** Property-space distance keeps the same paths open from either parking place. */
 export function chukarTrackDistance(area: AreaConfig, x: number, y: number): number {
@@ -66,61 +69,6 @@ export function chukarStoneGeometry(variant = 0, gravel = false): THREE.BufferGe
   return geometry;
 }
 
-/** Silver sage grows in branching sprays, with air between the leaves. */
-function sageGeometry(lite: boolean): THREE.BufferGeometry {
-  const positions: number[] = [], colors: number[] = [], rng = mulberry32(9961);
-  const shoots = lite ? 5 : 7;
-  const tri = (a: number[], b: number[], c: number[], shade: number) => {
-    for (const p of [a, b, c]) { positions.push(...p); colors.push(shade, shade, shade); }
-  };
-  for (let shoot = 0; shoot < shoots; shoot++) {
-    const angle = shoot * 2.399, height = .38 + rng() * .42, reach = .20 + rng() * .19;
-    let previous = [0, -.025, 0];
-    for (let level = 1; level <= 4; level++) {
-      const t = level / 4, center = [Math.sin(angle) * reach * t * t, height * t, Math.cos(angle) * reach * t * t];
-      tri([previous[0] - .007, previous[1], previous[2]], [previous[0] + .007, previous[1], previous[2]], center, .64);
-      for (const side of [-1, 1]) {
-        const az = angle + level * .74 + side * 1.12, length = .10 + rng() * .07;
-        const tip = [center[0] + Math.sin(az) * length, center[1] + .045, center[2] + Math.cos(az) * length];
-        const mid = center.map((v, i) => (v + tip[i]) * .5), width = lite ? .047 : .037;
-        const edge = [mid[0] + Math.cos(az) * width, mid[1] - .007, mid[2] - Math.sin(az) * width];
-        tri(center, edge, tip, .90 + t * .08);
-        tri(center, tip, [mid[0] - Math.cos(az) * width, mid[1] - .016, mid[2] + Math.sin(az) * width], .85 + t * .08);
-      }
-      previous = center;
-    }
-  }
-  const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); geometry.computeVertexNormals(); geometry.computeBoundingSphere();
-  geometry.userData = { kind: 'chukar-silver-sage', triangles: positions.length / 9 }; return geometry;
-}
-
-function grassGeometry(lite: boolean): THREE.BufferGeometry {
-  const positions: number[] = [], colors: number[] = [], rng = mulberry32(578);
-  for (let blade = 0; blade < (lite ? 12 : 22); blade++) {
-    const az = blade * 2.399, height = .24 + rng() * .43, reach = .18 + rng() * .23, width = (lite ? .022 : .014) + rng() * .014;
-    const x = Math.sin(az) * .11, z = Math.cos(az) * .11;
-    const base = [x, 0, z], mid = [x + Math.sin(az) * reach * .30, height * .76, z + Math.cos(az) * reach * .30];
-    const a = [mid[0] + Math.cos(az) * width, mid[1], mid[2] - Math.sin(az) * width];
-    const b = [mid[0] - Math.cos(az) * width, mid[1], mid[2] + Math.sin(az) * width];
-    const tip = [x + Math.sin(az) * reach, height * (blade % 3 ? .86 : 1), z + Math.cos(az) * reach];
-    for (const [triangle, stages] of [[[base, b, a], [0, .76, .76]], [[a, b, tip], [.76, .76, 1]]] as const)
-      for (const [i, p] of triangle.entries()) { positions.push(...p); const shade = .59 + stages[i] * .42; colors.push(shade, shade, shade * .94); }
-    if(blade%5===0){
-      const stem=[x+Math.sin(az)*reach*.3,height*1.42,z+Math.cos(az)*reach*.3];
-      const shoulder=[stem[0]-.018,stem[1]*.83,stem[2]],other=[stem[0]+.018,stem[1]*.83,stem[2]];
-      for(const p of [base,shoulder,stem,base,stem,other]){positions.push(...p);colors.push(.92,.88,.76);}
-      for(const side of [-1,1]){
-        const seedTip=[stem[0]+side*.07,stem[1]*.97,stem[2]+.04],seedBase=[stem[0]+side*.012,stem[1]*.84,stem[2]];
-        for(const p of [seedBase,seedTip,stem]){positions.push(...p);colors.push(1.03,.97,.83);}
-      }
-    }
-  }
-  const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); geometry.computeVertexNormals(); geometry.computeBoundingSphere();
-  geometry.userData = { kind: 'chukar-dry-bunchgrass', triangles: positions.length / 9 }; return geometry;
-}
-
 /** Full-property Great Basin environment. Geometry is instanced in local cells
  * so the view does not submit every rock and plant across the whole property. */
 export class ChukarEnvironmentSystem implements Subsystem {
@@ -130,6 +78,7 @@ export class ChukarEnvironmentSystem implements Subsystem {
   private materials = new Set<THREE.Material>();
   private batches: Batch[] = [];
   private wind = { value: 0 };
+  private leafFill = { value: .22 };
   private sample = { ...SAMPLE };
   private world = { x: 0, z: 0 };
   private obstacles: { x: number; z: number; radius: number }[] = [];
@@ -148,7 +97,7 @@ export class ChukarEnvironmentSystem implements Subsystem {
     return !keepHabitat || !coverAt(area, x, y, margin + 3);
   }
 
-  private batch(geometry: THREE.BufferGeometry, material: THREE.Material, plants: Plant[], range: number, shadow: boolean, rock = false): void {
+  private batch(geometry: THREE.BufferGeometry, material: THREE.Material, plants: Plant[], range: number, shadow: boolean, rock = false, farGeometry?: THREE.BufferGeometry, detailRange = 65): void {
     if (!plants.length) return;
     const authored=geometry.userData.kind==='chukar-authored-basalt';
     if(authored&&plants.length===1){
@@ -189,15 +138,16 @@ export class ChukarEnvironmentSystem implements Subsystem {
         this.obstacles.push({ x: this.world.x, z: this.world.z, radius: Math.min(p.sx, p.sz) * .37 });
     }
     mesh.name = `Chukar ${geometry.userData.kind ?? 'scenery'}`; mesh.receiveShadow = true; mesh.computeBoundingSphere();
-    this.root.add(mesh); this.batches.push({ mesh, range, radius: mesh.boundingSphere!.radius, center: mesh.boundingSphere!.center.clone(), shadow });
+    this.root.add(mesh); this.batches.push({ mesh, range, radius: mesh.boundingSphere!.radius, center: mesh.boundingSphere!.center.clone(), shadow, nearGeometry: geometry, farGeometry, detailRange });
   }
 
   async init(ctx: Ctx): Promise<void> {
     const lite = ctx.quality === 'lite', area = this.landscape.area;
     this.root.name = 'Chukar Ridge — sage benches and broken rimrock'; ctx.scene.add(this.root);
     const brows=await loadChukarKit(ctx.quality);
-    const stones = [0, 1, 2].map(i => chukarStoneGeometry(i)), gravel = chukarStoneGeometry(3, true), grass = grassGeometry(lite), sage = sageGeometry(lite);
-    for (const geometry of [...brows,...stones, gravel, grass, sage]) this.geometries.add(geometry);
+    const stones = [0, 1, 2].map(i => chukarStoneGeometry(i)), gravel = chukarStoneGeometry(3, true), grass = chukarGrassGeometry(lite), sage = chukarSageGeometry(lite);
+    const farGrass=lite?grass:chukarGrassGeometry(true),farSage=lite?sage:chukarSageGeometry(true);
+    for (const geometry of [...brows,...stones, gravel, grass, sage, farGrass, farSage]) this.geometries.add(geometry);
     const rockMat = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true,
       emissive: 0x555b54, emissiveIntensity: .08 });
     // A restrained cool floor keeps the shaded basalt planes readable when
@@ -208,15 +158,19 @@ export class ChukarEnvironmentSystem implements Subsystem {
     this.materials.add(rockMat); this.materials.add(browMat); this.materials.add(leafMat);
     leafMat.onBeforeCompile = shader => {
       shader.uniforms.uChukarWind = this.wind;
+      shader.uniforms.uChukarLeafFill=this.leafFill;
+      shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nuniform float uChukarLeafFill;')
+        .replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * uChukarLeafFill;');
       shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uChukarWind;')
+        .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nobjectNormal=normalize(mix(objectNormal,vec3(0.,1.,0.),.55));')
         .replace('#include <begin_vertex>', `#include <begin_vertex>
           #ifdef USE_INSTANCING
           float windPhase = instanceMatrix[3].x * .15 + instanceMatrix[3].z * .23;
           transformed.x += sin(uChukarWind * 1.4 + windPhase) * position.y * position.y * .045;
           #endif`);
-      shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\nnormal = normalize(mix(normal, normalize((viewMatrix * vec4(0., 1., 0., 0.)).xyz), .65));');
+
     };
-    leafMat.customProgramCacheKey = () => 'chukar-open-sage-wind-v1';
+    leafMat.customProgramCacheKey = () => 'chukar-open-sage-wind-v2';
 
     for(const formation of chukarBrows(area)){
       this.batch(brows[formation.variant],browMat,[{x:formation.x,y:formation.y,sx:formation.length*PROPERTY_PX_TO_M,
@@ -250,8 +204,8 @@ export class ChukarEnvironmentSystem implements Subsystem {
       this.batch(gravel, rockMat, apron, lite ? 150 : 230, false, true);
     }
 
-    const spacing = 2.35;
-    const zones={talus:0,shelter:0};
+    const spacing = 2.65;
+    const zones={talus:0,shelter:0},stand={grass:0,sage:0};
     const rockDensityScale = (spacing / 5.4) ** 2;
     for (let ty = area.world.y; ty < area.world.y + area.world.h; ty += TILE) for (let tx = area.world.x; tx < area.world.x + area.world.w; tx += TILE) {
       const bunches: Plant[] = [], bushes: Plant[] = [], chips: Plant[] = [], outcrops: Plant[] = [];
@@ -262,16 +216,20 @@ export class ChukarEnvironmentSystem implements Subsystem {
         this.landscape.surfaceAtProperty(x, y, this.sample);
         const { slope, rockiness, vegetation } = this.sample;
         chukarGroundZones(x,y,zones);
-        const patch = coverAt(area, x, y), band = clamp(.48 + Math.sin(x * .027 + Math.sin(y * .016) * 2) * .30 + Math.cos(y * .034) * .21+zones.shelter*.25-zones.talus*.25);
-        const qualityKeep = rng();
+        chukarPlantStandAt(x,y,zones.talus,zones.shelter,stand);
+        const patch = coverAt(area, x, y), band=stand.grass;
+        // Generate the same candidate in both tiers; thinning never changes
+        // later random draws or shifts the remaining stands across the field.
+        const qualityKeep=rng(),choice=rng(),sizeRoll=rng(),yaw=rng()*Math.PI*2,colorRoll=rng();
+        const sageChance=(.018+stand.sage*.55)*(1-rockiness*.48);
+        const grassChance=(.06+stand.grass*.84+vegetation*.10)*(1-zones.talus*.7);
         let planted=false;
-        if (rng() < (.07 + vegetation * .80 + (patch ? .18 : 0)) * (.30 + band * .82) && slope < .95) {
-          const size = 1.05 + rng() * .65 + (patch ? .20 : 0);
-          if (!lite || qualityKeep > .28){bunches.push({ x, y, sx: size, sy: size, sz: size, yaw: rng() * Math.PI * 2, color: STRAW[Math.floor(rng() * STRAW.length)] });planted=true;}
-        }
-        if (rng() < (.028 + vegetation * .19 + (patch ? .06 : 0)+zones.shelter*.1) * band && slope < .82 && rockiness < .76&&!planted) {
-          const size = .95 + rng() * .90;
-          if (!lite || qualityKeep > .30){bushes.push({ x, y, sx: size * 1.22, sy: size, sz: size * 1.12, yaw: rng() * Math.PI * 2, color: SAGE[Math.floor(rng() * SAGE.length)] });planted=true;}
+        if(choice<sageChance&&slope<.9){
+          const size=.82+sizeRoll*.78+(zones.shelter*.15);
+          if(!lite||qualityKeep>.18){bushes.push({x,y,sx:size*1.15,sy:size*.82,sz:size*1.08,yaw,color:SAGE[Math.floor(colorRoll*SAGE.length)]});planted=true;}
+        }else if(choice<sageChance+grassChance&&slope<1.05){
+          const size=.72+sizeRoll*.69+stand.grass*.25;
+          if(!lite||qualityKeep>.27){bunches.push({x,y,sx:size*1.12,sy:size*(patch?1.08:1),sz:size*1.12,yaw,color:STRAW[Math.floor(colorRoll*STRAW.length)]});planted=true;}
         }
         // Low talus needs a continuous scattering, not the sparse density
         // reserved for large outcrops. Keep the trail clearance above.
@@ -284,16 +242,16 @@ export class ChukarEnvironmentSystem implements Subsystem {
           outcrops.push({ x, y, sx: size * 1.7, sy: size * .75, sz: size, yaw: Math.atan2(this.sample.gradeX, this.sample.gradeZ) + Math.PI / 2, color: STONE[Math.floor(rng() * STONE.length)] });
         }
       }
-      this.batch(grass, leafMat, bunches, lite ? 100 : 165, false);
-      this.batch(sage, leafMat, bushes, lite ? 210 : 320, false);
+      this.batch(grass, leafMat, bunches, lite ? 120 : 190, false, false, farGrass, 38);
+      this.batch(sage, leafMat, bushes, lite ? 180 : 230, false, false, farSage, 40);
       this.batch(gravel, rockMat, chips, lite ? 100 : 170, false, true);
       this.batch(stones[seed(tx, ty) % 3], rockMat, outcrops, 800, true, true);
     }
-    this.buildTrack(); this.update(ctx);
+    this.buildTrack(ctx); this.update(ctx);
   }
 
-  private buildTrack(): void {
-    const positions: number[] = [], colors: number[] = [], opacity: number[] = [], dust = new THREE.Color(0xb19b78), edge = new THREE.Color(0x887e64);
+  private buildTrack(ctx:Ctx): void {
+    const positions: number[] = [], colors: number[] = [], dust = new THREE.Color(0xc2b69a), edge = new THREE.Color(0x998b6b);
     for (const trail of this.landscape.area.trails) for (let n = 1; n < trail.points.length; n++) {
       const a = trail.points[n - 1], b = trail.points[n], dx = b.x - a.x, dy = b.y - a.y, length = Math.hypot(dx, dy);
       if (length < .01) continue;
@@ -302,39 +260,46 @@ export class ChukarEnvironmentSystem implements Subsystem {
         const halfWidth = TRACK_HALF_WIDTH_M / PROPERTY_PX_TO_M;
         const x = a.x + dx * t + rx * across * halfWidth, y = a.y + dy * t + ry * across * halfWidth;
         this.landscape.propertyToWorld(x, y, this.world);
-        return { p: [this.world.x, this.landscape.heightAtProperty(x, y) + .035, this.world.z], c: i === 0 || i === 3 ? edge : dust, alpha: i === 0 || i === 3 ? 0 : .36 };
+        return { p: [this.world.x, this.landscape.heightAtProperty(x, y) + .035, this.world.z], c: i === 0 || i === 3 ? edge : dust, alpha: i === 0 || i === 3 ? 0 : .55 };
       });
       for (let i = 0; i < count; i++) {
         const near = row(i / count), far = row((i + 1) / count);
         for (let across = 0; across < 3; across++) for (const v of [near[across], far[across], near[across + 1], near[across + 1], far[across], far[across + 1]]) {
-          positions.push(...v.p); colors.push(v.c.r, v.c.g, v.c.b);
-          opacity.push(v.alpha);
+          positions.push(...v.p); colors.push(v.c.r, v.c.g, v.c.b, v.alpha);
         }
       }
     }
-    const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); geometry.computeVertexNormals();
-    geometry.setAttribute('trailOpacity', new THREE.Float32BufferAttribute(opacity, 1));
+    const source = new THREE.BufferGeometry();source.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    source.setAttribute('color', new THREE.Float32BufferAttribute(colors, 4));
+    source.setIndex(Array.from({length:positions.length/3},(_,i)=>i));
+    const detail=CHUKAR_GROUND_DETAIL[ctx.quality];
+    // Clip at tile seams and follow the rendered triangles in both terrain
+    // tiers. An analytic height plus an offset sank into the coarse mesh.
+    const geometry=groundQuailTrackGeometry(this.landscape,source,detail);source.dispose();
     const material = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, side: THREE.DoubleSide });
-    material.customProgramCacheKey = () => 'chukar-footpath-soft-shoulder-v1';
-    material.onBeforeCompile = shader => {
-      shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nattribute float trailOpacity; varying float vTrailOpacity;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvTrailOpacity = trailOpacity;');
-      shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying float vTrailOpacity;')
-        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.a *= vTrailOpacity;');
+    material.customProgramCacheKey = () => 'chukar-footpath-soft-shoulder-v2';
+    material.onBeforeCompile=shader=>{
+      shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec2 vPathGround;')
+        .replace('#include <begin_vertex>','#include <begin_vertex>\nvPathGround=position.xz;');
+      shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 vPathGround;')
+        .replace('#include <color_fragment>',`#include <color_fragment>
+          float wear=.5+.5*sin(vPathGround.x*1.3+sin(vPathGround.y*.83)*2.)*sin(vPathGround.y*2.1);
+          diffuseColor.a *= .66+wear*.34;
+          diffuseColor.rgb *= .95+wear*.07;`);
     };
+    applyQuailTrackGroundLod(material,ctx.quality,detail.range);
     const mesh = new THREE.Mesh(geometry, material); mesh.name = 'Chukar dusty contour access tracks'; mesh.receiveShadow = true;
     this.geometries.add(geometry); this.materials.add(material); this.root.add(mesh);
   }
 
   update(ctx: Ctx): void {
     this.wind.value = ctx.time;
+    this.leafFill.value = ctx.timeOfDay==='morning'||ctx.timeOfDay==='noon'?.22:.08;
     for (const batch of this.batches) {
       const distance = Math.hypot(ctx.camera.position.x - batch.center.x, ctx.camera.position.z - batch.center.z);
       batch.mesh.visible = distance < batch.range + batch.radius;
       batch.mesh.castShadow = batch.shadow && distance < 110 + batch.radius;
+      if(batch.farGeometry)batch.mesh.geometry=distance>batch.detailRange+batch.radius*.5?batch.farGeometry:batch.nearGeometry;
     }
   }
 

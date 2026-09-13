@@ -192,7 +192,7 @@ export function createChukarLandmarks(landscape: LandscapeModel, quality: Qualit
   });
 
   const geometry = surface.geometry();
-  const material = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const material = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x626656, emissiveIntensity: .14 });
   material.name = 'Chukar weathered stone and timber';
   const mesh = new THREE.Mesh(geometry, material); mesh.name = 'Batched cairns, trail posts and overlook rocks';
   mesh.castShadow = true; mesh.receiveShadow = true; mesh.matrixAutoUpdate = false; mesh.updateMatrix(); root.add(mesh);

@@ -75,7 +75,8 @@ export function chukarAuthoredHeight(x:number,y:number):number {
   if(x>1400){
     for(const [cx,cy,rx,ry,height] of [[1830,260,365,310,108],[1930,-620,480,360,150],[2040,1150,410,350,125]]){
       const dx=x-cx+(y-cy)*.16,dy=y-cy;
-      const edge=Math.max(Math.abs(dx/rx),Math.abs(dy/ry))+Math.sin(y*.012)*.045+Math.sin(y*.027+x*.019)*.018;
+      const edge=Math.pow(Math.pow(Math.abs(dx/rx),3)+Math.pow(Math.abs(dy/ry),3),1/3)
+        +Math.sin(y*.012+x*.004)*.065+Math.sin(y*.027+x*.019)*.026;
       distant+=height*((1-smooth(.82,1,edge))*.65+(1-smooth(.63,.75,edge))*.25+(1-smooth(.44,.58,edge))*.1);
     }
   }
@@ -93,4 +94,26 @@ export function chukarGroundZones(x:number,y:number,out:{talus:number;shelter:nu
     shelter=Math.max(shelter,length*Math.exp(-Math.pow((across+23)/27,2)));
   }
   out.talus=talus;out.shelter=shelter;return out;
+}
+
+export interface ChukarPlantStand { grass: number; sage: number }
+const noiseHash=(x:number,y:number)=>{
+  let n=Math.imul(x,374761393)+Math.imul(y,668265263);n=Math.imul(n^(n>>>13),1274126177);
+  return ((n^(n>>>16))>>>0)/4294967295;
+};
+function standNoise(x:number,y:number):number {
+  const ix=Math.floor(x),iy=Math.floor(y),fx=x-ix,fy=y-iy,tx=fx*fx*(3-2*fx),ty=fy*fy*(3-2*fy);
+  const a=noiseHash(ix,iy),b=noiseHash(ix+1,iy),c=noiseHash(ix,iy+1),d=noiseHash(ix+1,iy+1);
+  return (a+(b-a)*tx)*(1-ty)+(c+(d-c)*tx)*ty;
+}
+
+/** Continuous stands drive ground color and plants together. Small-scale
+ * irregularity breaks their edges; sheltered rock feet favor sage crowns. */
+export function chukarPlantStandAt(x:number,y:number,talus:number,shelter:number,out:ChukarPlantStand):ChukarPlantStand {
+  const broad=standNoise(x*.024,y*.024),edge=standNoise(x*.091+47,y*.091-19);
+  const grasses=smooth(.23,.72,broad*.76+edge*.24);
+  const shrubs=smooth(.39,.72,standNoise(x*.038+21,y*.038+15));
+  out.grass=saturate(grasses*(1-talus*.77)+shelter*.18);
+  out.sage=saturate(shrubs*(.48+shelter*.72)*(1-talus*.8));
+  return out;
 }
