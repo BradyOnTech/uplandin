@@ -1,3 +1,4 @@
+import { birdFlightExpired } from '../../game/birdFlightLifetime';
 import { buildPheasantBody, buildPheasantWing, buildPheasantTail, posePheasantFoldedWings, pheasantWingbeat } from '../assets/pheasant';
 import { createQuailFlight, selectQuailEscapeCover, stepQuailFlight, type QuailFlight } from '../quailFlight';
 import { QUAIL_WORLD_SCALE, quailLaunchDelay } from '../quailPresentation';
@@ -189,11 +190,8 @@ const CLIMB_RAMP_MS = 1300;
 /** Capture covey stage: the full covey launches clustered inside ~0.8 s. */
 const CAPTURE_STAGGER_MS = 800;
 
-/** A bird this far from the hunter (m) has left the stage. */
-const GONE_RANGE = 80;
 /** A glide that touches grass after this long has put down — gone. */
 const LAND_MIN_AIR_MS = 1200;
-const MAX_AIR_MS = 15000;
 
 /** Pool = the airborne budget. Gameplay never holds more than a wave +
  *  sleepers aloft; the pool is sized for the capture covey stage, where
@@ -1106,7 +1104,8 @@ export class BirdsSystem implements Subsystem {
       }
       const rx = s.x - flight.hunterX;
       const rz = s.z - flight.hunterZ;
-      if ((!s.spatialFlight?.target && rx * rx + rz * rz > GONE_RANGE * GONE_RANGE) || s.airMs > MAX_AIR_MS) {
+      const pursued = hawk?.targetId === s.simId && (hawk.phase === 'launching' || hawk.phase === 'chasing');
+      if (birdFlightExpired(rx * rx + rz * rz, s.airMs, !!s.spatialFlight?.target, pursued)) {
         s.status = 'done';
         s.root.visible = false;
         this.hunt.resolveBird(s.simId, 'escaped');

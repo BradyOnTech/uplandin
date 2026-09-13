@@ -82,6 +82,22 @@ The seed-61 browser catch run completed a natural dog point, slip, catch, dog gu
 | The dog followed the handler while the hawk held quarry. | The dog approaches a position 2.4 metres beside the bound hawk, lies with its head up and watches. The HUD distinguishes approach from guarding. |
 | The chase was driven only by built-in pursuit. | The same default pursuit remains. An optional guidance callback accepts future control intent, while common motion, collision and recovery rules stay authoritative. A copied flight subject supplies a future flight camera without exposing mutable hunt state. |
 
+**Pursuit cutoff repair**
+
+The shared bird renderer was discarding flying quarry at 80 metres from the hunter, a limit inherited from the shotgun opportunity. An active goshawk chase lost its target and counted a miss even while closing. Browser reproduction on the practice drill found that one-second and 1.5-second slips both missed at this boundary; the one-second flight had closed to roughly 3.6 metres.
+
+`birdFlightLifetime.ts` now defers range and airborne-time retirement while that specific quarry is actively pursued. The hawk still owns its 12-second pursuit limit, and a bird landing in cover still escapes. Recall and unsuccessful flights continue to return the hawk. Ordinary shotgun flight limits remain unchanged. The miss message explicitly names the unsuccessful outcome.
+
+| Before | After |
+| --- | --- |
+| The hunter's 80-metre cutoff ended an otherwise active chase. | The hawk can complete an interception beyond that boundary. |
+| A prompt automated slip passed and hid the narrow effective window. | The browser regression covers one-second and 1.5-second reactions, left and right approaches, and a sprint-induced flush. All five produced catches after the repair. |
+| Delayed flights could fail because quarry was deleted. | A 3.5-second delayed slip was verified to miss through the pursuit limit and return, with summary and restart working. |
+
+Run `node tools3d/falconry-slip-matrix.mjs --window` or `--sides` for the input variations. `node tools3d/falconry-playthrough.mjs catch 61 --practice --slip-delay-ms=1000` exercises recovery after a longer flight. Tests use ordinary keyboard and mouse input; telemetry assists approach navigation, and exact airborne aiming is a separate explicit case. The browser frame-limit override is diagnostic, not performance evidence.
+
+The full one-second-slip playthrough also completed dog guarding, refusal to recall off quarry, the handler walk-in, hand pickup, summary, and both restart routes. The lifetime regression first failed under the original cutoff, then passed with the fix. The full suite passed 103 files and 767 tests; the production build passed with the existing bundle-size advisory.
+
 **Future flight views and control**
 
 F remains a handler-position watch toggle. A detached follow camera and playable hawk are explicitly open design options, not ruled out by the hunter viewpoint. Neither mode is enabled in this slice. A future follow camera should consume `flightSubject()` and use its own render camera, preserving the handler’s physical transform for movement, range checks and pickup. A future control mode can supply `GoshawkGuidance`; common turn limits, ground clearance and catch adjudication remain in `GoshawkFlight`. Camera choice must not choose the chase outcome. Returning and recovery continue to use their own rules.

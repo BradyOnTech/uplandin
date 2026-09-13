@@ -1,15 +1,17 @@
 /** Isolated automated browser test. Normal keyboard/mouse input, no state writes,
  * teleports, forced flushes or catches. Read-only telemetry assists aiming.
- * node tools3d/falconry-playthrough.mjs [catch|escape|recall] [seed] [--practice]
+ * node tools3d/falconry-playthrough.mjs [catch|escape|recall] [seed] [--practice] [--slip-delay-ms=1000]
  */
 import puppeteer from 'puppeteer';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 const outcome=process.argv[2]??'catch',seed=process.argv[3]??'61';
 const practice=process.argv.includes('--practice');
+const slipDelay=Number(process.argv.find(arg=>arg.startsWith('--slip-delay-ms='))?.split('=')[1]??(outcome==='escape'?3500:0));
+if(!Number.isFinite(slipDelay)||slipDelay<0)throw new Error('Invalid slip delay');
 const out=resolve('output/playwright/falconry');mkdirSync(out,{recursive:true});
 const prefix=`${out}/${practice?'practice-':''}${outcome}-${seed}`;
-const manifest={kind:practice?'staged-practice-ordinary-gameplay-input':'ordinary-gameplay-automated-input',outcome,seed,limitations:['Frame limiting disabled for this diagnostic; not a device performance benchmark.','Read-only telemetry guides mouse aiming; not a human usability study.','Procedural raptor asset; physical mobile performance not verified.'],events:[],errors:[]};
+const manifest={kind:practice?'staged-practice-ordinary-gameplay-input':'ordinary-gameplay-automated-input',outcome,seed,slipDelay,limitations:['Frame limiting disabled for this diagnostic; not a device performance benchmark.','Read-only telemetry guides mouse aiming; not a human usability study.','Procedural raptor asset; physical mobile performance not verified.'],events:[],errors:[]};
 console.log('Launching test browser');
 const browser=await puppeteer.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required','--disable-frame-rate-limit','--disable-gpu-vsync']});
 console.log('Browser launched');
@@ -58,7 +60,7 @@ try {
   if(h.phase==='fist'&&!slipped){
     if(state.birds.some(b=>b.status==='flying')){
       await move(false);
-      if(outcome==='escape'&&!lateUntil)lateUntil=Date.now()+2800;
+      if(slipDelay>0&&!lateUntil)lateUntil=Date.now()+slipDelay;
       if(!lateUntil||Date.now()>lateUntil){
         const target=state.birds.find(b=>b.status==='flying');await look(target,state);await page.keyboard.press('Space');
         await sleep(80);state=await read();slipped=state.t.falconry.flights>0;

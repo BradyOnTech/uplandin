@@ -92,7 +92,7 @@ export class FalconrySystem implements Subsystem {
         this.say('Bound. Your dog is going to the hawk. Walk in to pick up.');
       } else if(event.type==='recovered') {
         this.hunt.recoverQuarry(event.birdId);this.say('Hawk on fist, quarry recovered. Q sends the dog hunting again.');
-      } else if(event.type==='missed') this.say('The flight is over. Your goshawk is returning.');
+      } else if(event.type==='missed') this.say('Missed. The bird escaped; your goshawk is returning.');
       else if(event.type==='recalled') { playWhistle(); this.say('Recall given. Your goshawk is returning.'); }
       else this.say('Back on the fist. Q sends the dog hunting again.');
     }
