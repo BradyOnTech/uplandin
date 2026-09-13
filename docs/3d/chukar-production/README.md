@@ -98,6 +98,16 @@ At the same morning Sage Bench camera in the 1280 by 720 browser review, after t
 
 These are renderer submission counters, including repeated rendering passes, not measured frame rate. Lightweight reduces this view's triangle submissions by about 70 percent. Standard's richer crowns, local companion grass and nearby plant shadows increase geometry submissions relative to the preceding geology-only checkpoint. Root alignment also adds a small per-instance attribute and vertex-shader work. These improvements do not establish a mobile frame-time budget.
 
+**Integration with the goshawk PR**
+
+On September 13, the Chukar code checkpoint `0f285b5` was combined with [PR #1, Add fist-launched goshawk Quick Hunt at Cattail Coverts](https://github.com/BradyOnTech/uplandin/pull/1), at `35d7a37836fe075dbe612189e1ec74b6ef0d8a18`. Both branch tips were compared against freshly fetched `main` at `070ec81d82d91db23d015cff2de7963eb7435937`.
+
+The branches have no changed-file overlap. Merging in either order produced the same Git tree, `9549951371a6cea7f409f312b42587cda0cdc807`. A separate detached checkout of that combined tree passed all 795 tests across 106 files and the production build. No conflict resolution or behavior changes were required. The additional checkpoint documentation does not change that tested code.
+
+Browser checks on the combined development build covered Chukar entry, survey-map opening and whole-property zoom, closing the map, dog cast-off, keyboard aiming and firing, reload initiation and pause-menu equipment. The Cattail falconry practice entry retained its hawk, method-specific controls and a naturally established dog point; the new Cattail atlas opened correctly and covered the field controls. The Chukar check reported no browser console errors. These are bounded integration checks, not a new complete hunt or catch/recovery acceptance run.
+
+Merge the existing goshawk PR first, then the Chukar/atlas PR, keeping each feature independently reviewable. Either order is technically compatible at the recorded tips; new code on either branch or `main` requires reassessment. This verification did not merge either PR into remote `main`.
+
 **What still needs refinement**
 
 The user accepted the revised rock and distant terrain direction. This route pass needs the same visual judgment, especially the close sage silhouette, simpler distant/Lightweight crowns and the balance between exposed ground and planted pockets. Composition is most deliberate along the south climbing route; the western approach and return branches have not received equivalent authored stands. The concept remains ahead of the in-game art, and this is not final environment acceptance.
