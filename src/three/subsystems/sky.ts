@@ -664,7 +664,7 @@ export class SkySystem implements Subsystem {
   private readonly quail: boolean;
   private readonly areaId: string;
 
-  constructor(landscape?: LandscapeModel) {
+  constructor(private readonly landscape?: LandscapeModel) {
     this.ridgeProfile = ridgeProfileFor(landscape);
     this.quail = landscape?.area.id === 'quail-fields';
     this.areaId = landscape?.area.id ?? '';
@@ -732,8 +732,8 @@ export class SkySystem implements Subsystem {
     // ground: 0.35 erased every fence-post and trunk shadow root, which is
     // why round 3 read "no prop casts anything". 0.12 keeps posts casting;
     // the slightly larger constant bias holds acne down with PCFSoft.
-    this.sun.shadow.bias = -0.0006;
-    this.sun.shadow.normalBias = 0.12;
+    this.sun.shadow.bias = this.areaId==='chukar-ridge' ? -0.00015 : -0.0006;
+    this.sun.shadow.normalBias = this.areaId==='chukar-ridge' ? .045 : .12;
     ctx.scene.add(this.sun);
     ctx.scene.add(this.sun.target);
 
@@ -1043,10 +1043,14 @@ export class SkySystem implements Subsystem {
     const snap = 2;
     const tx = Math.round(ax / snap) * snap;
     const tz = Math.round(az / snap) * snap;
-    this.sun.target.position.set(tx, 0, tz);
+    // Chukar climbs well above zero: a flat-ground shadow rig left the
+    // upper benches outside its light-space coverage, losing contact.
+    const ty=this.areaId==='chukar-ridge'&&this.landscape
+      ? Math.round(this.landscape.heightAtWorld(cam.x,cam.z)/snap)*snap : 0;
+    this.sun.target.position.set(tx, ty, tz);
     this.sun.position.set(
       tx + this.keyDir.x * 300,
-      this.keyDir.y * 300,
+      ty + this.keyDir.y * 300,
       tz + this.keyDir.z * 300,
     );
     this.fill.target.position.set(cam.x, 0, cam.z);

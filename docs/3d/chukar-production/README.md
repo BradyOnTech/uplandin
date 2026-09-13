@@ -38,6 +38,18 @@ Across the canyon, broad rubble fans support broken escarpments. Gullies cut int
 
 The new **Rock face** staged view exposes the close formations and canyon together. **Rim Overlook** is the clearest comparison for the distant terrain. No new runtime texture downloads or scene draw passes were added. These changes affect scenery outside the parcel and rock presentation; mapped routes, bird stocking and playable terrain heights remain unchanged.
 
+**Route composition and contact pass**
+
+Following user acceptance of the revised geology, fourteen authored stands now shape the climb from Trailhead through Sage Bench and Split Shoulder to Rim Overlook. Grass groups soften the arrival and climbing shoulders; sheltered benches hold denser sage pockets; the brow openings and overlook apron remain exposed. Irregular, blended boundaries keep the stands from reading as stamped ovals. Plant placement and root-soil color share these same masks. They describe scenery rather than bird coordinates.
+
+Five shallow dry washes descend from the rock slopes. They lower the playable heightfield by at most 38 centimetres, with continuous bends and tapered ends. Lighter sediment, loose gravel and reduced vegetation follow the same channels. Unlike the preceding geology correction, this pass makes small local changes to playable ground height; mapped paths and bird stocking remain unchanged.
+
+Uneven rubble fans graduate from larger fragments near each formation to smaller chips downslope. Clearance is checked for individual fragments so one nearby path no longer removes a whole apron. Larger fragments retain habitat and access clearance. Sage crowns also reserve their full footprint beside paths.
+
+Sage now has forked woody stems, unequal branches and smaller compound crowns. The detailed form uses 470 triangles; the distant/Lightweight form uses 110. Grass companions add local density inside selected stands instead of increasing the whole property's density. Grass and sage remain opaque and instanced. Existing rock exports and texture downloads are unchanged.
+
+Plant roots now fit the actual rendered terrain triangles in both distance tiers. Shared vertex buffers retain per-instance height offsets, with matching wind and ground displacement in the shrub shadow pass. The directional shadow camera follows Chukar's elevation: the previous zero-height target left upper benches outside its coverage. Nearby Standard sage now casts shadows; Lightweight keeps the cheaper plant rendering. Less plant fill at evening and quieter close ground texture strengthen contact without increasing brightness everywhere.
+
 **Editable asset workflow**
 
 - Source gallery: [basalt-kit.blend](../../../assets/source/chukar-kit/basalt-kit.blend).
@@ -71,24 +83,24 @@ Built-in image generation produced both images, without image references. Exact 
 
 **Verification**
 
-The final focused run passed 21 tests across the Chukar production and shared ground-fitting suites. Checks cover the route and habitat constraints, actual painted GLB exports and their budgets, paths following rendered terrain, plant detail tiers, continuous distant relief outside the parcel, finite/unit terrain normals, sampled surface heights and a combined horizon budget below 100,000 triangles. The shared ground-fitting helper retains Quail's defaults.
+The full regression run passed 776 tests across 102 files after the composition, rubble and climbing-shadow changes. After the final plant-ground correction, 31 focused tests passed across four files, including two new environment-builder checks. Those raycast sampled plant roots against both actual terrain grids and verify that visible and shadow materials share the player's terrain tier and wind frame. Other focused coverage includes route and habitat constraints, exported GLB budgets, grounded paths, plant detail tiers, continuous distant relief, the horizon budget, drainage continuity and evening shadow coverage at the upper benches. The existing shared Quail grounding helpers were reused without modifying their behavior.
 
 The final `npm run build` passed TypeScript and the production build. The existing large JavaScript chunk warning remains.
 
-Browser review inspected the Rock face, Sage Bench, Split Shoulder and Rim Overlook views. Standard and Lightweight rendered, and the close rocks were inspected in morning and evening light. This pass did not include a complete played hunt or physical mobile performance testing.
+Browser review inspected Trailhead, Rock face, Sage Bench, Split Shoulder and Rim Overlook, plus the opening portion of the moving route study. Standard and Lightweight were compared at Sage Bench; upper-route contact and broad rock shadows were reviewed in evening light. This pass did not include a complete camera route, played hunt or physical mobile performance testing.
 
-At the same morning Rock face camera in the 1280 by 720 browser review:
+At the same morning Sage Bench camera in the 1280 by 720 browser review, after the final plant-ground correction:
 
 | Tier | Submitted draws | Submitted triangles |
 | --- | ---: | ---: |
-| Standard | 153 | 1,483,944 |
-| Lightweight | 140 | 539,742 |
+| Standard | 172 | 1,871,474 |
+| Lightweight | 149 | 562,630 |
 
-These are renderer submission counters, including repeated rendering passes, not measured frame rate. Lightweight reduces this view's triangle submissions by about 64 percent. At the existing Standard morning Rim Overlook camera, the counter changed from 1,271,618 to 1,299,988 triangles with the same 123 draws: about 2.2 percent more submitted geometry for the revised terrain and rocks. The shaders also do more surface work, which triangle counts do not measure.
+These are renderer submission counters, including repeated rendering passes, not measured frame rate. Lightweight reduces this view's triangle submissions by about 70 percent. Standard's richer crowns, local companion grass and nearby plant shadows increase geometry submissions relative to the preceding geology-only checkpoint. Root alignment also adds a small per-instance attribute and vertex-shader work. These improvements do not establish a mobile frame-time budget.
 
 **What still needs refinement**
 
-The concept is still ahead of the in-game art. Broad playable slopes remain too uniform in places; transitions from major rocks to smaller rubble and soil need more deliberate composition. The next review should judge close plant silhouettes, the visible change to simpler distant crowns, the revised rock contact and erosion detail, and the balance of empty ground against composed stands. The new geology resolves the repeated blocks and smooth terrace silhouettes, but needs user art acceptance before this becomes the benchmark for other properties.
+The user accepted the revised rock and distant terrain direction. This route pass needs the same visual judgment, especially the close sage silhouette, simpler distant/Lightweight crowns and the balance between exposed ground and planted pockets. Composition is most deliberate along the south climbing route; the western approach and return branches have not received equivalent authored stands. The concept remains ahead of the in-game art, and this is not final environment acceptance.
 
 A complete hunt still needs assessment for encounter pacing, high-side approach choices, dog navigation around the new rocks and return-to-truck flow. Route geometry tests and staged camera views do not establish those experiences. Physical mobile testing, sustained frame times, loading behavior on slower connections and long-session memory remain separate acceptance work.
 

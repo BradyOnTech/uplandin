@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { chukarCompositionAt } from '../../game/chukarComposition';
 import { PROPERTY_PX_TO_M, type LandscapeModel } from '../../game/landscape';
 import type { Ctx } from '../engine';
 
@@ -13,7 +14,8 @@ import { chukarGroundZones, chukarPlantStandAt, chukarDistantRelief } from '../.
 const earth = new THREE.Color(0xac9064), dust = new THREE.Color(0xcbb78e);
 const stone = new THREE.Color(0x89857d), shade = new THREE.Color(0x7e806f), sage = new THREE.Color(0x8e987b);
 const litter = new THREE.Color(0xb4a06d),stand={grass:0,sage:0};
-const zones={talus:0,shelter:0};
+const zones={talus:0,shelter:0},composition={sage:0,grass:0,open:0,wash:0};
+const rootSoil=new THREE.Color(0x83735b),silt=new THREE.Color(0xc2ac87);
 const sample = {height:0,slope:0,gradeX:0,gradeZ:0,rockiness:0,vegetation:0,moisture:0};
 
 /** World-anchored scree detail, filtered before individual chips become subpixel. */
@@ -54,7 +56,7 @@ function applyScreeDetail(material: THREE.MeshLambertMaterial, landscape: Landsc
           vec3 closePaint=texture2D(uChukarEarth,ground/5.5).rgb;
           vec3 broadPaint=texture2D(uChukarEarth,mat2(.8,-.6,.6,.8)*ground/13.+.37).rgb;
           float paintValue=dot(mix(closePaint,broadPaint,.23),vec3(.28,.55,.17));
-          diffuseColor.rgb *= mix(1.,clamp(paintValue*1.85,.60,1.23),paintRange*.46);
+          diffuseColor.rgb *= mix(1.,clamp(paintValue*1.85,.60,1.23),paintRange*.33);
         }
         // Broad mineral patches and descending erosion streaks remain
         // legible across the canyon, after close soil detail has faded out.
@@ -98,6 +100,10 @@ function paint(landscape:LandscapeModel,x:number,y:number,out:THREE.Color):THREE
   chukarPlantStandAt(x,y,zones.talus,zones.shelter,stand);
   out.lerp(litter,stand.grass*.44);
   out.lerp(sage,stand.sage*.49+zones.shelter*.13);
+  chukarCompositionAt(x,y,composition);
+  out.lerp(rootSoil,composition.sage*.30+composition.grass*.14);
+  out.lerp(stone,composition.open*.23);
+  out.lerp(silt,composition.wash*.72);
   out.lerp(shade,Math.min(.34,surface.slope*.27));
   return out.multiplyScalar(.89+sweep*.14+bedding*.04);
 }

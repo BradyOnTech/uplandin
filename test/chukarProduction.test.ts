@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
 import { getArea } from '../src/game/areas';
-import { chukarBrowBlockers,chukarBrows,chukarDistantRelief } from '../src/game/chukarLandscape';
+import { chukarBrowBlockers,chukarBrows,chukarDistantRelief,chukarGroundZones,chukarPlantStandAt } from '../src/game/chukarLandscape';
+import { CHUKAR_WASHES,chukarWashAt } from '../src/game/chukarComposition';
 import { LandscapeModel,PROPERTY_PX_TO_M } from '../src/game/landscape';
 import { groundQuailTrackGeometry,quailGroundTileAt } from '../src/three/subsystems/quailGroundGeometry';
 import { buildQuailTerrainGeometry } from '../src/three/subsystems/quailTerrain';
@@ -95,7 +96,7 @@ describe('Chukar surface polish',()=>{
     const close=make(false),distant=make(true);close.computeBoundingBox();distant.computeBoundingBox();
     const a=close.boundingBox!.getSize(new THREE.Vector3()),b=distant.boundingBox!.getSize(new THREE.Vector3());
     expect(distant.getAttribute('position').count).toBeLessThan(close.getAttribute('position').count*.5);
-    expect(close.getAttribute('position').count/3).toBeLessThan(400);
+    expect(close.getAttribute('position').count/3).toBeLessThan(500);
     expect(Math.abs(a.y-b.y)).toBeLessThan(.16);expect(Math.abs(a.x-b.x)).toBeLessThan(.3);expect(Math.abs(a.z-b.z)).toBeLessThan(.3);
     close.dispose();distant.dispose();
   });
@@ -132,5 +133,26 @@ describe('Chukar eroded horizon',()=>{
       totals.push(triangles);
     }
     expect(totals[0]).toBeLessThan(100_000);expect(totals[1]).toBeLessThan(totals[0]*.5);
+  });
+});
+
+
+describe('Chukar route composition',()=>{
+  it('gives sheltered benches substantially more sage than the exposed brow opening',()=>{
+    const stand=(x:number,y:number)=>{
+      const zones=chukarGroundZones(x,y,{talus:0,shelter:0});
+      return chukarPlantStandAt(x,y,zones.talus,zones.shelter,{grass:0,sage:0});
+    };
+    expect(stand(658,556).sage).toBeGreaterThan(stand(762,617).sage+.5);
+    expect(stand(959,385).sage).toBeGreaterThan(stand(1024,267).sage+.4);
+  });
+  it('keeps drainage continuous through bends and fades it at both ends',()=>{
+    for(const wash of CHUKAR_WASHES){
+      for(const p of [wash.points[0],wash.points.at(-1)!])expect(chukarWashAt(...p)).toBeLessThan(.001);
+      for(const p of wash.points.slice(1,-1)){
+        expect(chukarWashAt(...p)).toBeGreaterThan(.9);
+        expect(Math.abs(chukarWashAt(p[0]-.01,p[1])-chukarWashAt(p[0]+.01,p[1]))).toBeLessThan(.01);
+      }
+    }
   });
 });

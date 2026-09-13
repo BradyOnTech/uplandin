@@ -1,3 +1,4 @@
+import { chukarCompositionAt, chukarWashAt } from './chukarComposition';
 import type { AreaConfig } from './areas';
 import type { Rect } from './field';
 import { PROPERTY_PX_TO_M } from './worldUnits';
@@ -69,7 +70,7 @@ export function chukarAuthoredHeight(x:number,y:number):number {
     const along=dx*b.c+dy*b.s,across=-dx*b.s+dy*b.c;
     shoulders+=b.height*.32*Math.exp(-Math.pow(along/(b.length*.72),2)-Math.pow(across/34,2));
   }
-  return grade+shelves+valley+westernShoulder+folds+shoulders+chukarDistantRelief(x,y);
+  return grade+shelves+valley+westernShoulder+folds+shoulders+chukarDistantRelief(x,y)-chukarWashAt(x,y)*.38;
 }
 
 /** Eroded uplifts beyond the eastern parcel. Broad talus fans support a
@@ -113,6 +114,7 @@ export function chukarGroundZones(x:number,y:number,out:{talus:number;shelter:nu
 }
 
 export interface ChukarPlantStand { grass: number; sage: number }
+const composition={sage:0,grass:0,open:0,wash:0};
 const noiseHash=(x:number,y:number)=>{
   let n=Math.imul(x,374761393)+Math.imul(y,668265263);n=Math.imul(n^(n>>>13),1274126177);
   return ((n^(n>>>16))>>>0)/4294967295;
@@ -129,7 +131,9 @@ export function chukarPlantStandAt(x:number,y:number,talus:number,shelter:number
   const broad=standNoise(x*.024,y*.024),edge=standNoise(x*.091+47,y*.091-19);
   const grasses=smooth(.23,.72,broad*.76+edge*.24);
   const shrubs=smooth(.39,.72,standNoise(x*.038+21,y*.038+15));
-  out.grass=saturate(grasses*(1-talus*.77)+shelter*.18);
-  out.sage=saturate(shrubs*(.48+shelter*.72)*(1-talus*.8));
+  chukarCompositionAt(x,y,composition);
+  const bare=Math.max(composition.open*.86,composition.wash*.94);
+  out.grass=saturate((grasses*.72+composition.grass*.75)*(1-talus*.72)+shelter*.14)*(1-bare);
+  out.sage=saturate((shrubs*(.34+shelter*.50)+composition.sage*.95)*(1-talus*.8))*(1-bare);
   return out;
 }

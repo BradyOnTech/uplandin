@@ -70,3 +70,25 @@ describe('Decorative skyline ordering', () => {
     } finally { f.dispose(); }
   });
 });
+
+
+describe('Chukar climbing shadow coverage',()=>{
+  it('keeps nearby plants inside the evening shadow camera at the upper benches',()=>{
+    const f=fixture('chukar-ridge'),landscape=new LandscapeModel(getArea('chukar-ridge'));
+    try{
+      f.ctx.events.dispatchEvent(new CustomEvent('tod',{detail:'evening'}));
+      const sun=f.ctx.scene.children.find((o):o is THREE.DirectionalLight=>o instanceof THREE.DirectionalLight&&o.castShadow)!;
+      for(const [x,y] of [[658,575],[859,437],[1010,250]]){
+        const p=landscape.propertyToWorld(x,y,{x:0,z:0}),ground=landscape.heightAtProperty(x,y);
+        f.camera.position.set(p.x,ground+1.62,p.z);f.camera.lookAt(p.x+50,ground+1.62,p.z-50);
+        f.sky.update(f.ctx);f.ctx.scene.updateMatrixWorld(true);sun.shadow.updateMatrices(sun);
+        for(const ahead of [0,8,16]){
+          const px=p.x+ahead,pz=p.z-ahead,h=landscape.heightAtWorld(px,pz);
+          const projected=new THREE.Vector3(px,h+.6,pz).project(sun.shadow.camera);
+          expect(Math.abs(projected.x)).toBeLessThan(1);expect(Math.abs(projected.y)).toBeLessThan(1);
+          expect(projected.z).toBeGreaterThan(-1);expect(projected.z).toBeLessThan(1);
+        }
+      }
+    }finally{f.dispose();}
+  });
+});
