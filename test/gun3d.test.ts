@@ -51,6 +51,24 @@ describe('3D shotgun action', () => {
     gun.dispose(ctx);
   });
 
+  it('enlarges the touch sight picture while raised and restores the wide view on lowering',()=>{
+    vi.stubGlobal('window',new EventTarget());vi.stubGlobal('location',{search:''});
+    vi.stubGlobal('localStorage',{getItem:()=>null});
+    vi.stubGlobal('document',{body:{classList:{contains:(name:string)=>name==='touch-controls-active',toggle:()=>{}}},getElementById:()=>null,querySelector:()=>null});
+    const camera=new THREE.PerspectiveCamera(70,2,.1,1000);
+    const ctx={scene:new THREE.Scene(),camera,renderer:{domElement:new EventTarget()},events:new EventTarget(),
+      quality:'lite',timeOfDay:'morning',time:1,paused:false,
+      get:(id:string)=>({hunt3d:{huntState:()=>({gunId:'semi-auto',birds:[]})},birds:{shotTargets:()=>[]},terrain:{heightAt:()=>0}}[id])} as unknown as Ctx;
+    const gun=new GunSystem();gun.init(ctx);
+    const wide=new THREE.Vector3(.5,0,-20).project(camera).x;
+    ctx.events.dispatchEvent(Object.assign(new Event('hunt-action'),{detail:'touch-mount'}));
+    gun.update(ctx,.2);expect(camera.fov).toBeCloseTo(58);
+    expect(new THREE.Vector3(.5,0,-20).project(camera).x/wide).toBeGreaterThan(1.25);
+    ctx.events.dispatchEvent(Object.assign(new Event('hunt-action'),{detail:'lower'}));
+    gun.update(ctx,.2);expect(camera.fov).toBe(70);
+    gun.dispose(ctx);
+  });
+
   it('keeps recoil strength and recovery identical through fast, slow and uneven frames', () => {
     const advance = (steps: number[]) => {
       const gun = new GunSystem(); gun.kick(1);

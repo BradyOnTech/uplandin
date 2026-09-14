@@ -26,7 +26,7 @@ function fixture() {
   vi.stubGlobal('document', Object.assign(new EventTarget(), {getElementById:()=>null,body:{classList:{contains:()=>false}}}));
   vi.stubGlobal('location', {search:''});
   vi.stubGlobal('HTMLElement', class {});
-  const ctx = {paused:false,camera:new THREE.PerspectiveCamera(),renderer:{domElement:canvas},events:new EventTarget(),
+  const ctx = {paused:false,camera:new THREE.PerspectiveCamera(70),renderer:{domElement:canvas},events:new EventTarget(),
     get:(id:string)=>id==='terrain'?{heightAt:()=>0}:{coverPatches:()=>[]}} as unknown as Ctx;
   const player = new PlayerSystem(); player.init(ctx);
   const send = (type:string,id:number,x:number,y:number) => canvas.dispatchEvent(Object.assign(new Event(type,{cancelable:true}),

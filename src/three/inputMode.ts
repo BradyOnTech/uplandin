@@ -20,6 +20,13 @@ export function saveInputMode(mode: InputMode): void {
 }
 
 export type TouchSensitivity = 'look' | 'swing';
+export function mobileSightPicture(): 'closer' | 'wide' {
+  try { return localStorage.getItem('uplandin.3d.sight') === 'wide' ? 'wide' : 'closer'; } catch { return 'closer'; }
+}
+/** A modest optical enlargement; no target or trajectory changes. */
+export function mobileShotFov(mount: number, closer: boolean): number {
+  return 70 - (closer ? 12 * Math.max(0, Math.min(1, mount)) : 0);
+}
 export function touchSensitivity(kind: TouchSensitivity): number {
   try {
     const value = Number(localStorage.getItem(`uplandin.3d.touch.${kind}`));

@@ -67,8 +67,9 @@ export class PlayerSystem implements Subsystem {
     window.addEventListener('blur', clear, { signal });
     ctx.events.addEventListener('hunt-touch-look', ((event: CustomEvent<{dx:number;dy:number}>) => {
       if (ctx.paused || this.captureMode) return;
-      this.yaw -= event.detail.dx * .004 * swingSensitivity;
-      this.pitch = THREE.MathUtils.clamp(this.pitch - event.detail.dy * .004 * swingSensitivity, -1.4, 1.4);
+      const optics = Math.tan(ctx.camera.fov * Math.PI / 360) / Math.tan(70 * Math.PI / 360);
+      this.yaw -= event.detail.dx * .004 * swingSensitivity * optics;
+      this.pitch = THREE.MathUtils.clamp(this.pitch - event.detail.dy * .004 * swingSensitivity * optics, -1.4, 1.4);
       // A release may arrive before the next frame; fire along the latest swing.
       this.place(ctx);
     }) as EventListener, { signal });

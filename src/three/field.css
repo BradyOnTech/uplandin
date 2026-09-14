@@ -249,3 +249,42 @@ body.touch-controls-active #field-options select,body.touch-controls-active #sho
   #field-map-zoom { display:none; }
   #field-map-help { font-size:9px; }
 }
+
+/* Phone field view: keep the action visible, put secondary tasks in Pause. */
+body.touch-controls-active #hunt-hud { width:220px; padding:8px 10px; display:grid; grid-template-columns:1fr auto; gap:5px 7px; background:#1c2c24b8; }
+body.touch-controls-active #field-identity { grid-column:2; grid-row:1; padding:0; box-shadow:none; }
+body.touch-controls-active .field-property,
+body.touch-controls-active #hunt-phase,
+body.touch-controls-active #field-method-live,
+body.touch-controls-active #field-guidance,
+body.touch-controls-active .field-truck { display:none; }
+body.touch-controls-active #hunt-tally { grid-column:1; grid-row:1; font-size:10px; margin:0; align-self:center; white-space:nowrap; letter-spacing:0; }
+body.touch-controls-active #field-heading { font-size:10px; }
+body.touch-controls-active #dog-locator { grid-column:1 / -1; margin:0; padding:3px 0; min-height:25px; box-shadow:none; background:none; grid-template-columns:20px 1fr auto; font-size:9px; }
+body.touch-controls-active #dog-direction { width:20px; font-size:20px; }
+body.touch-controls-active #dog-distance { font-size:11px; }
+body.touch-controls-active #hunt-beacon { grid-column:1 / -1; margin:0; font-size:9px; }
+body.touch-controls-active #field-map-toggle { top:max(12px,env(safe-area-inset-top)); right:max(90px,calc(env(safe-area-inset-right) + 78px)); min-height:44px; }
+body.touch-controls-active #touch-move-guide,body.touch-controls-active #touch-look-guide { display:none !important; }
+body.touch-controls-active #end-hunt { position:static; width:100%; margin:0 0 16px; min-height:44px; }
+body.touch-controls-active:not(.field-paused) #mobile-hunt-actions { display:none; }
+body.touch-controls-active:not(.falconry-hunt) #touch-controls { grid-template-columns:64px 88px; gap:8px; bottom:max(18px,env(safe-area-inset-bottom)); right:max(16px,env(safe-area-inset-right)); }
+body.touch-controls-active:not(.falconry-hunt) #touch-controls .fire { width:88px; height:88px; font-size:13px; grid-column:2; grid-row:2; background:#dbc286b8; }
+body.touch-controls-active:not(.falconry-hunt) #touch-controls [data-action="recall"] { grid-column:1; grid-row:1; }
+body.touch-controls-active:not(.falconry-hunt) #touch-controls [data-action="reload"] { grid-column:2; grid-row:1; }
+body.touch-controls-active:not(.falconry-hunt) #touch-controls #touch-lower { grid-column:1; grid-row:2; min-height:48px; }
+body.touch-controls-active #touch-controls button { background:#21382bc4; min-height:44px; padding:9px 6px; font-size:11px; }
+body.touch-controls-active #touch-lower small { display:none; }
+body.touch-controls-active:not(.touch-gun-raised) #touch-lower { visibility:hidden; pointer-events:none; }
+body.touch-controls-active:not(.touch-gun-held) #touch-shot-status { display:none; }
+body.touch-controls-active.touch-gun-held #touch-controls .fire small { font-size:9px; }
+body.touch-controls-active.touch-gun-raised #hunt-hud { display:block; width:auto; }
+body.touch-controls-active.touch-gun-raised #field-identity,
+body.touch-controls-active.touch-gun-raised #dog-locator,
+body.touch-controls-active.touch-gun-raised #hunt-beacon { display:none; }
+body.touch-controls-active.touch-gun-held #touch-controls [data-action="recall"],
+body.touch-controls-active.touch-gun-held #touch-controls [data-action="reload"] { visibility:hidden; pointer-events:none; }
+@media (orientation:portrait) {
+ body.touch-controls-active #field-map-toggle { top:max(64px,calc(env(safe-area-inset-top) + 52px)); right:max(12px,env(safe-area-inset-right)); }
+ body.touch-controls-active #hunt-hud { max-width:calc(100vw - 104px); }
+}

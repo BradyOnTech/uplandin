@@ -142,7 +142,12 @@ export class HuntHudSystem implements Subsystem {
     document.getElementById('hunt-menu')?.addEventListener('click', () => location.assign('./index.html'), options);
     document.getElementById('field-menu')?.addEventListener('click', () => location.assign('./index.html'), options);
     this.endButton?.addEventListener('click', () => {
-      if (!this.birds.isRiseActive()) this.hunt.endHunt();
+      if (!this.birds.isRiseActive() && !this.endButton?.disabled) {
+        this.hunt.endHunt();
+        // The mobile action lives in Pause; settle/show results without
+        // waiting for a running frame or advancing the simulation.
+        this.update(ctx, 0);
+      }
     }, options);
   }
 

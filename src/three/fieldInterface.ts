@@ -1,7 +1,7 @@
 import { isFalconryPractice } from '../game/falconryPractice';
 import { bindTouchActionControl } from './touchActionControl';
 import { bindTouchShotControl } from './touchShotControl';
-import { preferredInputMode, saveInputMode, usesTouchControls, touchSensitivity, saveTouchSensitivity, type InputMode } from './inputMode';
+import { preferredInputMode, saveInputMode, usesTouchControls, touchSensitivity, saveTouchSensitivity, mobileSightPicture, type InputMode } from './inputMode';
 import { HUNT_CHALLENGES, HUNT_CHALLENGE_KEY, parseHuntChallenge } from '../game/huntChallenge';
 import { parseHuntLaunch, resolveThreeHuntChallenge, resolveThreeHuntProfile } from '../game/gameplayMode';
 import { GUNS, getGun, unlockedGuns } from '../game/guns';
@@ -34,6 +34,11 @@ export class FieldInterface {
     const signal = this.abort.signal;
     document.body.classList.toggle('capture', this.capture);
     document.body.classList.toggle('touch-controls-active', this.touch);
+    const placeEndControl = () => {
+      const end = document.getElementById('end-hunt')!;
+      (this.touch ? document.getElementById('mobile-hunt-actions')! : document.body).append(end);
+    };
+    placeEndControl();
     document.getElementById('field-title')!.textContent = landscape.area.name;
     const doctrine = huntingDoctrine(landscape.area.id);
     this.overlay.querySelector('.eyebrow')!.textContent=`UPLANDIN · ${doctrine.region}`;
@@ -158,6 +163,7 @@ export class FieldInterface {
       const mode = input.value as InputMode;
       saveInputMode(mode); this.touch = usesTouchControls(mode);
       document.body.classList.toggle('touch-controls-active', this.touch);
+      placeEndControl();
       const url = new URL(location.href); url.searchParams.set('controls', mode); history.replaceState(null, '', url);
       this.engine.ctx.events.dispatchEvent(new Event('input-reset'));
     }, { signal });
@@ -170,6 +176,12 @@ export class FieldInterface {
         this.engine.ctx.events.dispatchEvent(new Event('touch-sensitivity-change'));
       }, { signal });
     }
+    const sight = document.getElementById('touch-sight-setting') as HTMLSelectElement;
+    sight.value = mobileSightPicture();
+    sight.addEventListener('change', () => {
+      try { localStorage.setItem('uplandin.3d.sight', sight.value); } catch { /* optional */ }
+      this.engine.ctx.events.dispatchEvent(new Event('touch-sight-change'));
+    }, { signal });
     const sound = document.getElementById('sound-setting') as HTMLInputElement;
     const challenge = document.getElementById('challenge-setting') as HTMLSelectElement;
     const challengeHelp = document.getElementById('challenge-help')!;

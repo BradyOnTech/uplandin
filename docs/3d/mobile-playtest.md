@@ -79,3 +79,22 @@ The default now uses a single shooting thumb. Movement stays independent. The ex
 | Pointer cancellation coverage only. | Added gesture cancellation, mouse preview, repeat-release suppression, real gun follow-up/mount/reload/reset coverage and independent sensitivity checks. |
 
 Validation: 107 test files / 817 tests passed; production build passed. Desktop browser review at phone viewport sizes verified combined firing, release over Lower preserving ammunition, and the responsive layout. This is still browser review with mouse input; the feel of the revised controls on a physical phone needs another playtest.
+
+**Field visibility and retrieve refinement**
+
+The phone HUD now prioritizes ammunition, the dog and wind. A closer sight picture enlarges the field by approximately 26% while the shotgun is shouldered (70° to 58° vertical field of view); choose Wide under Shot view to disable it. Swing sensitivity compensates for the optical change. Flight timing, bird models, shot patterns and collision rules are unchanged.
+
+| Before | After |
+| --- | --- |
+| Large property/status panel with duplicated dog information. | Compact heading, tally, dog and wind display; only the tally stays during a mounted shot. Property and detailed navigation remain in menus/the atlas. |
+| End hunt occupied field space. | The same action moves into Pause on touch devices, with immediate result display while paused. Desktop placement and existing completion restrictions remain. |
+| Large persistent movement instructions and four shooting buttons. | Movement instructions remain in the entry menu. An 88px shotgun control, smaller secondary controls, and Lower only while raised leave more visible terrain. Whistle and Reload hide during a held shot. |
+| Small distant birds in the wide shot view. | Default Closer sight picture and an optional Wide setting, with matched swing response. No additional effects or meshes. |
+| Raising message could remain after a fast shot. | The raising message clears when the shot fires. |
+| The 3D retrieve used the gentle trot scale. | Fetch/return use a dedicated faster scale while breed, fatigue and water effects remain. |
+| Immediate return reversal and uncapped arrival travel. | Physical fetches turn before travel, then stop within pickup/delivery range; obstacle routing remains active. |
+| Stationary carry could look like delivery during a turn. | Generated dogs offer the bird only during the actual delivery hold. The alternate procedural dog also separates pickup and carrying posture. |
+
+Reproduction: an unobstructed marked 40m retrieve at level 8 originally took the English Setter 32.0 seconds and GSP 26.5 seconds, including pickup and delivery. Both now complete in under 23 seconds with pickup in under 12 seconds. Regression coverage also checks close falls on 250ms frames, bounded return turns, obstacle detours, and the real camera's enlargement/restoration. These are simulated timing checks, not physical-phone frame-rate measurements.
+
+Browser review uses a 736 × 336 landscape field viewport to account for limited height from browser chrome, plus 390 × 700 portrait. The local preview remains on port 4593; refresh an existing phone tab for the rebuilt assets.
