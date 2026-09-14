@@ -37,5 +37,6 @@ export function bindTouchActionControl(button: HTMLButtonElement, options: {
     if (options.enabled()) options.activate();
   }, { signal: options.signal });
   options.events.addEventListener('pause', clear, { signal: options.signal });
+  options.events.addEventListener('input-reset', clear, { signal: options.signal });
   options.signal.addEventListener('abort', clear, { once: true });
 }

@@ -16,9 +16,9 @@ it('activates secondary touch on release exactly once and captures that finger',
   f.send('pointerup');f.send('click',{detail:1});expect(f.activate).toHaveBeenCalledOnce();
   expect(f.button.releasePointerCapture).toHaveBeenCalledWith(2);
 });
-it.each(['pointercancel','lostpointercapture','pause','abort','outside','disabled'])('cancels touch activation on %s',reason=>{
+it.each(['pointercancel','lostpointercapture','pause','input-reset','abort','outside','disabled'])('cancels touch activation on %s',reason=>{
   const f=fixture();f.send('pointerdown');
-  if(reason==='pause')f.events.dispatchEvent(new Event('pause'));
+  if(reason==='pause'||reason==='input-reset')f.events.dispatchEvent(new Event(reason));
   else if(reason==='abort')f.abort.abort();
   else if(reason==='disabled')f.disable();
   else if(reason!=='outside')f.send(reason);

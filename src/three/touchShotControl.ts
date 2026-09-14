@@ -8,7 +8,10 @@ export function bindTouchShotControl(button: HTMLButtonElement, options: {
 }): void {
   let pointer: { id: number; x: number; y: number } | null = null;
   let suppressTouchClick = false;
-  const clear = () => { pointer=null; button.removeAttribute('data-tracking'); };
+  const clear = () => {
+    const id = pointer?.id; pointer=null; button.removeAttribute('data-tracking');
+    if (id !== undefined && button.hasPointerCapture(id)) button.releasePointerCapture(id);
+  };
   button.addEventListener('pointerdown', event => {
     if(event.pointerType!=='touch'){suppressTouchClick=false;return;}
     if(!options.enabled() || pointer)return;
@@ -35,4 +38,6 @@ export function bindTouchShotControl(button: HTMLButtonElement, options: {
     if(options.enabled())options.fire();
   },{signal:options.signal});
   options.events.addEventListener('pause',clear,{signal:options.signal});
+  options.events.addEventListener('input-reset',clear,{signal:options.signal});
+  options.signal.addEventListener('abort',clear,{once:true});
 }

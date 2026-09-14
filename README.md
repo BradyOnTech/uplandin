@@ -26,7 +26,9 @@ For the current 3D slice, run `npm run dev:3d` and open `/index3d.html`.
 The standalone Quail field defaults to the liver-and-white GSP and morning light.
 `?drop=west-track` selects the second truck drop; `?quality=lite` selects lighter rendering.
 Saved Career and Quick Hunt launches retain their selected dogs and gear.
-Physical mobile readiness remains unverified; the 3D interface now includes touch controls.
+For a phone playtest on the same Wi-Fi, run `npm run play:mobile` and open the
+printed Network address with `/index3d.html?quality=lite&controls=touch` appended.
+See the [mobile playtest guide](docs/3d/mobile-playtest.md) for controls and validation limits.
 
 Two modes from the title screen:
 

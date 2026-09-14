@@ -7,6 +7,7 @@ import type { TerrainSystem } from './terrain';
 import type { Hunt3DSystem } from './hunt3d';
 import { ObstacleIndex } from '../../game/obstacleIndex';
 import { bindMouseLook } from '../mouseLook';
+import { touchMovement } from '../inputMode';
 
 const WALK_SPEED = 2.2;
 const SPRINT_MULT = 1.9;
@@ -26,7 +27,7 @@ export class PlayerSystem implements Subsystem {
   private captureMode = false;
   private recallPending = false;
   private abort = new AbortController();
-  private touchMove: { id: number; x: number; y: number; dx: number; dy: number } | null = null;
+  private touchMove: { id: number; x: number; y: number; dx: number; dy: number; running:boolean } | null = null;
   private touchLook: { id: number; x: number; y: number } | null = null;
   private bounds?: { minX: number; maxX: number; minZ: number; maxZ: number };
   private scenery?: Subsystem & { collisionCircles?: () => readonly { x: number; z: number; radius: number }[] };
@@ -47,8 +48,15 @@ export class PlayerSystem implements Subsystem {
     this.bounds = this.landscape ? this.landscape.worldBounds() : undefined;
     const canvas = ctx.renderer.domElement;
     const signal = this.abort.signal;
-    const clear = () => { this.keys.clear(); this.touchMove = null; this.touchLook = null; this.vel.set(0, 0, 0); this.showStick(); };
+    const clear = () => {
+      const ids = [this.touchMove?.id, this.touchLook?.id];
+      this.keys.clear(); this.touchMove = null; this.touchLook = null; this.vel.set(0, 0, 0); this.showStick();
+      for (const id of ids) if (id !== undefined && canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+    };
     ctx.events.addEventListener('pause', clear, { signal });
+    ctx.events.addEventListener('input-reset', clear, { signal });
+    window.addEventListener('resize', clear, { signal });
+    signal.addEventListener('abort', clear, { once:true });
     ctx.events.addEventListener('hunt-action', ((event: CustomEvent) => {
       if (!ctx.paused && event.detail === 'recall') this.recallPending = true;
     }) as EventListener, { signal });
@@ -64,7 +72,7 @@ export class PlayerSystem implements Subsystem {
         unlockAudio();
       }, { signal });
       const look = bindMouseLook(canvas, {
-        signal, paused: () => ctx.paused,
+        signal, paused: () => ctx.paused || !!document.body?.classList.contains('touch-controls-active'),
         turn: (dx, dy) => {
           this.yaw -= dx * .0022;
           this.pitch = THREE.MathUtils.clamp(this.pitch - dy * .0022, -1.4, 1.4);
@@ -88,21 +96,24 @@ export class PlayerSystem implements Subsystem {
       }, { signal });
       window.addEventListener('keyup', (event) => this.keys.delete(event.code), { signal });
       canvas.addEventListener('pointerdown', (event) => {
-        if (event.pointerType !== 'touch' || ctx.paused) return;
+        const touch = event.pointerType === 'touch' || (event.pointerType === 'mouse' && document.body?.classList.contains('touch-controls-active'));
+        if (!touch || ctx.paused || event.button > 0) return;
         event.preventDefault();
         unlockAudio();
+        if (event.clientX < window.innerWidth * 0.45) {
+          if (this.touchMove) return;
+          this.touchMove = { id: event.pointerId, x: event.clientX, y: event.clientY, dx: 0, dy: 0, running:false };
+        } else {
+          if (this.touchLook) return;
+          this.touchLook = { id: event.pointerId, x: event.clientX, y: event.clientY };
+        }
         canvas.setPointerCapture(event.pointerId);
-        if (event.clientX < window.innerWidth * 0.45 && !this.touchMove) {
-          this.touchMove = { id: event.pointerId, x: event.clientX, y: event.clientY, dx: 0, dy: 0 };
-        } else if (!this.touchLook) this.touchLook = { id: event.pointerId, x: event.clientX, y: event.clientY };
         this.showStick();
       }, { signal });
       canvas.addEventListener('pointermove', (event) => {
         if (ctx.paused) return;
         if (this.touchMove?.id === event.pointerId) {
-          const dx = (event.clientX - this.touchMove.x) / 58, dy = (event.clientY - this.touchMove.y) / 58;
-          const d = Math.max(1, Math.hypot(dx, dy));
-          this.touchMove.dx = dx / d; this.touchMove.dy = dy / d;
+          Object.assign(this.touchMove, touchMovement(event.clientX - this.touchMove.x, event.clientY - this.touchMove.y));
           this.showStick();
         } else if (this.touchLook?.id === event.pointerId) {
           this.yaw -= (event.clientX - this.touchLook.x) * 0.004;
@@ -125,6 +136,8 @@ export class PlayerSystem implements Subsystem {
     const stick = document.getElementById('move-stick');
     if (!stick) return;
     stick.hidden = !this.touchMove;
+    stick.dataset.running = String(this.touchMove?.running ?? false);
+    document.body?.classList.toggle('touch-moving', !!this.touchMove);
     if (this.touchMove) {
       stick.style.left = `${this.touchMove.x}px`; stick.style.top = `${this.touchMove.y}px`;
       stick.style.setProperty('--stick-x', `${this.touchMove.dx * 38}px`);
@@ -132,8 +145,8 @@ export class PlayerSystem implements Subsystem {
     }
   }
   isRunning(): boolean {
-    const moving = this.keys.has('KeyW') || this.keys.has('KeyA') || this.keys.has('KeyS') || this.keys.has('KeyD');
-    return this.waterDepth < .12 && moving && (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'));
+    const keyboardMoving = this.keys.has('KeyW') || this.keys.has('KeyA') || this.keys.has('KeyS') || this.keys.has('KeyD');
+    return this.waterDepth < .12 && ((keyboardMoving && (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'))) || !!this.touchMove?.running);
   }
   consumeRecall(): boolean { const pending = this.recallPending; this.recallPending = false; return pending; }
   setHuntHeading(ctx: Ctx, heading: number): void { this.yaw = -heading - Math.PI / 2; this.place(ctx); }

@@ -33,6 +33,8 @@
       <button id="hunt-menu" type="button">Main menu</button>
     </section>
     <div id="move-stick" hidden aria-hidden="true"><span></span></div>
+    <div id="touch-move-guide" aria-hidden="true"><span>Move</span><small>Drag farther to run</small></div>
+    <div id="touch-look-guide" aria-hidden="true">Drag to look</div>
     <div id="touch-controls" aria-label="Hunting controls" hidden>
       <button data-action="recall" type="button" aria-label="Whistle to recall dog">Whistle</button>
       <button data-action="reload" type="button">Reload</button>
@@ -102,7 +104,8 @@
         <div id="field-instructions" hidden>
           <p class="desktop-instructions"><kbd>W A S D</kbd> Walk <span>·</span> <kbd>Shift</kbd> Run <span>·</span> <kbd>Q</kbd> Whistle <span>·</span> <kbd>M</kbd> Survey map</p>
           <p class="desktop-instructions"><kbd>F</kbd> Toggle aim · <kbd>Space</kbd> Shoot · <kbd>R</kbd> Reload.<br>Mouse: hold right button to aim, left button to shoot.</p>
-          <p class="touch-instructions">Drag left to walk, right to look. Tap Survey for the route map. Tap Aim, then drag Fire to track and release to shoot. Whistle brings your dog back.</p>
+          <p class="touch-instructions">Drag the left side to walk; drag farther to run. Release to stop. Drag the right side to look. Tap Aim, then drag Fire to track and release to shoot. Whistle calls your dog back; whistle again at heel to send it hunting.</p>
+          <p class="touch-instructions orientation-tip">Turn your phone sideways for a wider view of the field.</p>
           <p>You can fire whenever the gun is raised. Swing ahead of crossing birds; let distant birds go.</p>
           <p class="field-tip">Work the edges into the wind. When your dog holds point, walk in steadily.</p>
         </div>
@@ -122,6 +125,7 @@
           </select></label>
           <label>Light <select id="light-setting"><option value="dawn">Dawn</option><option value="morning">Morning</option><option value="noon">Midday</option><option value="evening">Evening</option><option value="lastlight">Last light</option></select></label>
           <label>Display <select id="quality-setting"><option value="high">Standard</option><option value="lite">Lightweight</option></select></label>
+          <label>Controls <select id="controls-setting"><option value="auto">Automatic</option><option value="touch">Touch</option><option value="desktop">Mouse &amp; keyboard</option></select></label>
           <label><input id="sound-setting" type="checkbox" checked> Field audio</label>
         </div>
         <div id="challenge-options">

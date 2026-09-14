@@ -75,14 +75,22 @@ export class Engine {
         return sys as T;
       },
     };
+    let previousWidth = 0, previousHeight = 0, previousRatio = 0;
     const resize = () => {
-      const w = window.innerWidth, h = window.innerHeight;
-      renderer.setPixelRatio(renderPixelRatio(w, h, window.devicePixelRatio || 1, quality));
+      const w = Math.max(1, window.innerWidth), h = Math.max(1, window.innerHeight);
+      const ratio = renderPixelRatio(w, h, window.devicePixelRatio || 1, quality);
+      if (w === previousWidth && h === previousHeight && ratio === previousRatio) return;
+      previousWidth = w; previousHeight = h; previousRatio = ratio;
+      renderer.setPixelRatio(ratio);
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      // Resizing clears the drawing buffer. A rotated, paused phone must
+      // keep its field visible behind the menu without resuming the hunt.
+      if (this.running && this.ctx.paused) this.renderOnce();
     };
     window.addEventListener('resize', resize, { signal: this.abort.signal });
+    window.visualViewport?.addEventListener('resize', resize, { signal:this.abort.signal });
     resize();
   }
   register(sys: Subsystem): void { this.systems.push(sys); this.byId.set(sys.id, sys); }

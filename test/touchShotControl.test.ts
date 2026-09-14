@@ -3,6 +3,7 @@ import { bindTouchShotControl } from '../src/three/touchShotControl';
 function fixture() {
   const target=new EventTarget() as HTMLButtonElement;
   target.setPointerCapture=vi.fn();target.setAttribute=vi.fn();target.removeAttribute=vi.fn();
+  target.hasPointerCapture=()=>true;target.releasePointerCapture=vi.fn();
   const events=new EventTarget(),fire=vi.fn(),look=vi.fn(),abort=new AbortController();
   let enabled=true;
   bindTouchShotControl(target,{signal:abort.signal,enabled:()=>enabled,fire,look,events});
@@ -14,9 +15,9 @@ it('tracks with the firing finger and fires once on release, not its synthetic c
   expect(f.look).toHaveBeenCalledWith(25,-10);expect(f.fire).not.toHaveBeenCalled();
   f.send('pointerup');f.send('click',{detail:1});expect(f.fire).toHaveBeenCalledTimes(1);
 });
-it.each(['pointercancel','lostpointercapture','pause'])('cancels a firing gesture on %s',reason=>{
+it.each(['pointercancel','lostpointercapture','pause','input-reset','abort'])('cancels a firing gesture on %s',reason=>{
   const f=fixture();f.send('pointerdown');
-  if(reason==='pause')f.events.dispatchEvent(new Event('pause'));else f.send(reason);
+  if(reason==='pause'||reason==='input-reset')f.events.dispatchEvent(new Event(reason));else if(reason==='abort')f.abort.abort();else f.send(reason);
   f.send('pointerup');f.send('click',{detail:1});expect(f.fire).not.toHaveBeenCalled();
 });
 it('ignores unrelated fingers and preserves keyboard activation',()=>{

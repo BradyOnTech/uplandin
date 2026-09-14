@@ -23,6 +23,20 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('engine loading lifetime', () => {
+  it('redraws a paused field after phone rotation while keeping the hunt paused', async () => {
+    const engine = new Engine({} as HTMLCanvasElement, 'lite');
+    engine.register({ id:'field',init() {} }); await engine.start(); engine.pause(true);
+    const renderer = engine.ctx.renderer;
+    vi.mocked(renderer.render).mockClear();
+    Object.assign(window, {innerWidth:390,innerHeight:844});
+    window.dispatchEvent(new Event('resize'));
+    expect(engine.ctx.camera.aspect).toBeCloseTo(390/844);
+    expect(renderer.render).toHaveBeenCalledOnce();
+    expect(engine.ctx.paused).toBe(true);
+    window.dispatchEvent(new Event('resize'));
+    expect(renderer.render).toHaveBeenCalledOnce();
+    engine.dispose();
+  });
   it('renders overlays after the world and counts both passes on each frame', () => {
     const engine = new Engine({} as HTMLCanvasElement, 'high');
     const calls: number[] = [];

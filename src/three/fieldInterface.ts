@@ -1,6 +1,7 @@
 import { isFalconryPractice } from '../game/falconryPractice';
 import { bindTouchActionControl } from './touchActionControl';
 import { bindTouchShotControl } from './touchShotControl';
+import { preferredInputMode, saveInputMode, usesTouchControls, type InputMode } from './inputMode';
 import { HUNT_CHALLENGES, HUNT_CHALLENGE_KEY, parseHuntChallenge } from '../game/huntChallenge';
 import { parseHuntLaunch, resolveThreeHuntChallenge, resolveThreeHuntProfile } from '../game/gameplayMode';
 import { GUNS, getGun, unlockedGuns } from '../game/guns';
@@ -25,13 +26,14 @@ export class FieldInterface {
   private enter = document.getElementById('enter-field') as HTMLButtonElement;
   private status = document.getElementById('loading-status')!;
   private progress = document.getElementById('loading-progress') as HTMLProgressElement;
-  private touch = matchMedia('(pointer: coarse)').matches;
+  private touch = usesTouchControls();
   private capture = new URLSearchParams(location.search).has('capture');
   private launch = parseHuntLaunch(location.search);
   private falconry = resolveThreeHuntProfile(location.search).quick?.huntingMethod === 'goshawk';
   constructor(private engine: Engine, landscape: LandscapeModel) {
     const signal = this.abort.signal;
     document.body.classList.toggle('capture', this.capture);
+    document.body.classList.toggle('touch-controls-active', this.touch);
     document.getElementById('field-title')!.textContent = landscape.area.name;
     const doctrine = huntingDoctrine(landscape.area.id);
     this.overlay.querySelector('.eyebrow')!.textContent=`UPLANDIN · ${doctrine.region}`;
@@ -47,13 +49,13 @@ export class FieldInterface {
       document.getElementById('field-description')!.textContent='A goshawk on the fist. A finished pointing dog. Work the cattail edges together.';
       document.getElementById('field-method')!.textContent='GOSHAWK · FROM THE FIST · QUICK HUNT';
       const instructions=document.getElementById('field-instructions')!;
-      instructions.innerHTML='<p><kbd>W A S D</kbd> Walk · <kbd>Q</kbd> Whistle dog · <kbd>M</kbd> Survey map</p><p><kbd>Space</kbd> Slip · <kbd>R</kbd> Recall hawk · <kbd>F</kbd> Watch hawk · <kbd>E</kbd> Pick up</p><p>Walk in on the point. Face a rising bird and slip your goshawk. The dog comes to heel while the hawk flies. On a catch, the dog lies beside the hawk. Walk within arm’s reach and pick the hawk up onto your fist.</p><p class="field-tip">After the hawk returns, whistle to send the dog hunting again. Touch: drag left to walk, right to look; use the hawk buttons below.</p>';
+      instructions.innerHTML='<p class="desktop-instructions"><kbd>W A S D</kbd> Walk · <kbd>Q</kbd> Whistle dog · <kbd>M</kbd> Survey map</p><p class="desktop-instructions"><kbd>Space</kbd> Slip · <kbd>R</kbd> Recall hawk · <kbd>F</kbd> Watch hawk · <kbd>E</kbd> Pick up</p><p class="touch-instructions">Drag left to walk; farther to run. Drag right to look. Tap Slip at the flush. Use Recall hawk to call it back, or Pick up when you reach caught quarry.</p><p class="touch-instructions orientation-tip">Turn your phone sideways for a wider view of the field.</p><p>Walk in on the point. Face a rising bird and slip your goshawk. The dog comes to heel while the hawk flies. On a catch, the dog lies beside the hawk. Walk within arm’s reach and pick the hawk up onto your fist.</p><p class="field-tip">After the hawk returns, whistle to send the dog hunting again.</p>';
       document.getElementById('controls')!.innerHTML='WASD move · Shift run · Q whistle · M survey map<br>Space slip · R recall hawk · F watch hawk · E pick up';
     }
     if (isFalconryPractice(location.search)) {
       document.getElementById('field-title')!.textContent='Cattail Coverts · Falconry practice';
       document.getElementById('field-description')!.textContent='One planted rooster, about 31 yards ahead. Your dog starts in scent and establishes the point. Walk in, face the flush, and slip.';
-      this.overlay.querySelector('.field-tip')!.textContent='This drill uses a holding bird and a favorable wind. Catches and escapes play out normally. Press T in the field to restart, or use Restart drill after the flight.';
+      this.overlay.querySelector('.field-tip')!.textContent='This drill uses a holding bird and a favorable wind. Catches and escapes play out normally. Use New drill for a fresh opportunity, or Repeat setup to try the same bird again.';
     }
     const mapToggle=document.getElementById('field-map-toggle') as HTMLButtonElement|null;
     if (mapToggle) mapToggle.hidden=this.capture || !this.entered;
@@ -97,6 +99,9 @@ export class FieldInterface {
     }, { signal });
     document.addEventListener('visibilitychange', () => { if (document.hidden && this.entered) this.pause(); }, { signal });
     window.addEventListener('blur', () => { if (this.entered && !this.capture) this.pause(); }, { signal });
+    // Rotation cancels any held movement/trigger and waits for an intentional
+    // resume after the phone has laid out its new viewport.
+    window.addEventListener('orientationchange', () => { if (this.entered && !this.capture) this.pause(); }, { signal });
     const canvas = this.engine.ctx.renderer.domElement;
     canvas.tabIndex = 0;
     this.engine.ctx.events.addEventListener('field-map-state', ((event: CustomEvent<{ open: boolean }>) => {
@@ -146,6 +151,15 @@ export class FieldInterface {
         const url = new URL(location.href); url.searchParams.set('quality', quality.value); history.replaceState(null, '', url);
         this.status.hidden = false; this.status.textContent = 'Display change saved for the next hunt.';
       }
+    }, { signal });
+    const input = document.getElementById('controls-setting') as HTMLSelectElement;
+    input.value = preferredInputMode();
+    input.addEventListener('change', () => {
+      const mode = input.value as InputMode;
+      saveInputMode(mode); this.touch = usesTouchControls(mode);
+      document.body.classList.toggle('touch-controls-active', this.touch);
+      const url = new URL(location.href); url.searchParams.set('controls', mode); history.replaceState(null, '', url);
+      this.engine.ctx.events.dispatchEvent(new Event('input-reset'));
     }, { signal });
     const sound = document.getElementById('sound-setting') as HTMLInputElement;
     const challenge = document.getElementById('challenge-setting') as HTMLSelectElement;
@@ -308,5 +322,5 @@ export function preferredQuality(params: URLSearchParams): Quality {
   const explicit = params.get('quality');
   if (explicit === 'high' || explicit === 'lite') return explicit;
   try { const saved = localStorage.getItem('uplandin.3d.quality'); if (saved === 'high' || saved === 'lite') return saved; } catch { /* optional */ }
-  return matchMedia('(pointer: coarse)').matches ? 'lite' : 'high';
+  return usesTouchControls() ? 'lite' : 'high';
 }

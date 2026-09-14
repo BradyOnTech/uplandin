@@ -3,6 +3,7 @@
 html,body { margin:0; width:100%; height:100%; overflow:hidden; background:#24372f; }
 [hidden] { display:none !important; }
 canvas { display:block; width:100%; height:100%; touch-action:none; }
+body { overscroll-behavior:none; }
 button,select,a,input { -webkit-tap-highlight-color:transparent; }
 button,select { color:inherit; font:inherit; }
 button { min-height:44px; padding:10px 17px; border:0; border-radius:8px; background:rgba(28,43,35,.90); box-shadow:0 1px 2px #0002,0 5px 18px #0002,inset 0 1px #fff1; cursor:pointer; transition:background .18s,transform .18s,opacity .18s; touch-action:manipulation; }
@@ -118,8 +119,12 @@ input { accent-color:var(--gold); }
 #move-stick span { display:block; width:38px; height:38px; margin:35px; border-radius:50%; background:#f6efd788; transform:translate(var(--stick-x),var(--stick-y)); }
 .touch-instructions { display:none; }
 body.capture #controls,body.capture #field-menu,body.capture #end-hunt,body.capture #pause-hunt,body.capture #field-map-toggle,body.capture #field-map,body.capture #field-overlay,body.capture #touch-controls { display:none; }
-body.field-paused #touch-controls,body.field-paused #field-map-toggle { display:none; }
-@media (pointer:coarse) { .desktop-instructions,#controls,#pause-hunt kbd { display:none; } .touch-instructions { display:block; } #hunt-hud { left:max(12px,env(safe-area-inset-left)); top:max(12px,env(safe-area-inset-top)); width:288px; max-width:calc(100vw - 104px); padding:11px 12px 10px; } #pause-hunt { top:max(12px,env(safe-area-inset-top)); right:max(12px,env(safe-area-inset-right)); padding-inline:13px; } #field-map-toggle { top:max(64px,calc(env(safe-area-inset-top) + 52px)); right:max(12px,env(safe-area-inset-right)); padding-inline:12px; } }
+body.field-paused #touch-controls,body.field-map-open #touch-controls,body.field-paused #field-map-toggle { display:none; }
+body.touch-controls-active .desktop-instructions,body.touch-controls-active #controls,body.touch-controls-active #pause-hunt kbd { display:none; }
+body.touch-controls-active .touch-instructions { display:block; }
+body.touch-controls-active #hunt-hud { left:max(12px,env(safe-area-inset-left)); top:max(12px,env(safe-area-inset-top)); width:288px; max-width:calc(100vw - 104px); padding:11px 12px 10px; }
+body.touch-controls-active #pause-hunt { top:max(12px,env(safe-area-inset-top)); right:max(12px,env(safe-area-inset-right)); padding-inline:13px; }
+body.touch-controls-active #field-map-toggle { top:max(64px,calc(env(safe-area-inset-top) + 52px)); right:max(12px,env(safe-area-inset-right)); padding-inline:12px; }
 @media (max-width:420px) { #hunt-hud { left:max(10px,env(safe-area-inset-left)); max-width:calc(100vw - 98px); padding:10px 11px; } #field-identity { gap:7px; } .field-property-name { font-size:15px; } .field-property-entry { font-size:8px; letter-spacing:.09em; } #field-heading { font-size:10px; } #hunt-tally { font-size:10px; } #hunt-phase { font-size:10px; letter-spacing:.04em; } #dog-locator { grid-template-columns:22px minmax(0,1fr) auto; gap:6px; padding:7px 6px; font-size:9px; } #dog-direction { width:22px; font-size:23px; } #dog-distance { font-size:12px; } #hunt-beacon { gap:6px; font-size:8px; letter-spacing:.025em; } .field-truck,.field-wind { gap:3px; } #field-guidance { font-size:10px; } }
 @media (max-height:550px) { #hunt-hud { top:max(10px,env(safe-area-inset-top)); padding-block:9px; } #field-identity { padding-bottom:7px; } .field-property-entry { display:none; } .field-property-name { font-size:15px; } #hunt-tally { margin-top:7px; font-size:10px; } #hunt-phase { margin-top:5px; font-size:10px; } #dog-locator { min-height:35px; margin-top:6px; padding-block:5px; } #hunt-beacon { margin-top:6px; } #field-guidance { display:none; } }
 @media (max-height:550px) { #field-overlay { padding:15px 25px; align-items:start; } .field-card { padding:18px 24px; width:440px; } h1 { font-size:32px; margin:10px 0; } .field-divider { margin:12px 0; } #field-description { display:none; } .field-tip { margin:10px 0; } #field-options { margin-bottom:10px; } #enter-field { margin:6px 0 12px; min-height:44px; } }
@@ -130,11 +135,9 @@ body.field-paused #touch-controls,body.field-paused #field-map-toggle { display:
 #touch-controls .fire[data-tracking=true] { background:#f0d69c; box-shadow:0 0 0 3px #fff8,inset 0 2px 5px #0002; }
 
 /* Landscape phones need a clear horizon and room for a tracking thumb. */
-@media (pointer:coarse) {
-  #field-map-toggle kbd { display:none; }
-}
-@media (pointer:coarse) and (orientation:landscape) and (max-height:550px) {
-  #hunt-hud { width:270px; padding:8px 10px; }
+body.touch-controls-active #field-map-toggle kbd,body.touch-controls-active #field-map-close kbd { display:none; }
+@media (orientation:landscape) and (max-height:550px) {
+  body.touch-controls-active #hunt-hud { width:238px; padding:8px 10px; }
   #field-identity { padding-bottom:3px; }
   .field-property-name { font-size:13px; }
   #hunt-tally { margin-top:4px; }
@@ -146,6 +149,28 @@ body.field-paused #touch-controls,body.field-paused #field-map-toggle { display:
   #touch-controls button { min-height:48px; padding-block:10px; }
   #touch-controls .fire { width:72px; height:72px; }
   #end-hunt { top:max(12px,env(safe-area-inset-top)); bottom:auto; right:max(86px,calc(env(safe-area-inset-right) + 74px)); min-height:44px; padding:10px 12px; }
+}
+
+/* Guides show where each thumb belongs without intercepting the field. */
+#touch-move-guide,#touch-look-guide { display:none; position:fixed; z-index:3; pointer-events:none; color:#eee8d5bd; text-shadow:0 1px 3px #0007; text-align:center; user-select:none; }
+body.touch-controls-active:not(.field-paused):not(.field-map-open):not(.capture):has(#field-overlay[hidden]):has(#hunt-summary[hidden]) #touch-move-guide,
+body.touch-controls-active:not(.field-paused):not(.field-map-open):not(.capture):has(#field-overlay[hidden]):has(#hunt-summary[hidden]) #touch-look-guide { display:grid; }
+#touch-move-guide { bottom:max(26px,env(safe-area-inset-bottom)); left:max(28px,env(safe-area-inset-left)); width:112px; height:112px; border-radius:50%; border:1px solid #e9e4cd38; background:#16251c24; align-content:center; gap:7px; }
+#touch-move-guide span { font-size:13px; }
+#touch-move-guide small { margin:0 auto; max-width:80px; font-size:10px; line-height:1.35; }
+#touch-look-guide { bottom:max(24px,env(safe-area-inset-bottom)); left:47%; font-size:10px; letter-spacing:.03em; }
+body.touch-moving #touch-move-guide { opacity:0; }
+#move-stick[data-running=true] { border-color:#dfc081; box-shadow:0 0 0 7px #dfc08130; }
+#move-stick::after { content:'Walk'; display:block; position:absolute; bottom:-22px; width:100%; text-align:center; font-size:10px; color:#eee8d5; }
+#move-stick[data-running=true]::after { content:'Run'; color:#f1d394; }
+body.touch-controls-active #touch-controls button { user-select:none; -webkit-touch-callout:none; touch-action:none; }
+body.touch-controls-active .field-card { max-width:100%; }
+body.touch-controls-active #field-options select,body.touch-controls-active #shotgun-setting { font-size:16px; min-height:44px; }
+@media (orientation:landscape) { body.touch-controls-active .orientation-tip { display:none; } }
+@media (orientation:portrait) {
+  body.touch-controls-active #field-overlay { padding:max(16px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left)); }
+  body.touch-controls-active .field-card { padding:24px; }
+  body.touch-controls-active #touch-look-guide { bottom:166px; right:24px; left:auto; }
 }
 
 /* Property atlas: quiet field notes around a light, legible topographic sheet. */

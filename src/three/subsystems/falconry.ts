@@ -1,4 +1,5 @@
 import { isFalconryPractice } from '../../game/falconryPractice';
+import { bindTouchActionControl } from '../touchActionControl';
 import { nextHuntUrl } from '../../game/huntSeed';
 import * as THREE from 'three';
 import { playHawkWingbeat, playWhistle, unlockAudio } from '../../audio';
@@ -70,7 +71,12 @@ export class FalconrySystem implements Subsystem {
     const label=document.createElement('div');label.className='falconry-label';label.textContent=isFalconryPractice(location.search)?'GOSHAWK · QUICK PRACTICE':'GOSHAWK · FROM THE FIST';
     this.status=document.createElement('div');this.status.id='falconry-status';this.status.setAttribute('aria-live','polite');
     const actions=document.createElement('div');actions.className='falconry-actions';
-    const button=(label:string,action:()=>void)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.addEventListener('click',()=>{if(ctx.paused)return;action();ctx.renderer.domElement.focus();},{signal:this.abort.signal});actions.append(b);return b;};
+    const button=(label:string,action:()=>void)=>{
+      const b=document.createElement('button');b.type='button';this.buttonLabel(b,label);
+      bindTouchActionControl(b,{signal:this.abort.signal,events:ctx.events,enabled:()=>!ctx.paused&&!b.disabled,
+        activate:()=>{action();ctx.renderer.domElement.focus();}});
+      actions.append(b);return b;
+    };
     this.primary=button('Slip · Space',()=>{this.intent=this.hunt.falconry!.phase==='on-quarry'?'recover':'slip';});
     this.recallButton=button('Recall hawk · R',()=>{this.intent='recall';});
     this.followButton=button('Watch hawk · F',()=>{this.following=!this.following;});
@@ -79,6 +85,14 @@ export class FalconrySystem implements Subsystem {
       button('Repeat setup',()=>location.reload());
     }
     panel.append(label,this.status,actions);document.body.append(panel);this.panel=panel;
+  }
+
+  private buttonLabel(button:HTMLButtonElement,label:string):void {
+    if(button.dataset.label===label)return;
+    button.dataset.label=label;
+    const [text,key]=label.split(' · '),caption=document.createElement('span');caption.textContent=text;
+    button.replaceChildren(caption);
+    if(key){const shortcut=document.createElement('kbd');shortcut.textContent=key;button.append(shortcut);}
   }
 
   private fistPosition(ctx:Ctx):THREE.Vector3 {
@@ -97,10 +111,10 @@ export class FalconrySystem implements Subsystem {
         this.hunt.bindQuarryWorld(event.birdId,event.position.x,event.position.z);
         this.say('Bound. Your dog is going to the hawk. Walk in to pick up.');
       } else if(event.type==='recovered') {
-        this.hunt.recoverQuarry(event.birdId);this.say('Hawk on fist, quarry recovered. Q sends the dog hunting again.');
+        this.hunt.recoverQuarry(event.birdId);this.say('Hawk on fist, quarry recovered. Whistle sends the dog hunting again.');
       } else if(event.type==='missed') this.say('Missed. The bird escaped; your goshawk is returning.');
       else if(event.type==='recalled') { playWhistle(); this.say('Recall given. Your goshawk is returning.'); }
-      else this.say('Back on the fist. Q sends the dog hunting again.');
+      else this.say('Back on the fist. Whistle sends the dog hunting again.');
     }
   }
   fixedUpdate(ctx:Ctx,dtMs:number):void {if(!this.frozen)this.step(ctx,dtMs);}
@@ -172,7 +186,7 @@ export class FalconrySystem implements Subsystem {
     if(this.frozen)return;
     const range=Math.round(Math.hypot(ctx.camera.position.x-hawk.position.x,ctx.camera.position.z-hawk.position.z)/.9144);
     const descriptions={
-      fist:this.hunt.dog().state==='heel' ? 'Hawk on fist. Q sends the dog hunting along the cattails.' : 'Work the dog along the cattails. Walk in on the point, then slip at the flush.',
+      fist:this.hunt.dog().state==='heel' ? 'Hawk on fist. Whistle sends the dog hunting along the cattails.' : 'Work the dog along the cattails. Walk in on the point, then slip at the flush.',
       launching:'Away from the fist. The dog is coming to heel.',
       chasing:'Your goshawk has committed. Watch the chase or call it off.',
       settling:'Bound. Your dog is going to lie beside the hawk. Walk in.',
@@ -182,7 +196,7 @@ export class FalconrySystem implements Subsystem {
     };
     const text=this.time<this.messageUntil?this.message:descriptions[hawk.phase];
     if(this.status&&this.status.textContent!==text)this.status.textContent=text;
-    if(this.primary){this.primary.textContent=hawk.phase==='on-quarry'?'Pick up · E':'Slip · Space';this.primary.disabled=!(hawk.phase==='fist'||hawk.phase==='on-quarry');}
+    if(this.primary){this.buttonLabel(this.primary,hawk.phase==='on-quarry'?'Pick up · E':'Slip · Space');this.primary.disabled=!(hawk.phase==='fist'||hawk.phase==='on-quarry');}
     if(this.recallButton)this.recallButton.disabled=!['launching','chasing'].includes(hawk.phase);
     if(this.followButton){this.followButton.disabled=hawk.phase==='fist';this.followButton.setAttribute('aria-pressed',String(this.following));}
   }

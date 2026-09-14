@@ -138,6 +138,7 @@ export class GunSystem implements Subsystem {
     if (!this.frozen) {
       const signal = this.inputAbort.signal;
       window.addEventListener('mousedown', (e) => {
+        if (document.body?.classList.contains('touch-controls-active')) return;
         if (ctx.paused || (e.target !== ctx.renderer.domElement && document.pointerLockElement !== ctx.renderer.domElement)) return;
         if (e.button === 2) this.aim = true;
         // In trackpad drag-look mode, a latched keyboard aim leaves the
@@ -145,7 +146,10 @@ export class GunSystem implements Subsystem {
         else if (e.button === 0 && this.mountT > 0.7
           && (!this.keyboardAim || document.pointerLockElement === ctx.renderer.domElement)) this.requestFire(ctx);
       }, { signal });
-      window.addEventListener('mouseup', (e) => { if (e.button === 2) this.aim = this.keyboardAim; if (!this.aim) this.pendingTrigger = null; }, { signal });
+      window.addEventListener('mouseup', (e) => {
+        if (document.body?.classList.contains('touch-controls-active')) return;
+        if (e.button === 2) this.aim = this.keyboardAim; if (!this.aim) this.pendingTrigger = null;
+      }, { signal });
       ctx.renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault(), { signal });
       this.keydownHandler = (event) => {
         const target = event.target as HTMLElement | null;
@@ -177,6 +181,7 @@ export class GunSystem implements Subsystem {
         document.querySelector('[data-action="aim"]')?.setAttribute('aria-pressed', 'false');
       };
       ctx.events.addEventListener('pause', lowerGun, { signal });
+      ctx.events.addEventListener('input-reset', lowerGun, { signal });
       window.addEventListener('blur', lowerGun, { signal });
     } else {
       // CAPTURE HARNESS HANDLE (dog pattern: tooling only, never gameplay):
