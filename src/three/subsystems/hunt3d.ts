@@ -72,12 +72,14 @@ const LIVE_DOG_RELEASE_MOVE_PX = 1;
 /** 2D's 75 px/s reads as 69 m/s under the 3D yard mapping. */
 const LIVE_DOG_MOVEMENT_SCALE = 0.05;
 /**
- * The 2D sim speed was authored in screen pixels. Held/retrieve trots and
+ * The 2D sim speed was authored in screen pixels. Held trots and
  * low scent work need separate world-space scales. An active cover-bound
  * cast is resolved below by intent, not the legacy "trot" label. Behavior
  * timing and the authoritative state machine remain unchanged.
  */
 const LIVE_DOG_TROT_SCALE = 0.025;
+/** A marked fetch needs purposeful travel, including the carried return. */
+const LIVE_DOG_RETRIEVE_SCALE = 0.05;
 const LIVE_DOG_TRACK_SCALE = 0.014;
 // The shared scent approach already applies a controlled stalk pace. Boost
 // only that approach before its own pace factor; ordinary low tracking keeps
@@ -103,7 +105,7 @@ export function liveMovementScaleForDog(
   // cast label as a gentle trot halved translation to about 3 m/s. The shared
   // CAST_SPEED_MULT now supplies its modest lead over controlled cover work;
   // renderers select canter/gallop from actual displacement, not this label.
-  const base = activelySearching ? LIVE_DOG_MOVEMENT_SCALE
+  const base = state === 'retrieving' ? LIVE_DOG_RETRIEVE_SCALE : activelySearching ? LIVE_DOG_MOVEMENT_SCALE
     : state === 'tracking' && gait === 'track' ? LIVE_DOG_STALK_SCALE
     : liveMovementScaleForGait(gait);
   return base * huntPaceMultiplier(motion, pacePhase, activelySearching);
@@ -258,6 +260,7 @@ export class Hunt3DSystem implements Subsystem {
     this.dogWater = new ShallowWater(this.landscape);
     this.liveDogMotions = this.simDogs.map((dog) => ({
       obstacles: propObstacles,
+      retrieveTurnRate: 5,
       movementScale: liveMovementScaleForGait(dog.gait),
       rangeRadius: LIVE_DOG_RANGE_M / PROPERTY_PX_TO_M,
       workAnchor: this.liveDogAnchor,

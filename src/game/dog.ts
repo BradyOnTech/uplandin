@@ -279,6 +279,8 @@ export function castAimPoint(
 
 /** Environment the dog is hunting in for this tick. */
 export interface DogEnv {
+  /** Optional physical turn limit in radians/second for a fetch or return. */
+  retrieveTurnRate?: number;
   /** Physical pickup and handoff distances in property yards; legacy defaults otherwise. */
   pickupRange?: number;
   deliveryRange?: number;
@@ -667,8 +669,7 @@ export class Dog {
         if (dist(this.pos, target.pos) > (env.pickupRange ?? RETRIEVE_RANGE)) {
           this.gait = 'trot';
           this.retrieveHoldMs = 0;
-          this.heading = Math.atan2(target.pos.y - this.pos.y, target.pos.x - this.pos.x);
-          this.advance(this.heading, this.trackSpeed * movementDt);
+          this.advanceRetrieve(target.pos, env.pickupRange ?? RETRIEVE_RANGE, this.trackSpeed * movementDt, dt, env);
         } else {
           this.gait = 'still';
           this.retrieveHoldMs += dtMs;
@@ -714,8 +715,7 @@ export class Dog {
       } else {
         this.gait = 'trot';
         this.retrieveHoldMs = 0;
-        this.heading = Math.atan2(env.hunterPos.y - this.pos.y, env.hunterPos.x - this.pos.x);
-        this.advance(this.heading, this.trackSpeed * 0.85 * movementDt);
+        this.advanceRetrieve(env.hunterPos, env.deliveryRange ?? RETRIEVE_RANGE, this.trackSpeed * 0.85 * movementDt, dt, env);
         target.pos.x = this.pos.x;
         target.pos.y = this.pos.y;
       }
@@ -1009,6 +1009,16 @@ export class Dog {
   }
 
   /** Advance without crossing the distance where the dog must settle. */
+  private advanceRetrieve(target: Vec2, range: number, requested: number, dt: number, env: DogEnv): void {
+    const desired = Math.atan2(target.y - this.pos.y, target.x - this.pos.x);
+    this.heading = turnToward(this.heading, desired, (env.retrieveTurnRate ?? Infinity) * dt);
+    const alignment = Math.cos(desired - this.heading);
+    // Turn before travelling after pickup; don't skate backwards through a U-turn.
+    if (alignment < .5) { this.gait = 'still'; return; }
+    const available = Math.max(0, dist(this.pos, target) - range * .8);
+    this.advance(this.heading, Math.min(available, requested) * Math.max(0, alignment));
+  }
+
   private advanceTowardPoint(heading: number, distance: number, requested: number): void {
     const available = Math.max(0, distance - POINT_SETTLE_RANGE);
     this.advance(heading, Math.min(requested, available));

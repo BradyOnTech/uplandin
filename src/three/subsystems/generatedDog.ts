@@ -53,7 +53,7 @@ export class GeneratedDogSystem implements Subsystem {
     this.field.intentYaw=Math.atan2(Math.sin(this.heading-intentHeading),Math.cos(this.heading-intentHeading));
     const point=dog.state==='pointing'||dog.state==='honoring';
     const retrieve: GeneratedRetrievePose | undefined = dog.state === 'retrieving'
-      ? { stage: dog.carryingBirdId !== null ? dog.gait === 'still' ? 'deliver' : 'carry' : 'pickup',
+      ? { stage: dog.carryingBirdId !== null ? dog.gait === 'still' && dog.retrieveHoldTimeMs() > 0 ? 'deliver' : 'carry' : 'pickup',
           holdMs: dog.retrieveHoldTimeMs?.() ?? 0 }
       : undefined;
     // Only settle into pickup once the simulation has reached the actual fall.

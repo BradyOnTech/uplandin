@@ -66,6 +66,7 @@ export interface HuntDogMotion {
   obstacles?: DogEnv['obstacles'];
   movementScale?: number;
   maxTravelSpeed?: number;
+  retrieveTurnRate?: number;
   rangeRadius?: number;
   workAnchor?: Vec2;
 }
@@ -207,6 +208,7 @@ export class HuntSimulation {
         slopeAngle: this.area.slope,
         movementScale: motion?.movementScale,
         maxTravelSpeed: motion?.maxTravelSpeed,
+        retrieveTurnRate: motion?.retrieveTurnRate,
         rangeRadius: motion?.rangeRadius,
         // Leave room to road in on a runner, then wait for the handler.
         // Existing points can finish; concealed birds keep moving normally.

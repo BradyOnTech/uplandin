@@ -2047,11 +2047,12 @@ export class DogSystem implements Subsystem {
         tU[2] = tU[3] = -1.12; tL[2] = tL[3] = -2.3;
       } else if (state === 'retrieving') {
         // Mouthing the fall: head buried, tail level, hind end high.
-        tNeck = 1.05;
-        tHeadP = 0.35 - 1.05 * 0.55;
+        const pickup = sd.carryingBirdId === null && sd.retrieveHoldTimeMs() > 0;
+        tNeck = pickup ? 1.05 : .08;
+        tHeadP = pickup ? 0.35 - 1.05 * 0.55 : .02;
         tTailP = 0.2;
         tBob = -0.01;
-        tPitch = 0.09;
+        tPitch = pickup ? .09 : 0;
       } else {
         // Heel / idle stand: easy tail, soft breathing.
         tTailP = -0.5 + (snap ? 0 : Math.sin(time * 1.4) * 0.04);
@@ -2159,9 +2160,9 @@ export class DogSystem implements Subsystem {
         tTailY *= 1 - p * 0.8;
       }
       if (state === 'retrieving') {
-        // Head-low carry/approach on the fetch.
-        tNeck = 0.85;
-        tHeadP = 0.15 - 0.85 * 0.55;
+        // Marked fetch and carry are purposeful travel, not nose-down scent work.
+        tNeck = sd.carryingBirdId !== null ? .16 : .25;
+        tHeadP = .04 - tNeck * .4;
         tTailP = 0.15;
       }
       if (gait === 'track' && sd.scentStage !== 'stalking') tBob -= 0.03;
