@@ -39,16 +39,44 @@
       <button data-action="aim" type="button" aria-pressed="false">Aim</button>
       <button data-action="fire" class="fire" type="button" aria-label="Fire: drag to track, release to shoot">Fire<small>Drag to track</small></button>
     </div>
-    <section id="field-map" hidden aria-label="Field survey map" role="dialog" aria-modal="true">
+    <section id="field-map" hidden aria-labelledby="field-map-title" role="dialog" aria-modal="true">
       <div class="field-map-card">
         <header class="field-map-heading">
           <div>
-            <p class="field-map-eyebrow">FIELD SURVEY</p>
-            <h2>Read the ground</h2>
+            <p class="field-map-eyebrow" id="field-map-subtitle">UPLANDIN · PROPERTY ATLAS</p>
+            <h2 id="field-map-title">Field survey</h2>
+            <p id="field-map-wind"></p>
           </div>
           <button id="field-map-close" type="button">Close <kbd>Esc</kbd></button>
         </header>
-        <canvas id="field-map-canvas" aria-label="Survey map showing trails, landmarks, hunter, and dog"></canvas>
+        <div class="field-map-toolbar" aria-label="Map controls">
+          <div class="field-map-locations">
+            <button type="button" data-map-action="fit">Whole property</button>
+            <button type="button" data-map-action="hunter">Find me</button>
+            <button type="button" data-map-action="truck">Truck</button>
+          </div>
+          <div class="field-map-scale">
+            <button type="button" data-map-action="out" aria-label="Zoom out">−</button>
+            <output id="field-map-zoom" aria-label="Map zoom">100%</output>
+            <button type="button" data-map-action="in" aria-label="Zoom in">+</button>
+          </div>
+        </div>
+        <div class="field-map-sheet">
+          <canvas id="field-map-canvas" tabindex="0" aria-label="Survey map showing terrain, trails, landmarks, hunter, and dog" aria-describedby="field-map-help"></canvas>
+          <span id="field-map-help">Drag to explore · Scroll or pinch to zoom</span>
+        </div>
+        <div class="field-map-legend" aria-label="Map legend">
+          <span><i class="map-key-cover"></i>Standing cover</span>
+          <span><i class="map-key-crop"></i>Cut fields</span>
+          <span><i class="map-key-trees"></i>Shelterbelts</span>
+          <span><i class="map-key-water"></i>Water</span>
+          <span><i class="map-key-route"></i>Working lines</span>
+        </div>
+        <div class="field-map-readings">
+          <div><span class="map-reading-label map-reading-you">YOU</span><span id="field-map-position"></span></div>
+          <div><span class="map-reading-label map-reading-dog">DOG</span><span id="field-map-dog"></span></div>
+          <div><span class="map-reading-label map-reading-truck">TRUCK</span><span id="field-map-truck"></span></div>
+        </div>
         <p id="field-map-caption"></p>
       </div>
     </section>

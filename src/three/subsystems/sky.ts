@@ -43,6 +43,7 @@ uniform vec3 uCloudShade;
 uniform float uCloudAmt;
 uniform float uQuail;
 uniform float uPheasant;
+uniform float uChukar;
 varying vec3 vPos;
 
 /*
@@ -89,6 +90,13 @@ vec2 cloudLocal(vec2 ae, vec2 c, vec2 ms) {
 }
 
 float cloudField(vec2 ae) {
+  if (uChukar > 0.5) {
+    // Thin wind-shaped banks leave the open ridge skyline readable.
+    float f=prairieBank(cloudLocal(ae,vec2(-1.45,.37),vec2(1.05,2.4)));
+    f=max(f,prairieBank(cloudLocal(ae,vec2(2.1,.29),vec2(-1.3,2.9))));
+    f=max(f,prairieBank(cloudLocal(ae,vec2(.42,.19),vec2(1.8,3.3))));
+    return f;
+  }
   if (uPheasant > 0.5) {
     // Long, separated autumn banks leave open flight corridors between
     // layers instead of repeating the same outlined cumulus silhouette.
@@ -154,7 +162,7 @@ void main() {
   // so a low sun still burns through them instead of being pasted over.
   vec2 ae = vec2(atan(dir.x, dir.z), h);
   float cf = cloudField(ae);
-  float layered = max(uQuail, uPheasant);
+  float layered = max(max(uQuail, uPheasant),uChukar);
   float cm = smoothstep(mix(0.55, 0.45, layered), mix(0.60, 0.58, layered), cf) * uCloudAmt * smoothstep(0.05, 0.10, h);
   // Flat painted plates (round 5): fw-e3-5's cumulus is 2-3 VALUE STEPS
   // with hard undersides — not an airbrushed gradient (measured: our cloud
@@ -412,18 +420,18 @@ const QUAIL_RIDGES: RidgeProfile = {
 
 const CHUKAR_RIDGES: RidgeProfile = {
   layers: [
-    { radius: 350, base: 12, amp: 78, far: 0.12, fogMix: 0.08, hazeAmt: 0.5, jag: 0.12, freqs: [3, 8, 21], noiseScale: 0.78 },
-    { radius: 515, base: 24, amp: 102, far: 0.52, fogMix: 0.15, hazeAmt: 0.76, jag: 0.18, freqs: [4, 9, 23], noiseScale: 0.62 },
-    { radius: 735, base: 34, amp: 132, far: 0.72, fogMix: 0.22, hazeAmt: 0.94, jag: 0.2, freqs: [3, 7, 19], noiseScale: 0.55 },
+    { radius: 970, base: -22, amp: 75, far: 0.12, fogMix: 0.08, hazeAmt: 0.5, jag: 0.12, freqs: [5, 17, 43], noiseScale: 0.75 },
+    { radius: 1250, base: -5, amp: 140, far: 0.52, fogMix: 0.15, hazeAmt: 0.76, jag: 0.18, freqs: [5, 14, 37], noiseScale: 0.85 },
+    { radius: 1480, base: 15, amp: 210, far: 0.72, fogMix: 0.22, hazeAmt: 0.94, jag: 0.2, freqs: [4, 13, 31], noiseScale: 0.80 },
   ],
   features: [
     [{ c: -34, h: .85, sl: 12, sr: 26 }, { c: 52, h: .72, sl: 15, sr: 27 }, { c: 101, h: 1.05, sl: 9, sr: 20 }, { c: 124, h: -.28, sl: 7, sr: 10 }, { c: 150, h: .8, sl: 15, sr: 25 }],
     [{ c: -58, h: .72, sl: 20, sr: 32 }, { c: 38, h: .64, sl: 26, sr: 18 }, { c: 119, h: .95, sl: 13, sr: 25 }, { c: 164, h: .62, sl: 17, sr: 28 }],
-    [{ c: -80, h: 0.62, sl: 42, sr: 55 }, { c: 20, h: 0.7, sl: 45, sr: 58 }, { c: 126, h: 0.65, sl: 40, sr: 52 }],
+    [{ c: -80, h: 0.62, sl: 16, sr: 25 }, { c: 20, h: 0.7, sl: 19, sr: 31 }, { c: 126, h: 0.65, sl: 16, sr: 24 }],
   ],
   segments: [896, 640, 512],
   treeCount: 0,
-  verticalFollow: 0.72,
+  verticalFollow: 0.35,
 };
 
 const PHEASANT_RIDGES: RidgeProfile = {
@@ -656,7 +664,7 @@ export class SkySystem implements Subsystem {
   private readonly quail: boolean;
   private readonly areaId: string;
 
-  constructor(landscape?: LandscapeModel) {
+  constructor(private readonly landscape?: LandscapeModel) {
     this.ridgeProfile = ridgeProfileFor(landscape);
     this.quail = landscape?.area.id === 'quail-fields';
     this.areaId = landscape?.area.id ?? '';
@@ -687,6 +695,7 @@ export class SkySystem implements Subsystem {
         uCloudLit: { value: new THREE.Color() },
         uCloudShade: { value: new THREE.Color() },
         uCloudAmt: { value: 0 },
+        uChukar: { value: this.areaId === 'chukar-ridge' ? 1 : 0 },
         uQuail: { value: this.quail ? 1 : 0 },
         uPheasant: { value: this.areaId === 'pheasant-coverts' ? 1 : 0 },
       },
@@ -723,8 +732,8 @@ export class SkySystem implements Subsystem {
     // ground: 0.35 erased every fence-post and trunk shadow root, which is
     // why round 3 read "no prop casts anything". 0.12 keeps posts casting;
     // the slightly larger constant bias holds acne down with PCFSoft.
-    this.sun.shadow.bias = -0.0006;
-    this.sun.shadow.normalBias = 0.12;
+    this.sun.shadow.bias = this.areaId==='chukar-ridge' ? -0.00015 : -0.0006;
+    this.sun.shadow.normalBias = this.areaId==='chukar-ridge' ? .045 : .12;
     ctx.scene.add(this.sun);
     ctx.scene.add(this.sun.target);
 
@@ -854,7 +863,7 @@ export class SkySystem implements Subsystem {
         }
         // Land ring may sink below the plain (isolated masses); real ridge
         // bands keep their floor so the skyline never gaps.
-        h = Math.max(h, layer.land ? -2.0 : l <= 1 ? 2.5 : 1.2);
+        h = Math.max(h, this.areaId==='chukar-ridge' ? -50 : layer.land ? -2.0 : l <= 1 ? 2.5 : 1.2);
         const x = Math.sin(theta) * layer.radius;
         const z = Math.cos(theta) * layer.radius;
         const top = i * 2;
@@ -1034,10 +1043,14 @@ export class SkySystem implements Subsystem {
     const snap = 2;
     const tx = Math.round(ax / snap) * snap;
     const tz = Math.round(az / snap) * snap;
-    this.sun.target.position.set(tx, 0, tz);
+    // Chukar climbs well above zero: a flat-ground shadow rig left the
+    // upper benches outside its light-space coverage, losing contact.
+    const ty=this.areaId==='chukar-ridge'&&this.landscape
+      ? Math.round(this.landscape.heightAtWorld(cam.x,cam.z)/snap)*snap : 0;
+    this.sun.target.position.set(tx, ty, tz);
     this.sun.position.set(
       tx + this.keyDir.x * 300,
-      this.keyDir.y * 300,
+      ty + this.keyDir.y * 300,
       tz + this.keyDir.z * 300,
     );
     this.fill.target.position.set(cam.x, 0, cam.z);

@@ -232,7 +232,7 @@ export class TerrainSystem implements Subsystem {
 
   init(ctx: Ctx): void | Promise<void> {
     if(this.landscape.area.id==='chukar-ridge'){
-      this.chukar=new ChukarTerrain(this.landscape);this.chukar.init(ctx);return;
+      this.chukar=new ChukarTerrain(this.landscape);return this.chukar.init(ctx);
     }
     if (this.landscape.area.id === 'quail-fields') {
       this.quail = new QuailTerrain(this.landscape);

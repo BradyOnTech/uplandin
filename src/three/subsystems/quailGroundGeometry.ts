@@ -75,14 +75,14 @@ function triangleHeight(landscape: LandscapeModel, tile: QuailGroundTile, divisi
   const h = height(ix + 1, iz + 1); return h + (1 - u) * (height(ix, iz + 1) - h) + (1 - v) * (height(ix + 1, iz) - h);
 }
 
-export function sampleQuailGroundHeights(landscape: LandscapeModel, propertyX: number, propertyY: number, owner?: QuailGroundTile): {
+export function sampleQuailGroundHeights(landscape: LandscapeModel, propertyX: number, propertyY: number, owner?: QuailGroundTile, divisions: {near:number;far:number} = QUAIL_GROUND_DIVISIONS): {
   nearY: number; farY: number; tileCenterX: number; tileCenterZ: number;
 } {
   const tile = owner ?? quailGroundTileAt(landscape, propertyX, propertyY);
   const world = landscape.propertyToWorld(propertyX, propertyY, { x: 0, z: 0 });
   const x = Math.fround(world.x), z = Math.fround(world.z);
-  return { nearY: triangleHeight(landscape, tile, QUAIL_GROUND_DIVISIONS.near, x, z),
-    farY: triangleHeight(landscape, tile, QUAIL_GROUND_DIVISIONS.far, x, z), tileCenterX: tile.centerX, tileCenterZ: tile.centerZ };
+  return { nearY: triangleHeight(landscape, tile, divisions.near, x, z),
+    farY: triangleHeight(landscape, tile, divisions.far, x, z), tileCenterX: tile.centerX, tileCenterZ: tile.centerZ };
 }
 
 interface RoadVertex { x: number; z: number; rgba: number[]; source?: number }
@@ -92,7 +92,7 @@ interface RoadVertex { x: number; z: number; rgba: number[]; source?: number }
  * Clipping keeps the same XZ footprint, interpolated color/alpha and draw order.
  * Adjacent terrain LODs can still have different boundary heights; this follows
  * their existing step rather than introducing a separate terrain-stitching system. */
-export function groundQuailTrackGeometry(landscape: LandscapeModel, source: THREE.BufferGeometry): THREE.BufferGeometry {
+export function groundQuailTrackGeometry(landscape: LandscapeModel, source: THREE.BufferGeometry, divisions: {near:number;far:number} = QUAIL_GROUND_DIVISIONS): THREE.BufferGeometry {
   const original = source.getAttribute('position'), tint = source.getAttribute('color'), originalIndices = source.index!;
   const input: RoadVertex[] = Array.from({ length: original.count }, (_, i) => ({ x: original.getX(i), z: original.getZ(i),
     rgba: [tint.getX(i), tint.getY(i), tint.getZ(i), tint.getW(i)], source: i }));
@@ -108,7 +108,7 @@ export function groundQuailTrackGeometry(landscape: LandscapeModel, source: THRE
     const key = `${tile.x},${tile.y}/${p.source === undefined ? `${x},${z}/${rgba.join(',')}` : p.source}`;
     const saved = seen.get(key); if (saved !== undefined) return saved;
     const property = landscape.worldToProperty(x, z, { x: 0, y: 0 });
-    const ground = sampleQuailGroundHeights(landscape, property.x, property.y, tile), index = positions.length / 3;
+    const ground = sampleQuailGroundHeights(landscape, property.x, property.y, tile, divisions), index = positions.length / 3;
     positions.push(x, ground.nearY + .032, z); colors.push(...rgba); far.push(ground.farY + .032, ground.tileCenterX, ground.tileCenterZ);
     seen.set(key, index); return index;
   };
@@ -162,11 +162,11 @@ export function groundQuailTrackGeometry(landscape: LandscapeModel, source: THRE
 
 /** Compose after surface detail so height also reaches standard shadow coords.
  * The road receives shadows and never casts them; no depth-material variant is needed. */
-export function applyQuailTrackGroundLod(material: THREE.MeshLambertMaterial, quality: Quality): void {
+export function applyQuailTrackGroundLod(material: THREE.MeshLambertMaterial, quality: Quality, nearDistance = quailGroundNearDistance(quality)): void {
   const surfaceDetail = material.onBeforeCompile; const previousKey = material.customProgramCacheKey();
   material.onBeforeCompile = function (shader, renderer) {
     surfaceDetail.call(this, shader, renderer);
-    shader.uniforms.uQuailGroundNearDistance = { value: quailGroundNearDistance(quality) };
+    shader.uniforms.uQuailGroundNearDistance = { value: nearDistance };
     shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>
       attribute vec3 quailFarGround;
       uniform float uQuailGroundNearDistance;

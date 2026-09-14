@@ -9,6 +9,7 @@ import type { Vec2 } from './types';
 import { quailDrainageAt } from './quailLandscape';
 import { pheasantPondRadii } from './pheasantHabitat';
 import { PROPERTY_PX_TO_M } from './worldUnits';
+import { chukarAuthoredHeight, chukarGroundZones } from './chukarLandscape';
 
 /** One shared map pixel is one yard in the 3D presentation. */
 export { PROPERTY_PX_TO_M } from './worldUnits';
@@ -430,8 +431,25 @@ function woodcockLandform(area: AreaConfig): LandformAdapter {
   };
 }
 
+function chukarLandform(area:AreaConfig):LandformAdapter {
+  const drop=getDropPoint(area),zones={talus:0,shelter:0};
+  return {
+    heightAt(x,z,_profile,noise){
+      const px=(x-HUNT_WORLD_ANCHOR.x)/PROPERTY_PX_TO_M+drop.position.x,py=(z-HUNT_WORLD_ANCHOR.z)/PROPERTY_PX_TO_M+drop.position.y;
+      return chukarAuthoredHeight(px,py)+(noise(x*.038+731,z*.038+731)-.5)*.48;
+    },
+    surfaceAt(x,z,height,slope,gx,gz,noise,out){
+      RIMROCK_LANDFORM.surfaceAt(x,z,height,slope,gx,gz,noise,out);
+      chukarGroundZones((x-HUNT_WORLD_ANCHOR.x)/PROPERTY_PX_TO_M+drop.position.x,(z-HUNT_WORLD_ANCHOR.z)/PROPERTY_PX_TO_M+drop.position.y,zones);
+      out.rockiness=Math.max(0,Math.min(1,out.rockiness*.7+zones.talus*.64));
+      out.vegetation=Math.max(0,Math.min(1,.28+out.vegetation*.56+zones.shelter*.3-zones.talus*.3));
+    },
+  };
+}
+
 function landformFor(area: AreaConfig): LandformAdapter {
   if (area.id === 'quail-fields') return quailLandform(area);
+  if (area.id === 'chukar-ridge') return chukarLandform(area);
   if (area.id === 'woodcock-bottoms') return woodcockLandform(area);
   if (area.id === 'pheasant-coverts') return pheasantLandform(area);
   if (area.id === 'hun-benches') return HUN_BENCH_LANDFORM;

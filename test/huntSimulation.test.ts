@@ -201,10 +201,11 @@ describe('HuntSimulation shared orchestration', () => {
   it('uses the actual Chukar cross-slope elevation for continuous encounters', () => {
     const area = getArea('chukar-ridge');
     const land = new LandscapeModel(area, 'south-gate');
-    // Reviewed South Gate covey: west is almost six meters lower, although
-    // the legacy north-facing slope model calls this a level traverse.
-    const birdPos = land.worldToProperty(19.2216, -47.9787, { x: 0, y: 0 });
-    const hunterPos = land.worldToProperty(-10, -48, { x: 0, y: 0 });
+    // The authored eastern shoulder falls across the compass slope. The
+    // legacy north-facing model calls this same-y approach level, although
+    // the hunter is more than eight metres below the bird on real terrain.
+    const birdPos = {x:1010,y:400};
+    const hunterPos = {x:1042,y:400};
     expect(land.heightAtProperty(birdPos.x, birdPos.y)
       - land.heightAtProperty(hunterPos.x, hunterPos.y)).toBeGreaterThan(5);
     const fixture = (continuousEncounter: boolean, speciesId = 'chukar') => {
@@ -226,9 +227,9 @@ describe('HuntSimulation shared orchestration', () => {
     expect(legacy.simulation.flushBird(9001, 'nerve', 0)?.slopeApproach).toBe('level');
     const nonMountain = fixture(true, 'bobwhite');
     expect(nonMountain.simulation.flushBird(9001, 'proximity', 0)?.slopeApproach).toBeNull();
-    for (const [x, z, expected] of [[19.2216, -80, 'above'], [50, -48, 'level']] as const) {
+    for (const [x, y, expected] of [[978, 400, 'above'], [1010, 399, 'level']] as const) {
       const f = fixture(true);
-      f.hunt.hunterPos = land.worldToProperty(x, z, { x: 0, y: 0 });
+      f.hunt.hunterPos = {x,y};
       expect(f.simulation.flushBird(9001, 'proximity', 0)?.slopeApproach).toBe(expected);
     }
   });

@@ -64,14 +64,17 @@ describe('shared property landscape', () => {
     const chukar = new LandscapeModel(getArea('chukar-ridge'));
     const rebuilt = new LandscapeModel(getArea('chukar-ridge'));
     const prairie = new LandscapeModel(getArea('quail-fields'));
-    const points = [[0, 40], [40, 0], [-60, -20], [100, -60]] as const;
+    // Sample the arrival and the three climbing faces. The authored entry
+    // is deliberately gentle; four truck-adjacent points no longer describe
+    // the hunting property's elevation character.
+    const points = [[577, 765], [740, 610], [854, 456], [985, 285]] as const;
     let chukarSlope = 0;
     let prairieSlope = 0;
 
     for (const [x, z] of points) {
-      const sample = chukar.surfaceAtWorld(x, z, { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 });
-      const repeat = rebuilt.surfaceAtWorld(x, z, { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 });
-      const flat = prairie.surfaceAtWorld(x, z, { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 });
+      const sample = chukar.surfaceAtProperty(x, z, { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 });
+      const repeat = rebuilt.surfaceAtProperty(x, z, { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 });
+      const flat = prairie.surfaceAtProperty(x, z, { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 });
       expect(sample).toEqual(repeat);
       expect(sample.rockiness).toBeGreaterThanOrEqual(0);
       expect(sample.rockiness).toBeLessThanOrEqual(1);

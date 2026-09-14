@@ -29,6 +29,9 @@ function compositions(area: AreaConfig): Composition[] {
   if (feature) result.push({ id: 'rimrock-tank-overlook', kind: 'vista', x: feature.position.x - 25 / PROPERTY_PX_TO_M, y: feature.position.y + 17 / PROPERTY_PX_TO_M, heading: -.72, radius: 9.5 });
   const junction = area.trails[0]?.points.at(-1);
   if (junction) result.push({ id: 'upper-trail-cairn', kind: 'cairn', x: junction.x - 7 / PROPERTY_PX_TO_M, y: junction.y + 6 / PROPERTY_PX_TO_M, heading: -.4, radius: 2.6 });
+  for(const landmark of area.landmarks)if(['lower-sage-bench','rim-overlook'].includes(landmark.id)){
+    result.push({id:landmark.id+'-cairn',kind:'cairn',x:landmark.position.x+7,y:landmark.position.y+8,heading:-.5,radius:2.6});
+  }
   return result;
 }
 
@@ -189,7 +192,7 @@ export function createChukarLandmarks(landscape: LandscapeModel, quality: Qualit
   });
 
   const geometry = surface.geometry();
-  const material = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const material = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x626656, emissiveIntensity: .14 });
   material.name = 'Chukar weathered stone and timber';
   const mesh = new THREE.Mesh(geometry, material); mesh.name = 'Batched cairns, trail posts and overlook rocks';
   mesh.castShadow = true; mesh.receiveShadow = true; mesh.matrixAutoUpdate = false; mesh.updateMatrix(); root.add(mesh);

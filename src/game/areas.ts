@@ -4,6 +4,7 @@ import { mulberry32 } from './math';
 import type { SpeciesShare } from './species';
 import type { Vec2 } from './types';
 import { pheasantDryCover, pheasantShoreCover, pheasantWestFence } from './pheasantHabitat';
+import { chukarCoverPatches } from './chukarLandscape';
 
 export type LandmarkKind = 'gate' | 'windmill' | 'barn' | 'pond' | 'fence';
 
@@ -337,18 +338,25 @@ function chukarGeography(w: number, h: number) {
   const middle = { x: w * .61, y: h * .53 };
   const upper = { x: w * .72, y: h * .31 };
   const westBench = { x: w * .28, y: h * .42 };
+  const p=(x:number,y:number):Vec2=>({x:x*w/1400,y:y*h/800});
   return {
     ...base,
+    landmarks:[...base.landmarks,
+      {id:'lower-sage-bench',name:'Sage Bench',kind:'fence' as const,position:lower},
+      {id:'split-shoulder',name:'Split Shoulder',kind:'fence' as const,position:middle},
+      {id:'rim-overlook',name:'Rim Overlook',kind:'fence' as const,position:upper}],
     // Face the authored first switchback, not the old generic junction.
     // Trailhead props and dog release use these same bearings.
     dropPoints: [
-      { ...south, heading: Math.atan2(-46, -30) },
+      { ...south, heading: Math.atan2(710-south.position.y,640-south.position.x) },
       { ...west, heading: Math.atan2(22, 52) },
     ],
     trails: [
-      { id: 'south-switchback', points: [south.position, { x: south.position.x - 30, y: south.position.y - 46 }, lower, { x: w * .58, y: h * .66 }, middle] },
+      { id: 'south-switchback', points: [south.position,p(640,710),p(702,658),p(650,618),lower,p(748,552),p(804,521),p(871,509),p(905,468),middle] },
       { id: 'west-switchback', points: [west.position, { x: west.position.x + 52, y: west.position.y + 22 }, westBench, { x: w * .42, y: h * .37 }, middle] },
-      { id: 'upper-bench', points: [middle, { x: w * .67, y: h * .47 }, upper] },
+      { id: 'upper-bench', points: [middle,p(938,376),p(1013,365),p(1035,302),upper] },
+      { id: 'rim-return', points: [upper,p(1090,279),p(1083,381),p(967,452),p(905,468)] },
+      { id: 'tank-traverse', points: [upper,p(933,215),base.landmarks.find(l=>l.id==='area-feature')!.position] },
     ] satisfies AreaTrail[],
   };
 }
@@ -603,7 +611,7 @@ export const AREAS: AreaConfig[] = [
     world: world(1400, 800),
     terrain: terrain('rimrock', 7701),
     ...chukarGeography(1400, 800),
-    patches: [...scatterRects(world(1400, 800), { count: 16, minW: 90, maxW: 160, minH: 30, maxH: 55 }, mulberry32(77)), ...entryCover(1400, 800, 77)],
+    patches: chukarCoverPatches(world(1400,800),[...scatterRects(world(1400, 800), { count: 16, minW: 90, maxW: 160, minH: 30, maxH: 55 }, mulberry32(77)), ...entryCover(1400, 800, 77)]),
     stocking: 0.7,
     speciesMix: [
       { speciesId: 'chukar', weight: 0.8 },

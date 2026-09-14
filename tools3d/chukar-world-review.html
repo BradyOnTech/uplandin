@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chukar Ridge · environment review</title>
+<style>
+*{box-sizing:border-box}body{height:100dvh;display:grid;grid-template-rows:auto auto minmax(250px,1fr) auto;margin:0;background:#1f292a;color:#eee7d5;font:13px system-ui}header{padding:14px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}h1{font:22px Georgia;margin:0}p{margin:0;color:#b9c3ba;font-size:12px}nav{display:flex;gap:6px;flex-wrap:wrap;padding:0 18px 12px}button,select,a{font:inherit;color:inherit;background:#34423e;border:1px solid #566256;border-radius:6px;padding:10px 12px;min-height:44px;cursor:pointer;text-decoration:none}button[aria-pressed=true]{background:#b7ac7e;color:#172523}button:focus-visible,a:focus-visible,select:focus-visible{outline:2px solid #e1cf88;outline-offset:2px}iframe{display:block;width:100%;height:100%;min-height:0;border:0}footer{padding:8px 18px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}output{font-variant-numeric:tabular-nums;color:#d4d7bb}a{margin-left:auto}label{display:flex;gap:7px;align-items:center}
+</style>
+<header><div><h1>Chukar Ridge</h1><p>Environment study · actual game renderer · staged views, not a hunt test</p></div>
+<label>Light<select id="light"><option value="morning">Morning</option><option value="noon">Noon</option><option value="evening">Evening</option></select></label>
+<label>Detail<select id="detail"><option value="high">Standard</option><option value="lite">Lightweight</option></select></label>
+<a id="play" href="../index3d.html?area=chukar-ridge&drop=south-gate&quality=high&tod=morning&dog=generated">Play this property</a></header>
+<nav id="views" aria-label="Review locations"></nav><iframe id="world" title="Chukar Ridge environment"></iframe>
+<footer><button id="left">Look left</button><button id="right">Look right</button><button id="walk">Walk route study</button><output id="stats">Preparing property…</output></footer>
+<script type="module">
+import {getArea} from '../src/game/areas.ts';
+import {LandscapeModel} from '../src/game/landscape.ts';
+const area=getArea('chukar-ridge'),landscape=new LandscapeModel(area),drop=area.dropPoints[0].position;
+const views=[
+ {name:'Trailhead',x:drop.x,y:drop.y,toward:[646,682]},
+ {name:'Climbing shoulder',x:690,y:670,toward:[637,589]},
+ {name:'Rock face',x:700,y:620,toward:[820,578],pitch:5},
+ {name:'Sage Bench',x:658,y:575,toward:[791,531]},
+ {name:'Split Shoulder',x:859,y:437,toward:[970,337]},
+ {name:'Rim Overlook',x:1010,y:250,toward:[1190,424]},
+ {name:'Western approach',x:103,y:443,toward:[291,337]},
+];
+const frame=document.querySelector('#world'),stats=document.querySelector('#stats'),nav=document.querySelector('#views');
+let api,index=0,turn=0,touring=false,travel=0,last=0;
+const buttons=views.map((view,i)=>{const button=document.createElement('button');button.textContent=view.name;button.onclick=()=>{index=i;turn=0;touring=false;paint();};nav.append(button);return button;});
+function info(){const t=api.telemetry(),r=api.info();stats.textContent=`${touring?'Route study':views[index].name} · ${Math.round(t.camera.y)} m elevation · ${r.calls} draws · ${r.triangles.toLocaleString()} triangles`;}
+function pose(x,y,tx,ty,pitch=-2){const p=landscape.propertyToWorld(x,y,{x:0,z:0});api.setPose(p.x,p.z,-Math.atan2(tx-x,-(ty-y))*180/Math.PI+turn,pitch);api.renderOnce();info();}
+function paint(){if(!api)return;const v=views[index];pose(v.x,v.y,...v.toward,v.pitch);buttons.forEach((button,i)=>button.setAttribute('aria-pressed',String(i===index)));document.querySelector('#walk').textContent='Walk route study';}
+async function ready(){api=undefined;stats.textContent='Preparing property…';const started=performance.now();while(!frame.contentWindow?.__ready3d){if(performance.now()-started>30000){stats.textContent='Field did not become ready; inspect the game error.';return;}await new Promise(resolve=>setTimeout(resolve,100));}api=frame.contentWindow.__api3d;api.pause(true);api.setTod(document.querySelector('#light').value);paint();}
+function syncPlayLink(){document.querySelector('#play').href=`../index3d.html?area=chukar-ridge&drop=south-gate&quality=${document.querySelector('#detail').value}&tod=${document.querySelector('#light').value}&dog=generated&seed=7701`;}
+function load(){syncPlayLink();api=undefined;document.querySelector('#walk').textContent='Walk route study';frame.src=`../index3d.html?area=chukar-ridge&drop=south-gate&quality=${document.querySelector('#detail').value}&tod=${document.querySelector('#light').value}&dog=generated&seed=7701&capture=1`;}
+frame.onload=ready;
+document.querySelector('#detail').onchange=()=>{touring=false;load();};
+document.querySelector('#light').onchange=event=>{syncPlayLink();if(api){api.setTod(event.target.value);api.renderOnce();info();}};
+document.querySelector('#left').onclick=()=>{touring=false;turn+=25;paint();};document.querySelector('#right').onclick=()=>{touring=false;turn-=25;paint();};
+const route=[...area.trails.find(t=>t.id==='south-switchback').points,...area.trails.find(t=>t.id==='upper-bench').points.slice(1)];
+const lengths=route.slice(1).map((p,i)=>Math.hypot(p.x-route[i].x,p.y-route[i].y));
+document.querySelector('#walk').onclick=()=>{if(!api)return;touring=!touring;travel=0;last=performance.now();turn=0;document.querySelector('#walk').textContent=touring?'Stop route study':'Walk route study';};
+function tick(now){if(touring&&api){travel+=(now-last)/1000*5.2;let distance=travel,n=0;while(n<lengths.length-1&&distance>lengths[n]){distance-=lengths[n];n++;}if(distance>lengths[n]){touring=false;index=views.findIndex(v=>v.name==='Rim Overlook');paint();}else{const a=route[n],b=route[n+1],t=distance/lengths[n];pose(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,b.x,b.y);}}last=now;requestAnimationFrame(tick);}load();requestAnimationFrame(tick);
+</script></html>
