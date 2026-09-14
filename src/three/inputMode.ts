@@ -19,6 +19,18 @@ export function saveInputMode(mode: InputMode): void {
   try { localStorage.setItem(KEY, mode); } catch { /* Storage is optional. */ }
 }
 
+export type TouchSensitivity = 'look' | 'swing';
+export function touchSensitivity(kind: TouchSensitivity): number {
+  try {
+    const value = Number(localStorage.getItem(`uplandin.3d.touch.${kind}`));
+    if (value >= .5 && value <= 2) return value;
+  } catch { /* Storage is optional. */ }
+  return 1;
+}
+export function saveTouchSensitivity(kind: TouchSensitivity, value: number): void {
+  try { localStorage.setItem(`uplandin.3d.touch.${kind}`, String(Math.min(2, Math.max(.5, value)))); } catch { /* optional */ }
+}
+
 /** A quiet center for walking; a deliberate outer drag requests running. */
 export function touchMovement(x: number, y: number): { dx:number;dy:number;running:boolean } {
   const distance = Math.hypot(x, y);

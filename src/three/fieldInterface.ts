@@ -1,7 +1,7 @@
 import { isFalconryPractice } from '../game/falconryPractice';
 import { bindTouchActionControl } from './touchActionControl';
 import { bindTouchShotControl } from './touchShotControl';
-import { preferredInputMode, saveInputMode, usesTouchControls, type InputMode } from './inputMode';
+import { preferredInputMode, saveInputMode, usesTouchControls, touchSensitivity, saveTouchSensitivity, type InputMode } from './inputMode';
 import { HUNT_CHALLENGES, HUNT_CHALLENGE_KEY, parseHuntChallenge } from '../game/huntChallenge';
 import { parseHuntLaunch, resolveThreeHuntChallenge, resolveThreeHuntProfile } from '../game/gameplayMode';
 import { GUNS, getGun, unlockedGuns } from '../game/guns';
@@ -161,6 +161,15 @@ export class FieldInterface {
       const url = new URL(location.href); url.searchParams.set('controls', mode); history.replaceState(null, '', url);
       this.engine.ctx.events.dispatchEvent(new Event('input-reset'));
     }, { signal });
+    for (const kind of ['look','swing'] as const) {
+      const slider = document.getElementById(`touch-${kind}-sensitivity`) as HTMLInputElement;
+      const output = document.getElementById(`touch-${kind}-value`)!;
+      slider.value = String(touchSensitivity(kind)); output.textContent = `${Number(slider.value).toFixed(1)}×`;
+      slider.addEventListener('input', () => {
+        saveTouchSensitivity(kind, Number(slider.value)); output.textContent = `${Number(slider.value).toFixed(1)}×`;
+        this.engine.ctx.events.dispatchEvent(new Event('touch-sensitivity-change'));
+      }, { signal });
+    }
     const sound = document.getElementById('sound-setting') as HTMLInputElement;
     const challenge = document.getElementById('challenge-setting') as HTMLSelectElement;
     const challengeHelp = document.getElementById('challenge-help')!;
@@ -185,15 +194,20 @@ export class FieldInterface {
     }, { signal });
     for (const button of document.querySelectorAll<HTMLButtonElement>('#touch-controls button')) {
       if (button.dataset.action === 'fire') {
-        bindTouchShotControl(button, { signal, enabled: () => !this.engine.ctx.paused,
+        const action = (detail: string) => this.engine.ctx.events.dispatchEvent(new CustomEvent('hunt-action', { detail }));
+        bindTouchShotControl(button, { signal, enabled: () => !this.engine.ctx.paused && !this.falconry && !this.engine.ctx.get<GunSystem>('gun').isReloading(),
           look: (dx,dy) => this.engine.ctx.events.dispatchEvent(new CustomEvent('hunt-touch-look', { detail: {dx,dy} })),
-          fire: () => this.engine.ctx.events.dispatchEvent(new CustomEvent('hunt-action', { detail: 'fire' })),
+          begin: () => { unlockAudio(); action('touch-mount'); },
+          cancel: () => action('lower'),
+          cancelTarget: document.getElementById('touch-lower')!,
+          fire: () => action('touch-fire'),
           events: this.engine.ctx.events });
         continue;
       }
       bindTouchActionControl(button, { signal, enabled: () => !this.engine.ctx.paused,
         events: this.engine.ctx.events, activate: () => {
         let action = button.dataset.action;
+        if (action === 'lower' || action === 'reload') this.engine.ctx.events.dispatchEvent(new Event('touch-shot-cancel'));
         if (action === 'aim') {
           const next = button.getAttribute('aria-pressed') !== 'true';
           button.setAttribute('aria-pressed', String(next)); action = next ? 'mount' : 'lower';
@@ -201,6 +215,7 @@ export class FieldInterface {
         this.engine.ctx.events.dispatchEvent(new CustomEvent('hunt-action', { detail: action }));
       } });
     }
+    window.addEventListener('resize', () => this.engine.ctx.events.dispatchEvent(new Event('touch-shot-cancel')), { signal });
   }
   private refreshShotgunMenu(): void {
     if (!this.readyState || this.falconry) return;

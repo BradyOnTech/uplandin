@@ -71,3 +71,21 @@ describe('Two-thumb movement', () => {
     } finally { f.player.dispose(); }
   });
 });
+
+it('applies independent swing sensitivity immediately while the movement finger stays held',()=>{
+  const values=new Map<string,string>();
+  vi.stubGlobal('localStorage',{getItem:(key:string)=>values.get(key)??null});
+  const f=fixture();
+  try {
+    f.send('pointerdown',1,100,270);f.send('pointermove',1,100,170);
+    const yaw=f.ctx.camera.rotation.y;
+    f.ctx.events.dispatchEvent(Object.assign(new Event('hunt-touch-look'),{detail:{dx:50,dy:0}}));
+    // No render/update needed before a release can use the new shot direction.
+    expect(f.ctx.camera.rotation.y-yaw).toBeCloseTo(-.2);expect(f.player.isRunning()).toBe(true);
+    values.set('uplandin.3d.touch.swing','1.5');f.ctx.events.dispatchEvent(new Event('touch-sensitivity-change'));
+    f.ctx.events.dispatchEvent(Object.assign(new Event('hunt-touch-look'),{detail:{dx:50,dy:0}}));
+    expect(f.ctx.camera.rotation.y-yaw).toBeCloseTo(-.5);
+    f.send('pointerdown',2,600,260);f.send('pointermove',2,650,260);f.player.update(f.ctx,0);
+    expect(f.ctx.camera.rotation.y-yaw).toBeCloseTo(-.7);
+  } finally {f.player.dispose();}
+});

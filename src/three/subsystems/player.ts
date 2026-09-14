@@ -7,7 +7,7 @@ import type { TerrainSystem } from './terrain';
 import type { Hunt3DSystem } from './hunt3d';
 import { ObstacleIndex } from '../../game/obstacleIndex';
 import { bindMouseLook } from '../mouseLook';
-import { touchMovement } from '../inputMode';
+import { touchMovement, touchSensitivity } from '../inputMode';
 
 const WALK_SPEED = 2.2;
 const SPRINT_MULT = 1.9;
@@ -48,6 +48,10 @@ export class PlayerSystem implements Subsystem {
     this.bounds = this.landscape ? this.landscape.worldBounds() : undefined;
     const canvas = ctx.renderer.domElement;
     const signal = this.abort.signal;
+    let lookSensitivity = touchSensitivity('look'), swingSensitivity = touchSensitivity('swing');
+    ctx.events.addEventListener('touch-sensitivity-change', () => {
+      lookSensitivity = touchSensitivity('look'); swingSensitivity = touchSensitivity('swing');
+    }, { signal });
     const clear = () => {
       const ids = [this.touchMove?.id, this.touchLook?.id];
       this.keys.clear(); this.touchMove = null; this.touchLook = null; this.vel.set(0, 0, 0); this.showStick();
@@ -63,8 +67,10 @@ export class PlayerSystem implements Subsystem {
     window.addEventListener('blur', clear, { signal });
     ctx.events.addEventListener('hunt-touch-look', ((event: CustomEvent<{dx:number;dy:number}>) => {
       if (ctx.paused || this.captureMode) return;
-      this.yaw -= event.detail.dx * .004;
-      this.pitch = THREE.MathUtils.clamp(this.pitch - event.detail.dy * .004, -1.4, 1.4);
+      this.yaw -= event.detail.dx * .004 * swingSensitivity;
+      this.pitch = THREE.MathUtils.clamp(this.pitch - event.detail.dy * .004 * swingSensitivity, -1.4, 1.4);
+      // A release may arrive before the next frame; fire along the latest swing.
+      this.place(ctx);
     }) as EventListener, { signal });
     if (!this.captureMode) {
       canvas.addEventListener('click', (event) => {
@@ -116,8 +122,8 @@ export class PlayerSystem implements Subsystem {
           Object.assign(this.touchMove, touchMovement(event.clientX - this.touchMove.x, event.clientY - this.touchMove.y));
           this.showStick();
         } else if (this.touchLook?.id === event.pointerId) {
-          this.yaw -= (event.clientX - this.touchLook.x) * 0.004;
-          this.pitch = THREE.MathUtils.clamp(this.pitch - (event.clientY - this.touchLook.y) * 0.004, -1.4, 1.4);
+          this.yaw -= (event.clientX - this.touchLook.x) * 0.004 * lookSensitivity;
+          this.pitch = THREE.MathUtils.clamp(this.pitch - (event.clientY - this.touchLook.y) * 0.004 * lookSensitivity, -1.4, 1.4);
           this.touchLook.x = event.clientX; this.touchLook.y = event.clientY;
         }
       }, { signal });

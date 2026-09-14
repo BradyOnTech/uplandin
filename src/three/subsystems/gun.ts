@@ -82,6 +82,9 @@ export class GunSystem implements Subsystem {
   /** Mount timeline 0..1 (linear; pose uses ease()). */
   private mountT = 0;
   private keyboardAim = false;
+  private touchHeld = false;
+  private touchLowerAt: number | null = null;
+  private touchStatus = '';
   /** Sight-picture settle clock, armed when the mount completes. */
   private settleAge = 10;
   private wasMounted = false;
@@ -169,12 +172,24 @@ export class GunSystem implements Subsystem {
       window.addEventListener('keydown', this.keydownHandler, { signal });
       ctx.events.addEventListener('hunt-action', ((event: CustomEvent) => {
         if (ctx.paused) return;
-        if (event.detail === 'mount') this.aim = true;
-        else if (event.detail === 'lower') { this.aim = false; this.pendingTrigger = null; }
+        if (event.detail === 'touch-mount') {
+          if (this.isReloading()) return;
+          if (this.shells <= 0) { this.beginReload(); return; }
+          this.touchHeld = true; this.touchLowerAt = null; this.aim = true;
+        } else if (event.detail === 'touch-fire') {
+          if (!this.touchHeld) return;
+          this.touchHeld = false; this.touchLowerAt = ctx.time + 2.5;
+          this.requestFire(ctx);
+        } else if (event.detail === 'mount') { this.touchLowerAt = null; this.aim = true; }
+        else if (event.detail === 'lower') {
+          this.touchHeld = false; this.touchLowerAt = null;
+          this.aim = this.keyboardAim = false; this.pendingTrigger = null;
+        }
         else if (event.detail === 'reload') this.beginReload();
         else if (event.detail === 'fire') this.requestFire(ctx);
       }) as EventListener, { signal });
       const lowerGun = () => {
+        this.touchHeld = false; this.touchLowerAt = null;
         this.pendingTrigger = null;
         this.keyboardAim = false;
         this.aim = false;
@@ -329,6 +344,16 @@ export class GunSystem implements Subsystem {
     return this.reloadDuration > 0;
   }
 
+  /** Readiness describes the real action, never whether a bird is available. */
+  touchShotStatus(ctx: Ctx): string {
+    if (this.isReloading()) return 'Reloading';
+    if (this.shells <= 0) return 'Press to reload';
+    if (!this.aim) return 'Hold · swing · release';
+    if (this.mountT <= .7) return 'Raising gun';
+    if (ctx.time * 1000 - this.lastShotMs < this.gun.cooldownMs) return 'Cycling action';
+    return this.touchHeld ? 'Release to shoot' : 'Ready for next shot';
+  }
+
   reloadProgress(): number {
     return this.reloadDuration > 0
       ? THREE.MathUtils.clamp(this.reloadElapsed / this.reloadDuration, 0, 1)
@@ -336,6 +361,7 @@ export class GunSystem implements Subsystem {
   }
 
   private beginReload(): boolean {
+    this.touchHeld = false; this.touchLowerAt = null;
     this.pendingTrigger = null;
     if (this.isReloading() || this.shells >= this.gun.shells) return false;
     this.aim = false;
@@ -463,6 +489,9 @@ export class GunSystem implements Subsystem {
     if (this.hunt.falconry) return;
     const cam = ctx.camera;
     const snap = this.frozen;
+    if (this.touchLowerAt !== null && ctx.time >= this.touchLowerAt && !this.touchHeld) {
+      this.touchLowerAt = null; this.aim = false; this.pendingTrigger = null;
+    }
 
     if (this.isReloading()) {
       this.reloadElapsed += dt;
@@ -484,6 +513,12 @@ export class GunSystem implements Subsystem {
     }
 
     this.advance(dt);
+    const status = this.touchShotStatus(ctx);
+    if (status !== this.touchStatus) {
+      this.touchStatus = status;
+      const label = document.getElementById('touch-shot-status');
+      if (label) label.textContent = status;
+    }
     if (this.reticle) this.reticle.hidden = this.frozen || ctx.paused || this.isReloading() || this.mountT < .35;
     if (this.pendingTrigger) {
       const pending = this.pendingTrigger;

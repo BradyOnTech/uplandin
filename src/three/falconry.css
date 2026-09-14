@@ -1,8 +1,9 @@
 .falconry-hunt #shotgun-options,
 .falconry-hunt #property-option,
 .falconry-hunt #touch-controls [data-action="reload"],
-.falconry-hunt #touch-controls [data-action="aim"],
+.falconry-hunt #touch-controls [data-action="lower"],
 .falconry-hunt #touch-controls [data-action="fire"] { display:none; }
+.falconry-hunt .shotgun-sensitivity { display:none; }
 #falconry-controls {
   position:fixed;z-index:12;bottom:22px;left:50%;transform:translateX(-50%);
   width:min(490px,calc(100vw - 32px));box-sizing:border-box;padding:13px 16px 12px;

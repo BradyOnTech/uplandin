@@ -27,8 +27,10 @@ If the page cannot load, check that the server is still running, the phone is us
 | Walk | Drag on the left side; movement starts at your thumb's initial position. |
 | Run | Drag farther until the movement ring says Run. Move back inward to walk. |
 | Look | Drag on the right side with a second thumb. |
-| Aim | Tap Aim to raise or lower the shotgun. |
-| Fire | Tap Fire, or hold and drag on Fire to track, then release to shoot. |
+| Raise, swing and fire | Hold Shotgun to shoulder it, drag with the same thumb, then release to shoot. Tracking continues outside the button. |
+| Follow-up shot | Press and swing again. The gun stays raised for 2.5 seconds after release, and while the next shot is held. |
+| Cancel or lower | Release over Lower to cancel a held shot; tap Lower to put the gun down. |
+| Sensitivity | Pause and adjust Look speed and Shotgun swing separately (0.5–2.0×). |
 | Reload | Tap Reload. |
 | Dog | Tap Whistle to recall; tap again from heel to send hunting. |
 | Falconry | Use Slip, Recall hawk, Pick up and Watch hawk as they become available. |
@@ -60,3 +62,20 @@ If the page cannot load, check that the server is still running, the phone is us
 - This HTTP preview is for local playtesting. HTTPS installation and offline/PWA behavior were not validated in this pass. Vite describes preview as a local production-build check, not a public production server: [static deployment guide](https://vite.dev/guide/static-deploy).
 
 Touch cancellation follows the browser's pointer lifecycle, including interruptions such as rotation: [MDN pointercancel](https://developer.mozilla.org/en-US/docs/Web/API/Element/pointercancel_event).
+
+**Combined shotgun control refinement**
+
+The default now uses a single shooting thumb. Movement stays independent. The existing gun mount, action cooldown, reload, shot pattern and manual lead rules still apply. A very early release uses the existing short mount buffer; Lower, pause, reload or an input reset cancels that pending shot. No target snapping or automatic firing was added.
+
+| Before | After |
+| --- | --- |
+| Separate Aim tap before Fire tracking. | Shotgun shoulders on press, swings on drag, fires one shot on release. Mouse preview and keyboard activation of the button follow the same intent. |
+| Small 72px firing button. | 108px control with thumb-friendly spacing in both orientations and updated field instructions. Portrait End hunt and look hints move clear of the shooting controls. |
+| No explicit gesture cancel target. | Lower doubles as a release-to-cancel target, with highlight and cancel feedback. Tapping Lower also cancels a held shot; leaving the target before release allows tracking to continue. |
+| Gun remained raised until manually lowered. | It stays raised for a 2.5-second follow-up window and throughout an active hold, then lowers. |
+| Generic Fire label. | The control reports raising, ready/release, action cycling, empty and reloading states. |
+| Fixed look and firing-thumb sensitivity. | Independently saved Look speed and Shotgun swing settings in the pause menu. Falconry shows only Look speed. |
+| Latest swing could wait until the next animation frame. | A shooting-thumb drag updates camera pose immediately so a same-frame release uses the latest direction. |
+| Pointer cancellation coverage only. | Added gesture cancellation, mouse preview, repeat-release suppression, real gun follow-up/mount/reload/reset coverage and independent sensitivity checks. |
+
+Validation: 107 test files / 817 tests passed; production build passed. Desktop browser review at phone viewport sizes verified combined firing, release over Lower preserving ammunition, and the responsive layout. This is still browser review with mouse input; the feel of the revised controls on a physical phone needs another playtest.

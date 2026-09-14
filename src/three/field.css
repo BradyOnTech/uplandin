@@ -133,6 +133,20 @@ body.touch-controls-active #field-map-toggle { top:max(64px,calc(env(safe-area-i
 #touch-controls .fire { width:72px; height:72px; touch-action:none; }
 #touch-controls .fire small { display:block; font-size:9px; margin-top:3px; }
 #touch-controls .fire[data-tracking=true] { background:#f0d69c; box-shadow:0 0 0 3px #fff8,inset 0 2px 5px #0002; }
+/* One shooting thumb: hold, swing beyond the button, release. */
+body.touch-controls-active:not(.falconry-hunt) #touch-controls { grid-template-columns:80px 108px; align-items:center; bottom:max(24px,env(safe-area-inset-bottom)); }
+body.touch-controls-active:not(.falconry-hunt) #touch-controls .fire { width:108px; height:108px; font-size:15px; padding:12px; }
+#touch-controls small { display:block; font-size:10px; line-height:1.35; margin-top:5px; }
+body.touch-controls-active #touch-controls .fire small { font-size:10px; }
+#touch-controls #touch-lower { min-height:64px; background:#243a31e6; }
+#touch-lower[data-canceling=true] { outline:3px solid #efc593; background:#704c35 !important; }
+#touch-controls .fire .shot-cancel-hint,#touch-controls .fire[data-canceling=true] #touch-shot-status { display:none; }
+#touch-controls .fire[data-canceling=true] .shot-cancel-hint { display:block; }
+#touch-controls .fire[data-canceling=true] { background:#e6b990; }
+.touch-sensitivity { margin:12px 0 18px; padding:12px 14px; background:#ffffff06; border-radius:12px; }
+.touch-sensitivity label { display:flex; justify-content:space-between; gap:16px; font-size:13px; }
+.touch-sensitivity input { display:block; width:100%; min-height:44px; margin:0; accent-color:var(--gold); }
+.touch-sensitivity output { color:var(--gold); }
 
 /* Landscape phones need a clear horizon and room for a tracking thumb. */
 body.touch-controls-active #field-map-toggle kbd,body.touch-controls-active #field-map-close kbd { display:none; }
@@ -170,7 +184,8 @@ body.touch-controls-active #field-options select,body.touch-controls-active #sho
 @media (orientation:portrait) {
   body.touch-controls-active #field-overlay { padding:max(16px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left)); }
   body.touch-controls-active .field-card { padding:24px; }
-  body.touch-controls-active #touch-look-guide { bottom:166px; right:24px; left:auto; }
+  body.touch-controls-active #touch-look-guide { bottom:210px; right:24px; left:auto; }
+  body.touch-controls-active #end-hunt { top:max(116px,calc(env(safe-area-inset-top) + 104px)); bottom:auto; right:max(12px,env(safe-area-inset-right)); padding:10px 12px; }
 }
 
 /* Property atlas: quiet field notes around a light, legible topographic sheet. */

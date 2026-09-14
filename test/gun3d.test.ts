@@ -8,6 +8,49 @@ vi.mock('../src/audio', () => ({ playShot: vi.fn(), unlockAudio: vi.fn(), playAc
 describe('3D shotgun action', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it.each(['normal', 'lower', 'pause', 'input-reset', 'reload'])('handles the combined touch mount and trigger: %s', scenario => {
+    vi.stubGlobal('window', new EventTarget()); vi.stubGlobal('location', {search:''});
+    vi.stubGlobal('document', {getElementById:()=>null,querySelector:()=>null});
+    const hunt={huntState:()=>({gunId:'over-under',birds:[]}),dog:()=>({state:'quartering'}),dogCount:()=>1};
+    const ctx={scene:new THREE.Scene(),camera:new THREE.PerspectiveCamera(),renderer:{domElement:new EventTarget()},
+      events:new EventTarget(),quality:'lite',timeOfDay:'morning',time:1,paused:false,
+      get:(id:string)=>({hunt3d:hunt,birds:{shotTargets:()=>[]},terrain:{heightAt:()=>0}}[id])} as unknown as Ctx;
+    const gun=new GunSystem();gun.init(ctx);
+    const action=(detail:string)=>ctx.events.dispatchEvent(Object.assign(new Event('hunt-action'),{detail}));
+    const step=(dt:number)=>{ctx.time+=dt;gun.update(ctx,dt);};
+    action('touch-mount');step(.2);
+    expect(gun.touchShotStatus(ctx)).toBe('Release to shoot');expect(gun.shellsRemaining()).toBe(2);
+    action('touch-fire');expect(gun.shellsRemaining()).toBe(1);
+    // Duplicate release cannot fire again, even after the action has cycled.
+    step(.6);action('touch-fire');expect(gun.shellsRemaining()).toBe(1);
+    expect(gun.mountProgress()).toBe(1);expect(gun.touchShotStatus(ctx)).toBe('Ready for next shot');
+    action('touch-mount');step(3); // Holding the next swing never times out.
+    expect(gun.mountProgress()).toBe(1);
+    if(scenario==='pause'||scenario==='input-reset')ctx.events.dispatchEvent(new Event(scenario));
+    else if(scenario!=='normal')action(scenario);
+    action('touch-fire');
+    expect(gun.shellsRemaining()).toBe(scenario==='normal'?0:1);
+    step(3);expect(gun.mountProgress()).toBe(0);
+    expect(gun.isReloading()).toBe(false);
+    gun.dispose(ctx);
+  });
+
+  it('honors an early release during mounting but a lower action cancels the queued shot',()=>{
+    vi.stubGlobal('window', new EventTarget());vi.stubGlobal('location',{search:''});
+    vi.stubGlobal('document',{getElementById:()=>null,querySelector:()=>null});
+    const ctx={scene:new THREE.Scene(),camera:new THREE.PerspectiveCamera(),renderer:{domElement:new EventTarget()},
+      events:new EventTarget(),quality:'lite',timeOfDay:'morning',time:1,paused:false,
+      get:(id:string)=>({hunt3d:{huntState:()=>({gunId:'semi-auto',birds:[]})},birds:{shotTargets:()=>[]},terrain:{heightAt:()=>0}}[id])} as unknown as Ctx;
+    const gun=new GunSystem();gun.init(ctx);
+    const action=(detail:string)=>ctx.events.dispatchEvent(Object.assign(new Event('hunt-action'),{detail}));
+    action('touch-mount');action('touch-fire');expect(gun.shellsRemaining()).toBe(3);
+    ctx.time+=.15;gun.update(ctx,.15);expect(gun.shellsRemaining()).toBe(2);
+    action('lower');ctx.time+=.2;gun.update(ctx,.2);
+    action('touch-mount');action('touch-fire');action('lower');
+    ctx.time+=.15;gun.update(ctx,.15);expect(gun.shellsRemaining()).toBe(2);
+    gun.dispose(ctx);
+  });
+
   it('keeps recoil strength and recovery identical through fast, slow and uneven frames', () => {
     const advance = (steps: number[]) => {
       const gun = new GunSystem(); gun.kick(1);

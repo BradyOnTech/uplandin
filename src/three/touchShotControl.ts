@@ -4,40 +4,54 @@ export function bindTouchShotControl(button: HTMLButtonElement, options: {
   enabled: () => boolean;
   look: (dx: number, dy: number) => void;
   fire: () => void;
+  begin: () => void;
+  cancel: () => void;
+  cancelTarget: HTMLElement;
   events: EventTarget;
 }): void {
   let pointer: { id: number; x: number; y: number } | null = null;
-  let suppressTouchClick = false;
+  let suppressPointerClick = false;
+  const overCancel = (event: PointerEvent) => {
+    const box = options.cancelTarget.getBoundingClientRect();
+    return event.clientX >= box.left && event.clientX <= box.right
+      && event.clientY >= box.top && event.clientY <= box.bottom;
+  };
   const clear = () => {
     const id = pointer?.id; pointer=null; button.removeAttribute('data-tracking');
+    button.removeAttribute('data-canceling'); options.cancelTarget.removeAttribute('data-canceling');
     if (id !== undefined && button.hasPointerCapture(id)) button.releasePointerCapture(id);
   };
+  const cancel = () => { clear(); options.cancel(); };
   button.addEventListener('pointerdown', event => {
-    if(event.pointerType!=='touch'){suppressTouchClick=false;return;}
-    if(!options.enabled() || pointer)return;
-    event.preventDefault();suppressTouchClick=true;
+    if(event.button > 0 || !options.enabled() || pointer)return;
+    event.preventDefault();suppressPointerClick=true;
     pointer={id:event.pointerId,x:event.clientX,y:event.clientY};
     button.setPointerCapture(event.pointerId);button.setAttribute('data-tracking','true');
+    options.begin();
   },{signal:options.signal});
   button.addEventListener('pointermove',event=>{
     if(pointer?.id!==event.pointerId || !options.enabled())return;
-    event.preventDefault();options.look(event.clientX-pointer.x,event.clientY-pointer.y);
+    event.preventDefault();
+    const canceling = overCancel(event);
+    button.setAttribute('data-canceling', String(canceling));
+    options.cancelTarget.setAttribute('data-canceling', String(canceling));
+    if (!canceling) options.look(event.clientX-pointer.x,event.clientY-pointer.y);
     pointer.x=event.clientX;pointer.y=event.clientY;
   },{signal:options.signal});
   button.addEventListener('pointerup',event=>{
     if(pointer?.id!==event.pointerId)return;
-    event.preventDefault();clear();if(options.enabled())options.fire();
+    event.preventDefault();
+    if (!options.enabled() || overCancel(event)) cancel();
+    else { clear(); options.fire(); }
   },{signal:options.signal});
   for(const name of ['pointercancel','lostpointercapture'])button.addEventListener(name,event=>{
-    if(pointer?.id===(event as PointerEvent).pointerId)clear();
+    if(pointer?.id===(event as PointerEvent).pointerId)cancel();
   },{signal:options.signal});
-  // A touch release can also synthesize click. Keyboard activation (detail=0)
-  // and a subsequent mouse pointer remain available without a duplicate shot.
+  // Pointer releases can synthesize click; keyboard activation remains available.
   button.addEventListener('click',event=>{
-    if(suppressTouchClick && event.detail>0)return;
-    if(options.enabled())options.fire();
+    if(suppressPointerClick && event.detail>0)return;
+    if(options.enabled() && !pointer) { options.begin(); options.fire(); }
   },{signal:options.signal});
-  options.events.addEventListener('pause',clear,{signal:options.signal});
-  options.events.addEventListener('input-reset',clear,{signal:options.signal});
-  options.signal.addEventListener('abort',clear,{once:true});
+  for (const name of ['pause','input-reset','touch-shot-cancel']) options.events.addEventListener(name,cancel,{signal:options.signal});
+  options.signal.addEventListener('abort',cancel,{once:true});
 }
