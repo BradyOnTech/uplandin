@@ -28,7 +28,7 @@ export function beginHunt(
   fieldData: HuntFieldData,
   dropPointId: string,
 ): void {
-  if (loadGameplayMode() === '3d') {
+  if (loadGameplayMode() === '3d' || (launch.kind === 'quick' && launch.method === 'goshawk')) {
     location.assign(build3DHuntHref(launch, dropPointId));
     return;
   }

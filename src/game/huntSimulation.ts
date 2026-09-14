@@ -76,6 +76,9 @@ export interface HuntSimulationInput {
   hunterRunning?: boolean;
   recall?: boolean;
   whistleRange?: number;
+  /** Hold the finished dog at heel while its hawk flies or holds quarry. */
+  holdDogs?: boolean;
+  guardRaptor?: Vec2;
   /** Presentation-scale movement overrides; gameplay rules stay internal. */
   dogMotion?: readonly HuntDogMotion[];
 }
@@ -147,7 +150,7 @@ export class HuntSimulation {
     const huntStyle = doctrine.style;
     // The 2D scene handles cast-off itself. Continuous play uses the same
     // whistle once the pack is at heel, without immediately recalling it.
-    const castOff = this.continuousEncounter && input.recall && this.dogs.every(dog => dog.state === 'heel');
+    const castOff = this.continuousEncounter && !input.holdDogs && !input.guardRaptor && input.recall && this.dogs.every(dog => dog.state === 'heel');
     if (castOff) for (const dog of this.dogs) dog.castOff();
 
     updateBirds(dtMs, this.hunt.birds, leadDog.pos, {
@@ -187,6 +190,8 @@ export class HuntSimulation {
         recallArriveRange: spatialEncounter ? 1.5 / PROPERTY_PX_TO_M : undefined,
         heelFollowRange: spatialEncounter ? 2 / PROPERTY_PX_TO_M : undefined,
         hunterPos: this.hunt.hunterPos,
+        holdForRaptor: input.holdDogs,
+        guardRaptor: input.guardRaptor,
         windAngle: this.hunt.wind,
         scentMult: wind.scent * weather.scent,
         recall: !castOff && (input.recall ?? false),
@@ -401,6 +406,22 @@ export class HuntSimulation {
     return event;
   }
 
+  /** A bound quarry belongs to the hawk until the handler makes in. */
+  bindQuarry(birdId: number, position: Vec2): boolean {
+    const bird = this.bird(birdId);
+    if (this.hunt.huntingMethod !== 'goshawk' || bird?.state !== 'flushed') return false;
+    bird.state = 'held'; bird.pos = { ...position };
+    this.hunt.downed++;
+    return true;
+  }
+
+  recoverQuarry(birdId: number): boolean {
+    const bird = this.bird(birdId);
+    if (this.hunt.huntingMethod !== 'goshawk' || bird?.state !== 'held') return false;
+    bird.state = 'retrieved';
+    return true;
+  }
+
   resolveBird(birdId: number, outcome: 'downed' | 'escaped', landing?: Vec2): boolean {
     const bird = this.hunt.birds.find((candidate) => candidate.id === birdId);
     if (!bird || bird.state !== 'flushed') return false;
@@ -476,7 +497,7 @@ export class HuntSimulation {
     const escapedIds: number[] = [];
     for (const id of rise.birdIds) {
       const bird = this.hunt.birds.find((candidate) => candidate.id === id);
-      if (bird?.state === 'downed' || bird?.state === 'carried' || bird?.state === 'retrieved') {
+      if (bird?.state === 'downed' || bird?.state === 'carried' || bird?.state === 'held' || bird?.state === 'retrieved') {
         downedIds.push(id);
       }
       else if (bird?.state === 'escaped') escapedIds.push(id);

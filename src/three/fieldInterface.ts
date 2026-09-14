@@ -1,7 +1,8 @@
+import { isFalconryPractice } from '../game/falconryPractice';
 import { bindTouchActionControl } from './touchActionControl';
 import { bindTouchShotControl } from './touchShotControl';
 import { HUNT_CHALLENGES, HUNT_CHALLENGE_KEY, parseHuntChallenge } from '../game/huntChallenge';
-import { parseHuntLaunch, resolveThreeHuntChallenge } from '../game/gameplayMode';
+import { parseHuntLaunch, resolveThreeHuntChallenge, resolveThreeHuntProfile } from '../game/gameplayMode';
 import { GUNS, getGun, unlockedGuns } from '../game/guns';
 import { loadCareer, saveCareer } from '../game/career';
 import { loadQuickConfig, saveQuickConfig } from '../game/quick';
@@ -27,6 +28,7 @@ export class FieldInterface {
   private touch = matchMedia('(pointer: coarse)').matches;
   private capture = new URLSearchParams(location.search).has('capture');
   private launch = parseHuntLaunch(location.search);
+  private falconry = resolveThreeHuntProfile(location.search).quick?.huntingMethod === 'goshawk';
   constructor(private engine: Engine, landscape: LandscapeModel) {
     const signal = this.abort.signal;
     document.body.classList.toggle('capture', this.capture);
@@ -40,6 +42,19 @@ export class FieldInterface {
     const method = document.getElementById('field-method');
     if (method) method.textContent = doctrine.method;
     this.overlay.querySelector('.field-tip')!.textContent=doctrine.tip;
+    if (this.falconry) {
+      document.body.classList.add('falconry-hunt');
+      document.getElementById('field-description')!.textContent='A goshawk on the fist. A finished pointing dog. Work the cattail edges together.';
+      document.getElementById('field-method')!.textContent='GOSHAWK · FROM THE FIST · QUICK HUNT';
+      const instructions=document.getElementById('field-instructions')!;
+      instructions.innerHTML='<p><kbd>W A S D</kbd> Walk · <kbd>Q</kbd> Whistle dog · <kbd>M</kbd> Survey map</p><p><kbd>Space</kbd> Slip · <kbd>R</kbd> Recall hawk · <kbd>F</kbd> Watch hawk · <kbd>E</kbd> Pick up</p><p>Walk in on the point. Face a rising bird and slip your goshawk. The dog comes to heel while the hawk flies. On a catch, the dog lies beside the hawk. Walk within arm’s reach and pick the hawk up onto your fist.</p><p class="field-tip">After the hawk returns, whistle to send the dog hunting again. Touch: drag left to walk, right to look; use the hawk buttons below.</p>';
+      document.getElementById('controls')!.innerHTML='WASD move · Shift run · Q whistle · M survey map<br>Space slip · R recall hawk · F watch hawk · E pick up';
+    }
+    if (isFalconryPractice(location.search)) {
+      document.getElementById('field-title')!.textContent='Cattail Coverts · Falconry practice';
+      document.getElementById('field-description')!.textContent='One planted rooster, about 31 yards ahead. Your dog starts in scent and establishes the point. Walk in, face the flush, and slip.';
+      this.overlay.querySelector('.field-tip')!.textContent='This drill uses a holding bird and a favorable wind. Catches and escapes play out normally. Press T in the field to restart, or use Restart drill after the flight.';
+    }
     const mapToggle=document.getElementById('field-map-toggle') as HTMLButtonElement|null;
     if (mapToggle) mapToggle.hidden=this.capture || !this.entered;
     const property=document.getElementById('property-setting') as HTMLSelectElement;
@@ -135,7 +150,7 @@ export class FieldInterface {
     const sound = document.getElementById('sound-setting') as HTMLInputElement;
     const challenge = document.getElementById('challenge-setting') as HTMLSelectElement;
     const challengeHelp = document.getElementById('challenge-help')!;
-    document.getElementById('challenge-options')!.hidden = false;
+    document.getElementById('challenge-options')!.hidden = isFalconryPractice(location.search);
     challenge.value = resolveThreeHuntChallenge(location.search);
     challengeHelp.textContent = HUNT_CHALLENGES[parseHuntChallenge(challenge.value)].description;
     challenge.addEventListener('change', () => {
@@ -174,7 +189,7 @@ export class FieldInterface {
     }
   }
   private refreshShotgunMenu(): void {
-    if (!this.readyState) return;
+    if (!this.readyState || this.falconry) return;
     const gun = getGun(this.engine.ctx.get<GunSystem>('gun').equippedGunId());
     const choices = this.launch?.kind === 'career' ? unlockedGuns(loadCareer().hunter.level) : GUNS;
     const select = document.getElementById('shotgun-setting') as HTMLSelectElement;
@@ -191,7 +206,7 @@ export class FieldInterface {
     rack.href = `./shotguns3d.html?gun=${encodeURIComponent(gun.id)}`;
   }
   private changeShotgun(id: string): void {
-    if (!this.readyState || !this.engine.ctx.paused || this.complete || this.lostContext) return;
+    if (this.falconry || !this.readyState || !this.engine.ctx.paused || this.complete || this.lostContext) return;
     // Read the current save at the moment of choice; opening the rack or
     // another tab must not make this menu write back an old career snapshot.
     const career = this.launch?.kind === 'career' ? loadCareer() : null;

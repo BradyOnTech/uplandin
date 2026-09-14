@@ -307,6 +307,8 @@ export interface DogEnv {
   scentMult?: number;
   /** A whistle blast this tick. Never breaks a point or a retrieve. */
   recall?: boolean;
+  holdForRaptor?: boolean;
+  guardRaptor?: Vec2;
   /** How far the recall carries; GPS+map gear recalls at any range. */
   whistleRange?: number;
   /** Where a packmate stands on point — a finished dog stops and backs. */
@@ -371,6 +373,7 @@ export class Dog {
    * Pure presentation — does not affect sim math.
    */
   gait: DogGait = 'run';
+  raptorDuty: 'approaching' | 'guarding' | null = null;
   /** True for a brief beat when scent first hits — head up, freeze a step. */
   scentCheck = false;
   /** Close-timber scent approach pauses until the handler can follow. */
@@ -505,6 +508,29 @@ export class Dog {
     // Default presentation; branches below overwrite for cast/track/still.
     this.gait = 'run';
     this.scentCheck = false;
+
+    this.raptorDuty = null;
+    if (env.guardRaptor) {
+      this.pointedBirdId = null; this.markingBirdIds = []; this.checkedSearchPosition = null;
+      this.resetScentApproach();
+      const d = dist(this.pos, env.guardRaptor);
+      this.raptorDuty = d <= .45 / PROPERTY_PX_TO_M ? 'guarding' : 'approaching';
+      this.state = this.raptorDuty === 'guarding' ? 'heel' : 'recalled';
+      this.gait = this.raptorDuty === 'guarding' ? 'still' : 'trot';
+      if (this.raptorDuty === 'approaching') {
+        this.heading = Math.atan2(env.guardRaptor.y-this.pos.y,env.guardRaptor.x-this.pos.x);
+        this.advance(this.heading, Math.min(d,RECALL_SPEED*movementDt));
+      } else this.staminaMs = Math.min(this.maxStaminaMs,this.staminaMs+dtMs*HEEL_RECOVER_MULT);
+      return;
+    }
+    if (env.holdForRaptor) {
+      this.checkedSearchPosition = null;
+      if (this.state !== 'heel' && this.state !== 'recalled') {
+        this.state = 'recalled'; this.pointedBirdId = null;
+        this.markingBirdIds = []; this.checkedSearchPosition = null;
+        this.resetScentApproach();
+      }
+    }
 
     // The whistle only carries so far — a big-running dog can be out of earshot.
     const hearsWhistle = !env.hunterPos || dist(this.pos, env.hunterPos) <= (env.whistleRange ?? WHISTLE_RANGE);

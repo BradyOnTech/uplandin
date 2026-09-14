@@ -1,3 +1,6 @@
+import { isFalconryPractice, FALCONRY_PRACTICE } from '../../game/falconryPractice';
+import { huntStreamSeed, parseHuntSeed } from '../../game/huntSeed';
+import { birdFlightExpired } from '../../game/birdFlightLifetime';
 import { buildPheasantBody, buildPheasantWing, buildPheasantTail, posePheasantFoldedWings, pheasantWingbeat } from '../assets/pheasant';
 import { createQuailFlight, selectQuailEscapeCover, stepQuailFlight, type QuailFlight } from '../quailFlight';
 import { QUAIL_WORLD_SCALE, quailLaunchDelay } from '../quailPresentation';
@@ -17,6 +20,7 @@ import {
 } from '../../game/shot';
 import { getSpecies, SPECIES, type SpeciesConfig } from '../../game/species';
 import { isSpatialEncounterArea } from '../../game/huntSimulation';
+import { evadeGoshawk, type QuarryTarget } from '../../game/falconry';
 import { huntingDoctrine } from '../../game/huntDoctrine';
 import type { Ctx, Subsystem } from '../engine';
 import { P, fieldTimeOfDay, type TimeOfDay } from '../palette';
@@ -188,11 +192,8 @@ const CLIMB_RAMP_MS = 1300;
 /** Capture covey stage: the full covey launches clustered inside ~0.8 s. */
 const CAPTURE_STAGGER_MS = 800;
 
-/** A bird this far from the hunter (m) has left the stage. */
-const GONE_RANGE = 80;
 /** A glide that touches grass after this long has put down — gone. */
 const LAND_MIN_AIR_MS = 1200;
-const MAX_AIR_MS = 15000;
 
 /** Pool = the airborne budget. Gameplay never holds more than a wave +
  *  sleepers aloft; the pool is sized for the capture covey stage, where
@@ -406,6 +407,7 @@ export class BirdsSystem implements Subsystem {
   private qTail = 0;
   private riseActive = false;
   private riseSeq = 0;
+  private riseSeed = RISE_SEED;
   private riseRng: () => number = mulberry32(RISE_SEED);
   private bias: FlushBias = { min: 0.9, max: 1.15, kind: 'earned' };
   private driftPx = 0;
@@ -459,6 +461,10 @@ export class BirdsSystem implements Subsystem {
   private carryW = { x: 0, z: 0 };
 
   init(ctx: Ctx): void {
+    // Vary practice flights with the visit while preserving exact URL replays
+    // and the established flight streams of other hunt modes.
+    this.riseSeed = isFalconryPractice(location.search)
+      ? huntStreamSeed(parseHuntSeed(location.search) ?? FALCONRY_PRACTICE.seed, RISE_SEED) : RISE_SEED;
     this.listener = ctx.camera;
     this.coverEvents = ctx.events;
     this.frozen = new URLSearchParams(location.search).has('capture');
@@ -1084,6 +1090,8 @@ export class BirdsSystem implements Subsystem {
           s.vzW *= k;
         }
       }
+      const hawk = this.hunt.falconry;
+      if (hawk?.targetId === s.simId && (hawk.phase === 'launching' || hawk.phase === 'chasing')) evadeGoshawk(s, s.simId, hawk.position);
       this.updatePheasantBank(s, dt);
       s.x += s.vxW * dt;
       s.z += s.vzW * dt;
@@ -1103,7 +1111,8 @@ export class BirdsSystem implements Subsystem {
       }
       const rx = s.x - flight.hunterX;
       const rz = s.z - flight.hunterZ;
-      if ((!s.spatialFlight?.target && rx * rx + rz * rz > GONE_RANGE * GONE_RANGE) || s.airMs > MAX_AIR_MS) {
+      const pursued = hawk?.targetId === s.simId && (hawk.phase === 'launching' || hawk.phase === 'chasing');
+      if (birdFlightExpired(rx * rx + rz * rz, s.airMs, !!s.spatialFlight?.target, pursued)) {
         s.status = 'done';
         s.root.visible = false;
         this.hunt.resolveBird(s.simId, 'escaped');
@@ -1164,7 +1173,7 @@ export class BirdsSystem implements Subsystem {
     this.riseSeq++;
     this.riseMs = 0;
     this.lastLaunchMs = -Infinity;
-    this.riseRng = mulberry32((RISE_SEED + this.riseSeq * 0x9e3779b9) >>> 0);
+    this.riseRng = mulberry32((this.riseSeed + this.riseSeq * 0x9e3779b9) >>> 0);
     const info = this.hunt.lastFlushInfo();
     this.bias = this.spatialEncounter ? {min:.9,max:1.15,kind:'earned'} : flushBias(info ? info.distPx : 25, this.riseRng);
     this.driftPx = (this.riseRng() - 0.5) * DRIFT_SPAN_PX;
@@ -1526,6 +1535,17 @@ export class BirdsSystem implements Subsystem {
       }
     }
     return false;
+  }
+
+  quarryTargets(): QuarryTarget[] {
+    return this.slots.filter(s => s.status === 'flying').map(s => ({ id:s.simId,x:s.x,y:s.y,z:s.z,vx:s.vxW,vy:s.vyW,vz:s.vzW }));
+  }
+
+  holdQuarry(id: number, x: number, y: number, z: number): void {
+    const slot = this.slots.find(s => s.simId === id && s.status !== 'idle' && s.status !== 'done');
+    if (!slot) return;
+    slot.status = 'grounded'; slot.x=x; slot.y=y; slot.z=z;
+    slot.launchSound?.stop(); slot.launchSound=undefined;
   }
 
   /** Live positions for swept shot collision; callers must copy retained samples. */

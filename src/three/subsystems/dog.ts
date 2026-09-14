@@ -2037,6 +2037,14 @@ export class DogSystem implements Subsystem {
         tL[0] = THREE.MathUtils.lerp(NEUTRAL_L[0], 1.9, p);
         tU[2] = tU[3] = THREE.MathUtils.lerp(NEUTRAL_U[2], -0.35, p);
         tL[2] = tL[3] = THREE.MathUtils.lerp(NEUTRAL_L[2], 0.22, p);
+      } else if (sd.raptorDuty === 'guarding') {
+        // Sphinx-like down stay: forelegs extended, hocks folded, head up.
+        // Preserve the existing ground-contact correction and blend into it.
+        rate = 4; tBob = -.28 + Math.sin(time * 2.0) * .002;
+        tPitch = 0; tRoll = 0; tNeck = -.12; tHeadP = .04;
+        tHeadY = Math.sin(time * .55) * .30; tTailP = -.35; tTailY = 0;
+        tU[0] = tU[1] = 1.22; tL[0] = tL[1] = .05;
+        tU[2] = tU[3] = -1.12; tL[2] = tL[3] = -2.3;
       } else if (state === 'retrieving') {
         // Mouthing the fall: head buried, tail level, hind end high.
         tNeck = 1.05;

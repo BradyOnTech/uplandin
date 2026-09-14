@@ -8,6 +8,7 @@ import { regionOfArea } from '../game/regions';
 import {
   cycleId,
   loadQuickConfig,
+  normalizeQuickConfig,
   saveQuickConfig,
   WEATHER_CHOICES,
   WIND_CHOICES,
@@ -40,6 +41,7 @@ interface RowView {
   value: MenuText;
   hint: MenuText;
   art?: Phaser.GameObjects.Image;
+  arrows: MenuText[];
 }
 
 function quickBreedName(id: string): string {
@@ -187,14 +189,19 @@ export class QuickScene extends Phaser.Scene {
         step: (dir) => { this.cfg.weather = cycleId(WEATHER_CHOICES, this.cfg.weather, dir); },
       },
       {
-        label: 'GUN',
-        value: () => quickGunName(this.cfg.gunId),
+        label: 'HUNT',
+        value: () => this.cfg.huntingMethod === 'goshawk' ? 'GOSHAWK · FROM THE FIST' : quickGunName(this.cfg.gunId),
         hint: () => {
+          if (this.cfg.huntingMethod === 'goshawk') return '3D · FINISHED GSP · CATTAIL COVERTS';
           const gun = getGun(this.cfg.gunId);
           const action = gun.cooldownMs === 0 ? 'DOUBLE' : gun.cooldownMs <= 250 ? 'QUICK' : 'PUMP';
           return `${gun.shells} SHELLS · ${action}`;
         },
-        step: (dir) => { this.cfg.gunId = cycleId(GUNS.map((gun) => gun.id), this.cfg.gunId, dir); },
+        step: (dir) => {
+          const choice = cycleId([...GUNS.map(gun => gun.id), 'goshawk'], this.cfg.huntingMethod === 'goshawk' ? 'goshawk' : this.cfg.gunId, dir);
+          this.cfg.huntingMethod = choice === 'goshawk' ? 'goshawk' : 'shotgun';
+          if (choice !== 'goshawk') this.cfg.gunId = choice;
+        },
       },
       {
         label: 'GEAR',
@@ -213,8 +220,10 @@ export class QuickScene extends Phaser.Scene {
       .on('pointerdown', (pointer: Phaser.Input.Pointer) => this.changeRow(index, pointer.worldX < x ? -1 : 1));
     const rowLabel = menuCopy(this, x - 80, y, row.label, MENU.sage, 7).setOrigin(0, 0.5);
     if (rowLabel.width > 30) rowLabel.setScale(30 / rowLabel.width, 1);
-    menuCopy(this, x - 44, y, '‹', MENU.cream, 13).setOrigin(0.5);
-    menuCopy(this, x + 78, y, '›', MENU.cream, 13).setOrigin(0.5);
+    const arrows = [
+      menuCopy(this, x - 44, y, '‹', MENU.cream, 13).setOrigin(0.5),
+      menuCopy(this, x + 78, y, '›', MENU.cream, 13).setOrigin(0.5),
+    ];
     let art: Phaser.GameObjects.Image | undefined;
     if (index === 0) art = this.add.image(x - 18, y, `menu-dog-thumb-${this.cfg.breedId}`).setDisplaySize(23, 23);
     if (index === 3) art = this.add.image(x - 18, y, `menu-region-${regionOfArea(this.cfg.areaId).id}`).setDisplaySize(23, 23);
@@ -222,20 +231,26 @@ export class QuickScene extends Phaser.Scene {
     const valueX = art ? x + 30 : x + 15;
     const value = menuCopy(this, valueX, y - 7, '', MENU.cream, art ? 6 : 7).setOrigin(0.5, 0);
     const hint = menuCopy(this, valueX, y + 3, '', MENU.sage, 5).setOrigin(0.5, 0);
-    this.views.push({ box, value, hint, art });
+    this.views.push({ box, value, hint, art, arrows });
   }
 
   private changeRow(index: number, dir: 1 | -1): void {
+    if (this.cfg.huntingMethod === 'goshawk' && index < 4) return;
     unlockAudio();
     playBlip();
     this.rows[index].step(dir);
+    this.cfg = normalizeQuickConfig(this.cfg);
     this.refresh();
   }
 
   private refresh(): void {
     this.rows.forEach((row, i) => {
       this.views[i].value.setText(row.value());
-      this.views[i].hint.setText(row.hint?.() ?? '');
+      const fixed = this.cfg.huntingMethod === 'goshawk' && i < 4;
+      this.views[i].hint.setText(fixed ? 'FIXED FOR GOSHAWK HUNT' : row.hint?.() ?? '');
+      this.views[i].arrows.forEach(arrow => arrow.setVisible(!fixed));
+      if (this.views[i].box.input) this.views[i].box.input.cursor = fixed ? 'default' : 'pointer';
+      if (i === 6) this.views[i].art?.setVisible(this.cfg.huntingMethod !== 'goshawk');
       fitRowText(this.views[i].value, this.views[i].art ? 82 : 112);
       fitRowText(this.views[i].hint, this.views[i].art ? 84 : 112);
       if (i === 0) this.views[i].art?.setTexture(`menu-dog-thumb-${this.cfg.breedId}`);
@@ -259,6 +274,6 @@ export class QuickScene extends Phaser.Scene {
     unlockAudio();
     playBlip();
     saveQuickConfig(this.cfg);
-    launchHunt(this, { kind: 'quick' }, { quick: { ...this.cfg } });
+    launchHunt(this, { kind: 'quick', ...(this.cfg.huntingMethod === 'goshawk' ? { method: 'goshawk' as const } : {}) }, { quick: { ...this.cfg } });
   }
 }

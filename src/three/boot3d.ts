@@ -1,3 +1,4 @@
+import { isFalconryPractice, FALCONRY_PRACTICE } from '../game/falconryPractice';
 import { bindFieldPageLifecycle } from './pageLifecycle';
 import { enableOfflineHunts } from './offline';
 import { prepareHuntUrl } from '../game/huntSeed';
@@ -13,6 +14,8 @@ import { DogSystem } from './subsystems/dog';
 import { GeneratedDogSystem } from './subsystems/generatedDog';
 import { RiggedDogSystem } from './subsystems/riggedDog';
 import { BirdsSystem } from './subsystems/birds';
+import { FalconrySystem } from './subsystems/falconry';
+import './falconry.css';
 import { GunSystem } from './subsystems/gun';
 import { HuntHudSystem } from './subsystems/huntHud';
 import { FieldMapSystem } from './subsystems/fieldMap';
@@ -42,6 +45,12 @@ import {
 
 // Persist this visit's seed in its URL so display changes and reloads preserve
 // its hunt. Hunt again removes it; the following boot creates a fresh visit.
+if (isFalconryPractice(location.search)) {
+  const url = new URL(location.href);
+  url.searchParams.set('drop', FALCONRY_PRACTICE.drop);
+  if (!url.searchParams.has('tod')) url.searchParams.set('tod', 'morning');
+  history.replaceState(null, '', url);
+}
 if (['quail-fields', 'pheasant-coverts'].includes(resolveThreeHuntArea(location.search).id)) {
   const seeded = prepareHuntUrl(location.href);
   if (seeded.href !== location.href) history.replaceState(null, '', seeded);
@@ -82,6 +91,7 @@ if (launchProfile.brace) {
   engine.register(new DogSystem(braceVisualBreed, braceCoat, 1));
 }
 engine.register(new BirdsSystem());
+engine.register(new FalconrySystem());
 engine.register(new GunSystem());
 engine.register(new HuntHudSystem());
 engine.register(new FieldAudioSystem());
@@ -175,6 +185,7 @@ declare global {
           scentProgress: number;
           searchAreaChecked: boolean;
           carryingBirdId: number | null;
+          raptorDuty: 'approaching' | 'guarding' | null;
         };
         hunter: { x: number; y: number; z: number };
         tally: { downed: number; retrieved: number; escaped: number; hidden: number; flushed: number };
@@ -210,6 +221,7 @@ engine.start(fieldInterface.loading).then((started) => {
       for (let tick = 0; tick < ticks; tick++) {
         engine.ctx.get<Hunt3DSystem>('hunt3d').step(engine.ctx, 1);
         engine.ctx.get<BirdsSystem>('birds').step(engine.ctx, 1);
+        engine.ctx.get<FalconrySystem>('falconry').step(engine.ctx, 1000/30);
       }
     },
     stepRise: (ticks) => engine.ctx.get<BirdsSystem>('birds').step(engine.ctx, ticks),
@@ -241,6 +253,7 @@ engine.start(fieldInterface.loading).then((started) => {
           scentProgress: h.dog().scentProgress,
           searchAreaChecked: h.dog().searchAreaChecked,
           carryingBirdId: h.dog().carryingBirdId,
+          raptorDuty: h.dog().raptorDuty,
         },
         hunter: { x: hunterW.x, y: engine.ctx.camera.position.y, z: hunterW.z },
         tally: {
@@ -276,6 +289,7 @@ function readTelemetry() {
   const pointedWorld = pointed ? hunt.simToWorld(pointed.pos.x, pointed.pos.y, { x: 0, z: 0 }) : null;
   return {
     ...engine.telemetry(),
+    falconry: hunt.falconry ? {phase:hunt.falconry.phase, position:{...hunt.falconry.position}, targetId:hunt.falconry.targetId, flights:hunt.falconry.flights, catches:hunt.falconry.catches, recovered:hunt.falconry.recovered, misses:hunt.falconry.misses, recalls:hunt.falconry.recalls} : null,
     camera: { x: camera.position.x, y: camera.position.y, z: camera.position.z,
       yawDeg: camera.rotation.y * 180 / Math.PI, pitchDeg: camera.rotation.x * 180 / Math.PI, fov: camera.fov },
     dog: { ...position, heading: dog.heading, state: dog.state, scentStage: dog.scentStage, carryingBirdId: dog.carryingBirdId },
