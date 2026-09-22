@@ -369,16 +369,36 @@ function sharptailGeography(w: number, h: number) {
   const [south, west] = base.dropPoints;
   const junction = base.trails[0].points.at(-1)!;
   const feature = base.landmarks.find((landmark) => landmark.id === 'area-feature')!.position;
-  const p = (x: number, y: number): Vec2 => ({ x: w * x, y: h * y });
+  const p = (x: number, y: number): Vec2 => ({ x: w * x / 1400, y: h * y / 800 });
+  // Both routes meet south of the facade, outside the building's collision
+  // circle. The barn itself is a destination, not a road-through endpoint.
+  const shackAccess = { x: feature.x, y: feature.y + 18 };
+  // Round the authoritative polyline once. Terrain wear, grass, route mesh,
+  // survey and return navigation consume these same points; no visual-only
+  // spline can wander out of the safe walking corridor.
+  const rounded = (points: Vec2[]): Vec2[] => {
+    const result = [points[0]];
+    for (let i = 1; i < points.length - 1; i++) {
+      const a = points[i - 1], b = points[i], c = points[i + 1];
+      const before = Math.hypot(a.x - b.x, a.y - b.y), after = Math.hypot(c.x - b.x, c.y - b.y);
+      const cut = Math.min(26, before * .22, after * .22);
+      if (cut < .01) { result.push(b); continue; }
+      const entry = { x: b.x + (a.x - b.x) * cut / before, y: b.y + (a.y - b.y) * cut / before };
+      const exit = { x: b.x + (c.x - b.x) * cut / after, y: b.y + (c.y - b.y) * cut / after };
+      result.push(entry, { x: entry.x * .25 + b.x * .5 + exit.x * .25, y: entry.y * .25 + b.y * .5 + exit.y * .25 }, exit);
+    }
+    result.push(points.at(-1)!);
+    return result;
+  };
   return {
     ...base,
-    // Sharptails are hunted by covering distance across open grass, using
-    // long parallel lanes and a broad return instead of tight cover loops.
+    // Follow oblique shoulders and shallow crossings. Broad grass outside
+    // these lanes remains open to long casts and cross-country approaches.
     trails: [
-      { id: 'south-grass-lane', points: [south.position, p(.35, .8), p(.48, .72), p(.62, .66), p(.7, .57), junction] },
-      { id: 'west-grass-lane', points: [west.position, p(.19, .57), p(.32, .5), p(.45, .48), junction] },
-      { id: 'wind-break-edge', points: [junction, p(.64, .38), p(.74, .31), feature] },
-      { id: 'prairie-return', points: [feature, p(.84, .27), p(.9, .4), p(.85, .56), p(.72, .62), junction] },
+      { id: 'south-grass-lane', points: rounded([south.position, p(690, 716), p(655, 640), p(635, 592), p(679, 548), p(738, 531), p(826, 484), p(855, 426), junction]) },
+      { id: 'west-grass-lane', points: rounded([west.position, p(105, 480), p(194, 455), p(283, 428), p(357, 447), p(457, 421), p(540, 405), p(661, 392), junction]) },
+      { id: 'wind-break-edge', points: rounded([junction, p(820, 369), p(866, 330), p(906, 293), p(951, 282), p(982, 327), shackAccess]) },
+      { id: 'prairie-return', points: rounded([shackAccess, p(1074, 316), p(1138, 344), p(1171, 400), p(1212, 449), p(1160, 506), p(1082, 537), p(989, 529), p(914, 480), p(858, 428), junction]) },
     ] satisfies AreaTrail[],
   };
 }
