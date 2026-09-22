@@ -10,6 +10,7 @@ import { loadCareer, saveCareer } from '../../game/career';
 import { Dog, type DogGait, type DogState } from '../../game/dog';
 import { conditionMults, type Condition } from '../../game/conditions';
 import { createThreeHuntSetup } from '../../game/gameplayMode';
+import type { HuntChallenge } from '../../game/huntChallenge';
 import { REVIEW_HUNT_SEED, huntStreamSeed, parseHuntSeed } from '../../game/huntSeed';
 import { settleCareerHunt, type CareerHuntResult } from '../../game/huntResults';
 import {
@@ -192,9 +193,13 @@ export class Hunt3DSystem implements Subsystem {
   private careerSettled = false;
   private gearTier = 0;
   private seedValue?: number;
+  private activeChallenge: HuntChallenge = 'balanced';
   falconry: GoshawkFlight | null = null;
 
   constructor(private readonly landscape: LandscapeModel) {}
+
+  /** Pause can change the next hunt's URL without changing this simulation. */
+  getActiveChallenge(): HuntChallenge { return this.activeChallenge; }
 
   init(ctx: Ctx): void {
     this.frozen = new URLSearchParams(location.search).has('capture');
@@ -202,6 +207,7 @@ export class Hunt3DSystem implements Subsystem {
     const search = new URLSearchParams(location.search);
     if (this.landscape.area.id === 'quail-fields' && parseHuntSeed(search.toString()) === undefined) search.set('seed', String(REVIEW_HUNT_SEED));
     const setup = createThreeHuntSetup(search.toString(), mulberry32(REVIEW_HUNT_SEED));
+    this.activeChallenge = setup.challenge;
     this.seedValue = setup.seed;
     this.flushRng = mulberry32(setup.seed === undefined ? FLUSH_SEED : huntStreamSeed(setup.seed, FLUSH_SEED));
     this.gearTier = setup.gearTier;

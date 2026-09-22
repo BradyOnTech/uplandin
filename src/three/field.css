@@ -95,6 +95,14 @@ progress { width:100%; height:3px; accent-color:var(--gold); margin:8px 0 24px; 
 input { accent-color:var(--gold); }
 .menu-link { font-size:11px; color:#bbc6b6; text-decoration:none; padding:8px 0; }
 #offline-status { display:block; margin-top:12px; font-size:10px; line-height:1.5; color:#bbc6b6; }
+#install-help,#performance-tools { margin-top:14px; color:#c8d0c2; font-size:12px; line-height:1.6; }
+#install-help summary,#performance-tools summary { min-height:44px; cursor:pointer; padding:12px 0; }
+#app-update-panel { margin-top:14px; padding:12px 14px; border-radius:12px; background:#d7b7760b; }
+#app-update-status { margin:0 0 10px; color:#c8d0c2; font-size:12px; line-height:1.5; }
+#app-update-button,#performance-start,#performance-save { min-height:44px; }
+#performance-route { display:block; min-height:44px; width:100%; margin:6px 0 12px; font:inherit; font-size:16px; }
+#app-update-button:disabled { opacity:.6; cursor:default; }
+#hunt-summary #app-update-panel button { margin:0; }
 #hunt-summary { position:fixed; z-index:11; width:min(420px,calc(100vw - 40px)); left:50%; top:50%; transform:translate(-50%,-50%); padding:32px; border-radius:18px; background:rgba(26,42,32,.97); box-shadow:0 24px 100px #0007,inset 0 1px #fff1; }
 #hunt-summary h2 { font:500 32px/1.1 Georgia,serif; margin:0 0 22px; text-transform:none; }
 #hunt-summary-copy { color:#d4dccc; font-size:14px; line-height:1.85; }
@@ -147,6 +155,9 @@ body.touch-controls-active #touch-controls .fire small { font-size:10px; }
 .touch-sensitivity label { display:flex; justify-content:space-between; gap:16px; font-size:13px; }
 .touch-sensitivity input { display:block; width:100%; min-height:44px; margin:0; accent-color:var(--gold); }
 .touch-sensitivity output { color:var(--gold); }
+.touch-sensitivity label:has(select) { align-items:center; margin-top:10px; }
+.touch-sensitivity select { min-height:44px; max-width:65%; font-size:16px; }
+#shot-assistance-help { margin:8px 0 0; font-size:12px; line-height:1.5; color:#c8d0c2; }
 
 /* Landscape phones need a clear horizon and room for a tracking thumb. */
 body.touch-controls-active #field-map-toggle kbd,body.touch-controls-active #field-map-close kbd { display:none; }

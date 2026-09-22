@@ -1,0 +1,17 @@
+{
+  "id": "./index3d.html",
+  "name": "Uplandin 3D",
+  "short_name": "Uplandin 3D",
+  "description": "A field, a good dog, and a hunt worth walking.",
+  "start_url": "./index3d.html?installed=1",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#101410",
+  "theme_color": "#101410",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

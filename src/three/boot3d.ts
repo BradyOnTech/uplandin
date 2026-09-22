@@ -1,6 +1,8 @@
 import { isFalconryPractice, FALCONRY_PRACTICE } from '../game/falconryPractice';
 import { bindFieldPageLifecycle } from './pageLifecycle';
-import { enableOfflineHunts } from './offline';
+import { enableOfflineHunts, prepareInstalledHuntUrl } from './offline';
+import { createPerformanceCapture, type PerformanceCapture } from './performanceCapture';
+import { shotAssistancePreference, mobileSightPicture, touchSensitivity, usesTouchControls } from './inputMode';
 import { prepareHuntUrl } from '../game/huntSeed';
 import { FieldInterface, preferredQuality } from './fieldInterface';
 import { FieldAudioSystem } from './subsystems/fieldAudio';
@@ -45,6 +47,8 @@ import {
 
 // Persist this visit's seed in its URL so display changes and reloads preserve
 // its hunt. Hunt again removes it; the following boot creates a fresh visit.
+const installedLaunch = prepareInstalledHuntUrl(location.href);
+if (installedLaunch.href !== location.href) history.replaceState(null, '', installedLaunch);
 if (isFalconryPractice(location.search)) {
   const url = new URL(location.href);
   url.searchParams.set('drop', FALCONRY_PRACTICE.drop);
@@ -149,6 +153,7 @@ if (coatPicker && coatPanel) {
 
 declare global {
   interface Window {
+    __performance3d?: PerformanceCapture;
     __ready3d?: boolean;
     __api3d?: {
       setTod(tod: TimeOfDay): void;
@@ -275,7 +280,31 @@ engine.start(fieldInterface.loading).then((started) => {
   requestAnimationFrame(() => requestAnimationFrame(() => {
     engine.renderOnce();
     fieldInterface.ready();
-    enableOfflineHunts();
+    enableOfflineHunts({ canReload: () => fieldInterface.canApplyOfflineUpdate(),
+      onUpdateState: state => fieldInterface.offlineUpdateState(state) });
+    if (params.get('diagnostics') === '1') {
+      const capture = createPerformanceCapture({ engine, context: () => ({
+        area: landscape.area.id, drop: landscape.dropPoint.id, seed: params.get('seed'),
+        quality: engine.ctx.quality, timeOfDay: engine.ctx.timeOfDay,
+        challenge: engine.ctx.get<Hunt3DSystem>('hunt3d').getActiveChallenge(),
+        shotAssistance: shotAssistancePreference(),
+        controls: usesTouchControls() ? 'touch' : 'desktop', sight: mobileSightPicture(),
+        sensitivity: { look: touchSensitivity('look'), swing: touchSensitivity('swing') },
+        camera: { x: engine.ctx.camera.position.x, y: engine.ctx.camera.position.y, z: engine.ctx.camera.position.z,
+          yaw: engine.ctx.camera.rotation.y, pitch: engine.ctx.camera.rotation.x, fov: engine.ctx.camera.fov },
+      }) });
+      window.__performance3d = capture;
+      document.getElementById('performance-tools')!.hidden = false;
+      document.getElementById('performance-start')!.addEventListener('click', () => {
+        capture.start((document.getElementById('performance-route') as HTMLInputElement).value);
+        document.getElementById('performance-status')!.textContent = 'Recording. Play the route, then pause and save the report.';
+        document.getElementById('enter-field')!.click();
+      });
+      document.getElementById('performance-save')!.addEventListener('click', () => {
+        capture.download();
+        document.getElementById('performance-status')!.textContent = 'Performance report saved.';
+      });
+    }
     window.__ready3d = true;
   }));
  }).catch((error) => fieldInterface.failed(error));

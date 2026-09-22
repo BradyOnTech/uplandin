@@ -43,6 +43,15 @@ function walkForward(ctx: Ctx, distance: number): void {
 describe('Hunt3DSystem live start', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it('keeps the active challenge when the next-hunt URL changes', () => {
+    vi.stubGlobal('location', { search: '?area=pheasant-coverts&challenge=relaxed&seed=1' });
+    const hunt = liveHunt();
+    hunt.init(liveCtx());
+    expect(hunt.getActiveChallenge()).toBe('relaxed');
+    location.search = '?area=pheasant-coverts&challenge=wild&seed=1';
+    expect(hunt.getActiveChallenge()).toBe('relaxed');
+  });
+
   it('flushes a resting unpointed pheasant when the live camera walks over it', () => {
     vi.stubGlobal('location', { search: '?breed=gsp&area=pheasant-coverts&seed=1' });
     const ctx = liveCtx();

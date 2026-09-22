@@ -10,7 +10,8 @@ import type { PropertyHabitatSystem } from './propertyHabitat';
 import type { LandmarksSystem } from './landmarks';
 import { terrainBlocksShot } from '../shotVisibility';
 import { TravellingShot } from '../shotPattern';
-import { mobileSightPicture, mobileShotFov } from '../inputMode';
+import { mobileSightPicture, mobileShotFov, shotAssistancePreference } from '../inputMode';
+import { resolveShotAssistance, type ShotAssistanceProfile, type ShotTriggerSource } from '../shotAssistance';
 import { createSportingShotgun, type SportingShotgun } from '../assets/shotgun';
 
 /** First-person sporting gun and hands. Every equipped action uses its own
@@ -44,6 +45,11 @@ const SPORT_CARRY_POS = new THREE.Vector3(.19, -.285, -.50);
 const SPORT_CARRY_ROT = new THREE.Vector3(-.08, -.12, -.10);
 const SPORT_MOUNT_ROT = new THREE.Vector3(.085, 0, 0);
 const SPORT_MOUNT_POS = new THREE.Vector3(0, -(.030 * Math.cos(.085) + .766 * Math.sin(.085)), -.34);
+
+interface ShotRequest {
+  readonly source: ShotTriggerSource;
+  readonly assistance: Readonly<ShotAssistanceProfile>;
+}
 
 /** exp-smoothing toward a target; snap = capture determinism. */
 function approach(cur: number, target: number, rate: number, dt: number, snap: boolean): number {
@@ -79,7 +85,7 @@ export class GunSystem implements Subsystem {
 
   /** Aim intent (RMB / staged). The one input the states hang off. */
   private aim = false;
-  private pendingTrigger: { until: number } | null = null;
+  private pendingTrigger: { until: number; request: ShotRequest } | null = null;
   /** Mount timeline 0..1 (linear; pose uses ease()). */
   private mountT = 0;
   private keyboardAim = false;
@@ -152,7 +158,7 @@ export class GunSystem implements Subsystem {
         // In trackpad drag-look mode, a latched keyboard aim leaves the
         // primary button free for looking. Space is the trigger.
         else if (e.button === 0 && this.mountT > 0.7
-          && (!this.keyboardAim || document.pointerLockElement === ctx.renderer.domElement)) this.requestFire(ctx);
+          && (!this.keyboardAim || document.pointerLockElement === ctx.renderer.domElement)) this.requestFire(ctx, 'mouse');
       }, { signal });
       window.addEventListener('mouseup', (e) => {
         if (document.body?.classList.contains('touch-controls-active')) return;
@@ -171,27 +177,33 @@ export class GunSystem implements Subsystem {
           if (!this.aim) this.pendingTrigger = null;
         } else if (event.code === 'Space' || event.key === ' ') {
           event.preventDefault();
-          this.requestFire(ctx);
+          this.requestFire(ctx, 'keyboard');
         } else if (event.key.toLowerCase() === 'r') this.beginReload();
       };
       window.addEventListener('keydown', this.keydownHandler, { signal });
       ctx.events.addEventListener('hunt-action', ((event: CustomEvent) => {
         if (ctx.paused) return;
-        if (event.detail === 'touch-mount') {
+        // The adapter records the initiating pointer, including mouse previews
+        // and keyboard activation. A visible touch HUD is not trigger provenance.
+        const action = typeof event.detail === 'string' ? event.detail : event.detail?.action;
+        const suppliedSource = typeof event.detail === 'object' ? event.detail?.source : undefined;
+        const source: ShotTriggerSource = suppliedSource === 'touch' || suppliedSource === 'mouse'
+          || suppliedSource === 'keyboard' ? suppliedSource : 'other';
+        if (action === 'touch-mount') {
           if (this.isReloading()) return;
           if (this.shells <= 0) { this.beginReload(); return; }
           this.touchHeld = true; this.touchLowerAt = null; this.aim = true;
-        } else if (event.detail === 'touch-fire') {
+        } else if (action === 'touch-fire') {
           if (!this.touchHeld) return;
           this.touchHeld = false; this.touchLowerAt = ctx.time + 2.5;
-          this.requestFire(ctx);
-        } else if (event.detail === 'mount') { this.touchLowerAt = null; this.aim = true; }
-        else if (event.detail === 'lower') {
+          this.requestFire(ctx, source);
+        } else if (action === 'mount') { this.touchLowerAt = null; this.aim = true; }
+        else if (action === 'lower') {
           this.touchHeld = false; this.touchLowerAt = null;
           this.aim = this.keyboardAim = false; this.pendingTrigger = null;
         }
-        else if (event.detail === 'reload') this.beginReload();
-        else if (event.detail === 'fire') this.requestFire(ctx);
+        else if (action === 'reload') this.beginReload();
+        else if (action === 'fire') this.requestFire(ctx, source);
       }) as EventListener, { signal });
       const lowerGun = () => {
         this.touchHeld = false; this.touchLowerAt = null;
@@ -384,16 +396,19 @@ export class GunSystem implements Subsystem {
     return true;
   }
 
-  private requestFire(ctx: Ctx): void {
+  private requestFire(ctx: Ctx, source: ShotTriggerSource): void {
     if (ctx.paused || this.isReloading()) return;
+    const request: ShotRequest = Object.freeze({ source, assistance: resolveShotAssistance(
+      source === 'touch' ? this.hunt.getActiveChallenge() : 'balanced', shotAssistancePreference(), source,
+    ) });
     if (this.aim && this.mountT <= .7) {
       // Honor one deliberate trigger during this short mount, regardless of bird activity.
-      this.pendingTrigger ??= { until: ctx.time + .25 };
+      this.pendingTrigger ??= { until: ctx.time + .25, request };
     }
     const hint = this.mountT <= .7
       ? this.aim ? 'RAISING GUN' : 'F TO AIM · SPACE TO SHOOT'
       : null;
-    if (!hint) { this.pendingTrigger = null; this.fire(ctx); return; }
+    if (!hint) { this.pendingTrigger = null; this.fire(ctx, request); return; }
     if (this.shotCallout) {
       this.shotCallout.textContent = hint;
       this.shotCallout.classList.remove('miss');
@@ -402,7 +417,7 @@ export class GunSystem implements Subsystem {
     }
   }
 
-  private fire(ctx: Ctx): void {
+  private fire(ctx: Ctx, request: ShotRequest): void {
     if (this.hunt.falconry) return;
     if (ctx.paused || this.isReloading()) return;
     if (this.shells <= 0) {
@@ -427,7 +442,8 @@ export class GunSystem implements Subsystem {
     try { landmarks = ctx.get<LandmarksSystem>('landmarks'); } catch { /* properties without solid landmarks */ }
     let flora: Subsystem & { blocksShot?: (origin: { x: number; y: number; z: number }, target: { x: number; y: number; z: number }) => boolean } | undefined;
     try { flora = ctx.get('flora'); } catch { /* properties without dedicated flora */ }
-    const pattern = new TravellingShot(ctx.camera.position, this.fwd, this.gun.spread / 400, this.birds.shotTargets());
+    const pattern = new TravellingShot(ctx.camera.position, this.fwd, this.gun.spread / 400,
+      this.birds.shotTargets(), request.assistance);
     const origin = pattern.origin;
     this.shots.push({ pattern,
       visible: target => !terrainBlocksShot(origin, target, (x, z) => this.terrain.heightAt(x, z))
@@ -539,7 +555,7 @@ export class GunSystem implements Subsystem {
       if (ctx.paused || !this.aim || this.isReloading() || ctx.time >= pending.until) this.pendingTrigger = null;
       else if (this.mountT > .7) {
         this.pendingTrigger = null;
-        this.fire(ctx);
+        this.fire(ctx, pending.request);
       }
     }
     const m = ease(this.mountT);

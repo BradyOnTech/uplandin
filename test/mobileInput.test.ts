@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { preferredInputMode, usesTouchControls } from '../src/three/inputMode';
+import { preferredInputMode, usesTouchControls, shotAssistancePreference, saveShotAssistancePreference } from '../src/three/inputMode';
 import { PlayerSystem } from '../src/three/subsystems/player';
 import type { Ctx } from '../src/three/engine';
 
@@ -8,6 +8,23 @@ vi.mock('../src/audio', () => ({ unlockAudio:vi.fn(),playFootstep:vi.fn(),playCo
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Phone input preferences', () => {
+  it('saves shot assistance independently and defaults to difficulty when storage is missing or invalid', () => {
+    const values = new Map<string, string>([['uplandin.3d.controls', 'touch']]);
+    vi.stubGlobal('localStorage', { getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value) });
+    expect(shotAssistancePreference()).toBe('difficulty');
+    saveShotAssistancePreference('generous');
+    expect(shotAssistancePreference()).toBe('generous');
+    expect(values.get('uplandin.3d.controls')).toBe('touch');
+    saveShotAssistancePreference('off');
+    expect(shotAssistancePreference()).toBe('off');
+    values.set('uplandin.3d.shot-assistance.v1', 'not-a-level');
+    expect(shotAssistancePreference()).toBe('difficulty');
+    vi.stubGlobal('localStorage', { getItem: () => { throw new Error('unavailable'); }, setItem: () => { throw new Error('unavailable'); } });
+    expect(shotAssistancePreference()).toBe('difficulty');
+    expect(() => saveShotAssistancePreference('light')).not.toThrow();
+  });
+
   it('lets an explicit choice override automatic touch hardware and saved settings', () => {
     vi.stubGlobal('localStorage', { getItem:()=>'desktop' });
     vi.stubGlobal('matchMedia', (query:string)=>({matches:query==='(any-pointer: coarse)'}));

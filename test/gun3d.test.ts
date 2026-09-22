@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Ctx } from '../src/three/engine';
 import { GunSystem } from '../src/three/subsystems/gun';
+import * as inputMode from '../src/three/inputMode';
+import type { HuntChallenge } from '../src/game/huntChallenge';
+import type { ShotAssistancePreference, ShotTriggerSource } from '../src/three/shotAssistance';
 
 vi.mock('../src/audio', () => ({ playShot: vi.fn(), unlockAudio: vi.fn(), playActionClick: vi.fn() }));
 
@@ -387,4 +390,123 @@ describe('3D shotgun action', () => {
     expect(gun.isReloading()).toBe(false);
     expect(gun.shellsRemaining()).toBe(2);
   });
+});
+
+describe('mobile shot request provenance and resolution', () => {
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  function field(challenge: HuntChallenge = 'relaxed', preference: ShotAssistancePreference = 'difficulty', obstruction = '') {
+    const settings = { challenge, preference };
+    vi.stubGlobal('window', new EventTarget());
+    // The next-hunt URL deliberately disagrees with the running hunt.
+    vi.stubGlobal('location', { search: '?challenge=wild&controls=touch' });
+    vi.stubGlobal('document', {
+      body: { classList: { contains: () => true, toggle: () => {} } },
+      getElementById: () => null, querySelector: () => null,
+    });
+    vi.spyOn(inputMode, 'shotAssistancePreference').mockImplementation(() => settings.preference);
+    const target = { simId: 9, x: 1.5, y: 2, z: -30, status: 'flying' };
+    const hunt = {
+      huntState: () => ({ gunId: 'over-under', birds: [] }),
+      getActiveChallenge: () => settings.challenge,
+      resolveBird: vi.fn(() => obstruction !== 'authority'),
+    };
+    const birds = { shotTargets: () => [target], downBird: vi.fn() };
+    const camera = new THREE.PerspectiveCamera(70, 2, .1, 1000);
+    camera.position.y = 2; camera.updateMatrixWorld();
+    const blockers: Record<string, unknown> = {
+      hunt3d: hunt, birds,
+      terrain: { heightAt: () => obstruction === 'terrain' ? 100 : 0 },
+      'property-habitat': { blocksShot: () => obstruction === 'habitat' },
+      'woodcock-wet-bottoms': { blocksShot: () => obstruction === 'wet' },
+      landmarks: { blocksShot: () => obstruction === 'landmark' },
+      flora: { blocksShot: () => obstruction === 'flora' },
+    };
+    const ctx = {
+      scene: new THREE.Scene(), camera, renderer: { domElement: new EventTarget() }, events: new EventTarget(),
+      quality: 'lite', timeOfDay: 'morning', time: 1, paused: false, get: (id: string) => blockers[id],
+    } as unknown as Ctx;
+    const gun = new GunSystem(); gun.init(ctx);
+    const action = (action: string, source?: ShotTriggerSource) => ctx.events.dispatchEvent(
+      Object.assign(new Event('hunt-action'), { detail: source ? { action, source } : action }));
+    const step = (dt: number) => { ctx.time += dt; gun.update(ctx, dt); };
+    const key = (code: string) => window.dispatchEvent(Object.assign(new Event('keydown'),
+      { code, key: code === 'KeyF' ? 'f' : ' ', repeat: false }));
+    return { settings, target, hunt, birds, ctx, gun, action, step, key };
+  }
+
+  it.each([
+    ['relaxed', 'difficulty', 1], ['balanced', 'difficulty', 0], ['wild', 'difficulty', 0],
+    ['relaxed', 'off', 0], ['wild', 'generous', 1], ['relaxed', 'light', 0],
+  ] as const)('resolves a real near miss using active %s / %s settings', (challenge, preference, hits) => {
+    const f = field(challenge, preference);
+    f.action('touch-mount'); f.step(.2);
+    expect(f.gun.shellsRemaining()).toBe(2);
+    f.action('touch-fire', 'touch');
+    expect(f.gun.shellsRemaining()).toBe(1);
+    expect(f.hunt.resolveBird).not.toHaveBeenCalled();
+    f.gun.fixedUpdate(f.ctx, 200);
+    expect(f.hunt.resolveBird).toHaveBeenCalledTimes(hits);
+    expect(f.birds.downBird).toHaveBeenCalledTimes(hits);
+    f.gun.dispose(f.ctx);
+  });
+
+  it.each(['keyboard', 'mouse', 'other', 'unattributed'] as const)(
+    'does not assist %s firing when the touch interface is visible', source => {
+      const f = field('relaxed', 'generous');
+      f.action('touch-mount'); f.step(.2);
+      if (source === 'keyboard') f.key('Space');
+      else f.action('touch-fire', source === 'unattributed' ? undefined : source);
+      f.gun.fixedUpdate(f.ctx, 200);
+      expect(f.gun.shellsRemaining()).toBe(1);
+      expect(f.hunt.resolveBird).not.toHaveBeenCalled();
+      f.gun.dispose(f.ctx);
+    });
+
+  it.each([true, false])('keeps the queued trigger profile when settings change before mount completes (assisted=%s)', assisted => {
+    const f = field(assisted ? 'relaxed' : 'wild');
+    f.action('touch-mount'); f.action('touch-fire', 'touch');
+    f.settings.challenge = assisted ? 'wild' : 'relaxed';
+    f.settings.preference = assisted ? 'off' : 'generous';
+    f.step(.15); f.gun.fixedUpdate(f.ctx, 200);
+    expect(f.gun.shellsRemaining()).toBe(1);
+    expect(f.hunt.resolveBird).toHaveBeenCalledTimes(assisted ? 1 : 0);
+    f.gun.dispose(f.ctx);
+  });
+
+  it('keeps the original queued keyboard trigger unassisted even if a touch release follows', () => {
+    const f = field('relaxed', 'generous');
+    f.action('touch-mount'); f.key('Space'); f.action('touch-fire', 'touch');
+    f.step(.15); f.gun.fixedUpdate(f.ctx, 200);
+    expect(f.gun.shellsRemaining()).toBe(1);
+    expect(f.hunt.resolveBird).not.toHaveBeenCalled();
+    f.step(.6); f.gun.fixedUpdate(f.ctx, 200);
+    expect(f.gun.shellsRemaining()).toBe(1);
+    f.gun.dispose(f.ctx);
+  });
+
+  it.each(['lower', 'pause', 'input-reset', 'blur', 'reload', 'expired'])(
+    'cancels assisted pending fire on %s without spending a shell or downing a bird', cancellation => {
+      const f = field();
+      f.action('touch-mount'); f.action('touch-fire', 'touch');
+      if (cancellation === 'pause' || cancellation === 'input-reset') f.ctx.events.dispatchEvent(new Event(cancellation));
+      else if (cancellation === 'blur') window.dispatchEvent(new Event('blur'));
+      else if (cancellation !== 'expired') f.action(cancellation);
+      f.step(cancellation === 'expired' ? .26 : .15); f.gun.fixedUpdate(f.ctx, 200);
+      f.step(1); f.gun.fixedUpdate(f.ctx, 200);
+      expect(f.gun.shellsRemaining()).toBe(2);
+      expect(f.hunt.resolveBird).not.toHaveBeenCalled();
+      f.gun.dispose(f.ctx);
+    });
+
+  it.each(['terrain', 'habitat', 'wet', 'landmark', 'flora', 'authority'])(
+    'retains %s authority for assisted near hits', obstruction => {
+      const f = field('relaxed', 'generous', obstruction);
+      f.action('touch-mount'); f.step(.2); f.action('touch-fire', 'touch');
+      f.gun.fixedUpdate(f.ctx, 200);
+      expect(f.gun.shellsRemaining()).toBe(1);
+      expect(f.hunt.resolveBird).toHaveBeenCalledTimes(obstruction === 'authority' ? 1 : 0);
+      expect(f.birds.downBird).not.toHaveBeenCalled();
+      f.gun.dispose(f.ctx);
+    });
 });

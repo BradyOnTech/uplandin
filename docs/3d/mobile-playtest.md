@@ -10,11 +10,11 @@ Connect the phone and computer to the same Wi-Fi. Keep the computer awake. Run:
 npm run play:mobile
 ```
 
-This builds the game and serves `dist` on port 4593. Use the Network address printed by Vite, not localhost. During this review the Wi-Fi address was `192.168.1.9`; it can change when the computer reconnects.
+This builds the game and serves `dist` on port 4593. Use the Network address printed by Vite, not localhost. The Wi-Fi address can change when the computer reconnects; use the current Network URL printed by the server. The September 22 review used `192.168.0.138`.
 
-- [Chukar Ridge](http://192.168.1.9:4593/index3d.html?area=chukar-ridge&drop=south-gate&quality=lite&tod=morning&dog=generated&controls=touch&challenge=relaxed)
-- [Cattail Coverts](http://192.168.1.9:4593/index3d.html?area=pheasant-coverts&drop=west-track&quality=lite&tod=morning&dog=generated&controls=touch&challenge=relaxed)
-- [Goshawk practice](http://192.168.1.9:4593/index3d.html?play=quick&method=goshawk&practice=slip&quality=lite&controls=touch)
+- [Chukar Ridge](http://192.168.0.138:4593/index3d.html?area=chukar-ridge&drop=south-gate&quality=lite&tod=morning&dog=generated&controls=touch&challenge=relaxed)
+- [Cattail Coverts](http://192.168.0.138:4593/index3d.html?area=pheasant-coverts&drop=west-track&quality=lite&tod=morning&dog=generated&controls=touch&challenge=relaxed)
+- [Goshawk practice](http://192.168.0.138:4593/index3d.html?play=quick&method=goshawk&practice=slip&quality=lite&controls=touch)
 
 Turn the phone sideways and tap Enter the field. These links select Lightweight graphics and Touch controls explicitly. The pause menu can change both. Automatic controls detect coarse pointing hardware; a saved control choice is used when the URL does not specify one.
 
@@ -98,3 +98,25 @@ The phone HUD now prioritizes ammunition, the dog and wind. A closer sight pictu
 Reproduction: an unobstructed marked 40m retrieve at level 8 originally took the English Setter 32.0 seconds and GSP 26.5 seconds, including pickup and delivery. Both now complete in under 23 seconds with pickup in under 12 seconds. Regression coverage also checks close falls on 250ms frames, bounded return turns, obstacle detours, and the real camera's enlargement/restoration. These are simulated timing checks, not physical-phone frame-rate measurements.
 
 Browser review uses a 736 × 336 landscape field viewport to account for limited height from browser chrome, plus 390 × 700 portrait. The local preview remains on port 4593; refresh an existing phone tab for the rebuilt assets.
+
+
+**Parallel blitz: mobile shooting and installed play**
+
+Shot assistance now lives in Pause beside Shot view. Match difficulty uses the active hunt: Relaxed gets Generous, Balanced gets Light, and Wild gets Off. An explicit Off, Light or Generous choice persists separately. Changing the next hunt's challenge does not change the current hunt's assistance.
+
+| Before | After |
+| --- | --- |
+| Identical near-miss tolerance for touch and desktop shots. | A bounded touch-only allowance, resolved at trigger request and retained through the existing early-mount buffer. |
+| No explicit assistance choice. | Match difficulty, Off, Light and Generous in Pause, with no extra field control. |
+| Browser-only entry point. | Separate installed 3D entry, remembered setup with a fresh hunt seed, and a staged update action at entry or completed results. |
+| Frame statistics mixed counters and percentile windows. | Opt-in resettable capture, consistent frame windows, CPU phases, renderer object counts and downloadable device/build/context metadata. |
+
+Light adds at most 0.45 degrees / 0.24 metres to the existing radial tolerance; Generous adds at most 0.8 degrees / 0.40 metres. Both limits apply. At 12, 30 and 50 metres, Generous adds 0.168, 0.400 and 0.400 metres respectively. Obstruction, weapon spread differences, travelling shot lead and the 55-metre maximum remain. Actual pointer provenance determines eligibility: showing Touch controls on a laptop does not assist mouse or keyboard shots.
+
+No extra release smoothing has been added. The existing control uses the latest swing direction immediately; physical gesture traces are needed before introducing a filter that could delay an intentional swing. Pointer interruption, Lower, pause, reload and control resets retain their cancellation behavior.
+
+The integrated UI was reviewed in Chrome at 844 × 390 and 390 × 700. Verified assistance choices, the active-hunt versus next-hunt distinction, keyboard access to collapsed app/diagnostic sections, and capture start/export through ordinary buttons, including exporting from completed hunt results. No browser errors were recorded. These are desktop layout and wiring checks, not physical touch acceptance.
+
+For measured routes, add `diagnostics=1` to the game URL, expand Performance capture in the menu, name the route and select Start capture and play. Pause after the route and select Save report. This panel is absent from ordinary play. See [mobile-performance.md](mobile-performance.md) for the frozen desktop baseline and its limits, and [mobile-install.md](mobile-install.md) for secure-host installation and offline update verification. Local HTTP LAN play remains online-only; actual installed iPhone/Android acceptance is pending.
+
+Combined checkpoint validation: 114 test files / 892 tests passed, with TypeScript and the production build passing. Existing large-bundle warnings remain. The new offline lifecycle also passed 12 real-browser checks; see the install runbook for exact artifact identity and limits.

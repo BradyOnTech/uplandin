@@ -1,3 +1,5 @@
+import { NO_SHOT_ASSISTANCE, shotAssistanceAllowance, type ShotAssistanceProfile } from './shotAssistance';
+
 export interface ShotTarget { simId: number; x: number; y: number; z: number; status: string }
 interface Point { x: number; y: number; z: number }
 
@@ -13,7 +15,8 @@ export class TravellingShot {
   private age = 0;
   done = false;
 
-  constructor(origin: Point, direction: Point, private spread: number, targets: readonly ShotTarget[]) {
+  constructor(origin: Point, direction: Point, private spread: number, targets: readonly ShotTarget[],
+    private readonly assistance: Readonly<ShotAssistanceProfile> = NO_SHOT_ASSISTANCE) {
     this.origin = { ...origin };
     const length = Math.hypot(direction.x, direction.y, direction.z);
     if (!Number.isFinite(length) || length === 0) this.done = true;
@@ -47,7 +50,8 @@ export class TravellingShot {
       if (along <= 0 || along > SHOT_RANGE_M) continue;
       const x = p.x+(t.x-p.x)*fraction, y = p.y+(t.y-p.y)*fraction, z = p.z+(t.z-p.z)*fraction;
       const perpendicular = Math.hypot(x-o.x-d.x*along, y-o.y-d.y*along, z-o.z-d.z*along);
-      if (perpendicular > Math.max(.48, along*Math.tan(this.spread))) continue;
+      const radius = Math.max(.48, along*Math.tan(this.spread)) + shotAssistanceAllowance(along, this.assistance);
+      if (perpendicular > radius) continue;
       const candidate = { simId: t.simId, status: t.status, x, y, z };
       if (visible(candidate)) { hit = candidate; first = fraction; }
     }

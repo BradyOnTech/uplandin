@@ -4,6 +4,16 @@ Improve mobile playability and the visual/game design of selected existing level
 
 This is the execution plan prepared September 22, 2026, revised to include the user's confirmed Chukar, Quail and Sharptail visual/level-design scope. The audits are complete. The user authorized parallel execution with a separate map-design chat and subagents on September 22, 2026; implementation is now starting. It supersedes older phase restrictions where those conflict with the user's current priorities. Historical tests, screenshots and accepted artwork remain useful evidence, not proof that today's whole experience is finished.
 
+**Execution checkpoint — September 22**
+
+The first combined mobile/Chukar checkpoint passes 114 test files / 892 tests and the production build. Touch-only difficulty assistance, installed 3D launch and staged updates, opt-in performance capture, and the western Chukar composition pass are implemented. Chukar is committed as `ccfe6fa`. This is a code and browser checkpoint, not a completed-phone or complete-Chukar-hunt acceptance claim.
+
+The separate chat **Quail and Sharptail map production** works in `/Users/bradya/.codex/worktrees/quail-sharptail-blitz/uplandin` on `codex/quail-sharptail-blitz`, starting at `201a809`. It owns both maps and serializes their shared area/landscape hooks. Its subagents divide the map-specific files. This session owns mobile/PWA/performance and Chukar, then reviews and integrates that chat's map commits. The earlier proposed single-map ordering has been relaxed to allow independent Quail and Sharptail work while Chukar review continues.
+
+Three same-checkout subagents completed shooting, installed-app/offline work and performance instrumentation. The shooting worker then delivered the western Chukar composition pass. Files were handed off before reassignment; no worker changed branches, overwrote user previews or staged unrelated assets.
+
+Real-browser offline checks passed at root and subpath, including interrupted installs, old-window protection, actual cold Chukar startup and explicit UI updating. Desktop route profiling did not reproduce the phone bottleneck, so habitat/render quality was preserved. Extra release filtering remains deferred until actual gesture evidence justifies its latency. Chukar's new planting has a measured geometry cost; full hunt/recovery, physical-phone acceptance, bird motion/readability and property sound remain separate work.
+
 **Starting point**
 
 - Use `b3c6131` on `codex/mobile-playtest` as the minimum baseline. It contains four mobile commits beyond `main`: touch controls, combined mount/swing/release, retrieve movement, and the clearer phone view. Starting workers from `main` would omit those improvements.

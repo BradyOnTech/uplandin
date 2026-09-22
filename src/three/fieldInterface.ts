@@ -1,7 +1,8 @@
 import { isFalconryPractice } from '../game/falconryPractice';
 import { bindTouchActionControl } from './touchActionControl';
 import { bindTouchShotControl } from './touchShotControl';
-import { preferredInputMode, saveInputMode, usesTouchControls, touchSensitivity, saveTouchSensitivity, mobileSightPicture, type InputMode } from './inputMode';
+import { preferredInputMode, saveInputMode, usesTouchControls, touchSensitivity, saveTouchSensitivity, mobileSightPicture, shotAssistancePreference, saveShotAssistancePreference, type InputMode } from './inputMode';
+import { resolveShotAssistance, type ShotAssistancePreference } from './shotAssistance';
 import { HUNT_CHALLENGES, HUNT_CHALLENGE_KEY, parseHuntChallenge } from '../game/huntChallenge';
 import { parseHuntLaunch, resolveThreeHuntChallenge, resolveThreeHuntProfile } from '../game/gameplayMode';
 import { GUNS, getGun, unlockedGuns } from '../game/guns';
@@ -14,6 +15,8 @@ import type { TimeOfDay } from './palette';
 import { huntingDoctrine } from '../game/huntDoctrine';
 import { getSpecies } from '../game/species';
 import type { GunSystem } from './subsystems/gun';
+import type { Hunt3DSystem } from './subsystems/hunt3d';
+import { requestOfflineUpdate, type OfflineUpdateState } from './offline';
 
 /** Lifecycle UI owns pause and preferences, never hunt outcomes. */
 export class FieldInterface {
@@ -29,6 +32,8 @@ export class FieldInterface {
   private touch = usesTouchControls();
   private capture = new URLSearchParams(location.search).has('capture');
   private launch = parseHuntLaunch(location.search);
+  private activeChallenge = resolveThreeHuntChallenge(location.search);
+  private updateState: OfflineUpdateState = 'none';
   private falconry = resolveThreeHuntProfile(location.search).quick?.huntingMethod === 'goshawk';
   constructor(private engine: Engine, landscape: LandscapeModel) {
     const signal = this.abort.signal;
@@ -88,6 +93,9 @@ export class FieldInterface {
     }, { signal });
     document.getElementById('retry-field')!.addEventListener('click', () => location.reload(), { signal });
     document.getElementById('pause-hunt')!.addEventListener('click', () => this.pause(), { signal });
+    document.getElementById('app-update-button')!.addEventListener('click', () => {
+      if (this.canApplyOfflineUpdate()) requestOfflineUpdate();
+    }, { signal });
     document.addEventListener('keydown', (event) => {
       if (event.code === 'Escape' && document.body.classList.contains('field-map-open')) return;
       if (event.code === 'Escape' && this.readyState && !this.capture && !this.complete) {
@@ -95,7 +103,7 @@ export class FieldInterface {
         if (this.engine.ctx.paused) this.resume(); else this.pause();
       }
       if (event.code === 'Tab' && !this.overlay.hidden) {
-        const focusable = Array.from(this.overlay.querySelectorAll<HTMLElement>('button,select,input,a'))
+        const focusable = Array.from(this.overlay.querySelectorAll<HTMLElement>('button,select,input,a,summary'))
           .filter(element => !element.closest('[hidden]') && !element.matches(':disabled') && element.getClientRects().length > 0);
         const first = focusable[0], last = focusable[focusable.length - 1];
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
@@ -145,6 +153,17 @@ export class FieldInterface {
       document.getElementById('hunt-hud')?.setAttribute('hidden', '');
       document.getElementById('controls')?.setAttribute('hidden', '');
       document.getElementById('hunt-again')?.focus();
+      const updates = document.getElementById('app-update-panel')!;
+      document.getElementById('hunt-summary')?.append(updates);
+      this.offlineUpdateState(this.updateState);
+      const diagnostics = document.getElementById('performance-tools')!;
+      if (!diagnostics.hidden) {
+        document.getElementById('hunt-summary')?.append(diagnostics);
+        const start = document.getElementById('performance-start') as HTMLButtonElement;
+        start.disabled = true; start.hidden = true;
+        (document.getElementById('performance-route') as HTMLInputElement).readOnly = true;
+        document.getElementById('performance-status')!.textContent = 'Hunt finished. Save the report before starting another hunt.';
+      }
     }, { signal });
     const quality = document.getElementById('quality-setting') as HTMLSelectElement;
     quality.value = this.engine.ctx.quality;
@@ -182,6 +201,13 @@ export class FieldInterface {
       try { localStorage.setItem('uplandin.3d.sight', sight.value); } catch { /* optional */ }
       this.engine.ctx.events.dispatchEvent(new Event('touch-sight-change'));
     }, { signal });
+    const assistance = document.getElementById('shot-assistance-setting') as HTMLSelectElement;
+    assistance.value = shotAssistancePreference();
+    assistance.addEventListener('change', () => {
+      saveShotAssistancePreference(assistance.value as ShotAssistancePreference);
+      this.refreshShotAssistance();
+    }, { signal });
+    this.refreshShotAssistance();
     const sound = document.getElementById('sound-setting') as HTMLInputElement;
     const challenge = document.getElementById('challenge-setting') as HTMLSelectElement;
     const challengeHelp = document.getElementById('challenge-help')!;
@@ -206,13 +232,13 @@ export class FieldInterface {
     }, { signal });
     for (const button of document.querySelectorAll<HTMLButtonElement>('#touch-controls button')) {
       if (button.dataset.action === 'fire') {
-        const action = (detail: string) => this.engine.ctx.events.dispatchEvent(new CustomEvent('hunt-action', { detail }));
+        const action = (detail: string | { action: string; source: string }) => this.engine.ctx.events.dispatchEvent(new CustomEvent('hunt-action', { detail }));
         bindTouchShotControl(button, { signal, enabled: () => !this.engine.ctx.paused && !this.falconry && !this.engine.ctx.get<GunSystem>('gun').isReloading(),
           look: (dx,dy) => this.engine.ctx.events.dispatchEvent(new CustomEvent('hunt-touch-look', { detail: {dx,dy} })),
           begin: () => { unlockAudio(); action('touch-mount'); },
           cancel: () => action('lower'),
           cancelTarget: document.getElementById('touch-lower')!,
-          fire: () => action('touch-fire'),
+          fire: (source) => action({ action: 'touch-fire', source }),
           events: this.engine.ctx.events });
         continue;
       }
@@ -228,6 +254,38 @@ export class FieldInterface {
       } });
     }
     window.addEventListener('resize', () => this.engine.ctx.events.dispatchEvent(new Event('touch-shot-cancel')), { signal });
+  }
+  canApplyOfflineUpdate(): boolean { return !this.capture && (!this.entered || this.complete); }
+
+  offlineUpdateState(state: OfflineUpdateState): void {
+    this.updateState = state;
+    const panel = document.getElementById('app-update-panel')!;
+    panel.hidden = state === 'none' || this.capture;
+    const button = document.getElementById('app-update-button') as HTMLButtonElement;
+    const safe = this.canApplyOfflineUpdate();
+    button.disabled = !safe || state === 'applying';
+    button.textContent = state === 'applying' ? 'Updating…' : 'Update game';
+    const copy: Record<OfflineUpdateState, string> = {
+      none: '', ready: 'A new version is ready. Updating starts a fresh hunt.',
+      applying: 'Installing the new version…',
+      'other-tabs': 'Close other game tabs, then try updating again.',
+      unsafe: 'Finish this hunt before installing the update.',
+      failed: 'The update could not finish. You can keep playing and try again later.',
+    };
+    document.getElementById('app-update-status')!.textContent = !safe && state !== 'none'
+      ? 'A new version is ready. Finish this hunt before installing it.' : copy[state];
+  }
+
+  private refreshShotAssistance(): void {
+    const preference = shotAssistancePreference();
+    const profile = resolveShotAssistance(this.activeChallenge, preference, 'touch');
+    const lead = preference === 'difficulty' ? `${HUNT_CHALLENGES[this.activeChallenge].label} hunt: ` : '';
+    const descriptions = {
+      off: 'No shot forgiveness. Lead and timing decide the shot.',
+      light: 'Light forgiveness for close misses. Keep swinging ahead of crossing birds.',
+      generous: 'More forgiveness for close misses. Keep swinging ahead of crossing birds.',
+    };
+    document.getElementById('shot-assistance-help')!.textContent = lead + descriptions[profile.level];
   }
   private refreshShotgunMenu(): void {
     if (!this.readyState || this.falconry) return;
@@ -289,6 +347,8 @@ export class FieldInterface {
   };
   ready(): void {
     this.readyState = true;
+    this.activeChallenge = this.engine.ctx.get<Hunt3DSystem>('hunt3d').getActiveChallenge();
+    this.refreshShotAssistance();
     const light=document.getElementById('light-setting') as HTMLSelectElement;
     light.disabled=false;light.value=this.engine.ctx.timeOfDay;
     this.overlay.hidden = this.capture;
@@ -327,6 +387,7 @@ export class FieldInterface {
   private resume(): void {
     if (!this.readyState || this.complete || this.lostContext) return;
     this.entered = true; unlockAudio();
+    this.offlineUpdateState(this.updateState);
     this.overlay.classList.add('field-has-entered');
     document.getElementById('field-instructions')!.hidden = true;
     const property=document.getElementById('property-setting') as HTMLSelectElement|null;

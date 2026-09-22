@@ -1,5 +1,20 @@
+import type { ShotAssistancePreference } from './shotAssistance';
+
 export type InputMode = 'auto' | 'touch' | 'desktop';
 const KEY = 'uplandin.3d.controls';
+const SHOT_ASSISTANCE_KEY = 'uplandin.3d.shot-assistance.v1';
+
+export function shotAssistancePreference(): ShotAssistancePreference {
+  try {
+    const saved = localStorage.getItem(SHOT_ASSISTANCE_KEY);
+    if (saved === 'off' || saved === 'light' || saved === 'generous') return saved;
+  } catch { /* Storage is optional. */ }
+  return 'difficulty';
+}
+
+export function saveShotAssistancePreference(value: ShotAssistancePreference): void {
+  try { localStorage.setItem(SHOT_ASSISTANCE_KEY, value); } catch { /* Storage is optional. */ }
+}
 
 export function preferredInputMode(params = new URLSearchParams(location.search)): InputMode {
   const explicit = params.get('controls');

@@ -1,15 +1,17 @@
+import type { ShotTriggerSource } from './shotAssistance';
+
 /** Track and release with the firing thumb; cancellation never fires a shot. */
 export function bindTouchShotControl(button: HTMLButtonElement, options: {
   signal: AbortSignal;
   enabled: () => boolean;
   look: (dx: number, dy: number) => void;
-  fire: () => void;
+  fire: (source: ShotTriggerSource) => void;
   begin: () => void;
   cancel: () => void;
   cancelTarget: HTMLElement;
   events: EventTarget;
 }): void {
-  let pointer: { id: number; x: number; y: number } | null = null;
+  let pointer: { id: number; x: number; y: number; source: ShotTriggerSource } | null = null;
   let suppressPointerClick = false;
   const overCancel = (event: PointerEvent) => {
     const box = options.cancelTarget.getBoundingClientRect();
@@ -25,7 +27,8 @@ export function bindTouchShotControl(button: HTMLButtonElement, options: {
   button.addEventListener('pointerdown', event => {
     if(event.button > 0 || !options.enabled() || pointer)return;
     event.preventDefault();suppressPointerClick=true;
-    pointer={id:event.pointerId,x:event.clientX,y:event.clientY};
+    const source = event.pointerType === 'touch' ? 'touch' : event.pointerType === 'mouse' ? 'mouse' : 'other';
+    pointer={id:event.pointerId,x:event.clientX,y:event.clientY,source};
     button.setPointerCapture(event.pointerId);button.setAttribute('data-tracking','true');
     options.begin();
   },{signal:options.signal});
@@ -42,7 +45,7 @@ export function bindTouchShotControl(button: HTMLButtonElement, options: {
     if(pointer?.id!==event.pointerId)return;
     event.preventDefault();
     if (!options.enabled() || overCancel(event)) cancel();
-    else { clear(); options.fire(); }
+    else { const source = pointer.source; clear(); options.fire(source); }
   },{signal:options.signal});
   for(const name of ['pointercancel','lostpointercapture'])button.addEventListener(name,event=>{
     if(pointer?.id===(event as PointerEvent).pointerId)cancel();
@@ -50,7 +53,7 @@ export function bindTouchShotControl(button: HTMLButtonElement, options: {
   // Pointer releases can synthesize click; keyboard activation remains available.
   button.addEventListener('click',event=>{
     if(suppressPointerClick && event.detail>0)return;
-    if(options.enabled() && !pointer) { options.begin(); options.fire(); }
+    if(options.enabled() && !pointer) { options.begin(); options.fire('keyboard'); }
   },{signal:options.signal});
   for (const name of ['pause','input-reset','touch-shot-cancel']) options.events.addEventListener(name,cancel,{signal:options.signal});
   options.signal.addEventListener('abort',cancel,{once:true});

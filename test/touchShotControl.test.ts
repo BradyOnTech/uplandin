@@ -50,3 +50,19 @@ it('supports consecutive press swing release shots and mouse preview without dup
   for(let i=0;i<2;i++) {f.send('pointerdown',{pointerType:'mouse',button:0});f.send('pointerup',{pointerType:'mouse'});f.send('click',{detail:1});}
   expect(f.begin).toHaveBeenCalledTimes(2);expect(f.fire).toHaveBeenCalledTimes(2);
 });
+
+it.each([['touch','touch'],['mouse','mouse'],['pen','other'],['','other']])('carries the actual %s gesture source through release', (pointerType, source) => {
+  const f = fixture();
+  f.send('pointerdown', {pointerType});
+  f.send('pointerup', {pointerType:'touch'});
+  expect(f.fire).toHaveBeenCalledWith(source);
+});
+
+it('tags keyboard activation independently of the previous touch gesture', () => {
+  const f = fixture();
+  f.send('pointerdown'); f.send('pointerup');
+  expect(f.fire).toHaveBeenLastCalledWith('touch');
+  f.send('click', {detail:0});
+  expect(f.fire).toHaveBeenLastCalledWith('keyboard');
+  expect(f.fire).toHaveBeenCalledTimes(2);
+});

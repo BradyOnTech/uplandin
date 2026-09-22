@@ -12,9 +12,10 @@ export default defineConfig({
     writeBundle(options, bundle) {
       const directory = resolve(options.dir ?? 'dist');
       const files = [
-        'index.html', 'index3d.html', 'shotguns3d.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
+        'index.html', 'index3d.html', 'shotguns3d.html', 'manifest.webmanifest', 'manifest3d.webmanifest', 'icon-192.png', 'icon-512.png',
         'textures/terrain/prairie-painted.webp',
         'textures/terrain/chukar-dry-ground.webp',
+        'textures/terrain/wet-alder-painted.webp',
         ...Object.keys(bundle).filter(name => /\.(js|css)$/.test(name)),
         'models/quail-kit/prop-manifest.json',
         ...['slab', 'split-log', 'fallen-limb'].flatMap(habit => ['high', 'lite'].map(detail => `models/quail-kit/ground-prop-${habit}-${detail}.glb`)),
@@ -27,11 +28,14 @@ export default defineConfig({
         'models/gsp/manifest.json',
         'models/gsp/gsp-liver-white-lod0.glb', 'models/gsp/gsp-liver-white-lod1.glb', 'models/gsp/gsp-liver-white-lod2.glb',
       ];
-      const hash = createHash('sha256');
-      for (const file of files) hash.update(readFileSync(resolve(directory, file)));
+      const workerSource = readFileSync(resolve(__dirname, 'public/sw.js'), 'utf8');
+      // Worker-only fixes need their own cache too; failed staging must never
+      // remove an active build that happened to have identical game assets.
+      const hash = createHash('sha256').update(workerSource);
+      for (const file of files) hash.update(file).update(readFileSync(resolve(directory, file)));
       const build = hash.digest('hex').slice(0, 16);
       writeFileSync(resolve(directory, 'precache.json'), JSON.stringify({ build, files }));
-      const worker = readFileSync(resolve(__dirname, 'public/sw.js'), 'utf8').replace('__BUILD_ID__', build);
+      const worker = workerSource.replace('__BUILD_ID__', build);
       writeFileSync(resolve(directory, 'sw.js'), worker);
     },
   }],
