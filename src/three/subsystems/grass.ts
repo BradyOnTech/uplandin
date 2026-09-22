@@ -101,21 +101,21 @@ const DEFAULT_GRASS_ART: GrassArtProfile = {
 const GRASS_ART_BY_AREA: Readonly<Record<string, GrassArtProfile>> = {
   'sharptail-prairie': {
     ...DEFAULT_GRASS_ART,
-    // Natural prairie bunches do not line up like the drilled Quail Fields
-    // stubble. The slight grain keeps the field readable without making a
-    // repeated row pattern the map's visual signature.
+    // Pale mixed-grass stems grow in scattered native bunches. Preserve
+    // their upright silhouette and silver-sage undertone without adding
+    // density or the warm spreading fans of the Quail Fields kit.
     rowYaw: null,
     heightScale: 0.98,
     bodyDensity: 0.93,
     coverDensity: 0.86,
-    grassGold: 0xc3b47d,
-    grassOlive: 0x85875e,
-    forbGreen: 0x68784f,
-    strawLight: 0xd4c398,
-    strawPale: 0xe6d8b1,
-    khaki: 0x988567,
-    oliveMid: 0x716747,
-    olive: 0x5f5b43,
+    grassGold: 0xc7bd95,
+    grassOlive: 0x939b80,
+    forbGreen: 0x83937e,
+    strawLight: 0xd6cfae,
+    strawPale: 0xe2dfc8,
+    khaki: 0xa29b7c,
+    oliveMid: 0x8a8d70,
+    olive: 0x757d66,
   },
   'valley-oaks': {
     ...DEFAULT_GRASS_ART,

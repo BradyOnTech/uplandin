@@ -31,21 +31,25 @@ describe('Quail vegetation silhouettes', () => {
     geometries.forEach(geometry => geometry.dispose());
   });
 
-  it('keeps the shrub visibly open from both principal directions within its former geometry budget', () => {
+  it('gives the plum a substantial crown with open lower branches within the former geometry budget', () => {
     const geometry = quailShrubGeometry(), material = new THREE.MeshBasicMaterial();
     const mesh = new THREE.Mesh(geometry, material), ray = new THREE.Raycaster(); mesh.updateMatrixWorld(true);
-    expect(geometry.getAttribute('position').count / 3).toBeLessThanOrEqual(406);
+    expect(geometry.getAttribute('position').count / 3).toBeLessThanOrEqual(392);
     for (const axis of ['x', 'z']) {
-      let hit = 0, total = 0;
+      let hit = 0, total = 0, lowerHit = 0, lowerTotal = 0;
       for (let y = .15; y < .87; y += .07) for (let lateral = -.5; lateral < .52; lateral += .065) {
         ray.set(axis === 'x' ? new THREE.Vector3(-2, y, lateral) : new THREE.Vector3(lateral, y, -2),
           axis === 'x' ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1));
-        if (ray.intersectObject(mesh).length) hit++;
+        const intersects = ray.intersectObject(mesh).length > 0;
+        if (intersects) hit++;
         total++;
+        if (y < .4) { lowerTotal++; if (intersects) lowerHit++; }
       }
       // This checks actual triangle intersections, not a label on the mesh:
-      // there must be a readable plant and open windows through its branches.
-      expect(hit / total).toBeGreaterThan(.15); expect(hit / total).toBeLessThan(.55);
+      // the crown now reads as woody refuge rather than isolated leaf sprays,
+      // while the lower stems still have usable sight windows.
+      expect(hit / total).toBeGreaterThan(.4); expect(hit / total).toBeLessThan(.75);
+      expect(lowerHit / lowerTotal).toBeLessThan(.30);
     }
     geometry.dispose(); material.dispose();
   });

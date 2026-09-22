@@ -5,7 +5,7 @@ import { HUNT_WORLD_ANCHOR, PROPERTY_PX_TO_M, type GroundSample, type LandscapeM
 import { mulberry32 } from '../../game/math';
 import { huntingDoctrine, type HuntStyle } from '../../game/huntDoctrine';
 import type { Ctx, Subsystem } from '../engine';
-import { quailTreeGeometry } from './quailWoody';
+import { sharptailShrubGeometry, sharptailTreeGeometry } from './sharptailWoody';
 
 type HabitatKind = 'trunk' | 'canopy' | 'shrub' | 'reed' | 'rock' | 'cactus' | 'log';
 
@@ -57,7 +57,7 @@ function profileFor(style: HuntStyle, lite: boolean, areaId?: string): HabitatPr
     // north shelterbelts; the open lanes carry low snowberry and silver sage.
     return { ...base, step: 22, nearClear: 25, kinds: ['shrub', 'trunk', 'canopy', 'rock'],
       chances: { shrub: .115, trunk: 0, rock: .008 },
-      colors: colors({ shrub: [0x879078, 0x969579, 0x8b8a65], trunk: [0x736b58], canopy: [0x6a7757, 0x7c8862], rock: [0x9f9a88] }),
+      colors: colors({ shrub: [0x9ba79a, 0xa4ac9b, 0x909d8b], trunk: [0x929384], canopy: [0x899379, 0x99a083], rock: [0x9f9a88] }),
       scale: { shrub: [.36, .78], trunk: [3.2, 5.8], canopy: [1.7, 3.1], rock: [.3, .65] }, };
   }
   switch (style) {
@@ -511,7 +511,7 @@ export class PropertyHabitatSystem implements Subsystem {
       }
     }
 
-    const prairieTree = area.id === 'sharptail-prairie' ? quailTreeGeometry(0x51e17, 'upright') : null;
+    const prairieTree = area.id === 'sharptail-prairie' ? sharptailTreeGeometry() : null;
     for (const kind of profile.kinds) {
       const placements = lists.get(kind)!;
       // Hard caps keep a worst-case wide map within a predictable mobile
@@ -526,10 +526,11 @@ export class PropertyHabitatSystem implements Subsystem {
       const selected = [...heroes.slice(0, cap), ...fill];
       if (selected.length === 0) continue;
       const geometry = prairieTree && kind === 'trunk' ? prairieTree.trunk
-        : prairieTree && kind === 'canopy' ? prairieTree.crown : geometryFor(kind, doctrine.style);
-      // Generic primitives use instance tint alone. Only the accepted
-      // prairie crown kit carries a baked per-face color attribute.
-      const material = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true, vertexColors: !!prairieTree && kind === 'canopy' });
+        : prairieTree && kind === 'canopy' ? prairieTree.crown
+          : prairieTree && kind === 'shrub' ? sharptailShrubGeometry() : geometryFor(kind, doctrine.style);
+      // Prairie crowns and open sage carry baked face/leaf colors; other
+      // habitat primitives retain their existing instance-tint-only path.
+      const material = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true, vertexColors: !!prairieTree && (kind === 'canopy' || kind === 'shrub'), side: prairieTree && kind === 'shrub' ? THREE.DoubleSide : THREE.FrontSide });
       material.onBeforeCompile = (shader) => {
         shader.uniforms.uPropertyHabitatWind = this.wind;
         shader.vertexShader = shader.vertexShader

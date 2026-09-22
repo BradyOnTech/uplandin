@@ -10,16 +10,16 @@ import { QUAIL_GROUND_DIVISIONS, quailGroundNearDistance, quailGroundTiles, quai
 
 export { QUAIL_TERRAIN_TILE } from './quailGroundGeometry';
 const PAINT = {
-  straw: new THREE.Color(0xac976d),
-  pale: new THREE.Color(0xc4a66e),
-  cover: new THREE.Color(0xb7a174),
-  drain: new THREE.Color(0x526c60),
-  road: new THREE.Color(0xd1b48a),
-  litter: new THREE.Color(0x786448),
-  sward: new THREE.Color(0x858461),
-  openSoil: new THREE.Color(0xab9273),
-  edgeLitter: new THREE.Color(0x83744d),
-  plumLitter: new THREE.Color(0x696c48),
+  straw: new THREE.Color(0xb39a6f),
+  pale: new THREE.Color(0xd0ae7b),
+  cover: new THREE.Color(0xb99a67),
+  drain: new THREE.Color(0x586d52),
+  road: new THREE.Color(0xd5b28a),
+  litter: new THREE.Color(0x8b6549),
+  sward: new THREE.Color(0x8e7d59),
+  openSoil: new THREE.Color(0xbd916d),
+  edgeLitter: new THREE.Color(0x8c714b),
+  plumLitter: new THREE.Color(0x646044),
 };
 const routeSurface = { dry: 0, edge: 0 };
 
@@ -47,7 +47,7 @@ export function paintQuailGround(landscape: LandscapeModel, x: number, y: number
     quailSouthRouteAt(x, y, routeSurface);
     const opening = Math.max(routeSurface.dry, quailOpeningAt(x, y));
     out.lerp(PAINT.openSoil, opening * (.55 + (1 - stocking) * .25));
-    out.lerp(PAINT.plumLitter, quailPlumAt(x, y) * cover * .58);
+    out.lerp(PAINT.plumLitter, quailPlumAt(x, y) * cover * .70);
     out.lerp(PAINT.edgeLitter, routeSurface.edge * cover * .40);
   }
   const road = quailTrackDistanceAt(landscape.area, x, y, 16) * PROPERTY_PX_TO_M;

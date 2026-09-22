@@ -16,6 +16,8 @@ const arg = (key, fallback) => args.includes(key) ? args[args.indexOf(key) + 1] 
 const base = arg('--url', 'http://localhost:4621').replace(/\/$/, '');
 const label = arg('--label', 'before');
 const quality = arg('--quality', 'high');
+const tod = arg('--tod', 'morning');
+assert.ok(['dawn', 'morning', 'noon', 'evening', 'lastlight'].includes(tod));
 const out = resolve(arg('--out', 'artifacts/3d/prairie-blitz'));
 const areaFilter = arg('--area', 'both');
 const mobile = args.includes('--mobile');
@@ -36,7 +38,7 @@ assert.ok(maps.length, 'Unknown map');
 mkdirSync(out, { recursive: true });
 assert.ok(!/\/@vite|\/src\/main3d/.test(await fetch(`${base}/index3d.html`).then(r => r.text())), 'Use a production preview');
 const viewport = mobile ? { width: 844, height: 390, deviceScaleFactor: 1, isMobile: true, hasTouch: true } : { width: 1440, height: 810 };
-const report = { label, base, quality, viewport, seed: 1184004868, tod: 'morning', fov: 70,
+const report = { label, base, quality, viewport, seed: 1184004868, tod, fov: 70,
   startedAt: new Date().toISOString(), inspections: [], walks: [], errors: [], result: 'running',
   limitations: ['Fixed camera inspections use ordinary FOV70 but staged positions; they are not playthrough evidence.',
     'Input walks use real keyboard/mouse input after an ordinary spawn; no bird state, time, speed or camera setters are used.',

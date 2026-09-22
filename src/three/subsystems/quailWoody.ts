@@ -104,49 +104,45 @@ export function quailTreeGeometry(seed: number, habit: Habit): { trunk: THREE.Bu
   return { trunk: merge(branches), crown: merge(masses) };
 }
 
-/** Open sand-plum shoots: leaves sit along connected arching stems instead of
- * enclosing them in solid crowns. The gaps remain visible through the bush at
- * eye height. Seven unequal shoots use 392 triangles in one material/batch,
- * slightly less than the previous 406-triangle opaque leaf volumes. */
+/** A branched plum refuge with broad, unequal leaf crowns. Solid faceted
+ * foliage holds a readable silhouette beyond individual-leaf distance while
+ * low windows expose the woody structure. Five stems and five crowns use
+ * 320 triangles, below the former 392-triangle open-spray bush. */
 export function quailShrubGeometry(): THREE.BufferGeometry {
-  const parts: THREE.BufferGeometry[] = [], positions: number[] = [], colors: number[] = [];
+  const parts: THREE.BufferGeometry[] = [];
   const rng = mulberry32(824);
-  const triangle = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, shade: number) => {
-    for (const p of [a, b, c]) { positions.push(p.x, p.y, p.z); colors.push(shade, shade, shade); }
-  };
-  const shoots = [
-    [-.38, .53, .17], [.36, .50, .23], [.08, .85, -.15],
-    [-.24, .73, -.24], [.35, .69, -.11], [-.09, .51, .40], [-.48, .61, -.09],
+  const crowns: readonly Mass[] = [
+    [-.28, .70, .12, .43, .25, .33],
+    [.18, .89, -.10, .42, .29, .35],
+    [.48, .54, .20, .35, .19, .28],
+    [-.55, .52, -.14, .32, .23, .26],
+    [-.08, .49, .42, .28, .17, .27],
   ];
-  for (const [shoot, [x, y, z]] of shoots.entries()) {
-    const base = new THREE.Vector3(x * .16, -.035, z * .16);
-    const elbow = new THREE.Vector3(x * .39, y * .56, z * .43);
+  for (const [i, [x, y, z, width, height, depth]] of crowns.entries()) {
+    const base = new THREE.Vector3(x * .09, -.035, z * .09);
+    const elbow = new THREE.Vector3(x * .38, y * .47, z * .42);
     const tip = new THREE.Vector3(x, y, z);
-    for (const [a, b, radius, taper] of [[base, elbow, .012, .007], [elbow, tip, .007, .0015]] as const) {
-      const stem = branch(a, b, radius, taper), shade = new Float32Array(stem.attributes.position.count * 3);
-      for (let i = 0; i < shade.length; i += 3) { shade[i] = .82; shade[i + 1] = .73; shade[i + 2] = .54; }
-      stem.setAttribute('color', new THREE.BufferAttribute(shade, 3)); parts.push(stem);
+    for (const [a, b, radius, taper] of [[base, elbow, .025, .015], [elbow, tip, .015, .004]] as const) {
+      const stem = branch(a, b, radius, taper), color = new Float32Array(stem.attributes.position.count * 3);
+      for (let n = 0; n < color.length; n += 3) { color[n] = .92; color[n + 1] = .77; color[n + 2] = .55; }
+      stem.setAttribute('color', new THREE.BufferAttribute(color, 3)); parts.push(stem);
     }
-    // Opposite pairs alternate around each stem; a terminal leaf breaks its
-    // outline. Shallow folds retain some volume without a round canopy shell.
-    for (let leaf = 0; leaf < 9; leaf++) {
-      const level = leaf === 8 ? .94 : .30 + Math.floor(leaf / 2) * .17;
-      const origin = level < .56 ? base.clone().lerp(elbow, level / .56) : elbow.clone().lerp(tip, (level - .56) / .44);
-      const azimuth = shoot * 2.399 + Math.floor(leaf / 2) * 1.18 + (leaf % 2) * Math.PI + (rng() - .5) * .28;
-      const length = (.16 + rng() * .085) * (leaf === 8 ? .86 : 1);
-      const end = origin.clone().add(new THREE.Vector3(Math.sin(azimuth) * length, (.18 + rng() * .54) * length, Math.cos(azimuth) * length));
-      const middle = origin.clone().lerp(end, .49), halfWidth = length * (.28 + rng() * .07);
-      const across = new THREE.Vector3(Math.cos(azimuth) * halfWidth, -length * .12, -Math.sin(azimuth) * halfWidth);
-      const left = middle.clone().add(across), right = middle.clone().sub(across); right.y -= length * .18;
-      const shade = .83 + level * .18 + (rng() - .5) * .045;
-      triangle(origin, left, end, shade); triangle(origin, end, right, shade * .91);
-      triangle(origin, end, left, shade * .87); triangle(origin, right, end, shade * .82);
+    // The two main crowns carry richer facets; three smaller shoulders break
+    // the outline. Matching duplicated vertices keep each envelope closed.
+    const crown = new THREE.IcosahedronGeometry(1, i < 2 ? 1 : 0); crown.deleteAttribute('uv');
+    const positions = crown.getAttribute('position'), color = new Float32Array(positions.count * 3);
+    const phase = i * 2.399 + rng() * .4;
+    for (let n = 0; n < positions.count; n++) {
+      const px = positions.getX(n), py = positions.getY(n), pz = positions.getZ(n);
+      const shoulder = 1 + Math.sin(px * 3.4 + pz * 2.1 + phase) * .13 + Math.cos(py * 4.2 - phase) * .06;
+      positions.setXYZ(n, x + px * width * shoulder + py * .08,
+        y + py * height * (1 + Math.sin(px * 3 + phase) * .10), z + pz * depth * shoulder);
+      const shade = .80 + (py + 1) * .10 + Math.sin(px * 2.7 + pz * 3.4 + phase) * .035;
+      color[n * 3] = shade; color[n * 3 + 1] = shade; color[n * 3 + 2] = shade * .94;
     }
+    crown.setAttribute('color', new THREE.BufferAttribute(color, 3)); crown.computeVertexNormals(); parts.push(crown);
   }
-  const leaves = new THREE.BufferGeometry();
-  leaves.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  leaves.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); leaves.computeVertexNormals(); parts.push(leaves);
   const geometry = merge(parts); geometry.computeBoundingBox(); geometry.computeBoundingSphere();
-  geometry.userData = { kind: 'quail-open-shrub', shoots: 7, triangles: geometry.attributes.position.count / 3 };
+  geometry.userData = { kind: 'quail-plum-refuge', shoots: 5, triangles: geometry.attributes.position.count / 3 };
   return geometry;
 }

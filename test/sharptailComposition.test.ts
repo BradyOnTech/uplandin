@@ -8,6 +8,8 @@ import { GrassSystem } from '../src/three/subsystems/grass';
 import { PropertyHabitatSystem } from '../src/three/subsystems/propertyHabitat';
 import { SharptailSwardField } from '../src/three/subsystems/sharptailSward';
 import { sharptailGrassGeometry } from '../src/three/subsystems/sharptailGrass';
+import { sharptailShrubGeometry, sharptailTreeGeometry } from '../src/three/subsystems/sharptailWoody';
+import { quailGrassGeometry } from '../src/three/subsystems/quailGrass';
 
 const area = getArea('sharptail-prairie');
 
@@ -26,6 +28,19 @@ describe('Sharptail full-property native sward', () => {
       }
       expect(roots).toBeGreaterThan(0); expect(tips).toBeGreaterThan(0);
       geometry.dispose();
+    }
+  });
+  it('retains a narrow upright grass silhouette without depending on its material tint', () => {
+    for (const kind of ['short', 'stalk'] as const) {
+      const prairie = sharptailGrassGeometry(kind), quail = quailGrassGeometry(kind === 'stalk');
+      prairie.computeBoundingBox(); quail.computeBoundingBox();
+      const a = prairie.boundingBox!.getSize(new THREE.Vector3());
+      const b = quail.boundingBox!.getSize(new THREE.Vector3());
+      // Narrow stems and retained vertical height make the regional read
+      // survive grayscale and palette changes, without a larger tuft budget.
+      expect(Math.max(a.x, a.z)).toBeLessThan(Math.max(b.x, b.z) * .72);
+      expect(a.y).toBeGreaterThan(kind === 'stalk' ? .8 : .34);
+      prairie.dispose(); quail.dispose();
     }
   });
   it('keeps physical relief and sward zones attached to the property across parking places', () => {
@@ -110,6 +125,19 @@ function woodyFixture(quality: Quality, fixtureArea = area) {
 }
 
 describe('Sharptail shelterbelts', () => {
+  it('uses slender deciduous crowns and open low shrubs within the previous mesh budget', () => {
+    const { trunk, crown } = sharptailTreeGeometry(), shrub = sharptailShrubGeometry();
+    const crownSize = crown.boundingBox!.getSize(new THREE.Vector3());
+    const shrubSize = shrub.boundingBox!.getSize(new THREE.Vector3());
+    expect(Math.max(crownSize.x, crownSize.z) / crownSize.y).toBeLessThan(.8);
+    expect(trunk.attributes.position.count / 3 + crown.attributes.position.count / 3).toBeLessThanOrEqual(170);
+    expect(shrub.attributes.position.count / 3).toBeLessThanOrEqual(36);
+    expect(shrubSize.y).toBeLessThan(.5);
+    expect(Math.max(shrubSize.x, shrubSize.z)).toBeGreaterThan(shrubSize.y * 1.5);
+    expect(trunk.boundingBox!.min.y).toBeLessThanOrEqual(0);
+    expect(shrub.boundingBox!.min.y).toBe(0);
+    for (const geometry of [trunk, crown, shrub]) geometry.dispose();
+  });
   it('rejects a whole tree when a route clears the trunk but would clip its crown', () => {
     const before = woodyFixture('lite'), matrix = new THREE.Matrix4();
     const trunks = before.meshes.find(mesh => mesh.name.includes('trunk'))!;

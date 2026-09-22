@@ -20,7 +20,7 @@ import { applyQuailGrassGroundLod, createQuailGrassGroundGeometry } from './quai
 import { buildQuailDistantCover, quailGrassClearingAt, quailGrassMassAt, quailGrassStockingAt, quailSouthRouteAt } from './quailVegetation';
 
 const TILE = 40; // yards; local batches remain independently culled.
-const COLOR = { straw: 0xb6a574, dry: 0x919273, sage: 0x5e795d, sageLight: 0x8c9366, bark: 0x615343, leaf: 0x506c4e, leafLight: 0x748158 };
+const COLOR = { straw: 0xb6a574, dry: 0x919273, sage: 0x435f43, sageLight: 0x64794b, bark: 0x615343, leaf: 0x506c4e, leafLight: 0x748158 };
 interface Instance { px: number; py: number; angle: number; sx: number; sy: number; sz: number; color: number }
 interface Batch { mesh: THREE.Mesh; range: number; x: number; z: number; minRange: number; padding?: number; shadows?: boolean }
 interface CircleObstacle { x: number; z: number; radius: number }
@@ -234,7 +234,7 @@ export class QuailEnvironmentSystem implements Subsystem {
             if (road > 5 && opening < .3 && !quailGroundPropOccupies(px,py,1.6) && !quailKitOccupies(this.landscape.area,px,py) && rng() < (0.0014 + plum * .115 + drain * .0015) * patch) {
               const s = 0.85 + rng() * 1.15 + plum * .30;
               if (plum < .15 && drain < 0.3 && rng() < 0.72) sages.push({ ...v, sy: s * 0.85, sx: s, sz: s, color: rng() < 0.5 ? 0x88967c : 0x969b7b });
-              else shrubs.push({ ...v, sy: s * 0.8, sx: s * 1.2, sz: s, color: rng() < 0.55 ? COLOR.sage : COLOR.sageLight });
+              else shrubs.push({ ...v, sy: s * 0.88, sx: s * 1.4, sz: s * 1.15, color: rng() < 0.55 ? COLOR.sage : COLOR.sageLight });
             }
           }
         }
@@ -258,10 +258,10 @@ export class QuailEnvironmentSystem implements Subsystem {
             quailSouthRouteAt(px, py, routeSurface);
             const opening = quailOpeningAt(px, py), plum = quailPlumAt(px, py) * cover;
             const density = (.025 + sward * .12 + cover * .10 + mass * 1.15 + drain * .13)
-              * (.22 + stocking * .80) * (1 - Math.max(routeSurface.dry, opening) * .72) * (1 - plum * .50);
+              * (.22 + stocking * .80) * (1 - Math.max(routeSurface.dry, opening) * .72) * (1 - plum * .82);
             if (rng() > density) continue;
             const vigorous = rng() < mass * 1.15 + cover * .14;
-            const scale = (.94 + rng() * .42 + mass * .08) * (.82 + stocking * .23) * (1 - Math.max(routeSurface.dry, opening) * .38);
+            const scale = (.94 + rng() * .42 + mass * .08) * (.82 + stocking * .23) * (1 - Math.max(routeSurface.dry, opening) * .38) * (1 - plum * .22);
             this.color.setHex(vigorous ? COLOR.straw : COLOR.dry);
             if (vigorous) this.color.lerp(dryStem, rng() * .3);
             else this.color.lerp(dampLeaf, drain * .48);

@@ -96,7 +96,7 @@ export class QuailKitSystem implements Subsystem {
           if(!material){material=new THREE.MeshLambertMaterial({color:sourceMaterial.color,flatShading:true});if(sourceMaterial.name.includes('olive'))applyQuailFoliageLight(material);this.materials.set(sourceMaterial.name,material);}
           const batch=new THREE.InstancedMesh(geometry,material,selected.length),transform=new THREE.Object3D();
           const world={x:0,z:0};
-          selected.forEach((p,i)=>{this.landscape.propertyToWorld(p.x,p.y,world);transform.position.set(world.x,sampleQuailGroundHeights(this.landscape,p.x,p.y).nearY,world.z);transform.rotation.y=p.angle;transform.scale.setScalar(p.scale);transform.updateMatrix();batch.setMatrixAt(i,transform.matrix);});
+          selected.forEach((p,i)=>{this.landscape.propertyToWorld(p.x,p.y,world);transform.position.set(world.x,sampleQuailGroundHeights(this.landscape,p.x,p.y).nearY,world.z);transform.rotation.y=p.angle;transform.scale.set(p.scale*1.25,p.scale,p.scale*1.18);transform.updateMatrix();batch.setMatrixAt(i,transform.matrix);});
           batch.instanceMatrix.needsUpdate=true;batch.computeBoundingSphere();batch.castShadow=true;batch.receiveShadow=true;this.group.add(batch);this.batches.push(batch);
           this.foliageInstances.push(new QuailFoliageInstances(batch));
         });
