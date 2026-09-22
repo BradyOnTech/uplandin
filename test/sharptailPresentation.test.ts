@@ -43,7 +43,8 @@ describe('Sharptail species presentation', () => {
     const material = new THREE.MeshBasicMaterial();
     const wings = [-1, 1].map(side => ({ side, geometry: buildSharptailWing(side as -1 | 1), pivot: new THREE.Group() }));
     for (const { side, geometry, pivot } of wings) {
-      const p = geometry.getAttribute('position'), recovery = geometry.morphAttributes.position[0];
+      expect(geometry.morphAttributes.position).toBeDefined();
+      const p = geometry.getAttribute('position'), recovery = geometry.morphAttributes.position![0];
       expect(recovery.count).toBe(p.count);
       for (let i = 0; i < p.count; i++) {
         const span = side * p.getX(i);
