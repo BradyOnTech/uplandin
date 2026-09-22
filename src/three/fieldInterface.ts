@@ -154,11 +154,11 @@ export class FieldInterface {
       document.getElementById('controls')?.setAttribute('hidden', '');
       document.getElementById('hunt-again')?.focus();
       const updates = document.getElementById('app-update-panel')!;
-      document.getElementById('hunt-summary')?.append(updates);
+      document.getElementById('hunt-summary-content')?.append(updates);
       this.offlineUpdateState(this.updateState);
       const diagnostics = document.getElementById('performance-tools')!;
       if (!diagnostics.hidden) {
-        document.getElementById('hunt-summary')?.append(diagnostics);
+        document.getElementById('hunt-summary-content')?.append(diagnostics);
         const start = document.getElementById('performance-start') as HTMLButtonElement;
         start.disabled = true; start.hidden = true;
         (document.getElementById('performance-route') as HTMLInputElement).readOnly = true;

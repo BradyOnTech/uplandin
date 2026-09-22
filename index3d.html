@@ -32,10 +32,14 @@
     <div id="reticle" hidden aria-hidden="true"></div>
     <div id="shot-callout" hidden aria-live="assertive"></div>
     <section id="hunt-summary" hidden aria-label="Hunt summary">
-      <h2>HUNT COMPLETE</h2>
-      <div id="hunt-summary-copy"></div>
-      <button id="hunt-again" type="button">Hunt again</button>
-      <button id="hunt-menu" type="button">Main menu</button>
+      <div id="hunt-summary-content">
+        <h2>HUNT COMPLETE</h2>
+        <div id="hunt-summary-copy"></div>
+      </div>
+      <div class="hunt-summary-actions">
+        <button id="hunt-again" type="button">Hunt again</button>
+        <button id="hunt-menu" type="button">Main menu</button>
+      </div>
     </section>
     <div id="move-stick" hidden aria-hidden="true"><span></span></div>
     <div id="touch-move-guide" aria-hidden="true"><span>Move</span><small>Drag farther to run</small></div>
