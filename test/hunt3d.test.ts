@@ -185,8 +185,8 @@ describe('Hunt3DSystem live start', () => {
 
     hunt.fixedUpdate(ctx, 1000 / 30);
     // Walk forward for five seconds. The old 2D-tuned pace carried the dog
-    // out of frame almost immediately; the live 3D cast should keep working
-    // the lane ahead of the moving hunter.
+    // out of frame almost immediately; the live cast should remain close
+    // even when its first turn briefly carries it behind the hunter.
     for (let i = 0; i < 150; i++) {
       walkForward(ctx, 2.2 / 30);
       hunt.fixedUpdate(ctx, 1000 / 30);
@@ -195,6 +195,16 @@ describe('Hunt3DSystem live start', () => {
     const dog = hunt.dogWorld({ x: 0, z: 0 });
     const distance = Math.hypot(dog.x - ctx.camera.position.x, dog.z - ctx.camera.position.z);
     expect(distance).toBeLessThan(12);
+
+    // Quartering is a sweep, not a requirement to remain ahead every tick.
+    // Complete the first turn while the handler keeps walking: the dog must
+    // regain the forward lane promptly, without escaping its readable range.
+    for (let i = 0; i < 150; i++) {
+      walkForward(ctx, 2.2 / 30);
+      hunt.fixedUpdate(ctx, 1000 / 30);
+      hunt.dogWorld(dog);
+      expect(Math.hypot(dog.x - ctx.camera.position.x, dog.z - ctx.camera.position.z)).toBeLessThan(35);
+    }
     const forwardX = -Math.sin(ctx.camera.rotation.y);
     const forwardZ = -Math.cos(ctx.camera.rotation.y);
     const forwardDistance =
@@ -227,15 +237,23 @@ describe('Hunt3DSystem live start', () => {
     hunt.init(ctx);
     hunt.fixedUpdate(ctx, 1000 / 30);
 
-    // Cast off, then walk a straight, playable hunting line for 30 seconds.
-    // This drives the exact live bridge: camera → hunter → work anchor →
-    // shared Dog scent logic. A player should not need debug knowledge of
-    // hidden bird coordinates to see the game's central sequence.
+    // Cast off and walk until the dog makes scent, then follow the visible
+    // scenting dog as a handler would. Continuing on an unrelated straight
+    // line measures separation chosen by the hunter, not runaway dog work.
+    // This drives camera → hunter → work anchor → shared Dog scent logic,
+    // with a 30-second budget and no knowledge of hidden bird positions.
     walkForward(ctx, 2);
     let sawScent = false;
     let sawPoint = false;
+    const scentStages = new Set<string>();
     let maxDogHandlerM = 0;
     for (let i = 0; i < 30 * 30; i++) {
+      if (hunt.dog().scentStage !== 'none') {
+        const visibleDog = hunt.dogWorld({ x: 0, z: 0 });
+        ctx.camera.rotation.y = Math.atan2(
+          -(visibleDog.x - ctx.camera.position.x), -(visibleDog.z - ctx.camera.position.z),
+        );
+      }
       walkForward(ctx, 2.2 / 30);
       hunt.fixedUpdate(ctx, 1000 / 30);
       const dog = hunt.dog();
@@ -245,12 +263,14 @@ describe('Hunt3DSystem live start', () => {
         Math.hypot(dogW.x - ctx.camera.position.x, dogW.z - ctx.camera.position.z),
       );
       sawScent ||= dog.scentStage !== 'none';
+      if (dog.scentStage !== 'none') scentStages.add(dog.scentStage);
       sawPoint ||= dog.state === 'pointing';
       if (sawPoint) break;
     }
 
     expect(sawScent).toBe(true);
     expect(sawPoint).toBe(true);
+    expect([...scentStages]).toEqual(['checking', 'locating', 'stalking', 'locking']);
     expect(maxDogHandlerM).toBeLessThan(35);
   });
 
