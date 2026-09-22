@@ -7,6 +7,8 @@ import { QUAIL_WORLD_SCALE, quailLaunchDelay } from '../quailPresentation';
 import { QuailFlushDebris } from '../quailFlushDebris';
 import * as THREE from 'three';
 import { buildBobwhiteBody, buildBobwhiteWing, poseBobwhiteFoldedWings } from '../assets/bobwhite';
+import { buildSharptailBody, buildSharptailWing, poseSharptailFoldedWings } from '../assets/sharptail';
+import { sharptailLaunchDelay, sharptailWingbeat } from '../sharptailPresentation';
 import { playFlush, playThud, playPheasantFlush, type PheasantFlushSound } from '../../audio';
 import { RELIGHT_CHANCE, YOUNG_FLIGHT_MULT } from '../../game/birds';
 import { mulberry32 } from '../../game/math';
@@ -663,9 +665,12 @@ export class BirdsSystem implements Subsystem {
     const wingTop = back.clone().multiplyScalar(0.9);
     const wingTopDim = wingTop.clone().multiplyScalar(0.8);
     const wingUnder = belly.clone().multiplyScalar(0.78);
-    const body = species.id === 'ringneck' ? buildPheasantBody(hen) : species.id === 'bobwhite' ? buildBobwhiteBody() : this.buildBodyGeo(back, backDim, belly, cap, throat, tail, shape);
-    const wingL = species.id === 'ringneck' ? buildPheasantWing(-1,hen) : species.id === 'bobwhite' ? buildBobwhiteWing(-1) : this.buildWingGeo(-1, wingTop, wingTopDim, wingUnder, shape);
-    const wingR = species.id === 'ringneck' ? buildPheasantWing(1,hen) : species.id === 'bobwhite' ? buildBobwhiteWing(1) : this.buildWingGeo(1, wingTop, wingTopDim, wingUnder, shape);
+    const body = species.id === 'ringneck' ? buildPheasantBody(hen) : species.id === 'bobwhite' ? buildBobwhiteBody()
+      : species.id === 'sharptail' ? buildSharptailBody() : this.buildBodyGeo(back, backDim, belly, cap, throat, tail, shape);
+    const wingL = species.id === 'ringneck' ? buildPheasantWing(-1,hen) : species.id === 'bobwhite' ? buildBobwhiteWing(-1)
+      : species.id === 'sharptail' ? buildSharptailWing(-1) : this.buildWingGeo(-1, wingTop, wingTopDim, wingUnder, shape);
+    const wingR = species.id === 'ringneck' ? buildPheasantWing(1,hen) : species.id === 'bobwhite' ? buildBobwhiteWing(1)
+      : species.id === 'sharptail' ? buildSharptailWing(1) : this.buildWingGeo(1, wingTop, wingTopDim, wingUnder, shape);
     const tailGeo = species.id === 'ringneck' ? buildPheasantTail(hen) : undefined;
     if (tailGeo) this.geos.push(tailGeo);
     this.geos.push(body, wingL, wingR);
@@ -1459,7 +1464,7 @@ export class BirdsSystem implements Subsystem {
       slot.wobbleMult = 0.6 + rng();
       slot.gliding = false;
       if (this.spatialEncounter) {
-        slot.delayMs = quailLaunchDelay(launched, waveN, rng);
+        slot.delayMs = species.id === 'sharptail' ? sharptailLaunchDelay(launched, waveN, rng) : quailLaunchDelay(launched, waveN, rng);
       } else if (this.frozen) {
         // Capture covey stage: clustered staggered launch across ~0.8 s
         // — the first birds are 10 m out while the last still blow from
@@ -1670,6 +1675,10 @@ export class BirdsSystem implements Subsystem {
       if (slot.wingLMesh.morphTargetInfluences) slot.wingLMesh.morphTargetInfluences[0] = 0;
       if (slot.wingRMesh.morphTargetInfluences) slot.wingRMesh.morphTargetInfluences[0] = 0;
       posePheasantFoldedWings(slot.wingL, slot.wingR);
+    } else if (slot.species.id === 'sharptail') {
+      if (slot.wingLMesh.morphTargetInfluences) slot.wingLMesh.morphTargetInfluences[0] = 0;
+      if (slot.wingRMesh.morphTargetInfluences) slot.wingRMesh.morphTargetInfluences[0] = 0;
+      poseSharptailFoldedWings(slot.wingL, slot.wingR);
     } else if (this.refinedQuail && slot.species.id === 'bobwhite') {
       poseBobwhiteFoldedWings(slot.wingL, slot.wingR);
     } else {
@@ -1777,7 +1786,18 @@ export class BirdsSystem implements Subsystem {
       const pitch = THREE.MathUtils.clamp(Math.atan2(s.vyW, Math.max(hSpeed, 0.3)), -0.5, 1.1);
       s.root.rotation.order = 'YXZ';
       s.root.rotation.set(-pitch * 0.85, yaw, this.spatialEncounter && s.species.id === 'ringneck' ? (s.bank ?? 0) : 0);
-      if (s.gliding) {
+      if (s.species.id === 'sharptail') {
+        // Render on the interpolated clock, not held 30Hz simulation poses.
+        // Beat/glide phrasing changes only this species' mesh and morphs;
+        // spatial velocities, clearance, glide state and hit center stay live.
+        const wingMs = this.frozen ? s.airMs : THREE.MathUtils.lerp(s.previousAirMs ?? s.airMs, s.airMs, ctx.fixedAlpha ?? 1);
+        const beat = sharptailWingbeat(wingMs / 1000, s.species.flight.flapRate ?? 13,
+          s.wobblePh * .35, s.spatialFlight?.glideAt ?? .8);
+        s.wingL.rotation.set(0, 0, -beat.angle);
+        s.wingR.rotation.set(0, 0, beat.angle);
+        s.wingLMesh.morphTargetInfluences![0] = beat.recovery;
+        s.wingRMesh.morphTargetInfluences![0] = beat.recovery;
+      } else if (s.gliding) {
         // Wings locked in the set-wing dihedral — the glide read.
         s.wingL.rotation.set(0, 0, -0.16);
         s.wingR.rotation.set(0, 0, 0.16);
