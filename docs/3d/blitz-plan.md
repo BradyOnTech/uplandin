@@ -38,6 +38,10 @@ An additional chat is optional. Its recommended assignment is the entire map-des
 
 **Map lane — Visuals and hunting decisions together**
 
+The user clarified after the first playable batch that Quail and Sharptail must look like different territories. Treat these as distinct authored regions: Quail is southern-plains bobwhite country, with sandy/russet soil, substantial connected plum refuges, grass aprons and sheltered drainage; Sharptail is northern mixed-grass prairie, with broad open shoulders, continuous pale native grass, silver-sage/snowberry swales and sparse distant shelterbelts.
+
+The visual acceptance check uses matched morning/noon, ordinary eye height and the same FOV. A viewer should distinguish the regions from vegetation silhouettes, the arrangement of open and sheltered ground, and the horizon before reading the HUD. Different tints alone do not satisfy it. Preserve species-specific search and approach rules, coherent shared habitat, the accepted Cattail environment and Chukar's established geology/lighting. Reallocate existing detail before raising the mobile rendering budget.
+
 Give the map owner responsibility for terrain, habitat layout, routes, vegetation composition, materials, local lighting direction and meaningful props within the selected slice. Reserve one coherent area at a time. The work should be noticeably different from ordinary walking height, and give the hunter a useful choice of approach. Additional detail alone does not finish a level-design task.
 
 | Order and bounded slice | Proposed visual work | Proposed hunting/design result |

@@ -115,13 +115,16 @@ float cloudField(vec2 ae) {
     return f;
   }
   if (uQuail > 0.5) {
-    float f = prairieBank(cloudLocal(ae, vec2(-2.70, 0.26), vec2(1.45, 1.5)));
-    f = max(f, prairieBank(cloudLocal(ae, vec2(2.15, 0.14), vec2(-1.7, 1.9))));
-    f = max(f, prairieBank(cloudLocal(ae, vec2(0.06, 0.32), vec2(1.8, 1.9))));
-    f = max(f, prairieBank(cloudLocal(ae, vec2(-0.95, 0.13), vec2(-2.1, 2.0))));
-    f = max(f, prairieBank(cloudLocal(ae, vec2(1.12, 0.22), vec2(1.6, 1.15))));
+    // Southern Plains cloud decks: uneven rising shoulders break into a
+    // long trailing bank. Two composite groups stay below the old five-bank
+    // sampling cost and avoid a lone, rounded cloud-icon silhouette.
+    vec2 a = cloudLocal(ae, vec2(-2.55, .27), vec2(1.0, 1.1));
+    vec2 b = cloudLocal(ae, vec2(1.94, .24), vec2(-1.2, 1.35));
+    float f = prairieBank(a) + .36 * cumulus(a * vec2(1.55, 1.9));
+    f = max(f, prairieBank(b) + .32 * cumulus(b * vec2(1.7, 2.1)));
     return f;
   }
+
   // Mass A — big anvil ahead of the noon-open camera (az ~5 deg, high —
   // kept clear of the dawn-into-sun frame corner at az ~45-55 deg).
   float f = cumulus(cloudLocal(ae, vec2(0.08, 0.30), vec2(1.0, 1.0)));
@@ -408,19 +411,15 @@ const DEFAULT_RIDGES: RidgeProfile = {
   treeCount: TREE_COUNT,
 };
 
-/** Low wooded shoulders, broken bluffs and a distant rolling plateau.
- * These are decorative horizon layers, never traversable collision walls. */
+/** Southern Plains wooded drainage shoulders: low crowns and open field
+ * breaks, not the old smooth plateau/mountain bands. */
 const QUAIL_RIDGES: RidgeProfile = {
   layers: [
-    { radius: 340, base: 1, amp: 13, far: 0, fogMix: 0.08, hazeAmt: 0.55, jag: 0.04, freqs: [4, 11, 27], noiseScale: 0.48, land: true },
-    { radius: 620, base: 7, amp: 58, far: 0.18, fogMix: 0.14, hazeAmt: 0.68, jag: 0.12, freqs: [7, 18, 39], noiseScale: 0.8 },
-    { radius: 950, base: 20, amp: 110, far: 0.72, fogMix: 0.22, hazeAmt: 0.82, jag: 0.08, freqs: [4, 11, 27], noiseScale: 0.6 },
+    { radius: 340, base: 1, amp: 22, far: 0, fogMix: 0.06, hazeAmt: 0.40, jag: 0, freqs: [4, 11, 27], noiseScale: 0, land: true, treeHaze: .14 },
+    { radius: 620, base: 7, amp: 32, far: 0.3, fogMix: 0.16, hazeAmt: 0.60, jag: 0, freqs: [7, 18, 39], noiseScale: 0, treeHaze: .25 },
+    { radius: 950, base: 14, amp: 40, far: 0.72, fogMix: 0.28, hazeAmt: 0.84, jag: 0, freqs: [4, 11, 27], noiseScale: 0 },
   ],
-  features: [
-    [{ c: -143, h: 0.75, sl: 18, sr: 32 }, { c: -62, h: 0.6, sl: 27, sr: 17 }, { c: 52, h: 0.65, sl: 21, sr: 36 }],
-    [{ c: -164, h: 0.72, sl: 11, sr: 23 }, { c: -88, h: 0.62, sl: 21, sr: 10 }, { c: 29, h: 0.7, sl: 20, sr: 12 }, { c: 124, h: 0.48, sl: 12, sr: 26 }],
-    [{ c: -124, h: 0.8, sl: 22, sr: 32 }, { c: 6, h: 0.55, sl: 27, sr: 17 }, { c: 97, h: 0.55, sl: 22, sr: 35 }],
-  ],
+  features: [[], [], []],
   segments: [512, 512, 384],
   treeCount: 0,
   verticalFollow: 0.75,
@@ -476,23 +475,80 @@ const HUN_RIDGES: RidgeProfile = {
   verticalFollow: 0.68,
 };
 
-/** High plains horizon: broad grassland swells, a few low windbreaks, and
- * distant butte shoulders. The low amplitudes keep the field feeling wide. */
+/** Northern prairie: low rolling grass country with only two distant
+ * windbreak groups. Most azimuths remain open ground beneath a broad sky. */
 const SHARPTAIL_RIDGES: RidgeProfile = {
   layers: [
-    { radius: 300, base: -1.5, amp: 6, far: 0, fogMix: 0.03, hazeAmt: 0.38, jag: 0.02, freqs: [3, 8, 21], noiseScale: 0.42, land: true },
-    { radius: 490, base: 2, amp: 13, far: 0.18, fogMix: 0.1, hazeAmt: 0.58, jag: 0.05, freqs: [4, 10, 25], noiseScale: 0.46 },
-    { radius: 760, base: 9, amp: 29, far: 0.52, fogMix: 0.17, hazeAmt: 0.75, jag: 0.09, freqs: [3, 7, 19], noiseScale: 0.5 },
+    { radius: 300, base: 0, amp: 6, far: 0, fogMix: 0.06, hazeAmt: 0.48, jag: 0, freqs: [3, 8, 21], noiseScale: 0, land: true },
+    { radius: 620, base: 3, amp: 14, far: 0.28, fogMix: 0.16, hazeAmt: 0.64, jag: 0, freqs: [4, 10, 25], noiseScale: 0, treeHaze: .34 },
+    { radius: 960, base: 9, amp: 22, far: 0.68, fogMix: 0.25, hazeAmt: 0.86, jag: 0, freqs: [3, 7, 19], noiseScale: 0 },
   ],
-  features: [
-    [{ c: -72, h: 0.38, sl: 38, sr: 56 }, { c: 18, h: 0.3, sl: 48, sr: 64 }, { c: 120, h: 0.34, sl: 45, sr: 52 }],
-    [{ c: -112, h: 0.45, sl: 34, sr: 54 }, { c: -4, h: 0.34, sl: 50, sr: 63 }, { c: 94, h: 0.42, sl: 40, sr: 58 }],
-    [{ c: -132, h: 0.58, sl: 32, sr: 60 }, { c: -26, h: 0.34, sl: 52, sr: 66 }, { c: 88, h: 0.48, sl: 40, sr: 62 }],
-  ],
+  features: [[], [], []],
   segments: [512, 448, 384],
   treeCount: 0,
   verticalFollow: 0.72,
 };
+
+type PlainsArea = 'quail-fields' | 'sharptail-prairie';
+type PlainsContour = readonly (readonly [azimuth: number, height: number])[];
+interface PlainsGrove { center: number; width: number; count: number; height: number }
+const PLAINS_CONTOURS: Record<PlainsArea, readonly PlainsContour[]> = {
+  'quail-fields': [
+    [[-180,2],[-155,5],[-128,-2],[-94,4],[-60,1],[-28,6],[7,2],[40,-3],[67,4],[94,6],[129,-2],[157,3],[180,2]],
+    [[-180,10],[-143,16],[-112,9],[-77,13],[-43,6],[-9,16],[27,8],[61,11],[97,19],[137,8],[180,10]],
+    [[-180,20],[-139,32],[-96,22],[-51,16],[-10,27],[31,19],[76,30],[116,23],[155,15],[180,20]],
+  ],
+  'sharptail-prairie': [
+    [[-180,-2],[-144,1],[-107,-3],[-61,2],[-16,-2],[33,1],[82,-4],[129,2],[157,0],[180,-2]],
+    [[-180,4],[-149,7],[-111,3],[-69,9],[-26,4],[18,7],[61,2],[96,6],[141,3],[180,4]],
+    [[-180,14],[-137,23],[-91,15],[-39,19],[6,12],[49,22],[95,16],[139,24],[180,14]],
+  ],
+};
+const PLAINS_GROVES: Record<PlainsArea, readonly (readonly PlainsGrove[])[]> = {
+  'quail-fields': [
+    [{ center:-159,width:24,count:8,height:17 },{ center:-91,width:22,count:7,height:19 },
+      { center:-23,width:30,count:9,height:21 },{ center:29,width:13,count:4,height:15 },
+      { center:78,width:24,count:8,height:18 },{ center:148,width:18,count:6,height:16 }],
+    [{ center:-125,width:27,count:10,height:13 },{ center:-56,width:22,count:8,height:16 },
+      { center:6,width:20,count:7,height:14 },{ center:113,width:30,count:11,height:17 }],
+    [],
+  ],
+  'sharptail-prairie': [[],
+    [{ center:-142,width:10,count:4,height:8 },{ center:88,width:11,count:5,height:7 }],
+    [],
+  ],
+};
+
+/** Decorative silhouettes only: world vegetation and bird habitat stay in
+ * the map data. Sampling never adds trees, collision or hunting cover. */
+export function sampleRegionalSkyline(area: PlainsArea, layer: number, theta: number): { ground: number; crown: number; crest: number } {
+  const az = ((theta * 180 / Math.PI + 180) % 360 + 360) % 360 - 180;
+  const contour = PLAINS_CONTOURS[area][layer];
+  let ground = contour[0][1];
+  for (let i = 1; i < contour.length; i++) {
+    const [right, b] = contour[i];
+    if (az > right) continue;
+    const [left, a] = contour[i - 1];
+    const t = (az - left) / (right - left);
+    ground = a + (b - a) * t * t * (3 - 2 * t);
+    break;
+  }
+  let crown = 0;
+  for (const [group, grove] of PLAINS_GROVES[area][layer].entries()) {
+    const step = grove.width / grove.count;
+    for (let tree = 0; tree < grove.count; tree++) {
+      const salt = group * 71 + layer * 137;
+      const center = grove.center - grove.width * .5 + step * (tree + .5 + (hash01(tree, salt) - .5) * .32);
+      const dx = Math.abs(az - center) / (step * (.55 + .25 * hash01(tree, salt + 1)));
+      if (dx >= 1) continue;
+      // Low, broadleaf crowns with short faceted shoulders; no conifer teeth.
+      const shape = dx < .38 ? 1 - dx * .20 : (1 - dx) / .62 * .924;
+      const edge = .55 + .45 * Math.sin(Math.PI * (tree + .5) / grove.count);
+      crown = Math.max(crown, grove.height * shape * edge * (.72 + .28 * hash01(tree, salt + 2)));
+    }
+  }
+  return { ground, crown, crest: ground + crown };
+}
 
 /** Ruffed-grouse country: a close dark timber wall with irregular conifer
  * crowns. The horizon stays compressed so the player reads short sightlines
@@ -870,9 +926,16 @@ export class SkySystem implements Subsystem {
           treeBase = prairie.ground;
           treeFrac = Math.min(1, prairie.crown / 8);
         }
-        // Land ring may sink below the plain (isolated masses); real ridge
-        // bands keep their floor so the skyline never gaps.
-        h = Math.max(h, this.areaId==='chukar-ridge' ? -50 : layer.land ? -2.0 : l <= 1 ? 2.5 : 1.2);
+        const plains = this.areaId === 'quail-fields' || this.areaId === 'sharptail-prairie';
+        if (plains) {
+          const horizon = sampleRegionalSkyline(this.areaId as PlainsArea, l, theta);
+          h = horizon.crest;
+          treeBase = horizon.ground;
+          treeFrac = Math.min(1, horizon.crown / 12);
+        }
+        // Plains contours may fall below the local datum: clamping them to
+        // one positive floor created a continuous, water-like horizon strip.
+        h = Math.max(h, plains ? -8 : this.areaId==='chukar-ridge' ? -50 : layer.land ? -2.0 : l <= 1 ? 2.5 : 1.2);
         const x = Math.sin(theta) * layer.radius;
         const z = Math.cos(theta) * layer.radius;
         const top = i * 2;
@@ -1014,9 +1077,9 @@ export class SkySystem implements Subsystem {
           .lerp(this.ridgeFar, this.ridgeProfile.layers[l].far)
           .lerp(this.fogCol, this.ridgeProfile.layers[l].fogMix);
       }
-      // Chukar's exposed downhill terrain already fades to the scene fog.
-      // Match that colour at the backdrop base to avoid a contrasting band.
-      (ru.uHaze.value as THREE.Color).copy(this.areaId === 'chukar-ridge' ? this.fogCol : this.hazeCol);
+      // Exposed Chukar slopes and the long prairie view fade to scene fog.
+      // Match it at their backdrop bases instead of adding a bright strip.
+      (ru.uHaze.value as THREE.Color).copy(this.areaId === 'chukar-ridge' || this.areaId === 'sharptail-prairie' ? this.fogCol : this.hazeCol);
       (ru.uSpill.value as THREE.Color).setHex(spec.hotBand);
       ru.uSpillStrength.value = spec.hotStrength * 0.55 * (1 - 0.55 * this.ridgeProfile.layers[l].far);
       (ru.uSunXZ.value as THREE.Vector2).set(sx / sunFlatLen, sz / sunFlatLen);
