@@ -18,6 +18,7 @@ import { quailShrubGeometry, quailTreeGeometry } from './quailWoody';
 import { quailGrassClumpGeometry, QUAIL_GRASS_VARIATION } from './quailGrass';
 import { applyQuailGrassGroundLod, createQuailGrassGroundGeometry } from './quailGrassGround';
 import { buildQuailDistantCover, quailGrassClearingAt, quailGrassMassAt, quailGrassStockingAt, quailSouthRouteAt } from './quailVegetation';
+import { VegetationWind, VEGETATION_GUST_GLSL, VEGETATION_INSTANCE_WIND_GLSL } from './vegetationWind';
 
 const TILE = 40; // yards; local batches remain independently culled.
 const COLOR = { straw: 0xb6a574, dry: 0x919273, sage: 0x435f43, sageLight: 0x64794b, bark: 0x615343, leaf: 0x506c4e, leafLight: 0x748158 };
@@ -75,6 +76,7 @@ export class QuailEnvironmentSystem implements Subsystem {
   private materials = new Set<THREE.Material>();
   private obstacles: CircleObstacle[] = [];
   private wind = { value: 0 };
+  private huntWind = new VegetationWind();
   private groundNearDistance = quailGroundNearDistance('high');
   private matrix = new THREE.Matrix4(); private position = new THREE.Vector3(); private rotation = new THREE.Quaternion();
   private scale = new THREE.Vector3(); private color = new THREE.Color(); private euler = new THREE.Euler();
@@ -93,19 +95,19 @@ export class QuailEnvironmentSystem implements Subsystem {
       mat.alphaHash = true;
       mat.onBeforeCompile = (shader) => {
         shader.uniforms.uQuailWind = time;
+        shader.uniforms.uQuailWindDirection = this.huntWind.direction;
+        shader.uniforms.uQuailWindStrength = this.huntWind.strength;
         shader.uniforms.uQuailFade = { value: new THREE.Vector4(...fade as [number, number, number, number]) };
         // Grass is a thin, light-transmitting leaf; an upward normal bias avoids black backfaces.
         shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vQuailDistance;\nuniform vec4 uQuailFade;')
           .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.a *= smoothstep(uQuailFade.x, uQuailFade.y, vQuailDistance) * (1.0 - smoothstep(uQuailFade.z, uQuailFade.w, vQuailDistance));')
           .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\n normal = normalize(mix(normal, normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz), 0.88));');
-        shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uQuailWind;\nvarying float vQuailDistance;' + (grass ? '\nattribute vec4 quailBlade;' : ''))
+        shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uQuailWind;\nuniform vec2 uQuailWindDirection;\nuniform float uQuailWindStrength;\nvarying float vQuailDistance;' + (grass ? '\nattribute vec4 quailBlade;' : '')+VEGETATION_GUST_GLSL+VEGETATION_INSTANCE_WIND_GLSL)
           .replace('#include <begin_vertex>', `#include <begin_vertex>
           ${grass ? QUAIL_GRASS_VARIATION : ''}
           #ifdef USE_INSTANCING
-          float phase = instanceMatrix[3].x * 0.24 + instanceMatrix[3].z * 0.17;
-          float bend = sin(uQuailWind * 1.7 + phase) * 0.04 + sin(uQuailWind * 0.7 + phase * 0.3) * 0.035;
-          transformed.x += bend * position.y * position.y;
-          transformed.z += bend * position.y * 0.45;
+          float bend=vegetationGust(uQuailWind,instanceMatrix[3].xz,uQuailWindDirection)*.075*uQuailWindStrength;
+          transformed+=vegetationInstanceWind(uQuailWindDirection)*bend*position.y*position.y;
           vQuailDistance = length((modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xz - cameraPosition.xz);
           #else
           vQuailDistance = length((modelMatrix * vec4(transformed, 1.0)).xz - cameraPosition.xz);
@@ -113,7 +115,7 @@ export class QuailEnvironmentSystem implements Subsystem {
         if (grass) applyQuailGrassGroundLod(shader, this.groundNearDistance);
       };
     }
-    if (wind) mat.customProgramCacheKey = () => grass ? 'quail-grass-clumps-ground-v4' : 'quail-sage-v2';
+    if (wind) mat.customProgramCacheKey = () => grass ? 'quail-hunt-wind-grass-ground-v5' : 'quail-hunt-wind-sage-v3';
     this.materials.add(mat); return mat;
   }
 
@@ -181,6 +183,7 @@ export class QuailEnvironmentSystem implements Subsystem {
   }
 
   init(ctx: Ctx): void|Promise<void> {
+    this.huntWind.connect(ctx);
     if(!this.loadTrees){this.build(ctx);return;}
     return this.loadTrees(ctx.quality).then(kit=>{
       this.treeKit=kit;
@@ -323,6 +326,7 @@ export class QuailEnvironmentSystem implements Subsystem {
 
   update(ctx: Ctx): void {
     this.wind.value = ctx.time;
+    this.huntWind.update();
     for (const batch of this.batches) {
       const distance = Math.hypot(ctx.camera.position.x - batch.x, ctx.camera.position.z - batch.z);
       batch.mesh.visible = distance < batch.range + (batch.padding ?? TILE * 0.75) && distance >= batch.minRange;

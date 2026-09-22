@@ -8,6 +8,7 @@ import { chukarLandmarkClearance } from './chukarLandmarks';
 import { chukarBrows, chukarBrowBlockers, chukarGroundZones, chukarPlantStandAt } from '../../game/chukarLandscape';
 import { applyChukarRockWeathering } from './chukarRockMaterial';
 import { chukarPlantGroupAt, chukarTrackSectionAt } from './chukarSurface';
+import { VegetationWind, VEGETATION_GUST_GLSL, VEGETATION_INSTANCE_WIND_GLSL } from './vegetationWind';
 import { loadChukarKit } from '../assets/chukarKit';
 import { chukarGrassGeometry, chukarSageGeometry } from '../assets/chukarPlants';
 import { CHUKAR_GROUND_DETAIL } from './chukarTerrain';
@@ -70,6 +71,7 @@ export class ChukarEnvironmentSystem implements Subsystem {
   private materials = new Set<THREE.Material>();
   private batches: Batch[] = [];
   private wind = { value: 0 };
+  private huntWind = new VegetationWind();
   private leafFill = { value: .22 };
   private viewPosition = { value: new THREE.Vector3() };
   private groundDetail: {near:number;far:number;range:number} = CHUKAR_GROUND_DETAIL.high;
@@ -152,13 +154,15 @@ export class ChukarEnvironmentSystem implements Subsystem {
 
   private plantVertexShader(shader: THREE.WebGLProgramParametersWithUniforms): void {
     shader.uniforms.uChukarWind = this.wind;
+    shader.uniforms.uChukarWindDirection = this.huntWind.direction;
+    shader.uniforms.uChukarWindStrength = this.huntWind.strength;
     shader.uniforms.uChukarViewPosition = this.viewPosition;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uChukarWind;\nuniform vec3 uChukarViewPosition;')
+      .replace('#include <common>', '#include <common>\nuniform float uChukarWind;\nuniform vec2 uChukarWindDirection;\nuniform float uChukarWindStrength;\nuniform vec3 uChukarViewPosition;'+VEGETATION_GUST_GLSL+VEGETATION_INSTANCE_WIND_GLSL)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         #ifdef USE_INSTANCING
-        float windPhase=instanceMatrix[3].x*.15+instanceMatrix[3].z*.23;
-        transformed.x+=sin(uChukarWind*1.4+windPhase)*position.y*position.y*.035;
+        float gust=vegetationGust(uChukarWind,instanceMatrix[3].xz,uChukarWindDirection);
+        transformed+=vegetationInstanceWind(uChukarWindDirection)*gust*uChukarWindStrength*position.y*position.y*.035;
         #endif`);
     applyQuailGrassGroundLod(shader, this.groundDetail.range);
     // Shadow depth uses the player's terrain tier, not the light camera's
@@ -168,6 +172,7 @@ export class ChukarEnvironmentSystem implements Subsystem {
 
   async init(ctx: Ctx): Promise<void> {
     const lite = ctx.quality === 'lite', area = this.landscape.area;
+    this.huntWind.connect(ctx);
     this.groundDetail = CHUKAR_GROUND_DETAIL[ctx.quality];
     this.root.name = 'Chukar Ridge — sage benches and broken rimrock'; ctx.scene.add(this.root);
     const brows=await loadChukarKit(ctx.quality);
@@ -183,7 +188,7 @@ export class ChukarEnvironmentSystem implements Subsystem {
     applyChukarRockWeathering(browMat);
     this.plantDepth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side: THREE.DoubleSide });
     this.plantDepth.onBeforeCompile = shader => this.plantVertexShader(shader);
-    this.plantDepth.customProgramCacheKey = () => 'chukar-plant-ground-depth-v1';
+    this.plantDepth.customProgramCacheKey = () => 'chukar-hunt-wind-ground-depth-v2';
     this.materials.add(this.plantDepth);
     const plantMaterial=(tilt:number)=>{
       const material=new THREE.MeshLambertMaterial({color:0xffffff,vertexColors:true,side:THREE.DoubleSide});
@@ -195,7 +200,7 @@ export class ChukarEnvironmentSystem implements Subsystem {
             objectNormal=normalize(mix(objectNormal,vec3(0.,1.,0.),${tilt.toFixed(2)}));`);
         this.plantVertexShader(shader);
       };
-      material.customProgramCacheKey=()=>`chukar-woody-plant-ground-v4-${tilt}`;
+      material.customProgramCacheKey=()=>`chukar-hunt-wind-plant-ground-v5-${tilt}`;
       this.materials.add(material);return material;
     };
     const leafMat=plantMaterial(.55),sageMat=plantMaterial(.24);
@@ -352,6 +357,7 @@ export class ChukarEnvironmentSystem implements Subsystem {
 
   update(ctx: Ctx): void {
     this.wind.value = ctx.time;
+    this.huntWind.update();
     this.viewPosition.value.copy(ctx.camera.position);
     this.leafFill.value = ctx.timeOfDay==='morning'||ctx.timeOfDay==='noon'?.16:.035;
     for (const batch of this.batches) {

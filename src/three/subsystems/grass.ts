@@ -11,6 +11,7 @@ import { SharptailSwardField } from './sharptailSward';
 import { sharptailGrassGeometry } from './sharptailGrass';
 import { sharptailShackYardAt } from './sharptailEnvironment';
 import { sharptailAccentGroundAt } from './sharptailAccents';
+import { VegetationWind, VEGETATION_GUST_GLSL } from './vegetationWind';
 
 /*
  * GRASS subsystem: the field itself — the single system a walking-through-
@@ -301,6 +302,7 @@ const GRASS_UNIFORM_DECLS = /* glsl */ `
 uniform float uTime;
 uniform vec2 uWindDir;
 uniform float uWindAmp;
+uniform float uHuntWind;
 uniform float uPartRadius;
 uniform vec3 uPart2;
 uniform vec3 uPart3;
@@ -324,6 +326,7 @@ uniform float uCoolNear;
 uniform vec2 uSunRange;
 uniform float uCloudShK;
 varying float vRim;
+${VEGETATION_GUST_GLSL}
 `;
 
 const GRASS_FRAG_DECLS = /* glsl */ `
@@ -342,10 +345,18 @@ float gBend = gT * gT;  // stiff root, mobile tip
 // Wind: two traveling waves riding a slow gust field. Phase comes from the
 // world position (plus a per-blade jitter in uv.x) so waves roll across the
 // field instead of the whole prairie metronoming in sync.
-float gPhase = gWorld.x * 0.35 + gWorld.z * 0.24 + uv.x * 6.2831853;
-float gSway = 0.62 * sin( uTime * 1.7 - gPhase ) + 0.38 * sin( uTime * 2.9 - gPhase * 1.63 );
-float gGust = 0.55 + 0.45 * sin( uTime * 0.7 - ( gWorld.x * uWindDir.x + gWorld.z * uWindDir.y ) * 0.05 );
-gWorld.xz += uWindDir * ( uWindAmp * gSway * gGust * gBend );
+float gMotion;
+if (uHuntWind > .5) {
+  // Native prairie shares the shrubs' downwind gust, with small leaf flutter.
+  gMotion=vegetationGust(uTime,gRoot.xz,uWindDir)*(.86+.14*sin(uTime*2.9+uv.x*6.2831853));
+} else {
+  // Existing generic-map behavior remains unchanged.
+  float gPhase = gWorld.x * 0.35 + gWorld.z * 0.24 + uv.x * 6.2831853;
+  float gSway = 0.62 * sin( uTime * 1.7 - gPhase ) + 0.38 * sin( uTime * 2.9 - gPhase * 1.63 );
+  float gGust = 0.55 + 0.45 * sin( uTime * 0.7 - ( gWorld.x * uWindDir.x + gWorld.z * uWindDir.y ) * 0.05 );
+  gMotion=gSway*gGust;
+}
+gWorld.xz += uWindDir * ( uWindAmp * gMotion * gBend );
 
 // Camera parting: blades inside uPartRadius push radially away and duck so
 // the eye never clips through a quad while wading.
@@ -516,6 +527,7 @@ interface GrassUniforms {
   uTime: { value: number };
   uWindDir: { value: THREE.Vector2 };
   uWindAmp: { value: number };
+  uHuntWind: { value: number };
   uPartRadius: { value: number };
   uPart2: { value: THREE.Vector3 };
   uPart3: { value: THREE.Vector3 };
@@ -879,6 +891,7 @@ export class GrassSystem implements Subsystem {
   private art: GrassArtProfile = DEFAULT_GRASS_ART;
   private terrain!: TerrainSystem;
   private hunt!: Hunt3DSystem;
+  private huntWind = new VegetationWind();
   // Clump structure: knots of dense grass and genuinely bare dirt patches —
   // the anti-lawn. Fertility (macro+meso) decides WHERE grass grows at all;
   // the fine knot field decides where it bunches 2–3 tufts tight.
@@ -945,6 +958,7 @@ export class GrassSystem implements Subsystem {
     this.cfg = CFG[ctx.quality];
     this.terrain = ctx.get<TerrainSystem>('terrain');
     this.hunt = ctx.get<Hunt3DSystem>('hunt3d');
+    if(this.prairie)this.huntWind.connect(ctx);
     this.art = grassArtFor(this.hunt.huntState().areaId);
     this.grassGold.setHex(this.art.grassGold);
     this.grassOlive.setHex(this.art.grassOlive);
@@ -1045,6 +1059,11 @@ export class GrassSystem implements Subsystem {
   update(ctx: Ctx): void {
     this.openUniforms.uTime.value = ctx.time;
     this.coverUniforms.uTime.value = ctx.time;
+    if(this.prairie){
+      this.huntWind.update();
+      this.openUniforms.uWindAmp.value=.09*this.huntWind.strength.value;
+      this.coverUniforms.uWindAmp.value=.13*this.huntWind.strength.value;
+    }
     // Dog parting point (round 7): the dog subsystem's documented
     // partingPoint() getter feeds the second parting uniform — resolved
     // lazily via ctx.get (never an import; null if the dog isn't running).
@@ -1271,8 +1290,9 @@ export class GrassSystem implements Subsystem {
   private makeUniforms(windAmp: number, fadeNear: number, fadeFar: number): GrassUniforms {
     return {
       uTime: { value: 0 },
-      uWindDir: { value: new THREE.Vector2(0.74, 0.67).normalize() },
-      uWindAmp: { value: windAmp },
+      uWindDir: this.prairie?this.huntWind.direction:{ value: new THREE.Vector2(0.74, 0.67).normalize() },
+      uWindAmp: { value: windAmp*(this.prairie?this.huntWind.strength.value:1) },
+      uHuntWind: { value: this.prairie?1:0 },
       uPartRadius: { value: 1.2 },
       // Dog parting point: xy = world xz, z = radius (epsilon until the
       // dog subsystem reports in — smoothstep needs a nonzero edge).

@@ -7,6 +7,7 @@ import { huntingDoctrine, type HuntStyle } from '../../game/huntDoctrine';
 import type { Ctx, Subsystem } from '../engine';
 import { sharptailForbGeometry, sharptailShrubGeometry, sharptailStoneGeometry, sharptailTreeGeometry } from './sharptailWoody';
 import { sharptailAccentPlacements } from './sharptailAccents';
+import { VegetationWind, VEGETATION_GUST_GLSL, VEGETATION_INSTANCE_WIND_GLSL } from './vegetationWind';
 
 type HabitatKind = 'trunk' | 'canopy' | 'shrub' | 'reed' | 'rock' | 'cactus' | 'log';
 
@@ -341,6 +342,7 @@ export class PropertyHabitatSystem implements Subsystem {
   private matrix = new THREE.Matrix4();
   private color = new THREE.Color();
   private wind = { value: 0 };
+  private huntWind = new VegetationWind();
   private obstacles: { x: number; z: number; radius: number }[] = [];
   private shotTrunks: THREE.InstancedMesh[] = [];
   private shotRay = new THREE.Raycaster();
@@ -370,6 +372,7 @@ export class PropertyHabitatSystem implements Subsystem {
     const lists = new Map<HabitatKind, HabitatPlacement[]>();
     for (const kind of profile.kinds) lists.set(kind, []);
     const area = this.landscape.area;
+    if(area.id==='sharptail-prairie')this.huntWind.connect(ctx);
     const minX = area.world.x, maxX = area.world.x + area.world.w;
     const minY = area.world.y, maxY = area.world.y + area.world.h;
     const step = profile.step;
@@ -544,6 +547,18 @@ export class PropertyHabitatSystem implements Subsystem {
       const material = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true, vertexColors: !!prairieTree && kind !== 'trunk', side: prairieTree && kind === 'shrub' ? THREE.DoubleSide : THREE.FrontSide });
       material.onBeforeCompile = (shader) => {
         shader.uniforms.uPropertyHabitatWind = this.wind;
+        if(prairieTree){
+          shader.uniforms.uHabitatWindDirection=this.huntWind.direction;
+          shader.uniforms.uHabitatWindStrength=this.huntWind.strength;
+          shader.vertexShader=shader.vertexShader
+            .replace('#include <common>','#include <common>\nuniform float uPropertyHabitatWind;\nuniform vec2 uHabitatWindDirection;\nuniform float uHabitatWindStrength;'+VEGETATION_GUST_GLSL+VEGETATION_INSTANCE_WIND_GLSL)
+            .replace('#include <begin_vertex>',`#include <begin_vertex>
+              #ifdef USE_INSTANCING
+              float habitatGust=vegetationGust(uPropertyHabitatWind,instanceMatrix[3].xz,uHabitatWindDirection);
+              transformed+=vegetationInstanceWind(uHabitatWindDirection)*habitatGust*uHabitatWindStrength*max(position.y,0.)*${kind==='reed'?'.14':kind==='shrub'?'.055':kind==='canopy'?'.018':'0.0'};
+              #endif`);
+          return;
+        }
         shader.vertexShader = shader.vertexShader
           .replace('#include <common>', '#include <common>\nuniform float uPropertyHabitatWind;')
           .replace('#include <begin_vertex>', `#include <begin_vertex>
@@ -554,7 +569,7 @@ export class PropertyHabitatSystem implements Subsystem {
             transformed.z += sin(uPropertyHabitatWind * .61 + habitatPhase * 1.27) * habitatSway * .58 * (position.y + .12);
             #endif`);
       };
-      material.customProgramCacheKey = () => `property-habitat-${kind}-wind-v1`;
+      material.customProgramCacheKey = () => `property-habitat-${kind}-${prairieTree?'hunt-wind-v2':'wind-v1'}`;
       const batches = new Map<string, HabitatPlacement[]>();
       for (const item of selected) {
         const key = woodland ? `${Math.floor(item.x / 80)},${Math.floor(item.z / 80)}` : 'property';
@@ -618,6 +633,7 @@ export class PropertyHabitatSystem implements Subsystem {
 
   update(ctx: Ctx): void {
     this.wind.value = ctx.time;
+    if(this.landscape.area.id==='sharptail-prairie')this.huntWind.update();
     for (const mesh of this.meshes) {
       const sphere = mesh.boundingSphere!;
       const distance = Math.hypot(ctx.camera.position.x - sphere.center.x, ctx.camera.position.z - sphere.center.z);
