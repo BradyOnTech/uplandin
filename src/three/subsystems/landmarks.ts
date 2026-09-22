@@ -13,6 +13,7 @@ import { deriveQuailEntrances, deriveQuailParkingPose, QUAIL_GATE } from './quai
 
 const MAT = {
   homestead: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true, emissive: 0x302a20, emissiveIntensity: .14 }),
+  prairieShack: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x4b5347, emissiveIntensity: .10 }),
   wood: new THREE.MeshStandardMaterial({ color: 0x6d5134, roughness: 1, flatShading: true }),
   metal: new THREE.MeshStandardMaterial({ color: 0x9a9a8b, roughness: 0.85, flatShading: true }),
   wall: new THREE.MeshStandardMaterial({ color: 0x7f3828, roughness: 1, flatShading: true }),
@@ -106,7 +107,7 @@ export class LandmarksSystem implements Subsystem {
       const root = pheasantFarm
         ? createPheasantHomestead(MAT.homestead, (x, z) => terrain.heightAt(world.x + x, world.z + z) - ground)
         : prairieShack
-        ? createSharptailLineShack(MAT.homestead, (x, z) => terrain.heightAt(world.x + x, world.z + z) - ground)
+        ? createSharptailLineShack(MAT.prairieShack, (x, z) => terrain.heightAt(world.x + x, world.z + z) - ground)
         : this.quail
         ? landmark.kind === 'windmill' ? createQuailWindmill((x, z) => terrain.heightAt(world.x + x, world.z + z) - ground) : this.buildLandmark(landmark)
         : this.buildLandmark(landmark);

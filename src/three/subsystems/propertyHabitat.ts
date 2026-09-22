@@ -58,7 +58,9 @@ function profileFor(style: HuntStyle, lite: boolean, areaId?: string): HabitatPr
     return { ...base, step: 22, nearClear: 25, kinds: ['shrub', 'trunk', 'canopy', 'rock'],
       chances: { shrub: .115, trunk: 0, rock: .008 },
       colors: colors({ shrub: [0x9ba79a, 0xa4ac9b, 0x909d8b], trunk: [0x929384], canopy: [0x899379, 0x99a083], rock: [0x9f9a88] }),
-      scale: { shrub: [.36, .78], trunk: [3.2, 5.8], canopy: [1.7, 3.1], rock: [.3, .65] }, };
+      // The native shrub geometry is only ~0.45 m tall at unit scale. Keep
+      // low sage readable among the basal grass instead of ankle-high dots.
+      scale: { shrub: [.95, 1.75], trunk: [3.2, 5.8], canopy: [1.7, 3.1], rock: [.3, .65] }, };
   }
   switch (style) {
     case 'pheasant':

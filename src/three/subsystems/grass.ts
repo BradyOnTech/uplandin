@@ -107,14 +107,15 @@ const GRASS_ART_BY_AREA: Readonly<Record<string, GrassArtProfile>> = {
     heightScale: 0.98,
     bodyDensity: 0.93,
     coverDensity: 0.86,
-    grassGold: 0xc7bd95,
-    grassOlive: 0x939b80,
-    forbGreen: 0x83937e,
-    strawLight: 0xd6cfae,
-    strawPale: 0xe2dfc8,
-    khaki: 0xa29b7c,
-    oliveMid: 0x8a8d70,
-    olive: 0x757d66,
+    grassGold: 0xb9ac79,
+    grassOlive: 0x819266,
+    forbGreen: 0x748966,
+    strawLight: 0xc9bc90,
+    strawPale: 0xcec8a6,
+    khaki: 0x989269,
+    oliveMid: 0x7c875e,
+    olive: 0x687957,
+    oliveDeep: 0x4f6246,
   },
   'valley-oaks': {
     ...DEFAULT_GRASS_ART,
@@ -1729,8 +1730,12 @@ export class GrassSystem implements Subsystem {
       else if (p2 < 0.3) this.c.lerp(this.grassOlive, 0.25 + rng() * 0.25);
     }
     if (this.prairie) {
-      this.c.lerp(this.grassOlive, this.prairieZones.swale * .26 + this.prairieZones.stand * .12);
-      this.c.lerp(this.strawPale, (1 - this.prairieZones.swale) * .12);
+      // Group ripened straw on the exposed shoulders and deeper sage grass
+      // in the lee. Field-scale color should survive loss of individual tips
+      // on Lite; bleaching every dry bunch flattens the whole landscape.
+      const lee = this.prairieZones.swale;
+      this.c.lerp(this.grassOlive, lee * .48 + this.prairieZones.stand * .08);
+      this.c.lerp(this.grassGold, (1 - lee) * (.16 + this.prairieForm.drift * .20));
     }
     this.c.multiplyScalar(0.9 + rng() * 0.26);
 
