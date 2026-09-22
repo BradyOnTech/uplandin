@@ -101,9 +101,8 @@ const DEFAULT_GRASS_ART: GrassArtProfile = {
 const GRASS_ART_BY_AREA: Readonly<Record<string, GrassArtProfile>> = {
   'sharptail-prairie': {
     ...DEFAULT_GRASS_ART,
-    // Pale mixed-grass stems grow in scattered native bunches. Preserve
-    // their upright silhouette and silver-sage undertone without adding
-    // density or the warm spreading fans of the Quail Fields kit.
+    // Wind-combed mixed grass: basal leaf mass and sparse flowering culms,
+    // with silver-sage color distinct from Quail's warm spreading fans.
     rowYaw: null,
     heightScale: 0.98,
     bodyDensity: 0.93,
@@ -832,6 +831,7 @@ export class GrassSystem implements Subsystem {
   private readonly prairie: SharptailSwardField | null;
   private readonly prairieLandscape?: LandscapeModel;
   private readonly prairieZones = { swale: 0, stand: 0 };
+  private readonly prairieForm = { rank: 0, drift: 0, yaw: 0 };
 
   constructor(landscape?: LandscapeModel) {
     this.prairieLandscape = landscape?.area.id === 'sharptail-prairie' ? landscape : undefined;
@@ -840,6 +840,20 @@ export class GrassSystem implements Subsystem {
 
   private outsideField(x: number, z: number): boolean {
     return this.prairie ? this.prairie.edgeDistance(x, z) < 0 : Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT;
+  }
+
+  /** Broad, oblique grass drifts remain attached to property coordinates
+   * across parking places. Sample only during tile construction, never per
+   * frame; the existing zone grid supplies authored stand/swale transitions. */
+  private samplePrairieForm(x: number, z: number): void {
+    this.prairie!.sample(x, z, this.prairieZones);
+    const px = x - this.prairie!.minX, pz = z - this.prairie!.minZ;
+    const drift = this.clumpNoise(px * .036 + pz * .017 + 170, pz * .075 - px * .025 + 340);
+    const knot = this.clumpNoise(px * .18 + 920, pz * .16 + 670);
+    this.prairieForm.drift = drift;
+    this.prairieForm.rank = THREE.MathUtils.clamp(.08 + this.prairieZones.swale * .33 +
+      this.prairieZones.stand * .28 + drift * .37 + (knot - .5) * .20, 0, 1);
+    this.prairieForm.yaw = .7 + (drift - .5) * 1.0;
   }
 
   private cfg!: QualityCfg;
@@ -1225,7 +1239,7 @@ export class GrassSystem implements Subsystem {
       this.coverGeo.dispose();
       this.variantGeos[V_OPEN] = sharptailGrassGeometry('short');
       this.variantGeos[V_STALK] = sharptailGrassGeometry('stalk');
-      this.variantGeos[V_TUFT] = sharptailGrassGeometry('short');
+      this.variantGeos[V_TUFT] = sharptailGrassGeometry('medium');
       this.coverGeo = sharptailGrassGeometry('cover');
     }
   }
@@ -1433,6 +1447,14 @@ export class GrassSystem implements Subsystem {
         // the sparse layer still closes into a mass at 60+ m.
         const sxz = (0.8 + rng() * 0.5) * 1.25;
         this.s.set(sxz, (0.85 + rng() * 0.4) * (this.prairie ? .78 : 1), sxz);
+        if (this.prairie) {
+          this.samplePrairieForm(x, z);
+          this.e.set(0, this.prairieForm.yaw + (rng() - .5) * 1.3, 0);
+          this.q.setFromEuler(this.e);
+          // Distant crowns share the near layer's uneven height envelope;
+          // they must not re-form a uniform hedge beyond the roaming ring.
+          this.s.set(sxz * 1.12, .35 + this.prairieForm.rank * .64 + rng() * .22, sxz);
+        }
         this.v.set(x, y, z);
         mats.push(new THREE.Matrix4().compose(this.v, this.q, this.s));
         // Olive going darker toward the heart; khaki-tipped at the edge.
@@ -1542,7 +1564,8 @@ export class GrassSystem implements Subsystem {
     }
   }
 
-  /** Trail wear at a point: 1 on the centerline, 0 beyond ~1.2 m. */
+  /** Generic footpath wear; prairie tracks retain grass between two narrow
+   * wheel marks, matching the property trail ribbon's roughly ±0.6 m ruts. */
   private trailAt(x: number, z: number): number {
     let best = 0;
     for (let i = 0; i < this.trails.length; i++) {
@@ -1555,7 +1578,15 @@ export class GrassSystem implements Subsystem {
       const ez = pz - t.dz * u;
       const d2 = ex * ex + ez * ez;
       if (d2 > 1.96) continue; // beyond 1.4 m of the line
-      const w = 1 - THREE.MathUtils.smoothstep(Math.sqrt(d2), 0.5, 1.4);
+      const distance = Math.sqrt(d2);
+      let w = 1 - THREE.MathUtils.smoothstep(distance, 0.5, 1.4);
+      if (this.prairie) {
+        const side = px * t.dz - pz * t.dx;
+        const rut = .60 + Math.sin(x * .13 + z * .09) * .035;
+        const wheel = 1 - THREE.MathUtils.smoothstep(Math.abs(distance - rut), .07, side < 0 ? .27 : .23);
+        const center = (1 - THREE.MathUtils.smoothstep(distance, .22, 1.4)) * .20;
+        w = Math.max(wheel * .98, center);
+      }
       if (w > best) best = w;
     }
     return best;
@@ -1649,7 +1680,8 @@ export class GrassSystem implements Subsystem {
     const trail = this.trailAt(px, pz);
     if (trail > 0) {
       if (rng() < trail * 0.93) return false;
-      vigor *= 1 - 0.55 * trail;
+      if (this.prairie && (vi === V_COVER || vi === V_STALK) && rng() < .87) return false;
+      vigor *= 1 - (this.prairie ? .78 : .55) * trail;
     }
     const y = this.terrain.heightAt(px, pz) - 0.04;
     // Stubble rows share ONE field direction (drilled, harvested land);
@@ -1660,9 +1692,20 @@ export class GrassSystem implements Subsystem {
     this.e.set((rng() - 0.5) * 0.16, yaw, (rng() - 0.5) * 0.16);
     this.q.setFromEuler(this.e);
     const sxz = vigor * (0.85 + rng() * 0.3);
-    if (this.prairie) this.prairie.sample(px, pz, this.prairieZones);
-    const prairieHeight = this.prairie ? .82 + this.prairieZones.swale * .28 + this.prairieZones.stand * .15 : 1;
-    this.s.set(sxz, vigor * (0.8 + rng() * 0.4) * this.art.heightScale * prairieHeight, sxz);
+    this.s.set(sxz, vigor * (0.8 + rng() * 0.4) * this.art.heightScale, sxz);
+    if (this.prairie) {
+      this.samplePrairieForm(px, pz);
+      const rank = this.prairieForm.rank;
+      this.e.set((rng() - .5) * .055, this.prairieForm.yaw + (rng() - .5) * 1.45, (rng() - .5) * .055);
+      this.q.setFromEuler(this.e);
+      // Width closes the basal layer on Lite without spending more instances.
+      // Height varies by a coherent drift and by individual bunch: no flat
+      // cereal canopy, while tall native stands remain legible to a hunter.
+      const width = sxz * (this.cfg.bladeWide > 1 ? 1.25 : 1.12);
+      const height = vi === V_OPEN ? .66 + rank * .42 :
+        vi === V_COVER ? .42 + rank * .76 : .52 + rank * .72;
+      this.s.set(width, vigor * height * (.77 + rng() * .47), width * (.82 + rng() * .20));
+    }
     this.v.set(px, y, pz);
     this.m.compose(this.v, this.q, this.s);
 
@@ -1698,6 +1741,63 @@ export class GrassSystem implements Subsystem {
     return true;
   }
 
+  /** Reuse the five existing batches for a mixed prairie sward. Every basal
+   * site gets ONE short or medium bunch; tall cover and rare seed stems are
+   * accents. Unlike the generic meadow, rank cover never removes its basal
+   * leaf layer. Caps, tile count, fade ranges and materials stay unchanged. */
+  private fillPrairieTile(tile: Tile, counts: number[], caps: number[], rng: () => number): void {
+    const cells = Math.floor(TILE / this.cfg.tuftStep);
+    for (let gx = 0; gx < cells; gx++) {
+      for (let gz = 0; gz < cells; gz++) {
+        const x = tile.tx * TILE + (gx + .06 + rng() * .88) * this.cfg.tuftStep;
+        const z = tile.tz * TILE + (gz + .06 + rng() * .88) * this.cfg.tuftStep;
+        if (this.outsideField(x, z)) continue;
+        this.samplePrairieForm(x, z);
+        const { rank, drift } = this.prairieForm;
+        // Little scuffed openings within grass, rather than pale ground
+        // supporting separate isolated plants. Gaps have feathered edges.
+        if (rng() > .86 + rank * .12) continue;
+        const shortChance = .49 - rank * .37;
+        const vi = rng() < shortChance && counts[V_OPEN] < caps[V_OPEN] ? V_OPEN : V_TUFT;
+        const vigor = .82 + drift * .28 + rng() * .18;
+        this.placeTuft(tile, counts, caps, vi, x, z, vigor, rng);
+        // Occasional paired bunches interlock across the jittered grid. This
+        // replaces the old meadow's two separate doubling passes and leaves
+        // substantial cap headroom instead of filling one tile corner first.
+        if (drift > .55 && rng() < .16) {
+          this.placeTuft(tile, counts, caps, V_TUFT,
+            x + (rng() - .5) * .6, z + (rng() - .5) * .6, vigor * .78, rng);
+        }
+      }
+    }
+
+    const step = this.cfg.coverStep, coverCells = Math.floor(TILE / step);
+    for (let gx = 0; gx < coverCells; gx++) {
+      for (let gz = 0; gz < coverCells; gz++) {
+        const x = tile.tx * TILE + (gx + .08 + rng() * .84) * step;
+        const z = tile.tz * TILE + (gz + .08 + rng() * .84) * step;
+        if (this.outsideField(x, z)) continue;
+        this.samplePrairieForm(x, z);
+        const { rank, drift } = this.prairieForm;
+        const cover = Math.max(this.coverAt(x, z), this.prairieZones.stand * .72);
+        const rankCover = THREE.MathUtils.smoothstep(cover, .05, .72);
+        if (rng() < rankCover * (.31 + drift * .29)) {
+          this.placeTuft(tile, counts, caps, V_COVER, x, z, .9 + rng() * .28, rng);
+        } else if (rng() < .028 + rank * .08) {
+          this.placeTuft(tile, counts, caps, V_STALK, x, z, .77 + rng() * .28, rng);
+        }
+      }
+    }
+    for (let vi = 0; vi < N_VARIANTS; vi++) {
+      const mesh = tile.meshes[vi];
+      mesh.count = counts[vi];
+      mesh.visible = counts[vi] > 0;
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      if (counts[vi] > 0) mesh.computeBoundingSphere();
+    }
+  }
+
   /**
    * Deterministic tile fill: same tile, same tufts, every visit. Round-4
    * mass inversion: the field IS grass — a near-continuous body-tuft
@@ -1711,6 +1811,11 @@ export class GrassSystem implements Subsystem {
     const rng = mulberry32(hashTile(tx, tz));
     const counts = [0, 0, 0, 0, 0];
     const caps = [this.cfg.capOpen, this.cfg.capStalk, this.cfg.capForb, this.cfg.capTuft, this.cfg.capCover];
+
+    if (this.prairie) {
+      this.fillPrairieTile(tile, counts, caps, rng);
+      return;
+    }
 
     // THE BODY: continuous tuft mass on a fine jittered grid. ~85% of
     // sites grow (the Firewatch meadow coverage the fw-* stills hold);

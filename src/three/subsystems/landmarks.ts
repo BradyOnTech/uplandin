@@ -1,4 +1,5 @@
 import { createPheasantHomestead, PHEASANT_HOMESTEAD_OBSTACLES } from './pheasantHomestead';
+import { createSharptailLineShack } from './sharptailEnvironment';
 import * as THREE from 'three';
 import { pheasantPondObstacles } from '../../game/pheasantHabitat';
 import type { AreaLandmark } from '../../game/areas';
@@ -55,8 +56,8 @@ export class LandmarksSystem implements Subsystem {
 
   collisionCircles(): readonly { x: number; z: number; radius: number }[] { return this.obstacles; }
 
-  /** Pheasant farm construction is solid to a travelling shot. Ray-test the
-   * actual walls/roof/bin, so the empty sky above them stays shootable. */
+  /** Authored farm/shack construction is solid to a travelling shot. Ray-test
+   * the walls and roof, so empty sky above them stays shootable. */
   blocksShot(origin: { x: number; y: number; z: number }, target: { x: number; y: number; z: number }): boolean {
     if (!this.shotSolids.length) return false;
     this.shotStart.set(origin.x, origin.y, origin.z);
@@ -101,17 +102,22 @@ export class LandmarksSystem implements Subsystem {
       }
       const ground = terrain.heightAt(world.x, world.z);
       const pheasantFarm = areaId === 'pheasant-coverts' && landmark.kind === 'barn';
+      const prairieShack = areaId === 'sharptail-prairie' && landmark.kind === 'barn';
       const root = pheasantFarm
         ? createPheasantHomestead(MAT.homestead, (x, z) => terrain.heightAt(world.x + x, world.z + z) - ground)
+        : prairieShack
+        ? createSharptailLineShack(MAT.homestead, (x, z) => terrain.heightAt(world.x + x, world.z + z) - ground)
         : this.quail
         ? landmark.kind === 'windmill' ? createQuailWindmill((x, z) => terrain.heightAt(world.x + x, world.z + z) - ground) : this.buildLandmark(landmark)
         : this.buildLandmark(landmark);
       root.position.set(world.x, ground, world.z);
       ctx.scene.add(root);
       this.objects.push(root);
-      if (pheasantFarm) {
+      if (pheasantFarm || prairieShack) {
         root.updateMatrixWorld(true);
         root.traverse(object => { if (object instanceof THREE.Mesh) this.shotSolids.push(object); });
+      }
+      if (pheasantFarm) {
         for (const solid of PHEASANT_HOMESTEAD_OBSTACLES)
           this.obstacles.push({ x: world.x + solid.x, z: world.z + solid.z, radius: solid.radius });
       }

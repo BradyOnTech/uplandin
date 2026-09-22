@@ -9,40 +9,49 @@ export class PropertyTrailsSystem implements Subsystem {
   private mesh?: THREE.Mesh;
   private geometry?: THREE.BufferGeometry;
   private material?: THREE.MeshLambertMaterial;
-  private detailMesh?: THREE.Mesh;
-  private detailGeometry?: THREE.BufferGeometry;
-  private detailMaterial?: THREE.MeshLambertMaterial;
 
   constructor(private readonly landscape: LandscapeModel) {}
 
   init(ctx: Ctx): void {
     const doctrine = huntingDoctrine(this.landscape.area.id);
     const areaId = this.landscape.area.id;
+    const prairie = areaId === 'sharptail-prairie';
     // The route surface is part of the property's land-use story. Sharptail
     // lanes are faint two-track grass roads across a huge prairie; Valley
     // Oak lanes are darker, softer foot-and-stock paths under the trees. The
     // shared ribbon geometry keeps both tiers cheap while these small
     // material differences prevent every open-country map from inheriting
     // the same tan access road.
-    const width = areaId === 'sharptail-prairie' ? 1.55
+    const width = prairie ? 1.42
       : areaId === 'valley-oaks' ? 1.78
         : doctrine.style === 'woods' || doctrine.style === 'bottoms' ? 1.7
           : doctrine.style === 'desert-wash' || doctrine.style === 'canyon' ? 2.35
             : doctrine.style === 'alpine-edge' ? 1.9 : 2.05;
-    const color = areaId === 'sharptail-prairie' ? 0x81775b
+    const color = prairie ? 0x99947a
       : areaId === 'valley-oaks' ? 0x62543b
         : doctrine.style === 'woods' || doctrine.style === 'bottoms' ? 0x48513e
           : doctrine.style === 'desert-wash' || doctrine.style === 'canyon' ? 0x806b4d
             : doctrine.style === 'alpine-edge' ? 0x596157 : 0x75684c;
-    const opacity = areaId === 'pheasant-coverts' ? .46 : areaId === 'sharptail-prairie' ? .58
+    const opacity = areaId === 'pheasant-coverts' ? .46 : prairie ? .42
       : areaId === 'valley-oaks' ? .68 : .78;
     const positions: number[] = [], colors: number[] = [], indices: number[] = [], edges: number[] = [];
+    const routeSurface: number[] = [];
     const tint = new THREE.Color(color);
     const sample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
     let vertex = 0;
     for (const trail of this.landscape.area.trails) {
       if (trail.points.length < 2) continue;
       const worldPoints = this.sampleTrail(trail.points);
+      // Distance stays tied to the authored route from either parking place.
+      // Only prairie uses it: all other maps retain their original vertices.
+      const distances: number[] = [0];
+      if (prairie) for (let i = 1; i < worldPoints.length; i++) {
+        distances.push(distances[i - 1] + Math.hypot(
+          worldPoints[i].x - worldPoints[i - 1].x,
+          worldPoints[i].z - worldPoints[i - 1].z,
+        ));
+      }
+      const phase = trail.points[0].x * .043 + trail.points[0].y * .067;
       const normals = worldPoints.map((_point, index) => {
         const before = worldPoints[Math.max(0, index - 1)];
         const after = worldPoints[Math.min(worldPoints.length - 1, index + 1)];
@@ -69,7 +78,9 @@ export class PropertyTrailsSystem implements Subsystem {
         const segmentNormalZ = segmentX / segmentLength;
         const alignment = Math.abs(normalX * segmentNormalX + normalZ * segmentNormalZ);
         const miter = Math.min(1.65, 1 / Math.max(.58, alignment));
-        return { x: normalX * width * miter, z: normalZ * width * miter };
+        const halfWidth = prairie ? width * (1 + .055 * Math.sin(distances[index] * .29 + phase)
+          + .08 * Math.sin(distances[index] * .071 + phase * .61)) : width;
+        return { x: normalX * halfWidth * miter, z: normalZ * halfWidth * miter, halfWidth };
       });
       for (let i = 0; i < worldPoints.length; i++) {
         const point = worldPoints[i], normal = normals[i];
@@ -77,6 +88,7 @@ export class PropertyTrailsSystem implements Subsystem {
           const x = point.x + normal.x * side, z = point.z + normal.z * side;
           positions.push(x, this.landscape.heightAtWorld(x, z) + .035, z);
           edges.push(side);
+          if (prairie) routeSurface.push(normal.halfWidth * side, distances[i] + phase);
         }
         const areaPoint = this.landscape.worldToProperty(point.x, point.z, { x: 0, y: 0 });
         const wet = this.landscape.surfaceAtProperty(areaPoint.x, areaPoint.y, sample).moisture;
@@ -94,11 +106,43 @@ export class PropertyTrailsSystem implements Subsystem {
     this.geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     this.geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     this.geometry.setAttribute('routeEdge', new THREE.Float32BufferAttribute(edges, 1));
+    if (prairie) this.geometry.setAttribute('routeSurface', new THREE.Float32BufferAttribute(routeSurface, 2));
     this.geometry.setIndex(indices);
     this.geometry.computeVertexNormals();
     this.material = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, transparent: true, opacity, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-    this.material.customProgramCacheKey = () => `property-route-soft-shoulder-v2-${areaId === 'pheasant-coverts'}`;
+    if (prairie) this.material.forceSinglePass = true;
+    this.material.customProgramCacheKey = () => prairie ? 'property-route-prairie-wheel-wear-v1'
+      : `property-route-soft-shoulder-v2-${areaId === 'pheasant-coverts'}`;
     this.material.onBeforeCompile = shader => {
+      if (prairie) {
+        // One existing ribbon carries both worn wheels. A clear center lets
+        // the actual ground and short grass show through; there is no solid
+        // road bed or second, razor-edged rut mesh. Metre-scale irregularity
+        // is static and derivative-filtered before fading into the distance.
+        shader.vertexShader = shader.vertexShader
+          .replace('#include <common>', '#include <common>\nattribute vec2 routeSurface; varying vec2 vRouteSurface; varying vec2 vRouteWorld;')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRouteSurface = routeSurface; vRouteWorld = (modelMatrix * vec4(position, 1.0)).xz;');
+        shader.fragmentShader = shader.fragmentShader
+          .replace('#include <common>', '#include <common>\nvarying vec2 vRouteSurface; varying vec2 vRouteWorld;')
+          .replace('#include <color_fragment>', `#include <color_fragment>
+            float routeAlong = vRouteSurface.y;
+            float routeSide = sign(vRouteSurface.x);
+            float wander = sin(routeAlong * .31) * .025 + sin(routeAlong * .79) * .01;
+            float wheelDistance = abs(abs(vRouteSurface.x - wander) - .60);
+            float wheelWidth = .105 + sin(routeAlong * .49 + routeSide * 2.3) * .025;
+            float routeAA = min(.22, fwidth(vRouteSurface.x) * 1.5);
+            float wheel = 1.0 - smoothstep(wheelWidth, wheelWidth + .13 + routeAA, wheelDistance);
+            float brokenWear = smoothstep(-.65, .6,
+              sin(routeAlong * .38 + routeSide * 1.7)
+              + .5 * sin(routeAlong * .91 + routeSide * 2.4)
+              + .35 * sin(routeAlong * .12 + 1.8));
+            float routeDistance = length(vRouteWorld - cameraPosition.xz);
+            float distanceFade = 1.0 - smoothstep(45.0, 145.0, routeDistance);
+            diffuseColor.a *= wheel * brokenWear * .62 * distanceFade;
+            diffuseColor.rgb *= .97 + .03 * sin(routeAlong * .52 + routeSide);
+          `);
+        return;
+      }
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nattribute float routeEdge; varying float vRouteEdge; varying vec2 vRouteWorld;')
         .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRouteEdge = routeEdge; vRouteWorld = (modelMatrix * vec4(position, 1.0)).xz;');
@@ -124,69 +168,6 @@ export class PropertyTrailsSystem implements Subsystem {
     this.mesh.name = `${this.landscape.area.name} worn routes`;
     this.mesh.receiveShadow = true;
     ctx.scene.add(this.mesh);
-
-    // Sharptail prairie is crossed by long vehicle and stock lanes. A pair
-    // of broken, low-contrast wheel ruts gives those lanes a physical scale
-    // and makes the open-country strategy readable from the ground. Keep the
-    // detail as one cheap mesh and only author it for this map: woodland and
-    // wet-bottom routes should remain single footpaths, while chukar and
-    // canyon routes already have their own contour surfaces.
-    if (areaId === 'sharptail-prairie') {
-      const detailPositions: number[] = [];
-      const detailIndices: number[] = [];
-      let detailVertex = 0;
-      const trackOffset = 0.64;
-      const trackHalfWidth = 0.095;
-      for (const trail of this.landscape.area.trails) {
-        if (trail.points.length < 2) continue;
-        const worldPoints = this.sampleTrail(trail.points);
-        for (let i = 1; i < worldPoints.length; i++) {
-          const a = worldPoints[i - 1];
-          const b = worldPoints[i];
-          const dx = b.x - a.x;
-          const dz = b.z - a.z;
-          const length = Math.hypot(dx, dz);
-          if (length < 0.5) continue;
-          const nx = -dz / length;
-          const nz = dx / length;
-          for (const side of [-1, 1]) {
-            const cx = nx * trackOffset * side;
-            const cz = nz * trackOffset * side;
-            const tx = nx * trackHalfWidth;
-            const tz = nz * trackHalfWidth;
-            for (const point of [a, b]) for (const edge of [-1, 1]) {
-              const x = point.x + cx + tx * edge, z = point.z + cz + tz * edge;
-              detailPositions.push(x, this.landscape.heightAtWorld(x, z) + .05, z);
-            }
-            detailIndices.push(
-              detailVertex, detailVertex + 1, detailVertex + 2,
-              detailVertex + 1, detailVertex + 3, detailVertex + 2,
-            );
-            detailVertex += 4;
-          }
-        }
-      }
-      if (detailVertex > 0) {
-        this.detailGeometry = new THREE.BufferGeometry();
-        this.detailGeometry.setAttribute('position', new THREE.Float32BufferAttribute(detailPositions, 3));
-        this.detailGeometry.setIndex(detailIndices);
-        this.detailGeometry.computeVertexNormals();
-        this.detailMaterial = new THREE.MeshLambertMaterial({
-          color: 0x5f5946,
-          transparent: true,
-          opacity: 0.34,
-          depthWrite: false,
-          polygonOffset: true,
-          polygonOffsetFactor: -1,
-          polygonOffsetUnits: -1,
-          side: THREE.DoubleSide,
-        });
-        this.detailMesh = new THREE.Mesh(this.detailGeometry, this.detailMaterial);
-        this.detailMesh.name = `${this.landscape.area.name} paired wheel ruts`;
-        this.detailMesh.renderOrder = 2;
-        ctx.scene.add(this.detailMesh);
-      }
-    }
   }
 
   /** Sample both long grades and cross-slope shoulders instead of bridging
@@ -211,9 +192,6 @@ export class PropertyTrailsSystem implements Subsystem {
   dispose(ctx: Ctx): void {
     if (this.mesh) ctx.scene.remove(this.mesh);
     this.geometry?.dispose(); this.material?.dispose();
-    if (this.detailMesh) ctx.scene.remove(this.detailMesh);
-    this.detailGeometry?.dispose(); this.detailMaterial?.dispose();
     this.mesh = undefined; this.geometry = undefined; this.material = undefined;
-    this.detailMesh = undefined; this.detailGeometry = undefined; this.detailMaterial = undefined;
   }
 }

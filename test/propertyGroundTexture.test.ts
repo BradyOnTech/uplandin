@@ -15,7 +15,7 @@ function fixture(areaId: string) {
   return { terrain, ctx };
 }
 
-it.each(['pheasant-coverts', 'woodcock-bottoms'])('still constructs and disposes the field when optional soil detail cannot load', async (areaId) => {
+it.each(['pheasant-coverts', 'woodcock-bottoms', 'sharptail-prairie'])('still constructs and disposes the field when optional soil detail cannot load', async (areaId) => {
   vi.spyOn(THREE.TextureLoader.prototype, 'loadAsync').mockRejectedValue(new Error('offline'));
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   const { terrain, ctx } = fixture(areaId);
@@ -25,7 +25,7 @@ it.each(['pheasant-coverts', 'woodcock-bottoms'])('still constructs and disposes
   expect(ctx.scene.children).toHaveLength(0);
 });
 
-it.each(['pheasant-coverts', 'woodcock-bottoms'])('releases a late texture without rebuilding a field that was already disposed', async (areaId) => {
+it.each(['pheasant-coverts', 'woodcock-bottoms', 'sharptail-prairie'])('releases a late texture without rebuilding a field that was already disposed', async (areaId) => {
   let resolve!: (texture: THREE.Texture<HTMLImageElement>) => void;
   vi.spyOn(THREE.TextureLoader.prototype, 'loadAsync').mockReturnValue(new Promise(r => { resolve = r; }));
   const { terrain, ctx } = fixture(areaId);

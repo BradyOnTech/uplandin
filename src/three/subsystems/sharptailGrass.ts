@@ -1,80 +1,83 @@
 import * as THREE from 'three';
 
-/** Northern mixed-grass blades keep their reach close to the culm, with a
- * few taller seed stems. These are deliberately narrower and more upright
- * than Quail's spreading warm-season leaf fans. All variants retain the
- * existing instance/material path and its UV-based wind/parting contract. */
-export function sharptailGrassGeometry(kind: 'short' | 'stalk' | 'cover'): THREE.BufferGeometry {
+export type SharptailGrassKind = 'short' | 'medium' | 'stalk' | 'cover';
+
+/** Mixed northern prairie: folded basal leaves carry the mass, with only a
+ * few flowering culms above it. The asymmetric, wind-combed bunches retain
+ * pinned uv.y=0 roots and uv.y=1 tips for the shared wind/parting shader.
+ * All four silhouettes fit the existing instanced batches; no alpha cards. */
+export function sharptailGrassGeometry(kind: SharptailGrassKind): THREE.BufferGeometry {
   const positions: number[] = [], colors: number[] = [], uvs: number[] = [];
   type Point = readonly [number, number, number];
-  const vertex = (p: Point, id: number, stage: number, seed = false) => {
+  const vertex = (p: Point, id: number, stage: number, facet: number, seed = false) => {
     positions.push(...p);
-    const shade = .60 + stage * .36;
-    colors.push(shade, shade * (seed ? .96 : 1), shade * (seed ? .83 : .95));
+    const shade = (.48 + stage * .48) * facet;
+    colors.push(shade, shade * (seed ? .96 : 1), shade * (seed ? .82 : .94));
     uvs.push((id * .6180339) % 1, stage);
   };
-  const triangle = (a: Point, b: Point, c: Point, id: number, stages: readonly number[], seed = false) => {
-    vertex(a, id, stages[0], seed); vertex(b, id, stages[1], seed); vertex(c, id, stages[2], seed);
+  const triangle = (a: Point, b: Point, c: Point, id: number, stages: readonly number[], facet = 1, seed = false) => {
+    vertex(a, id, stages[0], facet, seed); vertex(b, id, stages[1], facet, seed); vertex(c, id, stages[2], facet, seed);
   };
-  const leaf = (x: number, z: number, angle: number, height: number, reach: number, width: number, id: number, tipStage = .81 + (id % 3) * .065, bladeBody = true) => {
-    // A broader sheath and lower waist keep the rooted leaf mass visible
-    // on a phone. The same narrow tip and short reach preserve the upright
-    // prairie silhouette; culms retain their slim near-vertical section.
-    const bodyWidth = width * (bladeBody ? 1.65 : 1);
-    const rootWidth = bladeBody ? .66 : .38;
-    const waist = bladeBody ? .52 : .68;
-    const dx = Math.sin(angle), dz = Math.cos(angle), wx = dz * bodyWidth, wz = -dx * bodyWidth;
-    const a: Point = [x - wx * rootWidth, 0, z - wz * rootWidth];
-    const b: Point = [x + wx * rootWidth, 0, z + wz * rootWidth];
-    const c: Point = [x + dx * reach * .40 - wx, height * waist, z + dz * reach * .40 - wz];
-    const d: Point = [x + dx * reach * .40 + wx, height * waist, z + dz * reach * .40 + wz];
-    const tip: Point = [x + dx * reach, height * tipStage, z + dz * reach];
-    triangle(a, b, c, id, [0, 0, waist]);
-    triangle(b, d, c, id, [0, waist, waist]);
-    triangle(c, d, tip, id, [waist, waist, 1]);
+  const leaf = (x: number, z: number, angle: number, height: number, reach: number, width: number, id: number) => {
+    // A shallow folded ridge catches a broad light plane at low viewing
+    // angles. Unequal knees and drooping tips avoid upright cereal spikes.
+    const dx = Math.sin(angle), dz = Math.cos(angle), wx = dz * width, wz = -dx * width;
+    const knee = .49 + (id % 3) * .055;
+    const cx = x + dx * reach * .34 + height * .08, cz = z + dz * reach * .34;
+    const root: Point = [x, 0, z];
+    const left: Point = [cx - wx, height * knee, cz - wz];
+    const right: Point = [cx + wx, height * knee, cz + wz];
+    const fold: Point = [cx + dx * width * .35, height * (knee + .07), cz + dz * width * .35];
+    const tip: Point = [x + dx * reach + height * .19, height * (.69 + (id % 4) * .10), z + dz * reach];
+    triangle(root, left, fold, id, [0, knee, knee], .94);
+    triangle(root, fold, right, id, [0, knee, knee], 1.04);
+    triangle(left, tip, fold, id, [knee, 1, knee], .94);
+    triangle(fold, tip, right, id, [knee, 1, knee], 1.04);
   };
-  const culm = (x: number, z: number, angle: number, height: number, id: number, withSeed: boolean) => {
-    // A narrow two-section stem stays vertical below a slight nod at the tip.
-    const reach = .035 + (id % 3) * .012;
-    leaf(x, z, angle, height, reach, .0045, id, 1, false);
-    if (!withSeed) return;
-    const dx = Math.sin(angle), dz = Math.cos(angle);
-    const cx = x + dx * reach * .8, cz = z + dz * reach * .8;
-    const baseY = height * .89, topY = height * 1.02;
-    // Two angled seed spikelets remain tiny upright accents, not cattail
-    // clubs or the large three-fingered heads of the Quail grass kit.
-    for (let side = -1; side <= 1; side += 2) {
-      const angle2 = angle + side * .7, wx = Math.cos(angle2) * .007, wz = -Math.sin(angle2) * .007;
-      triangle([cx - wx, baseY, cz - wz], [cx + wx, baseY, cz + wz],
-        [cx + Math.sin(angle2) * .025, topY, cz + Math.cos(angle2) * .025], id, [.89, .89, 1], true);
+  const culm = (x: number, z: number, angle: number, height: number, id: number) => {
+    const dx = Math.sin(angle), dz = Math.cos(angle), wx = dz * .006, wz = -dx * .006;
+    const reach = .085 + (id % 3) * .025;
+    const left: Point = [x + dx * reach * .45 - wx, height * .62, z + dz * reach * .45 - wz];
+    const right: Point = [x + dx * reach * .45 + wx, height * .62, z + dz * reach * .45 + wz];
+    const tip: Point = [x + dx * reach, height, z + dz * reach];
+    triangle([x, 0, z], left, right, id, [0, .62, .62]);
+    triangle(left, tip, right, id, [.62, 1, .62]);
+    // A loose nodding panicle: three small, unequal blades, never a club.
+    for (let spike = 0; spike < 3; spike++) {
+      const side = spike % 2 ? -1 : 1;
+      const sy = height * (.89 + spike * .033);
+      const cx = tip[0] - dx * .015, cz = tip[2] - dz * .015;
+      triangle([cx - wx, sy, cz - wz], [cx + wx, sy, cz + wz],
+        [cx + dz * side * (.025 + spike * .006), sy + .05, cz - dx * side * (.025 + spike * .006)],
+        id, [.89, .89, 1], 1, true);
+    }
+  };
+  const bunch = (x: number, z: number, height: number, count: number, id: number, spread: number) => {
+    for (let blade = 0; blade < count; blade++) {
+      const turn = blade * 2.399 + id * .67;
+      const scale = .65 + ((blade * 3 + id) % 5) * .10;
+      leaf(x + Math.sin(turn) * .045, z + Math.cos(turn) * .045, turn,
+        height * scale, spread * (.73 + (blade % 3) * .16), .021 + (blade % 3) * .007, id * 7 + blade);
     }
   };
 
   if (kind === 'cover') {
-    const roots = [[-.48, -.28], [-.09, -.45], [.41, -.30], [-.32, .28], [.08, .09], [.48, .38]];
-    for (const [tuft, [x, z]] of roots.entries()) {
-      const yaw = tuft * 2.399;
-      for (let blade = 0; blade < 3; blade++) {
-        leaf(x, z, yaw + blade * 2.08, .35 + ((tuft * 5 + blade * 3) % 7) * .045,
-          .085 + blade * .025, .008 + (tuft % 2) * .002, tuft * 5 + blade);
-      }
-      culm(x + .015, z - .012, yaw + .5, .67 + (tuft % 3) * .09, tuft * 5 + 3, tuft % 2 === 0);
-    }
+    // Four overlapping rooted bunches replace six evenly tall thin sprays.
+    const roots = [[-.34, -.22, .46], [.17, -.30, .65], [-.12, .25, .38], [.34, .19, .57]];
+    for (const [id, [x, z, height]] of roots.entries()) bunch(x, z, height, 4, id, .23);
+    culm(.17, -.30, .72, .89, 30);
+    culm(-.34, -.22, 1.03, .69, 31);
   } else if (kind === 'stalk') {
-    for (let stem = 0; stem < 5; stem++) {
-      const angle = stem * 2.399, radius = .045 + (stem % 2) * .035;
-      culm(Math.sin(angle) * radius, Math.cos(angle) * radius, angle,
-        .61 + (stem % 3) * .11, stem, true);
-    }
-    for (let blade = 0; blade < 3; blade++) leaf(0, 0, blade * 2.2, .30 + blade * .04, .12, .01, blade + 7);
+    bunch(0, 0, .37, 4, 2, .18);
+    culm(-.045, .015, .8, .92, 7);
+    culm(.035, -.03, 1.05, .72, 8);
+    culm(.06, .045, .53, .81, 9);
+  } else if (kind === 'medium') {
+    bunch(-.055, .025, .60, 4, 1, .24);
+    bunch(.09, -.06, .40, 3, 4, .23);
+    culm(-.055, .025, .8, .69, 20);
   } else {
-    for (let blade = 0; blade < 6; blade++) {
-      const angle = blade * 2.399, radius = .025 + (blade % 3) * .025;
-      leaf(Math.sin(angle) * radius, Math.cos(angle) * radius, angle,
-        .19 + (blade % 4) * .038, .075 + (blade % 3) * .025, .008 + (blade % 2) * .003, blade);
-    }
-    culm(-.025, .02, .45, .36, 8, true);
-    culm(.03, -.015, 2.5, .30, 9, false);
+    bunch(0, 0, .43, 6, 0, .19);
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
