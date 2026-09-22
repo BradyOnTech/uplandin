@@ -87,14 +87,17 @@ export function quailJunctionWearAt(area: AreaConfig, x: number, y: number): num
 export function buildQuailTrackGeometry(landscape: LandscapeModel): THREE.BufferGeometry {
   const positions: number[] = [], colors: number[] = [], indices: number[] = [];
   const world = { x: 0, z: 0 }, color = new THREE.Color();
+  const wornLitter = new THREE.Color(0x9c8b6c), dryCenter = new THREE.Color(0xaaa07b);
   const network = quailTrackNetwork(landscape.area);
   const offsets = [-1.9, -1.3, -1.08, -.94, -.52, -.4, -.34, 0, .34, .4, .52, .94, 1.08, 1.3, 1.9];
   const opacity = [0, .18, .8, 1, 1, 1, 1, 1, 1, 1, 1, 1, .8, .18, 0];
-  const palette = [0x889569, 0x92966b, 0xa69c77, 0xc9ae84, 0xc9ae84, 0x989976, 0x8d9c6a, 0x8b9a67, 0x8d9c6a, 0x989976, 0xc9ae84, 0xc9ae84, 0xa69c77, 0x92966b, 0x889569];
-  const vertex = (px: number, py: number, tint: number, alpha: number) => {
+  const palette = [0x929074, 0x989478, 0xa49a79, 0xbda681, 0xbda681, 0x9c9777, 0x9a9875, 0x929373, 0x9a9875, 0x9c9777, 0xbda681, 0xbda681, 0xa49a79, 0x989478, 0x929074];
+  const vertex = (px: number, py: number, tint: number, alpha: number, weather = 0, center = false) => {
     landscape.propertyToWorld(px, py, world);
     positions.push(world.x, 0, world.z);
-    color.setHex(tint).multiplyScalar(.98 + Math.sin(px * 1.4 + Math.sin(py * 1.1)) * .018);
+    color.setHex(tint);
+    if (weather > 0) color.lerp(center ? dryCenter : wornLitter, weather);
+    color.multiplyScalar(.98 + Math.sin(px * 1.4 + Math.sin(py * 1.1)) * .018);
     colors.push(color.r, color.g, color.b, alpha);
   };
   for (const points of network.paths) {
@@ -111,10 +114,20 @@ export function buildQuailTrackGeometry(landscape: LandscapeModel): THREE.Buffer
       for (let n = 0; n <= steps; n++) {
         const t = n / steps, cx = a.x + dx * t, cy = a.y + dy * t;
         const tx = ax / al * (1 - t) + bx / bl * t, ty = ay / al * (1 - t) + by / bl * t, tl = Math.hypot(tx, ty);
+        // Broad interrupted wear is baked into the existing ribbon. Let real
+        // ground show through the straw center and regrown wheel sections;
+        // preserve the exact road footprint, joins and terrain-LOD fitting.
+        const wear = .5 + .26 * Math.sin(cx * .24 + cy * .17)
+          + .24 * Math.sin(cx * .061 - cy * .099 + 2.4);
+        const regrowth = .5 + .5 * Math.sin(cx * .17 - cy * .13 + Math.sin(cx * .041));
         for (let k = 0; k < offsets.length; k++) {
           const offset = offsets[k] * (1 + Math.sin((cx + cy) * .65) * .035) / PROPERTY_PX_TO_M;
           const px = cx - ty / tl * offset, py = cy + tx / tl * offset;
-          vertex(px, py, palette[k], opacity[k] * (1 - quailJunctionWearAt(landscape.area, px, py)));
+          const center = Math.abs(offsets[k]) <= .4;
+          const wheel = Math.abs(offsets[k]) >= .52 && Math.abs(offsets[k]) <= 1.08;
+          const coverage = center ? .28 + regrowth * .30 : wheel ? .62 + wear * .38 : .75 + regrowth * .25;
+          vertex(px, py, palette[k], opacity[k] * coverage * (1 - quailJunctionWearAt(landscape.area, px, py)),
+            center ? .22 + wear * .28 : .10 + (1 - wear) * .24, center);
           if (n < steps && k < offsets.length - 1) {
             const p = start + n * offsets.length + k;
             indices.push(p, p + 1, p + offsets.length, p + 1, p + offsets.length + 1, p + offsets.length);

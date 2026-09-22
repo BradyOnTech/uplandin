@@ -72,6 +72,16 @@ function driftIndex(area: AreaConfig): DriftIndex {
       [537, 581, 12, 10, -.30], [555, 574, 15, 10, -.25], [575, 563, 12, 11, .15],
       [609, 408, 11, 13, -.35], [615, 390, 12, 13, -.5],
       [636, 362, 12, 14, .3], [645, 343, 14, 15, .2],
+      // Low irregular aprons tie the existing plum/wood kit into the route.
+      // The open crossings stay open; these are small shoulder extensions,
+      // not a property-wide density increase or new hunting-cover patches.
+      [525, 566, 12, 5, -.35], [570, 549, 13, 6, -.5],
+      [617, 323, 14, 5, -.24], [691, 291, 16, 6, -.5],
+      [720, 298, 11, 5, -.2], [652, 364, 13, 5, .48],
+      // Unequal foreground, middle and far groups frame the windmill return.
+      [865, 287, 16, 7, -.2], [848, 279, 12, 6, .4],
+      [880, 263, 12, 6, -.65], [813, 231, 14, 6, -.4],
+      [891, 290, 11, 5, .8], [840, 248, 12, 5, .6],
     ]) add(x, y, rx, ry, angle, quailSeed(x, y, 61));
     for (const covert of QUAIL_COVERTS) for (let i = 1; i < covert.points.length; i++) {
       const a = covert.points[i - 1], b = covert.points[i];
