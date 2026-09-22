@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mulberry32 } from '../game/math';
 import type { TimeOfDay } from './palette';
+import { FrameTelemetry } from './frameTelemetry';
 
 export type Quality = 'high' | 'lite';
 export interface Ctx {
@@ -44,10 +45,8 @@ export class Engine {
   private initialized: Subsystem[] = [];
   private frameId = 0;
   private abort = new AbortController();
-  private frameTimes = new Float32Array(3600);
-  private frameCursor = 0;
-  private frameCount = 0;
-  private maxFrameMs = 0;
+  private frameTelemetry = new FrameTelemetry();
+  private systemsReadyAtMs: number | null = null;
 
   constructor(canvas: HTMLCanvasElement, quality: Quality, seed = 1971) {
     // Preserve thin vegetation edges even at the lightweight pixel budget.
@@ -91,6 +90,9 @@ export class Engine {
     };
     window.addEventListener('resize', resize, { signal: this.abort.signal });
     window.visualViewport?.addEventListener('resize', resize, { signal:this.abort.signal });
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => {
+      this.frameTelemetry.breakContinuity();
+    }, { signal: this.abort.signal });
     resize();
   }
   register(sys: Subsystem): void { this.systems.push(sys); this.byId.set(sys.id, sys); }
@@ -119,6 +121,8 @@ export class Engine {
     progress?.('ready', this.systems.length, this.systems.length);
     this.running = true;
     this.last = performance.now();
+    this.systemsReadyAtMs = this.last;
+    this.resetTelemetry('startup');
     this.frameId = requestAnimationFrame(this.frame);
     return true;
   }
@@ -128,10 +132,7 @@ export class Engine {
     this.last = now;
     if (!this.ctx.paused) {
       const dt = Math.min(0.1, elapsed / 1000);
-      this.frameTimes[this.frameCursor] = elapsed;
-      this.frameCursor = (this.frameCursor + 1) % this.frameTimes.length;
-      this.frameCount++;
-      this.maxFrameMs = Math.max(this.maxFrameMs, elapsed);
+      const fixedStart = performance.now();
       this.ctx.time += dt;
       this.accum += dt * 1000;
       while (this.accum >= FIXED_MS) {
@@ -139,14 +140,20 @@ export class Engine {
         for (const sys of this.systems) sys.fixedUpdate?.(this.ctx, FIXED_MS);
       }
       this.ctx.fixedAlpha = this.accum / FIXED_MS;
+      const updateStart = performance.now();
       for (const sys of this.systems) sys.update?.(this.ctx, dt);
+      const renderStart = performance.now();
       this.renderFrame();
+      this.frameTelemetry.record(elapsed, updateStart - fixedStart, renderStart - updateStart,
+        performance.now() - renderStart, this.ctx.renderer.info.render, this.ctx.renderer.info.memory,
+        typeof document === 'undefined' || document.visibilityState !== 'hidden');
     }
     this.frameId = requestAnimationFrame(this.frame);
   };
   pause(paused: boolean): void {
     this.ctx.paused = paused;
     this.last = performance.now();
+    this.frameTelemetry.breakContinuity();
     this.ctx.events.dispatchEvent(new CustomEvent('pause', { detail: paused }));
   }
   renderOnce(): void {
@@ -166,16 +173,19 @@ export class Engine {
       renderer.info.autoReset = autoReset;
     }
   }
+  resetTelemetry(label = 'manual'): void {
+    this.frameTelemetry.reset(label, performance.now(), this.ctx.renderer.info.memory);
+  }
   telemetry() {
-    const count = Math.min(this.frameCount, this.frameTimes.length);
-    const samples = Array.from(this.frameTimes.subarray(0, count)).sort((a, b) => a - b);
-    const pick = (p: number) => samples[Math.min(count - 1, Math.floor(count * p))] ?? 0;
+    const measurement = this.frameTelemetry.snapshot(performance.now());
     const renderer = this.ctx.renderer;
     return {
       quality: this.ctx.quality, paused: this.ctx.paused,
       resolution: { width: renderer.domElement.width, height: renderer.domElement.height, dpr: renderer.getPixelRatio() },
       render: { ...renderer.info.render }, memory: { ...renderer.info.memory },
-      frameMs: { samples: count, totalFrames: this.frameCount, p50: pick(0.5), p95: pick(0.95), p99: pick(0.99), max: this.maxFrameMs },
+      frameMs: { ...measurement.frameMs, totalFrames: measurement.framesRecorded },
+      measurement,
+      loading: { systemsReadySinceNavigationMs: this.systemsReadyAtMs },
     };
   }
   setTimeOfDay(tod: TimeOfDay): void {
