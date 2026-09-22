@@ -71,7 +71,7 @@ export function sharptailAccentPlacements(lite: boolean): SharptailAccent[] {
       const x = pocket.x + u * cos - v * sin, y = pocket.y + u * sin + v * cos;
       sharptailGroundZones(x, y, zones);
       const palette = kind === 'shrub'
-        ? zones.swale > .42 ? [0x718467, 0x81916f, 0x8c9978] : [0x89936d, 0x929b75, 0x7a8968]
+        ? zones.swale > .42 ? [0x96a58a, 0xa2ad92, 0x8f9f86] : [0xa4ae91, 0xb0b79c, 0x97a488]
         : kind === 'reed' ? [0xb0a47b, 0xc1af7e, 0xa79c75] : [0xa7a38d, 0x918f7f, 0xb0a994];
       const size = kind === 'shrub' ? .77 + rng() * .37 : kind === 'reed' ? .85 + rng() * .35 : .74 + rng() * .40;
       return { kind, pocket: pocket.id, x, y, scale: size * (index >= count - 4 && kind === 'shrub' ? .84 : 1),

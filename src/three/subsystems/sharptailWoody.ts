@@ -87,7 +87,7 @@ export function sharptailShrubGeometry(): THREE.BufferGeometry {
     });
     for (let i = 0; i < 6; i++) {
       const next = (i + 1) % 6;
-      for (const [top, shade] of [[true, .87 + (i % 3) * .055], [false, .64 + (i % 2) * .08]] as const) {
+      for (const [top, shade] of [[true, .87 + (i % 3) * .055], [false, .76 + (i % 2) * .05]] as const) {
         const peak = [x - sx * .13, y + (top ? .105 : -.065), z + sz * .08];
         for (const point of top ? [rim[i], peak, rim[next]] : [rim[next], peak, rim[i]]) {
           positions.push(...point); colors.push(shade * .94, shade, shade * .86);

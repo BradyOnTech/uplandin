@@ -164,6 +164,7 @@ function paintFor(property: LandscapeModel): Paint {
   const prairieZones = { swale: 0, stand: 0 };
   const nativeLitter = new THREE.Color(0xb2aa80), swaleSward = new THREE.Color(0x627d63);
   const prairieDryLitter = new THREE.Color(0x827958), prairieSageFloor = new THREE.Color(0x596c50);
+  const prairiePocketFloor = new THREE.Color();
   // Geometry construction is synchronous; reuse one sampler per painter.
   const surface: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
   return (landscape, x, y, out) => {
@@ -199,7 +200,9 @@ function paintFor(property: LandscapeModel): Paint {
       // place these value masses beneath the actual vegetation, not random
       // decorative spots; geometry bakes this once with no new shader work.
       const pocket = sharptailAccentGroundAt(x, y);
-      out.lerp(prairieZones.swale > .35 ? prairieSageFloor : prairieDryLitter, pocket * .38);
+      const sageMix = THREE.MathUtils.smoothstep(prairieZones.swale, .18, .55);
+      prairiePocketFloor.copy(prairieDryLitter).lerp(prairieSageFloor, sageMix);
+      out.lerp(prairiePocketFloor, pocket * .38);
       out.multiplyScalar(1 - pocket * .05);
     }
     if (fields.length > 0) {

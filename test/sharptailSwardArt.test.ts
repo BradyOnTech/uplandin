@@ -7,6 +7,26 @@ import { GrassSystem } from '../src/three/subsystems/grass';
 import { sharptailGrassGeometry } from '../src/three/subsystems/sharptailGrass';
 
 describe('Sharptail mixed grass art contracts', () => {
+  it('keeps the field outline and all basal litter when simplifying mobile mats', () => {
+    for (const kind of ['medium', 'cover'] as const) {
+      const field = sharptailGrassGeometry(kind), mobile = sharptailGrassGeometry(kind, 'mobile');
+      expect(mobile.boundingBox!.min.toArray()).toEqual(field.boundingBox!.min.toArray());
+      expect(mobile.boundingBox!.max.toArray()).toEqual(field.boundingBox!.max.toArray());
+      expect(mobile.attributes.position.count / 3).toBeLessThanOrEqual(kind === 'medium' ? 48 : 94);
+      expect(mobile.attributes.position.count).toBeLessThan(field.attributes.position.count);
+      const litter = (geometry: THREE.BufferGeometry) => {
+        const position = geometry.getAttribute('position'), uv = geometry.getAttribute('uv');
+        const vertices: number[] = [];
+        for (let i = 0; i < position.count; i++) if (uv.getY(i) > 0 && uv.getY(i) < .1) {
+          vertices.push(position.getX(i), position.getY(i), position.getZ(i), uv.getX(i), uv.getY(i));
+        }
+        return vertices;
+      };
+      expect(litter(mobile)).toEqual(litter(field));
+      field.dispose(); mobile.dispose();
+    }
+  });
+
   it('keeps four distinct silhouettes rooted and within the shared mobile mesh budget', () => {
     const heights: number[] = [];
     for (const kind of ['short', 'medium', 'stalk', 'cover'] as const) {

@@ -73,6 +73,12 @@ describe('composed low prairie habitat', () => {
       }
     }
     expect(system.collisionCircles()).toHaveLength(0);
+    const instanceDisposals = meshes.map(() => 0);
+    const expectedDisposals = meshes.map(() => 1);
+    meshes.forEach((mesh, index) => mesh.addEventListener('dispose', () => instanceDisposals[index]++));
     system.dispose(ctx); expect(ctx.scene.children).toHaveLength(0);
+    expect(instanceDisposals).toEqual(expectedDisposals);
+    system.dispose(ctx);
+    expect(instanceDisposals).toEqual(expectedDisposals);
   });
 });

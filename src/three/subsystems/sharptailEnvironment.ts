@@ -276,11 +276,27 @@ export function createSharptailLineShack(material: THREE.Material, groundAt: Gro
   // gameplay route. Vertices follow ground rather than the level floor;
   // low-contrast edges and a little flattened straw tie it into the prairie.
   const yardPositions: number[] = [], yardColors: number[] = [];
+  const yardNoise = (x: number, z: number) => {
+    const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz;
+    const u = fx * fx * (3 - 2 * fx), v = fz * fz * (3 - 2 * fz);
+    const hash = (a: number, b: number) => {
+      const h = Math.sin(a * 127.1 + b * 311.7 + 47.2) * 43758.5453;
+      return h - Math.floor(h);
+    };
+    const a = hash(ix, iz), b = hash(ix + 1, iz), c = hash(ix, iz + 1), d = hash(ix + 1, iz + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  };
+  const verge = new THREE.Color(0x7f8963), earth = new THREE.Color(0x817352), dryLitter = new THREE.Color(0xb0a075);
   const yardVertex = (x: number, z: number, straw = false) => {
     yardPositions.push(x, groundAt(x, z) + (straw ? .041 : .026), z);
     const wear = sharptailShackYardAt(x, z);
-    const color = new THREE.Color(straw ? 0xb3aa89 : 0x899178).lerp(new THREE.Color(straw ? 0xaba184 : 0xa19b81), wear);
-    if (!straw) color.multiplyScalar(.97 + .045 * Math.sin(x * .8 + z * 1.4));
+    const broad = yardNoise(x * .62 + 9, z * .62 + 17), grit = yardNoise(x * 1.85, z * 1.85);
+    // Packed soil and litter form soft patches rather than a uniform grey
+    // slab. The last rings return to the green-straw floor, including its
+    // subdued variation, so the apron loses its painted oval outline.
+    const color = straw ? new THREE.Color(0xaba078)
+      : verge.clone().lerp(earth.clone().lerp(dryLitter, broad), wear * (.64 + broad * .28));
+    if (!straw) color.multiplyScalar(.91 + broad * .15 + (grit - .5) * .08 * wear);
     yardColors.push(color.r, color.g, color.b);
   };
   const yardPoint = (angle: number, ring: number): [number, number] => {

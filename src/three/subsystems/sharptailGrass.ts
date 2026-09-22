@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 export type SharptailGrassKind = 'short' | 'medium' | 'stalk' | 'cover';
-export type SharptailGrassDetail = 'field' | 'distant';
+export type SharptailGrassDetail = 'field' | 'mobile' | 'distant';
 
 /** Northern prairie bunches: interleaved bowed leaves grow through low old
  * grass, with flowering panicles confined to separate taller silhouettes.
@@ -12,6 +12,7 @@ export function sharptailGrassGeometry(
   kind: SharptailGrassKind, detail: SharptailGrassDetail = 'field',
 ): THREE.BufferGeometry {
   const positions: number[] = [], colors: number[] = [], uvs: number[] = [];
+  const near = detail !== 'distant';
   type Point = readonly [number, number, number];
   const vertex = (p: Point, id: number, stage: number, dry: boolean, facet: number) => {
     positions.push(...p);
@@ -37,7 +38,7 @@ export function sharptailGrassGeometry(
     // upward daggers. The rare near-upright blade interrupts that canopy.
     const droop = id % 4 === 0 ? .94 : id % 4 === 1 ? .46 : .60;
     const tip: Point = [x + dx * reach + height * .22, height * droop, z + dz * reach];
-    if (detail === 'field') {
+    if (near) {
       const [lowerL, lowerR] = section(reach * .18, height * .33, width, -.16);
       triangle(base, lowerR, lowerL, id, [0, .28, .28], false, .94);
       triangle(lowerL, lowerR, upperL, id, [.28, .28, .72], false, .96);
@@ -66,7 +67,7 @@ export function sharptailGrassGeometry(
     const tip: Point = [x + dx * reach, height, z + dz * reach];
     triangle([x, 0, z], a, b, id, [0, .63, .63]);
     triangle(a, tip, b, id, [.63, 1, .63]);
-    const spikes = detail === 'field' ? 5 : 3;
+    const spikes = near ? 5 : 3;
     for (let spike = 0; spike < spikes; spike++) {
       const turn = angle + (spike % 2 ? -.9 : 1.2), length = .052 + (spike % 3) * .018;
       const cx = tip[0] - dx * .035, cz = tip[2] - dz * .035, sy = height * (.77 + spike * .04);
@@ -75,16 +76,21 @@ export function sharptailGrassGeometry(
     }
   };
   const bunch = (x: number, z: number, height: number, count: number, id: number, spread: number) => {
-    const retained = detail === 'field' ? count : Math.min(3, count);
+    const retained = near ? count : Math.min(3, count);
     for (let blade = 0; blade < retained; blade++) {
-      const index = detail === 'field' ? blade : Math.floor(blade * count / retained);
+      const index = near ? blade : Math.floor(blade * count / retained);
+      // These interior leaves add overlap, not silhouette. Lite retains
+      // every basal bunch, all low litter, and the exact field bounds while
+      // returning four/eight triangles from medium/cover foreground mats.
+      if (detail === 'mobile' && ((kind === 'medium' && id === 1 && index === 2) ||
+        (kind === 'cover' && (id === 0 || id === 2) && index === 3))) continue;
       const turn = index * 2.399 + id * .67;
       const length = index === 0 ? 1 : .60 + ((index * 3 + id) % 5) * .095;
       leaf(x + Math.sin(turn) * .055, z + Math.cos(turn) * .055, turn,
         height * length, spread * (.82 + (index % 3) * .15),
         (.027 + (index % 3) * .006) * (detail === 'distant' ? 1.45 : 1), id * 8 + index);
     }
-    const deadLeaves = detail === 'field' ? 2 : 1;
+    const deadLeaves = near ? 2 : 1;
     for (let i = 0; i < deadLeaves; i++) litter(x, z, .52 + id * 1.31 + i * 2.4, spread * 1.26, 100 + id * 3 + i);
   };
 

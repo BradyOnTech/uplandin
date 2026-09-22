@@ -10,6 +10,7 @@ import type { LandscapeModel } from '../../game/landscape';
 import { SharptailSwardField } from './sharptailSward';
 import { sharptailGrassGeometry } from './sharptailGrass';
 import { sharptailShackYardAt } from './sharptailEnvironment';
+import { sharptailAccentGroundAt } from './sharptailAccents';
 
 /*
  * GRASS subsystem: the field itself — the single system a walking-through-
@@ -835,6 +836,7 @@ export class GrassSystem implements Subsystem {
   private readonly prairieZones = { swale: 0, stand: 0 };
   private readonly prairieForm = { rank: 0, drift: 0, knot: 0, yaw: 0 };
   private readonly prairieYard?: { x: number; z: number };
+  private readonly prairieProperty = { x: 0, y: 0 };
 
   constructor(landscape?: LandscapeModel) {
     this.prairieLandscape = landscape?.area.id === 'sharptail-prairie' ? landscape : undefined;
@@ -866,6 +868,11 @@ export class GrassSystem implements Subsystem {
     if (!this.prairieYard) return 0;
     const dx = x - this.prairieYard.x, dz = z - this.prairieYard.z;
     return dx * dx + dz * dz < 7.45 * 7.45 ? sharptailShackYardAt(dx, dz) : 0;
+  }
+
+  private prairieAccentAt(x: number, z: number): number {
+    this.prairieLandscape!.worldToProperty(x, z, this.prairieProperty);
+    return sharptailAccentGroundAt(this.prairieProperty.x, this.prairieProperty.y);
   }
 
   private cfg!: QualityCfg;
@@ -1254,8 +1261,9 @@ export class GrassSystem implements Subsystem {
       this.coverGeo.dispose();
       this.variantGeos[V_OPEN] = sharptailGrassGeometry('short');
       this.variantGeos[V_STALK] = sharptailGrassGeometry('stalk');
-      this.variantGeos[V_TUFT] = sharptailGrassGeometry('medium');
-      this.coverGeo = sharptailGrassGeometry('cover');
+      const detail = this.cfg.bladeWide > 1 ? 'mobile' : 'field';
+      this.variantGeos[V_TUFT] = sharptailGrassGeometry('medium', detail);
+      this.coverGeo = sharptailGrassGeometry('cover', detail);
       this.prairieFarGeo = sharptailGrassGeometry('cover', 'distant');
     }
   }
@@ -1451,9 +1459,11 @@ export class GrassSystem implements Subsystem {
         const x = p.cx + (rng() * 2 - 1) * ext;
         const z = p.cz + (rng() * 2 - 1) * ext;
         if (this.outsideField(x, z)) continue;
+        const pocket = this.prairie ? this.prairieAccentAt(x, z) : 0;
         if (this.prairie) {
           const yard = this.prairieYardAt(x, z);
           if (yard > 0 && rng() < yard * .98) continue;
+          if (pocket > 0 && rng() < pocket * .94) continue;
         }
         const s = this.coverAt(x, z);
         if (rng() > s * 1.25) continue;
@@ -1473,7 +1483,7 @@ export class GrassSystem implements Subsystem {
           this.q.setFromEuler(this.e);
           // Distant crowns share the near layer's uneven height envelope;
           // they must not re-form a uniform hedge beyond the roaming ring.
-          this.s.set(sxz * 1.12, .35 + this.prairieForm.rank * .64 + rng() * .22, sxz);
+          this.s.set(sxz * 1.12, (.35 + this.prairieForm.rank * .64 + rng() * .22) * (1 - pocket * .70), sxz);
         }
         this.v.set(x, y, z);
         mats.push(new THREE.Matrix4().compose(this.v, this.q, this.s));
@@ -1691,12 +1701,19 @@ export class GrassSystem implements Subsystem {
     rng: () => number,
   ): boolean {
     if (counts[vi] >= caps[vi]) return false;
+    let prairiePocket = 0;
     if (this.prairie) {
       const yard = this.prairieYardAt(px, pz);
       if (yard > 0) {
         if (rng() < yard * (vi === V_COVER || vi === V_STALK ? .995 : .92)) return false;
         vigor *= 1 - yard * .72;
       }
+      // Sage and dry forbs emerge from shorter basal grass. The same soft
+      // property-space mask colors their litter below; do not bury the
+      // authored habitat beneath a separate, equally tall grass layer.
+      prairiePocket = this.prairieAccentAt(px, pz);
+      const thinning = vi === V_COVER || vi === V_STALK ? .98 : vi === V_OPEN ? .18 : .44;
+      if (prairiePocket > 0 && rng() < prairiePocket * thinning) return false;
     }
     // Feathered world edge: density thins over the last dozen meters of the
     // plate instead of stopping on a razor-straight rectangle line.
@@ -1731,7 +1748,7 @@ export class GrassSystem implements Subsystem {
       const width = sxz * (this.cfg.bladeWide > 1 ? 1.20 : 1.06);
       const height = vi === V_OPEN ? .66 + rank * .42 :
         vi === V_COVER ? .42 + rank * .76 : .52 + rank * .72;
-      this.s.set(width, vigor * height * (.77 + rng() * .47), width * (.82 + rng() * .20));
+      this.s.set(width, vigor * height * (.77 + rng() * .47) * (1 - prairiePocket * .70), width * (.82 + rng() * .20));
     }
     this.v.set(px, y, pz);
     this.m.compose(this.v, this.q, this.s);
