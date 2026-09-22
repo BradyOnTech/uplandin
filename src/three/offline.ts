@@ -54,11 +54,20 @@ export function prepareInstalledHuntUrl(
   return url;
 }
 
+function waitingUpdate(reg = registration): ServiceWorker | null {
+  const waiting = reg?.waiting;
+  // First installation also briefly enters waiting before automatic
+  // activation. Only a replacement for an existing worker is an update.
+  // Use registration.active: an uncontrolled page can still find a real
+  // upgrade, so navigator.serviceWorker.controller is not sufficient.
+  return waiting && reg?.active && reg.active !== waiting ? waiting : null;
+}
+
 /** UI must offer this only at a completed-hunt or pre-entry transition. */
 export function requestOfflineUpdate(): void {
   if (applying) return;
   if (!options.canReload?.()) { options.onUpdateState?.('unsafe'); return; }
-  const waiting = registration?.waiting;
+  const waiting = waitingUpdate();
   if (!waiting) { options.onUpdateState?.('none'); return; }
   applying = true;
   options.onUpdateState?.('applying');
@@ -105,9 +114,10 @@ export function enableOfflineHunts(nextOptions: OfflineOptions = {}): void {
   navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(reg => {
     registration = reg;
     const announceWaiting = () => {
-      if (!reg.waiting) return;
+      const waiting = waitingUpdate(reg);
+      if (!waiting) return;
       options.onUpdateState?.('ready');
-      reg.waiting.postMessage({ type: 'offline-status' });
+      waiting.postMessage({ type: 'offline-status' });
     };
     const observeInstall = () => {
       const installing = reg.installing;
