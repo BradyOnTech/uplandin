@@ -7,6 +7,7 @@ import type { Ctx, Subsystem } from '../engine';
 import { chukarLandmarkClearance } from './chukarLandmarks';
 import { chukarBrows, chukarBrowBlockers, chukarGroundZones, chukarPlantStandAt } from '../../game/chukarLandscape';
 import { applyChukarRockWeathering } from './chukarRockMaterial';
+import { chukarPlantGroupAt, chukarTrackSectionAt } from './chukarSurface';
 import { loadChukarKit } from '../assets/chukarKit';
 import { chukarGrassGeometry, chukarSageGeometry } from '../assets/chukarPlants';
 import { CHUKAR_GROUND_DETAIL } from './chukarTerrain';
@@ -16,8 +17,8 @@ import { applyQuailGrassGroundLod, createQuailGrassGroundGeometry } from './quai
 const TILE = 80;
 const TRACK_HALF_WIDTH_M = .8;
 const STONE = [0x878073, 0x6e716b, 0x968a76, 0x75766d];
-const SAGE = [0x788870, 0x89937a, 0x6d8272];
-const STRAW = [0xc9a86a, 0xd9bc80, 0xb8a476, 0xc7b387];
+const SAGE = [0x82957d, 0x94a28a, 0xa3ac92];
+const STRAW = [0xa79a77, 0xbba273, 0xc7b084, 0xd1bd93];
 const SAMPLE: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
 function seed(x: number, y: number, salt = 0): number {
@@ -251,26 +252,32 @@ export class ChukarEnvironmentSystem implements Subsystem {
         chukarGroundZones(x,y,zones);
         chukarPlantStandAt(x,y,zones.talus,zones.shelter,stand);
         chukarCompositionAt(x,y,composition);
-        const patch = coverAt(area, x, y), band=stand.grass;
+        const patch = coverAt(area, x, y), band=stand.grass,group=chukarPlantGroupAt(x,y);
         // Generate the same candidate in both tiers; thinning never changes
         // later random draws or shifts the remaining stands across the field.
         const qualityKeep=rng(),choice=rng(),sizeRoll=rng(),yaw=rng()*Math.PI*2,colorRoll=rng();
+        // Nearby plants share a silver-sage / cured-straw value family with
+        // small individual variation, instead of uniformly random confetti.
+        const tone=group*.72+colorRoll*.28;
+        const grassColor=STRAW[Math.min(STRAW.length-1,Math.floor(tone*STRAW.length))];
+        const sageColor=SAGE[Math.min(SAGE.length-1,Math.floor(tone*SAGE.length))];
+        const grassYaw=-.65+(yaw-Math.PI)*.22+Math.sin(x*.025+y*.015)*.28;
         const sageChance=(.01+stand.sage*.75)*(1-rockiness*.48);
         const grassChance=(.035+stand.grass*.82+vegetation*.07)*(1-zones.talus*.7)*(1-Math.max(composition.open*.8,composition.wash*.95));
         let planted=false;
         if(choice<sageChance&&slope<.9){
           const size=.58+sizeRoll*.58+composition.sage*.24;
-          if((!lite||qualityKeep>.18)&&this.clear(x,y,size*.90)){bushes.push({x,y,sx:size*1.16,sy:size*.84,sz:size*1.08,yaw,color:SAGE[Math.floor(colorRoll*SAGE.length)]});planted=true;}
+          if((!lite||qualityKeep>.18)&&this.clear(x,y,size*.90)){bushes.push({x,y,sx:size*1.16,sy:size*.84,sz:size*1.08,yaw,color:sageColor});planted=true;}
         }else if(choice<sageChance+grassChance&&slope<1.05){
           const size=.72+sizeRoll*.69+stand.grass*.25;
           if(!lite||qualityKeep>.27){
-            bunches.push({x,y,sx:size*1.12,sy:size*(patch?1.08:1),sz:size*1.12,yaw,color:STRAW[Math.floor(colorRoll*STRAW.length)]});planted=true;
+            bunches.push({x,y,sx:size*1.12,sy:size*(patch?1.08:1),sz:size*1.12,yaw:grassYaw,color:grassColor});planted=true;
             // Smaller neighboring bunches create a stand with a shared root
             // bed, without raising density on every exposed hillside.
             for(let companion=0;companion<2;companion++){
               if(composition.grass<.4+companion*.25||(lite&&(companion>0||qualityKeep<.55)))continue;
               const a=yaw+companion*2.4,r=.75+sizeRoll*.5,cx=x+Math.sin(a)*r,cy=y+Math.cos(a)*r,k=size*(.52+companion*.10);
-              if(this.clear(cx,cy,k*.4))bunches.push({x:cx,y:cy,sx:k,sy:k*.84,sz:k,yaw:a,color:STRAW[(Math.floor(colorRoll*STRAW.length)+1)%STRAW.length]});
+              if(this.clear(cx,cy,k*.4))bunches.push({x:cx,y:cy,sx:k,sy:k*.84,sz:k,yaw:grassYaw+.3,color:grassColor});
             }
           }
         }
@@ -294,17 +301,21 @@ export class ChukarEnvironmentSystem implements Subsystem {
   }
 
   private buildTrack(ctx:Ctx): void {
-    const positions: number[] = [], colors: number[] = [], dust = new THREE.Color(0xc2b69a), edge = new THREE.Color(0x998b6b);
+    const positions: number[] = [], colors: number[] = [], dust = new THREE.Color(0xbfb08f), edge = new THREE.Color(0x92846a);
+    const section={left:0,right:0,center:0,wear:0};
     for (const trail of this.landscape.area.trails) for (let n = 1; n < trail.points.length; n++) {
       const a = trail.points[n - 1], b = trail.points[n], dx = b.x - a.x, dy = b.y - a.y, length = Math.hypot(dx, dy);
       if (length < .01) continue;
       const count = Math.ceil(length / 2.5), rx = -dy / length, ry = dx / length;
-      const row = (t: number) => [-1, -.55, .55, 1].map((across, i) => {
-        const halfWidth = TRACK_HALF_WIDTH_M / PROPERTY_PX_TO_M;
-        const x = a.x + dx * t + rx * across * halfWidth, y = a.y + dy * t + ry * across * halfWidth;
-        this.landscape.propertyToWorld(x, y, this.world);
-        return { p: [this.world.x, this.landscape.heightAtProperty(x, y) + .035, this.world.z], c: i === 0 || i === 3 ? edge : dust, alpha: i === 0 || i === 3 ? 0 : .55 };
-      });
+      const row = (t: number) => {
+        const cx=a.x+dx*t,cy=a.y+dy*t;chukarTrackSectionAt(cx,cy,section);
+        return [-1,-.48,.48,1].map((across,i)=>{
+          const offset=(section.center+across*(across<0?section.left:section.right))/PROPERTY_PX_TO_M;
+          const x=cx+rx*offset,y=cy+ry*offset;
+          this.landscape.propertyToWorld(x,y,this.world);
+          return {p:[this.world.x,this.landscape.heightAtProperty(x,y)+.035,this.world.z],c:i===0||i===3?edge:dust,alpha:i===0||i===3?0:section.wear};
+        });
+      };
       for (let i = 0; i < count; i++) {
         const near = row(i / count), far = row((i + 1) / count);
         for (let across = 0; across < 3; across++) for (const v of [near[across], far[across], near[across + 1], near[across + 1], far[across], far[across + 1]]) {
@@ -320,15 +331,19 @@ export class ChukarEnvironmentSystem implements Subsystem {
     // tiers. An analytic height plus an offset sank into the coarse mesh.
     const geometry=groundQuailTrackGeometry(this.landscape,source,detail);source.dispose();
     const material = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, side: THREE.DoubleSide });
-    material.customProgramCacheKey = () => 'chukar-footpath-soft-shoulder-v2';
+    material.customProgramCacheKey = () => 'chukar-footpath-worn-contour-v3';
+    const origin=this.landscape.worldToProperty(0,0,{x:0,y:0});
     material.onBeforeCompile=shader=>{
-      shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec2 vPathGround;')
-        .replace('#include <begin_vertex>','#include <begin_vertex>\nvPathGround=position.xz;');
+      shader.uniforms.uChukarPathOrigin={value:new THREE.Vector2(origin.x*PROPERTY_PX_TO_M,origin.y*PROPERTY_PX_TO_M)};
+      shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec2 vPathGround; uniform vec2 uChukarPathOrigin;')
+        .replace('#include <begin_vertex>','#include <begin_vertex>\nvPathGround=position.xz+uChukarPathOrigin;');
       shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 vPathGround;')
         .replace('#include <color_fragment>',`#include <color_fragment>
           float wear=.5+.5*sin(vPathGround.x*1.3+sin(vPathGround.y*.83)*2.)*sin(vPathGround.y*2.1);
-          diffuseColor.a *= .66+wear*.34;
-          diffuseColor.rgb *= .95+wear*.07;`);
+          float worn=.5+.5*sin(vPathGround.x*.49-vPathGround.y*.37+sin(vPathGround.y*.16)*1.4);
+          float detail=1.-smoothstep(.25,.75,max(fwidth(vPathGround.x),fwidth(vPathGround.y)));
+          diffuseColor.a *= mix(.73,.46+wear*.42+worn*.22,detail);
+          diffuseColor.rgb *= .90+worn*.14;`);
     };
     applyQuailTrackGroundLod(material,ctx.quality,detail.range);
     const mesh = new THREE.Mesh(geometry, material); mesh.name = 'Chukar dusty contour access tracks'; mesh.receiveShadow = true;

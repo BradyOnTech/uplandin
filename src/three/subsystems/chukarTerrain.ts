@@ -10,18 +10,19 @@ export const CHUKAR_GROUND_DETAIL = {
 import { buildQuailTerrainGeometry } from './quailTerrain';
 import { quailGroundTiles, quailGroundUsesNear } from './quailGroundGeometry';
 import { chukarGroundZones, chukarPlantStandAt, chukarDistantRelief } from '../../game/chukarLandscape';
+import { chukarPlantGroupAt } from './chukarSurface';
 
-const earth = new THREE.Color(0xac9064), dust = new THREE.Color(0xcbb78e);
-const stone = new THREE.Color(0x89857d), shade = new THREE.Color(0x7e806f), sage = new THREE.Color(0x8e987b);
-const litter = new THREE.Color(0xb4a06d),stand={grass:0,sage:0};
+const earth = new THREE.Color(0xa58e69), dust = new THREE.Color(0xc9b994);
+const stone = new THREE.Color(0x898b83), shade = new THREE.Color(0x79816f), sage = new THREE.Color(0x899374);
+const litter = new THREE.Color(0xb5a17b),stand={grass:0,sage:0};
 const zones={talus:0,shelter:0},composition={sage:0,grass:0,open:0,wash:0};
-const rootSoil=new THREE.Color(0x83735b),silt=new THREE.Color(0xc2ac87);
+const rootSoil=new THREE.Color(0x837760),silt=new THREE.Color(0xc2af8c);
 const sample = {height:0,slope:0,gradeX:0,gradeZ:0,rockiness:0,vegetation:0,moisture:0};
 
 /** World-anchored scree detail, filtered before individual chips become subpixel. */
 function applyScreeDetail(material: THREE.MeshLambertMaterial, landscape: LandscapeModel,texture:THREE.Texture): void {
   const origin = landscape.worldToProperty(0, 0, { x: 0, y: 0 });
-  material.customProgramCacheKey = () => 'chukar-eroded-scree-v4';
+  material.customProgramCacheKey = () => 'chukar-mineral-root-beds-v5';
   material.onBeforeCompile = shader => {
     shader.uniforms.uScreeOrigin = { value: new THREE.Vector2(origin.x * PROPERTY_PX_TO_M, origin.y * PROPERTY_PX_TO_M) };
     shader.uniforms.uChukarEarth={value:texture};
@@ -50,13 +51,17 @@ function applyScreeDetail(material: THREE.MeshLambertMaterial, landscape: Landsc
         vec2 ground = vScreeGround + uScreeOrigin;
         float deposit = screeNoise(ground * .17);
         float soil = screeNoise(ground * 1.4);
-        diffuseColor.rgb *= .94 + deposit * .08 + soil * .045;
+        // Broken pale mineral soil and cooler organic pockets create
+        // readable ground planes under the dry plants, not a uniform sand fill.
+        vec3 bedTint=mix(vec3(.79,.86,.83),vec3(1.08,1.035,.93),smoothstep(.24,.76,deposit));
+        diffuseColor.rgb *= mix(vec3(1.),bedTint,(1.-vRockFace)*.65);
+        diffuseColor.rgb *= .92 + deposit * .11 + soil * .05;
         float paintRange=1.-smoothstep(22.,115.,length(vScreeGround-cameraPosition.xz));
         if(paintRange>0.){
           vec3 closePaint=texture2D(uChukarEarth,ground/5.5).rgb;
           vec3 broadPaint=texture2D(uChukarEarth,mat2(.8,-.6,.6,.8)*ground/13.+.37).rgb;
           float paintValue=dot(mix(closePaint,broadPaint,.23),vec3(.28,.55,.17));
-          diffuseColor.rgb *= mix(1.,clamp(paintValue*1.85,.60,1.23),paintRange*.33);
+          diffuseColor.rgb *= mix(1.,clamp(paintValue*1.85,.60,1.23),paintRange*.46);
         }
         // Broad mineral patches and descending erosion streaks remain
         // legible across the canyon, after close soil detail has faded out.
@@ -84,6 +89,13 @@ function applyScreeDetail(material: THREE.MeshLambertMaterial, landscape: Landsc
         float facet = local.x + local.y * .55 > 0. ? 1.22 : .87;
         diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.02,1.07,1.14) * facet,
           chip * exposed * range * resolved * .38);
+        // Occasional narrow cured fragments share the existing stone-cell
+        // evaluation. Derivative filtering removes both before they shimmer.
+        float litterEdge=max(abs(local.x+local.y*.22)*5.5,abs(local.y)*.8);
+        float litterAA=max(fwidth(litterEdge),.003);
+        float litter=1.-smoothstep(.18-litterAA,.18+litterAA,litterEdge);
+        diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(.78,.73,.63),
+          litter*step(seed,.21)*range*resolved*(1.-vRockFace)*.35);
       `);
   };
 }
@@ -91,21 +103,21 @@ function applyScreeDetail(material: THREE.MeshLambertMaterial, landscape: Landsc
 function paint(landscape:LandscapeModel,x:number,y:number,out:THREE.Color):THREE.Color {
   const surface=landscape.surfaceAtProperty(x,y,sample);
   const sweep=.5+.25*Math.sin(x*.019+Math.cos(y*.011)*1.5)+.25*Math.cos(y*.016-x*.007);
-  const bedding=.5+.5*Math.sin(surface.height*.63+x*.003);
+  const bedding=.5+.5*Math.sin(surface.height*.63+x*.003),group=chukarPlantGroupAt(x,y);
   chukarGroundZones(x,y,zones);
   out.copy(earth).lerp(dust,.25+sweep*.32);
   out.lerp(sage,surface.vegetation*(1-surface.rockiness)*.34);
   out.lerp(stone,surface.rockiness*(.55+bedding*.30));
   out.lerp(stone,zones.talus*.42);
   chukarPlantStandAt(x,y,zones.talus,zones.shelter,stand);
-  out.lerp(litter,stand.grass*.44);
-  out.lerp(sage,stand.sage*.49+zones.shelter*.13);
+  out.lerp(litter,stand.grass*(.38+group*.30));
+  out.lerp(sage,stand.sage*.64+zones.shelter*.16);
   chukarCompositionAt(x,y,composition);
-  out.lerp(rootSoil,composition.sage*.30+composition.grass*.14);
+  out.lerp(rootSoil,composition.sage*.28+composition.grass*.17);
   out.lerp(stone,composition.open*.23);
   out.lerp(silt,composition.wash*.72);
   out.lerp(shade,Math.min(.34,surface.slope*.27));
-  return out.multiplyScalar(.89+sweep*.14+bedding*.04);
+  return out.multiplyScalar(.86+sweep*.18+bedding*.045);
 }
 
 /** Rectangular sampling spends horizon vertices evenly in metres. A small
