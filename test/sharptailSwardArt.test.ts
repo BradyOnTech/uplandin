@@ -11,7 +11,7 @@ describe('Sharptail mixed grass art contracts', () => {
     const heights: number[] = [];
     for (const kind of ['short', 'medium', 'stalk', 'cover'] as const) {
       const geo = sharptailGrassGeometry(kind), position = geo.getAttribute('position'), uv = geo.getAttribute('uv');
-      expect(position.count / 3).toBeLessThanOrEqual(kind === 'cover' ? 80 : 36);
+      expect(position.count / 3).toBeLessThanOrEqual(kind === 'cover' ? 112 : 56);
       expect(geo.getAttribute('color').count).toBe(position.count);
       expect(geo.getAttribute('normal').count).toBe(position.count);
       expect(uv.count).toBe(position.count);
@@ -20,6 +20,18 @@ describe('Sharptail mixed grass art contracts', () => {
         expect(uv.getY(v)).toBeGreaterThanOrEqual(0);
         expect(uv.getY(v)).toBeLessThanOrEqual(1);
         if (uv.getY(v) === 0) expect(position.getY(v)).toBe(0);
+      }
+      if (kind === 'medium') {
+        const size = geo.boundingBox!.getSize(new THREE.Vector3());
+        expect(size.x).toBeGreaterThan(1);
+        expect(size.z).toBeGreaterThan(1);
+        // Low spent leaves bridge the roots; a vertical-only asset cannot
+        // satisfy this contract even if it has the same bounding box.
+        let lowLeafTips = 0;
+        for (let v = 0; v < position.count; v++) {
+          if (uv.getY(v) > 0 && uv.getY(v) < .1 && position.getY(v) < .07) lowLeafTips++;
+        }
+        expect(lowLeafTips).toBeGreaterThan(12);
       }
       heights.push(geo.boundingBox!.max.y);
       geo.dispose();
@@ -61,7 +73,11 @@ describe('Sharptail mixed grass art contracts', () => {
     expect(center).toBeGreaterThan(30);
     // Normalize by each sampled strip's width: center .5m, two wheels .6m.
     expect(center / .5).toBeGreaterThan(wheels / .6 * 1.8);
+    const far = (ctx.scene.children as THREE.InstancedMesh[]).find(mesh => mesh.geometry.userData.detail === 'distant')!;
+    let farDisposed = false;
+    far.geometry.addEventListener('dispose', () => { farDisposed = true; });
     grass.dispose(ctx);
+    expect(farDisposed).toBe(true);
     expect(ctx.scene.children).toHaveLength(0);
   });
 });

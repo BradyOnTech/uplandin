@@ -5,7 +5,8 @@ import { HUNT_WORLD_ANCHOR, PROPERTY_PX_TO_M, type GroundSample, type LandscapeM
 import { mulberry32 } from '../../game/math';
 import { huntingDoctrine, type HuntStyle } from '../../game/huntDoctrine';
 import type { Ctx, Subsystem } from '../engine';
-import { sharptailShrubGeometry, sharptailTreeGeometry } from './sharptailWoody';
+import { sharptailForbGeometry, sharptailShrubGeometry, sharptailStoneGeometry, sharptailTreeGeometry } from './sharptailWoody';
+import { sharptailAccentPlacements } from './sharptailAccents';
 
 type HabitatKind = 'trunk' | 'canopy' | 'shrub' | 'reed' | 'rock' | 'cactus' | 'log';
 
@@ -55,12 +56,12 @@ function profileFor(style: HuntStyle, lite: boolean, areaId?: string): HabitatPr
   if (areaId === 'sharptail-prairie') {
     // Equal candidate geography on both tiers. Woody cover belongs to the
     // north shelterbelts; the open lanes carry low snowberry and silver sage.
-    return { ...base, step: 22, nearClear: 25, kinds: ['shrub', 'trunk', 'canopy', 'rock'],
-      chances: { shrub: .115, trunk: 0, rock: .008 },
-      colors: colors({ shrub: [0x9ba79a, 0xa4ac9b, 0x909d8b], trunk: [0x929384], canopy: [0x899379, 0x99a083], rock: [0x9f9a88] }),
-      // The native shrub geometry is only ~0.45 m tall at unit scale. Keep
-      // low sage readable among the basal grass instead of ankle-high dots.
-      scale: { shrub: [.95, 1.75], trunk: [3.2, 5.8], canopy: [1.7, 3.1], rock: [.3, .65] }, };
+    return { ...base, step: 22, nearClear: 25, kinds: ['shrub', 'trunk', 'canopy', 'rock', 'reed'],
+      // Most low habitat now lives in composed pockets, leaving long casts
+      // through open grass. Sparse fill only bridges those remembered groups.
+      chances: { shrub: .026, trunk: 0, rock: .0015, reed: 0 },
+      colors: colors({ shrub: [0x89936d, 0x81916f, 0x929b75], trunk: [0x929384], canopy: [0x899379, 0x99a083], rock: [0xa7a38d], reed: [0xb0a47b] }),
+      scale: { shrub: [.77, 1.1], trunk: [3.2, 5.8], canopy: [1.7, 3.1], rock: [.74, 1.1], reed: [.85, 1.2] }, };
   }
   switch (style) {
     case 'pheasant':
@@ -386,7 +387,7 @@ export class PropertyHabitatSystem implements Subsystem {
       if (middle) anchors.push(middle);
     }
     const wetPools = area.id === 'woodcock-bottoms' ? wetPondLayout(area) : [];
-    const addHero = (kind: HabitatKind, x: number, y: number, size: number, yaw: number, yOffset = 0): void => {
+    const addHero = (kind: HabitatKind, x: number, y: number, size: number, yaw: number, yOffset = 0, tint?: number): void => {
       if (!lists.has(kind) || x < minX + 8 || x > maxX - 8 || y < minY + 8 || y > maxY - 8) return;
       this.landscape.propertyToWorld(x, y, this.world);
       if (Math.hypot(this.world.x - HUNT_WORLD_ANCHOR.x, this.world.z - HUNT_WORLD_ANCHOR.z) < profile.nearClear + 6) return;
@@ -408,7 +409,7 @@ export class PropertyHabitatSystem implements Subsystem {
         scale: size,
         yOffset,
         yaw,
-        color: palette[0],
+        color: tint ?? palette[0],
         hero: true,
       });
     };
@@ -426,8 +427,11 @@ export class PropertyHabitatSystem implements Subsystem {
           const yaw = rng() * Math.PI * 2;
           addHero('trunk', x, y, height, yaw);
           addHero('canopy', x, y, height, yaw);
-          addHero('shrub', x + 5, y + 8, .85 + rng() * .4, yaw);
+          addHero('shrub', x + 5, y + 8, .8 + rng() * .25, yaw);
         }
+      }
+      for (const item of sharptailAccentPlacements(ctx.quality === 'lite')) {
+        addHero(item.kind, item.x, item.y, item.scale, item.yaw, 0, item.color);
       }
     }
     const heroAnchors = area.id === 'sharptail-prairie' ? [] : anchors.slice(0, doctrine.style === 'open-covey' ? 2 : 3);
@@ -518,7 +522,10 @@ export class PropertyHabitatSystem implements Subsystem {
       const placements = lists.get(kind)!;
       // Hard caps keep a worst-case wide map within a predictable mobile
       // budget; deterministic order means the cutoff never shimmers.
-      const cap = woodland ? 12000 : ctx.quality === 'lite' ? 420 : kind === 'canopy' || kind === 'trunk' ? 280 : 760;
+      const cap = area.id === 'sharptail-prairie'
+        ? kind === 'shrub' ? ctx.quality === 'lite' ? 320 : 520
+          : kind === 'rock' || kind === 'reed' ? ctx.quality === 'lite' ? 48 : 72 : 60
+        : woodland ? 12000 : ctx.quality === 'lite' ? 420 : kind === 'canopy' || kind === 'trunk' ? 280 : 760;
       const heroes = placements.filter((placement) => placement.hero);
       const candidates = placements.filter((placement) => !placement.hero);
       const fillBudget = Math.min(candidates.length, Math.max(0, cap - heroes.length));
@@ -529,10 +536,12 @@ export class PropertyHabitatSystem implements Subsystem {
       if (selected.length === 0) continue;
       const geometry = prairieTree && kind === 'trunk' ? prairieTree.trunk
         : prairieTree && kind === 'canopy' ? prairieTree.crown
-          : prairieTree && kind === 'shrub' ? sharptailShrubGeometry() : geometryFor(kind, doctrine.style);
+          : prairieTree && kind === 'shrub' ? sharptailShrubGeometry()
+            : prairieTree && kind === 'reed' ? sharptailForbGeometry()
+              : prairieTree && kind === 'rock' ? sharptailStoneGeometry() : geometryFor(kind, doctrine.style);
       // Prairie crowns and open sage carry baked face/leaf colors; other
       // habitat primitives retain their existing instance-tint-only path.
-      const material = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true, vertexColors: !!prairieTree && (kind === 'canopy' || kind === 'shrub'), side: prairieTree && kind === 'shrub' ? THREE.DoubleSide : THREE.FrontSide });
+      const material = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true, vertexColors: !!prairieTree && kind !== 'trunk', side: prairieTree && kind === 'shrub' ? THREE.DoubleSide : THREE.FrontSide });
       material.onBeforeCompile = (shader) => {
         shader.uniforms.uPropertyHabitatWind = this.wind;
         shader.vertexShader = shader.vertexShader

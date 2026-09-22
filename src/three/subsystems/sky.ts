@@ -1025,7 +1025,11 @@ export class SkySystem implements Subsystem {
     this.sun.intensity = spec.sunIntensity;
     const fel = Math.max(el, THREE.MathUtils.degToRad(16));
     this.fillDir.set(Math.sin(az) * Math.cos(fel), Math.sin(fel), Math.cos(az) * Math.cos(fel));
-    if (this.quail || this.areaId === 'chukar-ridge' || this.areaId === 'pheasant-coverts') this.fillDir.set(-Math.sin(az) * 0.64, 0.77, -Math.cos(az) * 0.64);
+    if (this.quail || this.areaId === 'chukar-ridge' || this.areaId === 'pheasant-coverts' || this.areaId === 'sharptail-prairie') {
+      // A separate sky fill reveals the shaded face of prairie plants and
+      // the Line Shack. A fill beside the key only brightens the same faces.
+      this.fillDir.set(-Math.sin(az) * 0.64, 0.77, -Math.cos(az) * 0.64);
+    }
     this.fill.color.setHex(spec.fillColor);
     this.fill.intensity = spec.fillIntensity;
     // Shadow frustum: X spans the view width; light-space Y needs only the

@@ -9,16 +9,15 @@ import { PropertyHabitatSystem } from '../src/three/subsystems/propertyHabitat';
 import { SharptailSwardField } from '../src/three/subsystems/sharptailSward';
 import { sharptailGrassGeometry } from '../src/three/subsystems/sharptailGrass';
 import { sharptailShrubGeometry, sharptailTreeGeometry } from '../src/three/subsystems/sharptailWoody';
-import { quailGrassGeometry } from '../src/three/subsystems/quailGrass';
 
 const area = getArea('sharptail-prairie');
 
 describe('Sharptail full-property native sward', () => {
-  it('keeps native leaves inside the existing mobile geometry budget and wind contract', () => {
+  it('bounds the richer field geometry while retaining its rooted wind contract', () => {
     for (const kind of ['short', 'stalk', 'cover'] as const) {
       const geometry = sharptailGrassGeometry(kind);
       const position = geometry.getAttribute('position'), uv = geometry.getAttribute('uv');
-      expect(position.count / 3).toBeLessThanOrEqual(kind === 'cover' ? 80 : 36);
+      expect(position.count / 3).toBeLessThanOrEqual(kind === 'cover' ? 112 : 56);
       expect(uv.count).toBe(position.count);
       let roots = 0, tips = 0;
       for (let i = 0; i < position.count; i++) {
@@ -30,18 +29,20 @@ describe('Sharptail full-property native sward', () => {
       geometry.dispose();
     }
   });
-  it('retains a narrow upright grass silhouette without depending on its material tint', () => {
-    for (const kind of ['short', 'stalk'] as const) {
-      const prairie = sharptailGrassGeometry(kind), quail = quailGrassGeometry(kind === 'stalk');
-      prairie.computeBoundingBox(); quail.computeBoundingBox();
-      const a = prairie.boundingBox!.getSize(new THREE.Vector3());
-      const b = quail.boundingBox!.getSize(new THREE.Vector3());
-      // Narrow stems and retained vertical height make the regional read
-      // survive grayscale and palette changes, without a larger tuft budget.
-      expect(Math.max(a.x, a.z)).toBeLessThan(Math.max(b.x, b.z) * .72);
-      expect(a.y).toBeGreaterThan(kind === 'stalk' ? .8 : .34);
-      prairie.dispose(); quail.dispose();
-    }
+  it('keeps broad basal cover and a cheaper distant silhouette with the same height envelope', () => {
+    const field = sharptailGrassGeometry('cover'), distant = sharptailGrassGeometry('cover', 'distant');
+    const nearSize = field.boundingBox!.getSize(new THREE.Vector3());
+    const farSize = distant.boundingBox!.getSize(new THREE.Vector3());
+    expect(field.boundingBox!.min.y).toBe(0);
+    expect(distant.boundingBox!.min.y).toBe(0);
+    expect(nearSize.x).toBeGreaterThan(1.2);
+    expect(nearSize.z).toBeGreaterThan(1.2);
+    expect(farSize.y).toBeCloseTo(nearSize.y, 5);
+    expect(farSize.x).toBeGreaterThan(nearSize.x * .7);
+    expect(farSize.z).toBeGreaterThan(nearSize.z * .7);
+    expect(distant.attributes.position.count / 3).toBeLessThanOrEqual(48);
+    expect(distant.attributes.position.count).toBeLessThan(field.attributes.position.count * .5);
+    field.dispose(); distant.dispose();
   });
   it('keeps physical relief and sward zones attached to the property across parking places', () => {
     const south = new LandscapeModel(area, 'south-gate'), west = new LandscapeModel(area, 'west-track');
@@ -125,17 +126,18 @@ function woodyFixture(quality: Quality, fixtureArea = area) {
 }
 
 describe('Sharptail shelterbelts', () => {
-  it('uses slender deciduous crowns and open low shrubs within the previous mesh budget', () => {
+  it('uses slender deciduous crowns and readable open shrubs within bounded geometry budgets', () => {
     const { trunk, crown } = sharptailTreeGeometry(), shrub = sharptailShrubGeometry();
     const crownSize = crown.boundingBox!.getSize(new THREE.Vector3());
     const shrubSize = shrub.boundingBox!.getSize(new THREE.Vector3());
     expect(Math.max(crownSize.x, crownSize.z) / crownSize.y).toBeLessThan(.8);
     expect(trunk.attributes.position.count / 3 + crown.attributes.position.count / 3).toBeLessThanOrEqual(170);
-    expect(shrub.attributes.position.count / 3).toBeLessThanOrEqual(36);
-    expect(shrubSize.y).toBeLessThan(.5);
-    expect(Math.max(shrubSize.x, shrubSize.z)).toBeGreaterThan(shrubSize.y * 1.5);
+    expect(shrub.attributes.position.count / 3).toBeLessThanOrEqual(140);
+    expect(shrubSize.y).toBeGreaterThan(.6);
+    expect(shrubSize.y).toBeLessThan(.9);
+    expect(Math.max(shrubSize.x, shrubSize.z)).toBeGreaterThan(shrubSize.y * 1.2);
     expect(trunk.boundingBox!.min.y).toBeLessThanOrEqual(0);
-    expect(shrub.boundingBox!.min.y).toBe(0);
+    expect(Math.abs(shrub.boundingBox!.min.y)).toBeLessThan(.025);
     for (const geometry of [trunk, crown, shrub]) geometry.dispose();
   });
   it('rejects a whole tree when a route clears the trunk but would clip its crown', () => {

@@ -8,40 +8,59 @@ type GroundAt = (x: number, z: number) => number;
 export const SHARPTAIL_SHACK_RADIUS = 7.8;
 
 const PALETTE = {
-  timber: [0x929082, 0x858778, 0x9c9986, 0x828576, 0xa29d87],
-  shade: 0x62685f,
-  trim: 0xb6b39b,
-  sill: 0x72786b,
-  roof: [0x77837b, 0x819087, 0x6e7c74, 0x899389],
-  seam: 0xa0aa9b,
+  timber: [0xb1a48e, 0xa59e8b, 0xb8b09c, 0x999884, 0xc1b39a],
+  shade: 0x71796b,
+  trim: 0xcbc5ac,
+  sill: 0x6f7867,
+  roof: [0x69796f, 0x79867a, 0x617166, 0x859180],
+  seam: 0xa2ad9c,
   rust: 0x88725d,
   glass: 0x425c60,
   stone: [0x969a8b, 0x83897f, 0xa9a897, 0x777f76],
 } as const;
 
+const YARD = { x: -.4, z: 3.50, rx: 6.15, rz: 2.72, radius: 7.45 } as const;
+function yardEdge(angle: number): number {
+  return 1 + .035 * Math.sin(angle * 3 + .8) + .025 * Math.sin(angle * 7 - .4);
+}
+
+/** Visual wear under the existing, inaccessible building footprint. Shared
+ * with grass placement so a packed working yard is not filled with upright
+ * stems. Local unrotated metres; never an extension of habitat or collision. */
+export function sharptailShackYardAt(x: number, z: number): number {
+  const dx = (x - YARD.x) / YARD.rx, dz = (z - YARD.z) / YARD.rz;
+  const distance = Math.hypot(dx, dz) / yardEdge(Math.atan2(dz, dx));
+  const radialFade = Math.min(1, Math.max(0, (YARD.radius - Math.hypot(x, z)) / .35));
+  const t = Math.min(1, Math.max(0, (1 - distance) / .25));
+  return t * t * (3 - 2 * t) * radialFade;
+}
+
 /**
- * One static vertex-coloured batch on both tiers. Broad weathered planes,
+ * Two static vertex-coloured batches on both tiers. Broad weathered planes,
  * a closed gable, asymmetric lean-to and stovepipe give the distant Line
  * Shack a prairie silhouette; small construction details reward the approach.
  *
  * groundAt returns heights relative to the landmark origin in unrotated local
- * metres. The host owns the supplied material and disposes the returned geometry.
+ * metres. The host owns the supplied materials and disposes the returned
+ * geometries. The optional ground material lets the apron use a ground grade
+ * while the solid building receives its own softer shade-side lighting.
  */
-export function createSharptailLineShack(material: THREE.Material, groundAt: GroundAt = () => 0): THREE.Group {
+export function createSharptailLineShack(material: THREE.Material, groundAt: GroundAt = () => 0, groundMaterial: THREE.Material = material): THREE.Group {
   const positions: number[] = [], colors: number[] = [];
   const tint = new THREE.Color();
   const append = (source: THREE.BufferGeometry, color: number) => {
     const geometry = source.index ? source.toNonIndexed() : source;
-    const vertices = geometry.getAttribute('position');
+    const vertices = geometry.getAttribute('position'), vertexColors = geometry.getAttribute('color');
     tint.setHex(color);
     for (let i = 0; i < vertices.count; i++) {
       positions.push(vertices.getX(i), vertices.getY(i), vertices.getZ(i));
-      colors.push(tint.r, tint.g, tint.b);
+      if (vertexColors) colors.push(vertexColors.getX(i), vertexColors.getY(i), vertexColors.getZ(i));
+      else colors.push(tint.r, tint.g, tint.b);
     }
     if (geometry !== source) geometry.dispose();
     source.dispose();
   };
-  const face = (points: Point[], color: number, outward: Point) => {
+  const face = (points: Point[], color: number, outward: Point, upperColor?: number) => {
     const normal = new THREE.Vector3().subVectors(new THREE.Vector3(...points[1]), new THREE.Vector3(...points[0]))
       .cross(new THREE.Vector3().subVectors(new THREE.Vector3(...points[2]), new THREE.Vector3(...points[0])));
     const reverse = normal.dot(new THREE.Vector3(...outward)) < 0;
@@ -49,6 +68,12 @@ export function createSharptailLineShack(material: THREE.Material, groundAt: Gro
     for (let i = 1; i < points.length - 1; i++) indices.push(0, reverse ? i + 1 : i, reverse ? i : i + 1);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(points.flat(), 3));
+    if (upperColor !== undefined) {
+      const lower = new THREE.Color(color), upper = new THREE.Color(upperColor);
+      const low = Math.min(...points.map(point => point[1])), high = Math.max(...points.map(point => point[1]));
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(points.flatMap(point =>
+        lower.clone().lerp(upper, (point[1] - low) / Math.max(.001, high - low)).toArray()), 3));
+    }
     geometry.setIndex(indices); append(geometry, color);
   };
   const box = (size: Point, at: Point, color: number, rotation: Point = [0, 0, 0]) => {
@@ -101,7 +126,8 @@ export function createSharptailLineShack(material: THREE.Material, groundAt: Gro
     const z = side * 2.713;
     for (let i = 0; i < 23; i++) {
       const left = -5.7 + i * 8.8 / 23 + .012, right = left + 8.8 / 23 - .022;
-      face([[left, y(.19), z], [right, y(.19), z], [right, y(3.35), z], [left, y(3.35), z]], PALETTE.timber[(i * 3 + (side + 1)) % 5], [0, 0, side]);
+      face([[left, y(.19), z], [right, y(.19), z], [right, y(3.35), z], [left, y(3.35), z]],
+        PALETTE.timber[(i * 3 + (side + 1)) % 5], [0, 0, side], i % 4 === 0 ? 0xd2c4a8 : 0xbdb6a1);
     }
     box([8.94, .19, .14], [-1.3, y(.25), side * 2.76], PALETTE.sill);
     box([8.98, .17, .16], [-1.3, y(3.34), side * 2.77], PALETTE.trim);
@@ -164,6 +190,10 @@ export function createSharptailLineShack(material: THREE.Material, groundAt: Gro
   }
   for (const z of [-2.18, 2.18]) box([.15, 2.06, .16], [5.94, y(1.16), z], PALETTE.trim);
   box([.13, .16, 4.58], [5.97, y(2.14), 0], PALETTE.trim);
+  box([1.44, 1.77, .075], [4.46, y(1.10), 2.31], 0x818979);
+  for (const x of [3.7, 5.22]) box([.11, 1.91, .1], [x, y(1.13), 2.36], PALETTE.trim);
+  box([1.62, .12, .11], [4.46, y(2.10), 2.37], PALETTE.trim);
+  beam([3.80, y(.35), 2.38], [5.12, y(1.91), 2.38], .10, .07, PALETTE.timber[2]);
 
   // Offset stove pipe, collar and rain cap read above the roof from the
   // long approach. No smoke particles or per-frame work are needed.
@@ -188,8 +218,7 @@ export function createSharptailLineShack(material: THREE.Material, groundAt: Gro
   const stones: readonly [number, number, number, number, number, number][] = [
     [-5.94, 2.64, .57, .36, .44, .4], [-5.50, 3.00, .39, .28, .48, 1.7],
     [-5.91, 3.37, .44, .26, .35, -.4], [-5.12, 3.25, .36, .21, .29, .7],
-    [4.44, 3.18, .58, .39, .43, .2], [5.10, 3.08, .43, .26, .50, -.8],
-    [4.84, 3.65, .33, .25, .37, .6], [5.60, 2.77, .31, .20, .34, 1.2],
+    [5.78, 2.73, .43, .29, .37, .2], [5.80, 3.22, .31, .21, .34, 1.2],
   ];
   stones.forEach((s, i) => stone(...s, i));
 
@@ -199,6 +228,33 @@ export function createSharptailLineShack(material: THREE.Material, groundAt: Gro
   for (const z of [-.7, 1.65]) beam([gateX - .15, gateBase - .10, z], [gateX + .04, gateBase + 1.32, z], .11, .11, PALETTE.sill);
   for (const height of [.30, .81, 1.23]) beam([gateX - .15 + height * .135, gateBase + height, -.74], [gateX - .15 + height * .135, gateBase + height, 1.69], .095, .095, PALETTE.timber[2]);
   beam([gateX - .105, gateBase + .32, -.65], [gateX + .015, gateBase + 1.21, 1.56], .07, .085, PALETTE.sill);
+
+  // One useful ranch-yard object reads at approach distance: a dull oval
+  // stock trough with a broad rim and shaded dry interior. Its rounded ends
+  // are distinct from the shack's timber planes, without decorative clutter.
+  const trough = { x: 4.10, z: 3.81, rx: 1.27, rz: .65 };
+  const troughGround = Math.max(...[-1, 0, 1].flatMap(dx => [-1, 0, 1].map(dz =>
+    groundAt(trough.x + dx * trough.rx, trough.z + dz * trough.rz))));
+  const troughBottom = troughGround + .15, troughTop = troughBottom + .76;
+  const ringPoint = (angle: number, rx: number, rz: number, height: number): Point =>
+    [trough.x + Math.cos(angle) * rx, height, trough.z + Math.sin(angle) * rz];
+  for (let i = 0; i < 16; i++) {
+    const a = i * Math.PI / 8, b = (i + 1) * Math.PI / 8;
+    const outward: Point = [Math.cos((a + b) / 2), 0, Math.sin((a + b) / 2)];
+    face([ringPoint(a, 1.16, .54, troughBottom), ringPoint(b, 1.16, .54, troughBottom),
+      ringPoint(b, 1.27, .65, troughTop), ringPoint(a, 1.27, .65, troughTop)], i % 5 === 0 ? 0x8b998c : 0xa5afa0, outward);
+    face([ringPoint(a, 1.27, .65, troughTop), ringPoint(b, 1.27, .65, troughTop),
+      ringPoint(b, 1.15, .53, troughTop), ringPoint(a, 1.15, .53, troughTop)], 0xc0c5af, [0, 1, 0]);
+    face([ringPoint(a, 1.15, .53, troughTop), ringPoint(b, 1.15, .53, troughTop),
+      ringPoint(b, 1.07, .45, troughBottom + .10), ringPoint(a, 1.07, .45, troughBottom + .10)], 0x71877b, [-outward[0], 0, -outward[2]]);
+    face([[trough.x, troughBottom + .10, trough.z], ringPoint(a, 1.07, .45, troughBottom + .10),
+      ringPoint(b, 1.07, .45, troughBottom + .10)], 0x53675b, [0, 1, 0]);
+  }
+  for (const dx of [-.78, .78]) {
+    const x = trough.x + dx;
+    const base = Math.min(...[-.22, .22].flatMap(ox => [-.62, .62].map(oz => groundAt(x + ox, trough.z + oz)))) - .12;
+    box([.44, troughBottom - base + .06, 1.24], [x, (troughBottom + base) / 2, trough.z], PALETTE.stone[1]);
+  }
 
   // The two door steps have independent terrain-rooted foundations. Height
   // is clamped above local ground even if the building sits on a new shoulder.
@@ -215,5 +271,48 @@ export function createSharptailLineShack(material: THREE.Material, groundAt: Gro
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = 'Sharptail Line Shack'; mesh.castShadow = true; mesh.receiveShadow = true;
   const root = new THREE.Group(); root.name = 'Sharptail Line Shack and working yard'; root.add(mesh);
+
+  // The irregular apron belongs to this working destination, not a new
+  // gameplay route. Vertices follow ground rather than the level floor;
+  // low-contrast edges and a little flattened straw tie it into the prairie.
+  const yardPositions: number[] = [], yardColors: number[] = [];
+  const yardVertex = (x: number, z: number, straw = false) => {
+    yardPositions.push(x, groundAt(x, z) + (straw ? .041 : .026), z);
+    const wear = sharptailShackYardAt(x, z);
+    const color = new THREE.Color(straw ? 0xb3aa89 : 0x899178).lerp(new THREE.Color(straw ? 0xaba184 : 0xa19b81), wear);
+    if (!straw) color.multiplyScalar(.97 + .045 * Math.sin(x * .8 + z * 1.4));
+    yardColors.push(color.r, color.g, color.b);
+  };
+  const yardPoint = (angle: number, ring: number): [number, number] => {
+    const edge = yardEdge(angle) * ring;
+    let x = YARD.x + Math.cos(angle) * YARD.rx * edge, z = YARD.z + Math.sin(angle) * YARD.rz * edge;
+    const radius = Math.hypot(x, z);
+    if (radius > YARD.radius) { x *= YARD.radius / radius; z *= YARD.radius / radius; }
+    return [x, z];
+  };
+  const sectors = 32, rings = 6;
+  for (let ring = 0; ring < rings; ring++) for (let i = 0; i < sectors; i++) {
+    const a = i * Math.PI * 2 / sectors, b = (i + 1) * Math.PI * 2 / sectors;
+    const innerA = yardPoint(a, ring / rings), innerB = yardPoint(b, ring / rings);
+    const outerA = yardPoint(a, (ring + 1) / rings), outerB = yardPoint(b, (ring + 1) / rings);
+    // Clockwise in XZ gives +Y. A single center fan avoids zero-area triangles.
+    for (const p of [innerA, outerB, outerA]) yardVertex(...p);
+    if (ring > 0) for (const p of [innerA, innerB, outerB]) yardVertex(...p);
+  }
+  for (let i = 0; i < 18; i++) {
+    const angle = i * 2.39996, ring = .72 + (i % 3) * .075;
+    const [x, z] = yardPoint(angle, ring), length = .20 + (i % 4) * .07;
+    if (z < 2.85 || Math.hypot(x, z) > 7.1) continue;
+    const dx = Math.cos(angle + .7) * length, dz = Math.sin(angle + .7) * length;
+    for (const p of [[x - dx, z - dz], [x + dx, z + dz], [x + .045, z - .035]]) yardVertex(p[0], p[1], true);
+    for (const p of [[x - dx, z - dz], [x + .045, z - .035], [x + dx, z + dz]]) yardVertex(p[0], p[1], true);
+  }
+  const yardGeometry = new THREE.BufferGeometry();
+  yardGeometry.setAttribute('position', new THREE.Float32BufferAttribute(yardPositions, 3));
+  yardGeometry.setAttribute('color', new THREE.Float32BufferAttribute(yardColors, 3));
+  yardGeometry.computeVertexNormals(); yardGeometry.computeBoundingBox(); yardGeometry.computeBoundingSphere();
+  const yard = new THREE.Mesh(yardGeometry, groundMaterial);
+  yard.name = 'Sharptail Line Shack worn yard'; yard.receiveShadow = true;
+  yard.userData.shotSolid = false; root.add(yard);
   return root;
 }

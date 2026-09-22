@@ -9,6 +9,7 @@ import { quailGroundNearDistance, quailGroundTiles, quailGroundUsesNear } from '
 import { PHEASANT_MATERIALS, fieldTimeOfDay, type TimeOfDay } from '../palette';
 import { pheasantFields, pheasantPonds, samplePheasantHarvest } from './pheasantLandscape';
 import { sharptailGroundZones } from '../../game/sharptailLandscape';
+import { sharptailAccentGroundAt } from './sharptailAccents';
 
 type Paint = (landscape: LandscapeModel, x: number, y: number, out: THREE.Color) => THREE.Color;
 
@@ -162,6 +163,7 @@ function paintFor(property: LandscapeModel): Paint {
   const standingGrass = new THREE.Color(PHEASANT_MATERIALS.standingFloor);
   const prairieZones = { swale: 0, stand: 0 };
   const nativeLitter = new THREE.Color(0xb2aa80), swaleSward = new THREE.Color(0x627d63);
+  const prairieDryLitter = new THREE.Color(0x827958), prairieSageFloor = new THREE.Color(0x596c50);
   // Geometry construction is synchronous; reuse one sampler per painter.
   const surface: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
   return (landscape, x, y, out) => {
@@ -193,6 +195,12 @@ function paintFor(property: LandscapeModel): Paint {
       out.lerp(nativeLitter, (.08 + prairieZones.stand * .12 + dryShoulder * .24) * (.65 + meso * .35));
       out.lerp(swaleSward, prairieZones.swale * (.48 + broad * .18));
       out.multiplyScalar(.88 + broad * .20 + meso * .05);
+      // Root authored sage/forb pockets in accumulated litter. Shared masks
+      // place these value masses beneath the actual vegetation, not random
+      // decorative spots; geometry bakes this once with no new shader work.
+      const pocket = sharptailAccentGroundAt(x, y);
+      out.lerp(prairieZones.swale > .35 ? prairieSageFloor : prairieDryLitter, pocket * .38);
+      out.multiplyScalar(1 - pocket * .05);
     }
     if (fields.length > 0) {
       // Standing habitat retains a cooler grass-and-litter base even where

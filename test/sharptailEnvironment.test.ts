@@ -4,10 +4,12 @@ import { getArea } from '../src/game/areas';
 import { LandscapeModel } from '../src/game/landscape';
 import type { Ctx } from '../src/three/engine';
 import { LandmarksSystem } from '../src/three/subsystems/landmarks';
-import { createSharptailLineShack, SHARPTAIL_SHACK_RADIUS } from '../src/three/subsystems/sharptailEnvironment';
+import { createSharptailLineShack, sharptailShackYardAt, SHARPTAIL_SHACK_RADIUS } from '../src/three/subsystems/sharptailEnvironment';
 
 function meshFor(groundAt?: (x: number, z: number) => number): THREE.Mesh {
-  return createSharptailLineShack(new THREE.MeshBasicMaterial({ vertexColors: true }), groundAt).children[0] as THREE.Mesh;
+  const root = createSharptailLineShack(new THREE.MeshBasicMaterial({ vertexColors: true }), groundAt);
+  (root.children[1] as THREE.Mesh).geometry.dispose();
+  return root.children[0] as THREE.Mesh;
 }
 
 function rayHits(mesh: THREE.Mesh, from: THREE.Vector3, to: THREE.Vector3): boolean {
@@ -22,24 +24,49 @@ function dispose(mesh: THREE.Mesh): void {
 }
 
 describe('Sharptail Line Shack environment', () => {
-  it('keeps the complete static asset inside the existing movement footprint and one mobile draw', () => {
+  it('keeps the complete static asset inside the existing movement footprint and two mobile draws', () => {
     const material = new THREE.MeshBasicMaterial({ vertexColors: true });
-    const root = createSharptailLineShack(material);
-    expect(root.children).toHaveLength(1);
-    const mesh = root.children[0] as THREE.Mesh;
-    expect(mesh.material).toBe(material);
-    expect(mesh.geometry.groups).toHaveLength(0);
-    const positions = mesh.geometry.getAttribute('position');
-    expect(positions.count / 3).toBeLessThanOrEqual(2400);
-    expect(mesh.geometry.getAttribute('color').count).toBe(positions.count);
-    expect(mesh.geometry.getAttribute('normal').count).toBe(positions.count);
-    let furthest = 0;
-    for (let i = 0; i < positions.count; i++) {
-      expect(Number.isFinite(positions.getX(i) + positions.getY(i) + positions.getZ(i))).toBe(true);
-      furthest = Math.max(furthest, Math.hypot(positions.getX(i), positions.getZ(i)));
+    const groundMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
+    const root = createSharptailLineShack(material, undefined, groundMaterial);
+    expect(root.children).toHaveLength(2);
+    let furthest = 0, triangles = 0;
+    for (const [index, mesh] of (root.children as THREE.Mesh[]).entries()) {
+      expect(mesh.material).toBe(index === 0 ? material : groundMaterial);
+      expect(mesh.geometry.groups).toHaveLength(0);
+      const positions = mesh.geometry.getAttribute('position');
+      triangles += positions.count / 3;
+      expect(mesh.geometry.getAttribute('color').count).toBe(positions.count);
+      expect(mesh.geometry.getAttribute('normal').count).toBe(positions.count);
+      for (let i = 0; i < positions.count; i++) {
+        expect(Number.isFinite(positions.getX(i) + positions.getY(i) + positions.getZ(i))).toBe(true);
+        furthest = Math.max(furthest, Math.hypot(positions.getX(i), positions.getZ(i)));
+      }
+      dispose(mesh);
     }
+    expect(triangles).toBeLessThanOrEqual(2800);
     expect(furthest).toBeLessThan(SHARPTAIL_SHACK_RADIUS);
-    dispose(mesh);
+  });
+
+  it('roots the worn yard to the grade and shares a bounded grass-wear field without obstructing the access', () => {
+    const ground = (x: number, z: number) => .1 * x - .13 * z + Math.cos(x * .2) * .18;
+    const root = createSharptailLineShack(new THREE.MeshBasicMaterial({ vertexColors: true }), ground);
+    const yard = root.children[1] as THREE.Mesh, positions = yard.geometry.getAttribute('position');
+    expect(yard.castShadow).toBe(false);
+    expect(yard.userData.shotSolid).toBe(false);
+    for (let i = 0; i < positions.count; i++) {
+      const offset = positions.getY(i) - ground(positions.getX(i), positions.getZ(i));
+      expect(offset).toBeGreaterThan(.02);
+      expect(offset).toBeLessThan(.05);
+    }
+    expect(sharptailShackYardAt(-1.5, 4)).toBeGreaterThan(.9);
+    expect(sharptailShackYardAt(4.1, 3.81)).toBeGreaterThan(.9);
+    for (let i = 0; i < 16; i++) {
+      const angle = i * Math.PI / 8;
+      expect(sharptailShackYardAt(Math.cos(angle) * 7.8, Math.sin(angle) * 7.8)).toBe(0);
+    }
+    expect(sharptailShackYardAt(0, 16.46)).toBe(0);
+    for (const mesh of root.children as THREE.Mesh[]) mesh.geometry.dispose();
+    (yard.material as THREE.Material).dispose();
   });
 
   it.each([
@@ -67,6 +94,7 @@ describe('Sharptail Line Shack environment', () => {
     expect(rayHits(mesh, new THREE.Vector3(-1, 1.6, 12), new THREE.Vector3(-1, 1.6, -12))).toBe(true);
     expect(rayHits(mesh, new THREE.Vector3(-12, 4.6, 0), new THREE.Vector3(0, 4.6, 0))).toBe(true);
     expect(rayHits(mesh, new THREE.Vector3(10, 1.3, 0), new THREE.Vector3(4.5, 1.3, 0))).toBe(true);
+    expect(rayHits(mesh, new THREE.Vector3(4.1, .65, 8), new THREE.Vector3(4.1, .65, 3.81))).toBe(true);
     expect(rayHits(mesh, new THREE.Vector3(-1, 6.8, 12), new THREE.Vector3(-1, 6.8, -12))).toBe(false);
     expect(rayHits(mesh, new THREE.Vector3(8.2, 1.6, 12), new THREE.Vector3(8.2, 1.6, -12))).toBe(false);
     dispose(mesh);

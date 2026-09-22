@@ -9,6 +9,7 @@ import type { TerrainSystem } from './terrain';
 import type { LandscapeModel } from '../../game/landscape';
 import { SharptailSwardField } from './sharptailSward';
 import { sharptailGrassGeometry } from './sharptailGrass';
+import { sharptailShackYardAt } from './sharptailEnvironment';
 
 /*
  * GRASS subsystem: the field itself — the single system a walking-through-
@@ -832,11 +833,14 @@ export class GrassSystem implements Subsystem {
   private readonly prairie: SharptailSwardField | null;
   private readonly prairieLandscape?: LandscapeModel;
   private readonly prairieZones = { swale: 0, stand: 0 };
-  private readonly prairieForm = { rank: 0, drift: 0, yaw: 0 };
+  private readonly prairieForm = { rank: 0, drift: 0, knot: 0, yaw: 0 };
+  private readonly prairieYard?: { x: number; z: number };
 
   constructor(landscape?: LandscapeModel) {
     this.prairieLandscape = landscape?.area.id === 'sharptail-prairie' ? landscape : undefined;
     this.prairie = this.prairieLandscape ? new SharptailSwardField(this.prairieLandscape) : null;
+    const shack = this.prairieLandscape?.area.landmarks.find(landmark => landmark.kind === 'barn');
+    if (shack) this.prairieYard = this.prairieLandscape!.propertyToWorld(shack.position.x, shack.position.y, { x: 0, z: 0 });
   }
 
   private outsideField(x: number, z: number): boolean {
@@ -852,9 +856,16 @@ export class GrassSystem implements Subsystem {
     const drift = this.clumpNoise(px * .036 + pz * .017 + 170, pz * .075 - px * .025 + 340);
     const knot = this.clumpNoise(px * .18 + 920, pz * .16 + 670);
     this.prairieForm.drift = drift;
+    this.prairieForm.knot = knot;
     this.prairieForm.rank = THREE.MathUtils.clamp(.08 + this.prairieZones.swale * .33 +
       this.prairieZones.stand * .28 + drift * .37 + (knot - .5) * .20, 0, 1);
     this.prairieForm.yaw = .7 + (drift - .5) * 1.0;
+  }
+
+  private prairieYardAt(x: number, z: number): number {
+    if (!this.prairieYard) return 0;
+    const dx = x - this.prairieYard.x, dz = z - this.prairieYard.z;
+    return dx * dx + dz * dz < 7.45 * 7.45 ? sharptailShackYardAt(dx, dz) : 0;
   }
 
   private cfg!: QualityCfg;
@@ -871,6 +882,7 @@ export class GrassSystem implements Subsystem {
 
   private variantGeos: THREE.BufferGeometry[] = [];
   private coverGeo!: THREE.BufferGeometry;
+  private prairieFarGeo?: THREE.BufferGeometry;
   private openMat!: THREE.MeshLambertMaterial;
   private coverMat!: THREE.MeshLambertMaterial;
   private openUniforms!: GrassUniforms;
@@ -1090,6 +1102,8 @@ export class GrassSystem implements Subsystem {
     for (const g of this.variantGeos) g.dispose();
     this.variantGeos.length = 0;
     this.coverGeo.dispose();
+    this.prairieFarGeo?.dispose();
+    this.prairieFarGeo = undefined;
     this.openMat.dispose();
     this.coverMat.dispose();
   }
@@ -1242,6 +1256,7 @@ export class GrassSystem implements Subsystem {
       this.variantGeos[V_STALK] = sharptailGrassGeometry('stalk');
       this.variantGeos[V_TUFT] = sharptailGrassGeometry('medium');
       this.coverGeo = sharptailGrassGeometry('cover');
+      this.prairieFarGeo = sharptailGrassGeometry('cover', 'distant');
     }
   }
 
@@ -1436,6 +1451,10 @@ export class GrassSystem implements Subsystem {
         const x = p.cx + (rng() * 2 - 1) * ext;
         const z = p.cz + (rng() * 2 - 1) * ext;
         if (this.outsideField(x, z)) continue;
+        if (this.prairie) {
+          const yard = this.prairieYardAt(x, z);
+          if (yard > 0 && rng() < yard * .98) continue;
+        }
         const s = this.coverAt(x, z);
         if (rng() > s * 1.25) continue;
         // Game trails wear through the far layer too.
@@ -1468,7 +1487,7 @@ export class GrassSystem implements Subsystem {
         cols.push(this.c.clone());
       }
       if (mats.length === 0) continue;
-      const mesh = new THREE.InstancedMesh(this.coverGeo, this.coverMat, mats.length);
+      const mesh = new THREE.InstancedMesh(this.prairieFarGeo ?? this.coverGeo, this.coverMat, mats.length);
       for (let i = 0; i < mats.length; i++) {
         mesh.setMatrixAt(i, mats[i]);
         mesh.setColorAt(i, cols[i]);
@@ -1672,6 +1691,13 @@ export class GrassSystem implements Subsystem {
     rng: () => number,
   ): boolean {
     if (counts[vi] >= caps[vi]) return false;
+    if (this.prairie) {
+      const yard = this.prairieYardAt(px, pz);
+      if (yard > 0) {
+        if (rng() < yard * (vi === V_COVER || vi === V_STALK ? .995 : .92)) return false;
+        vigor *= 1 - yard * .72;
+      }
+    }
     // Feathered world edge: density thins over the last dozen meters of the
     // plate instead of stopping on a razor-straight rectangle line.
     const edge = this.prairie ? this.prairie.edgeDistance(px, pz) : WORLD_LIMIT - Math.max(Math.abs(px), Math.abs(pz));
@@ -1702,7 +1728,7 @@ export class GrassSystem implements Subsystem {
       // Width closes the basal layer on Lite without spending more instances.
       // Height varies by a coherent drift and by individual bunch: no flat
       // cereal canopy, while tall native stands remain legible to a hunter.
-      const width = sxz * (this.cfg.bladeWide > 1 ? 1.25 : 1.12);
+      const width = sxz * (this.cfg.bladeWide > 1 ? 1.20 : 1.06);
       const height = vi === V_OPEN ? .66 + rank * .42 :
         vi === V_COVER ? .42 + rank * .76 : .52 + rank * .72;
       this.s.set(width, vigor * height * (.77 + rng() * .47), width * (.82 + rng() * .20));
@@ -1751,25 +1777,28 @@ export class GrassSystem implements Subsystem {
    * accents. Unlike the generic meadow, rank cover never removes its basal
    * leaf layer. Caps, tile count, fade ranges and materials stay unchanged. */
   private fillPrairieTile(tile: Tile, counts: number[], caps: number[], rng: () => number): void {
-    const cells = Math.floor(TILE / this.cfg.tuftStep);
+    // Wider three-root mats cover more ground per instance. A slightly
+    // coarser lattice repays their extra visible geometry on both tiers.
+    const bodyStep = this.cfg.tuftStep * (this.cfg.bladeWide > 1 ? 1.08 : 1.04);
+    const cells = Math.floor(TILE / bodyStep);
     for (let gx = 0; gx < cells; gx++) {
       for (let gz = 0; gz < cells; gz++) {
-        const x = tile.tx * TILE + (gx + .06 + rng() * .88) * this.cfg.tuftStep;
-        const z = tile.tz * TILE + (gz + .06 + rng() * .88) * this.cfg.tuftStep;
+        const x = tile.tx * TILE + (gx + .06 + rng() * .88) * bodyStep;
+        const z = tile.tz * TILE + (gz + .06 + rng() * .88) * bodyStep;
         if (this.outsideField(x, z)) continue;
         this.samplePrairieForm(x, z);
-        const { rank, drift } = this.prairieForm;
+        const { rank, drift, knot } = this.prairieForm;
         // Little scuffed openings within grass, rather than pale ground
         // supporting separate isolated plants. Gaps have feathered edges.
-        if (rng() > .86 + rank * .12) continue;
-        const shortChance = .49 - rank * .37;
+        if (rng() > .67 + THREE.MathUtils.smoothstep(knot, .22, .73) * .29) continue;
+        const shortChance = .45 - rank * .28 - knot * .10;
         const vi = rng() < shortChance && counts[V_OPEN] < caps[V_OPEN] ? V_OPEN : V_TUFT;
-        const vigor = .82 + drift * .28 + rng() * .18;
+        const vigor = .93 + drift * .19 + knot * .12 + rng() * .13;
         this.placeTuft(tile, counts, caps, vi, x, z, vigor, rng);
         // Occasional paired bunches interlock across the jittered grid. This
         // replaces the old meadow's two separate doubling passes and leaves
         // substantial cap headroom instead of filling one tile corner first.
-        if (drift > .55 && rng() < .16) {
+        if (knot > .59 && rng() < .24) {
           this.placeTuft(tile, counts, caps, V_TUFT,
             x + (rng() - .5) * .6, z + (rng() - .5) * .6, vigor * .78, rng);
         }
@@ -1783,12 +1812,12 @@ export class GrassSystem implements Subsystem {
         const z = tile.tz * TILE + (gz + .08 + rng() * .84) * step;
         if (this.outsideField(x, z)) continue;
         this.samplePrairieForm(x, z);
-        const { rank, drift } = this.prairieForm;
+        const { rank, knot } = this.prairieForm;
         const cover = Math.max(this.coverAt(x, z), this.prairieZones.stand * .72);
         const rankCover = THREE.MathUtils.smoothstep(cover, .05, .72);
-        if (rng() < rankCover * (.31 + drift * .29)) {
+        if (rng() < rankCover * (.24 + knot * .34)) {
           this.placeTuft(tile, counts, caps, V_COVER, x, z, .9 + rng() * .28, rng);
-        } else if (rng() < .028 + rank * .08) {
+        } else if (knot > .53 && rng() < .09 + rank * .13) {
           this.placeTuft(tile, counts, caps, V_STALK, x, z, .77 + rng() * .28, rng);
         }
       }

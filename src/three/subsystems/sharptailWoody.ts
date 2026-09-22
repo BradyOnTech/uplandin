@@ -51,42 +51,105 @@ export function sharptailTreeGeometry(): { trunk: THREE.BufferGeometry; crown: T
   return { trunk, crown };
 }
 
-/** Low open silver-sage/snowberry growth: four fine branching shoots and
- * small opposite leaf pairs. 36 triangles replace the old solid shrub lump
- * at the same sites, with broad negative space beneath its leaf tips. */
+/** A low, open prairie shrub with separate angular leaf masses on visible
+ * forks. The broad leaf fans survive an ordinary walking distance, while
+ * the empty base and unequal heights keep it distinct from Quail plum. */
 export function sharptailShrubGeometry(): THREE.BufferGeometry {
-  const positions: number[] = [], colors: number[] = [];
-  type P = readonly [number, number, number];
-  const tri = (a: P, b: P, c: P, color: readonly number[]) => {
-    for (const p of [a, b, c]) { positions.push(...p); colors.push(...color); }
-  };
-  for (let shoot = 0; shoot < 4; shoot++) {
-    const angle = shoot * 2.399, dx = Math.sin(angle), dz = Math.cos(angle);
-    const h = .31 + (shoot % 3) * .045, reach = .28 + (shoot % 2) * .07;
-    const top: P = [dx * reach, h, dz * reach];
-    const color = [.62, .59, .49];
-    for (const turn of [angle, angle + Math.PI / 2]) {
-      const wx = Math.cos(turn) * .009, wz = -Math.sin(turn) * .009;
-      tri([-wx, 0, -wz], [wx, 0, wz], [top[0] - wx * .2, top[1], top[2] - wz * .2], color);
-      tri([wx, 0, wz], [top[0] + wx * .2, top[1], top[2] + wz * .2], [top[0] - wx * .2, top[1], top[2] - wz * .2], color);
-    }
-    for (let leaf = 0; leaf < 2; leaf++) {
-      const side = leaf === 0 ? -1 : 1, t = .65 + leaf * .18;
-      const x = top[0] * t, y = h * t, z = top[2] * t;
-      const leafAngle = angle + side * 1.05, lx = Math.sin(leafAngle), lz = Math.cos(leafAngle);
-      const end: P = [x + lx * .19, y + .035, z + lz * .19];
-      const left: P = [x + lx * .095 + lz * .037, y + .045, z + lz * .095 - lx * .037];
-      const right: P = [x + lx * .095 - lz * .037, y + .025, z + lz * .095 + lx * .037];
-      tri([x, y, z], left, end, [.90, .94, .88]);
-      tri([x, y, z], end, right, [.81, .87, .81]);
-    }
-    const x = top[0], y = top[1], z = top[2], wx = dz * .025, wz = -dx * .025;
-    tri([x - wx, y, z - wz], [x + wx, y, z + wz], [x + dx * .12, y + .075, z + dz * .12], [.93, .98, .91]);
+  const parts: THREE.BufferGeometry[] = [];
+  const root = new THREE.Vector3(0, 0, 0), fork = new THREE.Vector3(.025, .26, -.025);
+  const tips = [new THREE.Vector3(.30, .53, -.04), new THREE.Vector3(-.20, .63, .08),
+    new THREE.Vector3(-.30, .43, -.21), new THREE.Vector3(.08, .45, .29)];
+  for (const [a, b, radius, tip] of [
+    [root, fork, .018, .013], [fork, tips[0], .013, .006], [fork, tips[1], .011, .005],
+    [root, tips[2], .015, .005], [fork, tips[3], .01, .004],
+    [fork, new THREE.Vector3(.15, .76, .19), .006, .002],
+  ] as const) {
+    const stem = branch(a, b, radius, tip);
+    stem.setAttribute('color', new THREE.Float32BufferAttribute(
+      Array.from({ length: stem.attributes.position.count }, () => [.62, .54, .39]).flat(), 3));
+    parts.push(stem);
   }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geometry.computeVertexNormals(); geometry.computeBoundingBox(); geometry.computeBoundingSphere();
-  geometry.userData = { kind: 'sharptail-open-sage', triangles: positions.length / 9 };
+  // Flattened, offset hexagonal fans, not closed spherical shrub domes.
+  // Unequal rim heights keep the silhouette broken from every viewing angle.
+  const fans = [
+    [.30, .52, -.04, .29, .18, -.15], [-.20, .62, .08, .28, .17, .55],
+    [-.30, .43, -.21, .26, .17, -.4], [.08, .44, .29, .25, .19, .75],
+    [-.035, .36, -.065, .22, .15, -.1],
+  ];
+  for (const [index, [x, y, z, sx, sz, yaw]] of fans.entries()) {
+    const positions: number[] = [], colors: number[] = [];
+    const rim = Array.from({ length: 6 }, (_, i) => {
+      const angle = i * Math.PI / 3;
+      const reach = 1 + Math.sin(i * 2.7 + index) * .16;
+      const u = Math.cos(angle) * sx * reach, v = Math.sin(angle) * sz * reach;
+      return [x + u * Math.cos(yaw) - v * Math.sin(yaw), y + Math.sin(i * 1.9 + index) * .025,
+        z + u * Math.sin(yaw) + v * Math.cos(yaw)];
+    });
+    for (let i = 0; i < 6; i++) {
+      const next = (i + 1) % 6;
+      for (const [top, shade] of [[true, .87 + (i % 3) * .055], [false, .64 + (i % 2) * .08]] as const) {
+        const peak = [x - sx * .13, y + (top ? .105 : -.065), z + sz * .08];
+        for (const point of top ? [rim[i], peak, rim[next]] : [rim[next], peak, rim[i]]) {
+          positions.push(...point); colors.push(shade * .94, shade, shade * .86);
+        }
+      }
+    }
+    const fan = new THREE.BufferGeometry();
+    fan.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    fan.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    fan.computeVertexNormals(); parts.push(fan);
+  }
+  const geometry = merge(parts);
+  geometry.userData = { kind: 'sharptail-open-sage', triangles: geometry.attributes.position.count / 3 };
+  return geometry;
+}
+
+/** Dry yarrow/forb heads in little uneven sprays, below the hunter's view.
+ * Three stems share one geometry; the seed heads use solid triangular facets
+ * rather than alpha cards, so the sparse pockets need no texture or sorting. */
+export function sharptailForbGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 3; i++) {
+    const angle = i * 2.399, x = Math.sin(angle) * .18, z = Math.cos(angle) * .18;
+    const h = .46 + i * .105, top = new THREE.Vector3(x * 1.4, h, z * 1.4);
+    const stem = branch(new THREE.Vector3(x * .25, 0, z * .25), top, .006, .003);
+    stem.setAttribute('color', new THREE.Float32BufferAttribute(
+      Array.from({ length: stem.attributes.position.count }, () => [.70, .61, .42]).flat(), 3));
+    parts.push(stem);
+    const head = new THREE.IcosahedronGeometry(1, 0); head.deleteAttribute('uv');
+    head.scale(.10 + i * .015, .025, .09 + i * .012); head.translate(top.x, h, top.z);
+    head.setAttribute('color', new THREE.Float32BufferAttribute(
+      Array.from({ length: head.attributes.position.count }, (_, n) => {
+        const shade = .78 + Math.floor(n / 3) % 3 * .08; return [shade, shade * .88, shade * .61];
+      }).flat(), 3));
+    parts.push(head);
+  }
+  const geometry = merge(parts);
+  geometry.userData = { kind: 'sharptail-dry-forb', triangles: geometry.attributes.position.count / 3 };
+  return geometry;
+}
+
+/** Two weathered fieldstones, already sunk into the soil at unit scale.
+ * Their tallest visible face stays below a boot step; these decorative
+ * clusters do not pretend to be collision-bearing boulders. */
+export function sharptailStoneGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  for (const [index, [x, z, sx, sy, sz]] of [
+    [0, 0, .52, .16, .36], [.48, -.20, .22, .105, .19],
+  ].entries()) {
+    const stone = new THREE.IcosahedronGeometry(1, 0); stone.deleteAttribute('uv');
+    const p = stone.getAttribute('position'), colors: number[] = [];
+    for (let i = 0; i < p.count; i++) {
+      const vx = p.getX(i), vy = p.getY(i), vz = p.getZ(i);
+      const chip = 1 + Math.sin(vx * 4.6 + vz * 3.9 + index * 2.1) * .12;
+      p.setXYZ(i, x + vx * sx * chip, vy * sy + .025, z + vz * sz * chip);
+      const shade = .72 + (vy + 1) * .10;
+      colors.push(shade, shade * .99, shade * .93);
+    }
+    stone.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    stone.computeVertexNormals(); parts.push(stone);
+  }
+  const geometry = merge(parts);
+  geometry.userData = { kind: 'sharptail-low-fieldstone', triangles: geometry.attributes.position.count / 3 };
   return geometry;
 }
