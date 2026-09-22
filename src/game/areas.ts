@@ -6,6 +6,7 @@ import type { Vec2 } from './types';
 import { pheasantDryCover, pheasantShoreCover, pheasantWestFence } from './pheasantHabitat';
 import { chukarCoverPatches } from './chukarLandscape';
 import { quailCoverPatches } from './quailComposition';
+import { SHARPTAIL_COVER_PATCHES } from './sharptailLandscape';
 
 export type LandmarkKind = 'gate' | 'windmill' | 'barn' | 'pond' | 'fence';
 
@@ -547,7 +548,7 @@ export const AREAS: AreaConfig[] = [
     world: world(1400, 800),
     terrain: terrain('prairie', 4401),
     ...sharptailGeography(1400, 800),
-    patches: [...scatterRects(world(1400, 800), { count: 22, minW: 110, maxW: 200, minH: 40, maxH: 70 }, mulberry32(44)), ...entryCover(1400, 800, 44)],
+    patches: [...SHARPTAIL_COVER_PATCHES, ...entryCover(1400, 800, 44)],
     stocking: 0.7,
     speciesMix: [
       { speciesId: 'sharptail', weight: 0.5 },

@@ -44,6 +44,7 @@ uniform float uCloudAmt;
 uniform float uQuail;
 uniform float uPheasant;
 uniform float uChukar;
+uniform float uSharptail;
 varying vec3 vPos;
 
 /*
@@ -90,6 +91,13 @@ vec2 cloudLocal(vec2 ae, vec2 c, vec2 ms) {
 }
 
 float cloudField(vec2 ae) {
+  if (uSharptail > 0.5) {
+    // Wind-stretched northern prairie banks retain broad open sightlines.
+    float f = prairieBank(cloudLocal(ae, vec2(-2.55, .25), vec2(1.10, 2.25)));
+    f = max(f, prairieBank(cloudLocal(ae, vec2(.75, .22), vec2(-.9, 2.15))));
+    f = max(f, prairieBank(cloudLocal(ae, vec2(2.35, .12), vec2(1.55, 2.7))));
+    return f;
+  }
   if (uChukar > 0.5) {
     // Thin wind-shaped banks leave the open ridge skyline readable.
     float f=prairieBank(cloudLocal(ae,vec2(-1.45,.37),vec2(1.05,2.4)));
@@ -162,7 +170,7 @@ void main() {
   // so a low sun still burns through them instead of being pasted over.
   vec2 ae = vec2(atan(dir.x, dir.z), h);
   float cf = cloudField(ae);
-  float layered = max(max(uQuail, uPheasant),uChukar);
+  float layered = max(max(uQuail, uPheasant), max(uChukar, uSharptail));
   float cm = smoothstep(mix(0.55, 0.45, layered), mix(0.60, 0.58, layered), cf) * uCloudAmt * smoothstep(0.05, 0.10, h);
   // Flat painted plates (round 5): fw-e3-5's cumulus is 2-3 VALUE STEPS
   // with hard undersides — not an airbrushed gradient (measured: our cloud
@@ -696,6 +704,7 @@ export class SkySystem implements Subsystem {
         uCloudShade: { value: new THREE.Color() },
         uCloudAmt: { value: 0 },
         uChukar: { value: this.areaId === 'chukar-ridge' ? 1 : 0 },
+        uSharptail: { value: this.areaId === 'sharptail-prairie' ? 1 : 0 },
         uQuail: { value: this.quail ? 1 : 0 },
         uPheasant: { value: this.areaId === 'pheasant-coverts' ? 1 : 0 },
       },

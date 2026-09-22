@@ -6,6 +6,9 @@ import type { BirdsSystem } from './birds';
 import type { DogSystem } from './dog';
 import type { Hunt3DSystem } from './hunt3d';
 import type { TerrainSystem } from './terrain';
+import type { LandscapeModel } from '../../game/landscape';
+import { SharptailSwardField } from './sharptailSward';
+import { sharptailGrassGeometry } from './sharptailGrass';
 
 /*
  * GRASS subsystem: the field itself — the single system a walking-through-
@@ -102,9 +105,9 @@ const GRASS_ART_BY_AREA: Readonly<Record<string, GrassArtProfile>> = {
     // stubble. The slight grain keeps the field readable without making a
     // repeated row pattern the map's visual signature.
     rowYaw: null,
-    heightScale: 0.88,
-    bodyDensity: 0.86,
-    coverDensity: 0.9,
+    heightScale: 0.98,
+    bodyDensity: 0.93,
+    coverDensity: 0.86,
     grassGold: 0xc3b47d,
     grassOlive: 0x85875e,
     forbGreen: 0x68784f,
@@ -826,6 +829,19 @@ class GeoBuilder {
 export class GrassSystem implements Subsystem {
   readonly id = 'grass';
 
+  private readonly prairie: SharptailSwardField | null;
+  private readonly prairieLandscape?: LandscapeModel;
+  private readonly prairieZones = { swale: 0, stand: 0 };
+
+  constructor(landscape?: LandscapeModel) {
+    this.prairieLandscape = landscape?.area.id === 'sharptail-prairie' ? landscape : undefined;
+    this.prairie = this.prairieLandscape ? new SharptailSwardField(this.prairieLandscape) : null;
+  }
+
+  private outsideField(x: number, z: number): boolean {
+    return this.prairie ? this.prairie.edgeDistance(x, z) < 0 : Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT;
+  }
+
   private cfg!: QualityCfg;
   private art: GrassArtProfile = DEFAULT_GRASS_ART;
   private terrain!: TerrainSystem;
@@ -1025,6 +1041,15 @@ export class GrassSystem implements Subsystem {
       this.openUniforms.uPart3.value.set(this.burstPart.x, this.burstPart.z, this.burstPart.r);
       this.coverUniforms.uPart3.value.set(this.burstPart.x, this.burstPart.z, this.burstPart.r);
     }
+    if (this.prairie) {
+      // The full-property layer is still one bounded, sparse mesh per stand.
+      // Skip GPU submissions when the entire stand is beyond the fade range.
+      for (const mesh of this.patchMeshes) {
+        const sphere = mesh.boundingSphere!;
+        mesh.visible = Math.hypot(ctx.camera.position.x - sphere.center.x, ctx.camera.position.z - sphere.center.z)
+          < this.cfg.coverFadeFar + sphere.radius;
+      }
+    }
     const cx = Math.floor(ctx.camera.position.x / TILE);
     const cz = Math.floor(ctx.camera.position.z / TILE);
     if (cx !== this.lastCellX || cz !== this.lastCellZ) this.rebuild(ctx);
@@ -1192,6 +1217,16 @@ export class GrassSystem implements Subsystem {
       b.stalk(0.04, 0.01, rng() * Math.PI * 2, 0.04 + rng() * 0.07, 1.0 + rng() * 0.3, rng);
       b.skirt(0.2, 6, rng);
       this.coverGeo = b.build();
+    }
+    if (this.prairie) {
+      // Keep the roaming placement and draw budgets, replacing only assets
+      // that describe harvested crop stubble instead of native bunchgrass.
+      for (const variant of [V_OPEN, V_STALK, V_TUFT]) this.variantGeos[variant].dispose();
+      this.coverGeo.dispose();
+      this.variantGeos[V_OPEN] = sharptailGrassGeometry('short');
+      this.variantGeos[V_STALK] = sharptailGrassGeometry('stalk');
+      this.variantGeos[V_TUFT] = sharptailGrassGeometry('short');
+      this.coverGeo = sharptailGrassGeometry('cover');
     }
   }
 
@@ -1368,21 +1403,24 @@ export class GrassSystem implements Subsystem {
       // (or the plate clip below) never re-rolls every other edge.
       const ph1 = prng() * Math.PI * 2;
       const ph2 = prng() * Math.PI * 2;
-      if (Math.abs(wp.cx) - rx * 1.4 > WORLD_LIMIT || Math.abs(wp.cz) - rz * 1.4 > WORLD_LIMIT) continue;
+      if (!this.prairie && (Math.abs(wp.cx) - rx * 1.4 > WORLD_LIMIT || Math.abs(wp.cz) - rz * 1.4 > WORLD_LIMIT)) continue;
       this.patches.push({ cx: wp.cx, cz: wp.cz, rx, rz, cos: 1, sin: 0, ph1, ph2 });
     }
     this.buildTrails();
 
     for (const p of this.patches) {
       const ext = Math.max(p.rx, p.rz) * 1.45;
-      const attempts = Math.ceil(this.cfg.coverFarDensity * (2 * ext) * (2 * ext));
+      const requestedAttempts = Math.ceil(this.cfg.coverFarDensity * (2 * ext) * (2 * ext));
+      // Grass rings retain their original near budget. Distant native stands
+      // get a strict total cap now that the entire property is represented.
+      const attempts = this.prairie ? Math.min(ctx.quality === 'lite' ? 650 : 1000, requestedAttempts) : requestedAttempts;
       const mats: THREE.Matrix4[] = [];
       const cols: THREE.Color[] = [];
       const rng = mulberry32(hashTile(Math.round(p.cx * 7), Math.round(p.cz * 7)));
       for (let i = 0; i < attempts; i++) {
         const x = p.cx + (rng() * 2 - 1) * ext;
         const z = p.cz + (rng() * 2 - 1) * ext;
-        if (Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT) continue;
+        if (this.outsideField(x, z)) continue;
         const s = this.coverAt(x, z);
         if (rng() > s * 1.25) continue;
         // Game trails wear through the far layer too.
@@ -1394,7 +1432,7 @@ export class GrassSystem implements Subsystem {
         // Large crowns: each far tussock stands for several near ones, so
         // the sparse layer still closes into a mass at 60+ m.
         const sxz = (0.8 + rng() * 0.5) * 1.25;
-        this.s.set(sxz, 0.85 + rng() * 0.4, sxz);
+        this.s.set(sxz, (0.85 + rng() * 0.4) * (this.prairie ? .78 : 1), sxz);
         this.v.set(x, y, z);
         mats.push(new THREE.Matrix4().compose(this.v, this.q, this.s));
         // Olive going darker toward the heart; khaki-tipped at the edge.
@@ -1439,6 +1477,20 @@ export class GrassSystem implements Subsystem {
    * are too. trailAt() thins every planting layer along them.
    */
   private buildTrails(): void {
+    if (this.prairieLandscape) {
+      // The whole property's grass lanes follow its authoritative routes,
+      // not three temporary links chosen relative to the current truck.
+      const a = { x: 0, z: 0 }, b = { x: 0, z: 0 };
+      for (const trail of this.prairieLandscape.area.trails) {
+        for (let i = 1; i < trail.points.length; i++) {
+          this.prairieLandscape.propertyToWorld(trail.points[i - 1].x, trail.points[i - 1].y, a);
+          this.prairieLandscape.propertyToWorld(trail.points[i].x, trail.points[i].y, b);
+          const dx = b.x - a.x, dz = b.z - a.z;
+          this.trails.push({ ax: a.x, az: a.z, dx, dz, len2: dx * dx + dz * dz || 1 });
+        }
+      }
+      return;
+    }
     // Patches nearest the world origin hunt for a partner each: the
     // closest patch they do NOT overlap (the quail-fields scatter piles
     // several patches into one block — a trail between overlapping cover
@@ -1590,9 +1642,9 @@ export class GrassSystem implements Subsystem {
     if (counts[vi] >= caps[vi]) return false;
     // Feathered world edge: density thins over the last dozen meters of the
     // plate instead of stopping on a razor-straight rectangle line.
-    const lim = Math.max(Math.abs(px), Math.abs(pz));
-    if (lim > WORLD_LIMIT) return false;
-    if (lim > WORLD_LIMIT - 12 && rng() < (lim - (WORLD_LIMIT - 12)) / 12) return false;
+    const edge = this.prairie ? this.prairie.edgeDistance(px, pz) : WORLD_LIMIT - Math.max(Math.abs(px), Math.abs(pz));
+    if (edge < 0) return false;
+    if (edge < 12 && rng() < (12 - edge) / 12) return false;
     // Game trails: a worn line keeps only scattered, trampled runts.
     const trail = this.trailAt(px, pz);
     if (trail > 0) {
@@ -1608,7 +1660,9 @@ export class GrassSystem implements Subsystem {
     this.e.set((rng() - 0.5) * 0.16, yaw, (rng() - 0.5) * 0.16);
     this.q.setFromEuler(this.e);
     const sxz = vigor * (0.85 + rng() * 0.3);
-    this.s.set(sxz, vigor * (0.8 + rng() * 0.4) * this.art.heightScale, sxz);
+    if (this.prairie) this.prairie.sample(px, pz, this.prairieZones);
+    const prairieHeight = this.prairie ? .82 + this.prairieZones.swale * .28 + this.prairieZones.stand * .15 : 1;
+    this.s.set(sxz, vigor * (0.8 + rng() * 0.4) * this.art.heightScale * prairieHeight, sxz);
     this.v.set(px, y, pz);
     this.m.compose(this.v, this.q, this.s);
 
@@ -1630,6 +1684,10 @@ export class GrassSystem implements Subsystem {
       const p2 = rng();
       if (p2 < 0.12) this.c.lerp(this.strawLight, 0.2 + rng() * 0.2);
       else if (p2 < 0.3) this.c.lerp(this.grassOlive, 0.25 + rng() * 0.25);
+    }
+    if (this.prairie) {
+      this.c.lerp(this.grassOlive, this.prairieZones.swale * .26 + this.prairieZones.stand * .12);
+      this.c.lerp(this.strawPale, (1 - this.prairieZones.swale) * .12);
     }
     this.c.multiplyScalar(0.9 + rng() * 0.26);
 
@@ -1664,7 +1722,7 @@ export class GrassSystem implements Subsystem {
       for (let gz = 0; gz < tCells; gz++) {
         const x = tx * TILE + (gx + 0.08 + rng() * 0.84) * tStep;
         const z = tz * TILE + (gz + 0.08 + rng() * 0.84) * tStep;
-        if (Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT) continue;
+        if (this.outsideField(x, z)) continue;
         // Inside cover the MEADOW KEEPS RUNNING (coverage is the whole
         // ballgame — round 5, item 1): only a third of body tufts yield
         // their spot to tussocks. Cover reads dense/dark by the fringe
@@ -1741,7 +1799,7 @@ export class GrassSystem implements Subsystem {
       for (let gz = 0; gz < cells; gz++) {
         const x = tx * TILE + (gx + 0.1 + rng() * 0.8) * cStep;
         const z = tz * TILE + (gz + 0.1 + rng() * 0.8) * cStep;
-        if (Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT) continue;
+        if (this.outsideField(x, z)) continue;
         // Cover boundary is FEATHERED: open stubble thins across the patch
         // fringe instead of stopping on a contour — and the patch interior
         // keeps a real understory (birds hide in structure, not on dirt).
@@ -1799,7 +1857,7 @@ export class GrassSystem implements Subsystem {
         if (rng() < 0.68) continue;
         const x = tx * TILE + (gx + 0.1 + rng() * 0.8) * gStep;
         const z = tz * TILE + (gz + 0.1 + rng() * 0.8) * gStep;
-        if (Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT) continue;
+        if (this.outsideField(x, z)) continue;
         if (rng() < 0.4 * THREE.MathUtils.smoothstep(this.coverAt(x, z), 0.12, 0.6)) continue;
         const macro = this.clumpNoise(x * 0.055 + 40, z * 0.055 + 40);
         const meso = this.clumpNoise(x * 0.16 + 700, z * 0.16 + 700);
@@ -1823,7 +1881,7 @@ export class GrassSystem implements Subsystem {
         if (counts[V_COVER] >= caps[V_COVER]) break;
         const x = tx * TILE + (gx + 0.1 + rng() * 0.8) * cvStep;
         const z = tz * TILE + (gz + 0.1 + rng() * 0.8) * cvStep;
-        if (Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT) continue;
+        if (this.outsideField(x, z)) continue;
         const s = this.coverAt(x, z);
         if (s < 0.08) continue;
         if (rng() > THREE.MathUtils.smoothstep(s, 0.08, 0.7) * this.art.coverDensity) continue;

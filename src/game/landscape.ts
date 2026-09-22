@@ -10,6 +10,7 @@ import { quailDrainageAt } from './quailLandscape';
 import { pheasantPondRadii } from './pheasantHabitat';
 import { PROPERTY_PX_TO_M } from './worldUnits';
 import { chukarAuthoredHeight, chukarGroundZones } from './chukarLandscape';
+import { sharptailAuthoredHeight, sharptailGroundZones } from './sharptailLandscape';
 
 /** One shared map pixel is one yard in the 3D presentation. */
 export { PROPERTY_PX_TO_M } from './worldUnits';
@@ -394,6 +395,27 @@ function quailLandform(area: AreaConfig): LandformAdapter {
   };
 }
 
+/** Long native-grass shoulders and shallow swales, sampled in property space
+ * by terrain, the atlas, dog locomotion and both parking-place transforms. */
+function sharptailLandform(area: AreaConfig): LandformAdapter {
+  const canonical = getDropPoint(area), zones = { swale: 0, stand: 0 };
+  const px = (x: number) => (x - HUNT_WORLD_ANCHOR.x) / PROPERTY_PX_TO_M + canonical.position.x;
+  const py = (z: number) => (z - HUNT_WORLD_ANCHOR.z) / PROPERTY_PX_TO_M + canonical.position.y;
+  return {
+    heightAt(x, z, _profile, noise) {
+      const propertyX = px(x), propertyY = py(z);
+      return sharptailAuthoredHeight(propertyX, propertyY)
+        + (noise(propertyX * .028 + 177, propertyY * .028 + 177) - .5) * .24;
+    },
+    surfaceAt(x, z, _height, slope, _gx, _gz, _noise, out) {
+      sharptailGroundZones(px(x), py(z), zones);
+      out.moisture = .1 + zones.swale * .35;
+      out.vegetation = Math.min(1, .45 + zones.stand * .3 + zones.swale * .16);
+      out.rockiness = Math.max(0, Math.min(.2, (slope - .24) * .7));
+    },
+  };
+}
+
 function woodcockLandform(area: AreaConfig): LandformAdapter {
   const canonical = getDropPoint(area);
   const noise = makeNoise(area.terrain.seed);
@@ -449,6 +471,7 @@ function chukarLandform(area:AreaConfig):LandformAdapter {
 
 function landformFor(area: AreaConfig): LandformAdapter {
   if (area.id === 'quail-fields') return quailLandform(area);
+  if (area.id === 'sharptail-prairie') return sharptailLandform(area);
   if (area.id === 'chukar-ridge') return chukarLandform(area);
   if (area.id === 'woodcock-bottoms') return woodcockLandform(area);
   if (area.id === 'pheasant-coverts') return pheasantLandform(area);

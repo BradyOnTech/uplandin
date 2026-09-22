@@ -118,6 +118,7 @@ const VALLEY_OAK_VISUALS: LandscapeVisualAdapter = {
 };
 
 const AREA_VISUALS: Readonly<Record<string, LandscapeVisualAdapter | undefined>> = {
+  'sharptail-prairie': { create: (landscape) => ({ systems: [new GrassSystem(landscape), new PropertyTrailsSystem(landscape), new PropertyHabitatSystem(landscape)] }) },
   'quail-fields': { create: (landscape) => ({ systems: [new QuailEnvironmentSystem(landscape, loadQuailTreeKit), new QuailKitSystem(landscape), new QuailGroundPropsSystem(landscape)] }) },
   'chukar-ridge': { create: (landscape) => ({ systems: [new ChukarEnvironmentSystem(landscape)] }) },
   'pheasant-coverts': PHEASANT_VISUALS,

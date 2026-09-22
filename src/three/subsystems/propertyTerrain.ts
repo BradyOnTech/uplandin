@@ -8,6 +8,7 @@ import { buildQuailTerrainGeometry } from './quailTerrain';
 import { quailGroundNearDistance, quailGroundTiles, quailGroundUsesNear } from './quailGroundGeometry';
 import { PHEASANT_MATERIALS, fieldTimeOfDay, type TimeOfDay } from '../palette';
 import { pheasantFields, pheasantPonds, samplePheasantHarvest } from './pheasantLandscape';
+import { sharptailGroundZones } from '../../game/sharptailLandscape';
 
 type Paint = (landscape: LandscapeModel, x: number, y: number, out: THREE.Color) => THREE.Color;
 
@@ -156,6 +157,8 @@ function paintFor(property: LandscapeModel): Paint {
   const bankMud = new THREE.Color(areaId === 'pheasant-coverts' ? PHEASANT_MATERIALS.bankMud : 0x514936);
   const reedLitter = new THREE.Color(PHEASANT_MATERIALS.reedLitter);
   const standingGrass = new THREE.Color(PHEASANT_MATERIALS.standingFloor);
+  const prairieZones = { swale: 0, stand: 0 };
+  const nativeLitter = new THREE.Color(0xb3a16e), swaleSward = new THREE.Color(0x828969);
   // Geometry construction is synchronous; reuse one sampler per painter.
   const surface: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
   return (landscape, x, y, out) => {
@@ -177,6 +180,13 @@ function paintFor(property: LandscapeModel): Paint {
     out.lerp(litter, fertility * dry * (1 - slope) * (.35 + meso * .65) * finish.litterStrength);
     out.lerp(palette.wet, moisture * (.45 + (1 - broad) * .55) * finish.wetStrength);
     out.lerp(stone, exposure * finish.stoneStrength);
+    if (areaId === 'sharptail-prairie') {
+      // Large native stands and cool swales remain legible past the blade
+      // distance. This uses the same property-space zones as grass placement.
+      sharptailGroundZones(x, y, prairieZones);
+      out.lerp(nativeLitter, prairieZones.stand * (.34 + meso * .16));
+      out.lerp(swaleSward, prairieZones.swale * (.24 + broad * .16));
+    }
     if (fields.length > 0) {
       // Standing habitat retains a cooler grass-and-litter base even where
       // individual blades disappear at distance. Feather the rectangle edge

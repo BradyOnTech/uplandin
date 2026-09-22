@@ -1,9 +1,11 @@
 import { wetPondLayout, wetPondRadius } from '../../game/wetPonds';
+import { SHARPTAIL_SHELTERBELTS, sharptailGroundZones } from '../../game/sharptailLandscape';
 import * as THREE from 'three';
 import { HUNT_WORLD_ANCHOR, PROPERTY_PX_TO_M, type GroundSample, type LandscapeModel } from '../../game/landscape';
 import { mulberry32 } from '../../game/math';
 import { huntingDoctrine, type HuntStyle } from '../../game/huntDoctrine';
 import type { Ctx, Subsystem } from '../engine';
+import { quailTreeGeometry } from './quailWoody';
 
 type HabitatKind = 'trunk' | 'canopy' | 'shrub' | 'reed' | 'rock' | 'cactus' | 'log';
 
@@ -39,7 +41,7 @@ const DEFAULT_COLORS: Record<HabitatKind, readonly number[]> = {
   log: [0x5a4434, 0x6b513b],
 };
 
-function profileFor(style: HuntStyle, lite: boolean): HabitatProfile {
+function profileFor(style: HuntStyle, lite: boolean, areaId?: string): HabitatProfile {
   const colors = (overrides: Partial<Record<HabitatKind, readonly number[]>> = {}) => ({ ...DEFAULT_COLORS, ...overrides });
   const base = {
     step: lite ? 25 : 18,
@@ -50,6 +52,14 @@ function profileFor(style: HuntStyle, lite: boolean): HabitatProfile {
     colors: colors(),
     scale: { shrub: [.62, 1.12] as [number, number] } as Partial<Record<HabitatKind, readonly [number, number]>>,
   } satisfies HabitatProfile;
+  if (areaId === 'sharptail-prairie') {
+    // Equal candidate geography on both tiers. Woody cover belongs to the
+    // north shelterbelts; the open lanes carry low snowberry and silver sage.
+    return { ...base, step: 22, nearClear: 25, kinds: ['shrub', 'trunk', 'canopy', 'rock'],
+      chances: { shrub: .115, trunk: 0, rock: .008 },
+      colors: colors({ shrub: [0x879078, 0x969579, 0x8b8a65], trunk: [0x736b58], canopy: [0x6a7757, 0x7c8862], rock: [0x9f9a88] }),
+      scale: { shrub: [.36, .78], trunk: [3.2, 5.8], canopy: [1.7, 3.1], rock: [.3, .65] }, };
+  }
   switch (style) {
     case 'pheasant':
       return { ...base, step: lite ? 22 : 15, nearClear: 22, kinds: ['reed', 'shrub', 'trunk', 'canopy'],
@@ -353,7 +363,7 @@ export class PropertyHabitatSystem implements Subsystem {
   init(ctx: Ctx): void {
     const doctrine = huntingDoctrine(this.landscape.area.id);
     const woodland = doctrine.style === 'woods';
-    const profile = profileFor(doctrine.style, ctx.quality === 'lite');
+    const profile = profileFor(doctrine.style, ctx.quality === 'lite', this.landscape.area.id);
     const lists = new Map<HabitatKind, HabitatPlacement[]>();
     for (const kind of profile.kinds) lists.set(kind, []);
     const area = this.landscape.area;
@@ -380,7 +390,9 @@ export class PropertyHabitatSystem implements Subsystem {
       if (Math.hypot(this.world.x - HUNT_WORLD_ANCHOR.x, this.world.z - HUNT_WORLD_ANCHOR.z) < profile.nearClear + 6) return;
       // Use the paired crown's footprint for the trunk too, so a route
       // clearance cannot accept one half of a tree and reject the other.
-      const clearanceRadius = kind === 'canopy' ? size * .82 : kind === 'trunk' ? size * .55 * .82 : kind === 'rock' ? size * .72 : size * .45;
+      const clearanceRadius = kind === 'canopy' ? size * .82
+        : kind === 'trunk' ? size * (area.id === 'sharptail-prairie' ? 1 : .55) * .82
+        : kind === 'rock' ? size * .72 : size * .45;
       if (!propertyPositionClear(area, x, y, clearanceRadius)) return;
       if (wetPools.some(pond => wetPondRadius(pond, x, y) < 1.2)) return;
       this.landscape.surfaceAtProperty(x, y, this.surface);
@@ -398,7 +410,25 @@ export class PropertyHabitatSystem implements Subsystem {
         hero: true,
       });
     };
-    const heroAnchors = anchors.slice(0, doctrine.style === 'open-covey' ? 2 : 3);
+    if (area.id === 'sharptail-prairie') {
+      // Sparse shelterbelts supply stable distant destinations from
+      // either parking place, without trees choking the long grass casts.
+      const rng = mulberry32(0x51e17);
+      for (const belt of SHARPTAIL_SHELTERBELTS) {
+        for (let i = 0; i < belt.trees; i++) {
+          const t = (i + .2 + rng() * .6) / belt.trees;
+          const x = belt.a.x + (belt.b.x - belt.a.x) * t + (rng() - .5) * 7;
+          const y = belt.a.y + (belt.b.y - belt.a.y) * t + (rng() - .5) * belt.width;
+          // Unequal heights and spacing break the line into individual crowns.
+          const height = 5.6 + rng() * 3.3;
+          const yaw = rng() * Math.PI * 2;
+          addHero('trunk', x, y, height, yaw);
+          addHero('canopy', x, y, height, yaw);
+          addHero('shrub', x + 5, y + 8, .85 + rng() * .4, yaw);
+        }
+      }
+    }
+    const heroAnchors = area.id === 'sharptail-prairie' ? [] : anchors.slice(0, doctrine.style === 'open-covey' ? 2 : 3);
     for (const [index, anchor] of heroAnchors.entries()) {
       const yaw = (index * 1.73 + area.terrain.seed * 0.0007) % (Math.PI * 2);
       const side = index % 2 === 0 ? 1 : -1;
@@ -406,12 +436,6 @@ export class PropertyHabitatSystem implements Subsystem {
         addHero('shrub', anchor.x + side * 10, anchor.y + 5, 1.55, yaw);
         addHero('shrub', anchor.x - side * 7, anchor.y - 4, 1.2, yaw + 1.1);
         addHero('rock', anchor.x + side * 4, anchor.y - 9, 1.05, yaw + .4);
-        if (this.landscape.area.id === 'sharptail-prairie') {
-          addHero('trunk', anchor.x + side * 15, anchor.y + 7, 1.9, yaw + .3);
-          addHero('canopy', anchor.x + side * 15, anchor.y + 7, 1.9 * .55, yaw + .6, 1.16 * 1.9);
-          addHero('trunk', anchor.x + side * 21, anchor.y + 9, 1.5, yaw + .7);
-          addHero('canopy', anchor.x + side * 21, anchor.y + 9, 1.5 * .55, yaw + 1, 1.16 * 1.5);
-        }
       } else if (doctrine.style === 'woods') {
         addHero('trunk', anchor.x + side * 8, anchor.y + 6, 1.55, yaw);
         addHero('canopy', anchor.x + side * 8, anchor.y + 6, 1.55 * .55, yaw + .4, 1.16 * 1.55);
@@ -442,6 +466,7 @@ export class PropertyHabitatSystem implements Subsystem {
       }
     }
 
+    const prairieZones = { swale: 0, stand: 0 };
     for (let cellX = minX; cellX < maxX; cellX += step) {
       for (let cellY = minY; cellY < maxY; cellY += step) {
         const ix = Math.floor(cellX / step), iy = Math.floor(cellY / step);
@@ -457,10 +482,13 @@ export class PropertyHabitatSystem implements Subsystem {
         if (this.surface.slope > profile.maxSlope) continue;
         const cover = area.patches.some((patch) => px >= patch.x - 3 && px <= patch.x + patch.w + 3 && py >= patch.y - 3 && py <= patch.y + patch.h + 3);
         const moisture = this.surface.moisture;
+        if (area.id === 'sharptail-prairie') sharptailGroundZones(px, py, prairieZones);
         let pick: HabitatKind | null = null;
         let cursor = rng();
         for (const kind of profile.kinds) {
-          const chance = (profile.chances[kind] ?? 0) * (kind === 'reed' ? .55 + moisture * .9 : kind === 'shrub' ? .8 + (cover ? .45 : 0) : 1);
+          const prairieBias = area.id === 'sharptail-prairie' && kind === 'shrub'
+            ? .16 + prairieZones.swale * 1.15 + prairieZones.stand * .3 : 1;
+          const chance = (profile.chances[kind] ?? 0) * prairieBias * (kind === 'reed' ? .55 + moisture * .9 : kind === 'shrub' ? .8 + (cover ? .45 : 0) : 1);
           if (cursor < chance) { pick = kind; break; }
           cursor -= chance;
         }
@@ -483,6 +511,7 @@ export class PropertyHabitatSystem implements Subsystem {
       }
     }
 
+    const prairieTree = area.id === 'sharptail-prairie' ? quailTreeGeometry(0x51e17, 'upright') : null;
     for (const kind of profile.kinds) {
       const placements = lists.get(kind)!;
       // Hard caps keep a worst-case wide map within a predictable mobile
@@ -496,10 +525,11 @@ export class PropertyHabitatSystem implements Subsystem {
       const fill = Array.from({ length: fillBudget }, (_, i) => candidates[Math.floor(i * candidates.length / fillBudget)]);
       const selected = [...heroes.slice(0, cap), ...fill];
       if (selected.length === 0) continue;
-      const geometry = geometryFor(kind, doctrine.style);
-      // Colors come from instances; these geometries have no vertex-color
-      // attribute. Enabling vertexColors multiplies their tint by black.
-      const material = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+      const geometry = prairieTree && kind === 'trunk' ? prairieTree.trunk
+        : prairieTree && kind === 'canopy' ? prairieTree.crown : geometryFor(kind, doctrine.style);
+      // Generic primitives use instance tint alone. Only the accepted
+      // prairie crown kit carries a baked per-face color attribute.
+      const material = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true, vertexColors: !!prairieTree && kind === 'canopy' });
       material.onBeforeCompile = (shader) => {
         shader.uniforms.uPropertyHabitatWind = this.wind;
         shader.vertexShader = shader.vertexShader
@@ -549,13 +579,13 @@ export class PropertyHabitatSystem implements Subsystem {
           this.yaw.setFromAxisAngle(this.up, item.yaw);
           this.rotation.multiply(this.yaw);
           this.scale.setScalar(item.scale);
-          if (kind === 'trunk') this.scale.set(item.scale * (woodland ? .16 : .62), item.scale * 1.3, item.scale * (woodland ? .16 : .62));
+          if (kind === 'trunk' && !prairieTree) this.scale.set(item.scale * (woodland ? .16 : .62), item.scale * 1.3, item.scale * (woodland ? .16 : .62));
           if (woodland && kind === 'trunk') {
             // Match the rooted cylinder's widest radius; rendering distance
             // and quality must never remove physical timber from the hunt.
             this.obstacles.push({ x: item.x, z: item.z, radius: .28 * this.scale.x });
           }
-          if (kind === 'canopy') this.scale.set(item.scale * 1.2, item.scale * .95, item.scale);
+          if (kind === 'canopy' && !prairieTree) this.scale.set(item.scale * 1.2, item.scale * .95, item.scale);
           if (kind === 'cactus') this.scale.set(item.scale, item.scale, item.scale);
           if (kind === 'log') this.scale.set(item.scale, item.scale * .72, item.scale * .72);
           mesh.setMatrixAt(i, this.matrix.compose(this.position, this.rotation, this.scale));
