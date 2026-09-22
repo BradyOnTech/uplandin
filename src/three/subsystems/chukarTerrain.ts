@@ -22,7 +22,7 @@ const sample = {height:0,slope:0,gradeX:0,gradeZ:0,rockiness:0,vegetation:0,mois
 /** World-anchored scree detail, filtered before individual chips become subpixel. */
 function applyScreeDetail(material: THREE.MeshLambertMaterial, landscape: LandscapeModel,texture:THREE.Texture): void {
   const origin = landscape.worldToProperty(0, 0, { x: 0, y: 0 });
-  material.customProgramCacheKey = () => 'chukar-mineral-root-beds-v5';
+  material.customProgramCacheKey = () => 'chukar-filtered-mineral-root-beds-v6';
   material.onBeforeCompile = shader => {
     shader.uniforms.uScreeOrigin = { value: new THREE.Vector2(origin.x * PROPERTY_PX_TO_M, origin.y * PROPERTY_PX_TO_M) };
     shader.uniforms.uChukarEarth={value:texture};
@@ -46,11 +46,18 @@ function applyScreeDetail(material: THREE.MeshLambertMaterial, landscape: Landsc
           return mix(mix(screeHash(i), screeHash(i+vec2(1.,0.)), f.x),
             mix(screeHash(i+vec2(0.,1.)), screeHash(i+vec2(1.,1.)),f.x),f.y);
         }
+        float screeFilteredNoise(vec2 p) {
+          // World noise must disappear before a screen pixel covers a cell.
+          // Distance alone misses strongly foreshortened grazing surfaces.
+          float footprint=max(length(dFdx(p)),length(dFdy(p)));
+          float contrast=1.-smoothstep(.18,.65,footprint);
+          return mix(.5,screeNoise(p),contrast);
+        }
       `)
       .replace('#include <color_fragment>', `#include <color_fragment>
         vec2 ground = vScreeGround + uScreeOrigin;
-        float deposit = screeNoise(ground * .17);
-        float soil = screeNoise(ground * 1.4);
+        float deposit = screeFilteredNoise(ground * .17);
+        float soil = screeFilteredNoise(ground * 1.4);
         // Broken pale mineral soil and cooler organic pockets create
         // readable ground planes under the dry plants, not a uniform sand fill.
         vec3 bedTint=mix(vec3(.79,.86,.83),vec3(1.08,1.035,.93),smoothstep(.24,.76,deposit));
