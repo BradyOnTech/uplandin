@@ -51,53 +51,48 @@ export function sharptailTreeGeometry(): { trunk: THREE.BufferGeometry; crown: T
   return { trunk, crown };
 }
 
-/** A low, open prairie shrub with separate angular leaf masses on visible
- * forks. The broad leaf fans survive an ordinary walking distance, while
- * the empty base and unequal heights keep it distinct from Quail plum. */
+/** Compact sage/snowberry with an uneven rising outline and visible forks.
+ * Four small irregular leaf volumes replace the repeated flat umbrellas;
+ * the basal gap and unequal branches keep the plant light and low. */
 export function sharptailShrubGeometry(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
-  const root = new THREE.Vector3(0, 0, 0), fork = new THREE.Vector3(.025, .26, -.025);
-  const tips = [new THREE.Vector3(.30, .53, -.04), new THREE.Vector3(-.20, .63, .08),
-    new THREE.Vector3(-.30, .43, -.21), new THREE.Vector3(.08, .45, .29)];
+  const root = new THREE.Vector3(0, 0, 0), fork = new THREE.Vector3(.02, .23, -.025);
   for (const [a, b, radius, tip] of [
-    [root, fork, .018, .013], [fork, tips[0], .013, .006], [fork, tips[1], .011, .005],
-    [root, tips[2], .015, .005], [fork, tips[3], .01, .004],
-    [fork, new THREE.Vector3(.15, .76, .19), .006, .002],
+    [root, fork, .018, .012],
+    [fork, new THREE.Vector3(.20, .49, -.08), .012, .005],
+    [fork, new THREE.Vector3(-.17, .56, .12), .011, .004],
+    [root, new THREE.Vector3(-.25, .35, -.17), .014, .004],
   ] as const) {
     const stem = branch(a, b, radius, tip);
     stem.setAttribute('color', new THREE.Float32BufferAttribute(
       Array.from({ length: stem.attributes.position.count }, () => [.62, .54, .39]).flat(), 3));
     parts.push(stem);
   }
-  // Flattened, offset hexagonal fans, not closed spherical shrub domes.
-  // Unequal rim heights keep the silhouette broken from every viewing angle.
-  const fans = [
-    [.30, .52, -.04, .29, .18, -.15], [-.20, .62, .08, .28, .17, .55],
-    [-.30, .43, -.21, .26, .17, -.4], [.08, .44, .29, .25, .19, .75],
-    [-.035, .36, -.065, .22, .15, -.1],
+  // Different proportions, lean and yaw avoid a stack of identical crowns.
+  // The low middle lobe gathers the forks without sealing the open base.
+  const lobes = [
+    [.20, .49, -.08, .20, .18, .14, -.24],
+    [-.17, .56, .12, .16, .23, .16, .63],
+    [-.25, .35, -.17, .22, .17, .14, -.49],
+    [.01, .32, -.005, .16, .15, .20, .31],
   ];
-  for (const [index, [x, y, z, sx, sz, yaw]] of fans.entries()) {
-    const positions: number[] = [], colors: number[] = [];
-    const rim = Array.from({ length: 6 }, (_, i) => {
-      const angle = i * Math.PI / 3;
-      const reach = 1 + Math.sin(i * 2.7 + index) * .16;
-      const u = Math.cos(angle) * sx * reach, v = Math.sin(angle) * sz * reach;
-      return [x + u * Math.cos(yaw) - v * Math.sin(yaw), y + Math.sin(i * 1.9 + index) * .025,
-        z + u * Math.sin(yaw) + v * Math.cos(yaw)];
-    });
-    for (let i = 0; i < 6; i++) {
-      const next = (i + 1) % 6;
-      for (const [top, shade] of [[true, .87 + (i % 3) * .055], [false, .76 + (i % 2) * .05]] as const) {
-        const peak = [x - sx * .13, y + (top ? .105 : -.065), z + sz * .08];
-        for (const point of top ? [rim[i], peak, rim[next]] : [rim[next], peak, rim[i]]) {
-          positions.push(...point); colors.push(shade * .94, shade, shade * .86);
-        }
-      }
+  for (const [index, [x, y, z, sx, sy, sz, yaw]] of lobes.entries()) {
+    const lobe = new THREE.IcosahedronGeometry(1, 0); lobe.deleteAttribute('uv');
+    const p = lobe.getAttribute('position'), colors: number[] = [];
+    const cos = Math.cos(yaw), sin = Math.sin(yaw);
+    for (let i = 0; i < p.count; i++) {
+      const vx = p.getX(i), vy = p.getY(i), vz = p.getZ(i);
+      const irregular = 1 + Math.sin(vx * 3.9 + vy * 2.3 + vz * 5.1 + index * 1.7) * .11;
+      const u = (vx + vy * .12 + vz * .06) * sx * irregular;
+      const v = (vz - vy * .09) * sz * irregular;
+      p.setXYZ(i, x + u * cos - v * sin, y + vy * sy * (1 + vx * .09), z + u * sin + v * cos);
+      // Silvered leaf faces remain readable on their shaded sides without
+      // making every lobe uniformly bright or borrowing Quail's dark green.
+      const shade = .79 + (vy + 1) * .085 + Math.sin(Math.floor(i / 3) * 2.1 + index) * .025;
+      colors.push(shade * .96, shade, shade * .91);
     }
-    const fan = new THREE.BufferGeometry();
-    fan.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    fan.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    fan.computeVertexNormals(); parts.push(fan);
+    lobe.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    lobe.computeVertexNormals(); parts.push(lobe);
   }
   const geometry = merge(parts);
   geometry.userData = { kind: 'sharptail-open-sage', triangles: geometry.attributes.position.count / 3 };

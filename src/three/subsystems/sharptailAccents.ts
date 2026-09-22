@@ -32,10 +32,14 @@ export function sharptailAccentGroundAt(x: number, y: number): number {
   let strongest = 0;
   for (const { pocket, cos, sin } of pocketFrames) {
     const dx = x - pocket.x, dy = y - pocket.y;
-    if (Math.abs(dx) > pocket.rx + 4 || Math.abs(dy) > pocket.rx + 4) continue;
+    const reach = (pocket.rx + 3) * 1.35;
+    if (Math.abs(dx) > reach || Math.abs(dy) > reach) continue;
     const u = (dx * cos + dy * sin) / (pocket.rx + 3);
     const v = (-dx * sin + dy * cos) / (pocket.ry + 3);
-    const falloff = Math.max(0, 1 - u * u - v * v);
+    // Broken grass fingers run into each group rather than drawing an oval
+    // planting bed. Broad continuous variation survives terrain sampling.
+    const fringe = 1 + .23 * Math.sin(x * .37 + y * .29) + .16 * Math.sin(x * .21 - y * .51);
+    const falloff = Math.max(0, 1 - (u * u + v * v) * fringe);
     strongest = Math.max(strongest, falloff * falloff * (3 - 2 * falloff));
   }
   return strongest;

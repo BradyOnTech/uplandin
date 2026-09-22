@@ -1463,7 +1463,7 @@ export class GrassSystem implements Subsystem {
         if (this.prairie) {
           const yard = this.prairieYardAt(x, z);
           if (yard > 0 && rng() < yard * .98) continue;
-          if (pocket > 0 && rng() < pocket * .94) continue;
+          if (pocket > 0 && rng() < pocket * .88) continue;
         }
         const s = this.coverAt(x, z);
         if (rng() > s * 1.25) continue;
@@ -1483,7 +1483,7 @@ export class GrassSystem implements Subsystem {
           this.q.setFromEuler(this.e);
           // Distant crowns share the near layer's uneven height envelope;
           // they must not re-form a uniform hedge beyond the roaming ring.
-          this.s.set(sxz * 1.12, (.35 + this.prairieForm.rank * .64 + rng() * .22) * (1 - pocket * .70), sxz);
+          this.s.set(sxz * 1.12, (.35 + this.prairieForm.rank * .64 + rng() * .22) * (1 - pocket * .58), sxz);
         }
         this.v.set(x, y, z);
         mats.push(new THREE.Matrix4().compose(this.v, this.q, this.s));
@@ -1712,7 +1712,7 @@ export class GrassSystem implements Subsystem {
       // property-space mask colors their litter below; do not bury the
       // authored habitat beneath a separate, equally tall grass layer.
       prairiePocket = this.prairieAccentAt(px, pz);
-      const thinning = vi === V_COVER || vi === V_STALK ? .98 : vi === V_OPEN ? .18 : .44;
+      const thinning = vi === V_COVER || vi === V_STALK ? .90 : vi === V_OPEN ? .08 : .20;
       if (prairiePocket > 0 && rng() < prairiePocket * thinning) return false;
     }
     // Feathered world edge: density thins over the last dozen meters of the
@@ -1748,7 +1748,7 @@ export class GrassSystem implements Subsystem {
       const width = sxz * (this.cfg.bladeWide > 1 ? 1.20 : 1.06);
       const height = vi === V_OPEN ? .66 + rank * .42 :
         vi === V_COVER ? .42 + rank * .76 : .52 + rank * .72;
-      this.s.set(width, vigor * height * (.77 + rng() * .47) * (1 - prairiePocket * .70), width * (.82 + rng() * .20));
+      this.s.set(width, vigor * height * (.77 + rng() * .47) * (1 - prairiePocket * .58), width * (.82 + rng() * .20));
     }
     this.v.set(px, y, pz);
     this.m.compose(this.v, this.q, this.s);
