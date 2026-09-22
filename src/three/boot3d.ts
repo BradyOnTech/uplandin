@@ -98,7 +98,7 @@ engine.register(new BirdsSystem());
 engine.register(new FalconrySystem());
 engine.register(new GunSystem());
 engine.register(new HuntHudSystem());
-engine.register(new FieldAudioSystem());
+engine.register(new FieldAudioSystem(launchArea.id));
 
 // Lightweight review control for the standalone 3D build. Changing coats
 // reloads the page because geometry colors are authored once at init; capture

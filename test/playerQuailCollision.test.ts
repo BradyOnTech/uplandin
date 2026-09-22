@@ -9,6 +9,7 @@ import { PlayerSystem } from '../src/three/subsystems/player';
 import { buildQuailFenceGeometry } from '../src/three/subsystems/quailFences';
 import { deriveQuailEntrances } from '../src/three/subsystems/quailEntrances';
 import { PropertyHabitatSystem } from '../src/three/subsystems/propertyHabitat';
+import { playFootstep } from '../src/audio';
 
 vi.mock('../src/audio', () => ({ unlockAudio: vi.fn(), playFootstep: vi.fn(), playCoverBrush: vi.fn() }));
 
@@ -48,6 +49,26 @@ function laneMidpoint(landscape: LandscapeModel, side: number) {
 const yaw = (direction: THREE.Vector2) => Math.atan2(-direction.x, -direction.y) * 180 / Math.PI;
 
 describe('Quail hunter movement against actual lane fences', () => {
+  it('plays regional footsteps only when movement advances, never during a zero-time render', () => {
+    const f = fixture();
+    const { midpoint } = laneMidpoint(f.landscape, 0);
+    f.player.setPose(f.ctx, midpoint.x, midpoint.y, 0);
+    f.press('KeyW');
+    vi.mocked(playFootstep).mockClear();
+    const before = f.point();
+    // A render-only frame must not push a staged/contact position out of a
+    // collider or count that correction as a footstep.
+    f.player.update(f.ctx, 0);
+    expect(f.point().distanceTo(before)).toBe(0);
+    expect(playFootstep).not.toHaveBeenCalled();
+    f.player.setPose(f.ctx, 0, 40, 0);
+    f.player.update(f.ctx, .4);
+    expect(playFootstep).toHaveBeenCalledExactlyOnceWith(false, .10, 'quail-fields');
+    f.ctx.paused = true;
+    f.player.update(f.ctx, 1);
+    expect(playFootstep).toHaveBeenCalledTimes(1);
+  });
+
   it('blocks a sprint through an actual Grouse Woods trunk', () => {
     const landscape = new LandscapeModel(getArea('grouse-woods'));
     const habitat = new PropertyHabitatSystem(landscape);

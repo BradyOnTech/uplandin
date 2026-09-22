@@ -2,23 +2,46 @@ import * as THREE from 'three';
 import type { Hunt3DSystem } from './hunt3d';
 import { playDogMovement, playFieldSong, startFieldAmbience } from '../../audio';
 import type { Ctx, Subsystem } from '../engine';
+import { fieldSoundscape } from '../fieldSoundscape';
 export class FieldAudioSystem implements Subsystem {
   readonly id = 'field-audio';
   private ambience: ReturnType<typeof startFieldAmbience> = null;
   private nextSong = 13;
   private abort = new AbortController();
   private capture = false;
+  private disposed = false;
+  private hidden = false;
   private dogs = new Map<number, { x: number; z: number; distance: number }>();
   private dogPosition = { x: 0, z: 0 };
   private forward = new THREE.Vector3();
+  constructor(private readonly areaId?: string) {}
   init(ctx: Ctx): void {
     this.capture = new URLSearchParams(location.search).has('capture');
-    ctx.events.addEventListener('pause', ((e: CustomEvent) => this.ambience?.setPaused(e.detail)) as EventListener, { signal: this.abort.signal });
+    const signal = this.abort.signal;
+    ctx.events.addEventListener('pause', ((e: CustomEvent) => {
+      this.dogs.clear();
+      this.ambience?.setPaused(e.detail || this.hidden);
+    }) as EventListener, { signal });
+    if (typeof document !== 'undefined') {
+      this.hidden = document.hidden;
+      document.addEventListener('visibilitychange', () => {
+        this.hidden = document.hidden; this.dogs.clear();
+        this.ambience?.setPaused(this.hidden || ctx.paused);
+      }, { signal });
+    }
+    // Release the buffers when leaving, but keep listeners alive for a
+    // browser back/forward-cache restore; the next active frame restarts once.
+    if (typeof window !== 'undefined') window.addEventListener('pagehide', () => {
+      this.dogs.clear(); this.ambience?.stop(); this.ambience = null;
+    }, { signal });
+    const profile = fieldSoundscape(this.areaId);
+    if (profile) this.nextSong = profile.songGain > 0 ? profile.songInterval : Infinity;
   }
-  update(ctx: Ctx): void {
-    if (this.capture || ctx.paused) return;
-    this.ambience ??= startFieldAmbience();
+  update(ctx: Ctx, dt = 1 / 60): void {
+    if (this.capture || this.disposed || this.hidden || ctx.paused || !(dt > 0)) return;
+    this.ambience ??= startFieldAmbience(this.areaId);
     const hunt = ctx.get<Hunt3DSystem>('hunt3d');
+    this.ambience?.setWind?.(hunt.huntState().windStrength);
     ctx.camera.getWorldDirection(this.forward);
     for (let slot = 0; slot < hunt.dogCount(); slot++) {
       const position = hunt.dogWorld(this.dogPosition, slot);
@@ -40,7 +63,11 @@ export class FieldAudioSystem implements Subsystem {
         ? (-this.forward.z*dx+this.forward.x*dz)/(distance*horizontal) : 0;
       playDogMovement(cover, .09*(1-distance/18)**2, pan);
     }
-    if (ctx.time > this.nextSong) { playFieldSong(); this.nextSong = ctx.time + 19 + (Math.sin(ctx.time * 0.3) + 1) * 6; }
+    if (ctx.time > this.nextSong) {
+      const profile = fieldSoundscape(this.areaId);
+      playFieldSong(profile?.songGain ?? 1);
+      this.nextSong = ctx.time + (profile?.songInterval ?? 19) + (Math.sin(ctx.time * 0.3) + 1) * 6;
+    }
   }
-  dispose(): void { this.dogs.clear(); this.abort.abort(); this.ambience?.stop(); this.ambience = null; }
+  dispose(): void { this.disposed = true; this.dogs.clear(); this.abort.abort(); this.ambience?.stop(); this.ambience = null; }
 }

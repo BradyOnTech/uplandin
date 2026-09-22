@@ -1,4 +1,6 @@
 import { synthesizePheasantLaunch, PHEASANT_AUDIO_RATE, type PheasantLaunchVoice } from './three/pheasantFlushAudio';
+import { fieldSoundscape, fieldWindSamples } from './three/fieldSoundscape';
+import type { WindStrength } from './game/wind';
 /**
  * Procedural sound effects — no audio assets, everything is synthesized
  * with WebAudio. Mobile browsers require a user gesture before audio can
@@ -239,8 +241,22 @@ export function playWhistle(): void {
  * Hunter footfall. `inCover` uses a duller, softer thump (grass/ragweed);
  * open ground is a drier click. Volume should already encode distance.
  */
-export function playFootstep(inCover: boolean, volume = 0.12): void {
+export function playFootstep(inCover: boolean, volume = 0.12, areaId?: string): void {
   if (volume <= 0.01) return;
+  if (areaId === 'chukar-ridge') {
+    // A low boot impact and two loose dry grains, not a gun-like crack.
+    noise(0, .052, inCover ? 1050 : 1950, 360, volume * .38);
+    noise(.027, .07, inCover ? 1750 : 2700, 680, volume * .19);
+    tone(105, 0, .052, { type: 'triangle', volume: volume * .22, slideTo: 54 });
+    return;
+  }
+  if (areaId === 'quail-fields' || areaId === 'sharptail-prairie') {
+    const prairie = areaId === 'sharptail-prairie';
+    noise(0, .065, inCover ? 420 : 780, 140, volume * .42);
+    noise(.018, prairie ? .12 : .085, prairie ? 1750 : 1150, 470, volume * (inCover ? .25 : .12));
+    tone(prairie ? 85 : 100, 0, .06, { type: 'triangle', volume: volume * .24, slideTo: 48 });
+    return;
+  }
   if (inCover) {
     noise(0, 0.05, 380, 120, volume * 0.55);
     tone(90, 0, 0.06, { type: 'triangle', volume: volume * 0.35, slideTo: 50 });
@@ -251,8 +267,13 @@ export function playFootstep(inCover: boolean, volume = 0.12): void {
 }
 
 /** Dry stems brushing clothing; quieter than the launch burst. */
-export function playCoverBrush(volume = .035): void {
+export function playCoverBrush(volume = .035, areaId?: string): void {
   if (volume <= .001) return;
+  if (fieldSoundscape(areaId)) {
+    const quail = areaId === 'quail-fields', chukar = areaId === 'chukar-ridge';
+    noise(0, quail ? .16 : .11, quail ? 1450 : chukar ? 2400 : 1900, 550, volume * .65);
+    return;
+  }
   noise(0, .13, 2100, 650, volume);
   noise(.055, .09, 1250, 420, volume * .65);
 }
@@ -277,9 +298,47 @@ export function playScentCheck(): void {
 }
 
 /** A quiet continuous field bed, stopped by the 3D lifecycle adapter. */
-export function startFieldAmbience(): { setPaused(paused: boolean): void; stop(): void } | null {
+export interface FieldAmbience {
+  setPaused(paused: boolean): void;
+  setWind?(strength: WindStrength): void;
+  stop(): void;
+}
+export function startFieldAmbience(areaId?: string): FieldAmbience | null {
   const c = ready();
   if (!c) return null;
+  const profile = fieldSoundscape(areaId);
+  if (profile) {
+    let paused = false, wind: WindStrength = 'breezy', windGain = .75;
+    const layers = profile.layers.map(layer => {
+      const source = c.createBufferSource(), filter = c.createBiquadFilter(), gain = c.createGain();
+      const samples = fieldWindSamples(c.sampleRate, layer);
+      source.buffer = c.createBuffer(1, samples.length, c.sampleRate);
+      source.buffer.getChannelData(0).set(samples); source.loop = true;
+      filter.type = 'bandpass'; filter.frequency.value = layer.frequency; filter.Q.value = layer.q;
+      gain.gain.setValueAtTime(0, c.currentTime);
+      gain.gain.setTargetAtTime(layer.gain * windGain, c.currentTime, .7);
+      source.connect(filter).connect(gain).connect(output(c)); source.start();
+      return { source, filter, gain, volume: layer.gain };
+    });
+    let stopped = false;
+    return {
+      setPaused(nextPaused) {
+        if (stopped) return;
+        paused = nextPaused;
+        for (const layer of layers) layer.gain.gain.setTargetAtTime(paused ? 0 : layer.volume * windGain, c.currentTime, paused ? .08 : .5);
+      },
+      setWind(strength) {
+        if (stopped || strength === wind) return;
+        wind = strength; windGain = strength === 'calm' ? .45 : strength === 'strong' ? 1 : .75;
+        if (!paused) for (const layer of layers) layer.gain.gain.setTargetAtTime(layer.volume * windGain, c.currentTime, 1.2);
+      },
+      stop() {
+        if (stopped) return;
+        stopped = true;
+        for (const layer of layers) { layer.source.stop(); layer.source.disconnect(); layer.filter.disconnect(); layer.gain.disconnect(); }
+      },
+    };
+  }
   const source = c.createBufferSource();
   source.buffer = noiseBuffer(c, 8);
   source.loop = true;
@@ -287,16 +346,18 @@ export function startFieldAmbience(): { setPaused(paused: boolean): void; stop()
   const gain = c.createGain(); gain.gain.value = 0.018;
   source.connect(low).connect(gain).connect(output(c));
   source.start();
+  let stopped = false;
   return {
-    setPaused(paused) { gain.gain.setTargetAtTime(paused ? 0 : 0.018, c.currentTime, 0.4); },
-    stop() { source.stop(); source.disconnect(); low.disconnect(); gain.disconnect(); },
+    setPaused(paused) { if (!stopped) gain.gain.setTargetAtTime(paused ? 0 : 0.018, c.currentTime, 0.4); },
+    stop() { if (stopped) return; stopped = true; source.stop(); source.disconnect(); low.disconnect(); gain.disconnect(); },
   };
 }
 
 /** Distant, unlocated ambience. Never announces a hidden game bird. */
-export function playFieldSong(): void {
-  tone(1900, 0, 0.13, { volume: 0.012, slideTo: 2600 });
-  tone(2300, 0.24, 0.10, { volume: 0.009, slideTo: 1700 });
+export function playFieldSong(volume = 1): void {
+  if (volume <= 0) return;
+  tone(1900, 0, 0.13, { volume: 0.012 * volume, slideTo: 2600 });
+  tone(2300, 0.24, 0.10, { volume: 0.009 * volume, slideTo: 1700 });
 }
 
 export function playActionClick(): void {
