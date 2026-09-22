@@ -1,0 +1,143 @@
+# Uplandin production blitz
+
+Improve mobile playability and the visual/game design of selected existing levels together. Keep a dedicated map-design lane active from the first wave: deliver bounded circuits in Chukar Ridge, Quail Fields and Sharptail Prairie. Cattail Coverts is accepted as the visual/level-design benchmark and is outside this environment-redesign scope. Work in parallel on independent systems, with one coordinator responsible for shared files and the combined game.
+
+This is the execution plan prepared September 22, 2026, revised to include the user's confirmed Chukar, Quail and Sharptail visual/level-design scope. The audits are complete. The user authorized parallel execution with a separate map-design chat and subagents on September 22, 2026; implementation is now starting. It supersedes older phase restrictions where those conflict with the user's current priorities. Historical tests, screenshots and accepted artwork remain useful evidence, not proof that today's whole experience is finished.
+
+**Starting point**
+
+- Use `b3c6131` on `codex/mobile-playtest` as the minimum baseline. It contains four mobile commits beyond `main`: touch controls, combined mount/swing/release, retrieve movement, and the clearer phone view. Starting workers from `main` would omit those improvements.
+- Remote `main` was verified at `9f7f56eab1edb4b2bc81c9e7f6cd8506aa62b176`, with no open PRs at audit time. The default GitHub account lacks access; account-scoped use of the existing `BradyOnTech` credentials works. Do not change the machine's global account as a side effect. Recheck remote state before integration/publication.
+- Preserve the unrelated untracked assets, evidence and output in this checkout, plus the separate 2D and falconry worktrees. Stage intentional files only.
+- Current difficulty changes bird stocking, nerve and approach, but not shooting tolerance. Current touch gestures already combine mounting, tracking and firing. The most valuable control change is making reasonable shots easier to connect.
+- The existing manifest launches the 2D menu; the 3D entry does not advertise installation. Physical installed-app behavior and sustained phone performance remain unverified. The existing renderer already has Lite settings, instancing and frame-time telemetry.
+- Setter search and retrieve-speed fixes are already present. Revisit them only when a remaining failure is reproduced.
+
+**Staffing and order**
+
+Keep one coordinator and three subagents active. Complete each wave as a playable checkpoint before starting overlapping work in the next one. A free worker may start an independent next-wave task once its changes and ownership are handed off.
+
+| Owner | Wave 1: mobile and first map slice | Wave 2: Quail, Sharptail and complete hunts |
+| --- | --- | --- |
+| Coordinator in this session | Touch release stability, shared settings, art direction, integration and moving review | Chukar hunt/recovery follow-through, shared integration and combined review |
+| Worker A | Difficulty-aware mobile shot assistance | Sharptail grass-lane/Line Shack/return circuit |
+| Worker B | Chukar western/return route visuals and level design | Quail plum-edge/drainage/windmill circuit |
+| Worker C | Measured performance and the largest demonstrated bottleneck | Installed 3D launch, offline status and safe updates |
+
+An additional chat is optional. Its recommended assignment is the entire map-design lane in an isolated worktree, with a coherent route-to-art responsibility. If that session is created, it owns all three map slices and replaces the map assignments of Workers A and B; Worker A takes Chukar hunt/recovery follow-through after shooting, and Worker B takes installed-app work in Wave 1, then bird presentation. Worker C can take property-specific sound after the performance package. Without an extra session, PWA follows the first performance pass and sound follows the earlier packages. This adds no imaginary worker slots and keeps map progress independent of device/hosting availability. Do not create another coordinator editing the same checkout.
+
+**Map lane — Visuals and hunting decisions together**
+
+Give the map owner responsibility for terrain, habitat layout, routes, vegetation composition, materials, local lighting direction and meaningful props within the selected slice. Reserve one coherent area at a time. The work should be noticeably different from ordinary walking height, and give the hunter a useful choice of approach. Additional detail alone does not finish a level-design task.
+
+| Order and bounded slice | Proposed visual work | Proposed hunting/design result |
+| --- | --- | --- |
+| 1. Chukar western entry through West Sentinel, Western Mesa and the return connection | Extend the accepted rock/sage direction with coherent exposed shoulders, planted pockets, erosion transitions and landmark framing along these routes. Retain the accepted south-route geology and horizon rather than restarting them. | A readable choice between a direct climb and a longer contour approach to gain the high side; useful pauses/reveals; coherent downhill marking, recovery access and return navigation. Uphill relocation and downhill escape remain the Chukar identity. |
+| 2. Quail entry-to-drainage-to-windmill circuit and return | Compose recognizable plum thickets, warm grass pockets, a cooler drainage and farm landmarks into distinct sections. Strengthen ground/vegetation transitions and broad lighting/color relationships at ordinary hunting views. Reuse the current kit before making new assets. | Meaningful edge-versus-open approach choices, room for the dog to cast between cover, close covey work, and a navigable follow-up search/return. Make plausible habitat and encounter selection agree without fixing birds to scenic viewpoints or guaranteeing flushes. |
+| 3. Sharptail south/west grass lanes, wind-break edge, Line Shack and prairie return | Shape broad grass-covered shoulders and shallow swales, varied native-grass stands, distant shelterbelts and a low prairie horizon. Use the Line Shack and sparse meaningful props for orientation while keeping the country open. | Crosswind coverage and long dog casts, choices between exposed ground and a sheltered approach, readable distant points, wary rises and room to mark follow-up country. Preserve the existing species mix and seeded variation; avoid turning the hunt into close plum-pocket work or uphill/downhill Chukar tactics. |
+
+Chukar's existing authored stands concentrate on the southern climb; its production record explicitly leaves the west/return routes unfinished. Quail already has a shared drainage, trail loop and windmill, so the proposed pass builds on those. Inspect habitat/encounter selection before changing it; an attractive thicket must represent real habitat if the player is expected to hunt it. These are proposed design outcomes, not newly observed visual defects or proof of current route failures.
+
+Sharptail already has named south/west grass lanes, a wind-break edge, the Line Shack and a broad prairie return, plus a distinct grass profile and long-cast doctrine. Develop that geography rather than replacing it with a new biome or copying another map's cover layout. Review the current route before selecting exact new stands or changing habitat; no fresh visual or played-hunt acceptance is implied by the source audit.
+
+The map owner reserves `src/game/chukarComposition.ts`, `chukarLandscape.ts` and required Chukar environment/terrain/material/plant modules for the first slice. For Quail, reserve `src/game/quailLandscape.ts`, `quailEncounters.ts` and only the needed `src/three/subsystems/quail*` modules. The coordinator owns edits to shared `areas.ts`, `areaEncounters.ts`, `huntDoctrine.ts`, generic sky/lighting, collision adapters and the survey integration. A reserved map file is not also a performance-worker edit target; that worker supplies measurements and proposed changes for the map owner to implement. Complete shared geometry/habitat decisions before the hunt worker tunes encounter/recovery behavior on that slice.
+
+The Sharptail owner reserves Sharptail-specific composition/data modules and focused checks, adding a small isolated module only if the design needs it. Its current `grass.ts`, `sky.ts`, `palette.ts`, `propertyTerrain.ts` and `propertyHabitat.ts` rendering paths are shared: map work owns Sharptail profile entries/placements, performance work owns shared algorithms/budgets, and the coordinator serializes edits. Scope habitat composition to `sharptail-prairie`, not the shared `open-covey` default. Preserve Cattail and other properties when integrating those hooks. Quail and Sharptail can author their local data independently while the coordinator serializes shared area/landscape/habitat/atlas changes.
+
+For each slice, deliver a short route sketch with the hunting choices, an in-game terrain/habitat blockout, and one cohesive art pass. Use image generation for a focused concept or missing texture only when helpful. Compare before/after from three matched gameplay views and an ordinary moving route in Standard and Lite. Check the alternate entry, actual atlas/terrain/habitat agreement, grounded assets, dog passage, flush/fall recovery and the route back. Record frame/draw/triangle cost on frozen builds. No fixed bird positions, concealed-bird markers or sparse pheasant cover as shortcuts.
+
+Finish and integrate the Chukar slice before expanding the map lane. Then Quail and Sharptail may proceed in parallel under Workers B and A, with shared-file changes serialized through the coordinator. If one extra session owns all maps, it delivers Chukar, Quail and Sharptail as separate playable handoffs and may delegate disjoint map modules. A generated concept or staged image is a design aid; the deliverable is an improved playable place. Image creation, full-map rebuilds and small prop polishing must not consume the lane while route decisions remain unresolved.
+
+**Wave 1A — Easier mobile shooting**
+
+Ship a touch-only Shot assistance setting in Pause: **Difficulty / Off / Light / Generous**. Difficulty defaults to Generous for Relaxed, Light for Balanced, and Off for Wild. Save an explicit override independently. Keep the field free of additional buttons.
+
+Add bounded forgiveness to the existing travelling shot calculation. Calibrate with near misses at 12, 30 and 50 metres; document the chosen world/angular limits. Keep obvious misses, meaningful lead, weapon spread differences, the 55-metre range and obstruction checks. The allowance must not grow into an excessively wide cone at long distance. No automatic firing, camera snapping, target-following, universal bird enlargement or flight slowdown in this pass.
+
+Use the active hunt's challenge snapshot. Changing the next hunt's difficulty in Pause currently updates the URL before the active simulation changes; reading that URL at firing time would give inconsistent behavior. Capture both the resolved assistance profile and actual trigger source when a shot is requested, and carry them unchanged through pending shots. Keyboard shots must not gain assistance merely because touch UI is visible.
+
+Worker A owns `src/three/shotPattern.ts`, `src/three/subsystems/gun.ts`, a new `src/three/shotAssistance.ts`, and their focused tests. The coordinator supplies the active-challenge interface in `hunt3d.ts` and the settings callback. Do not alter shared weapon statistics in `src/game/guns.ts`.
+
+Agree these new interfaces before parallel edits: coordinator-owned `Hunt3DSystem.getActiveChallenge(): HuntChallenge`, `shotAssistancePreference()` and `saveShotAssistancePreference(value)` in `inputMode.ts`; Worker A owns the preference type (`difficulty | off | light | generous`) and pure profile resolver in `shotAssistance.ts`. Missing or invalid preferences resolve to `difficulty`. The resolver takes the active challenge, preference and trigger source explicitly; every non-touch source resolves to zero assistance. These are proposed contracts, not existing APIs.
+
+Done means assisted near misses improve predictably; clear misses, hidden birds and out-of-range birds remain misses; grounded/falling targets remain ineligible; Off and desktop retain baseline outcomes; early release while mounting preserves the correct profile; canceled gestures do not fire. Check representative moving targets at 30/60/120 Hz. These demonstrate correct behavior, not enjoyable human hit rates.
+
+**Coordinator — Stable release and simple settings**
+
+Inspect recorded touch traces and add a small, timestamp-based release stabilizer if it removes erratic final movement without harming deliberate swings. Pointerup currently does not apply movement; investigate the final pointermove rather than assuming release coordinates are the defect. Preserve sustained tracking, fast corrections and reversals. Avoid freezing the shot on an older aim direction or applying broad smoothing latency.
+
+Own `src/three/touchShotControl.ts`, a new pure stabilizer if justified, `src/three/inputMode.ts`, `src/three/fieldInterface.ts`, `index3d.html`, related input tests and player-facing explanations. Preserve Lower, pause, resize, blur and lost-capture cancellation and exactly one shot per completed gesture. Implement the shooting and install workers' UI contracts together so these files have one editor.
+
+Done means input traces show a useful improvement without degraded tracking or duplicate fire, the setting is understandable in Pause, and both phone orientations retain the uncluttered field. If stabilization cannot improve the traces cleanly, ship the validated forgiveness change and record why filtering was deferred.
+
+**Installed 3D playtest and safe updates — Wave 2, or parallel with an extra map session**
+
+Make installation deliberately launch 3D, with useful saved choices and a fresh hunt rather than a frozen seed. Preserve access to the 2D game. Prefer a distinct 3D manifest if that avoids changing existing 2D installation behavior. Add contextual installation help in the menu/Pause; do not add persistent field chrome.
+
+Replace the always-Quail offline announcement with truthful readiness for the supported cached content. Inventory dependencies before reducing the cache. The existing build's approximately 10 MB precache includes approximately 5.2 MB of rigged GSP LODs even for generated-dog play; those are file sizes from an existing artifact, not measured transfer. Optional assets must not break an advertised offline mode when removed. Preserve visited 2D art.
+
+Exercise an update while an older tab remains open. Stage new versions and apply them at a safe transition, preserving the active hunt, settings/career and the older client's required chunks. The current immediate worker activation/cache cleanup is a risk to investigate, not a reproduced defect. Include failed/interrupted install and cold offline restart cases.
+
+The installed-app owner (Worker C after performance, or Worker B when an extra session owns maps) owns `public/sw.js`, manifest files, `src/three/offline.ts`, `vite.config.ts`, focused offline/update tests and a compact install runbook. The coordinator owns HTML, shared menu integration and any `boot3d.ts` hookup. No complicated downloadable map-pack system in this blitz.
+
+Done at the code checkpoint means root/subpath launches work, direct hunt URLs retain choices, updates do not strand an old client, readiness is honest, and existing saves/2D access survive. Prepare an immutable HTTPS build and deployment instructions. Publishing needs a selected destination/access policy; do not invent a public host. LAN settings do not automatically transfer to another origin.
+
+Physical acceptance is separate: on a named phone/OS, install, launch from its icon, verify the browser toolbar is absent, rotate, check landscape safe areas, background/resume and restart a cached hunt offline. Record actual orientation behavior rather than treating the manifest as proof of a lock. Test Android separately when available. Lack of device access does not block the other code work; record the remaining device check honestly.
+
+**Wave 1C — Performance that can be measured**
+
+Use existing engine telemetry and add a debug-only capture/export path if needed. Record build, device/browser, tier, viewport/backing resolution, route, frame-time percentiles, long frames, loading time, draw/triangle counts and resource-count growth. Renderer resource counts are not GPU-memory bytes. Reset measurement windows and exclude loading/warm-up from steady-play comparisons.
+
+Benchmark Cattail Coverts in dense vegetation and Chukar on a climb/flush route, with matched settings and camera/input sequences. Optimize the largest demonstrated cost first, then at most one further bottleneck if the measurement warrants it. Prioritize distant geometry, shadows, batching and unnecessary work. Preserve dense pheasant cover, nearby bird readability, map identity and shared simulation rules. Consider conservative rendering-only resolution adaptation only if evidence supports it.
+
+Worker C owns `src/three/engine.ts`, an isolated diagnostic module and focused performance evidence. Reserve the actual hot subsystem before editing it; likely candidates include `pheasantCover.ts`, `grass.ts`, `flora.ts` or `sky.ts`. Coordinate measurements of Chukar terrain with its map owner instead of editing the same file. It does not own shotgun/input code, bird speed/scale, service-worker caches or shared settings. The coordinator integrates any `boot3d.ts` export hook.
+
+Done means a reproducible baseline and before/after comparison for retained optimizations, no increasing renderer-resource counts across three replays, and no visible habitat regression. Aim for sustained 30 FPS on a named phone in Lite; set percentile limits after recording the baseline. A 10–15 minute actual-device run is required for a thermal/performance claim. Desktop measurements and browser emulation may guide work but cannot close that claim. Do not keep inventing optimizations after the measured bottleneck is addressed.
+
+**Checkpoint 1 — Better phone play and a visibly improved Chukar route**
+
+Integrate assistance, input, the first Chukar map slice and measured performance changes. Include installed-app work if its parallel session is ready; do not block a playable local checkpoint on a hosting choice. Check mounted swing/fire/cancel, reload, dog recall/cast, survey, pause, orientation change, background/resume, a recovery and results/replay. Review Chukar's changed route from ordinary walking height and its tactical choices as well as the shooting. Keep desktop input and Wild/Off behavior intact. Check Pheasant and Chukar, plus bounded Quail and goshawk preservation checks where shared code changed.
+
+Each worker runs focused checks once its package is ready. The coordinator runs the full suite and production build once on the combined candidate, then reruns only what new changes or failures justify. Record code correctness, browser interaction, measured performance and physical-phone feel as separate evidence. Do not call a scripted assisted shot proof of natural playability.
+
+Publish one stable candidate link when a host is available. Keep a known-good previous artifact. Do not let parallel builds replace the files behind the user's active preview.
+
+**Wave 2 — Finish the experience around the shot**
+
+| Package | Bounded work and ownership | Completion evidence |
+| --- | --- | --- |
+| Chukar complete hunt | Coordinator owns follow-through and reproduced dog/obstacle fixes; Worker A can take it if an extra session owns the maps. Coordinator owns shared `areaEncounters.ts`, `huntDoctrine.ts` and the `hunt3d.ts` bridge. | South Gate and western-entry routes through search, high-side approach, downhill rise, fall, rocky/slope fetch, delivery, return and results. Include a moving handler. Record seeds/routes/timings; no repeated obstacle orbit, unreachable fall or duplicate credit in exercised cases. Distinguish controlled recovery checks from ordinary play. Compare pheasant as a regression case. |
+| Bird readability in motion | Coordinator, or Worker B after installed-app work if an extra map session is running, owns isolated species geometry/motion modules under `src/three/assets/`. Coordinator owns the `birds.ts` integration. | Chukar and pheasant read against sky, rock and vegetation at ordinary shot ranges in both tiers and orientations. Review short flight recordings, not only close portraits. Improve demonstrated silhouette/motion issues while preserving species size, timing and flight character; report rendering cost. |
+| Quail and Sharptail map slices | Worker B owns Quail and Worker A owns Sharptail, or the extra map session owns both. | Each named circuit delivers distinct visual sections and species-specific hunting choices through a playable route. Gameplay, atlas and rendered habitat agree. Sharptail remains open-country wind/long-cast hunting; Quail remains close covey/edge work. |
+| Property-specific sound | Next available worker after its earlier package owns `src/three/subsystems/fieldAudio.ts`, narrow additions to `src/audio.ts` and isolated sound profiles/assets. | Exposed wind/gravel/sage on Chukar; reeds/stubble/wet-edge movement on Cattail. Gun, flush and nearby dog movement stay audible. Pause/background/replay never stack loops. Normal listening distinguishes the properties; ambience does not reveal concealed birds. |
+
+Checkpoint 2 is a connected Chukar hunt, visibly improved Quail and Sharptail circuits and a preserved Cattail benchmark, alongside the scheduled install and bird improvements. Sound joins when its owner finishes earlier packages. It is not an all-map or AAA completion declaration. Review those actual places before expanding the same process across more species/properties.
+
+**Integration rules for every worker**
+
+1. The coordinator records a common base, branch, file ownership, test command and preview port before launch. Same-thread subagents may share this checkout only with disjoint file ownership; no branch switching, resets or broad staging by a worker. Separate chats use isolated worktrees starting from the coordinator's recorded mobile-inclusive baseline, never an assumed `main`.
+2. Reserve shared files with the coordinator before changing them. `index3d.html`, `fieldInterface.ts`, `inputMode.ts`, `boot3d.ts`, `hunt3d.ts`, `birds.ts`, `areas.ts`, `areaEncounters.ts` and `huntDoctrine.ts` have one integration owner. All encounter/doctrine fixes and map geography changes are serialized through that coordinator. Pass a concrete interface request instead of duplicating edits. The coordinator creates focused commits for same-checkout work; isolated chats return their commit IDs for integration.
+3. Keep authoritative decisions in shared simulation and rendering changes in presentation. Do not solve phone difficulty by slowing every species, clearing habitat, teleporting the dog, revealing hidden birds or moving outcomes into the renderer. Do not derive simulation state from an animated mesh.
+4. Use distinct preview ports and build directories/worktrees. Performance comparisons use frozen baseline/candidate artifacts, each identified by commit and any dirty patch, never the shared live checkout while other workers edit it. One owner builds the user-facing candidate; record its commit. Service-worker checks use disposable profiles so they do not replace the user's cached game during review.
+5. Return a short handoff: player-visible result, exact files/commit, evidence, limitations and integration needs. If an attractive idea cannot meet its acceptance criteria without sprawling changes, stop that package, explain the tradeoff and move to the next independent priority.
+6. Before publishing, reconcile fresh remote `main`, preserve its semantics and review only intended files. No automatic merge or deployment is part of this planning pass.
+
+**Execution brief for the coordinating session**
+
+> Execute `docs/3d/blitz-plan.md` from a checkpoint containing `b3c6131`. Own shared integration, art-direction review and touch-release/settings work. Start three bounded workers on mobile shot assistance, Chukar visuals/level design, and measured rendering performance. Keep the map lane active from the first wave; continue into Quail and Sharptail after the Chukar slice integrates, assigning Sharptail to the shooting worker once its package is handed off. If a separate chat is explicitly assigned all three maps, move Worker B to installed 3D launch/updates and Worker A to Chukar hunt follow-through after shooting; otherwise schedule installation after Worker C's performance work. Agree file ownership and interface contracts before edits. Deliver Checkpoint 1 with both shooting and visible level improvements, then complete the Chukar hunt and both Quail and Sharptail circuits, with moving-bird presentation and sound as capacity frees. Preserve current mobile controls, generated dog, dense pheasant habitat, species-specific rules, desktop play and separate 2D/falconry worktrees. Use focused tests and moving visual reviews, one combined regression/build per checkpoint, and evidence-backed performance claims. Keep a stable playable candidate and meaningful commits. Record missing device/hosting acceptance without blocking independent work. Do not expand into an all-map overhaul, a dog rebuild or unrelated polish.
+
+**Paste-ready brief for an optional additional chat**
+
+> Own the visuals and level-design lane for Uplandin in an isolated worktree. Read `/Users/bradya/Documents/code/uplandin/docs/3d/blitz-plan.md`. Start from the coordinator's assigned mobile-inclusive checkpoint, at least `b3c6131`; do not modify or switch branches in the existing checkout. First finish a bounded Chukar western-entry/bench/return circuit: coherent terrain and sage/rock composition, readable direct-climb versus contour approaches, high-side advantage, accessible fall/recovery ground and return navigation. Retain the accepted southern geology and horizon. After integration, author Quail entry/drainage/plum-edge/windmill/return with close covey hunting, and Sharptail grass lanes/wind-break edge/Line Shack/prairie return with open-country wind reading, long casts and wary rises. All three maps are confirmed scope. Preserve Cattail Coverts as the accepted environment; no Cattail redesign. Begin each slice with a route sketch and in-game blockout, then apply one cohesive vegetation/material/lighting/prop pass. Reuse the accepted asset kit and use image generation only for a useful concept or missing asset. Reserve map-specific source files with the coordinator; submit shared area, encounter, doctrine, atlas, collision or lighting changes through that owner. Do not edit mobile controls, shooting rules, core dog/bird behavior, engine performance settings, service workers or build configuration. Preserve shared habitat/render/map agreement and performance tiers. Use a separate preview port and frozen before/after artifacts. Return one playable slice at a time, with intentional commits, three matched gameplay views, a moving-route review, relevant checks, rendering cost and limitations. Do not deploy, merge to main, or claim physical-phone acceptance from emulation.
+
+**Cut line**
+
+Defer an all-map sweep or brand-new properties, dog anatomy/rigging or all-breed rebuilds, further gun engraving/wood polish, a new game architecture, weather simulation, a broad UI redesign, complex asset-download management and camera target-following. Three bounded existing-map slices are explicitly in scope: Chukar, Quail and Sharptail. Cattail environment redesign is out of scope; preserve its accepted layout and dense habitat during mobile performance and shared-system work. Image generation is available when a specific asset materially improves a named acceptance check; keep it tied to those playable slices.
+
+**Relevant current records**
+
+- `docs/3d/mobile-playtest.md`: current touch, sight-picture and retrieve implementation history.
+- `docs/3d/production-goal.md`: complete-hunt priorities and limits of staged/assisted evidence.
+- `docs/3d/chukar-production/README.md`: accepted geology direction, route work and outstanding western/return/hunt checks.
+- `docs/3d/quail-world.md` and `docs/3d/hunting-doctrine.md`: existing Quail geography and the species-specific design contract.
+- `docs/3d/offline-preservation.md`: existing offline/2D preservation behavior that install changes must retain.
