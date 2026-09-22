@@ -298,13 +298,6 @@ export class HuntHudSystem implements Subsystem {
       if (this.summaryCopy) {
         const dogWork = hunt.dogWork.slice(0, this.hunt.dogCount());
         const pointFlushes = dogWork.reduce((sum, work) => sum + work.pointFlushes, 0);
-        const total = hunt.birds.length;
-        const base =
-          (hunt.areaId === 'quail-fields'
-            ? `${retrieved} retrieved · ${hunt.downed} downed · ${hunt.escaped} escaped`
-            : `${hunt.downed} of ${total} down · ${retrieved} retrieved · ${hunt.escaped} lost`) +
-          `${hunt.doubles > 0 ? ` · ${hunt.doubles} double${hunt.doubles > 1 ? 's' : ''}` : ''}` +
-          ` · ${pointFlushes} point${pointFlushes === 1 ? '' : 's'} held`;
         const career = careerResult
           ? ` · ${careerResult.dogAwards.map((award) => `${award.name} +${award.gained} XP`).join(' · ')}` +
             ` · hunter +${careerResult.hunterGained} XP · ${careerResult.weeks} week${careerResult.weeks === 1 ? '' : 's'} passed`
@@ -312,12 +305,12 @@ export class HuntHudSystem implements Subsystem {
         if (hawk) {
           const title=this.summary?.querySelector('h2'); if(title)title.textContent='Falconry field notes';
           this.summaryCopy.textContent=`Flights ${hawk.flights} · Catches ${hawk.catches} · Recovered ${hawk.recovered} · Unsuccessful flights ${hawk.misses} · Recalls ${hawk.recalls} · Points held ${pointFlushes}`;
-        } else if (hunt.areaId === 'pheasant-coverts') {
+        } else {
           const title = this.summary?.querySelector('h2');
           if (title) title.textContent = 'Field notes';
           renderFieldNotes(this.summaryCopy, hunt, this.hunt.dogCount(), this.fieldTime,
             this.hunt.areaConfig().name, this.hunt.dropPoint().name, career);
-        } else this.summaryCopy.textContent = base + career;
+        }
       }
       if (this.summary) this.summary.hidden = false;
       ctx.events.dispatchEvent(new Event('hunt-complete'));

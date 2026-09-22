@@ -4,9 +4,9 @@ import { createHunt } from '../src/game/state';
 import { mulberry32 } from '../src/game/math';
 import { fieldNotes } from '../src/three/fieldNotes';
 
-describe('Pheasant field notes', () => {
-  it('counts only completed retrieves and active dog work, without exposing unseen birds', () => {
-    const hunt = createHunt(getArea('pheasant-coverts'), mulberry32(1));
+describe('Property field notes', () => {
+  it.each(['pheasant-coverts', 'quail-fields', 'sharptail-prairie', 'chukar-ridge'])('counts only completed retrieves and active dog work on %s, without exposing unseen birds', (area) => {
+    const hunt = createHunt(getArea(area), mulberry32(1));
     hunt.birds[0].state = 'retrieved'; hunt.birds[1].state = 'downed'; hunt.birds[2].state = 'carried';
     hunt.downed = 3; hunt.escaped = 2;
     hunt.dogWork[0].pointFlushes = 4; hunt.dogWork[1].pointFlushes = 8;
@@ -22,5 +22,7 @@ describe('Pheasant field notes', () => {
     expect(fieldNotes(hunt, 1, 5).rows[2].value).toBe('<1 min');
     hunt.henDowns = 1;
     expect(fieldNotes(hunt, 1, 5).note).toContain('1 protected hen was downed');
+    hunt.doubles = 1;
+    expect(fieldNotes(hunt, 1, 5).rows).toContainEqual({ label: 'Doubles', value: '1' });
   });
 });

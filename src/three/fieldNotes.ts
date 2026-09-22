@@ -11,6 +11,7 @@ export function fieldNotes(hunt: HuntState, dogCount: number, seconds: number) {
     rows: [
       { label: 'Point flushes', value: String(points) },
       { label: 'Birds escaped', value: String(hunt.escaped) },
+      ...(hunt.doubles > 0 ? [{ label: 'Doubles', value: String(hunt.doubles) }] : []),
       { label: 'Time afield', value: duration },
     ],
     note: hunt.henDowns > 0
