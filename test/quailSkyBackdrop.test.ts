@@ -27,7 +27,7 @@ function fixture(areaId: string, quality: Quality = 'high') {
 }
 
 describe('Decorative skyline ordering', () => {
-  it.each<[string, Quality]>([['quail-fields', 'high'], ['quail-fields', 'lite'], ['chukar-ridge', 'high'], ['chukar-ridge', 'lite'], ['pheasant-coverts', 'high'], ['pheasant-coverts', 'lite']])('draws the %s %s backdrop behind every opaque world surface', (area, quality) => {
+  it.each<[string, Quality]>([['quail-fields', 'high'], ['quail-fields', 'lite'], ['chukar-ridge', 'high'], ['chukar-ridge', 'lite'], ['pheasant-coverts', 'high'], ['pheasant-coverts', 'lite'], ['sharptail-prairie', 'high'], ['sharptail-prairie', 'lite']])('draws the %s %s backdrop behind every opaque world surface', (area, quality) => {
     const f = fixture(area, quality);
     try {
       expect(f.ridges.length).toBeGreaterThan(1);
@@ -58,15 +58,20 @@ describe('Decorative skyline ordering', () => {
     } finally {f.dispose();}
   });
 
-  it.each(['sharptail-prairie'])('preserves %s ridge depth and ordering', area => {
+  it('keeps the Sharptail skyline decorative from its elevated prairie shoulders', () => {
+    const area = 'sharptail-prairie';
     const f = fixture(area);
     try {
-      expect(f.dome.renderOrder).toBe(-30);
-      f.ridges.forEach((ridge, layer) => {
-        expect(ridge.renderOrder).toBe(10 - layer);
-        expect((ridge.material as THREE.ShaderMaterial).depthTest).toBe(true);
-        expect((ridge.material as THREE.ShaderMaterial).depthWrite).toBe(false);
-      });
+      const worldPositions = f.world.map(mesh => mesh.position.clone());
+      for (const elevation of [2, 12, 22]) {
+        f.camera.position.set(120, elevation, -35); f.sky.update(f.ctx);
+        for (const ridge of f.ridges) {
+          expect(ridge.position.y).toBeCloseTo(elevation * .72);
+          expect(ridge.renderOrder).toBeLessThan(f.world[1].renderOrder);
+          expect((ridge.material as THREE.ShaderMaterial).depthTest).toBe(false);
+        }
+      }
+      f.world.forEach((mesh, index) => expect(mesh.position.toArray()).toEqual(worldPositions[index].toArray()));
     } finally { f.dispose(); }
   });
 });

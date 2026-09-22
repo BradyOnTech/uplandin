@@ -420,7 +420,7 @@ const QUAIL_RIDGES: RidgeProfile = {
     { radius: 950, base: 14, amp: 40, far: 0.72, fogMix: 0.28, hazeAmt: 0.84, jag: 0, freqs: [4, 11, 27], noiseScale: 0 },
   ],
   features: [[], [], []],
-  segments: [512, 512, 384],
+  segments: [768, 640, 384],
   treeCount: 0,
   verticalFollow: 0.75,
 };
@@ -539,10 +539,22 @@ export function sampleRegionalSkyline(area: PlainsArea, layer: number, theta: nu
     for (let tree = 0; tree < grove.count; tree++) {
       const salt = group * 71 + layer * 137;
       const center = grove.center - grove.width * .5 + step * (tree + .5 + (hash01(tree, salt) - .5) * .32);
-      const dx = Math.abs(az - center) / (step * (.55 + .25 * hash01(tree, salt + 1)));
+      const local = (az - center) / (step * (.55 + .25 * hash01(tree, salt + 1)));
+      const dx = Math.abs(local);
       if (dx >= 1) continue;
       // Low, broadleaf crowns with short faceted shoulders; no conifer teeth.
-      const shape = dx < .38 ? 1 - dx * .20 : (1 - dx) / .62 * .924;
+      let shape = dx < .38 ? 1 - dx * .20 : (1 - dx) / .62 * .924;
+      if (area === 'quail-fields') {
+        // Unequal overlapping crown lobes break the repeated plateau caps.
+        // Keep clear field gaps between groves and a quiet ground contour.
+        const bulge = (offset: number, width: number) => {
+          const t = (local - offset) / width;
+          return Math.sqrt(Math.max(0, 1 - t * t));
+        };
+        const lean = (hash01(tree, salt + 3) - .5) * .28;
+        shape = Math.max(bulge(lean, .72), bulge(-.43, .52) * .73, bulge(.46, .49) * .82);
+        shape *= Math.min(1, (1 - dx) * 10);
+      }
       const edge = .55 + .45 * Math.sin(Math.PI * (tree + .5) / grove.count);
       crown = Math.max(crown, grove.height * shape * edge * (.72 + .28 * hash01(tree, salt + 2)));
     }
@@ -830,7 +842,7 @@ export class SkySystem implements Subsystem {
    * Firewatch e3-5 treeline).
    */
   private buildRidges(ctx: Ctx): void {
-    const backdrop = this.quail || this.areaId === 'chukar-ridge' || this.areaId === 'pheasant-coverts';
+    const backdrop = this.quail || this.areaId === 'chukar-ridge' || this.areaId === 'pheasant-coverts' || this.areaId === 'sharptail-prairie';
     const rng = mulberry32(0x51d9e5);
     for (let l = 0; l < this.ridgeProfile.layers.length; l++) {
       const layer = this.ridgeProfile.layers[l];
@@ -981,7 +993,7 @@ export class SkySystem implements Subsystem {
       });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.frustumCulled = false;
-      // Quail, Chukar and Pheasant camera-following rings are backdrops: their radii
+      // These large properties use camera-following backdrop rings: their radii
       // lie inside the playable property and must never cut off distant props.
       // Paint after the dome, before the real world, with far bands first.
       // Other properties retain their existing depth-resolved ridge order.
@@ -1083,7 +1095,7 @@ export class SkySystem implements Subsystem {
       }
       // Exposed Chukar slopes and the long prairie view fade to scene fog.
       // Match it at their backdrop bases instead of adding a bright strip.
-      (ru.uHaze.value as THREE.Color).copy(this.areaId === 'chukar-ridge' || this.areaId === 'sharptail-prairie' ? this.fogCol : this.hazeCol);
+      (ru.uHaze.value as THREE.Color).copy(this.quail || this.areaId === 'chukar-ridge' || this.areaId === 'sharptail-prairie' ? this.fogCol : this.hazeCol);
       (ru.uSpill.value as THREE.Color).setHex(spec.hotBand);
       ru.uSpillStrength.value = spec.hotStrength * 0.55 * (1 - 0.55 * this.ridgeProfile.layers[l].far);
       (ru.uSunXZ.value as THREE.Vector2).set(sx / sunFlatLen, sz / sunFlatLen);
