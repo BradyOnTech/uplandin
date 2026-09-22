@@ -197,6 +197,13 @@ const CAPTURE_STAGGER_MS = 800;
 /** A glide that touches grass after this long has put down — gone. */
 const LAND_MIN_AIR_MS = 1200;
 
+/** A prairie bird can remain visibly airborne after its 80m gameplay escape.
+ * Let only that already-resolved silhouette finish its existing trajectory;
+ * ground contact, 180m from launch hunter, or 6s ends the decorative tail.
+ * This does not extend shot range, target eligibility or the active rise. */
+const SHARPTAIL_DEPARTURE_RANGE_M = 180;
+const SHARPTAIL_DEPARTURE_MS = 6000;
+
 /** Pool = the airborne budget. Gameplay never holds more than a wave +
  *  sleepers aloft; the pool is sized for the capture covey stage, where
  *  a full 9-13 bird covey is up at once (~43 draw calls, ~2k tris). */
@@ -209,7 +216,7 @@ const TUMBLE_RAD_PER_S = (540 * Math.PI) / 180;
 const DEBRIS_N = 24;
 const DEBRIS_LIFE_MS = 900;
 
-type SlotStatus = 'idle' | 'waiting' | 'flying' | 'falling' | 'grounded' | 'done';
+type SlotStatus = 'idle' | 'waiting' | 'flying' | 'departing' | 'falling' | 'grounded' | 'done';
 
 export interface RayBirdTarget {
   simId: number;
@@ -288,6 +295,8 @@ interface Slot {
   vzW: number;
   airMs: number;
   previousAirMs?: number;
+  /** Presentation-only time since the authoritative escape was credited. */
+  departureMs?: number;
   bank?: number;
   bankYaw?: number;
   fallPose?: { startMs: number; rotation: THREE.Euler; groundedMs?: number };
@@ -1008,8 +1017,11 @@ export class BirdsSystem implements Subsystem {
         }
         continue;
       }
-      // flying
-      anyAloft = true;
+      // Flying targets and already-escaped Sharptail silhouettes share the
+      // exact flight controller. Only live targets hold the hunt open.
+      const departing = s.status === 'departing';
+      if (!departing) anyAloft = true;
+      if (departing) s.departureMs = (s.departureMs ?? 0) + dtMs;
       s.previousAirMs = s.airMs;
       s.airMs += dtMs;
       const fl = s.species.flight;
@@ -1096,7 +1108,7 @@ export class BirdsSystem implements Subsystem {
         }
       }
       const hawk = this.hunt.falconry;
-      if (hawk?.targetId === s.simId && (hawk.phase === 'launching' || hawk.phase === 'chasing')) evadeGoshawk(s, s.simId, hawk.position);
+      if (!departing && hawk?.targetId === s.simId && (hawk.phase === 'launching' || hawk.phase === 'chasing')) evadeGoshawk(s, s.simId, hawk.position);
       this.updatePheasantBank(s, dt);
       s.x += s.vxW * dt;
       s.z += s.vzW * dt;
@@ -1110,16 +1122,32 @@ export class BirdsSystem implements Subsystem {
           // have no landing and cannot silently reappear elsewhere.
           s.status = 'done';
           s.root.visible = false;
-          this.hunt.resolveBird(s.simId, 'escaped', this.spatialEncounter ? { x: s.x, z: s.z } : undefined);
+          // A decorative departure already escaped: its later put-down must
+          // never grant a second credit or relocate a new hidden single.
+          if (!departing) this.hunt.resolveBird(s.simId, 'escaped', this.spatialEncounter ? { x: s.x, z: s.z } : undefined);
           continue;
         }
       }
       const rx = s.x - flight.hunterX;
       const rz = s.z - flight.hunterZ;
+      if (departing) {
+        if (rx * rx + rz * rz > SHARPTAIL_DEPARTURE_RANGE_M * SHARPTAIL_DEPARTURE_RANGE_M ||
+            s.departureMs! >= SHARPTAIL_DEPARTURE_MS) {
+          s.status = 'done';
+          s.root.visible = false;
+        }
+        continue;
+      }
       const pursued = hawk?.targetId === s.simId && (hawk.phase === 'launching' || hawk.phase === 'chasing');
       if (birdFlightExpired(rx * rx + rz * rz, s.airMs, !!s.spatialFlight?.target, pursued)) {
-        s.status = 'done';
-        s.root.visible = false;
+        // Only a range exit gets the visual continuation. Genuine landings
+        // above, the 15s authority timeout, other species, and raptor pursuit
+        // retain their existing behavior.
+        const continueVisually = this.spatialEncounter && s.species.id === 'sharptail' &&
+          !!s.spatialFlight && !s.spatialFlight.target && s.airMs <= 15000;
+        s.status = continueVisually ? 'departing' : 'done';
+        s.departureMs = continueVisually ? 0 : undefined;
+        s.root.visible = continueVisually;
         this.hunt.resolveBird(s.simId, 'escaped');
       }
     }
@@ -1363,6 +1391,9 @@ export class BirdsSystem implements Subsystem {
           break;
         }
       }
+      // Decorative departures have no authority and must never reserve a
+      // scarce pool slot ahead of a newly flushed, shootable bird.
+      if (!slot) slot = this.slots.find(candidate => candidate.status === 'departing') ?? null;
       if (!slot) break; // Keep the queued id until a presentation slot is free.
       slot.launchSound?.stop();
       slot.launchSound = undefined;
@@ -1457,6 +1488,7 @@ export class BirdsSystem implements Subsystem {
       }
       slot.airMs = 0;
       slot.previousAirMs = 0;
+      slot.departureMs = undefined;
       slot.fallPose = undefined;
       slot.bank = 0;
       slot.bankYaw = undefined;
@@ -1547,7 +1579,7 @@ export class BirdsSystem implements Subsystem {
   }
 
   holdQuarry(id: number, x: number, y: number, z: number): void {
-    const slot = this.slots.find(s => s.simId === id && s.status !== 'idle' && s.status !== 'done');
+    const slot = this.slots.find(s => s.simId === id && s.status !== 'idle' && s.status !== 'done' && s.status !== 'departing');
     if (!slot) return;
     slot.status = 'grounded'; slot.x=x; slot.y=y; slot.z=z;
     slot.launchSound?.stop(); slot.launchSound=undefined;
@@ -1710,7 +1742,7 @@ export class BirdsSystem implements Subsystem {
           }
         }
       }
-      const visible = s.status === 'flying' || s.status === 'falling' || s.status === 'grounded';
+      const visible = s.status === 'flying' || s.status === 'departing' || s.status === 'falling' || s.status === 'grounded';
       s.root.visible = visible;
       if (!visible) continue;
       if (s.species.id === 'ringneck' && s.body.morphTargetInfluences) {
