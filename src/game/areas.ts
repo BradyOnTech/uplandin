@@ -5,6 +5,7 @@ import type { SpeciesShare } from './species';
 import type { Vec2 } from './types';
 import { pheasantDryCover, pheasantShoreCover, pheasantWestFence } from './pheasantHabitat';
 import { chukarCoverPatches } from './chukarLandscape';
+import { quailCoverPatches } from './quailComposition';
 
 export type LandmarkKind = 'gate' | 'windmill' | 'barn' | 'pond' | 'fence';
 
@@ -517,7 +518,7 @@ export const AREAS: AreaConfig[] = [
     world: world(1200, 700),
     terrain: terrain('prairie', 1971),
     ...quailGeography(),
-    patches: [...scatterRects(world(1200, 700), { count: 26, minW: 70, maxW: 130, minH: 40, maxH: 75 }, mulberry32(11)), ...entryCover(1200, 700, 11)],
+    patches: quailCoverPatches(),
     stocking: 1.5,
     speciesMix: [{ speciesId: 'bobwhite', weight: 1 }],
   },

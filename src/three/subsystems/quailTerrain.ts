@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { quailOpeningAt, quailPlumAt } from '../../game/quailComposition';
 import type { LandscapeModel } from '../../game/landscape';
 import { PROPERTY_PX_TO_M } from '../../game/landscape';
 import { quailCoverAt, quailDrainageAt, quailSwardAt } from '../../game/quailLandscape';
@@ -18,6 +19,7 @@ const PAINT = {
   sward: new THREE.Color(0x858461),
   openSoil: new THREE.Color(0xab9273),
   edgeLitter: new THREE.Color(0x83744d),
+  plumLitter: new THREE.Color(0x696c48),
 };
 const routeSurface = { dry: 0, edge: 0 };
 
@@ -43,7 +45,9 @@ export function paintQuailGround(landscape: LandscapeModel, x: number, y: number
   out.lerp(PAINT.sward, Math.max(0, (sward - 0.52) * 1.5));
   if (landscape.area.id === 'quail-fields') {
     quailSouthRouteAt(x, y, routeSurface);
-    out.lerp(PAINT.openSoil, routeSurface.dry * (.45 + (1 - stocking) * .25));
+    const opening = Math.max(routeSurface.dry, quailOpeningAt(x, y));
+    out.lerp(PAINT.openSoil, opening * (.55 + (1 - stocking) * .25));
+    out.lerp(PAINT.plumLitter, quailPlumAt(x, y) * cover * .58);
     out.lerp(PAINT.edgeLitter, routeSurface.edge * cover * .40);
   }
   const road = quailTrackDistanceAt(landscape.area, x, y, 16) * PROPERTY_PX_TO_M;

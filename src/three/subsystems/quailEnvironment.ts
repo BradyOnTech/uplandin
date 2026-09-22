@@ -1,3 +1,4 @@
+import { quailOpeningAt, quailPlumAt } from '../../game/quailComposition';
 import { quailGroundPropObstacles, quailGroundPropOccupies } from './quailGroundProps';
 import { applyQuailFoliageLight } from './quailFoliage';
 import * as THREE from 'three';
@@ -210,7 +211,8 @@ export class QuailEnvironmentSystem implements Subsystem {
     for (let ty = 0; ty < bounds.h; ty += TILE) {
       for (let tx = 0; tx < bounds.w; tx += TILE) {
         const shorts: Instance[] = []; const talls: Instance[] = []; const shrubs: Instance[] = []; const sages: Instance[] = []; const far: Instance[] = [];
-        // Keep the established woody candidates and their seeded draws intact.
+        // The same deterministic candidates now collect around the shared
+        // plum refuges. Open sward remains open for dog casts between coverts.
         for (let y = ty; y < Math.min(ty + TILE, bounds.h); y += 1.2) {
           for (let x = tx; x < Math.min(tx + TILE, bounds.w); x += 1.2) {
             const rng = mulberry32(quailSeed(Math.round(x * 10), Math.round(y * 10), 3));
@@ -228,9 +230,10 @@ export class QuailEnvironmentSystem implements Subsystem {
             const closeDetail = rng();
             void closeDetail;
             if (vigorous) rng();
-            if (road > 5 && !quailGroundPropOccupies(px,py,1.6) && !quailKitOccupies(this.landscape.area,px,py) && rng() < (0.005 + cover * 0.013 + drain * 0.006) * patch) {
-              const s = 0.85 + rng() * 1.35;
-              if (drain < 0.3 && rng() < 0.72) sages.push({ ...v, sy: s * 0.85, sx: s, sz: s, color: rng() < 0.5 ? 0x88967c : 0x969b7b });
+            const plum = quailPlumAt(px, py) * cover, opening = quailOpeningAt(px, py);
+            if (road > 5 && opening < .3 && !quailGroundPropOccupies(px,py,1.6) && !quailKitOccupies(this.landscape.area,px,py) && rng() < (0.0014 + plum * .115 + drain * .0015) * patch) {
+              const s = 0.85 + rng() * 1.15 + plum * .30;
+              if (plum < .15 && drain < 0.3 && rng() < 0.72) sages.push({ ...v, sy: s * 0.85, sx: s, sz: s, color: rng() < 0.5 ? 0x88967c : 0x969b7b });
               else shrubs.push({ ...v, sy: s * 0.8, sx: s * 1.2, sz: s, color: rng() < 0.55 ? COLOR.sage : COLOR.sageLight });
             }
           }
@@ -253,11 +256,12 @@ export class QuailEnvironmentSystem implements Subsystem {
             const sward = quailSwardAt(px, py), drain = quailDrainageAt(px, py);
             const stocking = quailGrassStockingAt(px, py);
             quailSouthRouteAt(px, py, routeSurface);
-            const density = (.025 + sward * .12 + cover * .13 + mass * 1.15 + drain * .13)
-              * (.22 + stocking * .80) * (1 - routeSurface.dry * .65);
+            const opening = quailOpeningAt(px, py), plum = quailPlumAt(px, py) * cover;
+            const density = (.025 + sward * .12 + cover * .10 + mass * 1.15 + drain * .13)
+              * (.22 + stocking * .80) * (1 - Math.max(routeSurface.dry, opening) * .72) * (1 - plum * .50);
             if (rng() > density) continue;
             const vigorous = rng() < mass * 1.15 + cover * .14;
-            const scale = (.94 + rng() * .42 + mass * .08) * (.82 + stocking * .23) * (1 - routeSurface.dry * .32);
+            const scale = (.94 + rng() * .42 + mass * .08) * (.82 + stocking * .23) * (1 - Math.max(routeSurface.dry, opening) * .38);
             this.color.setHex(vigorous ? COLOR.straw : COLOR.dry);
             if (vigorous) this.color.lerp(dryStem, rng() * .3);
             else this.color.lerp(dampLeaf, drain * .48);

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { QUAIL_COVERTS } from '../../game/quailComposition';
 import type { AreaConfig } from '../../game/areas';
 import { PROPERTY_PX_TO_M, type LandscapeModel } from '../../game/landscape';
 import { mulberry32 } from '../../game/math';
@@ -72,24 +73,20 @@ function driftIndex(area: AreaConfig): DriftIndex {
       [609, 408, 11, 13, -.35], [615, 390, 12, 13, -.5],
       [636, 362, 12, 14, .3], [645, 343, 14, 15, .2],
     ]) add(x, y, rx, ry, angle, quailSeed(x, y, 61));
-    for (const [n, patch] of area.patches.entries()) {
-      // The two entry rectangles use the explicit groups above.
-      if (n >= area.patches.length - 2) continue;
-      const rng = mulberry32(quailSeed(Math.round(patch.x), Math.round(patch.y), 63));
-      // Four overlapping shoulders trace one uneven contour across the
-      // covert. Two shorter offshoots give it depth without six isolated,
-      // similarly sized ovals that reveal the habitat rectangle from afar.
-      const bend = (rng() - .5) * .7, phase = rng() * Math.PI * 2;
+    for (const covert of QUAIL_COVERTS) for (let i = 1; i < covert.points.length; i++) {
+      const a = covert.points[i - 1], b = covert.points[i];
+      const dx = b.x - a.x, dy = b.y - a.y, length = Math.hypot(dx, dy), angle = Math.atan2(dy, dx);
+      const rng = mulberry32(quailSeed(a.x, a.y, 63));
+      // Native grass makes an uneven apron around the plum spine. Following
+      // the real edge removes the repeated axis-aligned rectangle islands.
       for (let n = 0; n < 6; n++) {
-        const along = n < 4 ? .15 + n * .23 : n === 4 ? .31 : .70;
-        const shoulder = .48 + Math.sin(along * 4.2 + phase) * .16;
-        const cross = n < 4 ? shoulder : shoulder + (n === 4 ? -.24 : .22);
-        const x = patch.x + patch.w * along;
-        const y = patch.y + patch.h * cross;
-        const rx = Math.max(10, patch.w * (n < 4 ? .19 : .12)) * (.87 + rng() * .21);
-        const ry = Math.max(3.8, patch.h * (n < 4 ? .18 : .12)) * (.84 + rng() * .26);
-        const angle = bend + Math.cos(along * 4.2 + phase) * .21 + (n >= 4 ? .42 : 0);
-        add(x, y, rx, ry, angle, quailSeed(Math.round(x), Math.round(y), 67));
+        const t = .14 + Math.floor(n / 2) * .34;
+        const offset = (n % 2 ? -1 : 1) * (covert.plumWidth + 3 + rng() * 5);
+        const x = a.x + dx * t - dy / length * offset;
+        const y = a.y + dy * t + dx / length * offset;
+        const rx = Math.max(12, length * .25) * (.85 + rng() * .24);
+        const ry = 6 + rng() * 5;
+        add(x, y, rx, ry, angle + (rng() - .5) * .22, quailSeed(Math.round(x), Math.round(y), 67));
       }
     }
   }

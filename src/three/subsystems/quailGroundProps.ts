@@ -15,6 +15,15 @@ export const QUAIL_GROUND_PROPS = [
   { habit: 'split-log', x: 630, y: 340, angle: .8, scale: .9 },
   { habit: 'fallen-limb', x: 626, y: 342, angle: -1.2, scale: 1 },
   { habit: 'slab', x: 635, y: 338, angle: .5, scale: .85 },
+  // Small fallen-wood groups continue the same field vocabulary beyond the
+  // entry, tucked into plum edges rather than obstructing the walking loop.
+  { habit: 'split-log', x: 385, y: 327, angle: -.4, scale: .9 },
+  { habit: 'fallen-limb', x: 392, y: 324, angle: 1.2, scale: 1.1 },
+  { habit: 'slab', x: 388, y: 322, angle: .7, scale: .65 },
+  { habit: 'split-log', x: 854, y: 260, angle: .6, scale: .85 },
+  { habit: 'fallen-limb', x: 858, y: 263, angle: -1.1, scale: 1 },
+  { habit: 'fallen-limb', x: 928, y: 490, angle: .8, scale: 1.1 },
+  { habit: 'slab', x: 930, y: 493, angle: -.2, scale: .8 },
 ] as const;
 
 /** Small root clearance follows each prop rather than mowing a circular patch. */
