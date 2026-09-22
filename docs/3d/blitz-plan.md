@@ -6,6 +6,8 @@ This is the execution plan prepared September 22, 2026, revised to include the u
 
 **Execution checkpoint — September 22**
 
+The current polish checkpoint is `be64317`, built into `output/blitz-be64317` and served locally on port 4602. It passes 124 test files / 950 tests and the production build. The user reopened polish across Chukar, Quail and Sharptail; Quail's successful southern-plains identity remains the direction. This wave adds weathered Quail tracks and connected grass aprons, refined Chukar plants/ground/path transitions, a softer Quail skyline, correct Sharptail backdrop depth, and species-specific Sharptail plumage, wing recovery and flush phrasing. Matched High/Lite images and ordinary entry walks support the environment pass. Review also caught and fixed distant Chukar soil aliasing and Sharptail silhouettes disappearing at the 80-metre gameplay escape boundary. A seven-second ordinary Sharptail encounter verifies continued departure rendering with one escape credit per bird; its low grass crest limits distant silhouette visibility. See `regional-polish-blitz.md` for exact evidence and remaining whole-hunt/device limits. This supersedes the earlier Quail freeze and port 4597 as the latest checkpoint; earlier builds remain useful historical evidence.
+
 The combined candidate at `3735bfc` passes 117 test files / 909 tests and the production build. Touch-only difficulty assistance, installed 3D launch and staged updates, opt-in performance capture, the western Chukar composition pass, both prairie-map circuits, and a second regional vegetation/ground/atmosphere pass are integrated. Chukar is committed as `ccfe6fa`; Quail/Sharptail composition as `c9f2350` and `491a65e`; regional atmosphere and vegetation as `b2196eb` and `3735bfc`. This is a code and browser checkpoint, not completed-phone or complete-hunt acceptance.
 
 The separate chat **Quail and Sharptail map production** delivered from `/Users/bradya/.codex/worktrees/quail-sharptail-blitz/uplandin` on `codex/quail-sharptail-blitz`, starting at `201a809`. It owned both maps and serialized their shared area/landscape hooks while its subagents divided map-specific files. This session delivered mobile/PWA/performance and Chukar, then reviewed and integrated the map commits. The earlier proposed single-map ordering was relaxed to allow independent Quail and Sharptail work while Chukar review continued.
@@ -18,7 +20,7 @@ The regional follow-up gives Quail connected dark plum crowns, sandy/russet open
 
 The first regional production artifact is `output/blitz-3735bfc`, preserved on port 4595. Earlier candidates remain intact. See `regional-identity-checkpoint.md` and `regional-atmosphere.md` for separate worker evidence. Eighteen combined staged views passed without browser errors before the user's next review redirected work to Sharptail.
 
-The user then accepted Quail's visual design and found Sharptail too basic. Quail is frozen as the accepted reference. A focused Sharptail follow-up adds rotated rolling ridges, authoritative curved routes, varied basal grass, broken wheel wear, painted ground litter and a bespoke Line Shack. Full validation at `7e402dc` passes 120 files / 922 tests; the final art adjustment at `69e7914` passes 41 relevant checks and a new production build. Seven staged views and a 33-metre ordinary Lite approach/return were reviewed, followed by two matched finishing views. See `sharptail-refinement.md` for exact evidence and remaining limits. The latest preserved runtime is `output/blitz-69e7914`, served on port 4597; documentation-only commits do not alter that build.
+The user then accepted Quail's visual design and found Sharptail too basic. Quail was held as the accepted reference during that Sharptail follow-up. Rotated rolling ridges, authoritative curved routes, varied basal grass, broken wheel wear, painted ground litter and a bespoke Line Shack were added. Full validation at `7e402dc` passed 120 files / 922 tests; the final art adjustment at `69e7914` passed 41 relevant checks and a new production build. Seven staged views and a 33-metre ordinary Lite approach/return were reviewed, followed by two matched finishing views. See `sharptail-refinement.md` for exact evidence and remaining limits. `output/blitz-69e7914` on port 4597 is an earlier preserved runtime, not the current candidate. Subsequent Sharptail habitat/grass/component work led to the `605e46d` baseline on port 4600 used for this wave's matched comparisons.
 
 **Starting point**
 
@@ -156,6 +158,7 @@ Defer an all-map sweep or brand-new properties, dog anatomy/rigging or all-breed
 
 **Relevant current records**
 
+- `docs/3d/regional-polish-blitz.md`: current three-map polish checkpoint, Sharptail bird presentation, verified results and acceptance limits.
 - `docs/3d/mobile-playtest.md`: current touch, sight-picture and retrieve implementation history.
 - `docs/3d/production-goal.md`: complete-hunt priorities and limits of staged/assisted evidence.
 - `docs/3d/chukar-production/README.md`: accepted geology direction, route work and outstanding western/return/hunt checks.
