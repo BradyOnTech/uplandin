@@ -17,6 +17,7 @@ import { getSpecies } from '../game/species';
 import type { GunSystem } from './subsystems/gun';
 import type { Hunt3DSystem } from './subsystems/hunt3d';
 import { requestOfflineUpdate, type OfflineUpdateState } from './offline';
+import { openHuntJournal } from './huntJournalView';
 
 /** Lifecycle UI owns pause and preferences, never hunt outcomes. */
 export class FieldInterface {
@@ -93,10 +94,15 @@ export class FieldInterface {
     }, { signal });
     document.getElementById('retry-field')!.addEventListener('click', () => location.reload(), { signal });
     document.getElementById('pause-hunt')!.addEventListener('click', () => this.pause(), { signal });
+    for (const id of ['field-journal-open', 'summary-journal-open']) {
+      const button = document.getElementById(id);
+      button?.addEventListener('click', () => openHuntJournal(loadCareer(), button), { signal });
+    }
     document.getElementById('app-update-button')!.addEventListener('click', () => {
       if (this.canApplyOfflineUpdate()) requestOfflineUpdate();
     }, { signal });
     document.addEventListener('keydown', (event) => {
+      if ((document.getElementById('hunt-journal') as HTMLDialogElement | null)?.open) return;
       if (event.code === 'Escape' && document.body.classList.contains('field-map-open')) return;
       if (event.code === 'Escape' && this.readyState && !this.capture && !this.complete) {
         event.preventDefault();

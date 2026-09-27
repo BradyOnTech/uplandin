@@ -1,6 +1,7 @@
 import { levelForXp } from './breeds';
 import { hunterLevelForXp } from './progression';
 import { advanceWeeks, nextSeason, startingDate, type SeasonDate } from './season';
+import { sanitizeHuntJournal, type CareerJournalEntry } from './huntJournal';
 
 /**
  * Career persistence v2: hunt totals plus the kennel, the hunter profile,
@@ -50,6 +51,8 @@ export interface Career {
   date: SeasonDate;
   /** Home ground: hunts here cost 1 week, trips elsewhere cost 2. */
   homeRegionId: string | null;
+  /** Latest settled hunts, newest first. Absent on saves made before the journal. */
+  recentHunts?: CareerJournalEntry[];
 }
 
 export const STARTER_REGION = 'southern-plains';
@@ -226,6 +229,7 @@ function migrate(parsed: Record<string, unknown>): Career {
       regionsUnlocked: v2.regionsUnlocked ?? base.regionsUnlocked,
       date: v2.date ?? base.date,
       homeRegionId: v2.homeRegionId ?? null,
+      ...(v2.recentHunts === undefined ? {} : { recentHunts: sanitizeHuntJournal(v2.recentHunts) }),
     };
   }
   return {

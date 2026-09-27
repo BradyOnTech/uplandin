@@ -11,6 +11,7 @@ import { unlocksAtLevel } from './progression';
 import { regionOfArea } from './regions';
 import { HOME_HUNT_WEEKS, seasonOver, TRIP_HUNT_WEEKS } from './season';
 import type { HuntState } from './state';
+import { HUNT_JOURNAL_LIMIT, readHuntJournal, type CareerJournalEntry } from './huntJournal';
 
 export const HEN_FINE_XP = 4;
 
@@ -73,6 +74,22 @@ export function settleCareerHunt(
 
   const home = regionOfArea(hunt.areaId).id === next.homeRegionId;
   const weeks = home ? HOME_HUNT_WEEKS : TRIP_HUNT_WEEKS;
+  const entry: CareerJournalEntry = {
+    huntNumber: next.hunts,
+    areaId: hunt.areaId,
+    date: { ...career.date },
+    retrieved: hunt.birds.filter((bird) => bird.state === 'retrieved').length,
+    downed: hunt.downed,
+    escaped: hunt.escaped,
+    pointFlushes: dogs.reduce((sum, dog, slot) => sum + (dog ? hunt.dogWork[slot]?.pointFlushes ?? 0 : 0), 0),
+    doubles: hunt.doubles,
+    henDowns: hunt.henDowns,
+    hunterXp: hunterGained,
+    dogs: dogs.filter((dog): dog is KennelDog => dog !== null).map(({ name, breedId }) => ({ name, breedId })),
+  };
+  // The existing renderer save writes progression, calendar and this snapshot
+  // together. There is no second key or reconstructed pre-journal history.
+  next = { ...next, recentHunts: [entry, ...readHuntJournal(career)].slice(0, HUNT_JOURNAL_LIMIT) };
   next = advanceCareerWeeks(next, weeks);
 
   return {

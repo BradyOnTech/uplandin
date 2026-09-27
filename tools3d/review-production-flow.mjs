@@ -25,6 +25,12 @@ const startingCareer = week => ({
   hunter: { level: 1, xp: 9, shotgunId: 'remington-870', truckTier: 0, dogBoxTier: 1 },
   regionsUnlocked: ['southern-plains'], date: { season: 1, week }, homeRegionId: 'southern-plains',
 });
+const journalHistory = () => Array.from({ length: 30 }, (_, i) => ({
+  huntNumber: 40 - i, areaId: ['sharptail-prairie', 'chukar-ridge', 'quail-fields', 'pheasant-coverts'][i % 4],
+  date: { season: 2, week: 20 - (i % 21) }, retrieved: 2, downed: 3, escaped: 7,
+  pointFlushes: 4, doubles: 1, henDowns: i === 2 ? 1 : 0, hunterXp: 9,
+  dogs: [{ name: 'Millie of the Northern Prairie', breedId: 'english-setter' }, { name: 'Boone', breedId: 'gsp' }],
+}));
 const cases = [
   ...['sharptail-prairie', 'chukar-ridge', 'quail-fields', 'pheasant-coverts'].map(area => ({
     name: `replay-${area}`, query: `area=${area}&breed=gsp&quality=lite&seed=1184004868`, width: 844, height: 390,
@@ -32,6 +38,9 @@ const cases = [
   { name: 'career-landscape', query: 'play=career&area=quail-fields&quality=lite&seed=11', width: 844, height: 390, week: 9 },
   { name: 'career-portrait', query: 'play=career&area=quail-fields&quality=lite&seed=11', width: 390, height: 844, week: 9 },
   { name: 'career-season-end', query: 'play=career&area=quail-fields&quality=lite&seed=11', width: 844, height: 390, week: 21 },
+  { name: 'journal-full-landscape', query: 'play=career&area=quail-fields&quality=lite&seed=11', width: 844, height: 390, week: 9, journalOnly: 'full' },
+  { name: 'journal-full-portrait', query: 'play=career&area=quail-fields&quality=lite&seed=11', width: 390, height: 844, week: 9, journalOnly: 'full' },
+  { name: 'journal-legacy', query: 'play=career&area=quail-fields&quality=lite&seed=11', width: 390, height: 844, week: 9, journalOnly: 'legacy' },
 ];
 try {
   for (const setup of cases.filter(item => !selected.length || selected.includes(item.name))) {
@@ -47,7 +56,8 @@ try {
           localStorage.setItem('uplandin.career.v1', JSON.stringify(career));
           sessionStorage.setItem('production-flow-fixture', '1');
         }
-      }, startingCareer(setup.week));
+      }, { ...startingCareer(setup.week), ...(setup.journalOnly === 'full' ? { hunts: 40, recentHunts: journalHistory() }
+        : setup.journalOnly === 'legacy' ? { hunts: 8 } : {}) });
     }
     await page.goto(`${base}/index3d.html?${setup.query}`, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => window.__ready3d, { timeout: 60000 });
@@ -62,6 +72,40 @@ try {
     await wait(150);
     await page.tap('#pause-hunt');
     await page.waitForFunction(() => !document.getElementById('field-overlay').hidden);
+    await page.tap('#field-journal-open');
+    await page.waitForSelector('#hunt-journal[open]');
+    item.pauseJournal = await page.evaluate(() => {
+      const dialog = document.getElementById('hunt-journal'), content = dialog.querySelector('.hunt-journal-content');
+      const close = document.getElementById('hunt-journal-close').getBoundingClientRect();
+      return { modal: dialog.matches(':modal'), count: dialog.querySelectorAll('li').length,
+        copy: dialog.textContent, overflow: dialog.scrollWidth > dialog.clientWidth,
+        scrollable: content.scrollHeight > content.clientHeight,
+        closeVisible: close.height >= 44 && close.top >= 0 && close.bottom <= innerHeight,
+        saved: localStorage.getItem('uplandin.career.v1') };
+    });
+    assert.equal(item.pauseJournal.saved, item.start.career, 'Opening the pause journal settled or changed a hunt');
+    assert.equal(item.pauseJournal.modal, true); assert.equal(item.pauseJournal.overflow, false);
+    assert.equal(item.pauseJournal.closeVisible, true);
+    assert.equal(item.pauseJournal.count, setup.journalOnly === 'full' ? 30 : 0);
+    if (setup.journalOnly === 'legacy') assert.match(item.pauseJournal.copy, /earlier hunts.*career totals/);
+    if (setup.journalOnly) {
+      await page.screenshot({ path: resolve(out, `${setup.name}.png`) });
+      if (setup.journalOnly === 'full') {
+        assert.equal(item.pauseJournal.scrollable, true);
+        await page.evaluate(() => {
+          const content = document.querySelector('.hunt-journal-content'); content.scrollTop = content.scrollHeight;
+        });
+        await page.screenshot({ path: resolve(out, `${setup.name}-last.png`) });
+      }
+    }
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.getElementById('hunt-journal'));
+    assert.equal(await page.evaluate(() => document.getElementById('field-overlay').hidden), false, 'Escape resumed the paused hunt behind the journal');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'field-journal-open');
+    if (setup.journalOnly) {
+      assert.equal(await page.evaluate(() => localStorage.getItem('uplandin.career.v1')), item.start.career);
+      assert.deepEqual(item.errors, []); await context.close(); continue;
+    }
     await page.tap('#end-hunt');
     await page.waitForFunction(() => !document.getElementById('hunt-summary').hidden);
     item.summary = await page.evaluate(() => {
@@ -84,6 +128,8 @@ try {
       const career = JSON.parse(item.summary.career);
       assert.equal(career.hunts, 1); assert.equal(career.hunter.level, 2);
       assert.equal(career.date.week, setup.week + 1);
+      assert.equal(career.recentHunts.length, 1);
+      assert.equal(career.recentHunts[0].date.week, setup.week, 'Journal changed the date to the following week');
       item.awardVisible = await page.evaluate(() => {
         const heading = document.querySelector('.field-notes-career h3').getBoundingClientRect();
         const footer = document.querySelector('.hunt-summary-actions').getBoundingClientRect();
@@ -97,6 +143,26 @@ try {
     const file = resolve(out, `${setup.name}.png`);
     const png = await page.screenshot({ path: file, clip: { x: 0, y: 0, width: setup.width, height: setup.height } });
     item.image = { file, ...await verifyEvidenceImage(page, png, token) };
+    await page.tap('#summary-journal-open');
+    await page.waitForSelector('#hunt-journal[open]');
+    item.journal = await page.evaluate(() => ({
+      modal: document.getElementById('hunt-journal').matches(':modal'),
+      count: document.querySelectorAll('.hunt-journal-list > li').length,
+      copy: document.getElementById('hunt-journal').textContent,
+      overflow: document.getElementById('hunt-journal').scrollWidth > document.getElementById('hunt-journal').clientWidth,
+      saved: localStorage.getItem('uplandin.career.v1'),
+    }));
+    assert.equal(item.journal.modal, true); assert.equal(item.journal.overflow, false);
+    assert.equal(item.journal.saved, item.summary.career, 'Reading journal changed the career');
+    assert.equal(item.journal.count, setup.week === undefined ? 0 : 1);
+    if (setup.week !== undefined) assert.match(item.journal.copy, /Hunt 1.*Quail Fields/);
+    else assert.match(item.journal.copy, /Complete a Career hunt/);
+    await page.screenshot({ path: resolve(out, `${setup.name}-journal.png`) });
+    // Escape closes only the native journal and returns to the same summary.
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.getElementById('hunt-journal'));
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'summary-journal-open');
+    assert.equal(await page.evaluate(() => document.getElementById('hunt-summary').hidden), false);
     if (setup.week === 21) {
       assert.equal(item.summary.again.hidden, true);
       assert.equal(item.summary.menu.text, 'Return home');

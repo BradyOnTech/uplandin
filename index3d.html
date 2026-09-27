@@ -33,7 +33,7 @@
     <div id="shot-callout" hidden aria-live="assertive"></div>
     <section id="hunt-summary" hidden aria-label="Hunt summary">
       <div id="hunt-summary-content">
-        <h2>HUNT COMPLETE</h2>
+        <div class="hunt-summary-heading"><h2>HUNT COMPLETE</h2><button id="summary-journal-open" type="button">Journal</button></div>
         <div id="hunt-summary-copy"></div>
       </div>
       <div class="hunt-summary-actions">
@@ -151,6 +151,7 @@
           <label>Hunt challenge <select id="challenge-setting" aria-describedby="challenge-help"><option value="relaxed">Relaxed</option><option value="balanced">Balanced</option><option value="wild">Wild</option></select></label>
           <p id="challenge-help">Work the cover and approach quietly. Birds can still surprise you.</p>
         </div>
+        <button id="field-journal-open" type="button">Field journal <span>Recent career hunts</span></button>
         <a class="menu-link" href="./index.html">Back to main menu</a>
         <small id="offline-status" aria-live="polite"></small>
         <details id="install-help">
