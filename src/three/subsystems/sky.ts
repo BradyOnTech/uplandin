@@ -4,6 +4,7 @@ import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
 import { fieldTimeOfDay, type TimeOfDay } from '../palette';
 import { samplePheasantSkyline } from '../pheasantSkyline';
+import { snapShadowTarget } from '../shadowPlacement';
 
 /*
  * SKY subsystem: graded dome, sun disc + glow, layered distant ridges,
@@ -1120,27 +1121,16 @@ export class SkySystem implements Subsystem {
         ctx.camera.position.z,
       );
     }
-    // Light rig follows the camera: the shadow frustum is centered a bit
-    // ahead of the view so midground casters (groves at 60-120 m on the
-    // hero axes) land their long shadows in frame. Snapped to a coarse
-    // grid so the shadow edge doesn't swim texel-by-texel while walking.
+    // Preserve the broad midground coverage while anchoring the depth grid
+    // to whole light-space texels. Ground elevation matters on every property.
     const cam = ctx.camera.position;
     ctx.camera.getWorldDirection(this.fwd);
     const ax = cam.x + this.fwd.x * 55;
     const az = cam.z + this.fwd.z * 55;
-    const snap = 2;
-    const tx = Math.round(ax / snap) * snap;
-    const tz = Math.round(az / snap) * snap;
-    // Chukar climbs well above zero: a flat-ground shadow rig left the
-    // upper benches outside its light-space coverage, losing contact.
-    const ty=this.areaId==='chukar-ridge'&&this.landscape
-      ? Math.round(this.landscape.heightAtWorld(cam.x,cam.z)/snap)*snap : 0;
-    this.sun.target.position.set(tx, ty, tz);
-    this.sun.position.set(
-      tx + this.keyDir.x * 300,
-      ty + this.keyDir.y * 300,
-      tz + this.keyDir.z * 300,
-    );
+    const ty = this.landscape?.heightAtWorld(cam.x, cam.z) ?? 0;
+    const target = this.sun.target.position.set(ax, ty, az);
+    snapShadowTarget(target, this.keyDir, this.sun.shadow.camera, this.sun.shadow.mapSize);
+    this.sun.position.copy(target).addScaledVector(this.keyDir, 300);
     this.fill.target.position.set(cam.x, 0, cam.z);
     this.fill.position.set(
       cam.x + this.fillDir.x * 300,

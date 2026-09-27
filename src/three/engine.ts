@@ -56,13 +56,11 @@ export class Engine {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.shadowMap.enabled = true;
-    // Keep the directional shadow language on the lightweight tier, but use
-    // a single depth sample there. Phones pay for every shadow-map sample on
-    // the ground and dense low-poly cover; a hard shadow preserves the
-    // contact/readability cue while avoiding the filter taps. Three.js 0.185
-    // folds PCFSoftShadowMap into PCFShadowMap, so select the intended modes
-    // explicitly instead of relying on the deprecated alias.
-    renderer.shadowMap.type = quality === 'high' ? THREE.PCFShadowMap : THREE.BasicShadowMap;
+    // Filter both tiers: an unfiltered 1024 map turns a close dog's shadow
+    // into large squares. Lite still uses one quarter of the shadow-map
+    // texels and its smaller geometry/pixel budgets. Keep the broad coverage
+    // for midground trees and rocks instead of shrinking it around the dog.
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 1600);
     const self = this;
     this.ctx = {
