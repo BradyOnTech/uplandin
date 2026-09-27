@@ -4,7 +4,7 @@ import { bindTouchShotControl } from './touchShotControl';
 import { preferredInputMode, saveInputMode, usesTouchControls, touchSensitivity, saveTouchSensitivity, mobileSightPicture, shotAssistancePreference, saveShotAssistancePreference, type InputMode } from './inputMode';
 import { resolveShotAssistance, type ShotAssistancePreference } from './shotAssistance';
 import { HUNT_CHALLENGES, HUNT_CHALLENGE_KEY, parseHuntChallenge } from '../game/huntChallenge';
-import { parseHuntLaunch, resolveThreeHuntChallenge, resolveThreeHuntProfile } from '../game/gameplayMode';
+import { build3DPreparationHref, parseHuntLaunch, resolveThreeHuntChallenge, resolveThreeHuntProfile } from '../game/gameplayMode';
 import { GUNS, getGun, unlockedGuns } from '../game/guns';
 import { loadCareer, saveCareer } from '../game/career';
 import { loadQuickConfig, saveQuickConfig } from '../game/quick';
@@ -38,6 +38,8 @@ export class FieldInterface {
   private falconry = resolveThreeHuntProfile(location.search).quick?.huntingMethod === 'goshawk';
   constructor(private engine: Engine, landscape: LandscapeModel) {
     const signal = this.abort.signal;
+    const preparationLink = document.getElementById('field-preparation') as HTMLAnchorElement | null;
+    if (preparationLink) preparationLink.href = build3DPreparationHref(location.search, landscape.area.id, landscape.dropPoint.id);
     document.body.classList.toggle('capture', this.capture);
     document.body.classList.toggle('touch-controls-active', this.touch);
     const placeEndControl = () => {

@@ -12,7 +12,7 @@ export default defineConfig({
     writeBundle(options, bundle) {
       const directory = resolve(options.dir ?? 'dist');
       const files = [
-        'index.html', 'index3d.html', 'shotguns3d.html', 'manifest.webmanifest', 'manifest3d.webmanifest', 'icon-192.png', 'icon-512.png',
+        'index.html', 'index3d.html', 'prepare3d.html', 'shotguns3d.html', 'manifest.webmanifest', 'manifest3d.webmanifest', 'icon-192.png', 'icon-512.png',
         'textures/terrain/prairie-painted.webp',
         'textures/terrain/chukar-dry-ground.webp',
         'textures/terrain/wet-alder-painted.webp',
@@ -44,6 +44,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         three: resolve(__dirname, 'index3d.html'),
+        preparation: resolve(__dirname, 'prepare3d.html'),
         shotguns: resolve(__dirname, 'shotguns3d.html'),
         poc: resolve(__dirname, 'frame-poc.html'),
       },

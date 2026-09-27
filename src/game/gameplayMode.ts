@@ -75,6 +75,12 @@ export function build3DHuntHref(launch: HuntLaunch, dropPointId?: string): strin
   return `./index3d.html?${params.toString()}`;
 }
 
+/** Return to preparation with this property's entry and the same save mode. */
+export function build3DPreparationHref(search: string, areaId: string, dropPointId: string): string {
+  const mode = parseHuntLaunch(search)?.kind === 'career' ? 'career' : 'quick';
+  return `./prepare3d.html?${new URLSearchParams({ mode, area: areaId, drop: dropPointId })}`;
+}
+
 export function parseDropPointId(search: string): string | undefined {
   return isFalconryPractice(search) ? FALCONRY_PRACTICE.drop : new URLSearchParams(search).get('drop') ?? undefined;
 }

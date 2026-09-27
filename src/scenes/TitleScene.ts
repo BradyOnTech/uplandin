@@ -56,13 +56,13 @@ export class TitleScene extends Phaser.Scene {
         y: 169,
         label: 'CAREER',
         sub: 'RAISE YOUR DOG. WORK THE MAP.',
-        go: () => this.scene.start(career.kennel.length === 0 ? 'BreedScene' : 'MapScene'),
+        go: () => mode === '3d' ? location.assign('./prepare3d.html?mode=career') : this.scene.start(career.kennel.length === 0 ? 'BreedScene' : 'MapScene'),
       },
       {
         y: 207,
         label: 'QUICK HUNT',
         sub: 'EVERYTHING UNLOCKED. NOTHING SAVED.',
-        go: () => this.scene.start('QuickScene'),
+        go: () => mode === '3d' ? location.assign('./prepare3d.html?mode=quick') : this.scene.start('QuickScene'),
       },
     ];
     const entryBoxes = entries.map((entry, i) => {

@@ -174,7 +174,7 @@ try {
       });
       assert.ok(nextVisible, 'Season transition instruction is below the initial results fold');
       await Promise.all([page.waitForNavigation({ waitUntil: 'domcontentloaded' }), page.tap('#hunt-menu')]);
-      assert.ok(new URL(page.url()).pathname.endsWith('/index.html'));
+      assert.ok(new URL(page.url()).pathname.endsWith('/prepare3d.html'));
     } else {
       assert.ok(item.summary.again.accessible && item.summary.again.height >= 44);
       await Promise.all([page.waitForNavigation({ waitUntil: 'domcontentloaded' }), page.tap('#hunt-again')]);
