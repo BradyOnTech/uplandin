@@ -83,6 +83,9 @@ export class PlayerSystem implements Subsystem {
         turn: (dx, dy) => {
           this.yaw -= dx * .0022;
           this.pitch = THREE.MathUtils.clamp(this.pitch - dy * .0022, -1.4, 1.4);
+          // Mouse movement and a trigger can arrive in the same frame.
+          // Match touch swing: the shot must see the latest camera direction.
+          this.place(ctx);
         },
         fallbackChanged: active => {
           let hint = document.getElementById('mouse-look-fallback');
