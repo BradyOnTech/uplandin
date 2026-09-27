@@ -45,7 +45,14 @@ export function bindTouchShotControl(button: HTMLButtonElement, options: {
     if(pointer?.id!==event.pointerId)return;
     event.preventDefault();
     if (!options.enabled() || overCancel(event)) cancel();
-    else { const source = pointer.source; clear(); options.fire(source); }
+    else {
+      // A fast lift can carry movement after the last pointermove. Apply
+      // that sample synchronously so the release fires along the final swing.
+      const source = pointer.source;
+      const dx = event.clientX - pointer.x, dy = event.clientY - pointer.y;
+      if (dx !== 0 || dy !== 0) options.look(dx, dy);
+      clear(); options.fire(source);
+    }
   },{signal:options.signal});
   for(const name of ['pointercancel','lostpointercapture'])button.addEventListener(name,event=>{
     if(pointer?.id===(event as PointerEvent).pointerId)cancel();

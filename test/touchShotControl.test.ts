@@ -16,6 +16,23 @@ it('tracks with the firing finger and fires once on release, not its synthetic c
   expect(f.look).toHaveBeenCalledWith(25,-10);expect(f.fire).not.toHaveBeenCalled();
   f.send('pointerup');f.send('click',{detail:1});expect(f.fire).toHaveBeenCalledTimes(1);
 });
+it('applies the final release position before firing when no last pointermove was delivered',()=>{
+  const f=fixture();f.send('pointerdown');f.send('pointermove',{clientX:125,clientY:90});
+  f.look.mockClear();
+  f.send('pointerup',{clientX:137,clientY:84});
+  expect(f.look).toHaveBeenCalledExactlyOnceWith(12,-6);
+  expect(f.look.mock.invocationCallOrder[0]).toBeLessThan(f.fire.mock.invocationCallOrder[0]);
+  expect(f.fire).toHaveBeenCalledExactlyOnceWith('touch');
+  f.send('click',{detail:1});expect(f.fire).toHaveBeenCalledTimes(1);
+});
+it('does not turn on a canceled release or resend an already applied final position',()=>{
+  const f=fixture();f.send('pointerdown');f.send('pointermove',{clientX:125,clientY:90});
+  f.look.mockClear();f.send('pointerup',{clientX:125,clientY:90});
+  expect(f.look).not.toHaveBeenCalled();expect(f.fire).toHaveBeenCalledOnce();
+  f.fire.mockClear();f.send('pointerdown');f.send('pointerup',{clientX:40,clientY:40});
+  expect(f.look).not.toHaveBeenCalled();expect(f.fire).not.toHaveBeenCalled();
+  expect(f.cancel).toHaveBeenCalledOnce();
+});
 it.each(['pointercancel','lostpointercapture','pause','input-reset','touch-shot-cancel','abort'])('cancels a firing gesture on %s',reason=>{
   const f=fixture();f.send('pointerdown');
   if(reason==='pause'||reason==='input-reset'||reason==='touch-shot-cancel')f.events.dispatchEvent(new Event(reason));else if(reason==='abort')f.abort.abort();else f.send(reason);
