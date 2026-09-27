@@ -512,6 +512,21 @@ vColor.rgb *= min( 1.0, uLumCap / max( gLum, 1e-4 ) );
 vec2 gToCam = gRoot.xz - cameraPosition.xz;
 float gAzl = clamp( dot( gToCam / max( length( gToCam ), 1e-3 ), uSunXZ ), 0.0, 1.0 );
 vec3 gHazeCol = mix( uHaze, uSunHaze, gAzl * gAzl * uSunHazeK );
+#ifdef USE_INSTANCING_COLOR
+if (uHuntWind > .5) {
+  // Prairie's painted floor changes with the shoulder and swale. Blending
+  // every retiring tuft to one pale sky colour creates a moving cream ring
+  // at the vegetation limit. Retain the instance's local meadow colour as
+  // it collapses into the ground; scene fog supplies actual aerial depth.
+  vec3 gMeadowFloor = instanceColor * .78;
+  gMeadowFloor = mix(gMeadowFloor, uCoolTint * .74,
+    clamp(uCoolK * .72 + uCoolNear * .30, 0.0, 1.0));
+  gMeadowFloor = mix(gMeadowFloor, uSunHaze, gWarm * .52);
+  float gFloorLum = dot(gMeadowFloor, vec3(.299, .587, .114));
+  gMeadowFloor *= min(1.0, uLumCap / max(gFloorLum, 1e-4));
+  gHazeCol = mix(gMeadowFloor, gHazeCol, .08);
+}
+#endif
 float gHaze = smoothstep( uHazeRange.x, uHazeRange.y, gInstD );
 vColor.rgb = mix( vColor.rgb, gHazeCol, gHaze );
 // Drifting cloud shade (round 6): the IDENTICAL mask the terrain runs,

@@ -78,6 +78,14 @@ const propertySurfaceFragment = (prairie: boolean) => /* glsl */ `
 float pFine = propertyNoise(vPropertyWorld.xz * 0.62);
 float pMeso = propertyNoise(vPropertyWorld.xz * 0.095 + vec2(19.0, 47.0));
 float pMacro = propertyNoise(vPropertyWorld.xz * 0.021 + vec2(71.0, 11.0));
+${prairie ? `
+// Fine ground noise must average out at grazing angles. The larger painted
+// canopy below carries distance; unresolved cells must not turn into bands.
+vec2 pFootprint = fwidth(vPropertyWorld.xz);
+float pSpan = max(pFootprint.x, pFootprint.y);
+pFine = mix(.5, pFine, 1.0 - smoothstep(.35, 1.4, pSpan * .62));
+pMeso = mix(.5, pMeso, 1.0 - smoothstep(.35, 1.4, pSpan * .095));
+` : ''}
 float pDetail = pFine * 0.42 + pMeso * 0.38 + pMacro * 0.20;
 diffuseColor.rgb *= ${prairie ? '0.88 + pDetail * 0.24' : '0.93 + pDetail * 0.14'};
 diffuseColor.rgb *= 1.0 + (pMeso - 0.5) * 0.08;
@@ -306,7 +314,7 @@ export class PropertyTerrain {
     const painted = landscape.area.id === 'pheasant-coverts' || wetSoil || prairie;
     const woodland = landscape.area.id === 'grouse-woods';
     const origin = landscape.propertyToWorld(0, 0, { x: 0, z: 0 });
-    this.material.customProgramCacheKey = () => `property-surface-v6-${landscape.area.terrain.kind}-${painted}-${woodland}-${wetSoil}-${prairie}`;
+    this.material.customProgramCacheKey = () => `property-surface-v${prairie ? 7 : 6}-${landscape.area.terrain.kind}-${painted}-${woodland}-${wetSoil}-${prairie}`;
     this.material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, uniforms);
       shader.uniforms.uPropertyFloorOrigin = { value: new THREE.Vector2(origin.x, origin.z) };
@@ -336,6 +344,20 @@ export class PropertyTerrain {
           float soilDetail = clamp(soilValue / ${wetSoil ? ".052" : ".33"}, ${wetSoil ? ".78, 1.25" : ".55, 1.55"});
           float soilFade = 1.0 - smoothstep(${prairie ? '18.0, 65.0' : '24.0, 90.0'}, distance(vPropertyWorld.xz, cameraPosition.xz));
           diffuseColor.rgb *= mix(1.0, soilDetail, soilFade * uPropertySoilStrength);
+          ${prairie ? `
+          // A second, coarser sample of the already loaded painted litter
+          // becomes aggregate sward, not giant individual stems. Its broad
+          // value masses persist after the close grass/soil fade and are
+          // stationary in property space on both geometry detail levels.
+          vec2 meadowUV = mat2(.8, -.6, .6, .8) *
+            (vPropertyWorld.xz - uPropertySoilOrigin) / 26.0 + vec2(.31, .67);
+          float meadowValue = dot(texture2D(uPropertySoil, meadowUV).rgb, vec3(.2126, .7152, .0722));
+          vec2 meadowFootprint = fwidth(meadowUV);
+          float meadowResolved = 1.0 - smoothstep(.05, .22, max(meadowFootprint.x, meadowFootprint.y));
+          float meadowRange = smoothstep(22.0, 58.0, pDistance) * (1.0 - smoothstep(320.0, 680.0, pDistance));
+          float meadowDetail = clamp(meadowValue / .33, .67, 1.35);
+          diffuseColor.rgb *= mix(1.0, meadowDetail, meadowRange * meadowResolved * uPropertySoilStrength * .90);
+          ` : ''}
         ` : '') + (woodland ? `
           vec2 duffPosition = vPropertyWorld.xz - uPropertyFloorOrigin;
           float duff = propertyNoise(duffPosition * 9.0);
