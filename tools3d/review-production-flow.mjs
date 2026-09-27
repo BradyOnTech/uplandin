@@ -13,6 +13,7 @@ const args = process.argv.slice(2);
 const option = (name, fallback) => args.includes(name) ? args[args.indexOf(name) + 1] : fallback;
 const base = option('--url', 'http://127.0.0.1:4606');
 const out = resolve(option('--out', 'output/production-wave-one/flow'));
+const selected = option('--cases', '').split(',').filter(Boolean);
 mkdirSync(out, { recursive: true });
 const report = { base, evidence: 'ordinary UI actions with isolated starting-save fixtures', cases: [], errors: [], result: 'running' };
 const wait = ms => new Promise(done => setTimeout(done, ms));
@@ -33,7 +34,7 @@ const cases = [
   { name: 'career-season-end', query: 'play=career&area=quail-fields&quality=lite&seed=11', width: 844, height: 390, week: 21 },
 ];
 try {
-  for (const setup of cases) {
+  for (const setup of cases.filter(item => !selected.length || selected.includes(item.name))) {
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
     const item = { ...setup, errors: [] }; report.cases.push(item);
@@ -83,6 +84,13 @@ try {
       const career = JSON.parse(item.summary.career);
       assert.equal(career.hunts, 1); assert.equal(career.hunter.level, 2);
       assert.equal(career.date.week, setup.week + 1);
+      item.awardVisible = await page.evaluate(() => {
+        const heading = document.querySelector('.field-notes-career h3').getBoundingClientRect();
+        const footer = document.querySelector('.hunt-summary-actions').getBoundingClientRect();
+        const top = document.getElementById('hunt-summary-content').getBoundingClientRect().top;
+        return heading.top >= top && heading.bottom <= footer.top;
+      });
+      assert.equal(item.awardVisible, true, 'Career achievement is hidden below the initial results fold');
     } else assert.equal(item.summary.career, item.start.career, 'Standalone hunt changed career');
     await wait(350);
     assert.equal(await page.evaluate(() => localStorage.getItem('uplandin.career.v1')), item.summary.career);
@@ -94,6 +102,11 @@ try {
       assert.equal(item.summary.menu.text, 'Return home');
       assert.equal(item.summary.focused, 'hunt-menu');
       assert.match(item.summary.copy, /season is complete/);
+      const nextVisible = await page.evaluate(() => {
+        const next = [...document.querySelectorAll('.field-notes-career p')].find(p => p.textContent.includes('season is complete'));
+        return next.getBoundingClientRect().bottom <= document.querySelector('.hunt-summary-actions').getBoundingClientRect().top;
+      });
+      assert.ok(nextVisible, 'Season transition instruction is below the initial results fold');
       await Promise.all([page.waitForNavigation({ waitUntil: 'domcontentloaded' }), page.tap('#hunt-menu')]);
       assert.ok(new URL(page.url()).pathname.endsWith('/index.html'));
     } else {

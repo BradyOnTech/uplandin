@@ -55,6 +55,8 @@ export function renderCareerFieldNotes(container: HTMLElement, result: CareerHun
   const heading = document.createElement('h3'); heading.textContent = notes.heading;
   const award = document.createElement('p'); award.className = 'field-career-award'; award.textContent = notes.hunterAward;
   panel.append(heading, award);
+  // The next action matters before the optional detail on a short phone.
+  if (notes.next) { const next = document.createElement('p'); next.textContent = notes.next; panel.append(next); }
   if (notes.progress) {
     const progress = document.createElement('progress'); progress.max = notes.progress.required; progress.value = notes.progress.earned;
     progress.setAttribute('aria-label', `Hunter progress to level ${notes.progress.nextLevel}`);
@@ -81,7 +83,6 @@ export function renderCareerFieldNotes(container: HTMLElement, result: CareerHun
   }
   const calendar = document.createElement('p'); calendar.className = 'field-career-calendar'; calendar.textContent = notes.calendar;
   panel.append(calendar);
-  if (notes.next) { const next = document.createElement('p'); next.textContent = notes.next; panel.append(next); }
   container.append(panel);
 }
 
