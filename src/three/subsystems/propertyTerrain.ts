@@ -10,6 +10,7 @@ import { PHEASANT_MATERIALS, fieldTimeOfDay, type TimeOfDay } from '../palette';
 import { pheasantFields, pheasantPonds, samplePheasantHarvest } from './pheasantLandscape';
 import { sharptailGroundZones } from '../../game/sharptailLandscape';
 import { sharptailAccentGroundAt } from './sharptailAccents';
+import { sharptailMeadowAt, SHARPTAIL_MEADOW_COLORS } from './sharptailMeadow';
 
 type Paint = (landscape: LandscapeModel, x: number, y: number, out: THREE.Color) => THREE.Color;
 
@@ -162,6 +163,10 @@ function paintFor(property: LandscapeModel): Paint {
   const reedLitter = new THREE.Color(PHEASANT_MATERIALS.reedLitter);
   const standingGrass = new THREE.Color(PHEASANT_MATERIALS.standingFloor);
   const prairieZones = { swale: 0, stand: 0 };
+  const prairieMeadow = { crown: 0, hollow: 0, cured: 0 };
+  const prairieCrown = new THREE.Color(SHARPTAIL_MEADOW_COLORS.crown).multiplyScalar(.87);
+  const prairieHollow = new THREE.Color(SHARPTAIL_MEADOW_COLORS.hollow).multiplyScalar(.81);
+  const prairieCured = new THREE.Color(SHARPTAIL_MEADOW_COLORS.cured).multiplyScalar(.86);
   const nativeLitter = new THREE.Color(0xb2aa80), swaleSward = new THREE.Color(0x627d63);
   const prairieDryLitter = new THREE.Color(0x827958), prairieSageFloor = new THREE.Color(0x596c50);
   const prairiePocketFloor = new THREE.Color();
@@ -196,6 +201,14 @@ function paintFor(property: LandscapeModel): Paint {
       out.lerp(nativeLitter, (.08 + prairieZones.stand * .12 + dryShoulder * .24) * (.65 + meso * .35));
       out.lerp(swaleSward, prairieZones.swale * (.48 + broad * .18));
       out.multiplyScalar(.88 + broad * .20 + meso * .05);
+      // Low crown / tall hollow is one continuous authored meadow, even
+      // after individual blades dissolve beyond the local vegetation ring.
+      // These masses follow the same shoulders as the physical terrain;
+      // adding random high-frequency paint would flatten that relationship.
+      sharptailMeadowAt(x, y, prairieZones.swale, prairieMeadow);
+      out.lerp(prairieCrown, prairieMeadow.crown * .45);
+      out.lerp(prairieHollow, prairieMeadow.hollow * .65);
+      out.lerp(prairieCured, prairieMeadow.cured * .56);
       // Root authored sage/forb pockets in accumulated litter. Shared masks
       // place these value masses beneath the actual vegetation, not random
       // decorative spots; geometry bakes this once with no new shader work.

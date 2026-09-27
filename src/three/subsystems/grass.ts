@@ -11,6 +11,7 @@ import { SharptailSwardField } from './sharptailSward';
 import { sharptailGrassGeometry } from './sharptailGrass';
 import { sharptailShackYardAt } from './sharptailEnvironment';
 import { sharptailAccentGroundAt } from './sharptailAccents';
+import { SHARPTAIL_MEADOW_COLORS } from './sharptailMeadow';
 import { VegetationWind, VEGETATION_GUST_GLSL } from './vegetationWind';
 
 /*
@@ -846,6 +847,7 @@ export class GrassSystem implements Subsystem {
   private readonly prairie: SharptailSwardField | null;
   private readonly prairieLandscape?: LandscapeModel;
   private readonly prairieZones = { swale: 0, stand: 0 };
+  private readonly prairieMeadow = { crown: 0, hollow: 0, cured: 0 };
   private readonly prairieForm = { rank: 0, drift: 0, knot: 0, yaw: 0 };
   private readonly prairieYard?: { x: number; z: number };
   private readonly prairieProperty = { x: 0, y: 0 };
@@ -866,13 +868,15 @@ export class GrassSystem implements Subsystem {
    * frame; the existing zone grid supplies authored stand/swale transitions. */
   private samplePrairieForm(x: number, z: number): void {
     this.prairie!.sample(x, z, this.prairieZones);
+    this.prairie!.sampleMeadow(x, z, this.prairieMeadow);
     const px = x - this.prairie!.minX, pz = z - this.prairie!.minZ;
     const drift = this.clumpNoise(px * .036 + pz * .017 + 170, pz * .075 - px * .025 + 340);
     const knot = this.clumpNoise(px * .18 + 920, pz * .16 + 670);
     this.prairieForm.drift = drift;
     this.prairieForm.knot = knot;
-    this.prairieForm.rank = THREE.MathUtils.clamp(.08 + this.prairieZones.swale * .33 +
-      this.prairieZones.stand * .28 + drift * .37 + (knot - .5) * .20, 0, 1);
+    this.prairieForm.rank = THREE.MathUtils.clamp(.10 + this.prairieZones.swale * .33 +
+      this.prairieZones.stand * .28 + drift * .32 + (knot - .5) * .16
+      + this.prairieMeadow.hollow * .19 + this.prairieMeadow.cured * .14 - this.prairieMeadow.crown * .42, 0, 1);
     this.prairieForm.yaw = .7 + (drift - .5) * 1.0;
   }
 
@@ -885,6 +889,16 @@ export class GrassSystem implements Subsystem {
   private prairieAccentAt(x: number, z: number): number {
     this.prairieLandscape!.worldToProperty(x, z, this.prairieProperty);
     return sharptailAccentGroundAt(this.prairieProperty.x, this.prairieProperty.y);
+  }
+
+  private prairieColorAt(): void {
+    // One dominant colour per broad slope, with only restrained variation
+    // inside it. Random per-tuft olive/straw families erase terrain masses.
+    const meadow = this.prairieMeadow;
+    this.prairieBaseColor.copy(this.grassGold).lerp(this.prairieCrown, meadow.crown * .60);
+    this.prairieBaseColor.lerp(this.prairieHollow, meadow.hollow * .90);
+    this.prairieBaseColor.lerp(this.prairieCured, meadow.cured * .67);
+    this.c.lerp(this.prairieBaseColor, .82);
   }
 
   private cfg!: QualityCfg;
@@ -947,6 +961,10 @@ export class GrassSystem implements Subsystem {
   // undertones — a different material from the brown soil under them.
   private grassGold = new THREE.Color(P.grassGold);
   private grassOlive = new THREE.Color(P.grassOlive);
+  private prairieCrown = new THREE.Color(SHARPTAIL_MEADOW_COLORS.crown);
+  private prairieHollow = new THREE.Color(SHARPTAIL_MEADOW_COLORS.hollow);
+  private prairieCured = new THREE.Color(SHARPTAIL_MEADOW_COLORS.cured);
+  private prairieBaseColor = new THREE.Color();
   private forbGreen = new THREE.Color(P.forbGreen);
   // The terrain's sward paint (same recipe as terrain.ts): the haze target
   // is the GROUND the tufts dissolve into, tinted by the TOD's haze role.
@@ -1514,6 +1532,7 @@ export class GrassSystem implements Subsystem {
         this.c.lerp(this.olive, s * (0.15 + rng() * 0.15));
         if (rng() < 0.05) this.c.lerp(this.oliveDeep, 0.18);
         this.c.multiplyScalar(1.08 + rng() * 0.3);
+        if (this.prairie) this.prairieColorAt();
         cols.push(this.c.clone());
       }
       if (mats.length === 0) continue;
@@ -1765,9 +1784,10 @@ export class GrassSystem implements Subsystem {
       // Width closes the basal layer on Lite without spending more instances.
       // Height varies by a coherent drift and by individual bunch: no flat
       // cereal canopy, while tall native stands remain legible to a hunter.
-      const width = sxz * (this.cfg.bladeWide > 1 ? 1.20 : 1.06);
-      const height = vi === V_OPEN ? .66 + rank * .42 :
-        vi === V_COVER ? .42 + rank * .76 : .52 + rank * .72;
+      const width = sxz * (this.cfg.bladeWide > 1 ? 1.20 : 1.06)
+        * (1 + this.prairieMeadow.crown * (vi === V_OPEN ? .30 : .12));
+      const height = vi === V_OPEN ? .55 + rank * .42 :
+        vi === V_COVER ? .42 + rank * .76 : .50 + rank * .80;
       this.s.set(width, vigor * height * (.77 + rng() * .47) * (1 - prairiePocket * .58), width * (.82 + rng() * .20));
     }
     this.v.set(px, y, pz);
@@ -1793,12 +1813,7 @@ export class GrassSystem implements Subsystem {
       else if (p2 < 0.3) this.c.lerp(this.grassOlive, 0.25 + rng() * 0.25);
     }
     if (this.prairie) {
-      // Group ripened straw on the exposed shoulders and deeper sage grass
-      // in the lee. Field-scale color should survive loss of individual tips
-      // on Lite; bleaching every dry bunch flattens the whole landscape.
-      const lee = this.prairieZones.swale;
-      this.c.lerp(this.grassOlive, lee * .48 + this.prairieZones.stand * .08);
-      this.c.lerp(this.grassGold, (1 - lee) * (.16 + this.prairieForm.drift * .20));
+      this.prairieColorAt();
     }
     this.c.multiplyScalar(0.9 + rng() * 0.26);
 
@@ -1828,7 +1843,9 @@ export class GrassSystem implements Subsystem {
         // Little scuffed openings within grass, rather than pale ground
         // supporting separate isolated plants. Gaps have feathered edges.
         if (rng() > .67 + THREE.MathUtils.smoothstep(knot, .22, .73) * .29) continue;
-        const shortChance = .45 - rank * .28 - knot * .10;
+        // Crown grass is wind-scoured and low, rather than the same tall
+        // carpet painted a different colour. Keep its rooted basal layer.
+        const shortChance = .40 - rank * .28 - knot * .10 + this.prairieMeadow.crown * .30;
         const vi = rng() < shortChance && counts[V_OPEN] < caps[V_OPEN] ? V_OPEN : V_TUFT;
         const vigor = .93 + drift * .19 + knot * .12 + rng() * .13;
         this.placeTuft(tile, counts, caps, vi, x, z, vigor, rng);
