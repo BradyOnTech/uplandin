@@ -17,7 +17,7 @@ The existing species doctrines, authored habitat, touch shooting assistance, fie
 | Production dog | Believable anatomy, locomotion/terrain contact, turning, scent-to-point, pickup, carry and delivery in live habitat; consistent production asset selection and an explicit quality bar for every offered breed. | Generated GSP is the chosen approach; finishing and breed consistency remain open. |
 | Bird and shot experience | Readable natural near/far/crossing rises in vegetation/sky, species-specific flight/falls, coherent hands/mount/recoil/reload and learnable desktop/touch lead. | Functional shot and recovery evidence; final animation/readability and human input acceptance remain open. |
 | Convincing sound | Auditioned foreground/background mix across headsets, laptop and phone speakers; spatial launch/dog/wing/shot/recovery cues; no duplicate loops or interruption defects. | Regional synthesis and lifecycle checks pass; perceptual mix remains open. |
-| Complete player flow | Clear preparation, first-hunt help, meaningful career/dog progress, earned unlocks, useful history, understandable settings and a next outing; save preservation. | Native 3D preparation, career results and journal work on the frozen third candidate. First-hunt teaching and meaningful longer-term progression remain open. |
+| Complete player flow | Clear preparation, first-hunt help, meaningful career/dog progress, earned unlocks, useful history, understandable settings and a next outing; save preservation. | Native 3D preparation, career results and journal work on the frozen third candidate. Optional first-hunt guidance and recoverable controls are implemented in `791f21a`; natural teaching effectiveness and meaningful longer-term progression remain open. |
 | Browser/mobile production | Stable 60 FPS supported desktop / 30 FPS supported phone targets, defined devices, sustained thermal/loading/replay checks, accessible touch UI, HTTPS release and actual installed/offline/background checks. | Instrumentation and local browser evidence exist; device and hosted acceptance remain open. |
 | Repeatable finishing process | Shared asset palette/scale/material/grounding/LOD/export standards, scoped ownership, before/after motion evidence and stable integrated checkpoints. | Existing kits and adapters are the base; final standards and acceptance must be consolidated. |
 
@@ -87,3 +87,34 @@ Third-candidate evidence is in `output/production-wave-three/preparation-reviewe
 5. Complete whole-property art and hunt-rhythm reviews, subjective sound mixing, physical-device performance and hosted installation/offline acceptance.
 
 The older production-slice and Pheasant-goal documents are evidence records, not current deferrals. The full goal remains active. This candidate is a playable checkpoint, not an accepted AAA release.
+
+**Subsequent recovery and guidance corrections**
+
+`fc4b17d` fixes the secondary dog's carry-renderer lookup: the legacy renderer registered `dog-2`, while recovery requested `dog2`. The shared `dogRendererId` now covers primary and brace registration in both renderers and bird recovery. A regression exercises the actual registration contract; it does not establish a full ordinary brace hunt.
+
+`0c487e7` corrects resting Chukar size and attaches legacy Setter carries to the animated muzzle rather than a ground-relative chest offset. Chukar resting scale changes from 1.4 to 1.175; airborne scale, hit centers and flight physics stay unchanged. Staged top/side/quarter images accept the size and attachment correction, but the mouth still needs an actual articulated grip. Evidence is under `output/chukar-bird-design/`.
+
+`791f21a` adds one optional contextual field tip, persistent learned/seen progress, disable/reset preferences, and recoverable controls in Pause. It hides coaching while mounting, shooting, paused or viewing the map. Three actual browser UI cases cover landscape touch, portrait touch and desktop drag-look fallback, with preference persistence and pause input isolation. Natural point/rise/recovery teaching effectiveness remains open. Evidence is `output/field-guide-review/report.json`.
+
+The combined suite at these checkpoints passed 1,052 tests in 137 files. The current source is newer than frozen port 4608; its corrections must be packaged into the next immutable preview before reporting them as present at that play link.
+
+The bundled Chrome 148 subsequently stalled on the unchanged frozen build and a minimal independent scene. Isolated installed Chrome 153 with default headless settings rendered both normally. New visual evidence records that browser, and a same-frame world control confirms the baseline appearance. No game startup workaround or operating-system setting change was retained.
+
+**Current production priorities and honest coverage**
+
+1. Finish Sharptail's physical landforms together with terrain-aligned vegetation masses and distant face structure. The intermediate height package improves the lower crossing and Shack bowl, but remains unaccepted for whole-route art. Preserve ecology, routes and authoritative ground contact.
+2. Finish one generated GSP in close natural motion, including a real jaw interaction, then unify coats and brace presentation before extending anatomical families. Eleven selectable gameplay breeds currently share only two anatomical visual families; nine use Setter anatomy. A breed menu is not proof of breed-specific art.
+3. Finish airborne bird acquisition and final-swing control response on actual phone/laptop input. Keep diagnostic material comparisons, automated assisted shots and ordinary human acquisition as separate evidence.
+4. Review complete species-specific outings, perception of sound, long-term progression and every production property's full route. Close supported-device and hosted-installation requirements on actual devices.
+
+Sharptail's generated landform concept lives in `assets/source/sharptail-kit/`, with its exact prompt and provenance. It is an art reference, not a runtime screenshot or a shipped texture.
+
+**Fourth-wave control and shadow checkpoints**
+
+`ae9d81a` applies the final touch-release coordinates before firing. A trusted browser touch sequence confirms that the last 14 px / -6 px release movement turns the camera before exactly one shot, rather than firing along the previous pointermove. `810f167` also applies desktop mouse turns to the camera immediately, covering pointer-lock and drag fallback before the next animation frame. Neither change alters assistance, difficulty or pellet physics.
+
+`ffc050d` filters Lightweight directional shadows at the existing 1024 resolution and retains the 200 m coverage. An actual GSP/SkySystem comparison rejects the coarse Basic shadow outline and confirms that narrower coverage alone does not solve it. The rig now follows local ground on every property and snaps its center in light-space texels; actual shadow-matrix tests reproduce and eliminate fractional-texel movement on both quality tiers. Controlled frozen-4608 comparisons across four properties preserve draw, triangle and texture counts. At 844×390 on desktop Chrome 153, the later paired median GPU samples add approximately 0.12–0.16 ms for filtering. This is a measured desktop tradeoff, not physical-phone acceptance. Evidence is `output/shadow-quality-review/`.
+
+The first integrated art-review artifact is frozen at `output/production-wave-four-art-review-1`, localhost port 4610, with build ID `810f167-art-review-1`. It contains in-progress world, jaw and wing packages as well as the committed corrections. All 351 input fingerprints matched before/after its successful production build; `output/production-wave-four-review-source.json` identifies the exact source. The corresponding suite passes 1,071 tests in 141 files. An initial discovery failure came from an output-only draft test copy; that artifact was preserved as `.txt`, and the normal test command then passed.
+
+Port 4610 is an evaluation artifact, not the next accepted release. Its first Sharptail mass treatment was rejected: crown grass looked cropped/bare and the distant faces remained too smooth. Preserve that evidence while revising the authored vegetation volumes and route composition. Do not publish the review build as proof that the prairie is finished.
