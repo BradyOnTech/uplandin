@@ -11,6 +11,7 @@ import { pheasantFields, pheasantPonds, samplePheasantHarvest } from './pheasant
 import { sharptailGroundZones } from '../../game/sharptailLandscape';
 import { sharptailAccentGroundAt } from './sharptailAccents';
 import { sharptailMeadowAt, SHARPTAIL_MEADOW_COLORS } from './sharptailMeadow';
+import { sharptailMeadowNormalTexture, SHARPTAIL_SURFACE_NORMAL_FRAGMENT } from './sharptailMeadowSurface';
 
 type Paint = (landscape: LandscapeModel, x: number, y: number, out: THREE.Color) => THREE.Color;
 
@@ -293,6 +294,7 @@ export class PropertyTerrain {
   private abort = new AbortController();
   private soil = { value: null as THREE.Texture | null };
   private soilStrength = { value: 0 };
+  private prairieSurface = { value: null as THREE.DataTexture | null };
   private light = {
     uSunXZ: { value: new THREE.Vector2(1, 0) },
     uSunTint: { value: new THREE.Color() },
@@ -314,10 +316,11 @@ export class PropertyTerrain {
     const painted = landscape.area.id === 'pheasant-coverts' || wetSoil || prairie;
     const woodland = landscape.area.id === 'grouse-woods';
     const origin = landscape.propertyToWorld(0, 0, { x: 0, z: 0 });
-    this.material.customProgramCacheKey = () => `property-surface-v${prairie ? 7 : 6}-${landscape.area.terrain.kind}-${painted}-${woodland}-${wetSoil}-${prairie}`;
+    this.material.customProgramCacheKey = () => `property-surface-v${prairie ? 8 : 6}-${landscape.area.terrain.kind}-${painted}-${woodland}-${wetSoil}-${prairie}`;
     this.material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, uniforms);
       shader.uniforms.uPropertyFloorOrigin = { value: new THREE.Vector2(origin.x, origin.z) };
+      if (prairie) shader.uniforms.uPrairieSurfaceNormal = this.prairieSurface;
       if (painted) {
         shader.uniforms.uPropertySoil = this.soil;
         shader.uniforms.uPropertySoilStrength = this.soilStrength;
@@ -327,7 +330,7 @@ export class PropertyTerrain {
         .replace('#include <common>', '#include <common>\nvarying vec3 vPropertyWorld;')
         .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n\tvPropertyWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;');
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform vec2 uPropertyFloorOrigin;\n' + PROPERTY_SURFACE_DECLS + (painted ? '\nuniform sampler2D uPropertySoil; uniform float uPropertySoilStrength; uniform vec2 uPropertySoilOrigin;' : ''))
+        .replace('#include <common>', '#include <common>\nuniform vec2 uPropertyFloorOrigin;\n' + PROPERTY_SURFACE_DECLS + (painted ? '\nuniform sampler2D uPropertySoil; uniform float uPropertySoilStrength; uniform vec2 uPropertySoilOrigin;' : '') + (prairie ? '\nuniform sampler2D uPrairieSurfaceNormal;' : ''))
         .replace('#include <color_fragment>', '#include <color_fragment>\n' + propertySurfaceFragment(prairie) + (painted ? `
           vec2 soilUV = (vPropertyWorld.xz - uPropertySoilOrigin) / ${prairie ? '5.4' : '4.8'};
           vec3 soilA = texture2D(uPropertySoil, soilUV).rgb;
@@ -367,6 +370,7 @@ export class PropertyTerrain {
           diffuseColor.rgb *= mix(1.0, duffDetail, duffFade * .6);
           diffuseColor.rgb *= .96 + .08 * duffMass;
         ` : ''))
+        .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + (prairie ? SHARPTAIL_SURFACE_NORMAL_FRAGMENT : ''))
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += uSunTint * ( pLobe * 0.34 + pBloom * 0.62 ) * uSunEmit;');
     };
     this.nearDistance = quailGroundNearDistance('high');
@@ -394,6 +398,7 @@ export class PropertyTerrain {
       }
     }
     if (this.abort.signal.aborted) return;
+    if (prairie) this.prairieSurface.value = sharptailMeadowNormalTexture();
     this.nearDistance = quailGroundNearDistance(ctx.quality as Quality);
     this.applyTod(ctx.timeOfDay);
     ctx.events.addEventListener('tod', (event) => {
@@ -473,6 +478,8 @@ export class PropertyTerrain {
     this.material.dispose();
     this.soil.value?.dispose();
     this.soil.value = null;
+    this.prairieSurface.value?.dispose();
+    this.prairieSurface.value = null;
     this.tiles.length = 0;
     this.horizon.length = 0;
   }

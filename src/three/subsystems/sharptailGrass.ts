@@ -16,7 +16,7 @@ export function sharptailGrassGeometry(
   type Point = readonly [number, number, number];
   const vertex = (p: Point, id: number, stage: number, dry: boolean, facet: number) => {
     positions.push(...p);
-    const shade = (.40 + stage * .56) * facet;
+    const shade = (.49 + stage * .45) * facet;
     if (dry) colors.push(.62 * facet, .55 * facet, .37 * facet);
     else colors.push(shade, shade * 1.015, shade * (.89 + stage * .06));
     uvs.push((id * .6180339) % 1, stage);
@@ -32,14 +32,14 @@ export function sharptailGrassGeometry(
       return [[cx - wx, y, cz - wz], [cx + wx, y, cz + wz]];
     };
     const base: Point = [x, 0, z];
-    const knee = .69 + (id % 3) * .07;
-    const [upperL, upperR] = section(reach * .58, height * knee, width * .64, .32);
-    // Alternating leaves droop after the shoulder rather than ending in
-    // upward daggers. The rare near-upright blade interrupts that canopy.
-    const droop = id % 4 === 0 ? .94 : id % 4 === 1 ? .46 : .60;
-    const tip: Point = [x + dx * reach + height * .22, height * droop, z + dz * reach];
+    const knee = .77 + (id % 3) * .045;
+    const [upperL, upperR] = section(reach * .59, height * knee, width * .28, .54);
+    // Narrow shoulders continue into long spent tips. The old wide upper
+    // edge and short pointed end read as a repeated triangular spearhead.
+    const droop = id % 4 === 0 ? .96 : id % 4 === 1 ? .38 : .53;
+    const tip: Point = [x + dx * reach * 1.18 + height * .22, height * droop, z + dz * reach * 1.18];
     if (near) {
-      const [lowerL, lowerR] = section(reach * .18, height * .33, width, -.16);
+      const [lowerL, lowerR] = section(reach * .20, height * .40, width * .70, -.20);
       triangle(base, lowerR, lowerL, id, [0, .28, .28], false, .94);
       triangle(lowerL, lowerR, upperL, id, [.28, .28, .72], false, .96);
       triangle(lowerR, upperR, upperL, id, [.28, .72, .72], false, 1.04);
@@ -51,13 +51,23 @@ export function sharptailGrassGeometry(
     }
   };
   const litter = (x: number, z: number, angle: number, length: number, id: number) => {
-    const dx = Math.sin(angle), dz = Math.cos(angle), wx = dz * .045, wz = -dx * .045;
+    const dx = Math.sin(angle), dz = Math.cos(angle), wx = dz * .026, wz = -dx * .026;
     const root: Point = [x, 0, z];
     const left: Point = [x + dx * length * .45 - wx, .045, z + dz * length * .45 - wz];
     const right: Point = [x + dx * length * .45 + wx, .057, z + dz * length * .45 + wz];
     const tip: Point = [x + dx * length, .018, z + dz * length];
     triangle(root, right, left, id, [0, .045, .045], true, .82);
     triangle(left, right, tip, id, [.045, .045, .08], true, .94);
+  };
+  const lowBow = (x: number, z: number, angle: number, reach: number, height: number, id: number) => {
+    // One low curled ribbon replaces the second flat litter triangle pair.
+    // It interlocks adjacent roots at exactly the same triangle cost.
+    const dx = Math.sin(angle), dz = Math.cos(angle), wx = dz * .015, wz = -dx * .015;
+    const left: Point = [x + dx * reach * .38 - wx, height, z + dz * reach * .38 - wz];
+    const right: Point = [x + dx * reach * .38 + wx, height * .95, z + dz * reach * .38 + wz];
+    const tip: Point = [x + dx * reach, height * .20, z + dz * reach];
+    triangle([x, 0, z], right, left, id, [0, .34, .34], false, .98);
+    triangle(left, right, tip, id, [.34, .34, .48], false, 1.01);
   };
   const culm = (x: number, z: number, angle: number, height: number, id: number) => {
     const dx = Math.sin(angle), dz = Math.cos(angle), wx = dz * .006, wz = -dx * .006;
@@ -84,14 +94,14 @@ export function sharptailGrassGeometry(
       // returning four/eight triangles from medium/cover foreground mats.
       if (detail === 'mobile' && ((kind === 'medium' && id === 1 && index === 2) ||
         (kind === 'cover' && (id === 0 || id === 2) && index === 3))) continue;
-      const turn = index * 2.399 + id * .67;
+      const turn = kind === 'short' ? .45 + id * .30 + index * .93 : index * 2.399 + id * .67;
       const length = index === 0 ? 1 : .60 + ((index * 3 + id) % 5) * .095;
       leaf(x + Math.sin(turn) * .055, z + Math.cos(turn) * .055, turn,
         height * length, spread * (.82 + (index % 3) * .15),
         (.027 + (index % 3) * .006) * (detail === 'distant' ? 1.45 : 1), id * 8 + index);
     }
-    const deadLeaves = near ? 2 : 1;
-    for (let i = 0; i < deadLeaves; i++) litter(x, z, .52 + id * 1.31 + i * 2.4, spread * 1.26, 100 + id * 3 + i);
+    litter(x, z, .52 + id * 1.31, spread * 1.26, 100 + id * 3);
+    if (near) lowBow(x, z, 2.92 + id * 1.31, spread * 1.26, height * .37, 101 + id * 3);
   };
 
   if (kind === 'cover') {
