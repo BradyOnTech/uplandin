@@ -65,8 +65,8 @@ describe('3D shotgun action', () => {
     const gun=new GunSystem();gun.init(ctx);
     const wide=new THREE.Vector3(.5,0,-20).project(camera).x;
     ctx.events.dispatchEvent(Object.assign(new Event('hunt-action'),{detail:'touch-mount'}));
-    gun.update(ctx,.2);expect(camera.fov).toBeCloseTo(58);
-    expect(new THREE.Vector3(.5,0,-20).project(camera).x/wide).toBeGreaterThan(1.25);
+    gun.update(ctx,.2);expect(camera.fov).toBeCloseTo(2*Math.atan(.5)*180/Math.PI);
+    expect(new THREE.Vector3(.5,0,-20).project(camera).x/wide).toBeGreaterThan(1.39);
     ctx.events.dispatchEvent(Object.assign(new Event('hunt-action'),{detail:'lower'}));
     gun.update(ctx,.2);expect(camera.fov).toBe(70);
     gun.dispose(ctx);

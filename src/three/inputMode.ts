@@ -38,9 +38,15 @@ export type TouchSensitivity = 'look' | 'swing';
 export function mobileSightPicture(): 'closer' | 'wide' {
   try { return localStorage.getItem('uplandin.3d.sight') === 'wide' ? 'wide' : 'closer'; } catch { return 'closer'; }
 }
-/** A modest optical enlargement; no target or trajectory changes. */
-export function mobileShotFov(mount: number, closer: boolean): number {
-  return 70 - (closer ? 12 * Math.max(0, Math.min(1, mount)) : 0);
+/** Keep a short landscape phone from turning Closer into a panoramic shot
+ * view. Cap the horizontal field near 90 degrees, with bounded vertical
+ * optics; portrait/tablets retain the established 58-degree sight picture.
+ * Bird dimensions, flight, shot pattern and difficulty remain unchanged. */
+export function mobileShotFov(mount: number, closer: boolean, aspect = 16 / 9): number {
+  if (!closer) return 70;
+  const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
+  const mounted = Math.max(46, Math.min(58, 2 * Math.atan(1 / safeAspect) * 180 / Math.PI));
+  return 70 - (70 - mounted) * Math.max(0, Math.min(1, mount));
 }
 export function touchSensitivity(kind: TouchSensitivity): number {
   try {

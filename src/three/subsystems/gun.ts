@@ -539,7 +539,7 @@ export class GunSystem implements Subsystem {
     document.body?.classList.toggle('touch-gun-raised', touch && this.aim && !ctx.paused);
     document.body?.classList.toggle('touch-gun-held', touch && this.touchHeld && !ctx.paused);
     if (!snap && (touch || this.ownsMobileFov)) {
-      const fov = mobileShotFov(this.mountProgress(), touch && this.closerSight);
+      const fov = mobileShotFov(this.mountProgress(), touch && this.closerSight, cam.aspect);
       if (Math.abs(cam.fov - fov) > .01) { cam.fov = fov; cam.updateProjectionMatrix(); }
       this.ownsMobileFov = touch;
     }
