@@ -365,10 +365,13 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
     chains.forEach((leg,i)=>{
       if (i === posedFoot) return;
       wrist.copy(targets[i]).addScaledVector(normals[i],leg.distalLength);root.worldToLocal(wrist);
-      const dx=wrist.x-leg.upper.position.x,dz=wrist.z-leg.upper.position.z;
+      // A supported torso may pitch or bank. Measure the actual hip in the
+      // root frame rather than assuming that every shoulder stays upright.
+      leg.upper.getWorldPosition(hip);root.worldToLocal(hip);
+      const dx=wrist.x-hip.x,dz=wrist.z-hip.z;
       const length=leg.upperLength+leg.lowerLength-.006;
       const vertical=Math.sqrt(Math.max(0,length*length-dx*dx-dz*dz));
-      allowed=Math.min(allowed,wrist.y+vertical-leg.upper.position.y);
+      allowed=Math.min(allowed,body.position.y+wrist.y+vertical-hip.y);
     });
     body.position.y=Math.max(-.14,allowed);root.updateMatrixWorld(true);return body.position.y;
   };

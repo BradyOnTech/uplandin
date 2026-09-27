@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { LocomotionGait } from './locomotion';
 import { createGeneratedGsp, GENERATED_STRIDE } from './generatedGsp';
 import { GeneratedScentMotion, fieldPerformance, type GeneratedFieldIntent } from './generatedScentMotion';
+import { GeneratedBodySupport } from './generatedBodySupport';
 
 export interface GeneratedRetrievePose { stage: 'pickup' | 'carry' | 'deliver'; holdMs: number; }
 
@@ -21,6 +22,7 @@ export class GeneratedFieldMotion {
   private bodyHeight=0;
   private pointPresence=0;
   readonly scentMotion=new GeneratedScentMotion();
+  private bodySupport=new GeneratedBodySupport();
   private pickupPresence=0;
   private carryPresence=0;
   private deliverPresence=0;
@@ -34,7 +36,9 @@ export class GeneratedFieldMotion {
   swimming=false;
   constructor(detail:'high'|'lite',private ground:(x:number,z:number)=>number,private waterDepth:(x:number,z:number)=>number=()=>0) {
     this.asset=createGeneratedGsp(detail,true);
-    this.pose=Object.values(this.asset.joints).map(node=>({node,previousPosition:node.position.clone(),previousRotation:node.quaternion.clone(),fromPosition:node.position.clone(),fromRotation:node.quaternion.clone()}));
+    // Torso support has its own continuous response; blending its solved
+    // position a second time would accumulate the ribcage pivot offset.
+    this.pose=Object.values(this.asset.joints).filter(node=>node!==this.asset.joints.body).map(node=>({node,previousPosition:node.position.clone(),previousRotation:node.quaternion.clone(),fromPosition:node.position.clone(),fromRotation:node.quaternion.clone()}));
   }
   update(x:number,z:number,yaw:number,dt:number,moving:boolean,point:boolean,retrieve?:GeneratedRetrievePose,field?:GeneratedFieldIntent) {
     const root=this.asset.root,ground=this.ground(x,z),distance=this.placed?Math.hypot(x-this.last.x,z-this.last.z):0;
@@ -57,7 +61,8 @@ export class GeneratedFieldMotion {
       return;
     }
     const reset=!this.placed||distance>3||wasSwimming;
-    const turnRate=reset||dt<=0?0:Math.abs(Math.atan2(Math.sin(yaw-this.lastYaw),Math.cos(yaw-this.lastYaw)))/dt;
+    const signedTurnRate=reset||dt<=0?0:Math.atan2(Math.sin(yaw-this.lastYaw),Math.cos(yaw-this.lastYaw))/dt;
+    const turnRate=Math.abs(signedTurnRate);
     const pivoting=turnRate>1;
     const wasRaised=!this.wasMoving&&this.pointPresence>0;
     const locking=!retrieve&&fieldPerformance(field)==='locking';
@@ -95,10 +100,21 @@ export class GeneratedFieldMotion {
     }
     const desiredBody=this.asset.joints.body.position.y;
     this.bodyHeight=reset?desiredBody:THREE.MathUtils.lerp(this.bodyHeight,desiredBody,1-Math.exp(-dt*12));
-    this.asset.joints.body.position.y=this.bodyHeight;root.updateMatrixWorld(true);
+    this.asset.joints.body.position.y=this.bodyHeight;
+    const supportOffset=this.bodySupport.update(this.asset,this.ground,x,z,yaw,speed,signedTurnRate,dt,moving,reset);
+    root.updateMatrixWorld(true);
     // An airborne pointing paw carries the authored bend through entry and
     // release. Ground IK would otherwise unfold it and force its sole level.
-    const posedFoot=(!moving&&this.pointPresence>0)||(blending&&this.transitionRaised)?0:-1;
+    let posedFoot=(!moving&&this.pointPresence>0)||(blending&&this.transitionRaised)?0:-1;
+    if(posedFoot>=0&&(moving||pointTarget<this.pointPresence)) {
+      this.asset.paws[posedFoot].getWorldPosition(this.nominal);
+      // The release can touch down before the upper-body crossfade finishes.
+      // Hand it back to ground IK at contact, rather than letting a bank or
+      // load response push the formerly raised paw through the terrain.
+      if(this.nominal.y<=this.ground(this.nominal.x,this.nominal.z)+.029) {
+        this.transitionRaised=false;posedFoot=-1;
+      }
+    }
     this.feet.forEach((foot,i)=>{
       this.asset.paws[i].getWorldPosition(this.nominal);
       const raised=i===posedFoot;
@@ -138,10 +154,11 @@ export class GeneratedFieldMotion {
       }
       this.groundNormal(foot.target.x,foot.target.z,foot.normal);
     });
-    this.bodyHeight=this.asset.fitBodyToFeet(this.targets,this.normals,posedFoot);
+    this.bodyHeight=this.asset.fitBodyToFeet(this.targets,this.normals,posedFoot)-supportOffset;
     this.clamped=this.asset.solveWorldFeet(this.targets,this.normals,posedFoot);
     if(posedFoot>=0)this.asset.paws[posedFoot].getWorldPosition(this.feet[posedFoot].target);
     this.pose.forEach(p=>{p.previousPosition.copy(p.node.position);p.previousRotation.copy(p.node.quaternion);});
+    this.bodySupport.stabilizeHead(this.asset,point||!!retrieve);
     this.scentMotion.update(this.asset,retrieve?undefined:field,moving,this.pointPresence,dt,reset);
     // Retrieval is an upper-body layer. Foot targets and locomotion remain
     // authoritative below; entering a pickup never slides the planted paws.

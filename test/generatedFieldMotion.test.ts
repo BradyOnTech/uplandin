@@ -207,3 +207,57 @@ it('keeps the swimming torso steady and paddles without ground contacts across a
   expect(maxPaw).toBeLessThan(.75);
   motion.dispose();
 });
+
+it('supports the torso on uphill and downhill grades without exhausting leg reach',()=>{
+  for(const slope of [-.3,.3])for(const speed of [0,.6,1.8,3.2,5.6]) {
+    const motion=new GeneratedFieldMotion('lite',(x,z)=>slope*z+.07*x);
+    let z=0;
+    for(let frame=0;frame<180;frame++) {
+      z+=speed/60;motion.update(0,z,0,1/60,speed>0,speed===0);
+      if(frame<30)continue;
+      expect(motion.clamped).toBe(0);
+      motion.contactSnapshot().forEach(foot=>{
+        expect(foot.targetError).toBeLessThan(.0001);
+        if(foot.locked&&!foot.step)expect(Math.abs(foot.groundGap)).toBeLessThan(.0001);
+      });
+    }
+    // Uphill posture raises the chest along the grade. The folded foreleg
+    // remains an authored point rather than being dragged onto the ground.
+    expect(motion.asset.joints.body.rotation.x).toBeCloseTo(-Math.atan(slope),3);
+    if(speed===0){
+      expect(motion.feet[0].locked).toBe(false);expect(motion.feet.slice(1).every(f=>f.locked)).toBe(true);
+      for(let frame=0;frame<30;frame++) {
+        motion.update(0,z,0,1/60,false,false);
+        expect(motion.contactSnapshot()[0].groundGap).toBeGreaterThan(-.002);
+      }
+    }
+    motion.dispose();
+  }
+});
+
+it('loads into either travelling turn, steadies the carried head and settles without pose drift',()=>{
+  for(const direction of [-1,1]) {
+    const motion=new GeneratedFieldMotion('lite',()=>0);let x=0,z=0,yaw=0;
+    for(let frame=0;frame<180;frame++) {
+      yaw=direction*frame/60*.6;x+=Math.sin(yaw)*1.8/60;z+=Math.cos(yaw)*1.8/60;
+      motion.update(x,z,yaw,1/60,true,false,{stage:'carry',holdMs:0});
+      expect(motion.clamped).toBe(0);
+      motion.contactSnapshot().forEach(foot=>expect(foot.targetError).toBeLessThan(.0001));
+    }
+    const {body,head}=motion.asset.joints;
+    expect(body.rotation.z*direction).toBeLessThan(-.01);
+    expect(Math.abs(body.rotation.z)).toBeLessThan(.1);
+    const headUp=new THREE.Vector3(0,1,0).applyQuaternion(head.getWorldQuaternion(new THREE.Quaternion()));
+    const bodyUp=new THREE.Vector3(0,1,0).applyQuaternion(body.getWorldQuaternion(new THREE.Quaternion()));
+    // Compensation keeps the head's lateral roll smaller than the torso's.
+    const side=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
+    expect(Math.abs(headUp.dot(side))).toBeLessThan(Math.abs(bodyUp.dot(side)));
+    for(let frame=0;frame<90;frame++)motion.update(x,z,yaw,1/60,false,false,{stage:'deliver',holdMs:500});
+    expect(Math.abs(body.rotation.z)).toBeLessThan(.0001);
+    const position=body.position.clone(),rotation=body.quaternion.clone();
+    for(let frame=0;frame<30;frame++)motion.update(x,z,yaw,0,false,false,{stage:'deliver',holdMs:500});
+    expect(body.position.distanceTo(position)).toBeLessThan(.0001);
+    expect(body.quaternion.angleTo(rotation)).toBeLessThan(.0001);
+    motion.dispose();
+  }
+});
