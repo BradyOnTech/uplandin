@@ -116,6 +116,7 @@ const COVER_WEAVE_MULT = 1.7; // busier, tighter serpentine inside cover
 /** Perimeter lap speed while edge-working (fraction of perimeter per second). */
 const COVER_EDGE_LAP_RATE = 0.35;
 const LOCAL_COVER_BEAT = 12; // property yards: check a reachable part of a large stand
+const PRAIRIE_COVER_BEAT = 32; // broad casts across reachable parts of a long grass stand
 const SEARCH_MOVE_ON = 8 / PROPERTY_PX_TO_M;
 /**
  * How completely the dog checks cover before calling it empty, by level:
@@ -886,7 +887,7 @@ export class Dog {
       // when the dog knows wind), only a hint of weave.
       this.gait = 'trot';
       this.weavePhase += workDt * WEAVE_RATE;
-      const aimPt = castAimPoint(patch, env.windAngle, localBeat ? 0 : windCraftTier(this.profile.level));
+      const aimPt = castAimPoint(patch, env.windAngle, this.localPheasantSearch(env) ? 0 : windCraftTier(this.profile.level));
       // Route-aware casting is what turns the authored lines into dog work.
       // Pheasant, desert, bench, and ridge dogs should arrive at the cover
       // from the physical edge they are meant to hunt; the softer pull on
@@ -1039,7 +1040,7 @@ export class Dog {
    * pup calls a big CRP field checked long before it is.
    */
   private chooseCover(env: DogEnv): Rect | null {
-    if (this.localPheasantSearch(env)) return this.chooseLocalCoverBeat(env);
+    if (this.localPheasantSearch(env) || this.localPrairieSearch(env)) return this.chooseLocalCoverBeat(env);
     const patches = env.patches ?? [];
     const anchor = env.workAnchor ?? env.hunterPos;
     const doctrine = this.doctrineFor(env);
@@ -1116,12 +1117,22 @@ export class Dog {
     return env.rangeRadius !== undefined && this.doctrineFor(env).style === 'pheasant';
   }
 
+  private localPrairieSearch(env: DogEnv): boolean {
+    return env.rangeRadius !== undefined && env.huntAreaId === 'sharptail-prairie';
+  }
+
   /** Search reachable pieces of the habitat union, never concealed birds.
    * Whole-patch centers can lie hundreds of yards beyond a nearby edge. */
   private chooseLocalCoverBeat(env: DogEnv): Rect | null {
     const anchor = env.workAnchor ?? env.hunterPos;
     if (!anchor) return null;
     const range = this.effectiveRangeRadius(env);
+    // The 3D prairie stands are much longer than the dog's working radius.
+    // Searching their centers would skip reachable edges, then mark the
+    // whole stand checked after one short pass. Broad, remembered sectors
+    // follow the handler through that same habitat without reading birds.
+    const prairie = this.localPrairieSearch(env);
+    const beatSize = prairie ? PRAIRIE_COVER_BEAT : LOCAL_COVER_BEAT;
     if (this.localCoverBeat) {
       const r = this.localCoverBeat.rect;
       if (dist({ x: rectCx(r), y: rectCy(r) }, anchor) <= range * 1.15) return r;
@@ -1133,28 +1144,32 @@ export class Dog {
       const left = Math.max(patch.x, anchor.x - range), right = Math.min(patch.x + patch.w, anchor.x + range);
       const top = Math.max(patch.y, anchor.y - range), bottom = Math.min(patch.y + patch.h, anchor.y + range);
       if (left >= right || top >= bottom) continue;
-      for (let gx = Math.floor(left / LOCAL_COVER_BEAT); gx <= Math.floor(right / LOCAL_COVER_BEAT); gx++) {
-        for (let gy = Math.floor(top / LOCAL_COVER_BEAT); gy <= Math.floor(bottom / LOCAL_COVER_BEAT); gy++) {
+      for (let gx = Math.floor(left / beatSize); gx <= Math.floor(right / beatSize); gx++) {
+        for (let gy = Math.floor(top / beatSize); gy <= Math.floor(bottom / beatSize); gy++) {
           const key = `${gx}:${gy}`;
           if (this.checkedLocalBeats.has(key)) continue;
-          const x = Math.max(patch.x, gx * LOCAL_COVER_BEAT), y = Math.max(patch.y, gy * LOCAL_COVER_BEAT);
-          const w = Math.min(patch.x + patch.w, (gx + 1) * LOCAL_COVER_BEAT) - x;
-          const h = Math.min(patch.y + patch.h, (gy + 1) * LOCAL_COVER_BEAT) - y;
+          const x = Math.max(patch.x, gx * beatSize), y = Math.max(patch.y, gy * beatSize);
+          const w = Math.min(patch.x + patch.w, (gx + 1) * beatSize) - x;
+          const h = Math.min(patch.y + patch.h, (gy + 1) * beatSize) - y;
           if (w < 1 || h < 1) continue;
           const center = { x: x + w / 2, y: y + h / 2 };
           if (dist(center, anchor) > range - .5) continue;
-          const score = dist(this.pos, center) + (env.trails?.length ? distanceToTrail(center, env.trails) * .62 : 0)
-            + (1 - (env.coverAffinity?.(center) ?? .5)) * 30;
+          const score = dist(this.pos, center) + (env.trails?.length ? distanceToTrail(center, env.trails) * (prairie ? .38 : .62) : 0)
+            + (1 - (env.coverAffinity?.(center) ?? .5)) * (prairie ? 22 : 30);
           if (score < bestScore) { bestScore = score; best = { key, rect: { x, y, w, h }, index }; }
         }
       }
     }
     if (!best) { this.coverIdx = null; return null; }
     this.localCoverBeat = best; this.coverIdx = best.index;
-    this.coverWorkMsLeft = clamp(Math.max(best.rect.w, best.rect.h) * 550, 3200, 8000) * coverThoroughness(this.level);
+    this.coverWorkMsLeft = prairie
+      ? clamp(Math.max(best.rect.w, best.rect.h) * 350, 3500, 10000) * coverThoroughness(this.level) * this.doctrineFor(env).coverWorkMult
+      : clamp(Math.max(best.rect.w, best.rect.h) * 550, 3200, 8000) * coverThoroughness(this.level);
     this.coverEdgeMsLeft = this.coverWorkMsLeft * Math.min(.78, coverEdgeFraction(this.level) + this.doctrineFor(env).dogEdgeBias);
     this.coverEdgeT = nearestPerimeterT(best.rect, this.pos);
-    this.heading = Math.atan2(rectCy(best.rect) - this.pos.y, rectCx(best.rect) - this.pos.x);
+    const aim = prairie ? castAimPoint(best.rect, env.windAngle, windCraftTier(this.level))
+      : { x: rectCx(best.rect), y: rectCy(best.rect) };
+    this.heading = Math.atan2(aim.y - this.pos.y, aim.x - this.pos.x);
     return best.rect;
   }
 
