@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createLocomotionPose, writeLocomotionPose, type LocomotionGait, type FootTuple } from './locomotion';
 import { createTwoBoneSolution, solveTwoBone } from './legIk';
+import { germanShorthairedPointerAppearance, type GspCoatId } from './germanShorthairedPointer';
 
 /** Authored in metres, +Z nose. Geometry is generated once, never per frame. */
 type Ring = readonly [x: number, y: number, z: number, width: number, height: number, underside?: number];
@@ -13,10 +14,13 @@ const WHITE = 0xd1cdc1, LIVER = 0x51382e, NOSE = 0x332722, EYE = 0x211c17;
 export const GENERATED_MOUTH_GRIP: Point = [0, -.065, .125];
 
 /** Coat coordinates stay in the bind pose so pigment follows the skin. */
-function applyGspCoat(material: THREE.MeshLambertMaterial): void {
+function applyGspCoat(material: THREE.MeshLambertMaterial, coatId: GspCoatId): void {
+  const appearance = germanShorthairedPointerAppearance(coatId);
   material.onBeforeCompile = shader => {
-    shader.uniforms.gspWhite = { value: new THREE.Color(WHITE) };
-    shader.uniforms.gspLiver = { value: new THREE.Color(LIVER) };
+    shader.uniforms.gspWhite = { value: new THREE.Color(coatId === 'liver-white' ? WHITE : appearance.ground) };
+    shader.uniforms.gspLiver = { value: new THREE.Color(coatId === 'liver-white' ? LIVER : appearance.primary) };
+    shader.uniforms.gspRoan = { value: appearance.pattern === 'roan' ? 1 : 0 };
+    shader.uniforms.gspSolid = { value: appearance.pattern === 'solid' ? 1 : 0 };
     shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>
 varying vec3 vGspBindPosition;
 varying float vGspWhiteSurface;`).replace('#include <begin_vertex>', `#include <begin_vertex>
@@ -27,6 +31,8 @@ varying vec3 vGspBindPosition;
 varying float vGspWhiteSurface;
 uniform vec3 gspWhite;
 uniform vec3 gspLiver;
+uniform float gspRoan;
+uniform float gspSolid;
 float gspIsland(vec3 point, vec3 center, vec3 radius) {
   vec3 p = (point - center) / radius;
   float edge = length(p) + 0.075 * sin(point.z * 53.0 + point.y * 31.0)
@@ -47,15 +53,15 @@ if (vGspWhiteSurface > 0.5) {
   vec3 cell = floor(p * 91.0);
   float choice = gspHash(cell);
   vec3 center = vec3(gspHash(cell + 3.1), gspHash(cell + 7.7), gspHash(cell + 11.3));
-  float spot = (1.0 - smoothstep(0.10, 0.23, length(fract(p * 91.0) - center))) * step(0.76, choice);
+  float spot = (1.0 - smoothstep(0.10, 0.23, length(fract(p * 91.0) - center))) * step(mix(0.76, 0.32, gspRoan), choice);
   float footprint = max(length(dFdx(p)), length(dFdy(p)));
   spot *= 1.0 - smoothstep(0.0025, 0.009, footprint);
   float underside = 1.0 - smoothstep(0.26, 0.56, p.y);
   vec3 cleanCoat = gspWhite * (1.0 - underside * 0.025);
-  diffuseColor.rgb = mix(cleanCoat, gspLiver, max(liverArea, spot * 0.70));
+  diffuseColor.rgb = mix(cleanCoat, gspLiver, max(gspSolid, max(liverArea, spot * mix(0.70, 0.92, gspRoan))));
 }`);
   };
-  material.customProgramCacheKey = () => 'generated-gsp-bind-coat-v1';
+  material.customProgramCacheKey = () => 'generated-gsp-bind-coat-v2';
 }
 
 class Surface {
@@ -115,11 +121,15 @@ class Surface {
   }
 }
 
-export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = false) {
+export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = false, coatId: GspCoatId = 'liver-white') {
   const sides = detail === 'high' ? 10 : 6;
   const root = new THREE.Group(); root.name = 'generated-gsp';
+  const appearance = germanShorthairedPointerAppearance(coatId);
+  const pigment = coatId === 'liver-white' ? LIVER : appearance.primary;
+  const nose = coatId === 'black-roan' ? appearance.nose : NOSE;
+  root.userData.coatId = coatId; root.userData.coatLabel = appearance.label;
   const material = new THREE.MeshLambertMaterial({ vertexColors: true });
-  applyGspCoat(material);
+  applyGspCoat(material, coatId);
   const geometries: THREE.BufferGeometry[] = [];
   const joints: Record<string, THREE.Bone> = {};
   const joint = (name: string, parent: THREE.Object3D, position: Point) => {
@@ -149,8 +159,8 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
       [0,.008,-.012,.060,.041,.049],[0,.005,.026,.060,.037,.052],
       [0,-.003,.056,.054,.032,.020],[0,-.008,.077,.046,.030,.013],
       [0,-.006,.111,.042,.029,.013],[0,-.003,.145,.035,.027,.015],
-      [0,-.002,.171,.035,.024,.017]], LIVER);
-    s.loft([[0,-.001,.166,.035,.024,.027],[0,.001,.18,.034,.022,.023]], NOSE);
+      [0,-.002,.171,.035,.024,.017]], pigment);
+    s.loft([[0,-.001,.166,.035,.024,.027],[0,.001,.18,.034,.022,.023]], nose);
     // The oral roof stays dark, including when viewed from below; it is
     // geometry in the existing skin, not a hole through the head or a decal.
     s.loft([[0,-.022,.044,.028,.0015],[0,-.020,.088,.035,.0015],
@@ -163,7 +173,7 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
   surface(jaw, s => {
     s.loft([[0,-.004,.003,.034,.012],[0,-.014,.045,.037,.013],
       [0,-.008,.091,.033,.012],[0,-.003,.126,.029,.009],
-      [0,0,.142,.023,.007]], LIVER);
+      [0,0,.142,.023,.007]], pigment);
     // A small dark inner surface and soft lower lip describe a relaxed
     // grip without large white teeth or a bright, cartoon tongue.
     s.loft([[0,.003,.021,.027,.0015],[0,0,.065,.030,.0015],
@@ -176,7 +186,7 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
     surface(ear, s => s.loft([[side*.006,-.110,.041,.0025,.007],
       [side*.010,-.100,.033,.0035,.017],[side*.012,-.081,.020,.004,.027],
       [side*.011,-.054,.008,.0045,.033],[side*.007,-.027,-.002,.0045,.030],
-      [0,0,0,.0045,.024]], LIVER, 'y'), .82);
+      [0,0,0,.0045,.024]], pigment, 'y'), .82);
   }
   const tail = joint('tail', body, [0,.578,-.366]);
   surface(tail, s => s.loft([[0,.018,-.252,.0025,.003],[0,.022,-.18,.006,.007],[0,.012,-.085,.013,.014],[0,0,0,.020,.022]], WHITE), .8);

@@ -85,14 +85,16 @@ for (const system of landscapeVisuals.systems) engine.register(system);
 engine.register(new LandmarksSystem());
 // The production GSP is generated on every property. Keep the rigged asset
 // available through an explicit review choice rather than a map-dependent default.
-engine.register(visualBreed === 'gsp' && coatId === 'liver-white' && params.get('dog') !== 'rigged'
-  ? new GeneratedDogSystem()
-  : visualBreed === 'gsp' && coatId === 'liver-white' && params.get('dog') === 'rigged'
-    ? new RiggedDogSystem() : new DogSystem(visualBreed, coatId));
+engine.register(visualBreed === 'gsp'
+  ? coatId === 'liver-white' && params.get('dog') === 'rigged'
+    ? new RiggedDogSystem() : new GeneratedDogSystem(resolveGspCoat(coatId))
+  : new DogSystem(visualBreed, coatId));
 if (launchProfile.brace) {
   const braceVisualBreed = visualBreedFor(launchProfile.brace.breedId);
   const braceCoat = braceVisualBreed === 'gsp' ? resolveGspCoat(null) : resolveEnglishSetterCoat(null);
-  engine.register(new DogSystem(braceVisualBreed, braceCoat, 1));
+  engine.register(braceVisualBreed === 'gsp'
+    ? new GeneratedDogSystem(resolveGspCoat(braceCoat), 1)
+    : new DogSystem(braceVisualBreed, braceCoat, 1));
 }
 engine.register(new BirdsSystem());
 engine.register(new FalconrySystem());

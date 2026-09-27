@@ -9,10 +9,16 @@ import { dogTorsoHeading } from '../dogs/riggedMotion';
 import { GeneratedAttention } from '../dogs/generatedAttention';
 import type { BirdsSystem } from './birds';
 import type { GeneratedFieldIntent } from '../dogs/generatedScentMotion';
+import type { GspCoatId } from '../dogs/germanShorthairedPointer';
+import { dogRendererId } from '../dogs/rendererId';
 
-/** Selectable prototype; fast-gait and full hunt-state polish remain in development. */
+type AuditScope = { __generatedDogAudit?: unknown; __generatedDogAudits?: Record<string, unknown> };
+
+/** Shared GSP presentation for either brace member; the hunt retains
+ * authority over breed behavior, movement and bird ownership. */
 export class GeneratedDogSystem implements Subsystem {
-  readonly id='dog';
+  readonly id:string;
+  constructor(private readonly coatId:GspCoatId='liver-white',private readonly slot=0){this.id=dogRendererId(slot);}
   private motion?:GeneratedFieldMotion;
   private hunt!:Hunt3DSystem;
   private position={x:0,z:0};
@@ -27,25 +33,27 @@ export class GeneratedDogSystem implements Subsystem {
   private audit=()=>{
     if(!this.motion)return null;
     const mouth=new THREE.Vector3();this.mouthWorld(mouth);
-    return {source:'generated-gsp',version:1,frame:this.auditFrame,state:this.hunt.dog().state,moving:this.motion.moving,speed:this.speed,gait:this.motion.gait,
+    return {source:'generated-gsp',version:1,slot:this.slot,coatId:this.coatId,frame:this.auditFrame,state:this.hunt.dog(this.slot).state,moving:this.motion.moving,speed:this.speed,gait:this.motion.gait,
       field:{...this.field,performance:this.motion.scentMotion.performance},jawAngle:this.motion.mouthMotion.angle,
       swimming:this.motion.swimming,clamped:this.motion.clamped,stats:this.motion.asset.stats,root:this.motion.asset.root.position.toArray(),mouth:mouth.toArray(),feet:this.motion.contactSnapshot()};
   };
   init(ctx:Ctx){
     this.hunt=ctx.get<Hunt3DSystem>('hunt3d');const terrain=ctx.get<TerrainSystem>('terrain');
     const water=new ShallowWater(new LandscapeModel(this.hunt.areaConfig(),this.hunt.dropPoint().id));
-    this.motion=new GeneratedFieldMotion(ctx.quality,(x,z)=>terrain.heightAt(x,z),(x,z)=>water.depthAtWorld(x,z));ctx.scene.add(this.motion.asset.root);
-    (window as unknown as {__generatedDogAudit?:unknown}).__generatedDogAudit=this.audit;
+    this.motion=new GeneratedFieldMotion(ctx.quality,(x,z)=>terrain.heightAt(x,z),(x,z)=>water.depthAtWorld(x,z),this.coatId);ctx.scene.add(this.motion.asset.root);
+    const scope=window as unknown as AuditScope;
+    (scope.__generatedDogAudits??={})[this.id]=this.audit;
+    if(this.slot===0)scope.__generatedDogAudit=this.audit;
   }
   update(ctx:Ctx,dt:number){
-    if(!this.motion)return;const dog=this.hunt.dog();this.hunt.dogRenderWorld(ctx.fixedAlpha,this.position);
+    if(!this.motion)return;const dog=this.hunt.dog(this.slot);this.hunt.dogRenderWorld(ctx.fixedAlpha,this.position,this.slot);
     const distance=this.placed?Math.hypot(this.position.x-this.previous.x,this.position.z-this.previous.z):0;
     // The hunt snaps its first live placement away from the authored map
     // spawn. That relocation is not a traveled stride or a speed sample.
     if(!this.placed||distance>3)this.speed=0;
     else if(dt>0)this.speed=THREE.MathUtils.lerp(this.speed,distance/dt,1-Math.exp(-dt*12));
-    const intentHeading=this.hunt.dogRenderHeading(ctx.fixedAlpha);
-    this.heading=dogTorsoHeading(dog,this.speed,this.hunt.dogRenderTravelHeading(ctx.fixedAlpha),intentHeading,this.heading,dt,!this.placed||distance>3);
+    const intentHeading=this.hunt.dogRenderHeading(ctx.fixedAlpha,this.slot);
+    this.heading=dogTorsoHeading(dog,this.speed,this.hunt.dogRenderTravelHeading(ctx.fixedAlpha,this.slot),intentHeading,this.heading,dt,!this.placed||distance>3);
     this.field.state=dog.state;this.field.scentStage=dog.scentStage;this.field.scentProgress=dog.scentProgress??0;
     this.field.waitingForHandler=dog.waitingForHandler??false;
     // Model yaw is pi/2 minus the simulation heading, so intent relative to
@@ -68,5 +76,11 @@ export class GeneratedDogSystem implements Subsystem {
   }
   partingPoint(out:{x:number;z:number;r:number}){out.x=this.position.x;out.z=this.position.z;out.r=.44;}
   mouthWorld(out:THREE.Vector3){if(!this.motion)return false;out.copy(this.motion.mouthMotion.grip);this.motion.asset.joints.head.localToWorld(out);return true;}
-  dispose(){const scope=window as unknown as {__generatedDogAudit?:unknown};if(scope.__generatedDogAudit===this.audit)delete scope.__generatedDogAudit;this.motion?.dispose();this.motion=undefined;}
+  dispose(){
+    const scope=window as unknown as AuditScope;
+    if(scope.__generatedDogAudit===this.audit)delete scope.__generatedDogAudit;
+    if(scope.__generatedDogAudits?.[this.id]===this.audit)delete scope.__generatedDogAudits[this.id];
+    if(scope.__generatedDogAudits&&Object.keys(scope.__generatedDogAudits).length===0)delete scope.__generatedDogAudits;
+    this.motion?.dispose();this.motion=undefined;
+  }
 }

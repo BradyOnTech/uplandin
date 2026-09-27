@@ -4,6 +4,7 @@ import { createGeneratedGsp, GENERATED_STRIDE } from './generatedGsp';
 import { GeneratedScentMotion, fieldPerformance, type GeneratedFieldIntent } from './generatedScentMotion';
 import { GeneratedBodySupport } from './generatedBodySupport';
 import { GeneratedMouthMotion } from './generatedMouth';
+import type { GspCoatId } from './germanShorthairedPointer';
 
 export interface GeneratedRetrievePose { stage: 'pickup' | 'carry' | 'deliver'; holdMs: number; speciesId?: string; }
 
@@ -36,8 +37,8 @@ export class GeneratedFieldMotion {
   private pose: {node:THREE.Bone;previousPosition:THREE.Vector3;previousRotation:THREE.Quaternion;fromPosition:THREE.Vector3;fromRotation:THREE.Quaternion}[];
   private groundNormal(x:number,z:number,out:THREE.Vector3) {const e=.04;return out.set(this.ground(x-e,z)-this.ground(x+e,z),2*e,this.ground(x,z-e)-this.ground(x,z+e)).normalize();}
   swimming=false;
-  constructor(detail:'high'|'lite',private ground:(x:number,z:number)=>number,private waterDepth:(x:number,z:number)=>number=()=>0) {
-    this.asset=createGeneratedGsp(detail,true);
+  constructor(detail:'high'|'lite',private ground:(x:number,z:number)=>number,private waterDepth:(x:number,z:number)=>number=()=>0,coatId:GspCoatId='liver-white') {
+    this.asset=createGeneratedGsp(detail,true,coatId);
     // Torso support has its own continuous response; blending its solved
     // position a second time would accumulate the ribcage pivot offset.
     this.pose=Object.values(this.asset.joints).filter(node=>node!==this.asset.joints.body).map(node=>({node,previousPosition:node.position.clone(),previousRotation:node.quaternion.clone(),fromPosition:node.position.clone(),fromRotation:node.quaternion.clone()}));

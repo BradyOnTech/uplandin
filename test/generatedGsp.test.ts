@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { createGeneratedGsp } from '../src/three/dogs/generatedGsp';
+import { GSP_COAT_IDS } from '../src/three/dogs/germanShorthairedPointer';
 
 describe('generated GSP asset contract', () => {
   for (const detail of ['high', 'lite'] as const) it(`${detail} remains a finite, bounded asset with grounded stance and a raised pointing paw`, () => {
@@ -50,6 +51,20 @@ describe('generated GSP asset contract', () => {
     expect(a.min.distanceTo(b.min)).toBeLessThan(.006);
     expect(a.max.distanceTo(b.max)).toBeLessThan(.006);
     high.dispose(); lite.dispose();
+  });
+  it('keeps the accepted anatomy and one-skin budget across all four GSP coats', () => {
+    const reference = createGeneratedGsp('lite');
+    for (const coat of GSP_COAT_IDS) {
+      const dog = createGeneratedGsp('lite', false, coat);
+      expect(dog.root.userData.coatId).toBe(coat);
+      for (const attribute of ['position', 'skinIndex', 'skinWeight']) {
+        expect(Array.from(dog.skin.geometry.getAttribute(attribute).array))
+          .toEqual(Array.from(reference.skin.geometry.getAttribute(attribute).array));
+      }
+      expect(dog.stats).toEqual(reference.stats);
+      dog.dispose();
+    }
+    reference.dispose();
   });
 });
 
