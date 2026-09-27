@@ -154,6 +154,55 @@ describe('continuous Quail coveys', () => {
       expect(flutter).not.toHaveBeenCalled();
     } finally {sound.mockRestore();flutter.mockRestore();}
   });
+  it.each(['bobwhite', 'chukar', 'sharptail'])('locates each actual %s launch without a global covey chirp', species => {
+    const sound = vi.spyOn(audio, 'playBirdFlush').mockImplementation(() => undefined);
+    const flutter = vi.spyOn(audio, 'playFlush').mockImplementation(() => {});
+    try {
+      const f = fixture(); f.runtime.frozen = false;
+      f.add(1, 1, 4, 0); f.birds[0].speciesId = species;
+      f.runtime.tickBirds(1000 / 30);
+      expect(sound).toHaveBeenCalledOnce();
+      expect(sound).toHaveBeenLastCalledWith(species, Math.hypot(4, .2), expect.objectContaining({ x: 4, y: .2, z: 0 }),
+        expect.objectContaining({ flapRate: getSpecies(species).flight.flapRate, seed: expect.any(Number) }));
+      expect(flutter).not.toHaveBeenCalled();
+      // A held launch stays silent until its delay actually ends. Turning
+      // before that launch must change its audible bearing immediately.
+      const slot = f.runtime.slots[0];
+      Object.assign(slot, { status: 'waiting', delayMs: 60, x: 4, y: .2, z: 0 });
+      const camera = new THREE.PerspectiveCamera(); camera.position.set(12, 2, 0);
+      f.runtime.listener = camera;
+      f.runtime.tickBirds(1000 / 30); expect(sound).toHaveBeenCalledOnce();
+      f.runtime.tickBirds(1000 / 30); expect(sound).toHaveBeenCalledTimes(2);
+      expect(sound).toHaveBeenLastCalledWith(species, Math.hypot(8, 1.8), expect.objectContaining({ x: -8, y: -1.8, z: 0 }), expect.any(Object));
+    } finally { sound.mockRestore(); flutter.mockRestore(); }
+  });
+  it('ends launch transients on pause, tab hiding and page departure and removes lifecycle listeners on disposal', () => {
+    const doc = Object.assign(new EventTarget(), { hidden: false }), win = new EventTarget();
+    vi.stubGlobal('document', doc); vi.stubGlobal('window', win); vi.stubGlobal('location', { search: '' });
+    const system = new BirdsSystem();
+    const runtime = system as unknown as { slots: Array<{ launchSound?: unknown }> };
+    const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), events: new EventTarget(),
+      quality: 'lite', timeOfDay: 'noon', get: (id: string) => id === 'hunt3d'
+        ? { areaConfig: () => getArea('quail-fields'), huntState: () => ({ areaId: 'quail-fields' }) }
+        : { heightAt: () => 0 } };
+    try {
+      system.init(ctx as any);
+      const sound = () => { const handle = { stop: vi.fn() }; runtime.slots[0].launchSound = handle; return handle; };
+      const paused = sound();
+      ctx.events.dispatchEvent(new CustomEvent('pause', { detail: true }));
+      expect(paused.stop).toHaveBeenCalledOnce(); expect(runtime.slots[0].launchSound).toBeUndefined();
+      ctx.events.dispatchEvent(new CustomEvent('pause', { detail: false }));
+      expect(paused.stop).toHaveBeenCalledOnce();
+      const hidden = sound(); doc.hidden = true; doc.dispatchEvent(new Event('visibilitychange'));
+      expect(hidden.stop).toHaveBeenCalledOnce();
+      const departing = sound(); win.dispatchEvent(new Event('pagehide')); expect(departing.stop).toHaveBeenCalledOnce();
+      const disposed = sound(); system.dispose(ctx as any); expect(disposed.stop).toHaveBeenCalledOnce();
+      const orphan = { stop: vi.fn() }; runtime.slots.push({ launchSound: orphan });
+      ctx.events.dispatchEvent(new CustomEvent('pause', { detail: true }));
+      doc.dispatchEvent(new Event('visibilitychange')); win.dispatchEvent(new Event('pagehide'));
+      expect(orphan.stop).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
+  });
   it('updates a launched sound with moving bird and listener, then stops it on slot reuse', () => {
     const handle={active:true,updateSpatial:vi.fn((_distance:number,direction:any)=>({...direction})),updateCoverSpatial:vi.fn(),stop:vi.fn()};
     const sound=vi.spyOn(audio,'playPheasantFlush').mockReturnValue(handle);

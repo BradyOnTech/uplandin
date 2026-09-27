@@ -9,7 +9,8 @@ import * as THREE from 'three';
 import { buildBobwhiteBody, buildBobwhiteWing, poseBobwhiteFoldedWings } from '../assets/bobwhite';
 import { buildSharptailBody, buildSharptailWing, poseSharptailFoldedWings } from '../assets/sharptail';
 import { sharptailLaunchDelay, sharptailWingbeat } from '../sharptailPresentation';
-import { playFlush, playThud, playPheasantFlush, type PheasantFlushSound } from '../../audio';
+import { addCarriedBirdPoses, poseCarriedBird, restingBirdScale } from '../carriedBirdPresentation';
+import { playFlush, playThud, playPheasantFlush, playBirdFlush, type PheasantFlushSound } from '../../audio';
 import { RELIGHT_CHANCE, YOUNG_FLIGHT_MULT } from '../../game/birds';
 import { mulberry32 } from '../../game/math';
 import {
@@ -96,8 +97,6 @@ const LAUNCH_JITTER_PX = 16;
  * the mandated mass. Still a fraction of the 2D license.
  */
 const RISE_SCALE = 3.3;
-const GROUNDED_SCALE = 2.1;
-const PHEASANT_REST_SCALE = 1.25;
 /** Tip-to-tip wingspan of the UNSCALED model (m) — telemetry only. */
 const SPAN_M = 0.308;
 
@@ -300,6 +299,7 @@ interface Slot {
   bank?: number;
   bankYaw?: number;
   fallPose?: { startMs: number; rotation: THREE.Euler; groundedMs?: number };
+  carryPose?: { elapsed: number; rotation: THREE.Quaternion };
   delayMs: number;
   wobblePh: number;
   wobbleMult: number;
@@ -390,6 +390,7 @@ export class BirdsSystem implements Subsystem {
   private coverSoundOffset = new THREE.Vector3();
   private soundInverse = new THREE.Quaternion();
   private listener?: THREE.Camera;
+  private lifetime = new AbortController();
   private frozen = false;
 
   private fallEuler = new THREE.Euler();
@@ -478,6 +479,14 @@ export class BirdsSystem implements Subsystem {
       ? huntStreamSeed(parseHuntSeed(location.search) ?? FALCONRY_PRACTICE.seed, RISE_SEED) : RISE_SEED;
     this.listener = ctx.camera;
     this.coverEvents = ctx.events;
+    const signal = this.lifetime.signal;
+    ctx.events.addEventListener('pause', ((event: CustomEvent<boolean>) => {
+      if (event.detail) this.stopLaunchSounds();
+    }) as EventListener, { signal });
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.stopLaunchSounds();
+    }, { signal });
+    if (typeof window !== 'undefined') window.addEventListener('pagehide', () => this.stopLaunchSounds(), { signal });
     this.frozen = new URLSearchParams(location.search).has('capture');
     this.hunt = ctx.get<Hunt3DSystem>('hunt3d');
     this.terrain = ctx.get<TerrainSystem>('terrain');
@@ -522,7 +531,7 @@ export class BirdsSystem implements Subsystem {
       this.tone.uCoolK.value = silh ? 0.65 : 0.35 + lowSun * 0.35;
     };
     applyTod(ctx.timeOfDay);
-    ctx.events.addEventListener('tod', ((e: CustomEvent) => applyTod(e.detail)) as EventListener);
+    ctx.events.addEventListener('tod', ((e: CustomEvent) => applyTod(e.detail)) as EventListener, { signal });
 
     this.buildPool(ctx);
     if (this.spatialEncounter) {
@@ -681,6 +690,7 @@ export class BirdsSystem implements Subsystem {
     const wingR = species.id === 'ringneck' ? buildPheasantWing(1,hen) : species.id === 'bobwhite' ? buildBobwhiteWing(1)
       : species.id === 'sharptail' ? buildSharptailWing(1) : this.buildWingGeo(1, wingTop, wingTopDim, wingUnder, shape);
     const tailGeo = species.id === 'ringneck' ? buildPheasantTail(hen) : undefined;
+    addCarriedBirdPoses(body, wingL, wingR, species.id);
     if (tailGeo) this.geos.push(tailGeo);
     this.geos.push(body, wingL, wingR);
     wingR.computeBoundingBox();
@@ -725,6 +735,7 @@ export class BirdsSystem implements Subsystem {
     );
     slot.visualScale = birdVisualScale(species);
     slot.spanM = geometry.spanM;
+    slot.carryPose = undefined;
   }
 
   /** Hex-lofted body + stub tail fan, one geometry (one draw call). */
@@ -961,7 +972,6 @@ export class BirdsSystem implements Subsystem {
         const flight: FlightContext = { escX:this.escX,escZ:this.escZ,rightX:this.rightX,rightZ:this.rightZ,
           hunterX:this.hunterX,hunterZ:this.hunterZ,driftPx:this.driftPx,rng:this.riseRng };
         for (const bird of covey) { this.queue[this.qTail++] = bird.id; this.pendingFlights.set(bird.id,flight); }
-        if (!this.frozen && covey.some(bird => bird.speciesId !== 'ringneck')) playFlush();
       }
     } else if (newRise) {
       this.stageRise(simBirds);
@@ -1520,16 +1530,21 @@ export class BirdsSystem implements Subsystem {
   }
 
   private disturbLaunchCover(slot: Slot): void {
-    if (!this.frozen && this.spatialEncounter && slot.species.id === 'ringneck') {
+    if (!this.frozen && this.spatialEncounter) {
       const offset = new THREE.Vector3(slot.x, slot.y, slot.z);
       if (this.listener) offset.sub(this.listener.position).applyQuaternion(this.listener.quaternion.clone().invert());
       else offset.sub(new THREE.Vector3(this.hunterX, 0, this.hunterZ));
       slot.launchSound?.stop();
       slot.launchOriginX = slot.x; slot.launchOriginY = slot.y; slot.launchOriginZ = slot.z;
-      slot.launchSound = playPheasantFlush(offset.length(), slot.sex === 'rooster', offset, {
+      const voice = {
         seed: (slot.simId * 0x9e3779b9 + this.riseSeq * 0x85ebca6b) >>> 0,
         flapRate: slot.species.flight.flapRate ?? 9, phaseOffset: slot.wobblePh * .35,
-      });
+      };
+      slot.launchSound = slot.species.id === 'ringneck'
+        ? playPheasantFlush(offset.length(), slot.sex === 'rooster', offset, voice)
+        : playBirdFlush(slot.species.id, offset.length(), offset, { ...voice,
+          glideAfterMs: slot.spatialFlight ? slot.spatialFlight.glideAt * 1000 : slot.species.flight.glideAfterMs,
+        });
     }
     this.coverEvents?.dispatchEvent(new CustomEvent('bird-cover-disturbance', {
       detail: { x: slot.x, z: slot.z },
@@ -1772,19 +1787,27 @@ export class BirdsSystem implements Subsystem {
           );
           const visual = ctx.get<Subsystem & { mouthWorld?: (out: THREE.Vector3) => boolean }>(carrierSlot === 0 ? 'dog' : 'dog2');
           visual.mouthWorld?.(s.root.position);
-          s.root.scale.setScalar((s.species.id === 'ringneck' ? PHEASANT_REST_SCALE : this.refinedQuail ? QUAIL_WORLD_SCALE : GROUNDED_SCALE) * s.visualScale);
-          // Carry the bird crosswise in the mouth, wings folded.
-          s.root.rotation.set(0.12, dogYaw + Math.PI / 2, 0.42);
+          s.carryPose ??= { elapsed: 0, rotation: s.root.quaternion.clone() };
+          s.carryPose.elapsed += Math.max(0, _dt);
+          const presence = THREE.MathUtils.smoothstep(s.carryPose.elapsed, 0, .22);
+          s.root.scale.setScalar(restingBirdScale(birdFamilyFor(s.species.id)) * s.visualScale);
+          // The mouth is the fixed grip. The relaxed crosswise pose settles
+          // during pickup without moving the bird away from that attachment.
+          s.root.rotation.set(.10, dogYaw + Math.PI / 2, .24, 'YXZ');
+          s.root.quaternion.slerp(s.carryPose.rotation, 1 - presence);
           this.foldWings(s);
+          poseCarriedBird(s, presence, s.carryPose.elapsed, dog.gait !== 'still');
           continue;
         }
       }
       s.root.position.set(s.x, s.y, s.z);
-      let scale = this.refinedQuail ? QUAIL_WORLD_SCALE : s.status === 'grounded' ? GROUNDED_SCALE : RISE_SCALE;
-      if (s.species.id === 'ringneck' && (s.status === 'grounded' || s.status === 'falling')) {
+      let scale = s.status === 'grounded' ? restingBirdScale(birdFamilyFor(s.species.id))
+        : this.refinedQuail ? QUAIL_WORLD_SCALE : RISE_SCALE;
+      if (s.status === 'falling') {
         const height = s.y - this.terrain.heightAt(s.x, s.z);
-        scale = s.status === 'grounded' ? PHEASANT_REST_SCALE
-          : THREE.MathUtils.lerp(PHEASANT_REST_SCALE, scale, THREE.MathUtils.smoothstep(height, .06, 2));
+        // Resolve the airborne readability enlargement before touchdown,
+        // rather than changing size when the dog takes the bird into its grip.
+        scale = THREE.MathUtils.lerp(restingBirdScale(birdFamilyFor(s.species.id)), scale, THREE.MathUtils.smoothstep(height, .06, 2));
       }
       s.root.scale.setScalar(scale * s.visualScale);
       if (s.tailMesh?.visible) {
@@ -1917,10 +1940,12 @@ export class BirdsSystem implements Subsystem {
   }
 
   dispose(ctx: Ctx): void {
+    this.lifetime.abort();
+    this.stopLaunchSounds();
     this.coverEvents = undefined;
     this.launchCover?.dispose();
     this.launchCover = undefined;
-    for (const s of this.slots) { s.launchSound?.stop(); ctx.scene.remove(s.root); }
+    for (const s of this.slots) ctx.scene.remove(s.root);
     this.slots.length = 0;
     if (this.debrisMesh) ctx.scene.remove(this.debrisMesh);
     if (this.featherPoints) ctx.scene.remove(this.featherPoints);
@@ -1933,5 +1958,9 @@ export class BirdsSystem implements Subsystem {
     this.geos.length = 0;
     this.mat?.dispose();
     this.mat = undefined;
+  }
+
+  private stopLaunchSounds(): void {
+    for (const slot of this.slots) { slot.launchSound?.stop(); slot.launchSound = undefined; }
   }
 }

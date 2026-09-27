@@ -21,15 +21,21 @@ export function sharptailLaunchDelay(index: number, count: number, rng: () => nu
 
 export interface SharptailWingPose { angle: number; recovery: number }
 
+/** Shared by the visible wing and its short launch sound. */
+export function sharptailWingPhase(seconds: number, hz: number, phaseOffset = 0): number {
+  const time = Math.max(0, seconds), rate = Math.max(1, hz);
+  const cycles = rate * (.72 * time + .28 * .28 * (1 - Math.exp(-time / .28)));
+  return cycles * Math.PI * 2 + phaseOffset;
+}
+
 /** Art-tuned power/recovery phrasing, not a change to flight physics. The
  * absolute interpolated flight clock makes live 30/60/120Hz views and capture
  * agree. A fast initial drive settles into brief beat bouts and open glides,
  * replacing the old permanent rigid-wing pose after 800ms. */
 export function sharptailWingbeat(seconds: number, hz: number, phaseOffset = 0, glideAt = .8): SharptailWingPose {
-  const time = Math.max(0, seconds), rate = Math.max(1, hz);
+  const time = Math.max(0, seconds);
   // Integral of a decaying initial cadence: no phase reset at level-out.
-  const cycles = rate * (.72 * time + .28 * .28 * (1 - Math.exp(-time / .28)));
-  const phase = cycles * Math.PI * 2 + phaseOffset;
+  const phase = sharptailWingPhase(time, hz, phaseOffset);
   const drive = .04 + Math.sin(phase) * (.77 + Math.exp(-time / .36) * .18);
   let power = 1;
   if (time > glideAt) {

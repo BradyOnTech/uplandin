@@ -1,4 +1,5 @@
 import { synthesizePheasantLaunch, PHEASANT_AUDIO_RATE, type PheasantLaunchVoice } from './three/pheasantFlushAudio';
+import { synthesizeBirdLaunch, BIRD_FLUSH_AUDIO_RATE, type BirdLaunchVoice } from './three/speciesFlushAudio';
 import { fieldSoundscape, fieldWindSamples } from './three/fieldSoundscape';
 import type { WindStrength } from './game/wind';
 /**
@@ -143,6 +144,40 @@ export function playPheasantFlush(distanceM: number, rooster: boolean,
   source: SoundDirection = { x: 0, y: 0, z: -1 }, voice: PheasantLaunchVoice = {}): PheasantFlushSound | undefined {
   const c = ready();
   if (!c) return;
+  return playSpatialLaunch(c, synthesizePheasantLaunch(rooster, voice), PHEASANT_AUDIO_RATE, distanceM, source);
+}
+
+const coveyVoices = new Set<{ sound: PheasantFlushSound; distance: number }>();
+
+/** At most four representative covey birds have individual spatial voices.
+ * A closer launch can replace the most distant one. Delayed birds make sound
+ * only at their visible takeoff, and the sound follows the airborne bird. */
+export function playBirdFlush(species: string, distanceM: number,
+  source: SoundDirection, voice: BirdLaunchVoice = {}): PheasantFlushSound | undefined {
+  const c = ready();
+  if (!c) return;
+  for (const entry of coveyVoices) if (!entry.sound.active) coveyVoices.delete(entry);
+  const distance = Number.isFinite(distanceM) ? Math.max(0, distanceM) : 0;
+  if (coveyVoices.size >= 4) {
+    const farthest = [...coveyVoices].reduce((a, b) => a.distance >= b.distance ? a : b);
+    if (farthest.distance <= distance) return;
+    farthest.sound.stop();
+  }
+  const entry = { distance, sound: undefined as unknown as PheasantFlushSound };
+  const handle = playSpatialLaunch(c, synthesizeBirdLaunch(species, voice), BIRD_FLUSH_AUDIO_RATE,
+    distance, source, () => coveyVoices.delete(entry));
+  entry.sound = handle;
+  const update = handle.updateSpatial;
+  handle.updateSpatial = (nextDistance, nextDirection) => {
+    entry.distance = Number.isFinite(nextDistance) ? Math.max(0, nextDistance) : 0;
+    update(nextDistance, nextDirection);
+  };
+  coveyVoices.add(entry);
+  return handle;
+}
+
+function playSpatialLaunch(c: AudioContext, samples: { cover: Float32Array; flight: Float32Array },
+  rate: number, distanceM: number, source: SoundDirection, onStop?: () => void): PheasantFlushSound {
   const proximity = (distance: number) => 1 / (1 + (Number.isFinite(distance) ? Math.max(0, distance) : 0) / 18);
   const route = () => {
     const direction = c.createPanner(), distanceGain = c.createGain();
@@ -184,11 +219,11 @@ export function playPheasantFlush(distanceM: number, rooster: boolean,
       for (const source of sources) { source.stop(); source.disconnect(); }
       releaseCover();
       wings.distanceGain.disconnect(); wings.direction.disconnect();
+      onStop?.();
     },
   };
-  const samples = synthesizePheasantLaunch(rooster, voice);
   const play = (data: Float32Array, destination: AudioNode, ended: () => void) => {
-    const buffer = c.createBuffer(1, data.length, PHEASANT_AUDIO_RATE);
+    const buffer = c.createBuffer(1, data.length, rate);
     buffer.getChannelData(0).set(data);
     const node = c.createBufferSource(); node.buffer = buffer;
     node.connect(destination); sources.push(node);
