@@ -1006,6 +1006,14 @@ export class DogSystem implements Subsystem {
     out.r = this.partR;
   }
 
+  /** Grip follows the animated jaw through neck pitch, turns and slopes. */
+  mouthWorld(out: THREE.Vector3): boolean {
+    if (!this.head.parent) return false;
+    out.set(0, -.035, .172);
+    this.head.localToWorld(out);
+    return true;
+  }
+
   /* ------------------------------- build ------------------------------- */
 
   private mesh(

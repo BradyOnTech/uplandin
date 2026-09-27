@@ -5,8 +5,11 @@ const CARRY_MORPH = 'carried-rest';
 /** Resting dimensions stay species-sized beside the dog, independent of
  * the readable target enlargement used only during a rise. */
 export function restingBirdScale(family: string): number {
+  // Authored Chukar: about 37 cm tip-to-tail / 51 cm unfolded span after
+  // the species multiplier. The separate airborne readability scale stays
+  // unchanged; its enlargement must not follow the bird into the dog's jaw.
   return family === 'quail' ? 1.1 : family === 'pheasant' || family === 'woodcock' ? 1.25
-    : family === 'chukar' ? 1.4 : family === 'partridge' ? 1.35 : 1.45;
+    : family === 'chukar' ? 1.175 : family === 'partridge' ? 1.35 : 1.45;
 }
 
 function appendPose(geometry: THREE.BufferGeometry, deform: (point: THREE.Vector3) => void): void {

@@ -87,4 +87,34 @@ describe('carried bird presentation in the pooled renderer',()=>{
     expect(f.slot.root.scale.x).toBeCloseTo(scales.at(-1)!);
     f.system.dispose(f.ctx);
   });
+
+  it('keeps Chukar flight and hit centers unchanged while grounding and carrying it at natural scale',()=>{
+    const f=fixture('chukar');f.bird.state='flushed';f.slot.status='flying';
+    Object.assign(f.slot,{x:12,y:4,z:9,vxW:12,vyW:0,vzW:-1,airMs:500});
+    const physical=()=>[f.slot.x,f.slot.y,f.slot.z,f.slot.vxW,f.slot.vyW,f.slot.vzW,f.slot.airMs];
+    const before=physical();f.system.update(f.ctx,1/60);
+    const flightScale=f.slot.root.scale.x;
+    expect(flightScale).toBeCloseTo(3.701394680474532);
+    expect(f.system.airborne()[0].sizeM).toBeCloseTo(1.4325878088149147);
+    expect(f.system.shootRay({x:12,y:4,z:0},{x:0,y:0,z:1},.001)).toBe(12);
+    expect(f.slot.root.position.toArray()).toEqual([12,4,9]);
+    expect(physical()).toEqual(before);
+
+    f.bird.state='down';f.slot.status='falling';f.slot.y=2;f.system.update(f.ctx,1/60);
+    expect(f.slot.root.scale.x).toBeCloseTo(flightScale);
+    f.slot.y=.06;f.system.update(f.ctx,1/60);const restingScale=f.slot.root.scale.x;
+    const bodyBox=new THREE.Box3().setFromBufferAttribute(f.slot.body.geometry.getAttribute('position') as THREE.BufferAttribute);
+    const length=(bodyBox.max.z-bodyBox.min.z)*restingScale;
+    expect(length).toBeGreaterThan(.35);expect(length).toBeLessThan(.38);
+    expect(.387040003156662*restingScale).toBeCloseTo(.5100880834416742);
+    f.slot.status='grounded';f.system.update(f.ctx,1/60);
+    expect(f.slot.root.scale.x).toBeCloseTo(restingScale);
+    f.bird.state='carried';for(let frame=0;frame<20;frame++)f.system.update(f.ctx,1/60);
+    expect(f.slot.root.scale.x).toBeCloseTo(restingScale);
+    expect(f.slot.root.position.distanceTo(f.mouth)).toBeLessThan(.000001);
+    f.slot.root.updateMatrixWorld(true);
+    const carriedSize=new THREE.Box3().setFromObject(f.slot.root,true).getSize(new THREE.Vector3());
+    expect(Math.max(carriedSize.x,carriedSize.z)).toBeLessThan(.40);
+    f.system.dispose(f.ctx);
+  });
 });
