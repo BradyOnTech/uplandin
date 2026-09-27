@@ -46,6 +46,25 @@ describe('travelling 3D shot pattern', () => {
     expect(shot.advance(.15, targets, t => t.simId !== 1)).toBe(2);
     expect(shot.advance(.15, targets, clear)).toBeNull();
   });
+  it('retains the swept impact instead of the later target position', () => {
+    const target = bird(0, -12);
+    const shot = new TravellingShot(origin, { x: .72, y: 0, z: -12 }, .035, [target]);
+    expect(shot.impact).toBeNull();
+    target.x = 1.8;
+    expect(shot.advance(.1, [target], clear)).toBe(1);
+    const impact = shot.impact!;
+    expect(impact.x).toBeCloseTo(.72, 2); expect(impact.z).toBe(-12);
+    expect(impact.x).toBeLessThan(target.x);
+    target.x = 10;
+    expect(shot.advance(.1, [target], clear)).toBeNull(); expect(shot.impact).toEqual(impact);
+  });
+  it('never exposes an impact for a blocked or missed shot', () => {
+    for (const target of [bird(0), bird(20)]) {
+      const shot = new TravellingShot(origin, { x: 0, y: 0, z: -1 }, .035, [target]);
+      expect(shot.advance(.2, [target], () => false)).toBeNull();
+      expect(shot.impact).toBeNull(); expect(shot.done).toBe(true);
+    }
+  });
 });
 
 describe('bounded mobile shot forgiveness', () => {

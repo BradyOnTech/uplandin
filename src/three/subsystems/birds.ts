@@ -290,6 +290,10 @@ interface Slot {
   x: number;
   y: number;
   z: number;
+  /** Previous authoritative tick; render and shot sampling share this span. */
+  previousX?: number;
+  previousY?: number;
+  previousZ?: number;
   /** World velocity of the last tick (orientation reads these). */
   vxW: number;
   vyW: number;
@@ -401,6 +405,8 @@ export class BirdsSystem implements Subsystem {
   private geos: THREE.BufferGeometry[] = [];
   private speciesGeos = new Map<string, BirdGeometrySet>();
   private slots: Slot[] = [];
+  private shotSamples: RayBirdTarget[] = [];
+  private renderedPhase = 1;
 
   /** Sun-answer uniforms (the dog's facet recipe — diffuse only, sized
    *  for russet; NO emissive, NO rim: moment round, item 1). */
@@ -985,6 +991,7 @@ export class BirdsSystem implements Subsystem {
     for (let i = 0; i < POOL; i++) {
       const s = this.slots[i];
       if (s.status === 'idle' || s.status === 'done') continue;
+      this.rememberFlightPosition(s);
       if (s.status === 'grounded') {
         if (s.fallPose?.groundedMs !== undefined) s.fallPose.groundedMs += dtMs;
         const bird = simBirds.find((candidate) => candidate.id === s.simId);
@@ -1023,6 +1030,7 @@ export class BirdsSystem implements Subsystem {
         if (s.y <= g + 0.06) {
           s.y = g + 0.06;
           s.status = 'grounded';
+          this.rememberFlightPosition(s);
           if (s.fallPose) s.fallPose.groundedMs = 0;
           this.hunt.recordFallWorld(s.simId, s.x, s.z);
           playThud();
@@ -1034,7 +1042,6 @@ export class BirdsSystem implements Subsystem {
       const departing = s.status === 'departing';
       if (!departing) anyAloft = true;
       if (departing) s.departureMs = (s.departureMs ?? 0) + dtMs;
-      s.previousAirMs = s.airMs;
       s.airMs += dtMs;
       const fl = s.species.flight;
       const doctrine = huntingDoctrine(this.hunt.areaConfig().id);
@@ -1500,6 +1507,7 @@ export class BirdsSystem implements Subsystem {
       }
       slot.airMs = 0;
       slot.previousAirMs = 0;
+      this.rememberFlightPosition(slot);
       slot.departureMs = undefined;
       slot.fallPose = undefined;
       slot.bank = 0;
@@ -1574,11 +1582,15 @@ export class BirdsSystem implements Subsystem {
   /* ------------------------- read-only surface ----------------------- */
 
   /** Fold a bird out of the sky (the gun phase's hook — falling frame). */
-  downBird(simId: number): boolean {
+  downBird(simId: number, impact?: { x: number; y: number; z: number }): boolean {
     for (let i = 0; i < POOL; i++) {
       const s = this.slots[i];
       if (s.simId === simId && s.status === 'flying') {
         s.status = 'falling';
+        // The projectile can meet the bird between ticks. Begin the fall
+        // there, rather than jumping to its later authoritative flight point.
+        if (impact) { s.x = impact.x; s.y = impact.y; s.z = impact.z; }
+        this.rememberFlightPosition(s);
         s.launchSound?.stop();
         s.launchSound = undefined;
         if (this.spatialEncounter && s.species.id === 'ringneck') {
@@ -1599,11 +1611,25 @@ export class BirdsSystem implements Subsystem {
     const slot = this.slots.find(s => s.simId === id && s.status !== 'idle' && s.status !== 'done' && s.status !== 'departing');
     if (!slot) return;
     slot.status = 'grounded'; slot.x=x; slot.y=y; slot.z=z;
+    this.rememberFlightPosition(slot);
     slot.launchSound?.stop(); slot.launchSound=undefined;
   }
 
-  /** Live positions for swept shot collision; callers must copy retained samples. */
-  shotTargets(): readonly RayBirdTarget[] { return this.slots; }
+  /** No argument returns authoritative positions for existing simulation
+   * callers. A fired shot retains its displayed phase while advancing on the
+   * fixed clock, so its sweep follows the same timeline the player saw.
+   * The sample buffer is reused; callers must copy retained positions. */
+  shotTargets(presentationPhase = 1): readonly RayBirdTarget[] {
+    const phase = this.flightPresentationPhase(presentationPhase);
+    if (phase === 1) return this.slots;
+    for (let i = 0; i < this.slots.length; i++) {
+      const slot = this.slots[i];
+      const target = this.shotSamples[i] ??= { simId: slot.simId, status: slot.status, x: 0, y: 0, z: 0 };
+      target.simId = slot.simId; target.status = slot.status;
+      this.sampleFlightPosition(slot, phase, target);
+    }
+    return this.shotSamples;
+  }
 
   /** Select the first live target inside the camera-centered shot pattern. */
   shootRay(
@@ -1612,7 +1638,7 @@ export class BirdsSystem implements Subsystem {
     spreadRad = 0.04,
     targetVisible?: (target: RayBirdTarget) => boolean,
   ): number | null {
-    return pickBirdAlongRay(this.slots, origin, direction, spreadRad, targetVisible);
+    return pickBirdAlongRay(this.shotTargets(this.renderedPhase), origin, direction, spreadRad, targetVisible);
   }
 
   riseSequence(): number {
@@ -1648,8 +1674,10 @@ export class BirdsSystem implements Subsystem {
     for (let i = 0; i < POOL; i++) {
       const s = this.slots[i];
       if (s.status === 'flying' || s.status === 'falling' || s.status === 'waiting') {
+        const point = this.sampleFlightPosition(s, this.renderedPhase, { x: 0, y: 0, z: 0 });
         out.push({
-          simId: s.simId, x: s.x, y: s.y, z: s.z, airMs: s.airMs, status: s.status,
+          simId: s.simId, ...point,
+          airMs: THREE.MathUtils.lerp(s.previousAirMs ?? s.airMs, s.airMs, this.renderedPhase), status: s.status,
           sizeM: s.spanM * (this.refinedQuail ? QUAIL_WORLD_SCALE : RISE_SCALE) * s.visualScale,
         });
       }
@@ -1701,6 +1729,22 @@ export class BirdsSystem implements Subsystem {
 
   /* ------------------------------ render ----------------------------- */
 
+  private flightPresentationPhase(alpha = 1): number {
+    return this.frozen || !this.spatialEncounter ? 1 : THREE.MathUtils.clamp(alpha, 0, 1);
+  }
+
+  private rememberFlightPosition(slot: Slot): void {
+    slot.previousX = slot.x; slot.previousY = slot.y; slot.previousZ = slot.z;
+    slot.previousAirMs = slot.airMs;
+  }
+
+  private sampleFlightPosition<T extends { x: number; y: number; z: number }>(slot: Slot, phase: number, out: T): T {
+    out.x = THREE.MathUtils.lerp(slot.previousX ?? slot.x, slot.x, phase);
+    out.y = THREE.MathUtils.lerp(slot.previousY ?? slot.y, slot.y, phase);
+    out.z = THREE.MathUtils.lerp(slot.previousZ ?? slot.z, slot.z, phase);
+    return out;
+  }
+
   private updatePheasantBank(slot: Slot, dt: number): void {
     if (!this.spatialEncounter || slot.species.id !== 'ringneck' || dt <= 0) return;
     const yaw = Math.atan2(slot.vxW, slot.vzW);
@@ -1740,13 +1784,14 @@ export class BirdsSystem implements Subsystem {
 
   update(ctx: Ctx, _dt: number): void {
     this.launchCover?.render();
+    this.renderedPhase = this.flightPresentationPhase(ctx.fixedAlpha);
     const simBirds = this.hunt.huntState().birds;
     for (let i = 0; i < POOL; i++) {
       const s = this.slots[i];
       if (s.launchSound) {
         if (!s.launchSound.active) s.launchSound = undefined;
         else if (!this.frozen) {
-          this.soundOffset.set(s.x, s.y, s.z).sub(ctx.camera.position);
+          this.sampleFlightPosition(s, this.renderedPhase, this.soundOffset).sub(ctx.camera.position);
           const distance = this.soundOffset.length();
           this.soundInverse.copy(ctx.camera.quaternion).invert();
           this.soundOffset.applyQuaternion(this.soundInverse);
@@ -1804,7 +1849,7 @@ export class BirdsSystem implements Subsystem {
           continue;
         }
       }
-      s.root.position.set(s.x, s.y, s.z);
+      this.sampleFlightPosition(s, this.renderedPhase, s.root.position);
       let scale = s.status === 'grounded' ? restingBirdScale(birdFamilyFor(s.species.id))
         : this.refinedQuail ? QUAIL_WORLD_SCALE : RISE_SCALE;
       if (s.status === 'falling') {
@@ -1961,6 +2006,7 @@ export class BirdsSystem implements Subsystem {
     this.launchCover = undefined;
     for (const s of this.slots) ctx.scene.remove(s.root);
     this.slots.length = 0;
+    this.shotSamples.length = 0;
     if (this.debrisMesh) ctx.scene.remove(this.debrisMesh);
     if (this.featherPoints) ctx.scene.remove(this.featherPoints);
     this.debrisGeo?.dispose();

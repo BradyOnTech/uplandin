@@ -123,7 +123,8 @@ export class GunSystem implements Subsystem {
   private reticle: HTMLElement | null = null;
   private shotCallout: HTMLElement | null = null;
   private shotCalloutUntil = 0;
-  private shots: { pattern: TravellingShot; visible: (target: { x: number; y: number; z: number }) => boolean }[] = [];
+  private shots: { pattern: TravellingShot; presentationPhase: number;
+    visible: (target: { x: number; y: number; z: number }) => boolean }[] = [];
 
   // Preallocated scratch.
   private prevCam = new THREE.Vector3();
@@ -442,10 +443,11 @@ export class GunSystem implements Subsystem {
     try { landmarks = ctx.get<LandmarksSystem>('landmarks'); } catch { /* properties without solid landmarks */ }
     let flora: Subsystem & { blocksShot?: (origin: { x: number; y: number; z: number }, target: { x: number; y: number; z: number }) => boolean } | undefined;
     try { flora = ctx.get('flora'); } catch { /* properties without dedicated flora */ }
+    const presentationPhase = this.frozen ? 1 : THREE.MathUtils.clamp(ctx.fixedAlpha ?? 1, 0, 1);
     const pattern = new TravellingShot(ctx.camera.position, this.fwd, this.gun.spread / 400,
-      this.birds.shotTargets(), request.assistance);
+      this.birds.shotTargets(presentationPhase), request.assistance);
     const origin = pattern.origin;
-    this.shots.push({ pattern,
+    this.shots.push({ pattern, presentationPhase,
       visible: target => !terrainBlocksShot(origin, target, (x, z) => this.terrain.heightAt(x, z))
         && !habitat?.blocksShot?.(origin, target)
         && !wetBottoms?.blocksShot?.(origin, target)
@@ -454,16 +456,17 @@ export class GunSystem implements Subsystem {
     });
   }
 
-  // Birds are registered before the gun: sweep against their newly advanced
-  // fixed-tick positions, never against uneven render-frame snapshots.
+  // Birds advance first. Each shot samples successive fixed-tick spans at its
+  // original displayed phase, avoiding a one-tick lead penalty from smoother
+  // rendering or a timeline that changes with later display frame rates.
   fixedUpdate(ctx: Ctx, dtMs: number): void {
     if (ctx.paused || !this.shots.length) return;
-    const targets = this.birds.shotTargets();
     this.shots = this.shots.filter(shot => {
+      const targets = this.birds.shotTargets(shot.presentationPhase);
       const birdId = shot.pattern.advance(dtMs / 1000, targets, shot.visible);
       if (!shot.pattern.done) return true;
       const hit = birdId !== null && this.hunt.resolveBird(birdId, 'downed');
-      if (hit && birdId !== null) this.birds.downBird(birdId);
+      if (hit && birdId !== null) this.birds.downBird(birdId, shot.pattern.impact ?? undefined);
       if (this.shotCallout) {
         this.shotCallout.textContent = hit ? 'HIT!' : 'MISS';
         this.shotCallout.classList.toggle('miss', !hit);

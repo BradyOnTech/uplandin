@@ -13,7 +13,11 @@ export class TravellingShot {
   private direction: Point;
   private previous = new Map<number, Point>();
   private age = 0;
+  private hit: Readonly<ShotTarget> | null = null;
   done = false;
+
+  /** Actual swept crossing point, available only after a successful hit. */
+  get impact(): Readonly<ShotTarget> | null { return this.hit; }
 
   constructor(origin: Point, direction: Point, private spread: number, targets: readonly ShotTarget[],
     private readonly assistance: Readonly<ShotAssistanceProfile> = NO_SHOT_ASSISTANCE) {
@@ -56,6 +60,7 @@ export class TravellingShot {
       if (visible(candidate)) { hit = candidate; first = fraction; }
     }
     this.age += dt;
+    this.hit = hit;
     this.done = hit !== null || end >= SHOT_RANGE_M;
     this.remember(targets);
     return hit?.simId ?? null;
