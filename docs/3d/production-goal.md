@@ -1,5 +1,7 @@
 # Complete low-poly hunting experience
 
+This document records the September 8 Pheasant benchmark and its follow-through. The current full-game objective and completion requirements are in [Production finish](production-finish.md). Preserve the specific evidence and remaining limitations below without treating the earlier property focus as the limit of the current goal.
+
 Pheasant Coverts is the benchmark for the full user-approved September 8 objective. Completion means an ordinary, uninterrupted hunt that feels convincing, exciting, readable, and worth replaying, followed by species-specific application elsewhere. The benchmark remains unproven. Functional tests, staged views, assisted shots, and emulated phones cannot establish it independently.
 
 **Current evidence and remaining work**

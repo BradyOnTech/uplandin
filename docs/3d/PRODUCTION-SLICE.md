@@ -1,5 +1,7 @@
 # Quail Fields production slice
 
+This is the historical September 4–5 slice and its evidence record. The current, broader September 27 scope is [Production finish](production-finish.md): all offered production content, generated Three.js dog presentation, world art, shooting, sound, player flow and browser/mobile reliability. Earlier deferrals and Blender milestones below describe their original checkpoints; they do not defer currently authorized work or replace the generated-dog direction.
+
 The first production slice is one complete, cohesive 3D hunt in Quail Fields: arrival, searching, scent recognition, point, walk-in, bobwhite flush, shot or miss, fall, retrieval, delivery, summary, and replay. The dog is the central character, and Quail Fields remains the calibration property. The broader world now carries authored species doctrines across the property roster; every map must feel like its own hunt through habitat, routes, dog work, bird behavior, and flight. This document governs the approved 3D work; `docs/PRODUCTION.md` remains the historical 2D roadmap.
 
 **Scope and art direction**
