@@ -8,6 +8,7 @@ import { QuailFlushDebris } from '../quailFlushDebris';
 import * as THREE from 'three';
 import { buildBobwhiteBody, buildBobwhiteWing, poseBobwhiteFoldedWings } from '../assets/bobwhite';
 import { buildSharptailBody, buildSharptailWing, poseSharptailFoldedWings } from '../assets/sharptail';
+import { buildChukarBody, buildChukarWing, poseChukarFoldedWings } from '../assets/chukar';
 import { sharptailLaunchDelay, sharptailWingbeat } from '../sharptailPresentation';
 import { addCarriedBirdPoses, poseCarriedBird, restingBirdScale } from '../carriedBirdPresentation';
 import { playFlush, playThud, playPheasantFlush, playBirdFlush, type PheasantFlushSound } from '../../audio';
@@ -684,11 +685,11 @@ export class BirdsSystem implements Subsystem {
     const wingTopDim = wingTop.clone().multiplyScalar(0.8);
     const wingUnder = belly.clone().multiplyScalar(0.78);
     const body = species.id === 'ringneck' ? buildPheasantBody(hen) : species.id === 'bobwhite' ? buildBobwhiteBody()
-      : species.id === 'sharptail' ? buildSharptailBody() : this.buildBodyGeo(back, backDim, belly, cap, throat, tail, shape);
+      : species.id === 'sharptail' ? buildSharptailBody() : species.id === 'chukar' ? buildChukarBody() : this.buildBodyGeo(back, backDim, belly, cap, throat, tail, shape);
     const wingL = species.id === 'ringneck' ? buildPheasantWing(-1,hen) : species.id === 'bobwhite' ? buildBobwhiteWing(-1)
-      : species.id === 'sharptail' ? buildSharptailWing(-1) : this.buildWingGeo(-1, wingTop, wingTopDim, wingUnder, shape);
+      : species.id === 'sharptail' ? buildSharptailWing(-1) : species.id === 'chukar' ? buildChukarWing(-1) : this.buildWingGeo(-1, wingTop, wingTopDim, wingUnder, shape);
     const wingR = species.id === 'ringneck' ? buildPheasantWing(1,hen) : species.id === 'bobwhite' ? buildBobwhiteWing(1)
-      : species.id === 'sharptail' ? buildSharptailWing(1) : this.buildWingGeo(1, wingTop, wingTopDim, wingUnder, shape);
+      : species.id === 'sharptail' ? buildSharptailWing(1) : species.id === 'chukar' ? buildChukarWing(1) : this.buildWingGeo(1, wingTop, wingTopDim, wingUnder, shape);
     const tailGeo = species.id === 'ringneck' ? buildPheasantTail(hen) : undefined;
     addCarriedBirdPoses(body, wingL, wingR, species.id);
     if (tailGeo) this.geos.push(tailGeo);
@@ -1726,6 +1727,8 @@ export class BirdsSystem implements Subsystem {
       if (slot.wingLMesh.morphTargetInfluences) slot.wingLMesh.morphTargetInfluences[0] = 0;
       if (slot.wingRMesh.morphTargetInfluences) slot.wingRMesh.morphTargetInfluences[0] = 0;
       poseSharptailFoldedWings(slot.wingL, slot.wingR);
+    } else if (slot.species.id === 'chukar') {
+      poseChukarFoldedWings(slot.wingL, slot.wingR);
     } else if (this.refinedQuail && slot.species.id === 'bobwhite') {
       poseBobwhiteFoldedWings(slot.wingL, slot.wingR);
     } else {
