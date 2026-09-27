@@ -38,8 +38,24 @@ describe('gameplay mode and shared hunt launch', () => {
     expect(first.hunt.birds).toHaveLength(original.hunt.birds.length);
     expect(first.hunt.birds.every(bird => bird.speciesId === 'ringneck')).toBe(true);
     expect(first.area).toEqual(original.area);
-    expect(snapshot(original)).toEqual(snapshot(setup(undefined, 999)));
+    expect(snapshot(original)).not.toEqual(snapshot(setup(undefined, 999)));
   });
+
+  it.each(['sharptail-prairie', 'chukar-ridge', 'quail-fields', 'pheasant-coverts'])(
+    'gives new %s visits new encounters while preserving explicit replays and geography', area => {
+      const search = `?area=${area}&drop=west-track`;
+      const first = createThreeHuntSetup(search, mulberry32(101), memoryStorage());
+      const next = createThreeHuntSetup(search, mulberry32(202), memoryStorage());
+      const replay = createThreeHuntSetup(`${search}&seed=${first.seed}`, mulberry32(303), memoryStorage());
+      // IDs are process-global handles; authored content must reproduce.
+      const birds = (setup: typeof first) => setup.hunt.birds.map(({ id: _id, ...bird }) => bird);
+      expect(first.seed).not.toBe(next.seed);
+      expect(birds(first)).not.toEqual(birds(next));
+      expect(birds(replay)).toEqual(birds(first));
+      expect(replay.hunt.wind).toEqual(first.hunt.wind);
+      expect(next.area).toEqual(first.area);
+      expect(next.hunt.dropPointId).toBe(first.hunt.dropPointId);
+    });
 
   it('defaults to 2D and persists either renderer without touching career', () => {
     const storage = memoryStorage();

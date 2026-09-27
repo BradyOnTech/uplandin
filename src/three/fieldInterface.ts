@@ -152,7 +152,8 @@ export class FieldInterface {
       document.getElementById('end-hunt')!.hidden = true;
       document.getElementById('hunt-hud')?.setAttribute('hidden', '');
       document.getElementById('controls')?.setAttribute('hidden', '');
-      document.getElementById('hunt-again')?.focus();
+      const again = document.getElementById('hunt-again');
+      (again && !again.hidden ? again : document.getElementById('hunt-menu'))?.focus();
       const updates = document.getElementById('app-update-panel')!;
       document.getElementById('hunt-summary-content')?.append(updates);
       this.offlineUpdateState(this.updateState);

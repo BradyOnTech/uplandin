@@ -55,10 +55,8 @@ if (isFalconryPractice(location.search)) {
   if (!url.searchParams.has('tod')) url.searchParams.set('tod', 'morning');
   history.replaceState(null, '', url);
 }
-if (['quail-fields', 'pheasant-coverts'].includes(resolveThreeHuntArea(location.search).id)) {
-  const seeded = prepareHuntUrl(location.href);
-  if (seeded.href !== location.href) history.replaceState(null, '', seeded);
-}
+const seeded = prepareHuntUrl(location.href);
+if (seeded.href !== location.href) history.replaceState(null, '', seeded);
 const params = new URLSearchParams(location.search);
 const quality = preferredQuality(params);
 const launch = parseHuntLaunch(location.search);
@@ -85,9 +83,11 @@ engine.register(new Hunt3DSystem(landscape));
 engine.register(new FieldMapSystem());
 for (const system of landscapeVisuals.systems) engine.register(system);
 engine.register(new LandmarksSystem());
-engine.register(visualBreed === 'gsp' && coatId === 'liver-white' && params.get('dog') === 'generated'
+// The production GSP is generated on every property. Keep the rigged asset
+// available through an explicit review choice rather than a map-dependent default.
+engine.register(visualBreed === 'gsp' && coatId === 'liver-white' && params.get('dog') !== 'rigged'
   ? new GeneratedDogSystem()
-  : launchArea.id === 'quail-fields' && visualBreed === 'gsp' && coatId === 'liver-white'
+  : visualBreed === 'gsp' && coatId === 'liver-white' && params.get('dog') === 'rigged'
     ? new RiggedDogSystem() : new DogSystem(visualBreed, coatId));
 if (launchProfile.brace) {
   const braceVisualBreed = visualBreedFor(launchProfile.brace.breedId);

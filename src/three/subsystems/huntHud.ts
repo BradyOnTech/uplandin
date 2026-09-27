@@ -39,6 +39,7 @@ export class HuntHudSystem implements Subsystem {
   private endButton: HTMLButtonElement | null = null;
   private frozen = false;
   private summaryShown = false;
+  private seasonEnded = false;
   private lastTally = '';
   private lastRetrieved = 0;
   private deliveryNoticeUntil = 0;
@@ -135,9 +136,7 @@ export class HuntHudSystem implements Subsystem {
     const options = { signal: this.abort.signal };
     if (isFalconryPractice(location.search)) document.getElementById('hunt-again')!.textContent = 'New drill';
     document.getElementById('hunt-again')?.addEventListener('click', () => {
-      if (isFalconryPractice(location.search)) location.assign(nextHuntUrl(location.href));
-      else if (['quail-fields', 'pheasant-coverts'].includes(this.hunt.huntState().areaId)) location.assign(nextHuntUrl(location.href));
-      else location.reload();
+      location.assign(this.seasonEnded ? './index.html' : nextHuntUrl(location.href));
     }, options);
     document.getElementById('hunt-menu')?.addEventListener('click', () => location.assign('./index.html'), options);
     document.getElementById('field-menu')?.addEventListener('click', () => location.assign('./index.html'), options);
@@ -294,14 +293,15 @@ export class HuntHudSystem implements Subsystem {
     if (complete && !this.summaryShown) {
       this.summaryShown = true;
       const careerResult = this.hunt.settleCareer();
+      this.seasonEnded = careerResult?.seasonEnded ?? false;
+      const again = document.getElementById('hunt-again');
+      if (again) again.hidden = this.seasonEnded;
+      const menu = document.getElementById('hunt-menu');
+      if (menu && this.seasonEnded) menu.textContent = 'Return home';
       if (document.pointerLockElement) void document.exitPointerLock();
       if (this.summaryCopy) {
         const dogWork = hunt.dogWork.slice(0, this.hunt.dogCount());
         const pointFlushes = dogWork.reduce((sum, work) => sum + work.pointFlushes, 0);
-        const career = careerResult
-          ? ` · ${careerResult.dogAwards.map((award) => `${award.name} +${award.gained} XP`).join(' · ')}` +
-            ` · hunter +${careerResult.hunterGained} XP · ${careerResult.weeks} week${careerResult.weeks === 1 ? '' : 's'} passed`
-          : '';
         if (hawk) {
           const title=this.summary?.querySelector('h2'); if(title)title.textContent='Falconry field notes';
           this.summaryCopy.textContent=`Flights ${hawk.flights} · Catches ${hawk.catches} · Recovered ${hawk.recovered} · Unsuccessful flights ${hawk.misses} · Recalls ${hawk.recalls} · Points held ${pointFlushes}`;
@@ -309,7 +309,7 @@ export class HuntHudSystem implements Subsystem {
           const title = this.summary?.querySelector('h2');
           if (title) title.textContent = 'Field notes';
           renderFieldNotes(this.summaryCopy, hunt, this.hunt.dogCount(), this.fieldTime,
-            this.hunt.areaConfig().name, this.hunt.dropPoint().name, career);
+            this.hunt.areaConfig().name, this.hunt.dropPoint().name, careerResult);
         }
       }
       if (this.summary) this.summary.hidden = false;

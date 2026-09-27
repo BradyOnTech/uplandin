@@ -209,16 +209,16 @@ export function createThreeHuntSetup(
   const tuning = HUNT_CHALLENGES[challenge];
   const resolvedArea = resolveThreeHuntArea(search, storage);
   const isQuail = resolvedArea.id === 'quail-fields';
-  const seed = parseHuntSeed(search) ?? (isQuail || isFalconryPractice(search) ? Math.floor(rng() * 0x100000000) : undefined);
-  const environmentRng = seed === undefined ? rng : mulberry32(huntStreamSeed(seed, 0xe071));
+  const seed = parseHuntSeed(search) ?? Math.floor(rng() * 0x100000000);
+  const environmentRng = mulberry32(huntStreamSeed(seed, 0xe071));
   // Authored non-Quail properties use their own stable encounter streams so
   // route sampling cannot consume the weather/wind stream or change when a
   // player revisits the same drop. The two drop entries get different, but
   // repeatable, cover ordering. An explicit replay seed varies both streams
   // without changing the property terrain or the authored placement rules.
   const dropSalt = dropPointId === 'west-track' ? 0x4a9f : 0x17c3;
-  const authoredEncounterRng = mulberry32(huntStreamSeed(seed ?? resolvedArea.terrain.seed, 0xa11c0a ^ dropSalt));
-  const authoredBirdRng = mulberry32(huntStreamSeed(seed ?? resolvedArea.terrain.seed, 0xb17d7d ^ dropSalt));
+  const authoredEncounterRng = mulberry32(huntStreamSeed(seed, 0xa11c0a ^ dropSalt));
+  const authoredBirdRng = mulberry32(huntStreamSeed(seed, 0xb17d7d ^ dropSalt));
   const challengeOptions = {
     stockingMult: tuning.stocking, encounterNerveMult: tuning.nerve,
     ...(!isQuail ? {

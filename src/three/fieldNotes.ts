@@ -1,4 +1,7 @@
 import type { HuntState } from '../game/state';
+import type { CareerHuntResult } from '../game/huntResults';
+import { HUNTER_LEVEL_CAP, hunterXpForLevel } from '../game/progression';
+import { dateLabel } from '../game/season';
 
 /** Observed field outcomes only; hidden stocking is not a completion target. */
 export function fieldNotes(hunt: HuntState, dogCount: number, seconds: number) {
@@ -22,7 +25,67 @@ export function fieldNotes(hunt: HuntState, dogCount: number, seconds: number) {
   };
 }
 
-export function renderFieldNotes(container: HTMLElement, hunt: HuntState, dogCount: number, seconds: number, property: string, entry: string, career: string): void {
+/** Presentation of the already-settled award; never mutates or settles saves. */
+export function careerFieldNotes(result: CareerHuntResult) {
+  const level = result.hunterLevel;
+  let previous = 0;
+  for (let n = 1; n < level; n++) previous += hunterXpForLevel(n);
+  const required = hunterXpForLevel(level);
+  const earned = Math.max(0, Math.min(required, result.career.hunter.xp - previous));
+  return {
+    heading: result.hunterLevelsGained > 0 ? `Hunter level ${level} reached` : `Hunter level ${level}`,
+    hunterAward: `+${result.hunterGained} XP${result.henFine > 0 ? ` · protected-hen penalty applied (${result.henFine} XP)` : ''}`,
+    progress: level < HUNTER_LEVEL_CAP ? { earned, required, remaining: required - earned, nextLevel: level + 1 } : null,
+    dogs: result.dogAwards.map(award => ({
+      name: award.name,
+      award: `+${award.gained} XP`,
+      level: award.levelsGained > 0 ? `Level ${award.newLevel} reached` : `Level ${award.newLevel}`,
+      advanced: award.levelsGained > 0,
+    })),
+    unlocks: result.unlocks,
+    calendar: `${result.weeks} week${result.weeks === 1 ? '' : 's'} passed · ${dateLabel(result.career.date)}`,
+    next: result.seasonEnded ? 'The season is complete. Return home and open Career to begin the next season with your kennel.' : '',
+  };
+}
+
+export function renderCareerFieldNotes(container: HTMLElement, result: CareerHuntResult): void {
+  const notes = careerFieldNotes(result);
+  const panel = document.createElement('section'); panel.className = 'field-notes-career';
+  panel.setAttribute('aria-label', 'Career progress');
+  const heading = document.createElement('h3'); heading.textContent = notes.heading;
+  const award = document.createElement('p'); award.className = 'field-career-award'; award.textContent = notes.hunterAward;
+  panel.append(heading, award);
+  if (notes.progress) {
+    const progress = document.createElement('progress'); progress.max = notes.progress.required; progress.value = notes.progress.earned;
+    progress.setAttribute('aria-label', `Hunter progress to level ${notes.progress.nextLevel}`);
+    const remaining = document.createElement('p'); remaining.className = 'field-career-next';
+    remaining.textContent = `${notes.progress.remaining} XP to level ${notes.progress.nextLevel}`;
+    panel.append(progress, remaining);
+  }
+  if (notes.dogs.length) {
+    const dogs = document.createElement('dl'); dogs.className = 'field-career-dogs';
+    for (const dog of notes.dogs) {
+      const row = document.createElement('div');
+      const name = document.createElement('dt'); name.textContent = dog.name;
+      const detail = document.createElement('dd'); detail.textContent = `${dog.award} · ${dog.level}`;
+      if (dog.advanced) detail.className = 'field-career-advanced';
+      row.append(name, detail); dogs.append(row);
+    }
+    panel.append(dogs);
+  }
+  if (notes.unlocks.length) {
+    const label = document.createElement('h4'); label.textContent = 'Newly available';
+    const unlocks = document.createElement('ul'); unlocks.className = 'field-career-unlocks';
+    for (const name of notes.unlocks) { const item = document.createElement('li'); item.textContent = name; unlocks.append(item); }
+    panel.append(label, unlocks);
+  }
+  const calendar = document.createElement('p'); calendar.className = 'field-career-calendar'; calendar.textContent = notes.calendar;
+  panel.append(calendar);
+  if (notes.next) { const next = document.createElement('p'); next.textContent = notes.next; panel.append(next); }
+  container.append(panel);
+}
+
+export function renderFieldNotes(container: HTMLElement, hunt: HuntState, dogCount: number, seconds: number, property: string, entry: string, career: CareerHuntResult | null = null): void {
   const notes = fieldNotes(hunt, dogCount, seconds);
   const location = document.createElement('p'); location.className = 'field-notes-location';
   location.textContent = `${property} · ${entry}`;
@@ -39,8 +102,5 @@ export function renderFieldNotes(container: HTMLElement, hunt: HuntState, dogCou
   }
   const note = document.createElement('p'); note.className = 'field-notes-note'; note.textContent = notes.note;
   container.replaceChildren(location, bag, rows, note);
-  if (career) {
-    const progression = document.createElement('p'); progression.className = 'field-notes-career';
-    progression.textContent = career.replace(/^ · /, ''); container.append(progression);
-  }
+  if (career) renderCareerFieldNotes(container, career);
 }
