@@ -18,6 +18,8 @@ import type { GunSystem } from './subsystems/gun';
 import type { Hunt3DSystem } from './subsystems/hunt3d';
 import { requestOfflineUpdate, type OfflineUpdateState } from './offline';
 import { openHuntJournal } from './huntJournalView';
+import { FieldGuide, FIELD_GUIDE_KEY, readFieldGuide, type GuideInput } from './fieldGuide';
+import type { BirdsSystem } from './subsystems/birds';
 
 /** Lifecycle UI owns pause and preferences, never hunt outcomes. */
 export class FieldInterface {
@@ -36,6 +38,9 @@ export class FieldInterface {
   private activeChallenge = resolveThreeHuntChallenge(location.search);
   private updateState: OfflineUpdateState = 'none';
   private falconry = resolveThreeHuntProfile(location.search).quick?.huntingMethod === 'goshawk';
+  private guide = new FieldGuide(readFieldGuide((() => { try { return localStorage; } catch { return null; } })()));
+  private guideSaved = JSON.stringify(this.guide.snapshot());
+  private guideElapsed = 0;
   constructor(private engine: Engine, landscape: LandscapeModel) {
     const signal = this.abort.signal;
     const preparationLink = document.getElementById('field-preparation') as HTMLAnchorElement | null;
@@ -47,6 +52,21 @@ export class FieldInterface {
       (this.touch ? document.getElementById('mobile-hunt-actions')! : document.body).append(end);
     };
     placeEndControl();
+    const tips = document.getElementById('field-guide-enabled') as HTMLInputElement;
+    tips.checked = !this.guide.snapshot().disabled;
+    document.getElementById('field-guide-preferences')!.hidden = this.falconry;
+    tips.addEventListener('change', () => {
+      this.guide.setEnabled(tips.checked); this.persistGuide();
+      document.getElementById('first-hunt-guide')!.hidden = true;
+    }, { signal });
+    document.getElementById('field-guide-repeat')!.addEventListener('click', () => {
+      this.guide.reset(); tips.checked = true; this.persistGuide();
+      document.getElementById('field-guide-status')!.textContent = 'Tips will return when they fit your next action.';
+    }, { signal });
+    // Reuse the engine's presentation loop; no separate timer or simulation
+    // writes. Dependencies are read only after all systems report ready.
+    engine.register({ id: 'field-guide', init() {}, update: (_ctx, dt) => this.updateGuide(dt) });
+    engine.ctx.events.addEventListener('pause', () => { this.guide.suspend(); this.guideElapsed = 0; }, { signal });
     document.getElementById('field-title')!.textContent = landscape.area.name;
     const doctrine = huntingDoctrine(landscape.area.id);
     this.overlay.querySelector('.eyebrow')!.textContent=`UPLANDIN · ${doctrine.region}`;
@@ -266,6 +286,44 @@ export class FieldInterface {
   }
   canApplyOfflineUpdate(): boolean { return !this.capture && (!this.entered || this.complete); }
 
+  private persistGuide(): void {
+    const serialized = JSON.stringify(this.guide.snapshot());
+    if (serialized === this.guideSaved) return;
+    this.guideSaved = serialized;
+    try { localStorage.setItem(FIELD_GUIDE_KEY, serialized); } catch { /* Tips also work for this visit without storage. */ }
+  }
+
+  private updateGuide(dt: number): void {
+    const line = document.getElementById('first-hunt-guide');
+    if (!line) return;
+    if (!this.readyState || !this.entered || this.complete || this.capture || this.falconry || this.engine.ctx.paused) {
+      line.hidden = true; return;
+    }
+    this.guideElapsed += dt;
+    if (this.guideElapsed < .15) return;
+    const elapsed = this.guideElapsed; this.guideElapsed = 0;
+    const ctx = this.engine.ctx, hunt = ctx.get<Hunt3DSystem>('hunt3d'), gun = ctx.get<GunSystem>('gun');
+    const dogs = Array.from({ length: hunt.dogCount() }, (_, i) => hunt.dog(i));
+    const dog = dogs.find(d => d.state === 'pointing') ?? dogs.find(d => d.state === 'retrieving') ?? dogs[0];
+    if (!dog) { line.hidden = true; return; }
+    const world = hunt.simToWorld(dog.pos.x, dog.pos.y, { x: 0, z: 0 });
+    const fallback = document.getElementById('mouse-look-fallback');
+    const input: GuideInput = this.touch ? 'touch' : fallback && !fallback.hidden ? 'drag-look' : 'desktop';
+    const state = hunt.huntState();
+    const text = this.guide.update({
+      active: true, input, areaId: state.areaId,
+      x: ctx.camera.position.x, z: ctx.camera.position.z, yaw: ctx.camera.rotation.y, pitch: ctx.camera.rotation.x,
+      rise: ctx.get<BirdsSystem>('birds').isRiseActive(), mounted: gun.mountProgress() > .01,
+      gunId: state.gunId, shells: gun.shellsRemaining(), reloading: gun.isReloading(),
+      retrieved: state.birds.filter(bird => bird.state === 'retrieved').length,
+      dog: { state: dog.state, scentStage: dog.scentStage, heading: dog.heading, rangeM: Math.hypot(world.x - ctx.camera.position.x, world.z - ctx.camera.position.z),
+        carrying: dog.carryingBirdId !== null, allAtHeel: dogs.every(d => d.state === 'heel'),
+        searchAreaChecked: dog.searchAreaChecked, waitingForHandler: dog.waitingForHandler },
+    }, elapsed);
+    if (text && line.textContent !== text) line.textContent = text;
+    line.hidden = !text; this.persistGuide();
+  }
+
   offlineUpdateState(state: OfflineUpdateState): void {
     this.updateState = state;
     const panel = document.getElementById('app-update-panel')!;
@@ -362,7 +420,8 @@ export class FieldInterface {
     light.disabled=false;light.value=this.engine.ctx.timeOfDay;
     this.overlay.hidden = this.capture;
     this.status.hidden = true; this.progress.hidden = true;
-    document.getElementById('field-instructions')!.hidden = this.entered;
+    document.getElementById('field-guide')!.hidden = this.capture;
+    document.getElementById('field-instructions')!.hidden = false;
     this.refreshShotgunMenu();
     this.enter.hidden = false;
     const mapToggle=document.getElementById('field-map-toggle') as HTMLButtonElement|null;
@@ -398,7 +457,7 @@ export class FieldInterface {
     this.entered = true; unlockAudio();
     this.offlineUpdateState(this.updateState);
     this.overlay.classList.add('field-has-entered');
-    document.getElementById('field-instructions')!.hidden = true;
+    (document.getElementById('field-guide') as HTMLDetailsElement).open = false;
     const property=document.getElementById('property-setting') as HTMLSelectElement|null;
     if(property)property.disabled=true;
     this.overlay.hidden = true;

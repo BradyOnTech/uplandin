@@ -74,6 +74,18 @@ p { text-wrap:pretty; }
 progress { width:100%; height:3px; accent-color:var(--gold); margin:8px 0 24px; }
 #field-instructions { font-size:12px; line-height:1.9; color:#d4dccc; }
 #field-instructions span { padding:0 3px; opacity:.4; }
+#field-guide { margin:14px 0; }
+#field-guide summary { min-height:44px; display:list-item; padding:10px 0; cursor:pointer; font-size:13px; }
+#field-guide[open] summary { margin-bottom:8px; }
+#field-guide-preferences { padding-top:12px; margin-top:12px; box-shadow:0 -1px #ffffff18; }
+#field-guide-preferences label { display:flex; gap:10px; align-items:center; min-height:44px; font-size:12px; }
+#field-guide-preferences input { accent-color:var(--gold); width:18px; height:18px; }
+#field-guide-repeat { min-height:44px; margin-top:5px; font-size:12px; }
+#field-guide-status { font-size:11px; color:#bec9b6; }
+#first-hunt-guide { grid-column:1 / -1; margin:7px 0 0; padding-top:7px; box-shadow:0 -1px #ffffff18; font-size:11px; line-height:1.45; color:#f0dfb6; text-wrap:pretty; }
+#hunt-hud:has(#first-hunt-guide:not([hidden])) #field-guidance { display:none; }
+body.field-paused #first-hunt-guide,body.field-map-open #first-hunt-guide,body.capture #first-hunt-guide,
+body.touch-gun-raised #first-hunt-guide { display:none; }
 .field-tip { margin:19px 0; opacity:.75; }
 #enter-field { width:100%; margin:8px 0 22px; min-height:50px; display:flex; justify-content:space-between; align-items:center; font-size:13px; background:#d5b879; color:#20342b; font-weight:650; }
 #enter-field:hover { background:#e8cf94; }

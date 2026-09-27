@@ -28,6 +28,7 @@
       <div id="hunt-phase">HUNTING</div>
       <div id="dog-locator" aria-live="off"><span id="dog-direction" aria-hidden="true">↑</span><span id="dog-status">DOG SEARCHING</span><span id="dog-distance">0 YD</span></div>
       <div id="hunt-beacon">TRUCK ↑ 0 YD</div>
+      <p id="first-hunt-guide" hidden role="status" aria-live="polite"></p>
     </div>
     <div id="reticle" hidden aria-hidden="true"></div>
     <div id="shot-callout" hidden aria-live="assertive"></div>
@@ -110,14 +111,24 @@
           <a id="shotgun-rack" href="./shotguns3d.html" target="_blank" rel="noopener">3D Gun Rack <span aria-hidden="true">↗</span></a>
           <p id="shotgun-status" role="status" aria-live="polite"></p>
         </section>
-        <div id="field-instructions" hidden>
+        <details id="field-guide" hidden>
+          <summary>Controls &amp; field guide</summary>
+        <div id="field-instructions">
           <p class="desktop-instructions"><kbd>W A S D</kbd> Walk <span>·</span> <kbd>Shift</kbd> Run <span>·</span> <kbd>Q</kbd> Whistle <span>·</span> <kbd>M</kbd> Survey map</p>
           <p class="desktop-instructions"><kbd>F</kbd> Toggle aim · <kbd>Space</kbd> Shoot · <kbd>R</kbd> Reload.<br>Mouse: hold right button to aim, left button to shoot.</p>
+          <p class="desktop-instructions">On a trackpad, use <kbd>F</kbd> to raise the gun and <kbd>Space</kbd> to fire. If mouse lock is unavailable, drag to look and swing.</p>
           <p class="touch-instructions">Drag left to walk; farther to run. Drag right to look. Hold Shotgun to raise it, drag to swing, then release to shoot. For another shot, press and swing again. Release over Lower to cancel, or tap Lower to put the gun down. Whistle recalls your dog; whistle again at heel to send it hunting.</p>
           <p class="touch-instructions orientation-tip">Turn your phone sideways for a wider view of the field.</p>
           <p>You can fire whenever the gun is raised. Swing ahead of crossing birds; let distant birds go.</p>
+          <p>Your dog searches on its own. Whistle recalls it; whistle again once all dogs are at heel to send them hunting. A fallen bird is recovered and brought to hand automatically.</p>
           <p class="field-tip">Work the edges into the wind. When your dog holds point, walk in steadily.</p>
         </div>
+          <div id="field-guide-preferences">
+            <label><input id="field-guide-enabled" type="checkbox" checked> Show occasional field tips</label>
+            <button id="field-guide-repeat" type="button">Show tips again</button>
+            <p id="field-guide-status" role="status"></p>
+          </div>
+        </details>
         <div id="field-options">
           <label id="property-option">Property <select id="property-setting">
             <option value="quail-fields">Quail Fields</option>
