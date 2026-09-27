@@ -1875,14 +1875,24 @@ export class BirdsSystem implements Subsystem {
         s.wingLMesh.morphTargetInfluences![0] = beat.recovery;
         s.wingRMesh.morphTargetInfluences![0] = beat.recovery;
       } else {
-        // World-space rises use continuous wingbeats. Legacy screen-space
-        // waves retain the stepped pose so their silhouettes stay readable.
+        // Authored-world birds use the render clock even when their species
+        // owns a dedicated flight controller (notably downhill Chukar).
+        // Sampling a 15Hz beat as three poses at 30Hz makes it flicker between
+        // held silhouettes. Interpolate the phase as well as the wing angle;
+        // the controller's flight, hit center and cadence remain unchanged.
+        // Legacy screen-space waves retain their deliberate stepped poses.
         const hz = s.species.flight.flapRate ?? 14;
-        const seconds = s.airMs / 1000;
+        const wingMs = this.spatialEncounter && !this.frozen
+          ? THREE.MathUtils.lerp(s.previousAirMs ?? s.airMs, s.airMs, ctx.fixedAlpha ?? 1) : s.airMs;
+        const seconds = wingMs / 1000;
         const cycles = seconds * hz;
-        const ph = Math.sin(cycles * Math.PI * 2 + s.wobblePh * 0.35);
+        // The dedicated controller advances wobble by 9 rad/s each fixed tick;
+        // avoid another phase jump when the next simulation tick arrives.
+        const wobble = s.wobblePh - (s.spatialFlight ? 0 : (s.airMs - wingMs) * .009);
+        const ph = Math.sin(cycles * Math.PI * 2 + wobble * 0.35);
         const beatAmplitude = 0.58 + s.species.flight.climb * 0.28 + (s.species.timber ? 0.06 : 0);
-        const ang = s.spatialFlight ? .05 + ph * beatAmplitude : ph > 0.33 ? 0.88 : ph < -0.33 ? -0.78 : 0.1;
+        const ang = this.spatialEncounter ? .05 + ph * (s.spatialFlight ? beatAmplitude : .83)
+          : ph > 0.33 ? 0.88 : ph < -0.33 ? -0.78 : 0.1;
         s.wingL.rotation.set(0, 0, -ang);
         s.wingR.rotation.set(0, 0, ang);
       }
