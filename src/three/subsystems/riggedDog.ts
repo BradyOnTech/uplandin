@@ -3,6 +3,7 @@ import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import type { Ctx, Subsystem } from '../engine';
 import type { Hunt3DSystem } from './hunt3d';
 import type { TerrainSystem } from './terrain';
+import { dogRendererId } from '../dogs/rendererId';
 import { advancePhaseDrivenAction, chooseDogClip, contactWeight, crossFadeDogAction, dogClipBlendSeconds, dogTorsoHeading, planPointSettling, POINT_SETTLE_SECONDS, sampleClipContacts, sampleCorrectiveStep, supportingGait } from '../dogs/riggedMotion';
 
 type FootId = 'FL' | 'FR' | 'HL' | 'HR';
@@ -80,7 +81,7 @@ export class RiggedDogSystem implements Subsystem {
   private visibility = new Map<THREE.Object3D, boolean>();
   private originalBackground: THREE.Scene['background'] = null;
   private groundAt = (x: number, z: number): number => this.terrain.heightAt(x, z);
-  constructor(private readonly slot = 0) { this.id = slot === 0 ? 'dog' : 'dog2'; }
+  constructor(private readonly slot = 0) { this.id = dogRendererId(slot); }
 
   async init(ctx: Ctx): Promise<void> {
     this.hunt = ctx.get<Hunt3DSystem>('hunt3d');

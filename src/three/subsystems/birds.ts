@@ -11,6 +11,7 @@ import { buildSharptailBody, buildSharptailWing, poseSharptailFoldedWings } from
 import { buildChukarBody, buildChukarWing, poseChukarFoldedWings } from '../assets/chukar';
 import { sharptailLaunchDelay, sharptailWingbeat } from '../sharptailPresentation';
 import { addCarriedBirdPoses, poseCarriedBird, restingBirdScale } from '../carriedBirdPresentation';
+import { dogRendererId } from '../dogs/rendererId';
 import { playFlush, playThud, playPheasantFlush, playBirdFlush, type PheasantFlushSound } from '../../audio';
 import { RELIGHT_CHANCE, YOUNG_FLIGHT_MULT } from '../../game/birds';
 import { mulberry32 } from '../../game/math';
@@ -1788,7 +1789,7 @@ export class BirdsSystem implements Subsystem {
             this.terrain.heightAt(this.carryW.x, this.carryW.z) + 0.58,
             this.carryW.z + Math.sin(dog.heading) * 0.32,
           );
-          const visual = ctx.get<Subsystem & { mouthWorld?: (out: THREE.Vector3) => boolean }>(carrierSlot === 0 ? 'dog' : 'dog2');
+          const visual = ctx.get<Subsystem & { mouthWorld?: (out: THREE.Vector3) => boolean }>(dogRendererId(carrierSlot));
           visual.mouthWorld?.(s.root.position);
           s.carryPose ??= { elapsed: 0, rotation: s.root.quaternion.clone() };
           s.carryPose.elapsed += Math.max(0, _dt);

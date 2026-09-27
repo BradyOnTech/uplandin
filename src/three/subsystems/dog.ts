@@ -29,6 +29,7 @@ import {
 } from '../dogs/locomotion';
 import type { Hunt3DSystem } from './hunt3d';
 import type { TerrainSystem } from './terrain';
+import { dogRendererId } from '../dogs/rendererId';
 
 /*
  * DOG subsystem — the reason the game exists.
@@ -372,7 +373,7 @@ export class DogSystem implements Subsystem {
     private readonly coatId: string,
     private readonly slot = 0,
   ) {
-    this.id = slot === 0 ? 'dog' : `dog-${slot + 1}`;
+    this.id = dogRendererId(slot);
   }
 
   private hunt!: Hunt3DSystem;
