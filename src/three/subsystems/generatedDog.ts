@@ -28,7 +28,7 @@ export class GeneratedDogSystem implements Subsystem {
     if(!this.motion)return null;
     const mouth=new THREE.Vector3();this.mouthWorld(mouth);
     return {source:'generated-gsp',version:1,frame:this.auditFrame,state:this.hunt.dog().state,moving:this.motion.moving,speed:this.speed,gait:this.motion.gait,
-      field:{...this.field,performance:this.motion.scentMotion.performance},
+      field:{...this.field,performance:this.motion.scentMotion.performance},jawAngle:this.motion.mouthMotion.angle,
       swimming:this.motion.swimming,clamped:this.motion.clamped,stats:this.motion.asset.stats,root:this.motion.asset.root.position.toArray(),mouth:mouth.toArray(),feet:this.motion.contactSnapshot()};
   };
   init(ctx:Ctx){
@@ -54,7 +54,9 @@ export class GeneratedDogSystem implements Subsystem {
     const point=dog.state==='pointing'||dog.state==='honoring';
     const retrieve: GeneratedRetrievePose | undefined = dog.state === 'retrieving'
       ? { stage: dog.carryingBirdId !== null ? dog.gait === 'still' && dog.retrieveHoldTimeMs() > 0 ? 'deliver' : 'carry' : 'pickup',
-          holdMs: dog.retrieveHoldTimeMs?.() ?? 0 }
+          holdMs: dog.retrieveHoldTimeMs?.() ?? 0,
+          speciesId: dog.carryingBirdId === null ? undefined
+            : this.hunt.huntState?.().birds.find(bird=>bird.id===dog.carryingBirdId)?.speciesId }
       : undefined;
     // Only settle into pickup once the simulation has reached the actual fall.
     const retrievePose = retrieve?.stage === 'pickup' && dog.gait !== 'still' ? undefined : retrieve;
@@ -65,6 +67,6 @@ export class GeneratedDogSystem implements Subsystem {
     this.previous.x=this.position.x;this.previous.z=this.position.z;this.placed=true;
   }
   partingPoint(out:{x:number;z:number;r:number}){out.x=this.position.x;out.z=this.position.z;out.r=.44;}
-  mouthWorld(out:THREE.Vector3){if(!this.motion)return false;out.set(0,-.032,.158);this.motion.asset.joints.head.localToWorld(out);return true;}
+  mouthWorld(out:THREE.Vector3){if(!this.motion)return false;out.copy(this.motion.mouthMotion.grip);this.motion.asset.joints.head.localToWorld(out);return true;}
   dispose(){const scope=window as unknown as {__generatedDogAudit?:unknown};if(scope.__generatedDogAudit===this.audit)delete scope.__generatedDogAudit;this.motion?.dispose();this.motion=undefined;}
 }

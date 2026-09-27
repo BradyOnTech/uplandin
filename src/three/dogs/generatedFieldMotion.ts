@@ -3,8 +3,9 @@ import type { LocomotionGait } from './locomotion';
 import { createGeneratedGsp, GENERATED_STRIDE } from './generatedGsp';
 import { GeneratedScentMotion, fieldPerformance, type GeneratedFieldIntent } from './generatedScentMotion';
 import { GeneratedBodySupport } from './generatedBodySupport';
+import { GeneratedMouthMotion } from './generatedMouth';
 
-export interface GeneratedRetrievePose { stage: 'pickup' | 'carry' | 'deliver'; holdMs: number; }
+export interface GeneratedRetrievePose { stage: 'pickup' | 'carry' | 'deliver'; holdMs: number; speciesId?: string; }
 
 /** Presentation-only ground contacts. The shared hunt remains the movement authority. */
 export class GeneratedFieldMotion {
@@ -23,6 +24,7 @@ export class GeneratedFieldMotion {
   private pointPresence=0;
   readonly scentMotion=new GeneratedScentMotion();
   private bodySupport=new GeneratedBodySupport();
+  readonly mouthMotion=new GeneratedMouthMotion();
   private pickupPresence=0;
   private carryPresence=0;
   private deliverPresence=0;
@@ -56,6 +58,7 @@ export class GeneratedFieldMotion {
       this.feet.forEach((foot,i)=>{foot.locked=false;foot.initialized=false;this.asset.paws[i].getWorldPosition(foot.target);});
       this.pointPresence=0;this.pickupPresence=0;this.carryPresence=0;this.deliverPresence=0;this.wasMoving=true;
       this.scentMotion.reset();
+      this.mouthMotion.update(this.asset.joints.jaw,retrieve?.stage==='carry'?retrieve:undefined,dt);
       this.last.set(x,ground,z);this.lastYaw=yaw;this.placed=true;
       this.pose.forEach(p=>{p.previousPosition.copy(p.node.position);p.previousRotation.copy(p.node.quaternion);});
       return;
@@ -171,6 +174,7 @@ export class GeneratedFieldMotion {
     neck.position.y -= .17 * this.pickupPresence;
     neck.rotation.x += 1.25 * this.pickupPresence + .10 * this.carryPresence - .08 * this.deliverPresence;
     head.rotation.x += .30 * this.pickupPresence - .10 * this.carryPresence - .12 * this.deliverPresence;
+    this.mouthMotion.update(this.asset.joints.jaw,point?undefined:retrieve,dt,reset);
     root.updateMatrixWorld(true);
     this.wasMoving=moving;
     this.lastYaw=yaw;

@@ -11,13 +11,14 @@ it('lowers the generated muzzle at pickup, carries smoothly and offers the bird 
   const dog = { state: 'heel', gait: 'still', scentStage: 'none', carryingBirdId: null as number | null,
     retrieveHoldTimeMs: () => holdMs };
   const hunt = { areaConfig: () => getArea('quail-fields'), dropPoint: () => getDropPoint(getArea('quail-fields')),
+    huntState: () => ({ birds: [{ id: 99, speciesId: 'ringneck' }, { id: 8, speciesId: 'bobwhite' }] }),
     dog: () => dog, dogRenderWorld: (_alpha:number,out:{x:number;z:number}) => Object.assign(out,{x,z:0}),
     dogRenderHeading: () => 0, dogRenderTravelHeading: () => 0 };
   const ctx = { scene: new THREE.Scene(), quality: 'lite', fixedAlpha: 1,
     get: (id:string) => id === 'hunt3d' ? hunt : { heightAt: () => 0 } } as unknown as Ctx;
   const system = new GeneratedDogSystem(); system.init(ctx); system.update(ctx,1/60);
   const mouth = new THREE.Vector3(); system.mouthWorld(mouth); const standing = mouth.y;
-  const audit = () => (window as unknown as {__generatedDogAudit:()=>{feet:{actual:number[]}[]}}).__generatedDogAudit();
+  const audit = () => (window as unknown as {__generatedDogAudit:()=>{jawAngle:number;feet:{actual:number[]}[]}}).__generatedDogAudit();
   const feet = audit().feet.map(foot=>foot.actual);
   dog.state='retrieving';
   let previous=mouth.y;
@@ -35,6 +36,9 @@ it('lowers the generated muzzle at pickup, carries smoothly and offers the bird 
     previous=mouth.y;x+=.02;system.update(ctx,1/60);system.mouthWorld(mouth);maxJump=Math.max(maxJump,Math.abs(mouth.y-previous));
   }
   expect(maxJump).toBeLessThan(.08);expect(mouth.y).toBeGreaterThan(.45);
+  // The carried ID selects the compact quail grasp, not an unrelated
+  // pheasant earlier in the hunt's bird list.
+  expect(audit().jawAngle).toBeGreaterThan(.38);expect(audit().jawAngle).toBeLessThan(.42);
   const carryHeight=mouth.y;dog.gait='still';
   for(let frame=0;frame<21;frame++){holdMs+=1000/60;system.update(ctx,1/60);}
   system.mouthWorld(mouth);expect(mouth.y).toBeGreaterThan(carryHeight);

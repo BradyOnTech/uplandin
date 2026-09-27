@@ -9,6 +9,8 @@ export const GENERATED_STRIDE_SCALE: Record<LocomotionGait,number> = {walk:.72,t
 export const GENERATED_STRIDE: Record<LocomotionGait,number> = {walk:.72*.72,trot:.94*.95,canter:1.38*.95,gallop:1.9};
 const GENERATED_GALLOP_TOUCHDOWN: FootTuple<number> = [.58,.50,.08,0];
 const WHITE = 0xd1cdc1, LIVER = 0x51382e, NOSE = 0x332722, EYE = 0x211c17;
+/** Head-relative grip: the mandible moves around it, never drives the bird. */
+export const GENERATED_MOUTH_GRIP: Point = [0, -.065, .125];
 
 /** Coat coordinates stay in the bind pose so pigment follows the skin. */
 function applyGspCoat(material: THREE.MeshLambertMaterial): void {
@@ -141,20 +143,31 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
   torsoMesh.userData.neckJoint = neck;
   const head = joint('head', neck, [0,.155,.135]);
   surface(head, s => {
-    // One continuous skull, cheek and muzzle surface. The long nasal bridge
-    // and shallow stop avoid the former domed forehead and separate snout.
+    // The upper muzzle ends at the lip, leaving room for a real mandible.
+    // A long nasal bridge and shallow stop retain the adult GSP profile.
     s.loft([[0,.006,-.072,.037,.037,.042],[0,.008,-.048,.049,.035,.044],
       [0,.008,-.012,.060,.041,.049],[0,.005,.026,.060,.037,.052],
-      [0,-.003,.056,.054,.032,.054],[0,-.008,.077,.046,.030,.047],
-      [0,-.006,.111,.042,.029,.039],[0,-.003,.145,.035,.027,.032],
-      [0,-.002,.171,.035,.024,.027]], LIVER);
+      [0,-.003,.056,.054,.032,.020],[0,-.008,.077,.046,.030,.013],
+      [0,-.006,.111,.042,.029,.013],[0,-.003,.145,.035,.027,.015],
+      [0,-.002,.171,.035,.024,.017]], LIVER);
     s.loft([[0,-.001,.166,.035,.024,.027],[0,.001,.18,.034,.022,.023]], NOSE);
-    // A restrained lip line describes the jaw at close range.
-    for (const side of [-1, 1]) s.loft([[side*.034,-.027,.102,.0016,.0020],
-      [side*.033,-.030,.142,.0015,.0018],[side*.027,-.024,.165,.0010,.0013]], NOSE);
+    // The oral roof stays dark, including when viewed from below; it is
+    // geometry in the existing skin, not a hole through the head or a decal.
+    s.loft([[0,-.022,.044,.028,.0015],[0,-.020,.088,.035,.0015],
+      [0,-.018,.137,.029,.0015],[0,-.017,.165,.024,.0015]], NOSE);
     // Small eyes sit at the skull/muzzle transition, without white cartoon sclera.
     for (const side of [-1, 1]) s.loft([[side*.057,.017,.027,.0025,.0031],
       [side*.055,.017,.037,.0027,.0026]], EYE);
+  }, .78);
+  const jaw = joint('jaw', head, [0,-.027,.026]);
+  surface(jaw, s => {
+    s.loft([[0,-.004,.003,.034,.012],[0,-.014,.045,.037,.013],
+      [0,-.008,.091,.033,.012],[0,-.003,.126,.029,.009],
+      [0,0,.142,.023,.007]], LIVER);
+    // A small dark inner surface and soft lower lip describe a relaxed
+    // grip without large white teeth or a bright, cartoon tongue.
+    s.loft([[0,.003,.021,.027,.0015],[0,0,.065,.030,.0015],
+      [0,.005,.112,.025,.0015],[0,.006,.135,.020,.001]], NOSE);
   }, .78);
   for (const side of [-1, 1]) {
     const ear = joint(side < 0 ? 'ear-left' : 'ear-right', head, [side*.052,.019,-.012]);
