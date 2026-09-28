@@ -93,4 +93,54 @@ describe('first-hunt guide', () => {
     const guide = new FieldGuide(); guide.update(snapshot(), .1); guide.suspend();
     guide.update(snapshot({ shells: 2 }), .1); expect(guide.snapshot().learned).not.toContain('shoot/touch');
   });
+  it.each(['sharptail-prairie', 'chukar-ridge'])('can teach closing a long cast after the initial %s scent tip was already seen', areaId => {
+    const guide = new FieldGuide();
+    const near = snapshot({ areaId, dog: dog({ state: 'tracking', scentStage: 'locating', rangeM: 20 }) });
+    for (let i = 0; i < 40; i++) guide.update(near, .25);
+    expect(guide.snapshot().shown).toContain(`track/${areaId}`);
+    const far = snapshot({ areaId, dog: dog({ state: 'tracking', scentStage: 'stalking', rangeM: 56 }) });
+    for (let i = 0; i < 80; i++) expect(guide.update({ ...far, mounted: true }, .25)).toBeNull();
+    expect(guide.snapshot().shown).not.toContain(`close/${areaId}`);
+    expect(guide.update(far, .2)).toContain(areaId === 'chukar-ridge' ? 'high side' : 'grass edge');
+    expect(guide.update(snapshot({ areaId, dog: dog({ state: 'pointing', rangeM: 56 }) }), .2))
+      .toContain(areaId === 'chukar-ridge' ? 'downhill break' : 'early rise');
+  });
+  it('offers a brief species-aware next search only after an actual rise ends, never after init or replay', () => {
+    const state = snapshot({ areaId: 'sharptail-prairie' });
+    const guide = new FieldGuide();
+    expect(guide.update(state, .2)).not.toContain('If you saw');
+    expect(guide.update(state, .2)).not.toContain('If you saw');
+    expect(guide.update({ ...state, rise: true }, .2)).toBeNull();
+    const next = guide.update(state, .2);
+    expect(next).toContain('next wind lane'); expect(next).toContain('If you saw birds land');
+    for (let i = 0; i < 40; i++) guide.update(state, .25);
+    expect(guide.snapshot().shown).toContain('followup/sharptail-prairie');
+    const restored = readFieldGuide({ getItem: () => JSON.stringify(guide.snapshot()), setItem() {} });
+    const replay = new FieldGuide(restored); replay.update({ ...state, rise: true }, .2);
+    expect(replay.update(state, .2)).not.toContain('If you saw');
+    const freshReplay = new FieldGuide();
+    expect(freshReplay.update(state, .2)).not.toContain('If you saw');
+  });
+  it.each(['pointing', 'tracking', 'retrieving'] as const)('new %s work supersedes follow-up advice without replaying it later', state => {
+    const guide = new FieldGuide();
+    const field = snapshot({ areaId: 'chukar-ridge' });
+    guide.update({ ...field, rise: true }, .2);
+    const urgent = guide.update({ ...field, dog: dog({ state }) }, .2);
+    expect(urgent).not.toContain('fresh bench');
+    expect(guide.update(field, .2)).not.toContain('fresh bench');
+    expect(guide.snapshot().shown).not.toContain('followup/chukar-ridge');
+  });
+  it('does not consume suppressed follow-up advice or carry a stale prompt across pause', () => {
+    const field = snapshot({ areaId: 'chukar-ridge' });
+    const guide = new FieldGuide(); guide.update({ ...field, rise: true }, .2);
+    for (let i = 0; i < 100; i++) expect(guide.update({ ...field, mounted: true }, .25)).toBeNull();
+    expect(guide.snapshot().shown).not.toContain('followup/chukar-ridge');
+    expect(guide.update(field, .2)).not.toContain('fresh bench');
+    guide.update({ ...field, rise: true }, .2); guide.suspend();
+    expect(guide.update(field, .2)).not.toContain('fresh bench');
+    guide.update({ ...field, rise: true }, .2); guide.update({ ...field, active: false }, .2);
+    expect(guide.update(field, .2)).not.toContain('fresh bench');
+    guide.update({ ...field, rise: true }, .2);
+    expect(guide.update(field, .2)).toContain('fresh bench');
+  });
 });

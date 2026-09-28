@@ -17,7 +17,30 @@ export function fieldSearchGuidance(areaId: string): string {
   return huntingDoctrine(areaId).guidance;
 }
 
-export function trackingApproachGuidance(dogDistanceM: number, areaId: string, stage: DogScentStage = 'none', waitingForHandler = false): { headline: string; detail: string } | null {
+export function trackingApproachGuidance(dogDistanceM: number, areaId: string, stage: DogScentStage = 'none', waitingForHandler = false): { headline: string; detail: string; closeGap?: boolean } | null {
+  if (areaId === 'sharptail-prairie' || areaId === 'chukar-ridge') {
+    const chukar = areaId === 'chukar-ridge';
+    if (waitingForHandler) return {
+      headline: 'DOG HOLDING SCENT · CLOSE UP',
+      detail: chukar ? 'Follow the bench toward your dog so it can continue.' : 'Move up along the grass edge so your dog can continue.',
+    };
+    if (stage === 'locking') return {
+      headline: 'SETTING POINT · WALK QUIETLY',
+      detail: chukar ? 'Your dog is settling. Walk in from the high side.' : 'Your dog is settling. Walk in along the grass edge.',
+    };
+    if (stage === 'checking') return {
+      headline: 'SCENT CHECK · GIVE THE DOG ROOM',
+      detail: chukar ? 'The dog is checking scent. Give it room along the bench.' : 'The dog is checking scent. Give it room to work the wind.',
+    };
+    const far = dogDistanceM > 30;
+    return {
+      headline: far ? 'DOG WORKING SCENT · CLOSE THE GAP' : chukar ? 'DOG CLIMBING SCENT · HOLD THE HIGH SIDE' : 'DOG WORKING SCENT · HOLD THE GRASS EDGE',
+      detail: far
+        ? chukar ? 'Use the bench to close from the high side. Walk as the dog settles.' : 'Move up along the grass edge while your dog works scent. Walk as it settles.'
+        : chukar ? 'Stay on the high side and give the dog room to finish.' : 'Stay near the grass edge and let the dog finish working the wind.',
+      closeGap: far,
+    };
+  }
   if (huntingDoctrine(areaId).style !== 'pheasant') return null;
   if (waitingForHandler) return {
     headline: 'DOG HOLDING SCENT · CLOSE UP',
@@ -46,6 +69,22 @@ export function trackingApproachGuidance(dogDistanceM: number, areaId: string, s
     detail: far ? 'Move up along dry cover while the dog tracks. Walk when it points.'
       : 'Stay with the cover edge and give the dog room to finish.',
   };
+}
+
+/** A distant point is dog information, not a promise that the covey will hold. */
+export function longCastPointGuidance(dogDistanceM: number, areaId: string): string | null {
+  if (dogDistanceM <= 42) return null;
+  if (areaId === 'sharptail-prairie') return 'Walk toward the point along the grass edge. Be ready for an early rise.';
+  if (areaId === 'chukar-ridge') return 'Use the bench to approach from above. Be ready for a downhill break.';
+  return null;
+}
+
+/** Advice after a real flight, never an assertion that a bird landed or a
+ * remembered location contains birds. The player supplies any visual mark. */
+export function postRiseSearchGuidance(areaId: string): string | null {
+  if (areaId === 'sharptail-prairie') return 'Work the next wind lane. If you saw birds land, check that cover with your dog.';
+  if (areaId === 'chukar-ridge') return 'Work a fresh bench on the high side. Let the dog search before dropping downhill.';
+  return null;
 }
 
 export function trackingApproachCue(dogDistanceM: number, areaId: string, stage: DogScentStage = 'none', waitingForHandler = false): string | null {

@@ -1,6 +1,6 @@
 import type { DogScentStage, DogState } from '../game/dog';
 import type { StorageLike } from '../game/career';
-import { fieldSearchGuidance, pheasantPointGuidance, pointApproachCue, trackingApproachGuidance } from './dogLocator';
+import { fieldSearchGuidance, longCastPointGuidance, pheasantPointGuidance, pointApproachCue, postRiseSearchGuidance, trackingApproachGuidance } from './dogLocator';
 
 export const FIELD_GUIDE_KEY = 'uplandin.3d.field-guide.v1';
 export type GuideInput = 'desktop' | 'drag-look' | 'touch';
@@ -15,7 +15,7 @@ export interface FieldGuideSnapshot {
 const fresh = (): FieldGuideProgress => ({ disabled: false, learned: [], shown: [] });
 const cleanKeys = (value: unknown): string[] => Array.isArray(value)
   ? [...new Set(value.filter((key): key is string => typeof key === 'string'
-    && /^(move|shoot|reload|heel|retrieve|search|point|track)(\/[a-z-]+)?$/.test(key)))].slice(0, 64) : [];
+    && /^(move|shoot|reload|heel|retrieve|search|point|track|close|followup)(\/[a-z-]+)?$/.test(key)))].slice(0, 64) : [];
 export function readFieldGuide(storage: StorageLike | null): FieldGuideProgress {
   try {
     const saved = JSON.parse(storage?.getItem(FIELD_GUIDE_KEY) ?? 'null');
@@ -35,17 +35,24 @@ export class FieldGuide {
   private currentKey = '';
   private shownFor = 0;
   private dogHasWorked = false;
+  private followupRemaining = 0;
   constructor(progress = fresh()) { this.progress = { ...progress, learned: [...progress.learned], shown: [...progress.shown] }; }
   snapshot(): FieldGuideProgress { return { ...this.progress, learned: [...this.progress.learned], shown: [...this.progress.shown] }; }
   setEnabled(enabled: boolean): void { this.progress.disabled = !enabled; }
-  suspend(): void { this.previous = null; }
-  reset(): void { this.progress = fresh(); this.previous = null; this.moveDistance = this.lookDistance = 0; this.pointRange = null; this.currentKey = ''; this.shownFor = 0; this.dogHasWorked = false; }
+  suspend(): void { this.previous = null; this.followupRemaining = 0; }
+  reset(): void { this.progress = fresh(); this.previous = null; this.moveDistance = this.lookDistance = 0; this.pointRange = null; this.currentKey = ''; this.shownFor = 0; this.dogHasWorked = false; this.followupRemaining = 0; }
   private learn(key: string): void { if (!this.progress.learned.includes(key)) this.progress.learned.push(key); }
   private needs(key: string): boolean { return !this.progress.learned.includes(key) && !this.progress.shown.includes(key); }
   update(s: FieldGuideSnapshot, dt: number): string | null {
     const p = this.previous;
     this.previous = s;
-    if (!s.active) return null;
+    if (!s.active) { this.followupRemaining = 0; return null; }
+    this.followupRemaining = Math.max(0, this.followupRemaining - Math.max(0, Math.min(dt, .25)));
+    if (p?.active && p.areaId === s.areaId && p.rise && !s.rise) this.followupRemaining = 20;
+    // New dog work wins. Advice about a finished flight must not reappear
+    // after a point or recovery, or cross a pause/replay/property change.
+    if (s.rise || (p && p.areaId !== s.areaId) || s.dog.state === 'tracking' || s.dog.state === 'pointing'
+      || s.dog.state === 'retrieving' || s.dog.allAtHeel || s.dog.searchAreaChecked) this.followupRemaining = 0;
     const dogHadWorked = this.dogHasWorked;
     if (s.dog.state !== 'heel' && s.dog.state !== 'recalled') this.dogHasWorked = true;
     const sameInput = p?.active && p.input === s.input;
@@ -77,16 +84,19 @@ export class FieldGuide {
     else if (s.dog.state === 'pointing') {
       const approach = pointApproachCue(s.dog.rangeM, false, s.areaId).split(' · ')[1].toLowerCase();
       add(`point/${s.areaId}`, s.areaId === 'pheasant-coverts' ? pheasantPointGuidance(s.dog.rangeM, s.dog.heading)
-        : `Walk toward your dog. ${approach.charAt(0).toUpperCase() + approach.slice(1)}.`);
+        : longCastPointGuidance(s.dog.rangeM, s.areaId) ?? `Walk toward your dog. ${approach.charAt(0).toUpperCase() + approach.slice(1)}.`);
       add(`shoot/${s.input}`, s.input === 'touch' ? 'Hold Shotgun, swing ahead, release to fire. Release over Lower to cancel.'
         : s.input === 'drag-look' ? 'F raises the gun. Drag to swing; Space fires.' : 'Hold right mouse to aim; left clicks fire. Or use F, then Space.');
     } else if (s.dog.state === 'tracking') {
       const cue = trackingApproachGuidance(s.dog.rangeM, s.areaId, s.dog.scentStage, s.dog.waitingForHandler);
       const headline = cue?.headline.toLowerCase();
+      if (cue?.closeGap) add(`close/${s.areaId}`, cue.detail);
       add(`track/${s.areaId}`, s.dog.waitingForHandler ? 'Your dog is waiting on scent. Move closer so it can continue.'
         : headline ? `${headline.charAt(0).toUpperCase() + headline.slice(1)}.`
           : 'Your dog is working scent. Follow its search and give it room.');
     } else {
+      const followup = this.followupRemaining > 0 && s.dog.state === 'quartering' ? postRiseSearchGuidance(s.areaId) : null;
+      if (followup) add(`followup/${s.areaId}`, followup);
       add(`move/${s.input}`, s.input === 'touch' ? 'Drag left to walk; drag right to look. Let your dog search.'
         : s.input === 'drag-look' ? 'WASD walks. Drag to look. Let your dog search.' : 'WASD walks; move the mouse to look. Let your dog search.');
       add(`search/${s.areaId}`, fieldSearchGuidance(s.areaId));

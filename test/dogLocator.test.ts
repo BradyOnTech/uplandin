@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { dogRelativeBearing, dogWorkLabel, pointApproachCue, trackingApproachCue, trackingApproachGuidance, pheasantPointGuidance } from '../src/three/dogLocator';
+import { dogRelativeBearing, dogWorkLabel, pointApproachCue, trackingApproachCue, trackingApproachGuidance, pheasantPointGuidance, longCastPointGuidance, postRiseSearchGuidance } from '../src/three/dogLocator';
 
 it('gives the actual continuous bearing relative to the hunter looking north or west', () => {
   expect(dogRelativeBearing(0, -10, 0)).toBeCloseTo(0);
@@ -91,4 +91,21 @@ it('preserves the nose bearing near a compass-sector boundary', () => {
   expect(pheasantPointGuidance(2, dogHeading)).toContain('NW 337°');
   expect(pheasantPointGuidance(8, dogHeading)).toContain('Close to the dog first');
   expect(pheasantPointGuidance(2, -Math.PI / 2)).toContain('N 000°');
+});
+
+it('gives actionable long-cast advice from dog work, while preserving habitat and scent-stage differences', () => {
+  for (const [area, habitat] of [['sharptail-prairie', 'grass edge'], ['chukar-ridge', 'high side']]) {
+    const far = trackingApproachGuidance(56, area, 'stalking')!;
+    expect(far.closeGap).toBe(true); expect(far.detail).toContain(habitat);
+    const near = trackingApproachGuidance(20, area, 'stalking')!;
+    expect(near.closeGap).toBe(false); expect(near.detail).toContain(area === 'chukar-ridge' ? 'give the dog room' : 'let the dog finish');
+    expect(trackingApproachGuidance(56, area, 'checking')!.closeGap).not.toBe(true);
+    expect(trackingApproachGuidance(56, area, 'locking')!.headline).toContain('WALK QUIETLY');
+    expect(trackingApproachGuidance(56, area, 'stalking', true)!.headline).toContain('CLOSE UP');
+    expect(longCastPointGuidance(56, area)).toContain(area === 'chukar-ridge' ? 'downhill break' : 'early rise');
+    expect(longCastPointGuidance(20, area)).toBeNull();
+  }
+  expect(postRiseSearchGuidance('sharptail-prairie')).toContain('If you saw birds land');
+  expect(postRiseSearchGuidance('chukar-ridge')).toContain('fresh bench');
+  expect(postRiseSearchGuidance('pheasant-coverts')).toBeNull();
 });
