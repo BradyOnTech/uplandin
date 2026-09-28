@@ -5,8 +5,13 @@ import { GeneratedScentMotion, fieldPerformance, type GeneratedFieldIntent } fro
 import { GeneratedBodySupport } from './generatedBodySupport';
 import { GeneratedMouthMotion } from './generatedMouth';
 import type { GspCoatId } from './germanShorthairedPointer';
+import { GeneratedPickupReach } from './generatedPickupReach';
 
-export interface GeneratedRetrievePose { stage: 'pickup' | 'carry' | 'deliver'; holdMs: number; speciesId?: string; }
+export interface GeneratedRetrievePose {
+  stage: 'pickup' | 'carry' | 'deliver'; holdMs: number; speciesId?: string;
+  /** Actual grounded bird centre; only the reserved fall may drive a reach. */
+  target?: Readonly<{ x: number; y: number; z: number }>;
+}
 
 /** Presentation-only ground contacts. The shared hunt remains the movement authority. */
 export class GeneratedFieldMotion {
@@ -26,7 +31,10 @@ export class GeneratedFieldMotion {
   readonly scentMotion=new GeneratedScentMotion();
   private bodySupport=new GeneratedBodySupport();
   readonly mouthMotion=new GeneratedMouthMotion();
+  private pickupReach=new GeneratedPickupReach();
   private pickupPresence=0;
+  private pickupLean=0;
+  private pickupHeadPitch=.30;
   private carryPresence=0;
   private deliverPresence=0;
   private wasMoving=false;
@@ -59,6 +67,7 @@ export class GeneratedFieldMotion {
       this.feet.forEach((foot,i)=>{foot.locked=false;foot.initialized=false;this.asset.paws[i].getWorldPosition(foot.target);});
       this.pointPresence=0;this.pickupPresence=0;this.carryPresence=0;this.deliverPresence=0;this.wasMoving=true;
       this.scentMotion.reset();
+      this.pickupReach.reset();
       this.mouthMotion.update(this.asset.joints.jaw,retrieve?.stage==='carry'?retrieve:undefined,dt);
       this.last.set(x,ground,z);this.lastYaw=yaw;this.placed=true;
       this.pose.forEach(p=>{p.previousPosition.copy(p.node.position);p.previousRotation.copy(p.node.quaternion);});
@@ -78,8 +87,22 @@ export class GeneratedFieldMotion {
     if(reset){this.feet.forEach(f=>{f.locked=false;f.initialized=false;f.step=0;});this.cycle=0;}
     root.position.set(x,ground,z);root.rotation.y=yaw;
     const speed=!reset&&dt>0?distance/dt:0;
+    const action = point ? undefined : retrieve?.stage;
+    const actionBlend = 1 - Math.exp(-Math.max(0, dt) * 12);
+    this.pickupPresence = THREE.MathUtils.lerp(this.pickupPresence, action === 'pickup' ? THREE.MathUtils.smoothstep(retrieve!.holdMs, 0, 180) : 0, actionBlend);
+    this.carryPresence = THREE.MathUtils.lerp(this.carryPresence, action === 'carry' ? 1 : 0, actionBlend);
+    this.deliverPresence = THREE.MathUtils.lerp(this.deliverPresence, action === 'deliver' ? 1 : 0, actionBlend);
+    if(action==='pickup'&&retrieve?.target){
+      const forward=(retrieve.target.x-x)*Math.sin(yaw)+(retrieve.target.z-z)*Math.cos(yaw);
+      this.pickupLean=THREE.MathUtils.clamp((forward-.36)*.55,.04,.16);
+      // A real fall is gripped from above at a shallow enough angle that
+      // the nose clears the ground beyond the bird on an uphill slope.
+      this.groundNormal(retrieve.target.x,retrieve.target.z,this.nominal);
+      const fallSlope=Math.atan2(-this.nominal.x*Math.sin(yaw)-this.nominal.z*Math.cos(yaw),this.nominal.y);
+      this.pickupHeadPitch=THREE.MathUtils.clamp(-.10-fallSlope*.85,-.40,.18);
+    } else if(this.pickupPresence<.001){this.pickupLean=0;this.pickupHeadPitch=.30;}
     const previousGait=this.gait;
-    let contacts: ReturnType<typeof this.asset.setLocomotion>|undefined;
+    let contacts: ReturnType<GeneratedFieldMotion['asset']['setLocomotion']>|undefined;
     if(moving) {
       if(!this.wasMoving){this.gait=speed>4.3?'gallop':speed>2.5?'canter':speed>1.15?'trot':'walk';this.cycle=0;}
       const previous=this.cycle,stride=GENERATED_STRIDE[this.gait];
@@ -158,6 +181,11 @@ export class GeneratedFieldMotion {
       }
       this.groundNormal(foot.target.x,foot.target.z,foot.normal);
     });
+    // Shift the supported chest toward the fall before solving the legs.
+    // The already chosen ground contacts stay put, letting elbows flex
+    // instead of stretching the entire neck into a long rigid stalk.
+    this.asset.joints.body.position.z+=this.pickupLean*this.pickupPresence;
+    this.asset.joints.body.rotation.x+=.10*(this.pickupLean/.16)*this.pickupPresence;
     this.bodyHeight=this.asset.fitBodyToFeet(this.targets,this.normals,posedFoot)-supportOffset;
     this.clamped=this.asset.solveWorldFeet(this.targets,this.normals,posedFoot);
     if(posedFoot>=0)this.asset.paws[posedFoot].getWorldPosition(this.feet[posedFoot].target);
@@ -166,16 +194,13 @@ export class GeneratedFieldMotion {
     this.scentMotion.update(this.asset,retrieve?undefined:field,moving,this.pointPresence,dt,reset);
     // Retrieval is an upper-body layer. Foot targets and locomotion remain
     // authoritative below; entering a pickup never slides the planted paws.
-    const action = point ? undefined : retrieve?.stage;
-    const blend = 1 - Math.exp(-Math.max(0, dt) * 12);
-    this.pickupPresence = THREE.MathUtils.lerp(this.pickupPresence, action === 'pickup' ? THREE.MathUtils.smoothstep(retrieve!.holdMs, 0, 180) : 0, blend);
-    this.carryPresence = THREE.MathUtils.lerp(this.carryPresence, action === 'carry' ? 1 : 0, blend);
-    this.deliverPresence = THREE.MathUtils.lerp(this.deliverPresence, action === 'deliver' ? 1 : 0, blend);
     const { neck, head } = this.asset.joints;
     neck.position.y -= .17 * this.pickupPresence;
     neck.rotation.x += 1.25 * this.pickupPresence + .10 * this.carryPresence - .08 * this.deliverPresence;
-    head.rotation.x += .30 * this.pickupPresence - .10 * this.carryPresence - .12 * this.deliverPresence;
+    head.rotation.x += this.pickupHeadPitch * this.pickupPresence - .10 * this.carryPresence - .12 * this.deliverPresence;
     this.mouthMotion.update(this.asset.joints.jaw,point?undefined:retrieve,dt,reset);
+    this.pickupReach.update(neck,head,this.mouthMotion.grip,
+      action==='pickup'?retrieve?.target:undefined,retrieve?.holdMs??0,dt,reset);
     root.updateMatrixWorld(true);
     this.wasMoving=moving;
     this.lastYaw=yaw;

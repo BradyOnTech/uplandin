@@ -29,6 +29,7 @@ export class GeneratedDogSystem implements Subsystem {
   private auditFrame=0;
   private attention=new GeneratedAttention();
   private attentionTarget=new THREE.Vector3();
+  private pickupTarget=new THREE.Vector3();
   private field:GeneratedFieldIntent={state:'quartering',scentStage:'none',scentProgress:0,waitingForHandler:false,intentYaw:0};
   private audit=()=>{
     if(!this.motion)return null;
@@ -60,14 +61,16 @@ export class GeneratedDogSystem implements Subsystem {
     // the torso has the opposite sign. Wrap before clamping in the pose layer.
     this.field.intentYaw=Math.atan2(Math.sin(this.heading-intentHeading),Math.cos(this.heading-intentHeading));
     const point=dog.state==='pointing'||dog.state==='honoring';
+    const retrieveId=dog.carryingBirdId??dog.reservedRetrieveId?.();
     const retrieve: GeneratedRetrievePose | undefined = dog.state === 'retrieving'
       ? { stage: dog.carryingBirdId !== null ? dog.gait === 'still' && dog.retrieveHoldTimeMs() > 0 ? 'deliver' : 'carry' : 'pickup',
           holdMs: dog.retrieveHoldTimeMs?.() ?? 0,
-          speciesId: dog.carryingBirdId === null ? undefined
-            : this.hunt.huntState?.().birds.find(bird=>bird.id===dog.carryingBirdId)?.speciesId }
+          speciesId: this.hunt.huntState?.().birds.find(bird=>bird.id===retrieveId)?.speciesId }
       : undefined;
     // Only settle into pickup once the simulation has reached the actual fall.
     const retrievePose = retrieve?.stage === 'pickup' && dog.gait !== 'still' ? undefined : retrieve;
+    if(retrievePose?.stage==='pickup'&&retrieveId!=null&&ctx.get<BirdsSystem>('birds').groundedTarget?.(retrieveId,this.pickupTarget))
+      retrievePose.target=this.pickupTarget;
     this.motion.update(this.position.x,this.position.z,Math.PI/2-this.heading,dt,dog.gait!=='still'&&this.speed>.06&&!point,point,retrievePose,this.field);
     this.auditFrame++;
     const watching=dog.state==='marking' && ctx.get<BirdsSystem>('birds').markingTarget(dog.watchedBirdIds(),this.attentionTarget);

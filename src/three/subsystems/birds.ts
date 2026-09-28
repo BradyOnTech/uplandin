@@ -1694,6 +1694,14 @@ export class BirdsSystem implements Subsystem {
     return ids;
   }
 
+  /** Actual visible fall centre for the reserved dog's pickup reach. */
+  groundedTarget(simId: number, out: THREE.Vector3): boolean {
+    const slot = this.slots.find(candidate => candidate.simId === simId && candidate.status === 'grounded');
+    if (!slot) return false;
+    this.sampleFlightPosition(slot, this.renderedPhase, out);
+    return true;
+  }
+
   /** Read-only presentation positions, so a carried bird can be checked against its socket. */
   carriedTransforms(): { simId: number; x: number; y: number; z: number }[] {
     const birds = this.hunt.huntState().birds;
