@@ -980,7 +980,9 @@ export class Dog {
     // No cover worth checking: the classic open-ground sweep.
     this.gait = 'run';
     this.weavePhase += movementDt * WEAVE_RATE;
-    this.steerOffEdges(movementDt);
+    // World travel is scaled, but an approaching property edge still needs
+    // a real-time turn; scaled steering left recast dogs sliding at the clamp.
+    this.steerOffEdges(continuousSearch ? dt : movementDt);
     this.steerToAnchor(dt, env.workAnchor ?? env.hunterPos, this.effectiveRangeRadius(env));
     const weave = Math.sin(this.weavePhase) * this.weave;
     this.advanceSearch(weave, this.workingSpeed(env, this.speed) * movementDt, dt, continuousSearch);

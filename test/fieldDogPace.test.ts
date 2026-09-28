@@ -34,7 +34,7 @@ function fixture(areaId: string, breedId: string) {
   const birdTemplate = { ...hunt.huntState().birds[0] };
   hunt.huntState().birds = [];
   const tick = (speed = 0) => {
-    running = speed > 3;
+    running = Math.abs(speed) > 3;
     camera.position.x -= Math.sin(camera.rotation.y) * speed / 30;
     camera.position.z -= Math.cos(camera.rotation.y) * speed / 30;
     hunt.fixedUpdate(ctx, DT);
@@ -53,7 +53,7 @@ function fixture(areaId: string, breedId: string) {
     camera.rotation.y = Math.atan2(-(target.x - camera.position.x), -(target.z - camera.position.z));
     tick(2.2);
   };
-  return { hunt, tick, gap, walkTrail, birdTemplate, whistle: () => { recall = true; } };
+  return { hunt, camera, tick, gap, walkTrail, birdTemplate, whistle: () => { recall = true; } };
 }
 
 const cases = ['quail-fields', 'sharptail-prairie', 'chukar-ridge']
@@ -131,6 +131,32 @@ describe('actual field dog travel and effort', () => {
       // rather than inheriting the old2.6–3m/s exhausted carry after minutes.
       expect(samples[Math.floor(samples.length / 2)]).toBeGreaterThan(4.18);
     }
+  });
+
+  it.each(['gsp', 'english-setter'])('turns a recast %s back into the field instead of sliding along the property edge', breed => {
+    const f = fixture('quail-fields', breed), dog = f.hunt.dog();
+    for (let frame = 0; frame < 66; frame++) f.tick(2.2);
+    f.whistle(); for (let frame = 0; frame < 180; frame++) f.tick();
+    expect(dog.state).toBe('heel');
+    const p = f.hunt.dogWorld({ x: 0, z: 0 });
+    f.camera.rotation.y = Math.atan2(f.camera.position.x - p.x, f.camera.position.z - p.z);
+    // Reproduce the actual public-input review: look back at the heeled
+    // dog and walk/run backward toward the nearby South Gate boundary.
+    for (let frame = 0; frame < 120; frame++) f.tick(-2.2);
+    for (let frame = 0; frame < 240; frame++) f.tick(-4.18);
+    for (let frame = 0; frame < 75; frame++) f.tick();
+    f.whistle();
+    let clampedFrames = 0, longestClamp = 0;
+    const margin = () => Math.min(dog.pos.x - dog.bounds.x, dog.pos.y - dog.bounds.y,
+      dog.bounds.x + dog.bounds.w - dog.pos.x, dog.bounds.y + dog.bounds.h - dog.pos.y);
+    for (let frame = 0; frame < 6 * 30; frame++) {
+      f.tick();
+      clampedFrames = margin() <= 4.001 ? clampedFrames + 1 : 0;
+      longestClamp = Math.max(longestClamp, clampedFrames);
+    }
+    expect(dog.state).toBe('quartering');
+    expect(longestClamp).toBeLessThan(30);
+    expect(margin() * PROPERTY_PX_TO_M).toBeGreaterThan(5);
   });
 
   it.each(cases)('turns a %s %s through cast/rim/comb without snapping its travel heading', (area, breed) => {
