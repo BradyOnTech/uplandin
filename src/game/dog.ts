@@ -391,6 +391,8 @@ export class Dog {
 
   private rng: RNG;
   private weavePhase = 0;
+  /** Applied continuous-field weave; changing search beats cannot snap it. */
+  private localSearchWeave = 0;
   private retrieveTargetId: number | null = null;
   /** Bird reserved by this dog and visibly carried back to the handler. */
   carryingBirdId: number | null = null;
@@ -506,6 +508,7 @@ export class Dog {
 
   update(dtMs: number, birds: Bird[], env: DogEnv = {}): void {
     const wasWaitingForHandler = this.waitingForHandler;
+    if (this.state !== 'quartering') this.localSearchWeave = 0;
     this.waitingForHandler = false;
     this.obstacles = env.obstacles ?? [];
     const dt = dtMs / 1000;
@@ -586,7 +589,13 @@ export class Dog {
       if (env.hunterPos && dist(this.pos, env.hunterPos) > (env.heelFollowRange ?? HEEL_FOLLOW)) {
         this.gait = 'trot';
         this.heading = Math.atan2(env.hunterPos.y - this.pos.y, env.hunterPos.x - this.pos.x);
-        this.advance(this.heading, RECALL_SPEED * 0.8 * movementDt);
+        const requested = RECALL_SPEED * 0.8 * movementDt;
+        // In the continuous field, match a moving handler smoothly and
+        // ease back into heel instead of sprinting across the stop radius.
+        // The legacy screen-space follow retains its original step law.
+        const step = env.heelFollowRange === undefined ? requested
+          : Math.min(requested, Math.max(0, dist(this.pos, env.hunterPos) - env.heelFollowRange * .8) * (1 - Math.exp(-3 * dt)));
+        this.advance(this.heading, step);
       }
       return;
     }
@@ -863,6 +872,7 @@ export class Dog {
     this.tickCoverMemory(dtMs);
     const patch = this.chooseCover(env);
     const localBeat = this.localCoverBeat !== null;
+    const continuousSearch = !!(this.localPheasantSearch(env) || this.localPrairieSearch(env) || this.localUplandSearch(env));
     const workDt = localBeat ? dt : movementDt;
     const grace = localBeat ? 1.5 : COVER_GRACE;
     this.emptySearchMs = patch ? 0 : this.emptySearchMs + dtMs;
@@ -916,9 +926,10 @@ export class Dog {
       // Range correction answers real time so a presentation pace scale
       // cannot also make the dog take seconds to turn back into view.
       this.steerToAnchor(dt, env.workAnchor ?? env.hunterPos, this.effectiveRangeRadius(env));
-      this.advance(
-        this.heading + Math.sin(this.weavePhase) * 0.15,
+      this.advanceSearch(
+        Math.sin(this.weavePhase) * 0.15,
         this.workingSpeed(env, this.speed) * CAST_SPEED_MULT * movementDt,
+        dt, continuousSearch,
       );
       return;
     }
@@ -952,7 +963,7 @@ export class Dog {
         const aim = Math.atan2(edgePt.y - this.pos.y, edgePt.x - this.pos.x);
         this.heading = turnToward(this.heading, aim, COVER_TURN_RATE * 2.4 * workDt);
         this.steerToAnchor(dt, env.workAnchor ?? env.hunterPos, this.effectiveRangeRadius(env));
-        this.advance(this.heading, this.workingSpeed(env, this.speed) * (onRim ? 1 : 1.15) * movementDt);
+        this.advanceSearch(0, this.workingSpeed(env, this.speed) * (onRim ? 1 : 1.15) * movementDt, dt, continuousSearch);
         return;
       }
       // Interior comb: tight serpentine with a soft pull toward the core
@@ -962,7 +973,7 @@ export class Dog {
       this.heading = turnToward(this.heading, toCore, 0.9 * workDt);
       this.steerInsideRect(workDt, patch, localBeat ? Math.min(2, patch.w * .2, patch.h * .2) : COVER_EDGE_MARGIN);
       this.steerToAnchor(dt, env.workAnchor ?? env.hunterPos, this.effectiveRangeRadius(env));
-      this.advance(this.heading + Math.sin(this.weavePhase) * this.weave, this.workingSpeed(env, this.speed) * movementDt);
+      this.advanceSearch(Math.sin(this.weavePhase) * this.weave, this.workingSpeed(env, this.speed) * movementDt, dt, continuousSearch);
       return;
     }
 
@@ -972,7 +983,18 @@ export class Dog {
     this.steerOffEdges(movementDt);
     this.steerToAnchor(dt, env.workAnchor ?? env.hunterPos, this.effectiveRangeRadius(env));
     const weave = Math.sin(this.weavePhase) * this.weave;
-    this.advance(this.heading + weave, this.workingSpeed(env, this.speed) * movementDt);
+    this.advanceSearch(weave, this.workingSpeed(env, this.speed) * movementDt, dt, continuousSearch);
+  }
+
+  private advanceSearch(weave: number, distance: number, dt: number, continuous: boolean): void {
+    // Rim work uses no weave, while the interior comb may enter with its
+    // sinusoid already near a peak. Ease that directional offset in both
+    // directions; the existing cast/edge/anchor steering owns base heading.
+    // Legacy screen-space search keeps its exact instantaneous weave law.
+    this.localSearchWeave = continuous
+      ? turnToward(this.localSearchWeave, weave, COVER_TURN_RATE * dt)
+      : weave;
+    this.advance(this.heading + this.localSearchWeave, distance);
   }
 
   private beginScentApproach(bird: Bird, stage: Exclude<DogScentStage, 'none'>): void {
@@ -1197,10 +1219,9 @@ export class Dog {
         : clamp(Math.max(best.rect.w, best.rect.h) * 550, 3200, 8000) * coverThoroughness(this.level);
     this.coverEdgeMsLeft = this.coverWorkMsLeft * Math.min(.78, coverEdgeFraction(this.level) + this.doctrineFor(env).dogEdgeBias);
     this.coverEdgeT = nearestPerimeterT(best.rect, this.pos);
-    const aim = upland ? this.uplandCastAim(best.rect, env)
-      : prairie ? castAimPoint(best.rect, env.windAngle, windCraftTier(this.level))
-        : { x: rectCx(best.rect), y: rectCy(best.rect) };
-    this.heading = Math.atan2(aim.y - this.pos.y, aim.x - this.pos.x);
+    // Selecting a new beat changes the objective, not the dog's velocity.
+    // The active cast/edge steering above turns into it over real time;
+    // resetting heading here reversed a running dog in one fixed tick.
     return best.rect;
   }
 

@@ -26,6 +26,7 @@ import type { RNG, Vec2 } from './types';
 import { windMults } from './wind';
 import { bobwhiteApproachNerveScale, quailPointApproach } from './quailApproach';
 import { pheasantApproach } from './pheasantApproach';
+import { openCountryPointRadius, pointWalkInAllowanceMs, usesOpenCountryWalkIn } from './openCountryApproach';
 import { HUNT_CHALLENGES, type HuntChallenge } from './huntChallenge';
 import { huntHabitatAffinity, huntingDoctrine } from './huntDoctrine';
 import { LandscapeModel, type GroundSample } from './landscape';
@@ -65,6 +66,8 @@ export type HuntSimulationEvent =
 export interface HuntDogMotion {
   obstacles?: DogEnv['obstacles'];
   movementScale?: number;
+  /** Convert the short-session work clock without changing scent/point clocks. */
+  effortScale?: number;
   maxTravelSpeed?: number;
   retrieveTurnRate?: number;
   rangeRadius?: number;
@@ -125,6 +128,9 @@ export class HuntSimulation {
   };
   private readonly escapeLandings = new Map<number, Vec2>();
   private readonly activeRises = new Map<number, Extract<HuntSimulationEvent, { type: 'covey-flushed' }>>();
+  /** Covey-owned and never replenished by a re-point or a second dog. */
+  private readonly pointWalkIns = new Map<number, { remainingMs: number; revision: number; protectedMs: number }>();
+  private pointWalkInRevision = 0;
 
   constructor(config: HuntSimulationConfig) {
     this.hunt = config.hunt;
@@ -141,6 +147,7 @@ export class HuntSimulation {
     const events: HuntSimulationEvent[] = [];
     const leadDog = this.dogs[0];
     if (!leadDog) return events;
+    this.pointWalkInRevision++;
     // The input position is the hunter after this adapter's movement for the
     // tick. Keep this derived from the shared position seam so 2D tap-walk
     // and 3D camera locomotion get the same underfoot behavior without a new
@@ -198,7 +205,7 @@ export class HuntSimulation {
         recall: !castOff && (input.recall ?? false),
         whistleRange: input.whistleRange,
         honorPoint: packmate?.pos,
-        drainMult: weather.stamina,
+        drainMult: weather.stamina * (motion?.effortScale ?? 1),
         searchMult: weather.search,
         patches: this.area.patches,
         trails: this.area.trails,
@@ -329,6 +336,23 @@ export class HuntSimulation {
         }
         nerveMult *= slopeNerveMult(this.birdSlopeApproach(pointed));
         if (isFlanking(this.hunt.hunterPos, dog.pos, pointed.pos)) nerveMult *= FLANK_NERVE_MULT;
+        if (spatialEncounter && usesOpenCountryWalkIn(species.id)) {
+          let walkIn = this.pointWalkIns.get(pointed.coveyId);
+          if (!walkIn) {
+            const radius = openCountryPointRadius(species.id, doctrine.pointRadius * (species.pointRadiusMult ?? 1), this.challenge, false);
+            walkIn = { remainingMs: pointWalkInAllowanceMs(dist(this.hunt.hunterPos, pointed.pos) * PROPERTY_PX_TO_M, radius, this.challenge), revision: -1, protectedMs: 0 };
+            this.pointWalkIns.set(pointed.coveyId, walkIn);
+          }
+          // A world-space cast may leave several walking seconds between
+          // handler and point. Spend its allowance once per simulation tick,
+          // including while running; running still burns normal nerve.
+          if (walkIn.revision !== this.pointWalkInRevision) {
+            walkIn.protectedMs = Math.min(walkIn.remainingMs, Math.max(0, dtMs));
+            walkIn.remainingMs -= walkIn.protectedMs;
+            walkIn.revision = this.pointWalkInRevision;
+          }
+          if (!input.hunterRunning && dtMs > 0) nerveMult *= 1 - walkIn.protectedMs / dtMs;
+        }
       }
       const wild = updateBirdNerve(dtMs, this.hunt.birds, dog.pointedBirdId, nerveMult);
       if (wild) {
@@ -348,7 +372,9 @@ export class HuntSimulation {
         ? quailPointApproach(bird.coveyId, dog.pressure, !!input.hunterRunning).flushRadius * HUNT_CHALLENGES[this.challenge].approach * (species?.pointRadiusMult ?? 1)
         : bird && spatialEncounter && species?.id === 'ringneck'
           ? pheasantApproach(bird.id, dist(this.hunt.hunterPos, bird.pos), !!input.hunterRunning, bird.approachRoll).flushRadius * HUNT_CHALLENGES[this.challenge].approach
-          : doctrine.pointRadius * (species?.pointRadiusMult ?? 1);
+          : species && spatialEncounter && usesOpenCountryWalkIn(species.id)
+            ? openCountryPointRadius(species.id, doctrine.pointRadius * (species.pointRadiusMult ?? 1), this.challenge, !!input.hunterRunning)
+            : doctrine.pointRadius * (species?.pointRadiusMult ?? 1);
       const trigger = bird && coveyApproach
         ? this.hunt.birds.filter(candidate => candidate.state === 'hidden' && candidate.coveyId === bird.coveyId)
           .sort((a,b)=>dist(this.hunt.hunterPos,a.pos)-dist(this.hunt.hunterPos,b.pos))[0]

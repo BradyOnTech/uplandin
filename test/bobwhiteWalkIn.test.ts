@@ -89,8 +89,11 @@ it('retains less-forgiving Wild and running approaches instead of guaranteeing a
   expect(relaxed.rangeM).toBeLessThan(quiet.rangeM);
   expect(wary.flush.cause).toBe('nerve');
   expect(wary.rangeM).toBeGreaterThan(quiet.rangeM + 5);
-  expect(rushed.flush.cause).toBe('nerve');
+  // A rushed approach can exhaust the point or enter the larger sprint
+  // spook radius first. Either is a genuine earlier wild rise.
+  expect(['nerve', 'spook']).toContain(rushed.flush.cause);
   expect(rushed.rangeM).toBeGreaterThan(quiet.rangeM + 5);
+  expect(rushed.holdMs).toBeLessThan(quiet.holdMs);
 });
 
 it('still loses a distant covey naturally if the handler never closes the point', () => {
@@ -103,7 +106,11 @@ it('still loses a distant covey naturally if the handler never closes the point'
 
 it.each([
   ['bobwhite', false, 40],
-  ['chukar', true, 40],
+  // Open-country 3D points now have their own finite walk-in allowance;
+  // their legacy scene-cut pressure still follows this original contract.
+  ['chukar', false, 40],
+  ['sharptail', false, 40],
+  ['hun', true, 40],
   ['ringneck', true, 40],
   ['bobwhite', true, 15],
 ] as const)('preserves existing nerve pressure for %s, continuous=%s, distance=%im', (speciesId, continuous, distanceM) => {

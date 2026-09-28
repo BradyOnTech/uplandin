@@ -448,6 +448,9 @@ describe('Hunt3DSystem live start', () => {
     const breed = getBreed(breedId);
     const dog = new Dog({ x: 1000, y: 1000 }, { breed, level: 8 }, () => .5,
       { x: 0, y: 0, w: 5000, h: 5000 });
+    // Isolate forward cast pace; turning from an opposite initial heading
+    // now consumes real time instead of snapping at objective selection.
+    dog.heading = 0;
     // One valid cover destination isolates real cast movement from scent,
     // collisions and search selection. The handler advances at the actual
     // PlayerSystem dry-ground sprint while the dog is initially10m behind.

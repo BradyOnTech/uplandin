@@ -245,8 +245,10 @@ describe('HuntSimulation shared orchestration', () => {
       return { hunt, bird, simulation };
     };
     const spatial = fixture(true), legacy = fixture(false);
-    spatial.simulation.update(16, { hunterPos });
-    legacy.simulation.update(16, { hunterPos });
+    // Running bypasses the finite quiet walk-in allowance, so this compares
+    // the actual slope pressure immediately without waiting for its expiry.
+    spatial.simulation.update(16, { hunterPos, hunterRunning: true });
+    legacy.simulation.update(16, { hunterPos, hunterRunning: true });
     expect(10000 - spatial.bird.nerveMs).toBeCloseTo((10000 - legacy.bird.nerveMs) * 1.4, 5);
     expect(spatial.simulation.flushBird(9001, 'nerve', 0)?.slopeApproach).toBe('below');
     expect(legacy.simulation.flushBird(9001, 'nerve', 0)?.slopeApproach).toBe('level');

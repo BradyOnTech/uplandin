@@ -43,6 +43,7 @@ describe('reachable Quail and Chukar cover', () => {
     north.env.slopeAngle = -Math.PI / 2; south.env.slopeAngle = Math.PI / 2;
     north.env.windAngle = south.env.windAngle = undefined;
     north.env.trails = south.env.trails = [];
+    north.dog.heading = south.dog.heading = 0; // Approach the edge from its west side.
     // Inspect the actual cast before both dogs begin their perimeter work.
     for (let tick = 0; tick < 30; tick++) {
       north.dog.update(DT, [], north.env); south.dog.update(DT, [], south.env);
@@ -52,6 +53,7 @@ describe('reachable Quail and Chukar cover', () => {
 
   it('changes a Quail edge approach with the wind', () => {
     const one = edgeSearch('quail-fields', 42, 0), other = edgeSearch('quail-fields', 42, Math.PI);
+    one.dog.heading = other.dog.heading = 0; // Compare wind entry, not a random initial U-turn.
     for (let tick = 0; tick < 30; tick++) {
       one.dog.update(DT, [], one.env); other.dog.update(DT, [], other.env);
     }

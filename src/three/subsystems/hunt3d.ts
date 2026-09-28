@@ -73,6 +73,12 @@ const LIVE_DOG_LEFT_M = 2;
 const LIVE_DOG_RELEASE_MOVE_PX = 1;
 /** 2D's 75 px/s reads as 69 m/s under the 3D yard mapping. */
 const LIVE_DOG_MOVEMENT_SCALE = 0.05;
+// The short 2D work clock must make the same transition as field travel.
+// Otherwise a dog exhausts its entire reserve after only a small part of
+// one property, then loses 40% of its search and retrieve pace at once.
+const LIVE_DOG_EFFORT_SCALE = LIVE_DOG_MOVEMENT_SCALE;
+/** Enough catch-up capacity to follow the player's 4.18 m/s dry sprint. */
+const LIVE_DOG_HEEL_SCALE = 0.07;
 /**
  * The 2D sim speed was authored in screen pixels. Held trots and
  * low scent work need separate world-space scales. An active cover-bound
@@ -107,7 +113,8 @@ export function liveMovementScaleForDog(
   // cast label as a gentle trot halved translation to about 3 m/s. The shared
   // CAST_SPEED_MULT now supplies its modest lead over controlled cover work;
   // renderers select canter/gallop from actual displacement, not this label.
-  const base = state === 'retrieving' ? LIVE_DOG_RETRIEVE_SCALE : activelySearching ? LIVE_DOG_MOVEMENT_SCALE
+  const base = state === 'heel' ? LIVE_DOG_HEEL_SCALE
+    : state === 'retrieving' ? LIVE_DOG_RETRIEVE_SCALE : activelySearching ? LIVE_DOG_MOVEMENT_SCALE
     : state === 'tracking' && gait === 'track' ? LIVE_DOG_STALK_SCALE
     : liveMovementScaleForGait(gait);
   return base * huntPaceMultiplier(motion, pacePhase, activelySearching);
@@ -270,6 +277,7 @@ export class Hunt3DSystem implements Subsystem {
     this.liveDogMotions = this.simDogs.map((dog) => ({
       obstacles: propObstacles,
       retrieveTurnRate: 5,
+      effortScale: LIVE_DOG_EFFORT_SCALE,
       movementScale: liveMovementScaleForGait(dog.gait),
       rangeRadius: LIVE_DOG_RANGE_M / PROPERTY_PX_TO_M,
       workAnchor: this.liveDogAnchor,
