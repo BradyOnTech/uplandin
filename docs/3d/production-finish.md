@@ -2,6 +2,18 @@
 
 The active September 27 goal is the full user-approved production roadmap: a cohesive, fully playable low-poly upland hunting game with exceptional world art, animal presentation, shooting, sound, progression and browser/mobile reliability. The goal remains active until those requirements are demonstrated in the current game. A single map pass, test count or assisted hunt cannot close it.
 
+**Current execution priority — September 28**
+
+The user challenged the premature move into Grouse Woods and approved returning to the four core properties: Sharptail Prairie, Quail Fields, Cattail Coverts and Chukar Ridge. None is accepted as complete. Finish this set before expanding environment production to another map. This changes sequencing, not the full game's completion requirements below.
+
+Start with Sharptail's dominant whole-route visual gaps, using the current frozen 4631 build rather than stale captures to choose the intervention. Preserve its open northern prairie identity and the accepted native plant work. Review the arrival, west spur, crossing, Line Shack and east return together on High and Lightweight. Additional close plant detail is not a substitute for better middle-distance and horizon composition.
+
+In parallel, review ordinary core-map hunts and fix demonstrated problems in acquisition, dog work, shooting and recovery. Keep natural input evidence separate from assisted or staged checks. Quail's accepted visual direction and Pheasant's dense cover remain references to preserve; they do not prove their entire properties are finished.
+
+Each core property's final review must cover preparation, arrival, purposeful search, point/flush, shooting, recovery and return, plus connected-route art, alternate entries, relevant lighting and mobile behavior. Record remaining defects directly. Tests, a single successful hunt, or an attractive scene cannot replace that review. Shared dog, sound, progression and device/release requirements remain open until independently demonstrated.
+
+Grouse asset studies and the unaccepted ground/light draft are preserved under `output/woodland-native-kit/`. The ground/light edits were removed from production source when work resumed on the four core maps. The accepted playable checkpoint remains frozen 4631 until a reviewed integrated replacement is published.
+
 **Authoritative starting point**
 
 `ba6a3f5` on `codex/mobile-playtest` contains the September 22 regional work. Its preserved production artifact is `output/world-2dbe5dc`; the September 27 session restarted that artifact on port 4604. Current source development uses port 4605. Do not replace a frozen artifact behind a playtest link. Preserve unrelated assets, runtime output, 2D/falconry work and existing career saves.
