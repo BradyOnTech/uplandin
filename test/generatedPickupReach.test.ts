@@ -59,18 +59,34 @@ it('keeps the actual nose and lower-jaw skin above flat and sloped ground throug
     for (let frame = 0; frame < 45; frame++) dog.update(0, 0, 0, 1 / 60, false, false);
     const { skin, skeleton, joints } = dog.asset;
     const positions = skin.geometry.getAttribute('position'), indices = skin.geometry.getAttribute('skinIndex');
+    const weights = skin.geometry.getAttribute('skinWeight');
     const head = skeleton.bones.indexOf(joints.head), jaw = skeleton.bones.indexOf(joints.jaw);
-    const vertices = Array.from({ length: positions.count }, (_, i) => i)
-      .filter(i => indices.getX(i) === jaw || (indices.getX(i) === head && positions.getZ(i) > .535));
+    const influencedBy = (i: number, bone: number) => {
+      let influence = 0;
+      for (let channel = 0; channel < 4; channel++) {
+        if (indices.array[i * 4 + channel] === bone) influence += weights.array[i * 4 + channel];
+      }
+      return influence > .001;
+    };
+    const all = Array.from({ length: positions.count }, (_, i) => i);
+    const nose = all.filter(i => influencedBy(i, head) && positions.getZ(i) > .535);
+    const lower = all.filter(i => influencedBy(i, jaw));
+    expect(nose.length).toBeGreaterThan(50);
+    expect(lower.length).toBeGreaterThan(50);
+    const vertices = [...new Set([...nose, ...lower])];
     const point = new THREE.Vector3();
+    let minimumClearance = Infinity;
     for (let frame = 1; frame <= 42; frame++) {
       dog.update(0, 0, 0, 1 / 60, false, false, { stage: 'pickup', holdMs: frame * 1000 / 60, target, speciesId });
       dog.asset.root.updateMatrixWorld(true); skeleton.update();
       for (const vertex of vertices) {
         point.fromBufferAttribute(positions, vertex); skin.applyBoneTransform(vertex, point); point.applyMatrix4(skin.matrixWorld);
-        expect(point.y - ground(point.x, point.z)).toBeGreaterThan(.005);
+        minimumClearance = Math.min(minimumClearance, point.y - ground(point.x, point.z));
       }
     }
+    // Inspect every selected vertex on every frame, with one assertion per
+    // case so richer skins do not spend their test budget formatting matchers.
+    expect(minimumClearance).toBeGreaterThan(.005);
     expect(joints.head.localToWorld(dog.mouthMotion.grip.clone()).distanceTo(new THREE.Vector3(0, target.y, target.z))).toBeLessThan(.014);
     dog.dispose();
   }
