@@ -23,6 +23,8 @@ The existing species doctrines, authored habitat, touch shooting assistance, fie
 
 Targets are proposed acceptance requirements, not measured promises. Confirm target phones when available; do not block independent implementation on missing device access or claim physical acceptance from emulation. Hosting destination remains to be selected before publishing.
 
+The shared [3D asset and scene finishing standard](art-production-standard.md) consolidates material, scale, grounding, animation, distance-detail, cost and handoff requirements. Individual asset and whole-route acceptance remain open where the evidence below says so.
+
 **First production wave**
 
 | Owner | Work | Reserved source |
