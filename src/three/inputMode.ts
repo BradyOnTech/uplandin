@@ -35,8 +35,25 @@ export function saveInputMode(mode: InputMode): void {
 }
 
 export type TouchSensitivity = 'look' | 'swing';
+let visitShotSight: 'closer' | 'wide' | undefined;
+/** Honor an explicit choice on either input device. Existing mouse players
+ * keep Wide unless they opt in; touch retains its established Closer default. */
+export function shotSightPicture(touch: boolean): 'closer' | 'wide' {
+  if (visitShotSight !== undefined) return visitShotSight;
+  try {
+    const saved = localStorage.getItem('uplandin.3d.sight');
+    if (saved === 'wide' || saved === 'closer') return saved;
+  } catch { /* Storage is optional. */ }
+  return touch ? 'closer' : 'wide';
+}
+export function saveShotSightPicture(value: 'closer' | 'wide'): void {
+  // The current visit must honor the control even if storage is blocked or
+  // full. Input switches and diagnostics use this same effective choice.
+  visitShotSight = value;
+  try { localStorage.setItem('uplandin.3d.sight', value); } catch { /* Next-visit persistence is optional. */ }
+}
 export function mobileSightPicture(): 'closer' | 'wide' {
-  try { return localStorage.getItem('uplandin.3d.sight') === 'wide' ? 'wide' : 'closer'; } catch { return 'closer'; }
+  return shotSightPicture(true);
 }
 /** Keep a short landscape phone from turning Closer into a panoramic shot
  * view. Cap the horizontal field near 90 degrees, with bounded vertical
@@ -47,6 +64,10 @@ export function mobileShotFov(mount: number, closer: boolean, aspect = 16 / 9): 
   const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
   const mounted = Math.max(46, Math.min(58, 2 * Math.atan(1 / safeAspect) * 180 / Math.PI));
   return 70 - (70 - mounted) * Math.max(0, Math.min(1, mount));
+}
+/** Preserve screen-space swing response while the mounted view narrows. */
+export function opticalLookScale(fov: number): number {
+  return Math.tan(fov * Math.PI / 360) / Math.tan(70 * Math.PI / 360);
 }
 export function touchSensitivity(kind: TouchSensitivity): number {
   try {

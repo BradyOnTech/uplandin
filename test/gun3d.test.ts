@@ -72,6 +72,58 @@ describe('3D shotgun action', () => {
     gun.dispose(ctx);
   });
 
+  it.each(['semi-auto', 'remington-870', 'over-under', 'side-by-side'])('opts %s into the desktop Closer view without changing its bead or action lifecycle', gunId => {
+    let savedSight: string | null = null, touch = false;
+    vi.stubGlobal('window', new EventTarget()); vi.stubGlobal('location', { search: '' });
+    vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'uplandin.3d.sight' ? savedSight : null });
+    vi.stubGlobal('document', { body: { classList: { contains: () => touch, toggle: () => {} } },
+      getElementById: () => null, querySelector: () => null });
+    const camera = new THREE.PerspectiveCamera(70, 16 / 9, .1, 1000);
+    const ctx = { scene: new THREE.Scene(), camera, renderer: { domElement: new EventTarget() },
+      events: new EventTarget(), quality: 'lite', timeOfDay: 'morning', time: 1, paused: false,
+      get: (id: string) => ({ hunt3d: { huntState: () => ({ gunId, birds: [] }) },
+        birds: { shotTargets: () => [] }, terrain: { heightAt: () => 0 } }[id]),
+    } as unknown as Ctx;
+    const gun = new GunSystem(); gun.init(ctx);
+    const key = (key: string, code: string) => window.dispatchEvent(Object.assign(new Event('keydown'), { key, code }));
+    const step = (dt = .2) => { ctx.time += dt; gun.update(ctx, dt); };
+    const action = (detail: string) => ctx.events.dispatchEvent(Object.assign(new Event('hunt-action'), { detail }));
+    const bead = () => {
+      const view = gun as unknown as { root: THREE.Group; rig: THREE.Group; sporting: { bead: THREE.Vector3 } };
+      view.root.updateMatrixWorld(true); camera.updateMatrixWorld(true);
+      return view.sporting.bead.clone().applyMatrix4(view.rig.matrixWorld).project(camera);
+    };
+    try {
+      key('f', 'KeyF'); step(1);
+      expect(camera.fov).toBe(70); // No saved desktop preference remains Wide.
+      const shellCount = gun.shellsRemaining();
+      savedSight = 'closer'; ctx.events.dispatchEvent(new Event('touch-sight-change')); step(1);
+      expect(camera.fov).toBe(58);
+      expect(Math.abs(bead().x)).toBeLessThan(.002);
+      expect(Math.abs(bead().y)).toBeLessThan(.002);
+      expect(gun.shellsRemaining()).toBe(shellCount);
+      key('f', 'KeyF'); step(); expect(camera.fov).toBe(70);
+      key('f', 'KeyF'); step(); expect(camera.fov).toBe(58);
+      ctx.paused = true; ctx.events.dispatchEvent(new Event('pause')); step();
+      expect(camera.fov).toBe(70);
+      key(' ', 'Space'); expect(gun.shellsRemaining()).toBe(shellCount);
+      ctx.paused = false; step(); expect(camera.fov).toBe(70);
+      key('f', 'KeyF'); step(); key(' ', 'Space');
+      expect(gun.shellsRemaining()).toBe(shellCount - 1);
+      key('r', 'KeyR'); step(); expect(camera.fov).toBe(70);
+      expect(gun.isReloading()).toBe(true);
+      step(2); expect(gun.shellsRemaining()).toBe(shellCount);
+      // A saved choice applies across devices; an absent choice falls back
+      // to touch Closer again without writing a preference implicitly.
+      touch = true; savedSight = null; ctx.events.dispatchEvent(new Event('input-reset'));
+      action('touch-mount'); step(); expect(camera.fov).toBe(58);
+      savedSight = 'wide'; ctx.events.dispatchEvent(new Event('touch-sight-change'));
+      step(); expect(camera.fov).toBe(70);
+      action('lower'); step(); expect(camera.fov).toBe(70);
+      expect(gun.shellsRemaining()).toBe(shellCount);
+    } finally { gun.dispose(ctx); }
+  });
+
   it('keeps recoil strength and recovery identical through fast, slow and uneven frames', () => {
     const advance = (steps: number[]) => {
       const gun = new GunSystem(); gun.kick(1);

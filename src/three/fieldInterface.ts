@@ -1,7 +1,7 @@
 import { isFalconryPractice } from '../game/falconryPractice';
 import { bindTouchActionControl } from './touchActionControl';
 import { bindTouchShotControl } from './touchShotControl';
-import { preferredInputMode, saveInputMode, usesTouchControls, touchSensitivity, saveTouchSensitivity, mobileSightPicture, shotAssistancePreference, saveShotAssistancePreference, type InputMode } from './inputMode';
+import { preferredInputMode, saveInputMode, usesTouchControls, touchSensitivity, saveTouchSensitivity, shotSightPicture, saveShotSightPicture, shotAssistancePreference, saveShotAssistancePreference, type InputMode } from './inputMode';
 import { resolveShotAssistance, type ShotAssistancePreference } from './shotAssistance';
 import { HUNT_CHALLENGES, HUNT_CHALLENGE_KEY, parseHuntChallenge } from '../game/huntChallenge';
 import { build3DPreparationHref, parseHuntLaunch, resolveThreeHuntChallenge, resolveThreeHuntProfile } from '../game/gameplayMode';
@@ -211,6 +211,7 @@ export class FieldInterface {
       const mode = input.value as InputMode;
       saveInputMode(mode); this.touch = usesTouchControls(mode);
       document.body.classList.toggle('touch-controls-active', this.touch);
+      sight.value = shotSightPicture(this.touch);
       placeEndControl();
       const url = new URL(location.href); url.searchParams.set('controls', mode); history.replaceState(null, '', url);
       this.engine.ctx.events.dispatchEvent(new Event('input-reset'));
@@ -225,9 +226,9 @@ export class FieldInterface {
       }, { signal });
     }
     const sight = document.getElementById('touch-sight-setting') as HTMLSelectElement;
-    sight.value = mobileSightPicture();
+    sight.value = shotSightPicture(this.touch);
     sight.addEventListener('change', () => {
-      try { localStorage.setItem('uplandin.3d.sight', sight.value); } catch { /* optional */ }
+      saveShotSightPicture(sight.value === 'closer' ? 'closer' : 'wide');
       this.engine.ctx.events.dispatchEvent(new Event('touch-sight-change'));
     }, { signal });
     const assistance = document.getElementById('shot-assistance-setting') as HTMLSelectElement;

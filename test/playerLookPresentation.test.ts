@@ -2,12 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { PlayerSystem } from '../src/three/subsystems/player';
 import type { Ctx } from '../src/three/engine';
+import { opticalLookScale } from '../src/three/inputMode';
 
 vi.mock('../src/audio', () => ({ unlockAudio: vi.fn(), playFootstep: vi.fn(), playCoverBrush: vi.fn() }));
 afterEach(() => vi.unstubAllGlobals());
 
 describe('camera direction available to a shot before the next animation frame', () => {
-  it.each(['pointer-lock', 'drag-fallback'])('uses the latest %s mouse turn immediately', mode => {
+  it.each(['pointer-lock', 'drag-fallback'].flatMap(mode => [70, 58, 46].map(fov => ({ mode, fov }))))('uses the latest $mode mouse turn immediately at $fov degrees', ({ mode, fov }) => {
     const canvas = new EventTarget();
     const documentStub = Object.assign(new EventTarget(), {
       pointerLockElement: mode === 'pointer-lock' ? canvas : null,
@@ -15,7 +16,7 @@ describe('camera direction available to a shot before the next animation frame',
     });
     vi.stubGlobal('window', new EventTarget()); vi.stubGlobal('document', documentStub);
     vi.stubGlobal('location', { search: '' });
-    const ctx = { paused: false, camera: new THREE.PerspectiveCamera(70), renderer: { domElement: canvas },
+    const ctx = { paused: false, camera: new THREE.PerspectiveCamera(fov), renderer: { domElement: canvas },
       events: new EventTarget(), get: () => ({ heightAt: () => 4 }) } as unknown as Ctx;
     const player = new PlayerSystem(); player.init(ctx); player.setPose(ctx, 0, 40, 0, 0);
     try {
@@ -29,8 +30,13 @@ describe('camera direction available to a shot before the next animation frame',
       // A fire callback reads this direction synchronously; no player.update,
       // render, RAF or simulation tick may be required to finish the swing.
       const actual = ctx.camera.getWorldDirection(new THREE.Vector3());
-      const expected = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(12 * .0022, -30 * .0022, 0, 'YXZ'));
+      const optics = opticalLookScale(fov);
+      const expected = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(12 * .0022 * optics, -30 * .0022 * optics, 0, 'YXZ'));
       expect(actual.distanceTo(expected)).toBeLessThan(1e-10);
+      // The same small mouse swing should traverse the same screen fraction
+      // under both sight pictures, not become more twitchy when zoomed.
+      const projectedTurn = Math.tan(30 * .0022 * optics) / Math.tan(fov * Math.PI / 360);
+      expect(projectedTurn).toBeCloseTo(Math.tan(30 * .0022) / Math.tan(70 * Math.PI / 360), 3);
       expect(ctx.camera.position.toArray()).toEqual([0, 5.62, 40]);
       ctx.paused = true;
       window.dispatchEvent(Object.assign(new Event('mousemove'), { movementX: 80, movementY: 40, clientX: 210, clientY: 128, buttons: 2 }));

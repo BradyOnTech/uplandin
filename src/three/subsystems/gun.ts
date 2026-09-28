@@ -10,7 +10,7 @@ import type { PropertyHabitatSystem } from './propertyHabitat';
 import type { LandmarksSystem } from './landmarks';
 import { terrainBlocksShot } from '../shotVisibility';
 import { TravellingShot } from '../shotPattern';
-import { mobileSightPicture, mobileShotFov, shotAssistancePreference } from '../inputMode';
+import { shotSightPicture, mobileShotFov, shotAssistancePreference } from '../inputMode';
 import { resolveShotAssistance, type ShotAssistanceProfile, type ShotTriggerSource } from '../shotAssistance';
 import { createSportingShotgun, type SportingShotgun } from '../assets/shotgun';
 import { shotgunCycleCues, shotgunReloadCues, type ShotgunMechanism } from '../shotgunActionTiming';
@@ -93,8 +93,7 @@ export class GunSystem implements Subsystem {
   private touchHeld = false;
   private touchLowerAt: number | null = null;
   private touchStatus = '';
-  private closerSight = true;
-  private ownsMobileFov = false;
+  private closerSight = false;
   /** Sight-picture settle clock, armed when the mount completes. */
   private settleAge = 10;
   private wasMounted = false;
@@ -134,7 +133,10 @@ export class GunSystem implements Subsystem {
   private fwd = new THREE.Vector3();
 
   init(ctx: Ctx): void {
-    this.closerSight = mobileSightPicture() === 'closer';
+    const syncSight = () => {
+      this.closerSight = shotSightPicture(!!document.body?.classList.contains('touch-controls-active')) === 'closer';
+    };
+    syncSight();
     this.frozen = new URLSearchParams(location.search).has('capture');
     this.hunt = ctx.get<Hunt3DSystem>('hunt3d');
     this.birds = ctx.get<BirdsSystem>('birds');
@@ -153,7 +155,8 @@ export class GunSystem implements Subsystem {
 
     if (!this.frozen) {
       const signal = this.inputAbort.signal;
-      ctx.events.addEventListener('touch-sight-change', () => { this.closerSight = mobileSightPicture() === 'closer'; }, { signal });
+      ctx.events.addEventListener('touch-sight-change', syncSight, { signal });
+      ctx.events.addEventListener('input-reset', syncSight, { signal });
       window.addEventListener('mousedown', (e) => {
         if (document.body?.classList.contains('touch-controls-active')) return;
         if (ctx.paused || (e.target !== ctx.renderer.domElement && document.pointerLockElement !== ctx.renderer.domElement)) return;
@@ -550,10 +553,9 @@ export class GunSystem implements Subsystem {
     const touch = !!document.body?.classList.contains('touch-controls-active');
     document.body?.classList.toggle('touch-gun-raised', touch && this.aim && !ctx.paused);
     document.body?.classList.toggle('touch-gun-held', touch && this.touchHeld && !ctx.paused);
-    if (!snap && (touch || this.ownsMobileFov)) {
-      const fov = mobileShotFov(this.mountProgress(), touch && this.closerSight, cam.aspect);
+    if (!snap) {
+      const fov = mobileShotFov(this.mountProgress(), this.closerSight, cam.aspect);
       if (Math.abs(cam.fov - fov) > .01) { cam.fov = fov; cam.updateProjectionMatrix(); }
-      this.ownsMobileFov = touch;
     }
     const status = this.touchShotStatus(ctx);
     if (status !== this.touchStatus) {

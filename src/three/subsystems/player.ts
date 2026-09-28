@@ -7,7 +7,7 @@ import type { TerrainSystem } from './terrain';
 import type { Hunt3DSystem } from './hunt3d';
 import { ObstacleIndex } from '../../game/obstacleIndex';
 import { bindMouseLook } from '../mouseLook';
-import { touchMovement, touchSensitivity } from '../inputMode';
+import { touchMovement, touchSensitivity, opticalLookScale } from '../inputMode';
 
 const WALK_SPEED = 2.2;
 const SPRINT_MULT = 1.9;
@@ -67,7 +67,7 @@ export class PlayerSystem implements Subsystem {
     window.addEventListener('blur', clear, { signal });
     ctx.events.addEventListener('hunt-touch-look', ((event: CustomEvent<{dx:number;dy:number}>) => {
       if (ctx.paused || this.captureMode) return;
-      const optics = Math.tan(ctx.camera.fov * Math.PI / 360) / Math.tan(70 * Math.PI / 360);
+      const optics = opticalLookScale(ctx.camera.fov);
       this.yaw -= event.detail.dx * .004 * swingSensitivity * optics;
       this.pitch = THREE.MathUtils.clamp(this.pitch - event.detail.dy * .004 * swingSensitivity * optics, -1.4, 1.4);
       // A release may arrive before the next frame; fire along the latest swing.
@@ -81,8 +81,9 @@ export class PlayerSystem implements Subsystem {
       const look = bindMouseLook(canvas, {
         signal, paused: () => ctx.paused || !!document.body?.classList.contains('touch-controls-active'),
         turn: (dx, dy) => {
-          this.yaw -= dx * .0022;
-          this.pitch = THREE.MathUtils.clamp(this.pitch - dy * .0022, -1.4, 1.4);
+          const optics = opticalLookScale(ctx.camera.fov);
+          this.yaw -= dx * .0022 * optics;
+          this.pitch = THREE.MathUtils.clamp(this.pitch - dy * .0022 * optics, -1.4, 1.4);
           // Mouse movement and a trigger can arrive in the same frame.
           // Match touch swing: the shot must see the latest camera direction.
           this.place(ctx);

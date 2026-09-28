@@ -148,12 +148,15 @@
           <label>Controls <select id="controls-setting"><option value="auto">Automatic</option><option value="touch">Touch</option><option value="desktop">Mouse &amp; keyboard</option></select></label>
           <label><input id="sound-setting" type="checkbox" checked> Field audio</label>
         </div>
+        <div id="shot-view-options" class="shotgun-sensitivity">
+          <label for="touch-sight-setting">Shot view <select id="touch-sight-setting" aria-describedby="shot-view-help"><option value="closer">Closer</option><option value="wide">Wide</option></select></label>
+          <p id="shot-view-help">Closer narrows your view while aiming. Wide keeps your usual field of view.</p>
+        </div>
         <div class="touch-instructions touch-sensitivity">
           <label for="touch-look-sensitivity">Look speed <output id="touch-look-value">1.0×</output></label>
           <input id="touch-look-sensitivity" type="range" min="0.5" max="2" step="0.1" value="1">
           <div class="shotgun-sensitivity"><label for="touch-swing-sensitivity">Shotgun swing <output id="touch-swing-value">1.0×</output></label>
           <input id="touch-swing-sensitivity" type="range" min="0.5" max="2" step="0.1" value="1">
-          <label for="touch-sight-setting">Shot view <select id="touch-sight-setting"><option value="closer">Closer</option><option value="wide">Wide</option></select></label>
           <label for="shot-assistance-setting">Shot assistance <select id="shot-assistance-setting" aria-describedby="shot-assistance-help"><option value="difficulty">Match difficulty</option><option value="off">Off</option><option value="light">Light</option><option value="generous">Generous</option></select></label>
           <p id="shot-assistance-help" aria-live="polite"></p></div>
         </div>

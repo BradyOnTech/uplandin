@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PerspectiveCamera, Vector3 } from 'three';
-import { mobileShotFov } from '../src/three/inputMode';
+import { mobileShotFov, shotSightPicture } from '../src/three/inputMode';
 import { PlayerSystem } from '../src/three/subsystems/player';
 import type { Ctx } from '../src/three/engine';
 
@@ -15,6 +15,17 @@ const projectedSpan = (width: number, height: number, fov: number, distance: num
 };
 
 describe('mobile Closer sight picture', () => {
+  it.each([null, 'invalid', 'closer', 'wide'])('preserves saved sight %s with input-specific defaults', saved => {
+    vi.stubGlobal('localStorage', { getItem: () => saved });
+    expect(shotSightPicture(false)).toBe(saved === 'closer' ? 'closer' : 'wide');
+    expect(shotSightPicture(true)).toBe(saved === 'wide' ? 'wide' : 'closer');
+  });
+
+  it('keeps desktop Wide and touch Closer when storage is unavailable', () => {
+    vi.stubGlobal('localStorage', { getItem: () => { throw new Error('Storage unavailable'); } });
+    expect(shotSightPicture(false)).toBe('wide');
+    expect(shotSightPicture(true)).toBe('closer');
+  });
   it.each([[844,390], [915,412]])('gives a short %s by %s landscape screen a readable but bounded field', (width,height) => {
     const aspect = width / height, fov = mobileShotFov(1, true, aspect);
     const horizontal = 2 * Math.atan(Math.tan(fov * Math.PI / 360) * aspect) * 180 / Math.PI;

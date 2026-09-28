@@ -2,7 +2,7 @@ import { isFalconryPractice, FALCONRY_PRACTICE } from '../game/falconryPractice'
 import { bindFieldPageLifecycle } from './pageLifecycle';
 import { enableOfflineHunts, prepareInstalledHuntUrl } from './offline';
 import { createPerformanceCapture, type PerformanceCapture } from './performanceCapture';
-import { shotAssistancePreference, mobileSightPicture, touchSensitivity, usesTouchControls } from './inputMode';
+import { shotAssistancePreference, shotSightPicture, touchSensitivity, usesTouchControls } from './inputMode';
 import { prepareHuntUrl } from '../game/huntSeed';
 import { FieldInterface, preferredQuality } from './fieldInterface';
 import { FieldAudioSystem } from './subsystems/fieldAudio';
@@ -290,7 +290,7 @@ engine.start(fieldInterface.loading).then((started) => {
         quality: engine.ctx.quality, timeOfDay: engine.ctx.timeOfDay,
         challenge: engine.ctx.get<Hunt3DSystem>('hunt3d').getActiveChallenge(),
         shotAssistance: shotAssistancePreference(),
-        controls: usesTouchControls() ? 'touch' : 'desktop', sight: mobileSightPicture(),
+        controls: usesTouchControls() ? 'touch' : 'desktop', sight: shotSightPicture(usesTouchControls()),
         sensitivity: { look: touchSensitivity('look'), swing: touchSensitivity('swing') },
         camera: { x: engine.ctx.camera.position.x, y: engine.ctx.camera.position.y, z: engine.ctx.camera.position.z,
           yaw: engine.ctx.camera.rotation.y, pitch: engine.ctx.camera.rotation.x, fov: engine.ctx.camera.fov },
