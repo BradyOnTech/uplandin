@@ -5,5 +5,6 @@
   "prompt": "gsp-form-target-v1-prompt.txt",
   "generatedOn": "2026-09-27",
   "runtimeConsumer": null,
-  "review": "Stronger continuous rib cage, muscular neck, defined shoulder and compact paws than current runtime. Coat detail and inconsistent view/pose proportions must not be copied as anatomical authority. Use together with real GSP references and motion."
+  "review": "Stronger continuous rib cage, muscular neck, defined shoulder and compact paws than current runtime. Coat detail and inconsistent view/pose proportions must not be copied as anatomical authority. Use together with real GSP references and motion.",
+  "userReview": "Head rejected as goofy on2026-09-27, in both this concept and runtime. Retain body composition as exploratory guidance only; do not treat head as accepted."
 }

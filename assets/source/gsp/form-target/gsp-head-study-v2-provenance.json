@@ -1,0 +1,10 @@
+{
+  "tool": "built-in image_gen",
+  "image": "gsp-head-study-v2.png",
+  "prompt": "gsp-head-study-v2-prompt.txt",
+  "generatedOn": "2026-09-27",
+  "use": "Head-only style study after the user rejected both original concept and runtime head as goofy. Not an approved model or anatomically authoritative diagram.",
+  "review": "Closed lip and supported muzzle communicate the desired direction. Cheeks/flews remain too heavy and eyes too expressive to copy literally; use the official breed illustrations for the lean adult form.",
+  "primaryReference": "https://gspca.org/breed/standard/",
+  "runtimeConsumer": null
+}
