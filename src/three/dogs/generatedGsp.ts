@@ -210,11 +210,15 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
       [0,wristY,wristZ,.021,.025],
       [0,wristY+.030,wristZ-.005,.020,.024],
       [0,upperEnd[1]+lowerEnd[1]*.50,upperEnd[2]+lowerEnd[2]*.50,fore ? .024 : .027,fore ? .029 : .035],
-      [0,upperEnd[1],upperEnd[2],fore ? .030 : .034,fore ? .038 : .045],
-      [side*.006,upperEnd[1]*.64,upperEnd[2]*.65,fore ? .037 : .054,fore ? .054 : .077],
-      [side*.008,-.054,fore ? -.006 : .008,fore ? .046 : .067,fore ? .072 : .091],
-      [side*.003,.008,-.006,fore ? .044 : .053,fore ? .065 : .067],
-      [0,.062,-.014,.025,.037],
+      [0,upperEnd[1],upperEnd[2],fore ? .030 : .034,fore ? .038 : .045,fore ? .038 : .040],
+      // The rear thigh carries an oblique hamstring plane into the stifle,
+      // with a quieter anterior contour rather than a round separate bulb.
+      [side*.006,upperEnd[1]*.64,fore ? upperEnd[2]*.65 : .052,fore ? .037 : .052,fore ? .054 : .069,fore ? .054 : .065],
+      [side*.008,-.054,fore ? .006 : .016,fore ? .045 : .060,fore ? .060 : .092,fore ? .071 : .069],
+      // The shoulder blade rises back into the withers; its surface has a
+      // different direction from the unchanged upper-leg articulation.
+      [side*.003,.008,fore ? -.036 : -.006,fore ? .041 : .052,fore ? .062 : .070,fore ? .065 : .055],
+      [0,.062,fore ? -.060 : -.014,.025,.037],
     ], WHITE, 'y'), .9);
     legMesh.userData.skinChain = [upper, lower, distal, paw];
     surface(paw, s => s.loft([[0,.002,-.025,.014,.012],[0,.005,-.002,.023,.018],
@@ -230,6 +234,7 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
     const owner = mesh.parent as THREE.Bone;
     const chain = mesh.userData.skinChain as THREE.Bone[] | undefined;
     const chainY = chain?.map(bone => bone.getWorldPosition(new THREE.Vector3()).y);
+    const chainZ = chain?.[0].getWorldPosition(new THREE.Vector3()).z;
     for (let i = 0; i < pos.count; i++) {
       const p = new THREE.Vector3().fromBufferAttribute(pos,i).applyMatrix4(mesh.matrixWorld);
       const n = new THREE.Vector3().fromBufferAttribute(normal,i).applyMatrix3(normalMatrix).normalize();
@@ -246,7 +251,14 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
         // The shoulder/hip surface stays attached to the torso while the
         // limb swings beneath it; a rigid proximal cap pokes through the back.
         first=bones.indexOf(body);second=bones.indexOf(chain[0]);
-        blend=THREE.MathUtils.smoothstep(chainY[0]+.035-p.y,0,.115);
+        if(chain[0].name.startsWith('front-')) {
+          // Gently favor the ribcage on the upper/rear scapular plane,
+          // retaining humeral support across the breast when a foreleg folds.
+          const attachmentY=chainY[0]+.022+(p.z-chainZ!)*.35;
+          const levelAttachment=THREE.MathUtils.smoothstep(chainY[0]+.035-p.y,0,.115);
+          const scapularAttachment=THREE.MathUtils.smoothstep(attachmentY-p.y,0,.095);
+          blend=THREE.MathUtils.lerp(levelAttachment,scapularAttachment,.45);
+        } else blend=THREE.MathUtils.smoothstep(chainY[0]+.035-p.y,0,.115);
         // Narrow transition bands retain muscle volume while closing seams.
         for (let k=1;k<chain.length;k++) {
           const band = k === 1 ? .045 : .025;
