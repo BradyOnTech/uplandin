@@ -13,7 +13,7 @@
   </header>
   <main>
     <nav aria-label="Comparison controls">
-      <div class="buttons" aria-label="Dog state"><button data-pose="stand">Standing</button><button data-pose="point">Point</button><button data-pose="trot">Trot</button></div>
+      <div class="buttons" aria-label="Dog state"><button data-pose="stand">Standing</button><button data-pose="point">Point</button><button data-pose="walk">Walk</button><button data-pose="trot">Trot</button><button data-pose="canter">Canter</button><button data-pose="run">Run</button><button data-pose="paces">Changes of pace</button></div>
       <div class="buttons"><button id="motion">Pause</button><button id="step">Step</button><button id="restart">Restart</button></div>
       <label>View<select id="view"><option value="quarter">Three-quarter</option><option value="side">Side</option><option value="front">Front</option><option value="field">Field distance</option></select></label>
       <label>Light<select id="light"><option value="noon">Noon</option><option value="morning">Morning</option><option value="evening">Evening</option></select></label>
@@ -31,7 +31,7 @@
       <div><label>GSP coat<select id="gsp-coat"></select></label><a id="play-gsp" target="_blank" rel="noopener">Play with this GSP ↗</a></div>
       <div><label>Setter coat<select id="setter-coat"></select></label><a id="play-setter" target="_blank" rel="noopener">Play with this Setter ↗</a></div>
     </div>
-    <footer><span id="status" role="status">Loading current dog models…</span><p>This is a staged level-ground comparison, using the real field renderers. Both receive the same state and 2 m/s trot travel; each retains its own stride and pose. It is not a breed-behavior test or a performance benchmark.</p></footer>
+    <footer><span id="status" role="status">Loading current dog models…</span><p>This is a staged level-ground comparison, using the real field renderers. Both receive matching travel inputs from 0.8 to 5.5 m/s; each renderer chooses its own gait. Changes of pace cycles smoothly from rest through the travel speeds and back. Each retains its own stride and pose. It is not a breed-behavior test or a performance benchmark.</p></footer>
   </main>
   <script type="module" src="./dog-comparison.ts"></script>
 </body>

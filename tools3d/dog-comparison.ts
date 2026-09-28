@@ -13,21 +13,35 @@ import { DogSystem } from '../src/three/subsystems/dog';
 import { GSP_COATS, type GspCoatId } from '../src/three/dogs/germanShorthairedPointer';
 import { ENGLISH_SETTER_COATS, type EnglishSetterCoatId } from '../src/three/dogs/englishSetter';
 
-type Pose = 'stand' | 'point' | 'trot';
+const poses = ['stand', 'point', 'walk', 'trot', 'canter', 'run', 'paces'] as const;
+type Pose = typeof poses[number];
+const paceSpeeds = { walk: .8, trot: 2, canter: 3.6, run: 5.5 } as const;
+const isTravel = (value: Pose): boolean => value !== 'stand' && value !== 'point';
+// A repeating, staged speed ramp exercises normal runtime gait selection.
+// These are travel inputs; the viewer never overrides rendered footfalls.
+const paceKeys = [[0, 0], [1, 0], [3, .8], [6, .8], [8, 2], [11, 2], [13, 3.6], [16, 3.6], [18, 5.5], [21, 5.5], [24, .8], [27, .8], [29, 0], [31, 0]] as const;
+function sequenceSpeed(seconds: number): number {
+  const t = seconds % 31;
+  for (let i = 1; i < paceKeys.length; i++) {
+    const [end, b] = paceKeys[i], [start, a] = paceKeys[i - 1];
+    if (t <= end) { const u = (t - start) / (end - start); return a + (b - a) * u * u * (3 - 2 * u); }
+  }
+  return 0;
+}
 type View = 'quarter' | 'side' | 'front' | 'field';
 const params = new URLSearchParams(location.search);
 // Capture mode changes the legacy renderer's motion law. This comparison
 // deliberately uses the normal runtime path on both sides.
 if (params.has('capture')) { params.delete('capture'); history.replaceState(null, '', `${location.pathname}?${params}`); }
 const choice = <T extends string>(key: string, values: readonly T[], fallback: T): T => values.includes(params.get(key) as T) ? params.get(key) as T : fallback;
-let pose = choice('pose', ['stand', 'point', 'trot'], 'stand');
+let pose = choice('pose', poses, 'stand');
 let quality = choice('quality', ['high', 'lite'], 'high');
 let light = choice('tod', ['morning', 'noon', 'evening'], 'noon');
 let view = choice('view', ['quarter', 'side', 'front', 'field'], 'quarter');
 let gspCoat = choice('gsp', GSP_COATS.map(c => c.id), 'liver-white');
 let setterCoat = choice('setter', ENGLISH_SETTER_COATS.map(c => c.id), 'orange-belton');
-let playing = params.get('paused') !== '1', time = 0, travel = 0;
-const stepSeconds = 1 / 60, trotSpeed = 2;
+let playing = params.get('paused') !== '1', time = 0, travel = 0, paceTime = 0, speed = 0;
+const stepSeconds = 1 / 60;
 const canvas = document.querySelector<HTMLCanvasElement>('#comparison')!;
 const stage = document.querySelector<HTMLElement>('#stage')!;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -119,7 +133,7 @@ function disposePanels(): void {
   }
 }
 function rebuild(): void {
-  disposePanels(); travel = 0; time = 0;
+  disposePanels(); travel = 0; time = 0; paceTime = 0; speed = 0;
   panels = [makePanel('gsp'), makePanel('english-setter')];
   setLighting(); setView(view);
   // Establish supported standing contact before starting either runtime.
@@ -131,8 +145,8 @@ function rebuild(): void {
 }
 function applyPose(): void {
   for (const p of panels) {
-    p.dog.state = pose === 'point' ? 'pointing' : pose === 'trot' ? 'quartering' : 'heel';
-    p.dog.gait = pose === 'trot' ? 'trot' : 'still';
+    p.dog.state = pose === 'point' ? 'pointing' : isTravel(pose) && speed > .03 ? 'quartering' : 'heel';
+    p.dog.gait = !isTravel(pose) || speed <= .03 ? 'still' : speed < 1.4 ? 'track' : speed >= 4.8 ? 'run' : 'trot';
     p.dog.pointedBirdId = pose === 'point' ? 1 : null;
     p.dog.scentStage = 'none'; p.dog.scentProgress = 0;
   }
@@ -143,7 +157,10 @@ function settlePausedSelection(): void {
   if (!playing) for (let i = 0; i < 48; i++) advance(stepSeconds);
 }
 function advance(dt: number, move = true): void {
-  const delta = move && pose === 'trot' ? trotSpeed * dt : 0;
+  if (move) paceTime += dt;
+  speed = !move || !isTravel(pose) ? 0 : pose === 'paces' ? sequenceSpeed(paceTime) : paceSpeeds[pose as keyof typeof paceSpeeds];
+  if (move) applyPose();
+  const delta = speed * dt;
   time += dt; travel += delta;
   camera.position.z += delta; controls.target.z += delta;
   for (const p of panels) {
@@ -177,11 +194,20 @@ function updateLinks(): void {
     document.querySelector<HTMLAnchorElement>(`#${id}`)!.href = url.href;
   }
 }
+function updateStatus(): void {
+  const labels: Record<Pose, string> = { stand: 'Standing at heel', point: 'Steady point · target 3 m ahead', walk: 'Walking pace', trot: 'Working trot', canter: 'Canter pace', run: 'Running pace', paces: 'Changes of pace' };
+  const text = `${labels[pose]}${isTravel(pose) ? ` · shared ${speed.toFixed(1)} m/s travel` : ''} · ${quality === 'lite' ? 'Lightweight' : 'High'} · ${light} light`;
+  const status = document.querySelector('#status')!;
+  if (status.textContent !== text) status.textContent = text;
+}
+function selectPose(value: Pose): void {
+  pose = value; paceTime = 0; applyPose(); settlePausedSelection(); updateControls();
+}
 function updateControls(): void {
   document.querySelectorAll<HTMLButtonElement>('[data-pose]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.pose === pose)));
   document.querySelector<HTMLButtonElement>('#motion')!.textContent = playing ? 'Pause' : 'Play';
   document.querySelector<HTMLButtonElement>('#motion')!.setAttribute('aria-pressed', String(playing));
-  document.querySelector('#status')!.textContent = `${pose === 'stand' ? 'Standing at heel' : pose === 'point' ? 'Steady point · target 3 m ahead' : 'Trot · shared 2 m/s travel'} · ${quality === 'lite' ? 'Lightweight' : 'High'} · ${light} light`;
+  updateStatus();
   syncURL();
 }
 for (const [id, values, value] of [['gsp-coat', GSP_COATS, gspCoat], ['setter-coat', ENGLISH_SETTER_COATS, setterCoat]] as const) {
@@ -189,7 +215,7 @@ for (const [id, values, value] of [['gsp-coat', GSP_COATS, gspCoat], ['setter-co
   for (const coat of values) select.add(new Option(coat.label, coat.id)); select.value = value;
 }
 for (const [id, value] of [['view', view], ['light', light], ['quality', quality]]) document.querySelector<HTMLSelectElement>(`#${id}`)!.value = value;
-document.querySelectorAll<HTMLButtonElement>('[data-pose]').forEach(button => button.addEventListener('click', () => { pose = button.dataset.pose as Pose; applyPose(); settlePausedSelection(); updateControls(); }));
+document.querySelectorAll<HTMLButtonElement>('[data-pose]').forEach(button => button.addEventListener('click', () => selectPose(button.dataset.pose as Pose)));
 document.querySelector('#motion')!.addEventListener('click', () => { playing = !playing; updateControls(); });
 document.querySelector('#step')!.addEventListener('click', () => { playing = false; advance(stepSeconds); updateControls(); });
 document.querySelector('#restart')!.addEventListener('click', rebuild);
@@ -204,6 +230,7 @@ function frame(now: number): void {
   if (playing && !document.hidden) { accumulator += dt; while (accumulator >= stepSeconds) { advance(stepSeconds); accumulator -= stepSeconds; } }
   else accumulator = 0;
   controls.update();
+  updateStatus();
   const bounds = stage.getBoundingClientRect();
   const width = Math.round(bounds.width), height = Math.round(bounds.height);
   if (canvas.width !== Math.floor(width * renderer.getPixelRatio()) || canvas.height !== Math.floor(height * renderer.getPixelRatio())) renderer.setSize(width, height, false);
@@ -219,20 +246,20 @@ function frame(now: number): void {
 }
 rebuild(); raf = requestAnimationFrame(frame);
 const review = {
-  setPose(value: Pose) { pose = value; applyPose(); settlePausedSelection(); updateControls(); },
+  setPose(value: Pose) { if (!poses.includes(value)) throw new Error(`Unknown comparison pose: ${value}`); selectPose(value); },
   advance(seconds: number) { playing = false; for (let i = 0; i < Math.round(seconds / stepSeconds); i++) advance(stepSeconds); updateControls(); },
   state() {
     const generated = (window as unknown as { __generatedDogAudit?: () => { feet: { i: number; groundGap: number }[] } }).__generatedDogAudit?.();
-    return { pose, quality, light, playing, time, travel, speed: pose === 'trot' ? trotSpeed : 0,
+    return { pose, quality, light, playing, time, travel, speed, paceTime,
       renderers: panels.map((p, i) => ({ breed: i === 0 ? 'gsp' : 'english-setter', source: p.system.constructor.name,
         scale: p.nodes.find(n => n.name === 'english-setter-root')?.scale.toArray() ?? [1, 1, 1],
         state: p.dog.state, gait: p.dog.gait, camera: p.camera.position.toArray(), fov: p.camera.fov,
-        paws: i === 0 ? generated?.feet.map(foot => ({ i: foot.i, gap: foot.groundGap, supporting: pose === 'trot' ? null : pose !== 'point' || foot.i !== 0 }))
+        paws: i === 0 ? generated?.feet.map(foot => ({ i: foot.i, gap: foot.groundGap, supporting: isTravel(pose) ? null : pose !== 'point' || foot.i !== 0 }))
           : ['fore-paw-l', 'fore-paw-r', 'hind-paw-l', 'hind-paw-r'].map((id, foot) => {
             const sole = p.nodes.map(node => node.getObjectByName(`${id}__sole`)).find(Boolean);
             if (!sole) throw new Error(`Missing runtime sole marker: ${id}`);
             const world = sole.getWorldPosition(new THREE.Vector3());
-            return { i: foot, gap: world.y, supporting: pose === 'trot' ? null : pose !== 'point' || foot !== 0 };
+            return { i: foot, gap: world.y, supporting: isTravel(pose) ? null : pose !== 'point' || foot !== 0 };
           }),
         meshes: p.nodes.reduce((count, node) => { node.traverse(n => { if ((n as THREE.Mesh).isMesh) count++; }); return count; }, 0) })) };
   },
