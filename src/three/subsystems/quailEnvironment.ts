@@ -22,6 +22,13 @@ import { VegetationWind, VEGETATION_GUST_GLSL, VEGETATION_INSTANCE_WIND_GLSL } f
 
 const TILE = 40; // yards; local batches remain independently culled.
 const COLOR = { straw: 0xb6a574, dry: 0x919273, sage: 0x435f43, sageLight: 0x64794b, bark: 0x615343, leaf: 0x506c4e, leafLight: 0x748158 };
+// The outer groves retain the established foliage envelope while gaining the
+// authored branch structure. Values are local to the existing metre scale.
+const ROUTE_CROWN_ENVELOPES = {
+  upright: { bottom: .432, top: 1.188, width: .944, depth: .743 },
+  spreading: { bottom: .446, top: 1.034, width: 1.118, depth: .796 },
+  leaning: { bottom: .461, top: 1.139, width: .865, depth: .766 },
+} as const;
 interface Instance { px: number; py: number; angle: number; sx: number; sy: number; sz: number; color: number }
 interface Batch { mesh: THREE.Mesh; range: number; x: number; z: number; minRange: number; padding?: number; shadows?: boolean }
 interface CircleObstacle { x: number; z: number; radius: number }
@@ -146,14 +153,32 @@ export class QuailEnvironmentSystem implements Subsystem {
     this.root.add(mesh); this.batches.push({ mesh, range, minRange, x: xTotal / instances.length, z: zTotal / instances.length });
   }
 
-  private treeStand(trees: Instance[], stand: { x: number; y: number }, bark: THREE.Material, canopy: THREE.Material, authored=false): void {
+  private treeStand(trees: Instance[], stand: { x: number; y: number; radius: number }, bark: THREE.Material, canopy: THREE.Material, authored=false, routeGrove=false): void {
     const trunks: THREE.BufferGeometry[] = []; const crowns: THREE.BufferGeometry[] = [];
     for (const [i, tree] of trees.entries()) {
       // A taller interior, low spreading shoulders, and outward-leaning edge
       // trees give each fixed stand a group silhouette without moving its roots.
-      const habit = i < trees.length * 0.34 ? 'upright' : i % 3 === 0 ? 'leaning' : 'spreading';
+      const dx = tree.px - stand.x, dy = tree.py - stand.y;
+      const radius = Math.hypot(dx, dy) / stand.radius;
+      // The outer route uses the same authored kit as South Gate. Interior
+      // crowns rise behind spreading shoulders; one unequal outer edge
+      // leans away from the grove instead of repeating alternating forms.
+      const habit = routeGrove
+        ? radius < .56 ? 'upright'
+          : radius > .74 && dx * .82 + dy * .57 > stand.radius * .22 ? 'leaning' : 'spreading'
+        : i < trees.length * 0.34 ? 'upright' : i % 3 === 0 ? 'leaning' : 'spreading';
       const template=authored?this.treeKit?.[habit]:undefined;
       const geometry = template?{trunk:template.trunk.clone(),crown:template.crown.clone()}:quailTreeGeometry(quailSeed(Math.round(tree.px * 10), Math.round(tree.py * 10), 29), habit);
+      if (routeGrove && template) {
+        const crown = geometry.crown, envelope = ROUTE_CROWN_ENVELOPES[habit];
+        crown.computeBoundingBox();
+        const bounds = crown.boundingBox!, center = bounds.getCenter(new THREE.Vector3());
+        const size = bounds.getSize(new THREE.Vector3());
+        crown.translate(-center.x, -bounds.min.y, -center.z);
+        crown.scale(envelope.width / size.x, (envelope.top - envelope.bottom) / size.y, envelope.depth / size.z);
+        crown.translate(center.x, envelope.bottom, center.z);
+        crown.computeVertexNormals(); crown.computeBoundingBox(); crown.computeBoundingSphere();
+      }
       this.landscape.propertyToWorld(tree.px, tree.py, this.world);
       this.position.set(this.world.x, this.landscape.heightAtProperty(tree.px, tree.py), this.world.z);
       this.euler.set(0, habit === 'leaning' ? Math.atan2(tree.px - stand.x, tree.py - stand.y) : tree.angle, 0);
@@ -299,7 +324,10 @@ export class QuailEnvironmentSystem implements Subsystem {
         trees.push({ px, py, angle: rng() * Math.PI * 2, sx: size * (0.92 + rng() * 0.24), sy: size, sz: size, color: rng() < 0.58 ? COLOR.leaf : COLOR.leafLight });
         this.landscape.propertyToWorld(px, py, this.world); this.obstacles.push({ x: this.world.x, z: this.world.z, radius: size * 0.036 });
       }
-      this.treeStand(trees, stand, barkMat, canopyMat, n===0);
+      const routeGrove = (stand.x === 584 && stand.y === 320)
+        || (stand.x === 784 && stand.y === 278)
+        || (stand.x === 881 && stand.y === 242);
+      this.treeStand(trees, stand, barkMat, canopyMat, n === 0 || routeGrove, routeGrove);
     }
     this.buildTracks(ctx); this.buildFence(); this.update(ctx);
   }
