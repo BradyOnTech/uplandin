@@ -6,6 +6,7 @@ import { GeneratedBodySupport } from './generatedBodySupport';
 import { GeneratedMouthMotion } from './generatedMouth';
 import type { GspCoatId } from './germanShorthairedPointer';
 import { GeneratedPickupReach } from './generatedPickupReach';
+import { GeneratedPivotSteps } from './generatedPivotSteps';
 
 export interface GeneratedRetrievePose {
   stage: 'pickup' | 'carry' | 'deliver'; holdMs: number; speciesId?: string;
@@ -26,6 +27,8 @@ export class GeneratedFieldMotion {
   private placed=false;
   private last=new THREE.Vector3();
   private nominal=new THREE.Vector3();
+  private pivotNominal=Array.from({length:4},()=>new THREE.Vector3());
+  private pivotSteps=new GeneratedPivotSteps();
   private bodyHeight=0;
   private pointPresence=0;
   readonly scentMotion=new GeneratedScentMotion();
@@ -68,6 +71,7 @@ export class GeneratedFieldMotion {
       this.pointPresence=0;this.pickupPresence=0;this.carryPresence=0;this.deliverPresence=0;this.wasMoving=true;
       this.scentMotion.reset();
       this.pickupReach.reset();
+      this.pivotSteps.reset();
       this.mouthMotion.update(this.asset.joints.jaw,retrieve?.stage==='carry'?retrieve:undefined,dt);
       this.last.set(x,ground,z);this.lastYaw=yaw;this.placed=true;
       this.pose.forEach(p=>{p.previousPosition.copy(p.node.position);p.previousRotation.copy(p.node.quaternion);});
@@ -84,7 +88,7 @@ export class GeneratedFieldMotion {
     // carry its progress into point instead of starting a second point entry.
     const pointStep=Math.max(0,dt)/(locking?.18:.28);
     this.pointPresence=reset?pointTarget:moving?0:this.pointPresence+THREE.MathUtils.clamp(pointTarget-this.pointPresence,-pointStep,pointStep);
-    if(reset){this.feet.forEach(f=>{f.locked=false;f.initialized=false;f.step=0;});this.cycle=0;}
+    if(reset){this.feet.forEach(f=>{f.locked=false;f.initialized=false;f.step=0;});this.pivotSteps.reset();this.cycle=0;}
     root.position.set(x,ground,z);root.rotation.y=yaw;
     const speed=!reset&&dt>0?distance/dt:0;
     const action = point ? undefined : retrieve?.stage;
@@ -142,7 +146,12 @@ export class GeneratedFieldMotion {
         this.transitionRaised=false;posedFoot=-1;
       }
     }
+    const pivotEligible=!reset&&!moving&&!blending&&posedFoot<0&&action!=='pickup';
+    if(pivotEligible)this.asset.paws.forEach((paw,i)=>paw.getWorldPosition(this.pivotNominal[i]));
+    const plannedPivot=this.pivotSteps.update(this.feet,this.pivotNominal,x,z,yaw,signedTurnRate,dt,
+      pivotEligible,this.ground,()=>this.nextPlantId++);
     this.feet.forEach((foot,i)=>{
+      if(plannedPivot){this.groundNormal(foot.target.x,foot.target.z,foot.normal);return;}
       this.asset.paws[i].getWorldPosition(this.nominal);
       const raised=i===posedFoot;
       if(raised) {
