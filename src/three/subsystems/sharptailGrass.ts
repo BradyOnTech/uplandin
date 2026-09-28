@@ -32,17 +32,17 @@ export function sharptailGrassGeometry(
       return [[cx - wx, y, cz - wz], [cx + wx, y, cz + wz]];
     };
     const base: Point = [x, 0, z];
-    const knee = .77 + (id % 3) * .045;
-    const [upperL, upperR] = section(reach * .59, height * knee, width * .28, .54);
+    const knee = .84 + (id % 3) * .035;
+    const [upperL, upperR] = section(reach * .76, height * knee, width * .20, .36);
     // Narrow shoulders continue into long spent tips. The old wide upper
     // edge and short pointed end read as a repeated triangular spearhead.
-    const droop = id % 4 === 0 ? .96 : id % 4 === 1 ? .38 : .53;
-    const tip: Point = [x + dx * reach * 1.18 + height * .22, height * droop, z + dz * reach * 1.18];
+    const droop = id % 4 === 0 ? .73 : id % 4 === 1 ? .22 : .39;
+    const tip: Point = [x + dx * reach * 1.34 + height * .22, height * droop, z + dz * reach * 1.34];
     if (near) {
-      const [lowerL, lowerR] = section(reach * .20, height * .40, width * .70, -.20);
-      triangle(base, lowerR, lowerL, id, [0, .28, .28], false, .94);
-      triangle(lowerL, lowerR, upperL, id, [.28, .28, .72], false, .96);
-      triangle(lowerR, upperR, upperL, id, [.28, .72, .72], false, 1.04);
+      const [lowerL, lowerR] = section(reach * .36, height * .68, width * .56, -.16);
+      triangle(base, lowerR, lowerL, id, [0, .48, .48], false, .94);
+      triangle(lowerL, lowerR, upperL, id, [.48, .48, .80], false, .96);
+      triangle(lowerR, upperR, upperL, id, [.48, .80, .80], false, 1.04);
       triangle(upperL, upperR, tip, id, [.72, .72, 1], false, 1.02);
     } else {
       // Wider retained ribbons keep the far stand solid without alpha cards.
@@ -98,28 +98,28 @@ export function sharptailGrassGeometry(
       const length = index === 0 ? 1 : .60 + ((index * 3 + id) % 5) * .095;
       leaf(x + Math.sin(turn) * .055, z + Math.cos(turn) * .055, turn,
         height * length, spread * (.82 + (index % 3) * .15),
-        (.027 + (index % 3) * .006) * (detail === 'distant' ? 1.45 : 1), id * 8 + index);
+        (.033 + (index % 3) * .007) * (detail === 'distant' ? 1.45 : 1), id * 8 + index);
     }
     litter(x, z, .52 + id * 1.31, spread * 1.26, 100 + id * 3);
     if (near) lowBow(x, z, 2.92 + id * 1.31, spread * 1.26, height * .37, 101 + id * 3);
   };
 
   if (kind === 'cover') {
-    const roots = [[-.39, -.27, .59], [.20, -.31, .78], [-.19, .26, .45], [.37, .22, .66]];
+    const roots = [[-.39, -.27, .79], [.20, -.31, 1.06], [-.19, .26, .67], [.37, .22, .91]];
     for (const [id, [x, z, height]] of roots.entries()) bunch(x, z, height, id % 2 ? 4 : 5, id, .39);
-    culm(.20, -.31, .72, .98, 30); culm(-.39, -.27, 1.03, .81, 31);
+    culm(.20, -.31, .72, 1.42, 30); culm(-.39, -.27, 1.03, 1.17, 31);
   } else if (kind === 'stalk') {
-    bunch(-.05, .01, .42, 5, 2, .32);
-    culm(-.09, .015, .8, 1.04, 7); culm(.035, -.03, 1.05, .84, 8); culm(.09, .065, .53, .93, 9);
+    bunch(-.05, .01, .69, 5, 2, .42);
+    culm(-.09, .015, .8, 1.52, 7); culm(.035, -.03, 1.05, 1.10, 8); culm(.09, .065, .53, 1.29, 9);
   } else if (kind === 'medium') {
     // Three interleaved roots form a broad coherent mat rather than one
     // upright plant per lattice site. Tall seed heads live in other batches.
-    bunch(-.18, -.09, .69, 4, 1, .38);
-    bunch(.17, .08, .49, 3, 4, .36);
-    bunch(-.02, .22, .38, 3, 7, .40);
+    bunch(-.18, -.09, .94, 5, 1, .48);
+    bunch(.17, .08, .72, 4, 4, .45);
+    bunch(-.02, .22, .58, 3, 7, .51);
   } else {
-    bunch(-.10, -.035, .43, 4, 0, .32);
-    bunch(.12, .09, .28, 3, 3, .34);
+    bunch(-.10, -.035, .57, 4, 0, .42);
+    bunch(.12, .09, .36, 3, 3, .44);
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));

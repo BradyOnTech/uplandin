@@ -12,7 +12,7 @@ describe('Sharptail mixed grass art contracts', () => {
       const field = sharptailGrassGeometry(kind), mobile = sharptailGrassGeometry(kind, 'mobile');
       expect(mobile.boundingBox!.min.toArray()).toEqual(field.boundingBox!.min.toArray());
       expect(mobile.boundingBox!.max.toArray()).toEqual(field.boundingBox!.max.toArray());
-      expect(mobile.attributes.position.count / 3).toBeLessThanOrEqual(kind === 'medium' ? 48 : 94);
+      expect(mobile.attributes.position.count / 3).toBeLessThanOrEqual(kind === 'medium' ? 56 : 94);
       expect(mobile.attributes.position.count).toBeLessThan(field.attributes.position.count);
       const litter = (geometry: THREE.BufferGeometry) => {
         const position = geometry.getAttribute('position'), uv = geometry.getAttribute('uv');
@@ -31,7 +31,7 @@ describe('Sharptail mixed grass art contracts', () => {
     const heights: number[] = [];
     for (const kind of ['short', 'medium', 'stalk', 'cover'] as const) {
       const geo = sharptailGrassGeometry(kind), position = geo.getAttribute('position'), uv = geo.getAttribute('uv');
-      expect(position.count / 3).toBeLessThanOrEqual(kind === 'cover' ? 112 : 56);
+      expect(position.count / 3).toBeLessThanOrEqual(kind === 'cover' ? 148 : kind === 'medium' ? 84 : 64);
       expect(geo.getAttribute('color').count).toBe(position.count);
       expect(geo.getAttribute('normal').count).toBe(position.count);
       expect(uv.count).toBe(position.count);

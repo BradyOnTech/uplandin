@@ -33,38 +33,66 @@ export const SHARPTAIL_COVER_PATCHES: readonly Rect[] = [
   { x: 1118, y: 706, w: 194, h: 57 },
 ];
 
-interface Shoulder { x: number; y: number; rx: number; ry: number; yaw: number; height: number }
-/** Long oblique crests separate the south approach, western wind lane and
- * eastern return into overlapping foreground/lee/backdrop views. The short
- * axis stays broad enough for cross-country casts, not switchback climbing.
- * Heights are metres, coordinates/radii yards, yaw radians. */
+interface Shoulder {
+  x: number; y: number; rx: number; ry: number; yaw: number; height: number;
+  /** Bend moves the crest across its long axis; face biases its two slopes.
+   * Rise lifts one end, keeping adjacent shoulders from sharing a skyline. */
+  bend: number; face: number; rise: number;
+}
+/** Three connected landform sequences: the south arrival brow, west wind
+ * shoulder, and taller eastern return. Smaller attached spurs split the
+ * eastern face; the northern brows overlap behind the Line Shack. Heights
+ * are metres; centers and radii are property yards. Broad sections remain
+ * resolved by the existing distant terrain grid, including on Lite. */
 export const SHARPTAIL_SHOULDERS: readonly Shoulder[] = [
-  { x: 700, y: 568, rx: 270, ry: 94, yaw: -.30, height: 13 },
-  { x: 312, y: 415, rx: 270, ry: 100, yaw: -.23, height: 14 },
-  { x: 1125, y: 480, rx: 245, ry: 108, yaw: .46, height: 16 },
-  { x: 1016, y: 232, rx: 230, ry: 88, yaw: .08, height: 12 },
-  { x: 418, y: 147, rx: 270, ry: 94, yaw: .08, height: 12 },
-  { x: 730, y: 345, rx: 154, ry: 84, yaw: -.42, height: 6 },
+  { x: 700, y: 575, rx: 295, ry: 124, yaw: -.28, height: 20, bend: .35, face: .22, rise: .13 },
+  { x: 330, y: 420, rx: 320, ry: 125, yaw: -.20, height: 22, bend: -.33, face: -.18, rise: .30 },
+  { x: 1170, y: 510, rx: 288, ry: 150, yaw: .66, height: 29, bend: .42, face: -.28, rise: .16 },
+  { x: 1010, y: 215, rx: 300, ry: 112, yaw: .06, height: 17, bend: -.18, face: .38, rise: -.30 },
+  { x: 390, y: 140, rx: 330, ry: 115, yaw: .08, height: 16, bend: .26, face: .12, rise: -.15 },
+  { x: 750, y: 345, rx: 200, ry: 88, yaw: -.42, height: 4.8, bend: -.15, face: -.10, rise: .22 },
+  { x: 1040, y: 402, rx: 178, ry: 83, yaw: -.22, height: 8, bend: -.30, face: .20, rise: .24 },
+  { x: 1075, y: 604, rx: 193, ry: 92, yaw: -.30, height: 7, bend: .32, face: -.12, rise: .15 },
 ];
-const SADDLES: readonly Shoulder[] = [
-  { x: 920, y: 525, rx: 100, ry: 82, yaw: .15, height: 2.4 },
-  { x: 520, y: 428, rx: 105, ry: 86, yaw: -.25, height: 2 },
+const SADDLES = [
+  { x: 919, y: 511, rx: 109, ry: 86, yaw: .15, height: 4.8 },
+  { x: 529, y: 427, rx: 111, ry: 89, yaw: -.25, height: 3.3 },
+  { x: 1190, y: 398, rx: 102, ry: 59, yaw: .52, height: 3.4 },
 ];
+// Shared by ground paint and grass so low crowns follow the physical brows.
+export function sharptailCrestOffset(u: number, bend: number): number {
+  return bend * (u * u - .25) / (1 + .5 * u * u);
+}
 // Height sampling also runs for dogs and moving grass tiles; cache the
 // constant rotations rather than evaluating trigonometry per sample.
-const frames = (shapes: readonly Shoulder[]) => shapes.map(shape => ({ ...shape, cos: Math.cos(shape.yaw), sin: Math.sin(shape.yaw) }));
-const shoulderFrames = frames(SHARPTAIL_SHOULDERS), saddleFrames = frames(SADDLES);
+const shoulderFrames = SHARPTAIL_SHOULDERS.map(shape => ({ ...shape, cos: Math.cos(shape.yaw), sin: Math.sin(shape.yaw) }));
+const saddleFrames = SADDLES.map(shape => ({ ...shape, cos: Math.cos(shape.yaw), sin: Math.sin(shape.yaw) }));
 function ridgeAt(x: number, y: number, ridge: typeof shoulderFrames[number]): number {
   const dx = x - ridge.x, dy = y - ridge.y;
   const u = (dx * ridge.cos + dy * ridge.sin) / ridge.rx;
-  const v = (-dx * ridge.sin + dy * ridge.cos) / ridge.ry;
-  return ridge.height * Math.exp(-(u * u + v * v));
+  const v = (-dx * ridge.sin + dy * ridge.cos) / ridge.ry - sharptailCrestOffset(u, ridge.bend);
+  // Unequal windward/lee faces join with a continuous derivative at the
+  // crest. A long shoulder tapers at either end rather than forming a dome.
+  const face = v * (1 + ridge.face * v / Math.sqrt(v * v + .36));
+  const endRise = 1 + ridge.rise * u / Math.sqrt(1 + u * u);
+  return ridge.height * endRise * Math.exp(-(.55 * u ** 4 + .32 * u * u + face * face));
+}
+function saddleAt(x: number, y: number, saddle: typeof saddleFrames[number]): number {
+  const dx = x - saddle.x, dy = y - saddle.y;
+  const u = (dx * saddle.cos + dy * saddle.sin) / saddle.rx;
+  const v = (-dx * saddle.sin + dy * saddle.cos) / saddle.ry;
+  return saddle.height * Math.exp(-(u * u + v * v));
 }
 
-interface Swale { points: readonly Vec2[]; width: number; depth: number }
+interface Swale {
+  points: readonly Vec2[]; width: number; depth: number;
+  /** Deepen an existing connected drainage locally without changing its
+   * footprint or semantic moisture/cover masks. */
+  basinX: number; basinRadius: number; basinDepth: number;
+}
 export const SHARPTAIL_SWALES: readonly Swale[] = [
-  { points: [{ x: -50, y: 255 }, { x: 270, y: 260 }, { x: 490, y: 307 }, { x: 712, y: 242 }, { x: 931, y: 304 }, { x: 1135, y: 334 }, { x: 1480, y: 267 }], width: 63, depth: 2.4 },
-  { points: [{ x: -50, y: 642 }, { x: 240, y: 598 }, { x: 470, y: 506 }, { x: 664, y: 463 }, { x: 885, y: 417 }, { x: 1145, y: 362 }, { x: 1480, y: 392 }], width: 64, depth: 2.6 },
+  { points: [{ x: -50, y: 255 }, { x: 270, y: 260 }, { x: 490, y: 307 }, { x: 712, y: 242 }, { x: 931, y: 304 }, { x: 1135, y: 334 }, { x: 1480, y: 267 }], width: 63, depth: 4.2, basinX: 1020, basinRadius: 110, basinDepth: 7 },
+  { points: [{ x: -50, y: 642 }, { x: 240, y: 598 }, { x: 470, y: 506 }, { x: 664, y: 463 }, { x: 885, y: 417 }, { x: 1145, y: 362 }, { x: 1480, y: 392 }], width: 64, depth: 5.4, basinX: 810, basinRadius: 220, basinDepth: 4.5 },
 ];
 
 /** Two distant shelterbelts frame the Line Shack and north boundary. Never
@@ -91,8 +119,11 @@ function swaleAt(x: number, y: number, swale: Swale): number {
 export function sharptailAuthoredHeight(x: number, y: number): number {
   let height = 6.5;
   for (const ridge of shoulderFrames) height += ridgeAt(x, y, ridge);
-  for (const saddle of saddleFrames) height -= ridgeAt(x, y, saddle);
-  for (const swale of SHARPTAIL_SWALES) height -= swaleAt(x, y, swale) * swale.depth;
+  for (const saddle of saddleFrames) height -= saddleAt(x, y, saddle);
+  for (const swale of SHARPTAIL_SWALES) {
+    const along = (x - swale.basinX) / swale.basinRadius;
+    height -= swaleAt(x, y, swale) * (swale.depth + swale.basinDepth * Math.exp(-along * along));
+  }
   // Subtle long undulations, not a field of small hemispherical hills.
   return height + Math.sin(x * .009 + y * .004) * .48 + Math.sin(y * .017 - x * .003) * .24;
 }

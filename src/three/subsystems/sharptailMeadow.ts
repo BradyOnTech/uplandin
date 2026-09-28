@@ -1,36 +1,64 @@
-import { SHARPTAIL_SHOULDERS } from '../../game/sharptailLandscape';
+import { SHARPTAIL_SHOULDERS, sharptailCrestOffset } from '../../game/sharptailLandscape';
 
-export interface SharptailMeadowSample { crown: number; hollow: number; cured: number }
+export interface SharptailMeadowSample { crown: number; hollow: number; cured: number; exposed: number }
 
-/** The prairie reads in long vegetation masses, following the actual relief.
- * Exposed shoulder crowns carry low silvered grass; sheltered swales carry
- * taller sage-green growth. A broad cured edge joins the two, rather than
- * arbitrary patches of differently coloured grass. All coordinates are
- * property yards, independent of entry, detail tier and hunting seed. */
+/** The prairie reads in connected vegetation masses following the physical
+ * relief. Low warm crowns open the cast, darker sheltered drainage carries
+ * rank grass, and a few exposed lee faces reveal the underlying till. These
+ * art fields never move a habitat rectangle or change encounter rules. */
 const shoulders = SHARPTAIL_SHOULDERS.map(shoulder => ({ ...shoulder,
   cos: Math.cos(shoulder.yaw), sin: Math.sin(shoulder.yaw),
 }));
 
+// Selected faces, not a repeated stripe on every hill. Coordinates follow
+// the curved ridge section; all edges span tens of yards so both terrain
+// LODs retain the same connected mass. Three unequal footprints compose the
+// arrival brow, western wind shoulder and the face behind the Shack.
+const exposedFaces: Readonly<Record<number, { along: number; reach: number; across: number; width: number; strength: number; bend: number }>> = {
+  0: { along: .18, reach: .48, across: -.52, width: .27, strength: .95, bend: .12 },
+  1: { along: .25, reach: .58, across: .56, width: .28, strength: .82, bend: -.16 },
+  2: { along: -.22, reach: .52, across: -.43, width: .35, strength: 1, bend: .18 },
+};
+
 export const SHARPTAIL_MEADOW_COLORS = {
-  crown: 0xc0b48a,
-  hollow: 0x788b69,
-  cured: 0xa89468,
+  crown: 0xbdac7d,
+  hollow: 0x68876f,
+  cured: 0x9b865e,
+  exposed: 0xb9b4a0,
 } as const;
 
 export function sharptailMeadowAt(x: number, y: number, swale: number, out: SharptailMeadowSample): SharptailMeadowSample {
-  let crown = 0, cured = 0;
-  for (const shoulder of shoulders) {
+  let crown = 0, cured = 0, exposed = 0;
+  for (let index = 0; index < shoulders.length; index++) {
+    const shoulder = shoulders[index];
     const dx = x - shoulder.x, dy = y - shoulder.y;
     const u = (dx * shoulder.cos + dy * shoulder.sin) / shoulder.rx;
     const v = (-dx * shoulder.sin + dy * shoulder.cos) / shoulder.ry;
-    // Broad unequal edges preserve a natural slope rather than a band of
-    // crop rows. Both terrain paint and vegetation sample the same curves.
-    const bend = Math.sin(u * 3.1 + shoulder.y * .015) * .11;
-    crown = Math.max(crown, Math.exp(-(u * u * 1.8 + (v - bend) ** 2 * 5.5)));
-    cured = Math.max(cured, Math.exp(-(u * u * 2.1 + (v + .62 - bend) ** 2 * 8)));
+    const bend = sharptailCrestOffset(u, shoulder.bend);
+    const across = v - bend;
+    crown = Math.max(crown, Math.exp(-(u * u * 1.8 + across * across * 3.4)));
+    cured = Math.max(cured, Math.exp(-(u * u * 2.1 + (across + .62) ** 2 * 8)));
+    const face = exposedFaces[index];
+    if (face) {
+      const along = (u - face.along) / face.reach;
+      // One broad uneven lip and a tapering toe, not fine camouflage noise.
+      const lip = face.across + face.bend * Math.sin(along * 2.3);
+      const width = face.width * (1 - .18 * Math.sin(along * 2.8));
+      const edge = (across - lip) / width;
+      exposed = Math.max(exposed, face.strength * Math.exp(-(along ** 4 * 1.4 + edge ** 4)));
+    }
   }
   out.hollow = swale * swale;
   out.crown = crown * (1 - out.hollow * .85);
   out.cured = cured * (1 - out.hollow * .58) * (1 - out.crown * .55);
+  // Till remains visible beneath vegetated faces. The grass placement layer
+  // separately preserves cover-core density using the same stand mask.
+  out.exposed = exposed * (1 - out.hollow * .32);
   return out;
+}
+
+/** Bare openings spare concealed native stands even when their underlying
+ * till is visible in the distant terrain paint. Shared by near/far plants. */
+export function sharptailGrassOpening(exposed: number, stand: number): number {
+  return exposed * (1 - stand * .95);
 }

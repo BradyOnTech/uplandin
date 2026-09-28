@@ -17,14 +17,15 @@ export class SharptailSwardField {
   private readonly crowns: Float32Array;
   private readonly hollows: Float32Array;
   private readonly cured: Float32Array;
+  private readonly exposed: Float32Array;
 
   constructor(landscape: LandscapeModel) {
     const area = landscape.area.world;
     const near = landscape.propertyToWorld(area.x, area.y, { x: 0, z: 0 });
     const far = landscape.propertyToWorld(area.x + area.w, area.y + area.h, { x: 0, z: 0 });
     this.minX = near.x; this.maxX = far.x; this.minZ = near.z; this.maxZ = far.z;
-    // Twelve-yard cells retain the curved crown/lee transition. Five scalar
-    // fields total about 160 KB for the full property, created once.
+    // Twelve-yard cells retain the curved crown/lee transition. Six scalar
+    // fields total about 193 KB for the full property, created once.
     this.columns = Math.ceil(area.w / 12) + 1;
     this.rows = Math.ceil(area.h / 12) + 1;
     this.swales = new Float32Array(this.columns * this.rows);
@@ -32,8 +33,9 @@ export class SharptailSwardField {
     this.crowns = new Float32Array(this.columns * this.rows);
     this.hollows = new Float32Array(this.columns * this.rows);
     this.cured = new Float32Array(this.columns * this.rows);
+    this.exposed = new Float32Array(this.columns * this.rows);
     const zones = { swale: 0, stand: 0 };
-    const meadow = { crown: 0, hollow: 0, cured: 0 };
+    const meadow = { crown: 0, hollow: 0, cured: 0, exposed: 0 };
     for (let row = 0; row < this.rows; row++) {
       for (let column = 0; column < this.columns; column++) {
         const x = area.x + column / (this.columns - 1) * area.w;
@@ -46,6 +48,7 @@ export class SharptailSwardField {
         this.crowns[index] = meadow.crown;
         this.hollows[index] = meadow.hollow;
         this.cured[index] = meadow.cured;
+        this.exposed[index] = meadow.exposed;
       }
     }
   }
@@ -79,6 +82,7 @@ export class SharptailSwardField {
     out.crown = this.interpolate(this.crowns, index, tx, tz);
     out.hollow = this.interpolate(this.hollows, index, tx, tz);
     out.cured = this.interpolate(this.cured, index, tx, tz);
+    out.exposed = this.interpolate(this.exposed, index, tx, tz);
     return out;
   }
 }

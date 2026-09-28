@@ -4,7 +4,7 @@ import type { Ctx, Subsystem } from '../engine';
 import { P, TOD, type TimeOfDay } from '../palette';
 import { QuailTerrain } from './quailTerrain';
 import { ChukarTerrain } from './chukarTerrain';
-import { PropertyTerrain } from './propertyTerrain';
+import { PropertyTerrain, type PrairieCanopySurface } from './propertyTerrain';
 
 /*
  * TERRAIN subsystem: the ground under the hunt. Gentle rolling prairie —
@@ -183,6 +183,11 @@ export class TerrainSystem implements Subsystem {
   /** Grass samples the identical paint field so ground and tufts agree. */
   paintSeed(): number {
     return this.landscape.area.terrain.seed;
+  }
+
+  /** Sharptail's unresolved canopy must retain the real ground material. */
+  prairieCanopySurface(): PrairieCanopySurface | undefined {
+    return this.property?.prairieCanopySurface();
   }
 
   /** One ground material for plate + skirt, with the sun-drench injection. */

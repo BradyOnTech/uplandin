@@ -15,6 +15,13 @@ import { sharptailMeadowNormalTexture, SHARPTAIL_SURFACE_NORMAL_FRAGMENT } from 
 
 type Paint = (landscape: LandscapeModel, x: number, y: number, out: THREE.Color) => THREE.Color;
 
+/** A caller-owned material sharing this ground's loaded texture/uniform
+ * references. The terrain retains ownership of those shared resources. */
+export interface PrairieCanopySurface {
+  material: THREE.MeshLambertMaterial;
+  paint(x: number, y: number, out: THREE.Color): THREE.Color;
+}
+
 const PALETTE = {
   prairie: { dark: new THREE.Color(0x6e5d3b), mid: new THREE.Color(0xa78e5d), light: new THREE.Color(0xcdbb83), wet: new THREE.Color(0x697052) },
   wetland: { dark: new THREE.Color(0x5d5637), mid: new THREE.Color(0x9f8752), light: new THREE.Color(0xcab278), wet: new THREE.Color(0x596b58) },
@@ -172,7 +179,8 @@ function paintFor(property: LandscapeModel): Paint {
   const reedLitter = new THREE.Color(PHEASANT_MATERIALS.reedLitter);
   const standingGrass = new THREE.Color(PHEASANT_MATERIALS.standingFloor);
   const prairieZones = { swale: 0, stand: 0 };
-  const prairieMeadow = { crown: 0, hollow: 0, cured: 0 };
+  const prairieExposure = new THREE.Color(SHARPTAIL_MEADOW_COLORS.exposed);
+  const prairieMeadow = { crown: 0, hollow: 0, cured: 0, exposed: 0 };
   const prairieCrown = new THREE.Color(SHARPTAIL_MEADOW_COLORS.crown).multiplyScalar(.87);
   const prairieHollow = new THREE.Color(SHARPTAIL_MEADOW_COLORS.hollow).multiplyScalar(.81);
   const prairieCured = new THREE.Color(SHARPTAIL_MEADOW_COLORS.cured).multiplyScalar(.86);
@@ -215,9 +223,10 @@ function paintFor(property: LandscapeModel): Paint {
       // These masses follow the same shoulders as the physical terrain;
       // adding random high-frequency paint would flatten that relationship.
       sharptailMeadowAt(x, y, prairieZones.swale, prairieMeadow);
-      out.lerp(prairieCrown, prairieMeadow.crown * .45);
-      out.lerp(prairieHollow, prairieMeadow.hollow * .65);
-      out.lerp(prairieCured, prairieMeadow.cured * .56);
+      out.lerp(prairieCrown, prairieMeadow.crown * .76);
+      out.lerp(prairieHollow, prairieMeadow.hollow * .86);
+      out.lerp(prairieCured, prairieMeadow.cured * .66);
+      out.lerp(prairieExposure, prairieMeadow.exposed * .92);
       // Root authored sage/forb pockets in accumulated litter. Shared masks
       // place these value masses beneath the actual vegetation, not random
       // decorative spots; geometry bakes this once with no new shader work.
@@ -306,6 +315,16 @@ export class PropertyTerrain {
     uCloudShK: { value: 0 },
     uCloudT: { value: 0 },
   };
+
+  prairieCanopySurface(): PrairieCanopySurface | undefined {
+    if (this.landscape.area.id !== 'sharptail-prairie') return undefined;
+    const material = this.material.clone();
+    // Three's clone does not copy the shader callback. Preserve the same
+    // light response, ground paint and meadow normals on the raised sward.
+    material.onBeforeCompile = this.material.onBeforeCompile;
+    material.customProgramCacheKey = this.material.customProgramCacheKey;
+    return { material, paint: (x, y, out) => this.paint(this.landscape, x, y, out) };
+  }
 
   constructor(private readonly landscape: LandscapeModel) {
     this.paint = paintFor(landscape);

@@ -17,7 +17,7 @@ describe('Sharptail full-property native sward', () => {
     for (const kind of ['short', 'stalk', 'cover'] as const) {
       const geometry = sharptailGrassGeometry(kind);
       const position = geometry.getAttribute('position'), uv = geometry.getAttribute('uv');
-      expect(position.count / 3).toBeLessThanOrEqual(kind === 'cover' ? 112 : 56);
+      expect(position.count / 3).toBeLessThanOrEqual(kind === 'cover' ? 148 : 56);
       expect(uv.count).toBe(position.count);
       let roots = 0, tips = 0;
       for (let i = 0; i < position.count; i++) {
@@ -73,10 +73,10 @@ describe('Sharptail full-property native sward', () => {
     let min = Infinity, max = -Infinity;
     for (let x = 0; x <= 1400; x += 20) for (let y = 0; y <= 800; y += 20) {
       landscape.surfaceAtProperty(x, y, surface);
-      expect(surface.slope).toBeLessThan(.2);
+      expect(surface.slope).toBeLessThan(.4);
       min = Math.min(min, surface.height); max = Math.max(max, surface.height);
     }
-    expect(max - min).toBeGreaterThan(8); expect(max - min).toBeLessThan(25);
+    expect(max - min).toBeGreaterThan(30); expect(max - min).toBeLessThan(40);
     expect(area.speciesMix.map(share => share.speciesId)).toEqual(['sharptail', 'prairie-chicken', 'hun']);
   });
 
@@ -98,12 +98,12 @@ describe('Sharptail full-property native sward', () => {
       get: (id: string) => { if (id === 'terrain') return terrain; if (id === 'hunt3d') return hunt; throw new Error(id); },
     } as unknown as Ctx;
     const grass = new GrassSystem(landscape); grass.init(ctx); grass.update(ctx);
-    const meshes = ctx.scene.children as THREE.InstancedMesh[];
-    const ring = meshes.filter(mesh => mesh.instanceMatrix.usage === THREE.DynamicDrawUsage);
-    const far = meshes.filter(mesh => mesh.instanceMatrix.usage !== THREE.DynamicDrawUsage);
+    const meshes = ctx.scene.children as THREE.Mesh[];
+    const ring = meshes.filter((mesh): mesh is THREE.InstancedMesh => mesh instanceof THREE.InstancedMesh && mesh.instanceMatrix.usage === THREE.DynamicDrawUsage);
+    const far = meshes.filter(mesh => mesh.geometry.userData.kind === 'sharptail-middle-sward');
     expect(ring.reduce((sum, mesh) => sum + mesh.count, 0)).toBeGreaterThan(4000);
     expect(ring.length).toBeLessThan(225);
-    expect(far.reduce((sum, mesh) => sum + mesh.count, 0)).toBeLessThan(area.patches.length * (quality === 'lite' ? 650 : 1000));
+    expect(far.reduce((sum, mesh) => sum + mesh.geometry.index!.count / 3, 0)).toBeLessThanOrEqual(quality === 'lite' ? 54000 : 120000);
     expect(far.some(mesh => mesh.visible)).toBe(true);
     expect(far.some(mesh => !mesh.visible)).toBe(true);
     const matrix = new THREE.Matrix4();

@@ -57,15 +57,39 @@ describe('Sharptail rolling prairie access', () => {
     expect(nearest).toBeGreaterThan(7.8 + 3);
   });
 
-  it('adds readable relief without turning open-country casts into steep climbing', () => {
+  it('gives the circuit stronger relief while keeping open-country casts walkable', () => {
     const landscape = new LandscapeModel(area), ground = surface();
     let low = Infinity, high = -Infinity;
     for (let x = 0; x <= area.world.w; x += 12) for (let y = 0; y <= area.world.h; y += 12) {
       landscape.surfaceAtProperty(x, y, ground);
-      expect(ground.slope).toBeLessThan(.2);
+      expect(ground.slope).toBeLessThan(.4);
       low = Math.min(low, ground.height); high = Math.max(high, ground.height);
     }
-    expect(high - low).toBeGreaterThan(16); expect(high - low).toBeLessThan(25);
+    expect(high - low).toBeGreaterThan(30); expect(high - low).toBeLessThan(40);
+  });
+
+  it('reveals the central crossing over the arrival brow and the Shack on the windbreak approach', () => {
+    const landscape = new LandscapeModel(area);
+    const shack = area.landmarks.find(l => l.id === 'area-feature')!.position;
+    // A roof-height sightline from an ordinary 1.62m eye. This checks the
+    // authored reveal itself, not the particular ridge formula producing it.
+    const clearance = (from: Vec2, target = shack, targetHeight = 3) => {
+      const eye = landscape.heightAtProperty(from.x, from.y) + 1.62;
+      const roof = landscape.heightAtProperty(target.x, target.y) + targetHeight;
+      let minimum = Infinity;
+      for (let i = 1; i < 100; i++) {
+        const t = i / 100;
+        const ground = landscape.heightAtProperty(from.x + (target.x - from.x) * t, from.y + (target.y - from.y) * t);
+        minimum = Math.min(minimum, eye + (roof - eye) * t - ground);
+      }
+      return minimum;
+    };
+    expect(clearance(area.dropPoints.find(p => p.id === 'south-gate')!.position)).toBeLessThan(-3);
+    expect(clearance({ x: 655, y: 640 })).toBeLessThan(-1);
+    const crossing = { x: 855, y: 426 };
+    expect(clearance({ x: 655, y: 640 }, crossing, 1)).toBeLessThan(-3);
+    expect(clearance({ x: 679, y: 548 }, crossing, 1)).toBeGreaterThan(.8);
+    expect(clearance({ x: 896, y: 304 })).toBeGreaterThan(.8);
   });
 
   it('shares safe route grades and physical terrain between both parking places', () => {
@@ -77,7 +101,14 @@ describe('Sharptail rolling prairie access', () => {
         const b = west.propertyToWorld(p.x, p.y, { x: 0, z: 0 });
         expect(south.heightAtWorld(a.x, a.z)).toBeCloseTo(west.heightAtWorld(b.x, b.z), 8);
         south.surfaceAtProperty(p.x, p.y, ground);
-        expect(ground.slope).toBeLessThan(.2);
+        const aPoint = trail.points[i - 1], bPoint = trail.points[i];
+        const span = distance(aPoint, bPoint);
+        const alongGrade = Math.abs((ground.gradeX * (bPoint.x - aPoint.x)
+          + ground.gradeZ * (bPoint.y - aPoint.y)) / span);
+        // The eastern shoulder is a real prairie climb. Walking lanes have
+        // no cliff or abrupt terrace; the lower approaches remain gentler.
+        expect(ground.slope).toBeLessThan(trail.id === 'prairie-return' ? .35 : .21);
+        expect(alongGrade).toBeLessThan(trail.id === 'prairie-return' ? .30 : .20);
       }
     }
     for (const drop of area.dropPoints) {
