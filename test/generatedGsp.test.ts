@@ -52,6 +52,32 @@ describe('generated GSP asset contract', () => {
     expect(a.max.distanceTo(b.max)).toBeLessThan(.006);
     high.dispose(); lite.dispose();
   });
+  for (const detail of ['high', 'lite'] as const) it(`${detail} keeps the moving live skin inside its culling envelope`, () => {
+    const dog = createGeneratedGsp(detail, true);
+    const box = dog.skin.boundingBox!.clone(), sphere = dog.skin.boundingSphere!.clone();
+    const point = new THREE.Vector3();
+    let boxOverrun = 0, sphereOverrun = 0;
+    const checkPose = () => {
+      const positions = dog.skin.geometry.getAttribute('position');
+      for (let i = 0; i < positions.count; i++) {
+        dog.skin.applyBoneTransform(i, point.fromBufferAttribute(positions, i));
+        boxOverrun = Math.max(boxOverrun, box.distanceToPoint(point));
+        sphereOverrun = Math.max(sphereOverrun, point.distanceTo(sphere.center) - sphere.radius);
+      }
+    };
+    try {
+      for (const pose of ['stand', 'point'] as const) { dog.setPose(pose); checkPose(); }
+      // Include the extended gallop pose that a bind-pose sphere misses.
+      for (const gait of ['walk', 'trot', 'canter', 'gallop'] as const) {
+        for (let frame = 0; frame < 20; frame++) { dog.setLocomotion(gait, frame / 20); checkPose(); }
+      }
+      for (let frame = 0; frame < 20; frame++) { dog.setSwimming(frame / 20); checkPose(); }
+      expect(boxOverrun).toBeLessThan(1e-6);
+      expect(sphereOverrun).toBeLessThan(1e-6);
+      expect(dog.skin.boundingBox!.equals(box)).toBe(true);
+      expect(dog.skin.boundingSphere!.equals(sphere)).toBe(true);
+    } finally { dog.dispose(); }
+  });
   it('keeps the accepted anatomy and one-skin budget across all four GSP coats', () => {
     const reference = createGeneratedGsp('lite');
     for (const coat of GSP_COAT_IDS) {
