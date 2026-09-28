@@ -409,6 +409,15 @@ export class DogSystem implements Subsystem {
   private pawV = new THREE.Vector3();
   private pawTargetW = new THREE.Vector3();
   private pawTargetL = new THREE.Vector3();
+  private staticSoles = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  private staticHip = new THREE.Vector3();
+  private staticAnkle = new THREE.Vector3();
+  private staticSoleOffset = new THREE.Vector3();
+  private staticRotation = new THREE.Quaternion();
+  private staticParentRotation = new THREE.Quaternion();
+  private pointLandingStart = [new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion()];
+  private pointLanding = 1;
+  private staticPointStance = 0;
   private footLocks = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
   /** Released stance locks blend into authored swing for a quiet toe-off. */
   private releaseLocks = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
@@ -1685,7 +1694,7 @@ export class DogSystem implements Subsystem {
         this.legU[i].rotation.set(-solved.upper, 0, abduct);
         this.legL[i].rotation.x = solved.lower;
         this.legD[i].rotation.x = distalRelative;
-        this.paws[i].rotation.x = this.pawAng[i];
+        this.paws[i].rotation.set(this.pawAng[i], 0, 0);
       } else {
         // During stance the cannon is nearly vertical; it folds forward in
         // swing so the hind paw clears without pulling the pelvis upward.
@@ -1710,10 +1719,127 @@ export class DogSystem implements Subsystem {
         this.legU[i].rotation.set(-solved.upper, 0, abduct);
         this.legL[i].rotation.x = solved.lower;
         this.legD[i].rotation.x = distalRelative;
-        this.paws[i].rotation.x = this.pawAng[i];
+        this.paws[i].rotation.set(this.pawAng[i], 0, 0);
       }
       this.priorContact[i] = foot.contact;
     }
+  }
+
+  /**
+   * A still Setter needs three/four supporting feet, not just the lowest
+   * authored paw. Place the hinds under the haunch within the existing
+   * chain's reach, retaining a longer rear stance on point. The shared
+   * support height leaves a little knee flexion; it never stretches bones.
+   * Solved rotations deliberately do not feed the authored angle filters.
+   */
+  private solveStaticSetterLegs(pointing: boolean, gy: number, dt: number, snap: boolean): void {
+    this.root.updateMatrixWorld(true);
+    this.staticPointStance = approach(this.staticPointStance, pointing ? 1 : 0, 14, dt, snap);
+    if (pointing) {
+      this.pointLanding = 0;
+      this.pointLandingStart[0].copy(this.legU[0].quaternion);
+      this.pointLandingStart[1].copy(this.legL[0].quaternion);
+      this.pointLandingStart[2].copy(this.legD[0].quaternion);
+      this.pointLandingStart[3].copy(this.paws[0].quaternion);
+    } else {
+      this.pointLanding = snap ? 1 : Math.min(1, this.pointLanding + dt / 0.22);
+    }
+    const scale = this.root.scale.y;
+    this.staticSoleOffset.set(0, PAW_SOLE_Y, 0.018)
+      .multiplyScalar(scale).applyQuaternion(this.root.quaternion);
+    let supportHeight = Infinity;
+    for (let i = pointing ? 1 : 0; i < 4; i++) {
+      const fore = i < 2;
+      const carrier = this.limbCarrier[i];
+      const sole = this.staticSoles[i];
+      if (fore) {
+        this.pawTips[i].getWorldPosition(sole);
+      } else {
+        // The old still angles put the hind soles ~25 cm behind the hip,
+        // outside their terrain reach. Use a modest, reachable setback.
+        const drop = HIND_UPPER_LEN + HIND_SHANK_LEN + HIND_HOCK_LEN;
+        sole.set(0, -drop, -drop * THREE.MathUtils.lerp(0.035, 0.085, this.staticPointStance));
+        carrier.localToWorld(sole);
+      }
+      sole.y = this.terrain.heightAt(sole.x, sole.z);
+      carrier.getWorldPosition(this.staticHip);
+      carrier.getWorldQuaternion(this.staticRotation);
+      const distal = fore ? FORE_CARPUS_LEN : HIND_HOCK_LEN;
+      const angle = fore ? 0 : -0.08;
+      this.staticAnkle.set(0, Math.cos(angle) * distal, -Math.sin(angle) * distal)
+        .multiplyScalar(scale).applyQuaternion(this.staticRotation)
+        .add(sole).sub(this.staticSoleOffset);
+      const dx = this.staticAnkle.x - this.staticHip.x;
+      const dz = this.staticAnkle.z - this.staticHip.z;
+      const reach = (fore ? FORE_UPPER_LEN + FORE_LOWER_LEN : HIND_UPPER_LEN + HIND_SHANK_LEN) * scale * 0.98;
+      const drop = Math.sqrt(Math.max(0, reach * reach - dx * dx - dz * dz));
+      supportHeight = Math.min(supportHeight, this.staticAnkle.y - this.staticHip.y + drop);
+    }
+    this.groundOffset = approach(this.groundOffset, THREE.MathUtils.clamp(supportHeight, -0.18, 0.24), 24, dt, snap);
+    this.root.position.y = gy + this.groundOffset;
+    this.root.updateMatrixWorld(true);
+
+    for (let i = pointing ? 1 : 0; i < 4; i++) {
+      const fore = i < 2;
+      const carrier = this.limbCarrier[i];
+      this.pawTargetL.copy(this.staticSoles[i]).sub(this.staticSoleOffset);
+      carrier.worldToLocal(this.pawTargetL);
+      const abduct = Math.atan2(this.pawTargetL.x, Math.max(0.05, -this.pawTargetL.y));
+      const distal = fore ? FORE_CARPUS_LEN : HIND_HOCK_LEN;
+      const angle = fore ? 0 : -0.08;
+      const solved = solveTwoBone(
+        -Math.hypot(this.pawTargetL.y, this.pawTargetL.x) + Math.cos(angle) * distal,
+        this.pawTargetL.z - Math.sin(angle) * distal,
+        fore ? FORE_UPPER_LEN : HIND_UPPER_LEN,
+        fore ? FORE_LOWER_LEN : HIND_SHANK_LEN,
+        fore ? -1 : 1,
+        this.ik[i],
+      );
+      this.legU[i].rotation.set(-solved.upper, 0, abduct);
+      this.legL[i].rotation.x = solved.lower;
+      this.legD[i].rotation.x = solved.lowerAbsolute - angle;
+      // Keep the sole aligned with the ground-supported root, including
+      // its forward marker offset on slopes, rather than pointing a toe.
+      this.legD[i].getWorldQuaternion(this.staticParentRotation);
+      this.paws[i].quaternion.copy(this.staticParentRotation).invert().multiply(this.root.quaternion);
+      if (i === 0 && this.pointLanding < 1) {
+        // Point→heel/marking lowers the raised limb over a short landing,
+        // rather than snapping its sole to the ground on the state change.
+        const t = this.pointLanding * this.pointLanding * (3 - 2 * this.pointLanding);
+        this.staticRotation.copy(this.legU[0].quaternion);
+        this.legU[0].quaternion.slerpQuaternions(this.pointLandingStart[0], this.staticRotation, t);
+        this.staticRotation.copy(this.legL[0].quaternion);
+        this.legL[0].quaternion.slerpQuaternions(this.pointLandingStart[1], this.staticRotation, t);
+        this.staticRotation.copy(this.legD[0].quaternion);
+        this.legD[0].quaternion.slerpQuaternions(this.pointLandingStart[2], this.staticRotation, t);
+        this.staticRotation.copy(this.paws[0].quaternion);
+        this.paws[0].quaternion.slerpQuaternions(this.pointLandingStart[3], this.staticRotation, t);
+        // Retain a folded wrist while the elbow changes from the authored
+        // raised point to a supporting stance. A straight interpolation
+        // would sweep the sole through the ground mid-transition.
+        const wrist = this.legD[0].rotation.x;
+        const paw = this.paws[0].rotation.x;
+        this.pawTips[0].getWorldPosition(this.pawV);
+        if (this.pawV.y < this.terrain.heightAt(this.pawV.x, this.pawV.z)) {
+          // Find the smallest wrist fold that keeps this actual sole above
+          // its terrain. Only the short landing uses this bounded search;
+          // point, settled support and traveling gait do no extra work.
+          let low = 0;
+          let high = Math.PI / 2;
+          for (let iteration = 0; iteration < 10; iteration++) {
+            const fold = (low + high) * 0.5;
+            this.legD[0].rotation.x = wrist + fold;
+            this.paws[0].rotation.x = paw - fold;
+            this.pawTips[0].getWorldPosition(this.pawV);
+            if (this.pawV.y < this.terrain.heightAt(this.pawV.x, this.pawV.z)) low = fold;
+            else high = fold;
+          }
+          this.legD[0].rotation.x = wrist + high;
+          this.paws[0].rotation.x = paw - high;
+        }
+      }
+    }
+    this.root.updateMatrixWorld(true);
   }
 
   /**
@@ -2252,7 +2378,7 @@ export class DogSystem implements Subsystem {
         this.legU[i].rotation.z = 0;
         this.legL[i].rotation.x = this.lAng[i];
         this.legD[i].rotation.x = 0;
-        this.paws[i].rotation.x = 0;
+        this.paws[i].rotation.set(0, 0, 0);
         this.footLocked[i] = false;
         this.releaseT[i] = 1;
         this.priorContact[i] = 'swing';
@@ -2337,13 +2463,22 @@ export class DogSystem implements Subsystem {
     // Locomotion feet solve to explicit terrain targets and stance locks;
     // moving the whole torso afterward would break those contacts. Static
     // poses keep the exact legacy grounding correction.
-    if (!locomoting) {
+    const staticSetterSupport = !locomoting && this.visualBreed === 'english-setter' &&
+      (pointing || ((state === 'heel' || state === 'marking') && gait === 'still' && !sd.scentCheck && sd.scentStage !== 'locking' && sd.raptorDuty !== 'guarding'));
+    if (staticSetterSupport) {
+      this.solveStaticSetterLegs(pointing, gy, dt, snap);
+    } else if (!locomoting) {
+      this.pointLanding = 1;
+      this.staticPointStance = 0;
       this.groundOffset = approach(this.groundOffset, -sink, 24, dt, snap);
       this.root.position.y = gy + this.groundOffset;
+    } else {
+      this.pointLanding = 1;
+      this.staticPointStance = 0;
     }
     // Core-shadow anchor: the torso's world center (round 11 — the
     // positional sun-axis split in the coat shader measures from here).
-    this.tone.uDogCtrW.value.set(x, gy - sink + 0.43, z);
+    this.tone.uDogCtrW.value.set(x, (staticSetterSupport ? this.root.position.y : gy - sink) + 0.43, z);
 
     // TAIL DROOP CLAMP (round 9): the relaxed tail never spears into a
     // rising grade behind the dog — measure the flag tip against the
