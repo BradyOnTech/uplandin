@@ -60,7 +60,7 @@ it('keeps separate 3D and 2D installed launches and relative icons at both deplo
   const two = JSON.parse(readFileSync(new URL('../public/manifest.webmanifest', import.meta.url), 'utf8'));
   expect(two.start_url).toBe('./');
   for (const base of ['https://game.test/', 'https://game.test/play/']) {
-    expect(new URL(three.start_url, base).href).toBe(`${base}index3d.html?installed=1`);
+    expect(new URL(three.start_url, base).href).toBe(`${base}prepare3d.html?installed=1`);
     expect(new URL(three.id, base).href).toBe(`${base}index3d.html`);
     for (const icon of three.icons) expect(new URL(icon.src, base).href).toBe(`${base}${icon.src.slice(2)}`);
   }

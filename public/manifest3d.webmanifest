@@ -3,7 +3,7 @@
   "name": "Uplandin 3D",
   "short_name": "Uplandin 3D",
   "description": "A field, a good dog, and a hunt worth walking.",
-  "start_url": "./index3d.html?installed=1",
+  "start_url": "./prepare3d.html?installed=1",
   "scope": "./",
   "display": "standalone",
   "orientation": "landscape",

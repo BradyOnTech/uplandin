@@ -14,29 +14,71 @@ import { dateLabel } from '../game/season';
 import { getSpecies } from '../game/species';
 import { openHuntJournal } from './huntJournalView';
 import { createPreparationMap } from './maps/preparationMap';
+import { enableOfflineHunts, requestOfflineUpdate, type OfflineUpdateState } from './offline';
+import { preparationInstalledEntry, rememberPreparationLaunch, preservePreparationDraft, consumePreparationDraft, discardPreparationDraft, type PreparationDraft } from './preparationOffline';
 
 const root = document.getElementById('preparation')!;
-const params = new URLSearchParams(location.search);
-let career = loadCareer(), quick = loadQuickConfig();
-let mode = params.get('mode') === 'career' ? 'career' : 'quick';
+const installedEntry = preparationInstalledEntry(location.href, loadQuickConfig(), preferenceStorage());
+if (installedEntry.url.href !== location.href) history.replaceState(null, '', installedEntry.url);
+const params = installedEntry.url.searchParams;
+let career = loadCareer(), quick = installedEntry.quick;
+let mode: 'quick' | 'career' = params.get('mode') === 'career' ? 'career' : 'quick';
 let areaId = params.get('area') ?? (mode === 'career'
   ? careerPreparation(career).areas.find(area => area.isHome)?.area.id ?? quick.areaId : quick.areaId);
 if (mode === 'quick') { quick = normalizeQuickConfig({ ...quick, areaId }); areaId = quick.areaId; }
 let dropPointId = params.get('drop') ?? '';
 let dogId = career.activeDogId ?? '', braceId = career.braceDogId ?? '';
 let gunId = career.hunter.shotgunId;
-let challenge = parseHuntChallenge(readPreference(HUNT_CHALLENGE_KEY));
-let quality = readPreference('uplandin.3d.quality') ?? 'auto';
-let light = 'morning';
-let message = '', addingDog = false, launching = false;
+let challenge = parseHuntChallenge(params.get('challenge') ?? readPreference(HUNT_CHALLENGE_KEY));
+let quality = params.get('quality') ?? readPreference('uplandin.3d.quality') ?? 'auto';
+if (!['auto', 'lite', 'high'].includes(quality)) quality = 'auto';
+let light = ['morning', 'noon', 'evening'].includes(params.get('tod') ?? '') ? params.get('tod')! : 'morning';
+let coat = params.get('coat') ?? undefined, controls = params.get('controls') ?? undefined;
+let message = '', addingDog = false, launching = false, updating = false, updateRequested = false;
 let puppyDraft = { breedId: 'gsp', name: '', homeRegionId: career.homeRegionId ?? 'southern-plains' };
 const propertyDrafts: Record<string, { areaId: string; dropPointId: string }> = {
   quick: { areaId: quick.areaId, dropPointId: '' },
   career: { areaId: careerPreparation(career).areas.find(area => area.isHome)?.area.id ?? 'quail-fields', dropPointId: '' },
 };
 const atlases = new Map<string, HTMLCanvasElement>();
+const restored = consumePreparationDraft(location.href, draftStorage());
+if (restored) {
+  ({ mode, areaId, dropPointId, quick, dogId, braceId, gunId, quality, light, coat, controls, addingDog, puppyDraft } = restored);
+  challenge = parseHuntChallenge(restored.challenge); Object.assign(propertyDrafts, restored.propertyDrafts);
+  message = 'Your hunt setup is ready to continue.';
+}
 
+// Keep these nodes alive across setup changes: the offline client holds the
+// status node, and asynchronous readiness must not rebuild a focused form.
+const offlinePanel = node('details', '', 'hunt-options');
+offlinePanel.id = 'prep-offline';
+offlinePanel.append(node('summary', 'Install & offline play'));
+offlinePanel.append(node('p', 'Use your browser’s Install or Add to Home Screen command to open Uplandin as a full-screen game. Wait for offline readiness before heading out without a connection.', 'help'));
+const offlineStatus = node('p', '', 'help'); offlineStatus.id = 'offline-status'; offlineStatus.setAttribute('aria-live', 'polite');
+const updateStatus = node('p', '', 'help'); updateStatus.id = 'prep-update-status'; updateStatus.setAttribute('role', 'status');
+const updateButton = button('Update game', () => { if (!updating && !launching) { updateRequested = true; requestOfflineUpdate(); } }, 'secondary');
+updateButton.id = 'prep-update'; updateButton.hidden = true;
+offlinePanel.append(offlineStatus, updateStatus, updateButton);
+
+function preferenceStorage(): Storage | null { try { return localStorage; } catch { return null; } }
+function draftStorage(): Storage | null { try { return sessionStorage; } catch { return null; } }
 function readPreference(key: string): string | null { try { return localStorage.getItem(key); } catch { return null; } }
+function currentDraft(): PreparationDraft {
+  return { mode, areaId, dropPointId, quick, dogId, braceId, gunId, challenge, quality, light, coat, controls, addingDog, puppyDraft,
+    propertyDrafts: { quick: propertyDrafts.quick, career: propertyDrafts.career } };
+}
+function offlineUpdateState(state: OfflineUpdateState): void {
+  updating = state === 'applying';
+  if (!updating) { updateRequested = false; discardPreparationDraft(draftStorage()); }
+  updateButton.hidden = state === 'none'; updateButton.disabled = updating || launching;
+  updateButton.textContent = updating ? 'Updating…' : 'Update game';
+  updateStatus.textContent = ({ none: '', ready: 'An update is ready. Your current setup will be kept.',
+    applying: 'Updating the game. Keeping your hunt setup…', 'other-tabs': 'Close other game windows, then try the update again. Your setup is still here.',
+    unsafe: 'The update could not safely keep this setup. Your current draft is still here; you can continue preparing your hunt.',
+    failed: 'The update did not finish. Reconnect, then try again. Your setup is still here.' })[state];
+  const start = document.getElementById('prep-start') as HTMLButtonElement | null;
+  if (start) start.disabled = launching || updating || start.dataset.unavailable === 'true';
+}
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, value = '', className = ''): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag); el.textContent = value; el.className = className; return el;
 }
@@ -63,6 +105,7 @@ function persistCareer(next: Career): boolean {
   career = next; return true;
 }
 function updateQuick(value: Partial<QuickConfig>): void {
+  if (value.breedId && value.breedId !== quick.breedId) coat = undefined;
   quick = normalizeQuickConfig({ ...quick, areaId, ...value }); areaId = quick.areaId;
 }
 function refreshFromCareer(): void {
@@ -128,7 +171,7 @@ function render(focusId?: string): void {
   const main = node('main');
   const opening = node('div', '', 'prep-opening'); const intro = node('div'); intro.append(node('p', 'THE NEXT OUTING', 'eyebrow'), node('h1', 'Where will you hunt?'));
   const modes = node('div', '', 'mode-switch'); modes.setAttribute('role', 'group'); modes.setAttribute('aria-label', 'Hunt mode');
-  for (const [id, label] of [['quick', 'Quick hunt'], ['career', 'Your career']]) {
+  for (const [id, label] of [['quick', 'Quick hunt'], ['career', 'Your career']] as const) {
     const control = button(label, () => {
       if (mode === id) return;
       propertyDrafts[mode] = { areaId, dropPointId }; mode = id; message = ''; addingDog = false; career = loadCareer();
@@ -230,12 +273,13 @@ function render(focusId?: string): void {
       }
     }
   }
-  grid.append(settings); main.append(grid);
+  settings.append(offlinePanel); grid.append(settings); main.append(grid);
   const footer = node('footer', '', 'launch-bar'); const outing = node('div');
   outing.append(node('strong', area.name), node('span', mode === 'career' && entry.reason ? entry.reason
     : `${selectedDrop.name}${mode === 'career' ? ` · ${entry.weeks} week${entry.weeks === 1 ? '' : 's'}` : ' · Quick hunt'}`));
   const start = button('Head to the field ↗', launch, 'primary'); start.id = 'prep-start';
-  start.disabled = launching || (mode === 'career' && (!entry.selectable || preparation.needsDog || preparation.needsHome));
+  const unavailable = mode === 'career' && (!entry.selectable || preparation.needsDog || preparation.needsHome);
+  start.dataset.unavailable = String(unavailable); start.disabled = launching || updating || unavailable;
   const reason = node('p', mode === 'career' && !entry.selectable ? '' : 'Read the wind. Trust your dog.', 'launch-reason'); footer.append(outing, reason, start);
   root.append(header, main, footer);
   if (focusId) {
@@ -249,7 +293,7 @@ function render(focusId?: string): void {
 }
 
 function launch(): void {
-  if (launching) return;
+  if (launching || updating) return;
   const result = mode === 'career' ? commitCareerLaunch(loadCareer(), { areaId, dropPointId, activeDogId: dogId, braceDogId: braceId || null, gunId })
     : commitQuickLaunch({ ...quick, areaId }, dropPointId);
   if (!result.ok) { refreshFromCareer(); error(result.message); return; }
@@ -262,6 +306,10 @@ function launch(): void {
   try { localStorage.setItem(HUNT_CHALLENGE_KEY, challenge); } catch { /* The URL also carries this choice. */ }
   const url = new URL(result.href, location.href); url.searchParams.set('challenge', challenge); url.searchParams.set('tod', light); url.searchParams.set('dog', 'generated');
   if (quality === 'high' || quality === 'lite') url.searchParams.set('quality', quality);
+  if (coat) url.searchParams.set('coat', coat);
+  if (controls) url.searchParams.set('controls', controls);
+  rememberPreparationLaunch(currentDraft(), preferenceStorage());
+  discardPreparationDraft(draftStorage());
   launching = true; (document.getElementById('prep-start') as HTMLButtonElement).disabled = true; location.assign(url.href);
 }
 
@@ -269,3 +317,5 @@ window.addEventListener('storage', event => {
   if (event.key === CAREER_KEY && mode === 'career') { refreshFromCareer(); message = 'Your career changed in another tab. Review your setup before heading out.'; render(); }
 });
 render();
+enableOfflineHunts({ canReload: () => !launching && updateRequested && preservePreparationDraft(location.href, currentDraft(), draftStorage()),
+  onUpdateState: offlineUpdateState });

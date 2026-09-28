@@ -19,6 +19,9 @@ function defaultStorage(): PreferenceStorage | undefined {
 }
 
 function rememberChoices(url: URL, storage: PreferenceStorage | undefined): void {
+  // Preparation owns an editable draft, not a standalone field visit. Its
+  // mode/property URL must not erase the older direct-install preferences.
+  if (url.pathname.endsWith('/prepare3d.html')) return;
   if (url.searchParams.has('play') || url.searchParams.has('capture') || url.searchParams.has('practice')) return;
   const choices = new URLSearchParams();
   for (const key of CHOICES) {
@@ -26,6 +29,18 @@ function rememberChoices(url: URL, storage: PreferenceStorage | undefined): void
     if (value && value.length <= 80) choices.set(key, value);
   }
   try { storage?.setItem(CHOICES_KEY, choices.toString()); } catch { /* Preferences are optional. */ }
+}
+
+/** Read-only migration surface for the native preparation installed entry. */
+export function loadInstalledHuntChoices(storage: PreferenceStorage | null | undefined = defaultStorage()): URLSearchParams {
+  let saved = new URLSearchParams();
+  try { saved = new URLSearchParams(storage?.getItem(CHOICES_KEY) ?? ''); } catch { /* Optional preferences. */ }
+  const choices = new URLSearchParams();
+  for (const key of CHOICES) {
+    const value = saved.get(key);
+    if (value && value.length <= 80) choices.set(key, value);
+  }
+  return choices;
 }
 
 /** Only the installed icon restores choices. Ordinary links keep their exact setup. */
@@ -36,8 +51,7 @@ export function prepareInstalledHuntUrl(
 ): URL {
   let url = new URL(href);
   if (url.searchParams.get('installed') === '1') {
-    let saved = new URLSearchParams();
-    try { saved = new URLSearchParams(storage?.getItem(CHOICES_KEY) ?? ''); } catch { /* Optional. */ }
+    const saved = loadInstalledHuntChoices(storage);
     // An explicit property should not inherit a different property's drop.
     const explicitArea = url.searchParams.has('area');
     for (const key of CHOICES) {
