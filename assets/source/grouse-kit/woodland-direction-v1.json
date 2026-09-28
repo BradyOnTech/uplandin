@@ -1,0 +1,16 @@
+{
+  "role": "Exploratory modeling and composition reference; not a runtime texture or proof of a finished 3D asset",
+  "created": "2026-09-28",
+  "method": "Built-in image generation",
+  "image": "woodland-direction-v1.png",
+  "prompt": "woodland-direction-v1-prompt.txt",
+  "originalOutput": "/Users/bradya/.codex/generated_images/01a06e19-2078-7df2-9635-befac80304f1/exec-276a698f-25a1-4036-88bc-2179d35331e9.png",
+  "direction": "Slender connected aspen branching, overlapping small foliage sprays, an irregular continuous crown envelope, upright leafy understory in groups, low ferns, warm duff and cool readable shade.",
+  "limits": [
+    "This generated image does not establish triangle counts, material cost, LOD quality, movement or phone performance.",
+    "The bark is more strongly peeling and patterned than the intended restrained aspen bark; do not copy it literally.",
+    "The grove is a composition reference, not authoritative property geometry or permission to fill every hunting sightline.",
+    "Actual regional plant references, rooted physical trees and species hunting design retain priority."
+  ],
+  "nextAssetGate": "Build a connected, branching tree with many small foliage sprays as one coherent authored asset. Review silhouette, shaded form, leaf scale and support at normal eye height before whole-property placement. Use measured High/Lite detail reduction instead of forcing the close asset into the rejected 96-184 triangle crown methods."
+}
