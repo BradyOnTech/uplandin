@@ -58,7 +58,7 @@ describe('Career field notes', () => {
     const notes = careerFieldNotes(result);
     expect(notes.hunterAward).toBe('+0 XP · protected-hen penalty applied (4 XP)');
     expect(notes.calendar).toContain('season 1 — over');
-    expect(notes.next).toContain('Return home');
+    expect(notes.next).toBe('The season is complete. Return to hunt preparation and choose Start season 2 to begin again with your kennel.');
     expect(notes.dogs).toEqual([]);
     expect(notes.unlocks).toEqual([]);
   });

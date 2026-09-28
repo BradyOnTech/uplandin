@@ -48,7 +48,7 @@ export function careerFieldNotes(result: CareerHuntResult) {
     }),
     unlocks: result.unlocks,
     calendar: `${result.weeks} week${result.weeks === 1 ? '' : 's'} passed · ${dateLabel(result.career.date)}`,
-    next: result.seasonEnded ? 'The season is complete. Return home and open Career to begin the next season with your kennel.' : '',
+    next: result.seasonEnded ? `The season is complete. Return to hunt preparation and choose Start season ${result.career.date.season + 1} to begin again with your kennel.` : '',
   };
 }
 
