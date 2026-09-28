@@ -1,3 +1,4 @@
+import { slopeFlightMult, type SlopeApproach } from '../../game/fieldcraft';
 import { isFalconryPractice, FALCONRY_PRACTICE } from '../../game/falconryPractice';
 import { huntStreamSeed, parseHuntSeed } from '../../game/huntSeed';
 import { birdFlightExpired } from '../../game/birdFlightLifetime';
@@ -264,6 +265,8 @@ export function pickBirdAlongRay(
 interface FlightContext {
   escX: number; escZ: number; rightX: number; rightZ: number;
   hunterX: number; hunterZ: number; driftPx: number; rng: () => number;
+  /** Actual rise classification, frozen before a queued bird launches. */
+  slopeApproach?: SlopeApproach | null;
 }
 
 interface Slot {
@@ -979,7 +982,10 @@ export class BirdsSystem implements Subsystem {
         this.stageRise(covey);
         const flight: FlightContext = { escX:this.escX,escZ:this.escZ,rightX:this.rightX,rightZ:this.rightZ,
           hunterX:this.hunterX,hunterZ:this.hunterZ,driftPx:this.driftPx,rng:this.riseRng };
-        for (const bird of covey) { this.queue[this.qTail++] = bird.id; this.pendingFlights.set(bird.id,flight); }
+        for (const bird of covey) {
+          this.queue[this.qTail++] = bird.id;
+          this.pendingFlights.set(bird.id, { ...flight, slopeApproach: this.hunt.riseSlopeApproach(bird.id) });
+        }
       }
     } else if (newRise) {
       this.stageRise(simBirds);
@@ -1124,6 +1130,18 @@ export class BirdsSystem implements Subsystem {
           const k = 18.5 / hv2;
           s.vxW *= k;
           s.vzW *= k;
+        }
+        if (this.spatialEncounter && downhillFlight) {
+          // Apply the shared slope-shot reward once to the completed world
+          // velocity. Scaling before the base cap would erase the advantage
+          // on fast crossings. Relative horizontal ceilings are therefore
+          // 15.17 / 18.5 / 21.275 m/s for above / level / below, game tuning
+          // rather than claims about measured bird speed.
+          const slope = flight.slopeApproach ?? null;
+          const speed = slopeFlightMult(slope);
+          s.vxW *= speed;
+          s.vzW *= speed;
+          s.vyW *= speed * (slope === 'above' ? .85 : 1);
         }
       }
       const hawk = this.hunt.falconry;
@@ -1667,9 +1685,11 @@ export class BirdsSystem implements Subsystem {
    *  sizeM is the SCALED wingspan: the harness projects it to pixels. */
   airborne(): {
     simId: number; x: number; y: number; z: number; airMs: number; status: string; sizeM: number;
+    slopeApproach: SlopeApproach | null; velocity: { x: number; y: number; z: number };
   }[] {
     const out: {
       simId: number; x: number; y: number; z: number; airMs: number; status: string; sizeM: number;
+      slopeApproach: SlopeApproach | null; velocity: { x: number; y: number; z: number };
     }[] = [];
     for (let i = 0; i < POOL; i++) {
       const s = this.slots[i];
@@ -1679,6 +1699,8 @@ export class BirdsSystem implements Subsystem {
           simId: s.simId, ...point,
           airMs: THREE.MathUtils.lerp(s.previousAirMs ?? s.airMs, s.airMs, this.renderedPhase), status: s.status,
           sizeM: s.spanM * (this.refinedQuail ? QUAIL_WORLD_SCALE : RISE_SCALE) * s.visualScale,
+          slopeApproach: this.spatialEncounter && s.species.flightDirection === 'downhill' ? s.flight?.slopeApproach ?? null : null,
+          velocity: { x: s.vxW, y: s.vyW, z: s.vzW },
         });
       }
     }

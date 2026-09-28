@@ -1,3 +1,4 @@
+import type { SlopeApproach } from '../../game/fieldcraft';
 import { isFalconryPractice, FALCONRY_PRACTICE } from '../../game/falconryPractice';
 import { GoshawkFlight } from '../../game/falconry';
 import { ShallowWater } from '../../game/shallowWater';
@@ -617,6 +618,11 @@ export class Hunt3DSystem implements Subsystem {
     this.careerResult = settleCareerHunt(career, this.hunt, dogs);
     saveCareer(this.careerResult.career);
     return this.careerResult;
+  }
+
+  /** Per-bird launch metadata survives a newer overlapping covey rise. */
+  riseSlopeApproach(birdId: number): SlopeApproach | null {
+    return this.simulation.riseSlopeApproach(birdId);
   }
 
   /** The most recent rise (birds subsystem feeds flushBias from this). */

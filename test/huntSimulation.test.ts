@@ -40,6 +40,31 @@ function pointedSimulation(hunterDistance: number, continuousEncounter = false, 
 }
 
 describe('HuntSimulation shared orchestration', () => {
+  it('retains authoritative slope per active rise and clears only the settled covey', () => {
+    const f = pointedSimulation(30, true, 'chukar-ridge', 'chukar');
+    const other = { ...f.bird, id: 9002, coveyId: 78, pos: { x: 600, y: 200 } };
+    f.hunt.birds.push(other);
+    const terrain = new LandscapeModel(getArea('chukar-ridge'));
+    const slopeSide = (bird: Bird, above: boolean) => Array.from({ length: 72 }, (_, i) => ({
+      x: bird.pos.x + Math.cos(i * Math.PI / 36) * 40,
+      y: bird.pos.y + Math.sin(i * Math.PI / 36) * 40,
+    })).sort((a, b) => (above ? -1 : 1) * (terrain.heightAtProperty(a.x, a.y) - terrain.heightAtProperty(b.x, b.y)))[0];
+    f.hunt.hunterPos = slopeSide(f.bird, true);
+    const first = f.simulation.flushBird(f.bird.id, 'nerve', 0)!;
+    f.hunt.hunterPos = slopeSide(other, false);
+    const second = f.simulation.flushBird(other.id, 'scent', null)!;
+    expect(first.slopeApproach).toBe('above'); expect(second.slopeApproach).toBe('below');
+    expect(f.simulation.riseSlopeApproach(f.bird.id)).toBe(first.slopeApproach);
+    expect(f.simulation.riseSlopeApproach(other.id)).toBe(second.slopeApproach);
+    expect(f.simulation.riseSlopeApproach(9999)).toBeNull();
+    f.simulation.resolveBird(other.id, 'escaped');
+    f.simulation.finishRise({ birdId: other.id, relight: false });
+    expect(f.simulation.riseSlopeApproach(other.id)).toBeNull();
+    expect(f.simulation.riseSlopeApproach(f.bird.id)).toBe(first.slopeApproach);
+    f.simulation.resolveBird(f.bird.id, 'escaped');
+    f.simulation.finishRise({ birdId: f.bird.id, relight: false });
+    expect(f.simulation.riseSlopeApproach(f.bird.id)).toBeNull();
+  });
   it('keeps a spatial retrieve carried through the handoff pause before awarding the bag', () => {
     const f = pointedSimulation(20, true, 'pheasant-coverts', 'ringneck');
     f.bird.state = 'downed'; f.bird.pos = {...f.dog.pos};

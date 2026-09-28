@@ -415,6 +415,15 @@ export class HuntSimulation {
     return event;
   }
 
+  /** Launch classification belongs to the actual rise, including wild
+   * scent/spook rises. Keep it available while other coveys overlap. */
+  riseSlopeApproach(birdId: number): SlopeApproach | null {
+    for (const rise of this.activeRises.values()) {
+      if (rise.birdIds.includes(birdId)) return rise.slopeApproach;
+    }
+    return null;
+  }
+
   /** A bound quarry belongs to the hawk until the handler makes in. */
   bindQuarry(birdId: number, position: Vec2): boolean {
     const bird = this.bird(birdId);

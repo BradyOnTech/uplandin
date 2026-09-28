@@ -1,3 +1,4 @@
+import type { SlopeApproach } from '../src/game/fieldcraft';
 import { buildPheasantBody } from '../src/three/assets/pheasant';
 import * as audio from '../src/audio';
 import * as THREE from 'three';
@@ -9,9 +10,10 @@ import { getArea } from '../src/game/areas';
 import { QuailFlushDebris } from '../src/three/quailFlushDebris';
 
 // Exercise the actual fixed flight loop without allocating renderer geometry.
-function fixture() {
+function fixture(areaId = 'quail-fields') {
   const birds: Bird[] = [];
   const finishRise = vi.fn();
+  const slopes = new Map<number, SlopeApproach | null>();
   const system = new BirdsSystem();
   const runtime = system as unknown as {
     tickBirds(dt: number): void; downBird(id: number): boolean; slots: Array<Record<string, any>>;
@@ -19,15 +21,15 @@ function fixture() {
     applySpeciesAppearance: unknown; burstDebris: unknown; launchCover?: QuailFlushDebris; coverEvents?: EventTarget;
   };
   runtime.refinedQuail = true; runtime.spatialEncounter = true; runtime.frozen = true;
-  runtime.hunt = { areaConfig: () => getArea('quail-fields'), huntState: () => ({ birds, hunterPos: {x:0,y:0}, wind:0 }),
+  runtime.hunt = { areaConfig: () => getArea(areaId), huntState: () => ({ birds, hunterPos: {x:0,y:0}, wind:0 }),
     simToWorld: (x:number,y:number,out:{x:number;z:number}) => Object.assign(out,{x,z:y}),
-    coverPatches: () => [], lastFlushInfo: () => null, finishRise, resolveBird: vi.fn(), recordFallWorld: vi.fn() };
+    coverPatches: () => [], riseSlopeApproach: (id: number) => slopes.get(id) ?? null, lastFlushInfo: () => null, finishRise, resolveBird: vi.fn(), recordFallWorld: vi.fn() };
   runtime.terrain = { heightAt: () => 0 };
   runtime.applySpeciesAppearance = (slot: { species: unknown }, species: unknown) => { slot.species = species; }; runtime.burstDebris = () => {};
   runtime.slots = Array.from({length:14},()=>({status:'idle',root:new THREE.Group(),vel:{x:0,y:0},species:getSpecies('bobwhite'),
     wingLMesh:{morphTargetInfluences:[0]},wingRMesh:{morphTargetInfluences:[0]}}));
   const add = (id:number,coveyId:number,x:number,y:number) => birds.push({id,coveyId,pos:{x,y},state:'flushed',speciesId:'bobwhite',runs:false,runEnergy:0,restingMs:0,nerveMs:0});
-  return { runtime, birds, add, finishRise };
+  return { runtime, birds, add, finishRise, slopes };
 }
 
 describe('continuous Quail coveys', () => {
@@ -376,5 +378,73 @@ describe('continuous Quail coveys', () => {
     f.runtime.tickBirds(1000/30);f.runtime.slots.forEach(s=>seen.add(s.simId));
     expect([...seen].sort((a,b)=>a-b)).toEqual(Array.from({length:20},(_,i)=>i));
     expect(f.finishRise).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('Chukar launch slope in world flight', () => {
+  const flight = (slope: SlopeApproach | null, species = 'chukar', area = 'chukar-ridge', spatial = true) => {
+    const f = fixture(area); f.runtime.spatialEncounter = spatial;
+    f.add(1, 1, 12, 4); f.birds[0].speciesId = species; f.slopes.set(1, slope);
+    f.runtime.tickBirds(1000 / 30);
+    return f;
+  };
+  const velocity = (f: ReturnType<typeof flight>) => {
+    const s = f.runtime.slots[0]; return [s.vxW, s.vyW, s.vzW];
+  };
+
+  it.each(['chukar-ridge', 'quail-fields'])('applies the earned slope once to actual Chukar flight on %s', area => {
+    const above = flight('above', 'chukar', area), level = flight('level', 'chukar', area), below = flight('below', 'chukar', area), absent = flight(null, 'chukar', area);
+    for (const f of [above, below, absent]) {
+      expect([f.runtime.slots[0].x, f.runtime.slots[0].z, f.runtime.slots[0].delayMs]).toEqual([12, 4, level.runtime.slots[0].delayMs]);
+    }
+    for (let tick = 1; tick <= 75; tick++) {
+      for (const f of [above, level, below, absent]) f.runtime.tickBirds(1000 / 30);
+      const a = velocity(above), l = velocity(level), b = velocity(below);
+      expect(velocity(absent)).toEqual(l);
+      for (const index of [0, 2]) { expect(a[index]).toBeCloseTo(l[index] * .82, 10); expect(b[index]).toBeCloseTo(l[index] * 1.15, 10); }
+      expect(a[1]).toBeCloseTo(l[1] * .82 * .85, 10); expect(b[1]).toBeCloseTo(l[1] * 1.15, 10);
+    }
+    expect(above.runtime.slots[0].x - 12).toBeCloseTo((level.runtime.slots[0].x - 12) * .82, 10);
+    expect(below.runtime.slots[0].z - 4).toBeCloseTo((level.runtime.slots[0].z - 4) * 1.15, 10);
+  });
+
+  it('keeps the relative reward after the base horizontal cap without compounding it', () => {
+    const variants = [flight('above'), flight('level'), flight('below')];
+    for (const f of variants) { f.runtime.slots[0].vel.x = 10000; f.runtime.slots[0].vel.y = -1000; }
+    for (let tick = 0; tick < 15; tick++) {
+      variants.forEach(f => f.runtime.tickBirds(1000 / 30));
+      variants.forEach((f, i) => expect(Math.hypot(f.runtime.slots[0].vxW, f.runtime.slots[0].vzW)).toBeCloseTo(18.5 * [.82, 1, 1.15][i], 10));
+    }
+  });
+
+  it.each(['hun', 'bobwhite', 'ringneck'])('leaves %s bycatch unchanged on Chukar Ridge', species => {
+    const variants = [flight('above', species), flight(null, species), flight('below', species)];
+    for (let tick = 0; tick < 60; tick++) {
+      variants.forEach(f => f.runtime.tickBirds(1000 / 30));
+      expect(velocity(variants[0])).toEqual(velocity(variants[1])); expect(velocity(variants[2])).toEqual(velocity(variants[1]));
+    }
+  });
+
+  it('does not alter the legacy nonspatial 3D controller', () => {
+    const variants = [flight('above', 'chukar', 'chukar-ridge', false), flight(null, 'chukar', 'chukar-ridge', false)];
+    for (let tick = 0; tick < 60; tick++) { variants.forEach(f => f.runtime.tickBirds(1000 / 30)); expect(velocity(variants[0])).toEqual(velocity(variants[1])); }
+  });
+
+  it('retains each overlapping rise through queue delay, camera changes, and slot reuse', () => {
+    const f = fixture('chukar-ridge');
+    for (let id = 1; id <= 15; id++) { f.add(id, id <= 14 ? 1 : 2, 15, id); f.birds.at(-1)!.speciesId = 'chukar'; f.slopes.set(id, id <= 14 ? 'above' : 'below'); }
+    // A sibling Hun shares the rise, but not the Chukar flight payoff.
+    f.birds[1].speciesId = 'hun';
+    f.runtime.tickBirds(1000 / 30);
+    expect(f.runtime.slots.every(s => s.flight.slopeApproach === 'above')).toBe(true);
+    expect(f.runtime.slots.find(s => s.simId === 2)!.species.id).toBe('hun');
+    // Authority may settle later and the player may turn; the queued launch
+    // must retain its own actual event, not query whichever rise is newest.
+    f.slopes.clear(); f.runtime.listener = new THREE.PerspectiveCamera(); f.runtime.listener.position.y = 150;
+    f.runtime.slots[0].status = 'done'; f.runtime.tickBirds(1000 / 30);
+    const reused = f.runtime.slots.find(s => s.simId === 15)!; expect(reused.flight.slopeApproach).toBe('below');
+    reused.status = 'done'; f.add(16, 3, 16, 4); f.birds.at(-1)!.speciesId = 'chukar'; f.runtime.tickBirds(1000 / 30);
+    expect(f.runtime.slots.find(s => s.simId === 16)!.flight.slopeApproach).toBeNull();
   });
 });
