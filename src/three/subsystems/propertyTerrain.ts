@@ -13,6 +13,7 @@ import { createPheasantHomesteadGround } from '../../game/pheasantHomesteadGroun
 import { sharptailGroundZones } from '../../game/sharptailLandscape';
 import { sharptailAccentGroundAt } from './sharptailAccents';
 import { sharptailMeadowAt, SHARPTAIL_MEADOW_COLORS } from './sharptailMeadow';
+import { sharptailBandSurfaceTexture, SHARPTAIL_BAND_SURFACE_FRAGMENT } from './sharptailBandSurface';
 import { sharptailMeadowNormalTexture, SHARPTAIL_SURFACE_COLOR_FRAGMENT, SHARPTAIL_SURFACE_NORMAL_FRAGMENT } from './sharptailMeadowSurface';
 
 type Paint = (landscape: LandscapeModel, x: number, y: number, out: THREE.Color) => THREE.Color;
@@ -55,7 +56,7 @@ const AREA_PALETTE_OVERRIDES: Record<string, Partial<Record<'dark' | 'mid' | 'li
 /** The generic property ground has its own restrained surface response. It
  * shares the Firewatch-style sun drench with the tuned fields, but does not
  * inherit Quail's litter, stone, and sward assumptions. */
-const PROPERTY_SURFACE_DECLS = /* glsl */ `
+const propertySurfaceDeclarations = (prairie: boolean) => /* glsl */ `
 uniform vec2 uSunXZ;
 uniform vec3 uSunTint;
 uniform float uSunK;
@@ -68,9 +69,18 @@ uniform float uCloudT;
 varying vec3 vPropertyWorld;
 
 float propertyHash(vec2 p) {
+${prairie ? `
+  // Integer lattice hashing has no directional float precision bands at
+  // exterior-world coordinates. This field is supported by WebGL2.
+  uvec2 cell = uvec2(ivec2(p));
+  uint h = (cell.x * 374761393u) ^ (cell.y * 668265263u);
+  h = (h ^ (h >> 13u)) * 1274126177u;
+  return float(h ^ (h >> 16u)) / 4294967295.0;
+` : `
   p = fract(p * vec2(123.34, 456.21));
   p += dot(p, p + 45.32);
   return fract(p.x * p.y);
+`}
 }
 float propertyNoise(vec2 p) {
   vec2 i = floor(p);
@@ -85,21 +95,23 @@ float propertyNoise(vec2 p) {
 // Keep fine procedural noise subdued; mipmapped art supplies nearby detail
 // without high-contrast subpixel noise in the long grazing-angle view.
 const propertySurfaceFragment = (prairie: boolean) => /* glsl */ `
-float pFine = propertyNoise(vPropertyWorld.xz * 0.62);
-float pMeso = propertyNoise(vPropertyWorld.xz * 0.095 + vec2(19.0, 47.0));
-float pMacro = propertyNoise(vPropertyWorld.xz * 0.021 + vec2(71.0, 11.0));
+vec2 pNoise = ${prairie ? 'mat2(.8,-.6,.6,.8) * (vPropertyWorld.xz - uPropertyFloorOrigin)' : 'vPropertyWorld.xz'};
+float pFine = propertyNoise(pNoise * 0.62);
+float pMeso = propertyNoise(pNoise * 0.095 + vec2(19.0, 47.0));
+float pMacro = propertyNoise(pNoise * 0.021 + vec2(71.0, 11.0));
 ${prairie ? `
 // Fine ground noise must average out at grazing angles. The larger painted
 // canopy below carries distance; unresolved cells must not turn into bands.
 vec2 pFootprint = fwidth(vPropertyWorld.xz);
 float pSpan = max(pFootprint.x, pFootprint.y);
-pFine = mix(.5, pFine, 1.0 - smoothstep(.35, 1.4, pSpan * .62));
-pMeso = mix(.5, pMeso, 1.0 - smoothstep(.35, 1.4, pSpan * .095));
+pFine = mix(.5, pFine, 1.0 - smoothstep(.15, .6, pSpan * .62));
+pMeso = mix(.5, pMeso, 1.0 - smoothstep(.15, .6, pSpan * .095));
 ` : ''}
 float pDetail = pFine * 0.42 + pMeso * 0.38 + pMacro * 0.20;
 diffuseColor.rgb *= ${prairie ? '0.88 + pDetail * 0.24' : '0.93 + pDetail * 0.14'};
 diffuseColor.rgb *= 1.0 + (pMeso - 0.5) * 0.08;
 
+${prairie ? SHARPTAIL_BAND_SURFACE_FRAGMENT : ''}
 vec2 pToSun = vPropertyWorld.xz - cameraPosition.xz;
 float pDistance = length(pToSun);
 float pAzimuth = clamp(dot(pToSun / max(pDistance, 1e-3), uSunXZ), 0.0, 1.0);
@@ -109,8 +121,8 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uSunTint, min(pLobe * 0.52, 0.46));
 float pCool = uCoolK * (1.0 - min(pLobe * 2.2, 1.0));
 diffuseColor.rgb = mix(diffuseColor.rgb, uCoolTint, pCool * 0.72);
 
-float pCloud = sin(vPropertyWorld.x * 0.081 + uCloudT)
-  * sin(vPropertyWorld.z * 0.057 + 1.4 + uCloudT * 0.71);
+float pCloud = ${prairie ? 'propertyNoise(pNoise * .012 + vec2(uCloudT * .05, uCloudT * .02))' : `sin(vPropertyWorld.x * 0.081 + uCloudT)
+  * sin(vPropertyWorld.z * 0.057 + 1.4 + uCloudT * 0.71)`};
 diffuseColor.rgb *= 1.0 - 0.16 * smoothstep(0.28, 0.78, pCloud) * uCloudShK;
 `;
 
@@ -300,6 +312,7 @@ export class PropertyTerrain {
   private soil = { value: null as THREE.Texture | null };
   private soilStrength = { value: 0 };
   private prairieSurface = { value: null as THREE.DataTexture | null };
+  private prairieBands = { value: null as THREE.DataTexture | null };
   private light = {
     uSunXZ: { value: new THREE.Vector2(1, 0) },
     uSunTint: { value: new THREE.Color() },
@@ -331,11 +344,14 @@ export class PropertyTerrain {
     const painted = landscape.area.id === 'pheasant-coverts' || wetSoil || prairie;
     const woodland = landscape.area.id === 'grouse-woods';
     const origin = landscape.propertyToWorld(0, 0, { x: 0, z: 0 });
-    this.material.customProgramCacheKey = () => `property-surface-v${prairie ? 11 : 6}-${landscape.area.terrain.kind}-${painted}-${woodland}-${wetSoil}-${prairie}`;
+    this.material.customProgramCacheKey = () => `property-surface-v${prairie ? 13 : 6}-${landscape.area.terrain.kind}-${painted}-${woodland}-${wetSoil}-${prairie}`;
     this.material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, uniforms);
       shader.uniforms.uPropertyFloorOrigin = { value: new THREE.Vector2(origin.x, origin.z) };
-      if (prairie) shader.uniforms.uPrairieSurfaceNormal = this.prairieSurface;
+      if (prairie) {
+        shader.uniforms.uPrairieSurfaceNormal = this.prairieSurface;
+        shader.uniforms.uPrairieBands = this.prairieBands;
+      }
       if (painted) {
         shader.uniforms.uPropertySoil = this.soil;
         shader.uniforms.uPropertySoilStrength = this.soilStrength;
@@ -345,7 +361,7 @@ export class PropertyTerrain {
         .replace('#include <common>', '#include <common>\nvarying vec3 vPropertyWorld;')
         .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n\tvPropertyWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;');
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform vec2 uPropertyFloorOrigin;\n' + PROPERTY_SURFACE_DECLS + (painted ? '\nuniform sampler2D uPropertySoil; uniform float uPropertySoilStrength; uniform vec2 uPropertySoilOrigin;' : '') + (prairie ? '\nuniform sampler2D uPrairieSurfaceNormal;' : ''))
+        .replace('#include <common>', '#include <common>\nuniform vec2 uPropertyFloorOrigin;\n' + propertySurfaceDeclarations(prairie) + (painted ? '\nuniform sampler2D uPropertySoil; uniform float uPropertySoilStrength; uniform vec2 uPropertySoilOrigin;' : '') + (prairie ? '\nuniform sampler2D uPrairieSurfaceNormal; uniform sampler2D uPrairieBands;' : ''))
         .replace('#include <color_fragment>', '#include <color_fragment>\n' + propertySurfaceFragment(prairie) + (prairie ? SHARPTAIL_SURFACE_COLOR_FRAGMENT : '') + (painted ? `
           vec2 soilUV = (vPropertyWorld.xz - uPropertySoilOrigin) / ${prairie ? '1.6' : '4.8'};
           vec3 soilA = texture2D(uPropertySoil, soilUV).rgb;
@@ -363,18 +379,17 @@ export class PropertyTerrain {
           float soilFade = 1.0 - smoothstep(${prairie ? '30.0, 110.0' : '24.0, 90.0'}, distance(vPropertyWorld.xz, cameraPosition.xz));
           diffuseColor.rgb *= mix(1.0, soilDetail, soilFade * uPropertySoilStrength);
           ${prairie ? `
-          // A second, coarser sample of the same native sward
-          // carries unresolved stand grain rather than exposed dirt. Its broad
-          // value masses persist after the close grass/soil fade and are
-          // stationary in property space on both geometry detail levels.
-          vec2 meadowUV = mat2(.8, -.6, .6, .8) *
-            (vPropertyWorld.xz - uPropertySoilOrigin) / 60.0 + vec2(.31, .67);
-          float meadowValue = dot(texture2D(uPropertySoil, meadowUV).rgb, vec3(.2126, .7152, .0722));
-          vec2 meadowFootprint = fwidth(meadowUV);
-          float meadowResolved = 1.0 - smoothstep(.05, .22, max(meadowFootprint.x, meadowFootprint.y));
-          float meadowRange = smoothstep(18.0, 75.0, pDistance) * (1.0 - smoothstep(320.0, 680.0, pDistance));
-          float meadowDetail = clamp(meadowValue / 0.1740556, .68, 1.32);
-          diffuseColor.rgb *= mix(1.0, meadowDetail, meadowRange * meadowResolved * uPropertySoilStrength * .25);
+          // Stand-scale basal litter remains legible between middle-distance
+          // plants. Upscaling the fine straw atlas to 60m created long watery
+          // streaks; nested, filtered patches have no imposed stripe direction.
+          vec2 prairieGround = pNoise;
+          float standNoise = propertyNoise(prairieGround * .16 + vec2(3.7, 11.3));
+          float standEdge = propertyNoise(prairieGround * .62 + vec2(27.1, 9.2));
+          float standResolved = 1.0 - smoothstep(.08, .55, pSpan * .16);
+          float standGrain = mix(.5, standEdge, 1.0 - smoothstep(.12, .55, pSpan * .62));
+          float standMass = smoothstep(.30, .68, standNoise * .72 + standGrain * .28);
+          float standRange = smoothstep(8.0, 40.0, pDistance) * (1.0 - smoothstep(380.0, 750.0, pDistance));
+          diffuseColor.rgb *= mix(1.0, mix(.90, 1.08, standMass), standRange * standResolved);
           ` : ''}
         ` : '') + (woodland ? `
           vec2 duffPosition = vPropertyWorld.xz - uPropertyFloorOrigin;
@@ -413,7 +428,10 @@ export class PropertyTerrain {
       }
     }
     if (this.abort.signal.aborted) return;
-    if (prairie) this.prairieSurface.value = sharptailMeadowNormalTexture();
+    if (prairie) {
+      this.prairieSurface.value = sharptailMeadowNormalTexture();
+      this.prairieBands.value = sharptailBandSurfaceTexture();
+    }
     this.nearDistance = quailGroundNearDistance(ctx.quality as Quality);
     this.applyTod(ctx.timeOfDay);
     ctx.events.addEventListener('tod', (event) => {
@@ -500,6 +518,8 @@ export class PropertyTerrain {
     this.soil.value = null;
     this.prairieSurface.value?.dispose();
     this.prairieSurface.value = null;
+    this.prairieBands.value?.dispose();
+    this.prairieBands.value = null;
     this.tiles.length = 0;
     this.horizon.length = 0;
   }

@@ -38,13 +38,13 @@ it.each(['pheasant-coverts', 'woodcock-bottoms', 'sharptail-prairie'])('releases
   expect(ctx.scene.children).toHaveLength(0);
 });
 
-it('owns and releases the bounded Sharptail surface texture with the field', async () => {
+it('owns and releases the bounded Sharptail surface and vegetation textures with the field', async () => {
   vi.spyOn(THREE.TextureLoader.prototype, 'loadAsync').mockResolvedValue(new THREE.Texture());
   const disposed = vi.spyOn(THREE.DataTexture.prototype, 'dispose');
   const { terrain, ctx } = fixture('sharptail-prairie');
   await terrain.init(ctx);
   expect(disposed).not.toHaveBeenCalled();
   terrain.dispose(ctx);
-  expect(disposed).toHaveBeenCalledOnce();
+  expect(disposed).toHaveBeenCalledTimes(2);
   expect(ctx.scene.children).toHaveLength(0);
 });

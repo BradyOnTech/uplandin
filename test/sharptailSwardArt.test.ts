@@ -93,7 +93,10 @@ describe('Sharptail mixed grass art contracts', () => {
     expect(center).toBeGreaterThan(30);
     // Normalize by each sampled strip's width: center .5m, two wheels .6m.
     expect(center / .5).toBeGreaterThan(wheels / .6 * 1.8);
-    const far = (ctx.scene.children as THREE.InstancedMesh[]).find(mesh => mesh.geometry.userData.detail === 'distant')!;
+    const far = (ctx.scene.children as THREE.InstancedMesh[]).find(mesh => mesh instanceof THREE.InstancedMesh
+      && mesh.userData.kind === 'sharptail-rooted-middle-sward')!;
+    expect(far).toBeDefined();
+    expect(far.count).toBeGreaterThan(0);
     let farDisposed = false;
     far.geometry.addEventListener('dispose', () => { farDisposed = true; });
     grass.dispose(ctx);

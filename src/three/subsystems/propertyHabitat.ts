@@ -9,9 +9,27 @@ import type { Ctx, Subsystem } from '../engine';
 import { sharptailForbGeometry, sharptailShrubGeometry, sharptailStoneGeometry, sharptailTreeGeometry } from './sharptailWoody';
 import { sharptailAccentPlacements } from './sharptailAccents';
 import { sharptailDrawBrushPlacements } from './sharptailDrawBrush';
+import { sampleSharptailHorizonSurface } from './sharptailHorizonGeometry';
 import { VegetationWind, VEGETATION_GUST_GLSL, VEGETATION_INSTANCE_WIND_GLSL } from './vegetationWind';
 
 type HabitatKind = 'trunk' | 'canopy' | 'shrub' | 'reed' | 'rock' | 'cactus' | 'log';
+
+/** Exterior sage uses affine grounding, so its basis is not orthogonal.
+ * Cofactor rows provide the full inverse and cancel slope-induced vertical
+ * motion. Only horizontal scale controls the existing crown sway envelope. */
+const SHARPTAIL_SHRUB_INSTANCE_WIND_GLSL = /* glsl */`
+#ifdef USE_INSTANCING
+vec3 vegetationInstanceWind(vec2 toward) {
+  vec3 a=instanceMatrix[0].xyz,b=instanceMatrix[1].xyz,c=instanceMatrix[2].xyz;
+  vec3 world=vec3(toward.x,0.,toward.y);
+  vec3 bc=cross(b,c),ca=cross(c,a),ab=cross(a,b);
+  float inverseDeterminant=1./dot(a,bc);
+  float envelope=sqrt(max(min(dot(a.xz,a.xz),dot(c.xz,c.xz)),.000001));
+  float gain=inverseDeterminant*envelope;
+  return vec3(dot(bc,world)*gain,dot(ca,world)*gain,dot(ab,world)*gain);
+}
+#endif
+`;
 
 interface HabitatProfile {
   /** Property pixels between candidate sites. */
@@ -34,6 +52,8 @@ interface HabitatPlacement {
   scale: number;
   /** Low draw colonies broaden crowns without turning shrubs into trees. */
   spread?: number;
+  /** Exterior shrubs follow the rendered plane while keeping stems upright. */
+  horizonGrounded?: boolean;
   yOffset: number;
   yaw: number;
   color: number;
@@ -399,7 +419,7 @@ export class PropertyHabitatSystem implements Subsystem {
     const addHero = (kind: HabitatKind, x: number, y: number, size: number, yaw: number, yOffset = 0, tint?: number,
       draw?: { exterior: boolean; spread: number }): void => {
       if (!lists.has(kind)) return;
-      if (!draw?.exterior && (x < minX + 8 || x > maxX - 8 || y < minY + 8 || y > maxY - 8)) return;
+      if (!draw && (x < minX + 8 || x > maxX - 8 || y < minY + 8 || y > maxY - 8)) return;
       this.landscape.propertyToWorld(x, y, this.world);
       if (Math.hypot(this.world.x - HUNT_WORLD_ANCHOR.x, this.world.z - HUNT_WORLD_ANCHOR.z) < profile.nearClear + 6) return;
       // Use the paired crown's footprint for the trunk too, so a route
@@ -410,15 +430,18 @@ export class PropertyHabitatSystem implements Subsystem {
       if (!propertyPositionClear(area, x, y, clearanceRadius)) return;
       if (wetPools.some(pond => wetPondRadius(pond, x, y) < 1.2)) return;
       this.landscape.surfaceAtProperty(x, y, this.surface);
+      const horizonGrounded = area.id === 'sharptail-prairie' && draw?.exterior === true;
+      if (horizonGrounded && !sampleSharptailHorizonSurface(this.landscape, x, y, this.surface)) return;
       const palette = profile.colors[kind];
       lists.get(kind)!.push({
         x: this.world.x,
-        y: this.surface.height,
+        y: this.surface.height - (horizonGrounded ? .03 : 0),
         z: this.world.z,
         gradeX: this.surface.gradeX,
         gradeZ: this.surface.gradeZ,
         scale: size,
         spread: draw?.spread,
+        horizonGrounded,
         yOffset,
         yaw,
         color: tint ?? palette[0],
@@ -447,8 +470,8 @@ export class PropertyHabitatSystem implements Subsystem {
       }
       for (const item of sharptailDrawBrushPlacements(ctx.quality === 'lite')) {
         // Same shrub geometry/material/batch as the interior. Exterior roots
-        // sample the actual continued landscape above; no boundary clamp or
-        // flattened edge elevation. Interior route/spawn rules still apply.
+        // use the actual coarse horizon triangles, whose chords can differ
+        // from analytic heights by a metre. Interior placement stays exact.
         addHero('shrub', item.x, item.y, item.scale, item.yaw, 0, item.color, item);
       }
     }
@@ -541,7 +564,7 @@ export class PropertyHabitatSystem implements Subsystem {
       // Hard caps keep a worst-case wide map within a predictable mobile
       // budget; deterministic order means the cutoff never shimmers.
       const cap = area.id === 'sharptail-prairie'
-        ? kind === 'shrub' ? ctx.quality === 'lite' ? 416 : 680
+        ? kind === 'shrub' ? ctx.quality === 'lite' ? 536 : 880
           : kind === 'rock' || kind === 'reed' ? ctx.quality === 'lite' ? 48 : 72 : 60
         : woodland ? 12000 : ctx.quality === 'lite' ? 420 : kind === 'canopy' || kind === 'trunk' ? 280 : 760;
       const heroes = placements.filter((placement) => placement.hero);
@@ -560,18 +583,28 @@ export class PropertyHabitatSystem implements Subsystem {
       // Prairie crowns and open sage carry baked face/leaf colors; other
       // habitat primitives retain their existing instance-tint-only path.
       const material = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true, vertexColors: !!prairieTree && kind !== 'trunk', side: prairieTree && kind === 'shrub' ? THREE.DoubleSide : THREE.FrontSide });
+      if (prairieTree && kind === 'shrub') material.color.setHex(0xd4dac1);
       material.onBeforeCompile = (shader) => {
         shader.uniforms.uPropertyHabitatWind = this.wind;
         if(prairieTree){
           shader.uniforms.uHabitatWindDirection=this.huntWind.direction;
           shader.uniforms.uHabitatWindStrength=this.huntWind.strength;
           shader.vertexShader=shader.vertexShader
-            .replace('#include <common>','#include <common>\nuniform float uPropertyHabitatWind;\nuniform vec2 uHabitatWindDirection;\nuniform float uHabitatWindStrength;'+VEGETATION_GUST_GLSL+VEGETATION_INSTANCE_WIND_GLSL)
+            .replace('#include <common>','#include <common>\nuniform float uPropertyHabitatWind;\nuniform vec2 uHabitatWindDirection;\nuniform float uHabitatWindStrength;'+VEGETATION_GUST_GLSL+(kind==='shrub'?SHARPTAIL_SHRUB_INSTANCE_WIND_GLSL:VEGETATION_INSTANCE_WIND_GLSL))
             .replace('#include <begin_vertex>',`#include <begin_vertex>
               #ifdef USE_INSTANCING
               float habitatGust=vegetationGust(uPropertyHabitatWind,instanceMatrix[3].xz,uHabitatWindDirection);
               transformed+=vegetationInstanceWind(uHabitatWindDirection)*habitatGust*uHabitatWindStrength*max(position.y,0.)*${kind==='reed'?'.14':kind==='shrub'?'.055':kind==='canopy'?'.018':'0.0'};
               #endif`);
+          if (kind === 'shrub') {
+            // Open sage leaves receive diffuse sky light from both sides.
+            // Keep their broad facet response, but avoid black downward
+            // faces that turn an overlapping crown into a stack of roofs.
+            shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>
+              vec3 sageSkyUp = normalize(mat3(viewMatrix) * vec3(0.0, 1.0, 0.0));
+              if (dot(normal, sageSkyUp) < 0.0) normal = -normal;
+              normal = normalize(normal * .4 + sageSkyUp * .6);`);
+          }
           return;
         }
         shader.vertexShader = shader.vertexShader
@@ -584,7 +617,7 @@ export class PropertyHabitatSystem implements Subsystem {
             transformed.z += sin(uPropertyHabitatWind * .61 + habitatPhase * 1.27) * habitatSway * .58 * (position.y + .12);
             #endif`);
       };
-      material.customProgramCacheKey = () => `property-habitat-${kind}-${prairieTree?'hunt-wind-v2':'wind-v1'}`;
+      material.customProgramCacheKey = () => `property-habitat-${kind}-${prairieTree ? kind === 'shrub' ? 'hunt-wind-sage-affine-v4' : 'hunt-wind-v2' : 'wind-v1'}`;
       const batches = new Map<string, HabitatPlacement[]>();
       for (const item of selected) {
         const key = woodland ? `${Math.floor(item.x / 80)},${Math.floor(item.z / 80)}` : 'property';
@@ -620,6 +653,7 @@ export class PropertyHabitatSystem implements Subsystem {
           this.rotation.setFromUnitVectors(this.up, this.normal);
           this.yaw.setFromAxisAngle(this.up, item.yaw);
           this.rotation.multiply(this.yaw);
+          if (item.horizonGrounded) this.rotation.copy(this.yaw);
           this.scale.setScalar(item.scale);
           if (item.spread !== undefined) this.scale.set(item.scale * item.spread, item.scale, item.scale * item.spread);
           if (kind === 'trunk' && !prairieTree) this.scale.set(item.scale * (woodland ? .16 : .62), item.scale * 1.3, item.scale * (woodland ? .16 : .62));
@@ -631,7 +665,16 @@ export class PropertyHabitatSystem implements Subsystem {
           if (kind === 'canopy' && !prairieTree) this.scale.set(item.scale * 1.2, item.scale * .95, item.scale);
           if (kind === 'cactus') this.scale.set(item.scale, item.scale, item.scale);
           if (kind === 'log') this.scale.set(item.scale, item.scale * .72, item.scale * .72);
-          mesh.setMatrixAt(i, this.matrix.compose(this.position, this.rotation, this.scale));
+          this.matrix.compose(this.position, this.rotation, this.scale);
+          if (item.horizonGrounded) {
+            // Lift the basal footprint along the actual triangle plane.
+            // Shearing only horizontal axes leaves the vertical stem axis
+            // upright instead of leaning the entire shrub normal to a bank.
+            const m = this.matrix.elements;
+            m[1] = item.gradeX * m[0] + item.gradeZ * m[2];
+            m[9] = item.gradeX * m[8] + item.gradeZ * m[10];
+          }
+          mesh.setMatrixAt(i, this.matrix);
           this.color.setHex(item.color).multiplyScalar(.9 + hashCell(i, selected.length, this.landscape.area.terrain.seed) * .16);
           mesh.setColorAt(i, this.color);
         }

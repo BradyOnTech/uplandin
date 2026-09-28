@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { getArea } from '../src/game/areas';
 import { LandscapeModel, PROPERTY_PX_TO_M } from '../src/game/landscape';
 import { PropertyTerrain } from '../src/three/subsystems/propertyTerrain';
-import { buildSharptailHorizonGeometries } from '../src/three/subsystems/sharptailHorizonGeometry';
+import { buildSharptailHorizonGeometries, sampleSharptailHorizonSurface } from '../src/three/subsystems/sharptailHorizonGeometry';
 
 const area = getArea('sharptail-prairie');
 
@@ -28,6 +28,43 @@ function edge(geometry: THREE.BufferGeometry, worldZ: number, minX: number, maxX
 }
 
 describe('joined Sharptail exterior terrain', () => {
+  it.each(['west-track', 'south-gate'])('samples actual triangle heights and plane gradients without meshes at %s', entry => {
+    const { landscape, geometries } = build(entry);
+    const material = new THREE.MeshBasicMaterial(), meshes = geometries.map(geometry => new THREE.Mesh(geometry, material));
+    const ray = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
+    const world = { x: 0, z: 0 }, out = { height: 0, gradeX: 0, gradeZ: 0 };
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), bary = new THREE.Vector3();
+    let heights = 0, planes = 0;
+    try {
+      // Include every exterior strip, joined edges, opposite cell triangles,
+      // and the curved shoulder where analytic roots floated over a metre.
+      for (const y of [-1000, -913.4, -.01, 0, 211.9, 614.8928, 800, 800.01, 1173.2, 1800]) {
+        for (const x of [-1000, -841.3, -173.4528, -13.7, -.01, 412.3, 1400.01, 1713.9, 2400]) {
+          if (!sampleSharptailHorizonSurface(landscape, x, y, out)) continue;
+          landscape.propertyToWorld(x, y, world);
+          ray.ray.origin.set(Math.fround(world.x), 1000, Math.fround(world.z));
+          const hit = ray.intersectObjects(meshes, false)[0];
+          expect(hit).toBeDefined();
+          expect(out.height).toBeCloseTo(hit.point.y, 5); heights++;
+          const positions = (hit.object as THREE.Mesh).geometry.getAttribute('position'), face = hit.face!;
+          a.fromBufferAttribute(positions, face.a); b.fromBufferAttribute(positions, face.b); c.fromBufferAttribute(positions, face.c);
+          THREE.Triangle.getBarycoord(hit.point, a, b, c, bary);
+          // On a shared edge either face can legitimately own the ray hit.
+          if (Math.min(bary.x, bary.y, bary.z) > .00001) {
+            expect(out.gradeX).toBeCloseTo(-face.normal.x / face.normal.y, 5);
+            expect(out.gradeZ).toBeCloseTo(-face.normal.z / face.normal.y, 5); planes++;
+          }
+        }
+      }
+      expect(heights).toBeGreaterThan(70); expect(planes).toBeGreaterThan(30);
+      for (const [x, y] of [[0, 0], [100, 500], [1400, 800], [-1001, 400], [500, 1801], [NaN, 0]]) {
+        out.height = 42; out.gradeX = 12; out.gradeZ = 6;
+        expect(sampleSharptailHorizonSurface(landscape, x, y, out)).toBe(false);
+        expect(out).toEqual({ height: 42, gradeX: 12, gradeZ: 6 });
+      }
+    } finally { geometries.forEach(geometry => geometry.dispose()); material.dispose(); }
+  });
+
   it('shares every position, lighting normal and ground color along all four strip joins', () => {
     const { landscape, geometries } = build();
     const [north, south, west, east] = geometries;

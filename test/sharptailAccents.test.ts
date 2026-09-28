@@ -118,16 +118,19 @@ describe('composed low prairie habitat', () => {
     const meshes = ctx.scene.children as THREE.InstancedMesh[];
     expect(meshes).toHaveLength(5);
     const shrubs = meshes.find(mesh => mesh.name.includes('shrub'))!;
-    expect(shrubs.count).toBe(quality === 'lite' ? 410 : 593);
+    expect(shrubs.count).toBeGreaterThan(quality === 'lite' ? 470 : 693);
+    expect(shrubs.count).toBeLessThanOrEqual(quality === 'lite' ? 536 : 880);
     let triangles = 0;
     for (const mesh of meshes) triangles += (mesh.geometry.index?.count ?? mesh.geometry.attributes.position.count) / 3 * mesh.count;
     // Complete habitat, including the unchanged49 tree pairs: the closer
     // western stone apron and wind lip add34/51 shrubs and5/8 each of
     // bootstones/forbs; eight broken draw colonies add96/160 shrubs. The
     // complete property and exterior still use only five existing batches.
+    // Connected drainage fringes add at most96/160 low roots to those batches.
+    // The approaching boundary cape adds24/40 roots below1.45m.
     // The open shrub kit may spend260 triangles per root, and branched
     // forbs120. Existing roots and five draw batches remain unchanged.
-    expect(triangles).toBeLessThanOrEqual(quality === 'lite' ? 123000 : 175000);
+    expect(triangles).toBeLessThanOrEqual(quality === 'lite' ? 155000 : 228000);
     const matrix = new THREE.Matrix4(), vertex = new THREE.Vector3();
     const rocks = meshes.find(mesh => mesh.name.includes('rock'))!;
     for (let i = 0; i < rocks.count; i++) {

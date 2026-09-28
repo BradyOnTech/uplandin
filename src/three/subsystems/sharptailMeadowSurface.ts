@@ -81,10 +81,11 @@ export function sharptailMeadowNormalTexture(): THREE.DataTexture {
   return texture;
 }
 
-/** Shared by ground and the connected canopy, so blade fade never exposes
- * an unrelated surface. Density and lighting use one filtered texture read. */
+/** Fine basal sward grain. The old 192m repeat enlarged this into long
+ * water-like folds. Use the same filtered data at grass scale while actual
+ * middle-distance plants supply the silhouette. One shared texture read. */
 export const SHARPTAIL_SURFACE_COLOR_FRAGMENT = /* glsl */ `
-  vec2 swardUV = (vPropertyWorld.xz - uPropertyFloorOrigin) / ${SHARPTAIL_SURFACE_METRES.toFixed(1)};
+  vec2 swardUV = (vPropertyWorld.xz - uPropertyFloorOrigin) / ${(SHARPTAIL_SURFACE_METRES / 8).toFixed(1)};
   vec4 swardTexel = texture2D(uPrairieSurfaceNormal, swardUV);
   vec2 swardFootprint = fwidth(swardUV);
   float swardResolved = 1.0 - smoothstep(.012, .09, max(swardFootprint.x, swardFootprint.y));
@@ -105,5 +106,5 @@ export const SHARPTAIL_SURFACE_NORMAL_FRAGMENT = /* glsl */ `
   vec3 swardZ = mat3(viewMatrix) * vec3(0.0, 0.0, 1.0);
   swardX -= normal * dot(normal, swardX);
   swardZ -= normal * dot(normal, swardZ);
-  normal = normalize(normal + (swardX * swardNormal.x + swardZ * swardNormal.y) * swardRange * swardResolved * .35);
+  normal = normalize(normal + (swardX * swardNormal.x + swardZ * swardNormal.y) * swardRange * swardResolved * .20);
 `;

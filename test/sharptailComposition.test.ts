@@ -9,6 +9,7 @@ import { PropertyHabitatSystem } from '../src/three/subsystems/propertyHabitat';
 import { SharptailSwardField } from '../src/three/subsystems/sharptailSward';
 import { sharptailGrassGeometry } from '../src/three/subsystems/sharptailGrass';
 import { sharptailShrubGeometry, sharptailTreeGeometry } from '../src/three/subsystems/sharptailWoody';
+import { SHARPTAIL_MID_SWARD_BUDGET } from '../src/three/subsystems/sharptailMidSward';
 
 const area = getArea('sharptail-prairie');
 
@@ -100,12 +101,33 @@ describe('Sharptail full-property native sward', () => {
     const grass = new GrassSystem(landscape); grass.init(ctx); grass.update(ctx);
     const meshes = ctx.scene.children as THREE.Mesh[];
     const ring = meshes.filter((mesh): mesh is THREE.InstancedMesh => mesh instanceof THREE.InstancedMesh && mesh.instanceMatrix.usage === THREE.DynamicDrawUsage);
-    const far = meshes.filter(mesh => mesh.geometry.userData.kind === 'sharptail-middle-sward');
+    const far = meshes.filter((mesh): mesh is THREE.InstancedMesh => mesh instanceof THREE.InstancedMesh
+      && mesh.userData.kind === 'sharptail-rooted-middle-sward');
     expect(ring.reduce((sum, mesh) => sum + mesh.count, 0)).toBeGreaterThan(4000);
     expect(ring.length).toBeLessThan(225);
-    expect(far.reduce((sum, mesh) => sum + mesh.geometry.index!.count / 3, 0)).toBeLessThanOrEqual(quality === 'lite' ? 54000 : 120000);
+    expect(far.length).toBeGreaterThan(0);
+    const triangles = (mesh: THREE.InstancedMesh) =>
+      (mesh.geometry.index?.count ?? mesh.geometry.getAttribute('position').count) / 3 * mesh.count;
+    const storedTriangles = far.reduce((sum, mesh) => sum + triangles(mesh), 0);
+    expect(storedTriangles).toBeGreaterThan(50000);
+    expect(storedTriangles).toBeLessThanOrEqual(quality === 'lite'
+      ? SHARPTAIL_MID_SWARD_BUDGET.liteTriangles : SHARPTAIL_MID_SWARD_BUDGET.highTriangles);
     expect(far.some(mesh => mesh.visible)).toBe(true);
     expect(far.some(mesh => !mesh.visible)).toBe(true);
+    // Stored instances cover the whole prairie and western exterior. Count
+    // the entire submitted chunks in actual views, not one shared base mesh.
+    camera.fov = 70; camera.aspect = 16 / 9; camera.updateProjectionMatrix();
+    const frustum = new THREE.Frustum(), viewProjection = new THREE.Matrix4();
+    let maximumSubmitted = 0;
+    for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 2) {
+      camera.lookAt(point.x + Math.sin(angle) * 100, camera.position.y, point.z + Math.cos(angle) * 100);
+      camera.updateMatrixWorld(true);
+      frustum.setFromProjectionMatrix(viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+      maximumSubmitted = Math.max(maximumSubmitted, far.filter(mesh => mesh.visible && frustum.intersectsObject(mesh))
+        .reduce((sum, mesh) => sum + triangles(mesh), 0));
+    }
+    expect(maximumSubmitted).toBeGreaterThan(1000);
+    expect(maximumSubmitted).toBeLessThan(quality === 'lite' ? 104000 : 195000);
     const matrix = new THREE.Matrix4();
     for (const mesh of ring.filter(mesh => mesh.count > 0)) {
       mesh.getMatrixAt(0, matrix);
