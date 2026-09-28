@@ -3,6 +3,7 @@ import type { AreaConfig } from '../../game/areas';
 import { PROPERTY_PX_TO_M } from '../../game/landscape';
 import { pheasantHomesteadYard } from '../../game/pheasantHabitat';
 import { PHEASANT_GRAIN_BIN } from './pheasantHomestead';
+import { createPheasantHomesteadGround } from '../../game/pheasantHomesteadGround';
 
 type FarmPaint = (x: number, y: number, variation: number, color: THREE.Color) => void;
 type Segment = { ax: number; az: number; dx: number; dz: number; lengthSquared: number };
@@ -49,6 +50,12 @@ export function createPheasantFarmPainter(area: AreaConfig): FarmPaint | undefin
   const shortSward = new THREE.Color(0x8b9068);
   const dryClipping = new THREE.Color(0xa49b76);
   const quietGround = new THREE.Color();
+  const ground = createPheasantHomesteadGround(area)!;
+  const classification = { upper: 0, turnout: 0, drive: 0, bank: 0, grading: 0 };
+  const workingEarth = new THREE.Color(0xa1947a);
+  const bankSward = new THREE.Color(0x76815a);
+  const bankDry = new THREE.Color(0x969572);
+  const bankColor = new THREE.Color();
   const smooth = THREE.MathUtils.smoothstep;
   return (x, y, variation, color) => {
     // Most property vertices never inspect routes. The original five-yard
@@ -77,5 +84,12 @@ export function createPheasantFarmPainter(area: AreaConfig): FarmPaint | undefin
     color.lerp(quietGround, maintained * .88);
     color.lerp(soil, maintained * (.12 + apron * .80));
     color.lerp(gravel, maintained * apron * (.09 + variation * .15));
+    ground.sample(x, y, classification);
+    // Compact earth surfaces and connected grassy shoulders share exactly
+    // the placement masks. Leave the old exterior transition untouched.
+    const working = Math.max(classification.upper, classification.turnout, classification.drive);
+    bankColor.copy(bankSward).lerp(bankDry, .12 + variation * .25);
+    color.lerp(bankColor, classification.bank * .96);
+    color.lerp(workingEarth, working * .92);
   };
 }

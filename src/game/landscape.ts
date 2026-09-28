@@ -8,6 +8,7 @@ import {
 import type { Vec2 } from './types';
 import { quailDrainageAt } from './quailLandscape';
 import { pheasantPondRadii } from './pheasantHabitat';
+import { createPheasantHomesteadGround } from './pheasantHomesteadGround';
 import { PROPERTY_PX_TO_M } from './worldUnits';
 import { chukarAuthoredHeight, chukarGroundZones } from './chukarLandscape';
 import { sharptailAuthoredHeight, sharptailGroundZones } from './sharptailLandscape';
@@ -324,31 +325,49 @@ function pheasantLandform(area: AreaConfig): LandformAdapter {
     }
     return radius;
   };
+  const homesteadGround = createPheasantHomesteadGround(area);
+  let groundPrepared = false;
+  const rawHeight: LandformAdapter['heightAt'] = (x, z, profile, noise) => {
+    const broad = (noise(x * 0.0024 + 170, z * 0.0024 + 170) - 0.5) * profile.broadRelief * 0.75;
+    const swales = (noise(x * 0.007 + 940, z * 0.005 + 940) - 0.5) * profile.rollingRelief * 0.8;
+    const hummocks = (noise(x * 0.035 + 2700, z * 0.035 + 2700) - 0.5) * profile.detailRelief * 0.75;
+    const dropDistance = Math.hypot(x, z - HUNT_WORLD_ANCHOR.z);
+    const dropRise = 2.4 * Math.exp(-(dropDistance * dropDistance) / (2 * 52 * 52));
+    const propertyX = (x - HUNT_WORLD_ANCHOR.x) / PROPERTY_PX_TO_M + canonical.position.x;
+    const propertyY = (z - HUNT_WORLD_ANCHOR.z) / PROPERTY_PX_TO_M + canonical.position.y;
+    let authored = 0;
+    for (const shoulder of shoulders) {
+      authored += shoulder.height * Math.exp(-(((propertyX - shoulder.x) / shoulder.rx) ** 2
+        + ((propertyY - shoulder.y) / shoulder.ry) ** 2));
+    }
+    // Preserve pond floors AND their existing shoreline, then ease into
+    // dry upland relief. Shared water levels and walking barriers stay put.
+    // Both influences are monotonic in normalized pond radius: the nearest
+    // pond supplies maximum wetness and minimum dry relief. Evaluating that
+    // radius once preserves the surface while avoiding repeated hypot,
+    // power and exponential calls for every terrain/vegetation sample.
+    const radius = nearestPondRadius(x, z);
+    const t = Math.max(0, Math.min(1, (radius - 1.5) / 1.2));
+    const dryBlend = t * t * (3 - 2 * t);
+    const wetness = Math.exp(-Math.pow(radius, 3.2));
+    return profile.baseHeight + broad + swales + hummocks + dropRise - wetness * 3.2 + authored * dryBlend;
+  };
   return {
     heightAt(x, z, profile, noise) {
-      const broad = (noise(x * 0.0024 + 170, z * 0.0024 + 170) - 0.5) * profile.broadRelief * 0.75;
-      const swales = (noise(x * 0.007 + 940, z * 0.005 + 940) - 0.5) * profile.rollingRelief * 0.8;
-      const hummocks = (noise(x * 0.035 + 2700, z * 0.035 + 2700) - 0.5) * profile.detailRelief * 0.75;
-      const dropDistance = Math.hypot(x, z - HUNT_WORLD_ANCHOR.z);
-      const dropRise = 2.4 * Math.exp(-(dropDistance * dropDistance) / (2 * 52 * 52));
-      const propertyX = (x - HUNT_WORLD_ANCHOR.x) / PROPERTY_PX_TO_M + canonical.position.x;
-      const propertyY = (z - HUNT_WORLD_ANCHOR.z) / PROPERTY_PX_TO_M + canonical.position.y;
-      let authored = 0;
-      for (const shoulder of shoulders) {
-        authored += shoulder.height * Math.exp(-(((propertyX - shoulder.x) / shoulder.rx) ** 2
-          + ((propertyY - shoulder.y) / shoulder.ry) ** 2));
+      if (!groundPrepared) {
+        homesteadGround?.prepare((px, py) => rawHeight(
+          (px - canonical.position.x) * PROPERTY_PX_TO_M + HUNT_WORLD_ANCHOR.x,
+          (py - canonical.position.y) * PROPERTY_PX_TO_M + HUNT_WORLD_ANCHOR.z,
+          profile, noise,
+        ));
+        groundPrepared = true;
       }
-      // Preserve pond floors AND their existing shoreline, then ease into
-      // dry upland relief. Shared water levels and walking barriers stay put.
-      // Both influences are monotonic in normalized pond radius: the nearest
-      // pond supplies maximum wetness and minimum dry relief. Evaluating that
-      // radius once preserves the surface while avoiding repeated hypot,
-      // power and exponential calls for every terrain/vegetation sample.
-      const radius = nearestPondRadius(x, z);
-      const t = Math.max(0, Math.min(1, (radius - 1.5) / 1.2));
-      const dryBlend = t * t * (3 - 2 * t);
-      const wetness = Math.exp(-Math.pow(radius, 3.2));
-      return profile.baseHeight + broad + swales + hummocks + dropRise - wetness * 3.2 + authored * dryBlend;
+      const height = rawHeight(x, z, profile, noise);
+      return homesteadGround?.apply(
+        (x - HUNT_WORLD_ANCHOR.x) / PROPERTY_PX_TO_M + canonical.position.x,
+        (z - HUNT_WORLD_ANCHOR.z) / PROPERTY_PX_TO_M + canonical.position.y,
+        height,
+      ) ?? height;
     },
     surfaceAt(x, z, _height, slope, _gradeX, _gradeZ, noise, out) {
       const wet = Math.max(Math.exp(-Math.pow(nearestPondRadius(x, z), 3.2)), noise(x * 0.018 + 4400, z * 0.018 + 4400) * 0.28);

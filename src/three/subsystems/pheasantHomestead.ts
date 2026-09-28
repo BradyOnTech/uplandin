@@ -1,12 +1,6 @@
 import * as THREE from 'three';
-
-/** Local metres, shared with physical movement. The bin is beside the rear
- * corner, leaving both the front doors and the field-side approach open. */
-export const PHEASANT_GRAIN_BIN = { x: 14, z: -9, radius: 2.85 };
-export const PHEASANT_HOMESTEAD_OBSTACLES = [
-  { x: 0, z: 0, radius: 7.8 },
-  { ...PHEASANT_GRAIN_BIN, radius: 3.1 },
-] as const;
+import { PHEASANT_GRAIN_BIN } from '../../game/pheasantHomesteadGround';
+export { PHEASANT_GRAIN_BIN, PHEASANT_HOMESTEAD_OBSTACLES } from '../../game/pheasantHomesteadGround';
 
 /** One vertex-coloured mesh: readable farm construction without per-board draws. */
 export function createPheasantHomestead(material: THREE.Material, groundAt: (x: number, z: number) => number = () => 0): THREE.Group {
