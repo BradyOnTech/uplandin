@@ -8,7 +8,7 @@ import { quailTrackDistanceAt } from './quailTracks';
 import { sampleQuailGroundHeights } from './quailGroundGeometry';
 import { deriveQuailParkingPose } from './quailEntrances';
 
-export interface QuailGrassDrift { x: number; y: number; rx: number; ry: number; angle: number; seed: number }
+export interface QuailGrassDrift { x: number; y: number; rx: number; ry: number; angle: number; seed: number; core?: number }
 interface DriftIndex { drifts: QuailGrassDrift[]; cells: Map<string, QuailGrassDrift[]> }
 const layouts = new WeakMap<AreaConfig, DriftIndex>();
 const CELL = 48;
@@ -48,7 +48,7 @@ export function quailGrassDrifts(area: AreaConfig): readonly QuailGrassDrift[] {
 function driftIndex(area: AreaConfig): DriftIndex {
   const saved = layouts.get(area); if (saved) return saved;
   const drifts: QuailGrassDrift[] = [];
-  const add = (x: number, y: number, rx: number, ry: number, angle: number, seed: number) => drifts.push({ x, y, rx, ry, angle, seed });
+  const add = (x: number, y: number, rx: number, ry: number, angle: number, seed: number, core?: number) => drifts.push({ x, y, rx, ry, angle, seed, core });
   if (area.id === 'quail-fields') {
     for (const [x, y, rx, ry, angle] of [
       // Near verges frame the arrival before the first shared hunting patch.
@@ -76,12 +76,16 @@ function driftIndex(area: AreaConfig): DriftIndex {
       // The open crossings stay open; these are small shoulder extensions,
       // not a property-wide density increase or new hunting-cover patches.
       [525, 566, 12, 5, -.35], [570, 549, 13, 6, -.5],
-      [617, 323, 14, 5, -.24], [691, 291, 16, 6, -.5],
-      [720, 298, 11, 5, -.2], [652, 364, 13, 5, .48],
-      // Unequal foreground, middle and far groups frame the windmill return.
-      [865, 287, 16, 7, -.2], [848, 279, 12, 6, .4],
-      [880, 263, 12, 6, -.65], [813, 231, 14, 6, -.4],
-      [891, 290, 11, 5, .8], [840, 248, 12, 5, .6],
+      // Overlapping shoulders lead into the draw instead of leaving a line
+      // of detached planted islands. Existing casting gaps and road clearance
+      // still cut through these visual aprons in the placement consumer.
+      [613, 328, 20, 10, -.24], [691, 291, 21, 10, -.5],
+      [720, 298, 17, 9, -.2], [663, 348, 20, 10, -.15],
+      // The returning hunter sees one uneven apron attached to the windmill
+      // plum end, with a lower opening to its east, rather than six small dots.
+      [865, 287, 22, 12, .15], [848, 279, 22, 11, .15],
+      [880, 263, 18, 11, .45], [813, 231, 18, 8, -.4],
+      [891, 290, 17, 10, .45], [840, 248, 18, 8, .2],
     ]) add(x, y, rx, ry, angle, quailSeed(x, y, 61));
     for (const covert of QUAIL_COVERTS) for (let i = 1; i < covert.points.length; i++) {
       const a = covert.points[i - 1], b = covert.points[i];
@@ -94,9 +98,13 @@ function driftIndex(area: AreaConfig): DriftIndex {
         const offset = (n % 2 ? -1 : 1) * (covert.plumWidth + 3 + rng() * 5);
         const x = a.x + dx * t - dy / length * offset;
         const y = a.y + dy * t + dx / length * offset;
-        const rx = Math.max(12, length * .25) * (.85 + rng() * .24);
-        const ry = 6 + rng() * 5;
-        add(x, y, rx, ry, angle + (rng() - .5) * .22, quailSeed(Math.round(x), Math.round(y), 67));
+        const connected = covert.id === 'drainage-shoulder' || covert.id === 'windmill-plum';
+        const rx = Math.max(12, length * .25) * (.85 + rng() * .24) * (connected ? 1.30 : 1);
+        const ry = (6 + rng() * 5) * (connected ? 1.20 : 1);
+        // These two long edges need a substantial common shoulder. The old
+        // narrow cores fell away between segment samples, so both near plants
+        // and far underpaint became isolated ellipses around the refuge.
+        add(x, y, rx, ry, angle + (rng() - .5) * .22, quailSeed(Math.round(x), Math.round(y), 67), connected ? .48 : undefined);
       }
     }
   }
@@ -115,7 +123,8 @@ function driftShape(drift: QuailGrassDrift, x: number, y: number): number {
   const dx = x - drift.x, dy = y - drift.y, c = Math.cos(drift.angle), s = Math.sin(drift.angle);
   const u = (dx * c + dy * s) / drift.rx, v = (-dx * s + dy * c) / drift.ry;
   const edge = 1 + .11 * Math.sin(u * 7 + drift.seed % 11) + .08 * Math.sin(v * 5 - u * 4);
-  return 1 - smooth((Math.hypot(u, v) / edge - .35) / .65);
+  const core = drift.core ?? .35;
+  return 1 - smooth((Math.hypot(u, v) / edge - core) / (1 - core));
 }
 
 /** One presentation mask controls dense clump groups, underpaint and far cover. */
