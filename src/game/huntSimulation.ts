@@ -24,7 +24,7 @@ import { dist } from './math';
 import type { HuntState } from './state';
 import type { RNG, Vec2 } from './types';
 import { windMults } from './wind';
-import { quailPointApproach } from './quailApproach';
+import { bobwhiteApproachNerveScale, quailPointApproach } from './quailApproach';
 import { pheasantApproach } from './pheasantApproach';
 import { HUNT_CHALLENGES, type HuntChallenge } from './huntChallenge';
 import { huntHabitatAffinity, huntingDoctrine } from './huntDoctrine';
@@ -319,6 +319,13 @@ export class HuntSimulation {
         const coveyApproach = spatialEncounter && species.coveyApproach === true;
         if (coveyApproach) {
           nerveMult *= quailPointApproach(pointed.coveyId, dog.pressure, !!input.hunterRunning).nerveScale;
+          // Bobwhite's close covey walk-in must account for field-scale
+          // travel. Other covey species keep their own warier approach.
+          if (species.id === 'bobwhite') nerveMult *= bobwhiteApproachNerveScale(
+            dist(this.hunt.hunterPos, pointed.pos) * PROPERTY_PX_TO_M,
+            !!input.hunterRunning,
+            this.challenge,
+          );
         }
         nerveMult *= slopeNerveMult(this.birdSlopeApproach(pointed));
         if (isFlanking(this.hunt.hunterPos, dog.pos, pointed.pos)) nerveMult *= FLANK_NERVE_MULT;

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { quailPointApproach } from '../src/game/quailApproach';
+import { bobwhiteApproachNerveScale, quailPointApproach } from '../src/game/quailApproach';
 
 it('gives steadier dogs tighter approaches with stable, varied covey disposition', () => {
   const radii=new Set<number>();
@@ -14,4 +14,18 @@ it('gives steadier dogs tighter approaches with stable, varied covey disposition
     radii.add(steady.flushRadius);
   }
   expect(radii.size).toBe(20);
+});
+
+it('keeps distant patience finite, ordered by difficulty, and full near the bird or while running', () => {
+  for (const challenge of ['relaxed', 'balanced', 'wild'] as const) {
+    const scales = [0, 16, 20, 26, 30, 1000].map(distance => bobwhiteApproachNerveScale(distance, false, challenge));
+    expect(scales[0]).toBe(1);
+    expect(scales[1]).toBe(1);
+    expect(scales.every(scale => scale > 0 && scale <= 1)).toBe(true);
+    expect(scales.every((scale, index) => index === 0 || scale <= scales[index - 1])).toBe(true);
+    expect(scales.at(-1)).toBe(scales.at(-2));
+    expect(bobwhiteApproachNerveScale(1000, true, challenge)).toBe(1);
+  }
+  expect(bobwhiteApproachNerveScale(30, false, 'relaxed')).toBeLessThan(bobwhiteApproachNerveScale(30, false, 'balanced'));
+  expect(bobwhiteApproachNerveScale(30, false, 'balanced')).toBeLessThan(bobwhiteApproachNerveScale(30, false, 'wild'));
 });
