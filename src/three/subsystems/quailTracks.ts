@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { AreaConfig } from '../../game/areas';
 import type { Vec2 } from '../../game/types';
 import { PROPERTY_PX_TO_M, type LandscapeModel } from '../../game/landscape';
-import { distanceToLine, trailDistanceAt } from '../../game/quailLandscape';
+import { distanceToLine, quailDrainageAt, trailDistanceAt } from '../../game/quailLandscape';
 import { deriveQuailEntrances } from './quailEntrances';
 import { groundQuailTrackGeometry } from './quailGroundGeometry';
 
@@ -69,15 +69,31 @@ const smooth = (low: number, high: number, value: number) => {
   const t = THREE.MathUtils.clamp((value - low) / (high - low), 0, 1); return t * t * (3 - 2 * t);
 };
 
+/** Metres, not point indices: weathering continues through every joined bend
+ * and stays identical from either property entrance. Unequal wheel samples
+ * interrupt wear independently instead of repeating two painted stripes. */
+function trackWeather(x: number, z: number, scale: number): number {
+  const px = x / scale, pz = z / scale, ix = Math.floor(px), iz = Math.floor(pz);
+  const fx = px - ix, fz = pz - iz, u = fx * fx * (3 - 2 * fx), v = fz * fz * (3 - 2 * fz);
+  const hash = (a: number, b: number) => {
+    let h = Math.imul(a ^ 0x2d57, 374761393) ^ Math.imul(b ^ 0x78a1, 668265263);
+    h = Math.imul(h ^ h >>> 13, 1274126177); return ((h ^ h >>> 16) >>> 0) / 4294967295;
+  };
+  return THREE.MathUtils.lerp(THREE.MathUtils.lerp(hash(ix, iz), hash(ix + 1, iz), u),
+    THREE.MathUtils.lerp(hash(ix, iz + 1), hash(ix + 1, iz + 1), u), v);
+}
+
 /** Common worn ground replaces stacked ribbon ends at a branch. Its footprint
  * follows the roads, leaving irregular shoulders rather than a circular pad. */
 export function quailJunctionWearAt(area: AreaConfig, x: number, y: number): number {
   let wear = 0;
   for (const branch of quailTrackNetwork(area).branches) {
     const radius = Math.hypot(x - branch.x, y - branch.y) * PROPERTY_PX_TO_M;
-    if (radius >= 5.3) continue;
+    if (radius >= 4.4) continue;
     const road = quailTrackDistanceAt(area, x, y, 8) * PROPERTY_PX_TO_M;
-    wear = Math.max(wear, (1 - smooth(2.4, 5.3, radius)) * (1 - smooth(1.6, 3.1, road)));
+    // Keep one fully covered center, but confine the shoulders to the actual
+    // track corridor. A six-metre-wide pale apron made each branch a crossbar.
+    wear = Math.max(wear, (1 - smooth(1.25, 4.4, radius)) * (1 - smooth(1.05, 1.95, road)));
   }
   return wear;
 }
@@ -87,17 +103,16 @@ export function quailJunctionWearAt(area: AreaConfig, x: number, y: number): num
 export function buildQuailTrackGeometry(landscape: LandscapeModel): THREE.BufferGeometry {
   const positions: number[] = [], colors: number[] = [], indices: number[] = [];
   const world = { x: 0, z: 0 }, color = new THREE.Color();
-  const wornLitter = new THREE.Color(0x9c8b6c), dryCenter = new THREE.Color(0xaaa07b);
+  const dryWheel = new THREE.Color(0xb1986d), compacted = new THREE.Color(0x92794f);
+  const wheelHighlight = new THREE.Color(0xb8a078);
+  const dampEarth = new THREE.Color(0x766c4d), lowGrowth = new THREE.Color(0x85835a);
+  const dryMedian = new THREE.Color(0xa5986b), verge = new THREE.Color(0x9c8c62);
   const network = quailTrackNetwork(landscape.area);
   const offsets = [-1.9, -1.3, -1.08, -.94, -.52, -.4, -.34, 0, .34, .4, .52, .94, 1.08, 1.3, 1.9];
-  const opacity = [0, .18, .8, 1, 1, 1, 1, 1, 1, 1, 1, 1, .8, .18, 0];
-  const palette = [0x929074, 0x989478, 0xa49a79, 0xbda681, 0xbda681, 0x9c9777, 0x9a9875, 0x929373, 0x9a9875, 0x9c9777, 0xbda681, 0xbda681, 0xa49a79, 0x989478, 0x929074];
-  const vertex = (px: number, py: number, tint: number, alpha: number, weather = 0, center = false) => {
+  const opacity = [0, .10, .60, 1, .95, .7, .8, 1, .8, .7, .95, 1, .60, .10, 0];
+  const vertex = (px: number, py: number, alpha: number) => {
     landscape.propertyToWorld(px, py, world);
     positions.push(world.x, 0, world.z);
-    color.setHex(tint);
-    if (weather > 0) color.lerp(center ? dryCenter : wornLitter, weather);
-    color.multiplyScalar(.98 + Math.sin(px * 1.4 + Math.sin(py * 1.1)) * .018);
     colors.push(color.r, color.g, color.b, alpha);
   };
   for (const points of network.paths) {
@@ -114,20 +129,36 @@ export function buildQuailTrackGeometry(landscape: LandscapeModel): THREE.Buffer
       for (let n = 0; n <= steps; n++) {
         const t = n / steps, cx = a.x + dx * t, cy = a.y + dy * t;
         const tx = ax / al * (1 - t) + bx / bl * t, ty = ay / al * (1 - t) + by / bl * t, tl = Math.hypot(tx, ty);
-        // Broad interrupted wear is baked into the existing ribbon. Let real
-        // ground show through the straw center and regrown wheel sections;
-        // preserve the exact road footprint, joins and terrain-LOD fitting.
-        const wear = .5 + .26 * Math.sin(cx * .24 + cy * .17)
-          + .24 * Math.sin(cx * .061 - cy * .099 + 2.4);
-        const regrowth = .5 + .5 * Math.sin(cx * .17 - cy * .13 + Math.sin(cx * .041));
+        const mx = cx * PROPERTY_PX_TO_M, mz = cy * PROPERTY_PX_TO_M;
+        const draw = quailDrainageAt(cx, cy);
+        const regrowth = trackWeather(mx + 47, mz - 29, 5.8);
+        const weather = trackWeather(mx, mz, 13);
+        const leftWear = smooth(.20, .78, trackWeather(mx - 19, mz + 37, 3.3));
+        const rightWear = smooth(.20, .78, trackWeather(mx + 19, mz - 37, 3.3));
         for (let k = 0; k < offsets.length; k++) {
           const offset = offsets[k] * (1 + Math.sin((cx + cy) * .65) * .035) / PROPERTY_PX_TO_M;
           const px = cx - ty / tl * offset, py = cy + tx / tl * offset;
           const center = Math.abs(offsets[k]) <= .4;
           const wheel = Math.abs(offsets[k]) >= .52 && Math.abs(offsets[k]) <= 1.08;
-          const coverage = center ? .28 + regrowth * .30 : wheel ? .62 + wear * .38 : .75 + regrowth * .25;
-          vertex(px, py, palette[k], opacity[k] * coverage * (1 - quailJunctionWearAt(landscape.area, px, py)),
-            center ? .22 + wear * .28 : .10 + (1 - wear) * .24, center);
+          // Two independent 2–6m wear runs keep the wheel gauge legible while
+          // revealing patches of soil/litter beneath each rut. The median is
+          // mostly the real ground, with a subdued broken low-growth tint.
+          const worn = offsets[k] < 0 ? leftWear : rightWear;
+          let coverage: number;
+          if (center) {
+            color.copy(dryMedian).lerp(lowGrowth, .30 + regrowth * .55 + draw * .15);
+            coverage = .18 + regrowth * .26;
+          } else if (wheel) {
+            color.copy(dryWheel).lerp(compacted, .20 + weather * .38 + (1 - worn) * .22);
+            color.lerp(dampEarth, draw * (.22 + weather * .20));
+            color.lerp(lowGrowth, (1 - worn) * regrowth * .28);
+            color.lerp(wheelHighlight, .5);
+            coverage = .46 + worn * .47;
+          } else {
+            color.copy(verge).lerp(lowGrowth, regrowth * .40).lerp(dampEarth, draw * .20);
+            coverage = .35 + weather * .25;
+          }
+          vertex(px, py, opacity[k] * coverage * (1 - quailJunctionWearAt(landscape.area, px, py)));
           if (n < steps && k < offsets.length - 1) {
             const p = start + n * offsets.length + k;
             indices.push(p, p + 1, p + offsets.length, p + 1, p + offsets.length + 1, p + offsets.length);
@@ -144,7 +175,11 @@ export function buildQuailTrackGeometry(landscape: LandscapeModel): THREE.Buffer
     for (let y = 0; y <= divisions; y++) for (let x = 0; x <= divisions; x++) {
       const px = branch.x - radius + 2 * radius * x / divisions;
       const py = branch.y - radius + 2 * radius * y / divisions;
-      vertex(px, py, 0xc1a77e, quailJunctionWearAt(landscape.area, px, py));
+      const wear = quailJunctionWearAt(landscape.area, px, py);
+      const weather = trackWeather(px * PROPERTY_PX_TO_M + 19, py * PROPERTY_PX_TO_M - 37, 3.3);
+      color.copy(dryWheel).lerp(compacted, .34 + weather * .34)
+        .lerp(dampEarth, quailDrainageAt(px, py) * .32);
+      vertex(px, py, wear);
     }
     for (let y = 0; y < divisions; y++) for (let x = 0; x < divisions; x++) {
       const p = start + y * (divisions + 1) + x;
