@@ -5,6 +5,11 @@ the country. Choose the pixel 2D presentation or open-world low-poly 3D; both
 are adapters over the same hunt. TypeScript + Phaser 3 + Three.js + Vite,
 installable PWA.
 
+The current 3D finishing scope and verified checkpoints are in
+[Production finish](3d/production-finish.md). The original 2D flush-view
+rules below do not replace 3D's continuous spatial hunting and shooting.
+Species-specific decisions are governed by [Hunting doctrine](3d/hunting-doctrine.md).
+
 This is the living spec. Sections are marked **[built]** or **[planned]**.
 Check items off (and adjust them) as tranches ship.
 
@@ -14,7 +19,7 @@ Check items off (and adjust them) as tranches ship.
   to read the dog, the wind, and the clock.
 - **Hunting realism over arcade realism — in the field.** Wind, nerve, wild
   flushes, protected birds, puppy mistakes. Target discrimination makes it
-  a hunting game. **The flush view is the opposite: pure Duck Hunt.** Up
+  a hunting game. **The original 2D flush view uses Duck Hunt-style waves.** Up
   to three birds burst TOGETHER — the covey thunder — across shuffled
   lanes with a per-flush break direction; the next wave rises when the
   sky clears. A big covey is rounds of shooting, never a blob and never
