@@ -6,9 +6,12 @@ type Point = [number, number, number];
 // Audubon: https://www.audubon.org/field-guide/bird/chukar
 // The cream face inside a black necklace and barred flanks carry identity;
 // red is confined to the bill, eye ring and tucked feet.
-const BACK = 0x999d91, BREAST = 0xb4bdb8, BELLY = 0xc4af82;
+// Broad slate feather masses distinguish a flying chukar from the warm
+// ground. Keep buff on the belly and face; tiny flank bars cannot carry the
+// silhouette once the bird is only a handful of pixels across.
+const BACK = 0x7c8994, BREAST = 0xbec6c5, BELLY = 0xc4af82;
 const FACE = 0xe3dbc1, NECKLACE = 0x343936, BAR = 0x4c4538, FLANK = 0xded6ba;
-const RED = 0xa55040, PRIMARY = 0x676959, UNDERWING = 0xd2d3c6, TAIL = 0x997559;
+const RED = 0xa55040, PRIMARY = 0x46515b, UNDERWING = 0xd6dbd3, TAIL = 0x997559;
 
 class BirdMesh {
   readonly positions: number[] = [];
@@ -187,7 +190,10 @@ export function buildChukarWing(side: -1 | 1): THREE.BufferGeometry {
     const a = rows[row], b = rows[row + 1], low = band / 4, high = (band + 1) / 4;
     const at = (r: typeof a, t: number, under: boolean): Point => [side * r.x,
       r.y + Math.sin(t * Math.PI) * .004 - (under ? .002 : 0), r.front + (r.back - r.front) * t];
-    const color = row >= 3 ? (band % 2 ? PRIMARY : 0x807f70) : band === 0 ? BREAST : BACK;
+    // Joined primaries and secondaries form a dark trailing mass. A patchwork
+    // of alternating pale tips dissolved into sage at normal hunting ranges.
+    const flightFeathers = row >= 3 || (row >= 1 && band >= 2);
+    const color = flightFeathers ? PRIMARY : band === 0 ? BREAST : BACK;
     mesh.face([at(a, low, false), at(b, low, false), at(b, high, false), at(a, high, false)], color, [0, 1, 0]);
     mesh.face([at(a, low, true), at(b, low, true), at(b, high, true), at(a, high, true)],
       row >= 3 ? PRIMARY : UNDERWING, [0, -1, 0]);
@@ -196,7 +202,7 @@ export function buildChukarWing(side: -1 | 1): THREE.BufferGeometry {
     const x = .044 + feather * .022, z = -.055 + Math.max(0, feather - 1) * .006;
     const points: Point[] = [[side * (x - .009), -.001, z + .016], [side * (x + .010), -.001, z + .016],
       [side * (x + .009), -.004, z - .002], [side * (x + .002), -.006, z - .005], [side * (x - .006), -.004, z - .002]];
-    mesh.face(points, feather % 2 ? PRIMARY : BACK, [0, 1, 0]);
+    mesh.face(points, PRIMARY, [0, 1, 0]);
     mesh.face(points.map(([px, py, pz]) => [px, py - .0015, pz] as Point), UNDERWING, [0, -1, 0]);
   }
   return mesh.build();
