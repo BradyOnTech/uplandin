@@ -11,13 +11,25 @@ export const SHARPTAIL_ACCENT_POCKETS = [
   { id: 'middle-swale', x: 830, y: 447, rx: 17, ry: 10 },
   { id: 'west-shoulder', x: 335, y: 442, rx: 10, ry: 5 },
   { id: 'west-crossing', x: 469, y: 411, rx: 13, ry: 5 },
-  { id: 'windbreak-reveal', x: 919, y: 314, rx: 13, ry: 8 },
+  { id: 'windbreak-reveal', x: 992, y: 345, rx: 9, ry: 4.5 },
   { id: 'windbreak-upper-lip', x: 946, y: 264, rx: 12, ry: 5 },
   { id: 'east-return-reveal', x: 1142, y: 383, rx: 12, ry: 5 },
   { id: 'east-return-lee', x: 1128, y: 477, rx: 15, ry: 7 },
   { id: 'east-lower-shoulder', x: 1094, y: 568, rx: 14, ry: 7 },
-  { id: 'north-lee', x: 1034, y: 321, rx: 12, ry: 6 },
+  { id: 'north-lee', x: 1026, y: 344, rx: 11, ry: 5 },
 ] as const;
+
+// A broken low edge on the sheltered side of the Shack approach. The two
+// existing pocket budgets gather into two full ends and a smaller joining
+// lobe, leaving the access lane and the building visible to the north.
+// These same frames drive roots and their ground contact; no separate oval
+// clearing is painted around a few isolated plants.
+const SHACK_THICKETS = [
+  { x: 992, y: 345, rx: 9, ry: 4.5, yaw: .25, shrubs: 17 },
+  { x: 1007, y: 349, rx: 7, ry: 3.3, yaw: -.16, shrubs: 9 },
+  { x: 1026, y: 344, rx: 11, ry: 5, yaw: -.32, shrubs: 16 },
+].map(lobe => ({ ...lobe, cos: Math.cos(lobe.yaw), sin: Math.sin(lobe.yaw) }));
+const isShackPocket = (id: string): boolean => id === 'windbreak-reveal' || id === 'north-lee';
 
 const pocketFrames = SHARPTAIL_ACCENT_POCKETS.map(pocket => {
   const shoulder = SHARPTAIL_SHOULDERS.reduce((nearest, current) =>
@@ -31,6 +43,7 @@ const pocketFrames = SHARPTAIL_ACCENT_POCKETS.map(pocket => {
 export function sharptailAccentGroundAt(x: number, y: number): number {
   let strongest = 0;
   for (const { pocket, cos, sin } of pocketFrames) {
+    if (isShackPocket(pocket.id)) continue;
     const dx = x - pocket.x, dy = y - pocket.y;
     const reach = (pocket.rx + 3) * 1.35;
     if (Math.abs(dx) > reach || Math.abs(dy) > reach) continue;
@@ -40,6 +53,15 @@ export function sharptailAccentGroundAt(x: number, y: number): number {
     // planting bed. Broad continuous variation survives terrain sampling.
     const fringe = 1 + .23 * Math.sin(x * .37 + y * .29) + .16 * Math.sin(x * .21 - y * .51);
     const falloff = Math.max(0, 1 - (u * u + v * v) * fringe);
+    strongest = Math.max(strongest, falloff * falloff * (3 - 2 * falloff));
+  }
+  for (const lobe of SHACK_THICKETS) {
+    const dx = x - lobe.x, dy = y - lobe.y;
+    if (Math.abs(dx) > lobe.rx + 3 || Math.abs(dy) > lobe.rx + 3) continue;
+    const u = (dx * lobe.cos + dy * lobe.sin) / (lobe.rx + 1.8);
+    const v = (-dx * lobe.sin + dy * lobe.cos) / (lobe.ry + 1.6);
+    const edge = 1 + .14 * Math.sin(x * .61 + y * .33) + .10 * Math.sin(x * .23 - y * .72);
+    const falloff = Math.max(0, 1 - (u * u + v * v) * edge);
     strongest = Math.max(strongest, falloff * falloff * (3 - 2 * falloff));
   }
   return strongest;
@@ -64,6 +86,41 @@ export function sharptailAccentPlacements(lite: boolean): SharptailAccent[] {
   const zones = { swale: 0, stand: 0 };
   for (const [pocketIndex, { pocket, cos, sin }] of pocketFrames.entries()) {
     const rng = mulberry32(0x51a6e + pocketIndex * 0x9e3779b9);
+    if (isShackPocket(pocket.id)) {
+      const west = pocket.id === 'windbreak-reveal';
+      const localCounts = [0, 0, 0];
+      for (const [kind, count, liteCount] of [['shrub', 21, 14], ['reed', 5, 3], ['rock', 5, 3]] as const) {
+        localCounts.fill(0);
+        for (let i = 0; i < count; i++) {
+          // Interleave the joining lobe in the retained Lite prefix. High
+          // adds fringe roots; it does not move or inflate the core plants.
+          const joining = west ? i % 5 === 4 : i % 4 === 3;
+          const lobeIndex = joining ? 1 : west ? 0 : 2;
+          const lobe = SHACK_THICKETS[lobeIndex];
+          const ordinal = localCounts[lobeIndex]++;
+          const local = joining && !west ? ordinal + 4 : ordinal;
+          const angle = local * 2.399963 + rng() * .52 + (west ? 0 : .9);
+          const radius = kind === 'shrub'
+            ? .10 + .85 * Math.pow((local + .4) / lobe.shrubs, .72)
+            : .40 + rng() * .39;
+          const u = Math.cos(angle) * lobe.rx * radius;
+          const v = Math.sin(angle) * lobe.ry * radius;
+          const x = lobe.x + u * lobe.cos - v * lobe.sin;
+          const y = lobe.y + u * lobe.sin + v * lobe.cos;
+          // Low outer growth gathers toward taller sheltered cores. Keep
+          // the existing muted northern-prairie colors and existing meshes.
+          const scale = kind === 'shrub'
+            ? (1.55 + (1 - radius) * .95 + rng() * .25) * (lobeIndex === 1 ? .83 : 1)
+            : kind === 'reed' ? .95 + rng() * .40 : .74 + rng() * .40;
+          const palette = kind === 'shrub' ? [0x829a80, 0x91a58c, 0x789079]
+            : kind === 'reed' ? [0xb0a47b, 0xc1af7e, 0xa79c75] : [0xa7a38d, 0x918f7f, 0xb0a994];
+          const item = { kind, pocket: pocket.id, x, y, scale, yaw: rng() * Math.PI * 2,
+            color: palette[Math.floor(rng() * palette.length)] };
+          if (!lite || i < liteCount) placements.push(item);
+        }
+      }
+      continue;
+    }
     const place = (kind: SharptailAccent['kind'], index: number, count: number): SharptailAccent => {
       // An unequal core and a thinner trailing edge: no ring of identical
       // bushes and no equally spaced confetti across the whole property.
