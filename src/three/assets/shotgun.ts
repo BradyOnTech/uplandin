@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { doubleLoading, SHOTGUN_CYCLE, TUBE_LOADING } from '../shotgunActionTiming';
 
 /** Low-poly sporting shotgun viewmodels with one shared field sight line.
  * Metres, +Y up, muzzle down -Z. Cosmetic parts never own ammunition or input.
@@ -497,11 +498,8 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
         // The authoritative reload budget owns this complete sequence. A
         // partial reload ejects/replaces only its missing round; cosmetics
         // never refill ammunition or extend the gameplay clock.
-        const count = Math.min(2, Math.max(0, Math.ceil(missing)));
+        const { count, closeStart, loadStart, perShell } = doubleLoading(duration, missing);
         const reloading = duration > 0 && elapsed >= 0 && elapsed < duration && count > 0;
-        const closeStart = Math.max(.4, duration - .24);
-        const loadStart = .34;
-        const perShell = Math.max(.01, (closeStart - loadStart) / Math.max(1, count));
         const closing = smooth((elapsed - closeStart) / Math.max(.01, duration - closeStart));
         const open = reloading ? smooth(elapsed / .30) * (1 - closing) : 0;
         hinge.rotation.x = -.78 * open;
@@ -543,16 +541,17 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
         updateForearms();
         return;
       }
-      const pump = action === 'pump' ? .078 * (smooth((pumpAge - .08) / .14) - smooth((pumpAge - .22) / .22)) : 0;
+      const pump = action === 'pump' ? .078 * (smooth((pumpAge - SHOTGUN_CYCLE.pumpStart) / (SHOTGUN_CYCLE.pumpBack - SHOTGUN_CYCLE.pumpStart))
+        - smooth((pumpAge - SHOTGUN_CYCLE.pumpBack) / (SHOTGUN_CYCLE.pumpClosed - SHOTGUN_CYCLE.pumpBack))) : 0;
       forend.position.z = pump;
       const reloading = duration > 0;
       const progress = reloading ? Math.min(1, elapsed / duration) : 0;
       const lift = reloading ? Math.min(1, progress / .20, (1 - progress) / .15) : 0;
-      const shellPhase = (elapsed - .55) / .38;
+      const shellPhase = (elapsed - TUBE_LOADING.start) / TUBE_LOADING.perShell;
       const loadingShell = reloading && shellPhase >= 0 && shellPhase < missing;
       const phase = shellPhase - Math.floor(shellPhase);
-      const insert = smooth(phase / .66);
-      const withdraw = smooth((phase - .78) / .22);
+      const insert = smooth(phase / TUBE_LOADING.inserted);
+      const withdraw = smooth((phase - TUBE_LOADING.withdraw) / (1 - TUBE_LOADING.withdraw));
       const returning = reloading && shellPhase >= missing - .22;
       const returnMix = smooth((shellPhase - missing + .22) / .22);
       left.visible = hands && (!loadingShell || returning);
@@ -569,10 +568,11 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
       loading.position.set(-.065 * (1 - insert + withdraw), -.14 + .106 * insert - .10 * withdraw,
         .09 - .10 * insert + .06 * withdraw);
       loading.rotation.set(.12 * (1 - insert), 0, -.18 * (1 - insert));
-      shell.visible = phase < .78;
+      shell.visible = phase < TUBE_LOADING.withdraw;
       shell.position.set(0, .008 * smooth((phase - .55) / .23), -.022 * smooth((phase - .55) / .23));
       bolt.position.z = reloading ? .03 * Math.max(0, 1 - elapsed / .4) : action === 'pump' ? pump * .65
-        : .055 * (smooth(pumpAge / .035) - smooth((pumpAge - .035) / .065));
+        : .055 * (smooth(pumpAge / SHOTGUN_CYCLE.semiBack)
+          - smooth((pumpAge - SHOTGUN_CYCLE.semiBack) / (SHOTGUN_CYCLE.semiClosed - SHOTGUN_CYCLE.semiBack)));
       updateForearms();
     },
     dispose() {

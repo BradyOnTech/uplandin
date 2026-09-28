@@ -13,6 +13,7 @@ import { TravellingShot } from '../shotPattern';
 import { mobileSightPicture, mobileShotFov, shotAssistancePreference } from '../inputMode';
 import { resolveShotAssistance, type ShotAssistanceProfile, type ShotTriggerSource } from '../shotAssistance';
 import { createSportingShotgun, type SportingShotgun } from '../assets/shotgun';
+import { shotgunCycleCues, shotgunReloadCues, type ShotgunMechanism } from '../shotgunActionTiming';
 
 /** First-person sporting gun and hands. Every equipped action uses its own
  * articulated viewmodel, with a common bead position and mount.
@@ -116,6 +117,7 @@ export class GunSystem implements Subsystem {
   private shells = 0;
   private stowedShells = new Map<string, number>();
   private lastShotMs = -Infinity;
+  private cycleElapsed = Infinity;
   private reloadElapsed = 0;
   private reloadDuration = 0;
   private keydownHandler?: (event: KeyboardEvent) => void;
@@ -300,6 +302,7 @@ export class GunSystem implements Subsystem {
     this.recVZ += KICK_Z * strength;
     this.recVP += KICK_PITCH * strength;
     this.sporting?.fire();
+    this.cycleElapsed = 0;
   }
 
   /** Live recoil excursion (rearward meters, muzzle-up radians) — the
@@ -340,6 +343,7 @@ export class GunSystem implements Subsystem {
     this.aim = this.keyboardAim = false;
     this.pendingTrigger = null; this.mountT = 0;
     this.reloadElapsed = this.reloadDuration = 0;
+    this.cycleElapsed = Infinity;
     this.visualReloadPreview = null;
     this.recZ = this.recVZ = this.recP = this.recVP = 0;
     this.wasMounted = false; this.settleAge = 10;
@@ -386,7 +390,6 @@ export class GunSystem implements Subsystem {
     this.keyboardAim = false;
     document.querySelector?.('[data-action="aim"]')?.setAttribute('aria-pressed', 'false');
     this.reloadElapsed = 0;
-    playActionClick();
     this.reloadDuration = RELOAD_OPEN_S + (this.gun.shells - this.shells) * RELOAD_PER_SHELL_S;
     if (this.shotCallout) {
       this.shotCallout.textContent = 'RELOADING';
@@ -518,7 +521,13 @@ export class GunSystem implements Subsystem {
       this.touchLowerAt = null; this.aim = false; this.pendingTrigger = null;
     }
 
+    // Use the same render intervals as the visible mechanism. The completion
+    // frame still emits its final latch before clearing the reload clock.
+    const mechanism: ShotgunMechanism = this.gun.id === 'remington-870' ? 'pump' : this.gun.id as ShotgunMechanism;
+    const audible = !snap && !ctx.paused && this.visualReloadPreview === null && dt > 0;
     if (this.isReloading()) {
+      if (audible) shotgunReloadCues(mechanism, this.reloadElapsed, this.reloadElapsed + dt,
+        this.reloadDuration, this.gun.shells - this.shells, playActionClick);
       this.reloadElapsed += dt;
       if (this.reloadElapsed >= this.reloadDuration) {
         this.shells = this.gun.shells;
@@ -629,6 +638,11 @@ export class GunSystem implements Subsystem {
       carryRot.z * carryK + mountRot.z * m +
         Math.sin(this.stridePhase) * .012 * bobAmp + reloadArc * (breakAction ? .28 : -1.05),
     );
+    if (Number.isFinite(this.cycleElapsed)) {
+      if (audible) shotgunCycleCues(mechanism, this.cycleElapsed, this.cycleElapsed + dt, playActionClick);
+      this.cycleElapsed += dt;
+      if (this.cycleElapsed > .5) this.cycleElapsed = Infinity;
+    }
     this.sporting?.update(
       this.visualReloadPreview === null ? this.reloadElapsed : this.visualReloadPreview * (RELOAD_OPEN_S + this.gun.shells * RELOAD_PER_SHELL_S),
       this.visualReloadPreview === null ? this.reloadDuration : RELOAD_OPEN_S + this.gun.shells * RELOAD_PER_SHELL_S,

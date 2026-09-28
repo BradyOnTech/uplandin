@@ -2,6 +2,7 @@ import { synthesizePheasantLaunch, PHEASANT_AUDIO_RATE, type PheasantLaunchVoice
 import { synthesizeBirdLaunch, BIRD_FLUSH_AUDIO_RATE, type BirdLaunchVoice } from './three/speciesFlushAudio';
 import { fieldSoundscape, fieldWindSamples } from './three/fieldSoundscape';
 import type { WindStrength } from './game/wind';
+import type { ShotgunActionCue } from './three/shotgunActionTiming';
 /**
  * Procedural sound effects — no audio assets, everything is synthesized
  * with WebAudio. Mobile browsers require a user gesture before audio can
@@ -395,9 +396,25 @@ export function playFieldSong(volume = 1): void {
   tone(2300, 0.24, 0.10, { volume: 0.009 * volume, slideTo: 1700 });
 }
 
-export function playActionClick(): void {
-  noise(0, 0.045, 2300, 550, 0.10);
-  tone(240, 0, 0.035, { type: 'triangle', volume: 0.04 });
+/** Close mechanical foley; each cue follows the visible action, below the
+ * gun report and foreground launch. No queued reload sequence survives pause. */
+export function playActionClick(cue: ShotgunActionCue = 'latch'): void {
+  if (cue === 'shell') {
+    noise(0, .035, 1550, 490, .052);
+    tone(470, 0, .027, { type: 'triangle', volume: .018, slideTo: 310 });
+  } else if (cue === 'rack') {
+    noise(0, .105, 2450, 720, .065);
+    noise(.024, .072, 1150, 320, .035);
+  } else if (cue === 'eject') {
+    noise(0, .039, 3200, 1050, .060);
+    tone(780, 0, .030, { type: 'triangle', volume: .014, slideTo: 510 });
+  } else if (cue === 'lock') {
+    noise(0, .047, 2200, 430, .095);
+    tone(185, 0, .048, { type: 'triangle', volume: .043, slideTo: 115 });
+  } else {
+    noise(0, .034, 2600, 680, .055);
+    tone(340, 0, .025, { type: 'triangle', volume: .023 });
+  }
 }
 
 /** Close wing pressure, kept quiet enough to hear the quarry flush. */
