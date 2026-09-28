@@ -6,16 +6,18 @@ import { GSP_COAT_IDS } from '../src/three/dogs/germanShorthairedPointer';
 describe('generated GSP asset contract', () => {
   for (const detail of ['high', 'lite'] as const) it(`${detail} remains a finite, bounded asset with grounded stance and a raised pointing paw`, () => {
     const dog = createGeneratedGsp(detail);
-    expect(dog.stats.triangles).toBeLessThanOrEqual(detail === 'high' ? 2500 : 1500);
+    expect(dog.stats.triangles).toBeLessThanOrEqual(detail === 'high' ? 3000 : 1800);
     expect(dog.stats.materials).toBe(1);
     expect(dog.stats.meshes).toBe(1);
     const weights = dog.skin.geometry.getAttribute('skinWeight');
     const indices = dog.skin.geometry.getAttribute('skinIndex');
     for (let i = 0; i < weights.count; i++) {
       expect(weights.getX(i) + weights.getY(i) + weights.getZ(i) + weights.getW(i)).toBeCloseTo(1, 6);
-      expect(indices.getX(i)).toBeGreaterThanOrEqual(0);
-      expect(indices.getX(i)).toBeLessThan(dog.skeleton.bones.length);
-      expect(indices.getY(i)).toBeLessThan(dog.skeleton.bones.length);
+      for (let channel = 0; channel < 4; channel++) {
+        const index = indices.array[i * 4 + channel];
+        expect(index).toBeGreaterThanOrEqual(0);
+        expect(index).toBeLessThan(dog.skeleton.bones.length);
+      }
     }
     dog.root.traverse(node => {
       if (!(node instanceof THREE.Mesh)) return;

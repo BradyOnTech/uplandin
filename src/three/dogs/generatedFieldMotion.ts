@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GeneratedEarGravity } from './generatedEarGravity';
 import type { LocomotionGait } from './locomotion';
 import { createGeneratedGsp, GENERATED_STRIDE } from './generatedGsp';
 import { GeneratedScentMotion, fieldPerformance, type GeneratedFieldIntent } from './generatedScentMotion';
@@ -33,6 +34,7 @@ export class GeneratedFieldMotion {
   private pointPresence=0;
   readonly scentMotion=new GeneratedScentMotion();
   private bodySupport=new GeneratedBodySupport();
+  private earGravity=new GeneratedEarGravity();
   readonly mouthMotion=new GeneratedMouthMotion();
   private pickupReach=new GeneratedPickupReach();
   private pickupPresence=0;
@@ -73,6 +75,8 @@ export class GeneratedFieldMotion {
       this.pickupReach.reset();
       this.pivotSteps.reset();
       this.mouthMotion.update(this.asset.joints.jaw,retrieve?.stage==='carry'?retrieve:undefined,dt);
+      this.earGravity.update(this.asset.joints,dt,!this.placed||!wasSwimming||distance>3);
+      root.updateMatrixWorld(true);
       this.last.set(x,ground,z);this.lastYaw=yaw;this.placed=true;
       this.pose.forEach(p=>{p.previousPosition.copy(p.node.position);p.previousRotation.copy(p.node.quaternion);});
       return;
@@ -210,6 +214,7 @@ export class GeneratedFieldMotion {
     this.mouthMotion.update(this.asset.joints.jaw,point?undefined:retrieve,dt,reset);
     this.pickupReach.update(neck,head,this.mouthMotion.grip,
       action==='pickup'?retrieve?.target:undefined,retrieve?.holdMs??0,dt,reset);
+    this.earGravity.update(this.asset.joints,dt,reset);
     root.updateMatrixWorld(true);
     this.wasMoving=moving;
     this.lastYaw=yaw;

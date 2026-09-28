@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createGeneratedGspHead } from './generatedGspHead';
 import { createLocomotionPose, writeLocomotionPose, type LocomotionGait, type FootTuple } from './locomotion';
 import { createTwoBoneSolution, solveTwoBone } from './legIk';
 import { germanShorthairedPointerAppearance, type GspCoatId } from './germanShorthairedPointer';
@@ -9,7 +10,7 @@ type Point = readonly [number, number, number];
 export const GENERATED_STRIDE_SCALE: Record<LocomotionGait,number> = {walk:.72,trot:.95,canter:.95,gallop:1};
 export const GENERATED_STRIDE: Record<LocomotionGait,number> = {walk:.72*.72,trot:.94*.95,canter:1.38*.95,gallop:1.9};
 const GENERATED_GALLOP_TOUCHDOWN: FootTuple<number> = [.58,.50,.08,0];
-const WHITE = 0xd1cdc1, LIVER = 0x51382e, NOSE = 0x332722, EYE = 0x211c17;
+const WHITE = 0xd1cdc1, LIVER = 0x51382e;
 /** Head-relative grip: the mandible moves around it, never drives the bird. */
 export const GENERATED_MOUTH_GRIP: Point = [0, -.065, .125];
 
@@ -125,8 +126,6 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
   const sides = detail === 'high' ? 10 : 6;
   const root = new THREE.Group(); root.name = 'generated-gsp';
   const appearance = germanShorthairedPointerAppearance(coatId);
-  const pigment = coatId === 'liver-white' ? LIVER : appearance.primary;
-  const nose = coatId === 'black-roan' ? appearance.nose : NOSE;
   root.userData.coatId = coatId; root.userData.coatLabel = appearance.label;
   const material = new THREE.MeshLambertMaterial({ vertexColors: true });
   applyGspCoat(material, coatId);
@@ -156,42 +155,15 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
   const neck = joint('neck', body, [0,.51,.245]);
   torsoMesh.userData.neckJoint = neck;
   const head = joint('head', neck, [0,.155,.135]);
-  surface(head, s => {
-    // An adult head has a cranial vault and cheeks behind the shallow stop.
-    // The nasal bridge narrows toward the nose; its lip meets the mandible.
-    s.loft([[0,.008,-.078,.032,.037,.038],[0,.016,-.054,.049,.045,.048],
-      [0,.020,-.026,.061,.047,.055],[0,.015,.009,.063,.043,.058],
-      [0,.011,.039,.058,.034,.043],[0,.003,.061,.049,.030,.025],
-      [0,-.002,.087,.042,.027,.021],[0,-.003,.116,.037,.025,.019],
-      [0,-.002,.145,.032,.023,.019],[0,-.001,.171,.032,.022,.021]], pigment);
-    s.loft([[0,-.001,.166,.033,.023,.023],[0,0,.18,.032,.021,.022]], nose);
-    // The oral roof stays dark, including when viewed from below; it is
-    // geometry in the existing skin, not a hole through the head or a decal.
-    s.loft([[0,-.023,.044,.027,.0015],[0,-.022,.088,.032,.0015],
-      [0,-.020,.137,.027,.0015],[0,-.020,.165,.024,.0015]], NOSE);
-    // The eyes sit below the brow, not on the narrow nasal bridge.
-    for (const side of [-1, 1]) s.loft([[side*.059,.027,.021,.0025,.0031],
-      [side*.057,.026,.031,.0027,.0026]], EYE);
-  }, .78);
   const jaw = joint('jaw', head, [0,-.027,.026]);
-  surface(jaw, s => {
-    // A rounded mandibular angle supports the cheek, then rises into a
-    // lighter chin. The unchanged hinge closes this against the upper lip.
-    s.loft([[0,-.002,.003,.033,.016,.020],[0,-.005,.030,.038,.017,.022],
-      [0,-.006,.067,.035,.015,.019],[0,-.005,.101,.030,.012,.014],
-      [0,-.001,.128,.026,.009,.009],[0,.002,.141,.021,.006,.008]], pigment);
-    s.loft([[0,.009,.021,.027,.0015],[0,.008,.065,.030,.0015],
-      [0,.008,.112,.023,.0015],[0,.007,.135,.019,.001]], NOSE);
-  }, .78);
-  for (const side of [-1, 1]) {
-    const ear = joint(side < 0 ? 'ear-left' : 'ear-right', head, [side*.052,.019,-.012]);
-    // Thin leather rolls out from the skull, then hangs against the cheek;
-    // the narrow rounded tip is not the bottom edge of a solid paddle.
-    surface(ear, s => s.loft([[side*.006,-.110,.041,.0025,.007],
-      [side*.010,-.100,.033,.0035,.017],[side*.012,-.081,.020,.004,.027],
-      [side*.011,-.054,.008,.0045,.033],[side*.007,-.027,-.002,.0045,.030],
-      [0,0,0,.0045,.024]], pigment, 'y'), .82);
-  }
+  const leftEar = joint('ear-left', head, [-.052,.019,-.012]);
+  const rightEar = joint('ear-right', head, [.052,.019,-.012]);
+  const headGeometry = createGeneratedGspHead(detail, coatId);
+  geometries.push(headGeometry);
+  const headMesh = new THREE.Mesh(headGeometry, material);
+  headMesh.castShadow = true; headMesh.receiveShadow = true;
+  headMesh.userData.headSkinJoints = [head, jaw, leftEar, rightEar];
+  head.add(headMesh);
   const tail = joint('tail', body, [0,.578,-.366]);
   surface(tail, s => s.loft([[0,.018,-.252,.0025,.003],[0,.022,-.18,.006,.007],[0,.012,-.085,.013,.014],[0,0,0,.020,.022]], WHITE), .8);
   const paws: THREE.Bone[] = [];
@@ -274,6 +246,13 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
             blend = THREE.MathUtils.smoothstep(chainY[k]+band-p.y,0,band*2);
           }
         }
+      }
+      const headJoints = mesh.userData.headSkinJoints as THREE.Bone[] | undefined;
+      if (headJoints) {
+        first = bones.indexOf(headJoints[0]);
+        second = bones.indexOf(headJoints[geometry.getAttribute('headBone').getX(i)]);
+        blend = geometry.getAttribute('headWeight').getX(i);
+        if (blend > .5) { [first, second] = [second, first]; blend = 1 - blend; }
       }
       indices.push(first,second,0,0); weights.push(1-blend,blend,0,0);
     }

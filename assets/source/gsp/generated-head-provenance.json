@@ -1,0 +1,26 @@
+{
+  "source": "assets/source/gsp/gsp-liver-white.blend",
+  "sourceSha256": "b294d297eea5d2ee35a85f6115da8fc4fc12b756c5c2958b48457fde76e75a57",
+  "sourceOwnership": "Existing user-supplied GSP source-conforming anatomical mesh; original supplied GLB remains unchanged.",
+  "derivation": "Head-only crop, protected paired lip strip, separate High/Lite reduction, 0.8 uniform scale about source jaw hinge mapped to existing generated jaw hinge. Ear root weights and bounded gravity settling use runtime bones. No source body, rig, clips or textures are restored.",
+  "reproduce": "/Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --python tools3d/assets/gsp/extract_generated_head.py",
+  "headTriangles": {
+    "high": 1099,
+    "lite": 670
+  },
+  "completeRuntimeTriangles": {
+    "high": 2719,
+    "lite": 1642
+  },
+  "materials": 1,
+  "skinnedMeshes": 1,
+  "closedLipPairs": 36,
+  "preservedSeamSegments": 34,
+  "runtimeInputsSha256": {
+    "src/three/dogs/generatedGspHeadData.ts": "4e8f65318510f5153da271a994f9b32fbf956630e3e080a743b1ba7e378fcbe3",
+    "src/three/dogs/generatedGspHead.ts": "7a38a58a1ff698c733636184d43ec84db43db75d0b918fb62712de314ca0d2e6",
+    "src/three/dogs/generatedEarGravity.ts": "1f41d87acdb5bdd3e569ccf206a90741574f09b4a8ae8ad9bdd8db8c9acbfebc",
+    "tools3d/assets/gsp/extract_generated_head.py": "d2b2e58834268f59d1700c255f6fe5d20564222026f7901a9762548be1874215"
+  },
+  "acceptance": "Bounded source-guided head improvement accepted from staged neutral/point clay, selected-coat views, and four-species pickup/carry by two reviewers. Whole-dog anatomy and ordinary-hunt motion are separate acceptance gates."
+}

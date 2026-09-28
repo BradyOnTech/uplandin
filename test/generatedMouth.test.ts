@@ -8,13 +8,23 @@ describe('generated GSP jaw and retrieve performance', () => {
     const dog = createGeneratedGsp(detail, true);
     const position = dog.skin.geometry.getAttribute('position');
     const index = dog.skin.geometry.getAttribute('skinIndex');
+    const weight = dog.skin.geometry.getAttribute('skinWeight');
     const jawIndex = dog.skeleton.bones.indexOf(dog.joints.jaw);
     const headIndex = dog.skeleton.bones.indexOf(dog.joints.head);
+    // A blended cheek may list the head first and still follow the jaw.
+    // The rigid muzzle/lower jaw contract depends on total influence, not slot order.
     const vertices = (bone: number) => Array.from({ length: position.count }, (_, i) => i)
-      .filter(i => index.getX(i) === bone)
+      .filter(i => {
+        let influence = 0;
+        for (let channel = 0; channel < 4; channel++) {
+          if (index.array[i * 4 + channel] === bone) influence += weight.array[i * 4 + channel];
+        }
+        return influence > .99999;
+      })
       .map(i => ({ i, point: dog.skin.applyBoneTransform(i, new THREE.Vector3().fromBufferAttribute(position, i)) }));
     const lower = vertices(jawIndex), upper = vertices(headIndex);
     expect(lower.length).toBeGreaterThan(50);
+    expect(upper.length).toBeGreaterThan(50);
     const grip = dog.joints.head.localToWorld(new THREE.Vector3(...GENERATED_MOUTH_GRIP));
     dog.joints.jaw.rotation.x = .60; dog.root.updateMatrixWorld(true); dog.skeleton.update();
     let largestDrop = 0;
