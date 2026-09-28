@@ -14,6 +14,7 @@ import { chukarGrassGeometry, chukarSageGeometry } from '../assets/chukarPlants'
 import { CHUKAR_GROUND_DETAIL } from './chukarTerrain';
 import { groundQuailTrackGeometry, applyQuailTrackGroundLod, sampleQuailGroundHeights } from './quailGroundGeometry';
 import { applyQuailGrassGroundLod, createQuailGrassGroundGeometry } from './quailGrassGround';
+import { SolidShotGeometry } from '../solidShotGeometry';
 
 const TILE = 80;
 const TRACK_HALF_WIDTH_M = .8;
@@ -79,10 +80,13 @@ export class ChukarEnvironmentSystem implements Subsystem {
   private sample = { ...SAMPLE };
   private world = { x: 0, z: 0 };
   private obstacles: { x: number; z: number; radius: number }[] = [];
+  private shotSolids = new SolidShotGeometry();
   private landmarkClearance: { x: number; y: number; radius: number }[];
   constructor(private readonly landscape: LandscapeModel) { this.landmarkClearance = chukarLandmarkClearance(landscape.area); }
 
   collisionCircles(): readonly { x: number; z: number; radius: number }[] { return this.obstacles; }
+
+  blocksShot(origin: THREE.Vector3Like, target: THREE.Vector3Like): boolean { return this.shotSolids.blocks(origin, target); }
 
   private clear(x: number, y: number, radius: number, keepHabitat = false): boolean {
     const area = this.landscape.area, margin = radius / PROPERTY_PX_TO_M;
@@ -147,6 +151,7 @@ export class ChukarEnvironmentSystem implements Subsystem {
         this.obstacles.push({ x: this.world.x, z: this.world.z, radius: Math.min(p.sx, p.sz) * .37 });
     }
     mesh.name = `Chukar ${geometry.userData.kind ?? 'scenery'}`; mesh.receiveShadow = true; mesh.computeBoundingSphere();
+    if (rock && !talus) this.shotSolids.add(mesh);
     mesh.boundingSphere!.radius += maxGroundShift + (grounds ? .15 : 0);
     if (grounds) mesh.customDepthMaterial = this.plantDepth;
     this.root.add(mesh); this.batches.push({ mesh, range, radius: mesh.boundingSphere!.radius, center: mesh.boundingSphere!.center.clone(), shadow, nearGeometry: geometry, farGeometry, detailRange, shadowRange });
@@ -369,6 +374,7 @@ export class ChukarEnvironmentSystem implements Subsystem {
   }
 
   dispose(ctx: Ctx): void {
+    this.shotSolids.dispose();
     ctx.scene.remove(this.root); for (const batch of this.batches) batch.mesh.dispose();
     for (const geometry of this.geometries) geometry.dispose(); for (const material of this.materials) material.dispose();
     this.root.clear(); this.batches.length = 0; this.obstacles.length = 0; this.geometries.clear(); this.materials.clear();

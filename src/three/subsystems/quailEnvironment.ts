@@ -19,6 +19,7 @@ import { quailGrassClumpGeometry, QUAIL_GRASS_VARIATION } from './quailGrass';
 import { applyQuailGrassGroundLod, createQuailGrassGroundGeometry } from './quailGrassGround';
 import { buildQuailDistantCover, quailGrassClearingAt, quailGrassMassAt, quailGrassStockingAt, quailSouthRouteAt } from './quailVegetation';
 import { VegetationWind, VEGETATION_GUST_GLSL, VEGETATION_INSTANCE_WIND_GLSL } from './vegetationWind';
+import { SolidShotGeometry } from '../solidShotGeometry';
 
 const TILE = 40; // yards; local batches remain independently culled.
 const COLOR = { straw: 0xb6a574, dry: 0x919273, sage: 0x435f43, sageLight: 0x64794b, bark: 0x615343, leaf: 0x506c4e, leafLight: 0x748158 };
@@ -82,6 +83,7 @@ export class QuailEnvironmentSystem implements Subsystem {
   private geometries = new Set<THREE.BufferGeometry>();
   private materials = new Set<THREE.Material>();
   private obstacles: CircleObstacle[] = [];
+  private shotSolids = new SolidShotGeometry();
   private wind = { value: 0 };
   private huntWind = new VegetationWind();
   private groundNearDistance = quailGroundNearDistance('high');
@@ -94,6 +96,8 @@ export class QuailEnvironmentSystem implements Subsystem {
 
   /** Tree trunks are solid, while the dog can work through the visual cover. */
   collisionCircles(): readonly CircleObstacle[] { return this.obstacles; }
+
+  blocksShot(origin: THREE.Vector3Like, target: THREE.Vector3Like): boolean { return this.shotSolids.blocks(origin, target); }
 
   private material(color: number, wind = false, fade = [-1, 0, 1000, 1100], grass = false): THREE.MeshLambertMaterial {
     const mat = new THREE.MeshLambertMaterial({ color, side: wind ? THREE.DoubleSide : THREE.FrontSide, vertexColors: wind });
@@ -202,6 +206,7 @@ export class QuailEnvironmentSystem implements Subsystem {
       const geometry = mergeGeometries(parts)!; for (const part of parts) part.dispose();
       geometry.computeBoundingSphere(); this.geometries.add(geometry);
       const mesh = new THREE.Mesh(geometry, material); mesh.receiveShadow = true;
+      if (parts === trunks) this.shotSolids.add(mesh);
       const center = geometry.boundingSphere!.center;
       this.root.add(mesh); this.batches.push({ mesh, range: 780, minRange: 0, x: center.x, z: center.z });
     }
@@ -363,6 +368,7 @@ export class QuailEnvironmentSystem implements Subsystem {
   }
 
   dispose(ctx: Ctx): void {
+    this.shotSolids.dispose();
     ctx.scene.remove(this.root); for (const batch of this.batches) if (batch.mesh instanceof THREE.InstancedMesh) batch.mesh.dispose();
     for (const geometry of this.geometries) geometry.dispose(); for (const material of this.materials) material.dispose();
     this.root.clear(); this.batches.length = 0; this.obstacles.length = 0; this.geometries.clear(); this.materials.clear();

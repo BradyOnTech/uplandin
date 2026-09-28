@@ -1,6 +1,7 @@
 import { wetPondLayout, wetPondRadius } from '../../game/wetPonds';
 import { SHARPTAIL_SHELTERBELTS, sharptailGroundZones } from '../../game/sharptailLandscape';
 import * as THREE from 'three';
+import { SolidShotGeometry } from '../solidShotGeometry';
 import { HUNT_WORLD_ANCHOR, PROPERTY_PX_TO_M, type GroundSample, type LandscapeModel } from '../../game/landscape';
 import { mulberry32 } from '../../game/math';
 import { huntingDoctrine, type HuntStyle } from '../../game/huntDoctrine';
@@ -345,11 +346,13 @@ export class PropertyHabitatSystem implements Subsystem {
   private huntWind = new VegetationWind();
   private obstacles: { x: number; z: number; radius: number }[] = [];
   private shotTrunks: THREE.InstancedMesh[] = [];
+  private prairieShotSolids = new SolidShotGeometry();
   private shotRay = new THREE.Raycaster();
   private shotOrigin = new THREE.Vector3();
   private shotDirection = new THREE.Vector3();
 
   blocksShot(origin: { x: number; y: number; z: number }, target: { x: number; y: number; z: number }): boolean {
+    if (this.landscape.area.id === 'sharptail-prairie') return this.prairieShotSolids.blocks(origin, target);
     this.shotOrigin.set(origin.x, origin.y, origin.z);
     this.shotDirection.set(target.x - origin.x, target.y - origin.y, target.z - origin.z);
     const distance = this.shotDirection.length();
@@ -625,6 +628,7 @@ export class PropertyHabitatSystem implements Subsystem {
         mesh.userData.habitatRange = woodland ? (kind === 'trunk' || kind === 'canopy' ? 310 : ctx.quality === 'lite' ? 85 : 130) : Infinity;
         ctx.scene.add(mesh);
         if (woodland && kind === 'trunk') this.shotTrunks.push(mesh);
+        if (area.id === 'sharptail-prairie' && (kind === 'trunk' || kind === 'rock')) this.prairieShotSolids.add(mesh);
         this.meshes.push(mesh);
       }
     }
@@ -642,6 +646,7 @@ export class PropertyHabitatSystem implements Subsystem {
   }
 
   dispose(ctx: Ctx): void {
+    this.prairieShotSolids.dispose();
     for (const mesh of this.meshes) {
       ctx.scene.remove(mesh);
       // Instance matrices/colors belong to the mesh, not its shared geometry.

@@ -449,6 +449,9 @@ export class GunSystem implements Subsystem {
     try { landmarks = ctx.get<LandmarksSystem>('landmarks'); } catch { /* properties without solid landmarks */ }
     let flora: Subsystem & { blocksShot?: (origin: { x: number; y: number; z: number }, target: { x: number; y: number; z: number }) => boolean } | undefined;
     try { flora = ctx.get('flora'); } catch { /* properties without dedicated flora */ }
+    let quail: typeof flora, chukar: typeof flora;
+    try { quail = ctx.get('quail-environment'); } catch { /* other properties */ }
+    try { chukar = ctx.get('chukar-environment'); } catch { /* other properties */ }
     const presentationPhase = this.frozen ? 1 : THREE.MathUtils.clamp(ctx.fixedAlpha ?? 1, 0, 1);
     const pattern = new TravellingShot(ctx.camera.position, this.fwd, this.gun.spread / 400,
       this.birds.shotTargets(presentationPhase), request.assistance);
@@ -458,7 +461,9 @@ export class GunSystem implements Subsystem {
         && !habitat?.blocksShot?.(origin, target)
         && !wetBottoms?.blocksShot?.(origin, target)
         && !landmarks?.blocksShot?.(origin, target)
-        && !flora?.blocksShot?.(origin, target),
+        && !flora?.blocksShot?.(origin, target)
+        && !quail?.blocksShot?.(origin, target)
+        && !chukar?.blocksShot?.(origin, target),
     });
   }
 
