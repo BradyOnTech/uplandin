@@ -14,6 +14,7 @@ import { CommonGrassPairing, SharptailCommonPlants, nativeFamilyGeometry, deacti
 import { SharptailMidSward } from './sharptailMidSward';
 import { sharptailShackYardAt } from './sharptailEnvironment';
 import { sharptailAccentGroundAt } from './sharptailAccents';
+import { sharptailStoneClearance } from '../../game/sharptailFeatures';
 import { SHARPTAIL_MEADOW_COLORS, sharptailGrassOpening } from './sharptailMeadow';
 import { VegetationWind, VEGETATION_GUST_GLSL } from './vegetationWind';
 
@@ -868,7 +869,10 @@ export class GrassSystem implements Subsystem {
   }
 
   private outsideField(x: number, z: number): boolean {
-    return this.prairie ? this.prairie.edgeDistance(x, z) < 0 : Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT;
+    if (!this.prairie) return Math.abs(x) > WORLD_LIMIT || Math.abs(z) > WORLD_LIMIT;
+    if (this.prairie.edgeDistance(x, z) < 0) return true;
+    this.prairieLandscape!.worldToProperty(x, z, this.prairieProperty);
+    return sharptailStoneClearance(this.prairieProperty.x, this.prairieProperty.y) === 0;
   }
 
   /** Broad, oblique grass drifts remain attached to property coordinates
@@ -1793,6 +1797,9 @@ export class GrassSystem implements Subsystem {
       // property-space mask colors their litter below; do not bury the
       // authored habitat beneath a separate, equally tall grass layer.
       prairiePocket = this.prairieAccentAt(px, pz);
+      const stoneClearance = sharptailStoneClearance(this.prairieProperty.x, this.prairieProperty.y);
+      if (stoneClearance === 0) return false;
+      vigor *= .4 + stoneClearance * .6;
       const thinning = vi === V_COVER || vi === V_STALK ? .90 : vi === V_OPEN ? .08 : .20;
       if (prairiePocket > 0 && rng() < prairiePocket * thinning) return false;
     }

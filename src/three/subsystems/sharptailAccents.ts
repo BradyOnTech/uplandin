@@ -1,5 +1,23 @@
 import { mulberry32 } from '../../game/math';
 import { SHARPTAIL_SHOULDERS, sharptailGroundZones } from '../../game/sharptailLandscape';
+import { sharptailStoneClearance } from '../../game/sharptailFeatures';
+
+/** Sheltered ground below the four erratic groups. Unequal low lobes leave
+ * exposed stone and grass gaps; their orientation follows each till shoulder. */
+export const SHARPTAIL_ERRATIC_POCKETS = [
+  { id: 'west-graystone-lee', x: 257, y: 548, rx: 6.8, ry: 3.6, yaw: -.48 },
+  { id: 'south-stone-lee', x: 450, y: 708, rx: 5.7, ry: 3.3, yaw: -.18 },
+  { id: 'middle-stone-lee', x: 590, y: 525, rx: 7.5, ry: 3.4, yaw: -.36 },
+  { id: 'east-stone-lee', x: 1040, y: 500, rx: 5.9, ry: 3.7, yaw: .35 },
+] as const;
+const erraticIds = new Set<string>(SHARPTAIL_ERRATIC_POCKETS.map(pocket => pocket.id));
+const erraticFrames = SHARPTAIL_ERRATIC_POCKETS.map(pocket => ({
+  pocket, cos: Math.cos(pocket.yaw), sin: Math.sin(pocket.yaw),
+  lobes: [
+    { u: 0, v: 0, rx: pocket.rx * .62, ry: pocket.ry * .9 },
+    { u: pocket.rx * .82, v: -pocket.ry * .18, rx: pocket.rx * .32, ry: pocket.ry * .5 },
+  ],
+}));
 
 /** Property-space pockets on shoulder lips, sheltered swales and the open
  * side of route bends. These are decorative, not new bird-cover rectangles.
@@ -17,6 +35,7 @@ export const SHARPTAIL_ACCENT_POCKETS = [
   { id: 'east-return-lee', x: 1128, y: 477, rx: 15, ry: 7 },
   { id: 'east-lower-shoulder', x: 1094, y: 568, rx: 14, ry: 7 },
   { id: 'north-lee', x: 1026, y: 344, rx: 11, ry: 5 },
+  ...SHARPTAIL_ERRATIC_POCKETS,
 ] as const;
 
 // A broken low edge on the sheltered side of the Shack approach. The two
@@ -35,7 +54,8 @@ const pocketFrames = SHARPTAIL_ACCENT_POCKETS.map(pocket => {
   const shoulder = SHARPTAIL_SHOULDERS.reduce((nearest, current) =>
     Math.hypot(current.x - pocket.x, current.y - pocket.y) < Math.hypot(nearest.x - pocket.x, nearest.y - pocket.y)
       ? current : nearest);
-  return { pocket, cos: Math.cos(shoulder.yaw), sin: Math.sin(shoulder.yaw) };
+  const yaw = 'yaw' in pocket ? pocket.yaw : shoulder.yaw;
+  return { pocket, cos: Math.cos(yaw), sin: Math.sin(yaw) };
 });
 
 /** Allocation-free, property-space underplanting mask for baked ground tint.
@@ -43,7 +63,7 @@ const pocketFrames = SHARPTAIL_ACCENT_POCKETS.map(pocket => {
 export function sharptailAccentGroundAt(x: number, y: number): number {
   let strongest = 0;
   for (const { pocket, cos, sin } of pocketFrames) {
-    if (isShackPocket(pocket.id)) continue;
+    if (isShackPocket(pocket.id) || erraticIds.has(pocket.id)) continue;
     const dx = x - pocket.x, dy = y - pocket.y;
     const reach = (pocket.rx + 3) * 1.35;
     if (Math.abs(dx) > reach || Math.abs(dy) > reach) continue;
@@ -64,6 +84,16 @@ export function sharptailAccentGroundAt(x: number, y: number): number {
     const falloff = Math.max(0, 1 - (u * u + v * v) * edge);
     strongest = Math.max(strongest, falloff * falloff * (3 - 2 * falloff));
   }
+  for (const { pocket, cos, sin, lobes } of erraticFrames) {
+    const dx = x - pocket.x, dy = y - pocket.y;
+    if (Math.abs(dx) > pocket.rx * 1.5 + 2 || Math.abs(dy) > pocket.rx + 2) continue;
+    const u = dx * cos + dy * sin, v = -dx * sin + dy * cos;
+    for (const lobe of lobes) {
+      const radius = ((u - lobe.u) / (lobe.rx + .7)) ** 2 + ((v - lobe.v) / (lobe.ry + .7)) ** 2;
+      const falloff = Math.max(0, 1 - radius);
+      strongest = Math.max(strongest, falloff * falloff * (3 - 2 * falloff));
+    }
+  }
   return strongest;
 }
 
@@ -77,14 +107,17 @@ export interface SharptailAccent {
   color: number;
 }
 
-/** Fixed budgets before normal route/set-piece clearance: 168/252 shrubs,
- * 36/60 dry-forb sprays and 36/60 low stone groups. Lite keeps the same main
+/** Fixed budgets before normal route/set-piece clearance: 224/336 shrubs,
+ * 44/72 dry-forb sprays and 44/72 low stone groups. Lite keeps the same main
  * roots and adds no new batches. The centers remain identical from either
  * parking place; only outer satellites are removed on Lite. */
 export function sharptailAccentPlacements(lite: boolean): SharptailAccent[] {
   const placements: SharptailAccent[] = [];
   const zones = { swale: 0, stand: 0 };
   for (const [pocketIndex, { pocket, cos, sin }] of pocketFrames.entries()) {
+    // Appended features have independent streams; preserve all twelve
+    // accepted pockets, including the Shack thickets, byte for byte.
+    if (erraticIds.has(pocket.id)) continue;
     const rng = mulberry32(0x51a6e + pocketIndex * 0x9e3779b9);
     if (isShackPocket(pocket.id)) {
       const west = pocket.id === 'windbreak-reveal';
@@ -146,6 +179,44 @@ export function sharptailAccentPlacements(lite: boolean): SharptailAccent[] {
       for (let i = 0; i < count; i++) {
         const item = place(kind, i, count);
         if (!lite || i < liteCount) placements.push(item);
+      }
+    }
+  }
+  for (const [pocketIndex, { pocket, cos, sin, lobes }] of erraticFrames.entries()) {
+    const rng = mulberry32(0x57e011 + pocketIndex * 0x9e3779b9);
+    for (const [kind, count, liteCount] of [['shrub', 21, 14], ['reed', 3, 2], ['rock', 3, 2]] as const) {
+      const localCounts = [0, 0];
+      for (let i = 0; i < count; i++) {
+        const secondary = kind === 'shrub' ? i % 4 === 3 : i % 2 === 1;
+        const lobe = lobes[secondary ? 1 : 0];
+        const ordinal = localCounts[secondary ? 1 : 0]++;
+        const angle = ordinal * 2.399963 + rng() * .55 + (secondary ? .7 : 0);
+        // Dense low cores and a few uneven tips, rather than a halo of
+        // uniformly spaced bushes around every boulder.
+        const radius = kind === 'shrub' ? .15 + .72 * Math.sqrt((ordinal + .5) / (secondary ? 5 : 16))
+          : .42 + rng() * .45;
+        const scale = kind === 'shrub' ? .80 + rng() * .50
+          : kind === 'reed' ? .76 + rng() * .32 : .68 + rng() * .32;
+        let x = 0, y = 0, accepted = false;
+        // A tiny bounded retry is only for solid clearance. Both tiers
+        // generate the same complete stream before retaining their prefix.
+        for (let attempt = 0; attempt < 4; attempt++) {
+          const bearing = angle + attempt * 2.399963;
+          const u = lobe.u + Math.cos(bearing) * lobe.rx * radius;
+          const v = lobe.v + Math.sin(bearing) * lobe.ry * radius;
+          x = pocket.x + u * cos - v * sin; y = pocket.y + u * sin + v * cos;
+          const margin = (kind === 'rock' ? .82 : kind === 'shrub' ? .55 : .32) * scale / .9144;
+          if (sharptailStoneClearance(x, y) > .99
+            && sharptailStoneClearance(x - margin, y) > .99 && sharptailStoneClearance(x + margin, y) > .99
+            && sharptailStoneClearance(x, y - margin) > .99 && sharptailStoneClearance(x, y + margin) > .99) {
+            accepted = true; break;
+          }
+        }
+        const palette = kind === 'shrub' ? [0x96a58a, 0xa2ad92, 0x8f9f86]
+          : kind === 'reed' ? [0xb0a47b, 0xc1af7e, 0xa79c75] : [0xa7a38d, 0x918f7f, 0xb0a994];
+        const item = { kind, pocket: pocket.id, x, y, scale, yaw: rng() * Math.PI * 2,
+          color: palette[Math.floor(rng() * palette.length)] };
+        if (accepted && (!lite || i < liteCount)) placements.push(item);
       }
     }
   }

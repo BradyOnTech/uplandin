@@ -1,5 +1,6 @@
 import type { Rect } from './field';
 import type { Vec2 } from './types';
+import { sharptailDetailHeight } from './sharptailFeatures';
 
 /** Property yards, independent of parking place, render tier and hunt seed.
  * Native stands follow the lee of long shoulders; open gaps leave room for a
@@ -198,7 +199,7 @@ function swaleAt(x: number, y: number, swale: Swale): number {
 }
 
 export function sharptailAuthoredHeight(x: number, y: number): number {
-  let height = 6.5 + toeHeight(x, y);
+  let height = 6.5 + toeHeight(x, y) + sharptailDetailHeight(x, y);
   for (const ridge of shoulderFrames) height += ridgeAt(x, y, ridge);
   for (const saddle of saddleFrames) height -= saddleAt(x, y, saddle);
   for (const swale of SHARPTAIL_SWALES) {

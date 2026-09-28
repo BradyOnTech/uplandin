@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { sharptailGroundZones } from '../../game/sharptailLandscape';
+import { sharptailStoneClearance } from '../../game/sharptailFeatures';
 import type { LandscapeModel } from '../../game/landscape';
 import type { Ctx } from '../engine';
 import { SHARPTAIL_MEADOW_COLORS, sharptailGrassOpening, sharptailMeadowAt } from './sharptailMeadow';
@@ -66,7 +67,7 @@ transformed.y += vegetationGust(uPrairieTime, position.xz, uPrairieWind) * .025 
         // The relief is below a metre; it cannot create new walking hills.
         const crest = .5 + .28 * Math.sin(property.x * .67 + property.y * .31)
           + .22 * Math.sin(property.x * .39 - property.y * .71);
-        let cover = (1 - opening) ** 2;
+        let cover = (1 - opening) ** 2 * sharptailStoneClearance(property.x, property.y);
         if (shack) cover *= THREE.MathUtils.smoothstep(Math.hypot(property.x - shack.position.x, property.y - shack.position.y), 7, 15);
         for (const trail of landscape.area.trails) for (let i = 1; i < trail.points.length; i++) {
           const a = trail.points[i - 1], b = trail.points[i], dx = b.x - a.x, dy = b.y - a.y;

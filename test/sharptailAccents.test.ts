@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { getArea } from '../src/game/areas';
 import { LandscapeModel } from '../src/game/landscape';
+import { sharptailStoneClearance } from '../src/game/sharptailFeatures';
 import type { Ctx } from '../src/three/engine';
 import { PropertyHabitatSystem } from '../src/three/subsystems/propertyHabitat';
-import { SHARPTAIL_ACCENT_POCKETS, sharptailAccentGroundAt, sharptailAccentPlacements } from '../src/three/subsystems/sharptailAccents';
+import { SHARPTAIL_ACCENT_POCKETS, SHARPTAIL_ERRATIC_POCKETS, sharptailAccentGroundAt, sharptailAccentPlacements } from '../src/three/subsystems/sharptailAccents';
 import { sharptailForbGeometry, sharptailStoneGeometry } from '../src/three/subsystems/sharptailWoody';
 
 const area = getArea('sharptail-prairie');
@@ -13,7 +14,7 @@ describe('composed low prairie habitat', () => {
   it('preserves pocket roots across quality tiers with bounded decorative counts', () => {
     const high = sharptailAccentPlacements(false), lite = sharptailAccentPlacements(true);
     expect(high).toEqual(sharptailAccentPlacements(false));
-    expect(lite).toHaveLength(240); expect(high).toHaveLength(372);
+    expect(lite).toHaveLength(312); expect(high).toHaveLength(480);
     const identity = (item: typeof high[number]) => JSON.stringify(item);
     const highItems = new Set(high.map(identity));
     for (const item of lite) {
@@ -25,6 +26,38 @@ describe('composed low prairie habitat', () => {
       expect(lite.filter(item => item.pocket === pocket.id && item.kind === 'shrub').length).toBeGreaterThan(10);
       expect(lite.some(item => item.pocket === pocket.id && item.kind === 'reed')).toBe(true);
       expect(lite.some(item => item.pocket === pocket.id && item.kind === 'rock')).toBe(true);
+    }
+  });
+
+  it('keeps the new low lee pockets outside solid stones and walking lanes with identical Lite roots', () => {
+    const high = sharptailAccentPlacements(false), lite = sharptailAccentPlacements(true);
+    const distanceToSegment = (x: number, y: number, a: { x: number; y: number }, b: { x: number; y: number }) => {
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+      return Math.hypot(x - a.x - dx * t, y - a.y - dy * t);
+    };
+    for (const pocket of SHARPTAIL_ERRATIC_POCKETS) {
+      for (const kind of ['shrub', 'reed', 'rock'] as const) {
+        const highRoots = high.filter(item => item.pocket === pocket.id && item.kind === kind);
+        const liteRoots = lite.filter(item => item.pocket === pocket.id && item.kind === kind);
+        expect(highRoots).toHaveLength(kind === 'shrub' ? 21 : 3);
+        expect(liteRoots).toEqual(highRoots.slice(0, kind === 'shrub' ? 14 : 2));
+        for (const root of highRoots) {
+          expect(sharptailAccentGroundAt(root.x, root.y)).toBeGreaterThan(.05);
+          if (kind === 'shrub') {
+            expect(root.scale).toBeGreaterThanOrEqual(.8); expect(root.scale).toBeLessThanOrEqual(1.3);
+          }
+          // Probe the occupied footprint, not merely the shared origin.
+          const radius = (kind === 'rock' ? .82 : kind === 'shrub' ? .55 : .32) * root.scale / .9144;
+          for (let i = 0; i < 16; i++) {
+            const angle = i * Math.PI / 8;
+            expect(sharptailStoneClearance(root.x + Math.cos(angle) * radius, root.y + Math.sin(angle) * radius)).toBeGreaterThan(.99);
+          }
+          for (const trail of area.trails) for (let i = 1; i < trail.points.length; i++) {
+            expect(distanceToSegment(root.x, root.y, trail.points[i - 1], trail.points[i])).toBeGreaterThan(3.4 + radius);
+          }
+        }
+      }
     }
   });
 
@@ -58,10 +91,12 @@ describe('composed low prairie habitat', () => {
     const meshes = ctx.scene.children as THREE.InstancedMesh[];
     expect(meshes).toHaveLength(5);
     const shrubs = meshes.find(mesh => mesh.name.includes('shrub'))!;
-    expect(shrubs.count).toBeGreaterThan(180); expect(shrubs.count).toBeLessThanOrEqual(quality === 'lite' ? 320 : 520);
+    expect(shrubs.count).toBe(quality === 'lite' ? 280 : 382);
     let triangles = 0;
     for (const mesh of meshes) triangles += (mesh.geometry.index?.count ?? mesh.geometry.attributes.position.count) / 3 * mesh.count;
-    expect(triangles).toBeLessThan(quality === 'lite' ? 55000 : 90000);
+    // Measured complete habitat, including the unchanged49 tree pairs:
+    // +56/84 shrubs and +8/12 each of bootstones/forbs, no extra batches.
+    expect(triangles).toBeLessThanOrEqual(quality === 'lite' ? 47240 : 62510);
     const matrix = new THREE.Matrix4(), vertex = new THREE.Vector3();
     const rocks = meshes.find(mesh => mesh.name.includes('rock'))!;
     for (let i = 0; i < rocks.count; i++) {

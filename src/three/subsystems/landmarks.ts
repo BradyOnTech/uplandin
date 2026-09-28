@@ -1,5 +1,7 @@
 import { createPheasantHomestead, PHEASANT_HOMESTEAD_OBSTACLES } from './pheasantHomestead';
 import { createSharptailLineShack } from './sharptailEnvironment';
+import { createSharptailErratic } from './sharptailErratics';
+import { SHARPTAIL_ERRATICS } from '../../game/sharptailFeatures';
 import * as THREE from 'three';
 import { pheasantPondObstacles } from '../../game/pheasantHabitat';
 import type { AreaLandmark } from '../../game/areas';
@@ -15,6 +17,7 @@ const MAT = {
   homestead: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true, emissive: 0x302a20, emissiveIntensity: .14 }),
   prairieShack: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x4b5347, emissiveIntensity: .10 }),
   prairieYard: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
+  prairieStone: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x4b5347, emissiveIntensity: .10 }),
   wood: new THREE.MeshStandardMaterial({ color: 0x6d5134, roughness: 1, flatShading: true }),
   metal: new THREE.MeshStandardMaterial({ color: 0x9a9a8b, roughness: 0.85, flatShading: true }),
   wall: new THREE.MeshStandardMaterial({ color: 0x7f3828, roughness: 1, flatShading: true }),
@@ -136,6 +139,22 @@ export class LandmarksSystem implements Subsystem {
       if (this.quail && landmark.kind === 'windmill') {
         this.rotor = root.getObjectByName('Quail wind rotor');
         this.obstacles.push({ x: world.x, z: world.z, radius: 1.3 }, { x: world.x + 3.35, z: world.z + 0.35, radius: 1.3 });
+      }
+    }
+    if (hunt.areaConfig().id === 'sharptail-prairie') {
+      for (const stone of SHARPTAIL_ERRATICS) {
+        const world = hunt.simToWorld(stone.x, stone.y, { x: 0, z: 0 });
+        const c = Math.cos(stone.yaw), s = Math.sin(stone.yaw);
+        const root = createSharptailErratic(MAT.prairieStone,
+          (x, z) => terrain.heightAt(world.x + x * c + z * s, world.z - x * s + z * c), stone);
+        root.name = `Sharptail ${stone.id}`;
+        root.position.set(world.x, terrain.heightAt(world.x, world.z), world.z);
+        root.rotation.y = stone.yaw;
+        ctx.scene.add(root); this.objects.push(root); root.updateMatrixWorld(true);
+        root.traverse(object => { if (object instanceof THREE.Mesh) this.shotSolids.push(object); });
+        // The same physical stones exist on both quality tiers. Use their
+        // real mesh envelope rather than turning a whole group into a wall.
+        this.obstacles.push({ x: world.x, z: world.z, radius: root.userData.footprintRadius });
       }
     }
     for (const entrance of entrances) {
