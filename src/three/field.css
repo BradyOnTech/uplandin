@@ -348,6 +348,9 @@ body.touch-controls-active #touch-lower small { display:none; }
 body.touch-controls-active:not(.touch-gun-raised) #touch-lower { visibility:hidden; pointer-events:none; }
 body.touch-controls-active:not(.touch-gun-held) #touch-shot-status { display:none; }
 body.touch-controls-active.touch-gun-held #touch-controls .fire small { font-size:9px; }
+#touch-controls .fire .shot-edge-hint { display:none; }
+#touch-controls .fire[data-edge-swing=true] #touch-shot-status { display:none; }
+#touch-controls .fire[data-edge-swing=true] .shot-edge-hint { display:block; }
 body.touch-controls-active.touch-gun-raised #hunt-hud { display:block; width:auto; }
 body.touch-controls-active.touch-gun-raised #field-identity,
 body.touch-controls-active.touch-gun-raised #dog-locator,

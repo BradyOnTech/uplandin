@@ -10,15 +10,53 @@ export function bindTouchShotControl(button: HTMLButtonElement, options: {
   cancel: () => void;
   cancelTarget: HTMLElement;
   events: EventTarget;
+  viewport: () => { width: number; height: number };
 }): void {
-  let pointer: { id: number; x: number; y: number; source: ShotTriggerSource } | null = null;
+  let pointer: { id: number; x: number; y: number; source: ShotTriggerSource; edgeX: number; edgeY: number } | null = null;
+  let edgeFrame = 0, edgeTime = 0;
   let suppressPointerClick = false;
   const overCancel = (event: PointerEvent) => {
     const box = options.cancelTarget.getBoundingClientRect();
     return event.clientX >= box.left && event.clientX <= box.right
       && event.clientY >= box.top && event.clientY <= box.bottom;
   };
+  const stopEdge = () => {
+    if (edgeFrame) cancelAnimationFrame(edgeFrame);
+    edgeFrame = 0;
+    if (pointer) { pointer.edgeX = 0; pointer.edgeY = 0; }
+    button.removeAttribute('data-edge-swing');
+  };
+  const continueEdge = (now: number) => {
+    edgeFrame = 0;
+    if (!pointer || !options.enabled()) { cancel(); return; }
+    // Virtual drag keeps the existing optical/sensitivity response. Cap a
+    // delayed frame so a returning tab cannot suddenly whip the gun around.
+    const distance = 720 * Math.min(.05, Math.max(0, now - edgeTime) / 1000);
+    edgeTime = now;
+    options.look(pointer.edgeX * distance, pointer.edgeY * distance);
+    edgeFrame = requestAnimationFrame(continueEdge);
+  };
+  const edgeAxis = (position: number, extent: number, delta: number, previous: number) => {
+    const band = Math.min(36, extent * .1);
+    const amount = position < band ? -(band - position) / band
+      : position > extent - band ? (position - extent + band) / band : 0;
+    // Arm only by deliberately dragging toward the edge. An inward move
+    // stops immediately, even before the finger leaves the edge band.
+    if (!amount || amount * delta < 0 || (!previous && amount * delta <= 0)) return 0;
+    const strength = Math.min(1, Math.abs(amount));
+    return Math.sign(amount) * strength * strength * (3 - 2 * strength);
+  };
+  const updateEdge = (dx: number, dy: number) => {
+    if (!pointer || pointer.source !== 'touch') return;
+    const viewport = options.viewport();
+    pointer.edgeX = edgeAxis(pointer.x, viewport.width, dx, pointer.edgeX);
+    pointer.edgeY = edgeAxis(pointer.y, viewport.height, dy, pointer.edgeY);
+    if (!pointer.edgeX && !pointer.edgeY) { stopEdge(); return; }
+    button.setAttribute('data-edge-swing', 'true');
+    if (!edgeFrame) { edgeTime = performance.now(); edgeFrame = requestAnimationFrame(continueEdge); }
+  };
   const clear = () => {
+    stopEdge();
     const id = pointer?.id; pointer=null; button.removeAttribute('data-tracking');
     button.removeAttribute('data-canceling'); options.cancelTarget.removeAttribute('data-canceling');
     if (id !== undefined && button.hasPointerCapture(id)) button.releasePointerCapture(id);
@@ -28,7 +66,7 @@ export function bindTouchShotControl(button: HTMLButtonElement, options: {
     if(event.button > 0 || !options.enabled() || pointer)return;
     event.preventDefault();suppressPointerClick=true;
     const source = event.pointerType === 'touch' ? 'touch' : event.pointerType === 'mouse' ? 'mouse' : 'other';
-    pointer={id:event.pointerId,x:event.clientX,y:event.clientY,source};
+    pointer={id:event.pointerId,x:event.clientX,y:event.clientY,source,edgeX:0,edgeY:0};
     button.setPointerCapture(event.pointerId);button.setAttribute('data-tracking','true');
     options.begin();
   },{signal:options.signal});
@@ -38,8 +76,10 @@ export function bindTouchShotControl(button: HTMLButtonElement, options: {
     const canceling = overCancel(event);
     button.setAttribute('data-canceling', String(canceling));
     options.cancelTarget.setAttribute('data-canceling', String(canceling));
-    if (!canceling) options.look(event.clientX-pointer.x,event.clientY-pointer.y);
+    const dx=event.clientX-pointer.x,dy=event.clientY-pointer.y;
+    if (!canceling) options.look(dx,dy);
     pointer.x=event.clientX;pointer.y=event.clientY;
+    if (canceling) stopEdge(); else updateEdge(dx,dy);
   },{signal:options.signal});
   button.addEventListener('pointerup',event=>{
     if(pointer?.id!==event.pointerId)return;

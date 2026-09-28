@@ -1,4 +1,4 @@
-import { expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { bindTouchShotControl } from '../src/three/touchShotControl';
 function fixture() {
   const target=new EventTarget() as HTMLButtonElement;
@@ -7,10 +7,83 @@ function fixture() {
   const events=new EventTarget(),fire=vi.fn(),look=vi.fn(),begin=vi.fn(),cancel=vi.fn(),abort=new AbortController();
   const cancelTarget={getBoundingClientRect:()=>({left:10,right:60,top:10,bottom:60}),removeAttribute:vi.fn(),setAttribute:vi.fn()} as unknown as HTMLElement;
   let enabled=true;
-  bindTouchShotControl(target,{signal:abort.signal,enabled:()=>enabled,fire,look,events,begin,cancel,cancelTarget});
+  bindTouchShotControl(target,{signal:abort.signal,enabled:()=>enabled,fire,look,events,begin,cancel,cancelTarget,
+    viewport:()=>({width:844,height:390})});
   const send=(name:string,data:Record<string,unknown>={})=>target.dispatchEvent(Object.assign(new Event(name,{cancelable:true}),{pointerId:7,pointerType:'touch',clientX:100,clientY:100,...data}));
   return {send,fire,look,begin,cancel,events,abort,setEnabled:(value:boolean)=>enabled=value};
 }
+afterEach(()=>{vi.unstubAllGlobals();vi.restoreAllMocks();});
+
+function frames() {
+  let time=0, id=0;const pending=new Map<number,FrameRequestCallback>();
+  vi.spyOn(performance,'now').mockImplementation(()=>time);
+  vi.stubGlobal('requestAnimationFrame',(callback:FrameRequestCallback)=>{pending.set(++id,callback);return id;});
+  vi.stubGlobal('cancelAnimationFrame',(handle:number)=>pending.delete(handle));
+  return {step:(ms=1000/60)=>{time+=ms;const callbacks=[...pending.values()];pending.clear();callbacks.forEach(callback=>callback(time));},
+    pending:()=>pending.size};
+}
+
+it('keeps a crossing shot swinging when the firing thumb reaches the screen edge',()=>{
+  const clock=frames(),f=fixture();
+  f.send('pointerdown',{clientX:784,clientY:328});
+  f.send('pointermove',{clientX:842,clientY:328});f.look.mockClear();
+  for(let i=0;i<30;i++)clock.step();
+  // The same held contact must turn farther without invented pointer travel.
+  expect(f.look.mock.calls.reduce((sum,[dx])=>sum+dx,0)).toBeGreaterThan(250);
+  expect(f.fire).not.toHaveBeenCalled();
+  f.send('pointerup',{clientX:842,clientY:328});
+  expect(f.fire).toHaveBeenCalledExactlyOnceWith('touch');expect(clock.pending()).toBe(0);
+});
+
+it('stops edge turning immediately on inward movement and over Lower',()=>{
+  const clock=frames(),f=fixture();f.send('pointerdown',{clientX:784,clientY:328});
+  f.send('pointermove',{clientX:842,clientY:328});clock.step();
+  f.send('pointermove',{clientX:835,clientY:328});f.look.mockClear();clock.step();
+  expect(f.look).not.toHaveBeenCalled();
+  f.send('pointermove',{clientX:842,clientY:328});clock.step();
+  f.send('pointermove',{clientX:20,clientY:20});f.look.mockClear();clock.step();
+  expect(f.look).not.toHaveBeenCalled();f.send('pointerup',{clientX:20,clientY:20});
+  expect(f.fire).not.toHaveBeenCalled();expect(clock.pending()).toBe(0);
+});
+
+it.each(['pointercancel','lostpointercapture','pause','input-reset','touch-shot-cancel','abort','disabled'])('clears continuous edge turning on %s',reason=>{
+  const clock=frames(),f=fixture();f.send('pointerdown',{clientX:784,clientY:328});
+  f.send('pointermove',{clientX:842,clientY:328});clock.step();f.look.mockClear();
+  if(reason==='disabled')f.setEnabled(false);
+  else if(reason==='abort')f.abort.abort();
+  else if(['pause','input-reset','touch-shot-cancel'].includes(reason))f.events.dispatchEvent(new Event(reason));
+  else f.send(reason);
+  clock.step();expect(f.look).not.toHaveBeenCalled();expect(f.fire).not.toHaveBeenCalled();expect(clock.pending()).toBe(0);
+});
+
+it('requires an outward touch drag; tapping at the edge and mouse preview never auto-turn',()=>{
+  const clock=frames(),f=fixture();f.send('pointerdown',{clientX:842,clientY:328});clock.step();
+  expect(f.look).not.toHaveBeenCalled();f.send('pointercancel');
+  f.send('pointerdown',{pointerType:'mouse',clientX:784,clientY:328});
+  f.send('pointermove',{pointerType:'mouse',clientX:842,clientY:328});f.look.mockClear();clock.step();
+  expect(f.look).not.toHaveBeenCalled();expect(clock.pending()).toBe(0);
+});
+
+it('continues a downward swing at the bottom edge at the same rate on 30 and 60 Hz displays',()=>{
+  const run=(hz:number)=>{const clock=frames(),f=fixture();
+    f.send('pointerdown',{clientX:740,clientY:328});f.send('pointermove',{clientX:740,clientY:388});f.look.mockClear();
+    for(let i=0;i<hz;i++)clock.step(1000/hz);
+    const dy=f.look.mock.calls.reduce((sum,[,y])=>sum+y,0);f.abort.abort();vi.restoreAllMocks();return dy;};
+  const a=run(30),b=run(60);expect(a).toBeGreaterThan(500);expect(a).toBeCloseTo(b,8);
+});
+it.each([[100,200,2,200,-1,0],[740,100,740,2,0,-1]])('supports an intentional swing toward the left or top edge', (x,y,endX,endY,sx,sy)=>{
+  const clock=frames(),f=fixture();f.send('pointerdown',{clientX:x,clientY:y});
+  f.send('pointermove',{clientX:endX,clientY:endY});f.look.mockClear();clock.step();
+  const [dx,dy]=f.look.mock.calls[0];expect(Math.sign(dx)).toBe(sx);expect(Math.sign(dy)).toBe(sy);f.abort.abort();
+});
+it('bounds a delayed frame and lets the active thumb alone control the edge gesture',()=>{
+  const clock=frames(),f=fixture();f.send('pointerdown',{clientX:784,clientY:328});
+  f.send('pointermove',{clientX:842,clientY:328});f.look.mockClear();
+  f.send('pointermove',{pointerId:8,clientX:400,clientY:200});clock.step(2000);
+  expect(f.look.mock.calls[0][0]).toBeGreaterThan(0);expect(f.look.mock.calls[0][0]).toBeLessThanOrEqual(36);
+  f.send('pointerup',{pointerId:8});expect(f.fire).not.toHaveBeenCalled();
+  f.abort.abort();expect(clock.pending()).toBe(0);
+});
 it('tracks with the firing finger and fires once on release, not its synthetic click',()=>{
   const f=fixture();f.send('pointerdown');f.send('pointermove',{clientX:125,clientY:90});
   expect(f.look).toHaveBeenCalledWith(25,-10);expect(f.fire).not.toHaveBeenCalled();

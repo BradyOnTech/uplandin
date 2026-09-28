@@ -267,6 +267,7 @@ export class FieldInterface {
           begin: () => { unlockAudio(); action('touch-mount'); },
           cancel: () => action('lower'),
           cancelTarget: document.getElementById('touch-lower')!,
+          viewport: () => ({ width: window.innerWidth, height: window.innerHeight }),
           fire: (source) => action({ action: 'touch-fire', source }),
           events: this.engine.ctx.events });
         continue;
