@@ -67,6 +67,55 @@ export function sharptailCrestOffset(u: number, bend: number): number {
 // constant rotations rather than evaluating trigonometry per sample.
 const shoulderFrames = SHARPTAIL_SHOULDERS.map(shape => ({ ...shape, cos: Math.cos(shape.yaw), sin: Math.sin(shape.yaw) }));
 const saddleFrames = SADDLES.map(shape => ({ ...shape, cos: Math.cos(shape.yaw), sin: Math.sin(shape.yaw) }));
+/** Attached toes divide the long existing shoulders into overlapping faces.
+ * These are broad glacial rolls, not independent hill objects. Their finite
+ * support joins with zero slope, keeping the walking surface continuous. */
+export const SHARPTAIL_RELIEF_TOES = [
+  { x: 762, y: 598, rx: 116, ry: 48, yaw: -.50, height: 3.6, bend: .30 },
+  { x: 925, y: 481, rx: 106, ry: 48, yaw: -.59, height: 3.5, bend: -.32 },
+  { x: 428, y: 471, rx: 120, ry: 49, yaw: -.39, height: 3.8, bend: .24 },
+  { x: 590, y: 381, rx: 94, ry: 44, yaw: .08, height: 3.2, bend: -.25 },
+  { x: 951, y: 211, rx: 112, ry: 52, yaw: -.23, height: 4.3, bend: .32 },
+  { x: 1100, y: 276, rx: 122, ry: 52, yaw: .34, height: 5.0, bend: -.28 },
+  { x: 1064, y: 450, rx: 111, ry: 64, yaw: -.56, height: 2.4, bend: .30 },
+] as const;
+const toeFrames = SHARPTAIL_RELIEF_TOES.map(shape => ({ ...shape, cos: Math.cos(shape.yaw), sin: Math.sin(shape.yaw) }));
+function toeCoordinates(x: number, y: number, toe: typeof toeFrames[number], out: { u: number; v: number }): void {
+  const dx = x - toe.x, dy = y - toe.y;
+  out.u = (dx * toe.cos + dy * toe.sin) / toe.rx;
+  out.v = (-dx * toe.sin + dy * toe.cos) / toe.ry - toe.bend * (1 - out.u * out.u);
+}
+const toePosition = { u: 0, v: 0 };
+function toeHeight(x: number, y: number): number {
+  let height = 0;
+  for (const toe of toeFrames) {
+    if (Math.abs(x - toe.x) > toe.rx + toe.ry || Math.abs(y - toe.y) > toe.rx + toe.ry) continue;
+    toeCoordinates(x, y, toe, toePosition);
+    const { u, v } = toePosition;
+    if (Math.abs(u) >= 1 || Math.abs(v) >= 1) continue;
+    const along = 1 - u ** 4, across = 1 - v * v;
+    height += toe.height * along * along * across * across * (1 + u * .22);
+  }
+  return height;
+}
+
+/** One visual stand field attaches dry brows and dark lee growth to those
+ * same physical toes. It is sampled by terrain, middle canopy and near grass,
+ * never used to relocate habitat or birds. */
+export function sharptailToeGrowth(x: number, y: number, out: { low: number; lee: number; face: number }): void {
+  out.low = 0; out.lee = 0; out.face = 0;
+  for (const toe of toeFrames) {
+    if (Math.abs(x - toe.x) > toe.rx + toe.ry * 2 || Math.abs(y - toe.y) > toe.rx + toe.ry * 2) continue;
+    toeCoordinates(x, y, toe, toePosition);
+    const { u, v } = toePosition;
+    const along = Math.max(0, 1 - u ** 4); const reach = along * along;
+    out.low = Math.max(out.low, reach * Math.max(0, 1 - v * v * 1.5) ** 2);
+    const lee = Math.max(0, 1 - ((v - .85) / .92) ** 2);
+    out.lee = Math.max(out.lee, reach * lee * lee);
+    const face = Math.max(0, 1 - ((v + .65) / .62) ** 2);
+    out.face = Math.max(out.face, reach * face * face);
+  }
+}
 function ridgeAt(x: number, y: number, ridge: typeof shoulderFrames[number]): number {
   const dx = x - ridge.x, dy = y - ridge.y;
   const u = (dx * ridge.cos + dy * ridge.sin) / ridge.rx;
@@ -98,8 +147,14 @@ export const SHARPTAIL_SWALES: readonly Swale[] = [
 /** Two distant shelterbelts frame the Line Shack and north boundary. Never
  * distribute lonely trees uniformly across a landscape defined by open grass. */
 export const SHARPTAIL_SHELTERBELTS = [
-  { a: { x: 848, y: 126 }, b: { x: 1138, y: 173 }, trees: 24, width: 15 },
-  { a: { x: 160, y: 109 }, b: { x: 476, y: 125 }, trees: 25, width: 19 },
+  // Keep the original49-tree budget, but surviving groves overlap into
+  // three unequal masses per line with genuine gaps between them.
+  { a: { x: 850, y: 127 }, b: { x: 910, y: 141 }, trees: 8, width: 25 },
+  { a: { x: 969, y: 143 }, b: { x: 1019, y: 155 }, trees: 9, width: 32 },
+  { a: { x: 1090, y: 165 }, b: { x: 1138, y: 173 }, trees: 7, width: 23 },
+  { a: { x: 160, y: 109 }, b: { x: 219, y: 114 }, trees: 10, width: 29 },
+  { a: { x: 294, y: 112 }, b: { x: 343, y: 124 }, trees: 8, width: 24 },
+  { a: { x: 427, y: 123 }, b: { x: 476, y: 125 }, trees: 7, width: 28 },
 ] as const;
 
 function segmentDistance(x: number, y: number, a: Vec2, b: Vec2): number {
@@ -117,7 +172,7 @@ function swaleAt(x: number, y: number, swale: Swale): number {
 }
 
 export function sharptailAuthoredHeight(x: number, y: number): number {
-  let height = 6.5;
+  let height = 6.5 + toeHeight(x, y);
   for (const ridge of shoulderFrames) height += ridgeAt(x, y, ridge);
   for (const saddle of saddleFrames) height -= saddleAt(x, y, saddle);
   for (const swale of SHARPTAIL_SWALES) {

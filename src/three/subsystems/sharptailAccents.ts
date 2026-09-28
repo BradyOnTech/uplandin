@@ -5,18 +5,18 @@ import { SHARPTAIL_SHOULDERS, sharptailGroundZones } from '../../game/sharptailL
  * side of route bends. These are decorative, not new bird-cover rectangles.
  * Their long axes borrow the nearest authored shoulder's orientation. */
 export const SHARPTAIL_ACCENT_POCKETS = [
-  { id: 'south-reveal', x: 692, y: 575, rx: 13, ry: 7 },
-  { id: 'south-lee', x: 725, y: 586, rx: 15, ry: 6 },
+  { id: 'south-reveal', x: 720, y: 541, rx: 11, ry: 5 },
+  { id: 'south-lee', x: 774, y: 635, rx: 17, ry: 5 },
   { id: 'south-entry-shoulder', x: 670, y: 684, rx: 12, ry: 6 },
   { id: 'middle-swale', x: 830, y: 447, rx: 17, ry: 10 },
-  { id: 'west-shoulder', x: 319, y: 459, rx: 14, ry: 7 },
-  { id: 'west-crossing', x: 469, y: 439, rx: 11, ry: 6 },
+  { id: 'west-shoulder', x: 335, y: 442, rx: 10, ry: 5 },
+  { id: 'west-crossing', x: 469, y: 411, rx: 13, ry: 5 },
   { id: 'windbreak-reveal', x: 919, y: 314, rx: 13, ry: 8 },
   { id: 'windbreak-upper-lip', x: 946, y: 264, rx: 12, ry: 5 },
-  { id: 'east-return-reveal', x: 1165, y: 450, rx: 11, ry: 6 },
+  { id: 'east-return-reveal', x: 1142, y: 383, rx: 12, ry: 5 },
   { id: 'east-return-lee', x: 1128, y: 477, rx: 15, ry: 7 },
   { id: 'east-lower-shoulder', x: 1094, y: 568, rx: 14, ry: 7 },
-  { id: 'north-lee', x: 1000, y: 266, rx: 14, ry: 7 },
+  { id: 'north-lee', x: 1034, y: 321, rx: 12, ry: 6 },
 ] as const;
 
 const pocketFrames = SHARPTAIL_ACCENT_POCKETS.map(pocket => {
@@ -68,7 +68,7 @@ export function sharptailAccentPlacements(lite: boolean): SharptailAccent[] {
       // An unequal core and a thinner trailing edge: no ring of identical
       // bushes and no equally spaced confetti across the whole property.
       const angle = index * 2.399963 + rng() * .7;
-      const anchor = pocket.id === 'south-reveal' || pocket.id === 'middle-swale' || pocket.id === 'windbreak-reveal';
+      const anchor = pocket.id === 'south-reveal' || pocket.id === 'middle-swale' || pocket.id === 'windbreak-reveal' || pocket.id === 'north-lee' || pocket.id === 'west-shoulder';
       const radius = index < 8 && kind === 'shrub' ? (anchor ? .12 + rng() * .27 : .17 + rng() * .40)
         : .48 + rng() * .49;
       const u = Math.cos(angle) * pocket.rx * radius + (index % 3 === 0 ? pocket.rx * .15 : 0);

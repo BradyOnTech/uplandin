@@ -1,0 +1,27 @@
+{
+  "role": "Opaque northern prairie terrain detail; restrained luminance beneath authored meadow colors",
+  "method": "Built-in image generation; original copied without creative edits; cwebp q86 resize1024 packaging",
+  "originalOutput": "/Users/bradya/.codex/generated_images/01a06e19-2078-7df2-9635-befac80304f1/exec-4d41217f-4056-4564-866d-2a663286d3a1.png",
+  "prompt": "windlaid-v1.prompt.txt",
+  "runtime": "public/textures/terrain/sharptail-sward-v1.webp",
+  "size": [
+    1024,
+    1024
+  ],
+  "bytes": 351434,
+  "sha256": "caf1dcae2e479fcdc338159c9366e025518e68eb02a0e2024a57b4580c9402a7",
+  "linearLuminanceMean": 0.1550468178357579,
+  "luminancePercentiles": [
+    0.05371479036942667,
+    0.13616814190092713,
+    0.3248262986738574
+  ],
+  "seamJumpRelativeToInternalX": 1.5892361116835527,
+  "seamJumpRelativeToInternalY": 1.6480989053720618,
+  "limits": [
+    "Generated texture is not guaranteed mathematically seamless. Inspect repeated terrain at normal eye height and in motion.",
+    "Preserve local ground color and physical grass coverage; a texture does not establish full scene quality.",
+    "Use mipmaps and restrained detail at actual field scale; no alpha foliage cards."
+  ],
+  "review": "Accepted as bounded ground-surface refinement in frozen4639, with whole-route near vegetation quality still open; docs/3d/production-finish.md"
+}

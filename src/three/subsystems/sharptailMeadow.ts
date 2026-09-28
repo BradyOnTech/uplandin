@@ -1,4 +1,4 @@
-import { SHARPTAIL_SHOULDERS, sharptailCrestOffset } from '../../game/sharptailLandscape';
+import { SHARPTAIL_SHOULDERS, sharptailCrestOffset, sharptailToeGrowth } from '../../game/sharptailLandscape';
 
 export interface SharptailMeadowSample { crown: number; hollow: number; cured: number; exposed: number }
 
@@ -26,6 +26,7 @@ export const SHARPTAIL_MEADOW_COLORS = {
   cured: 0x9b865e,
   exposed: 0xb9b4a0,
 } as const;
+const toeGrowth = { low: 0, lee: 0, face: 0 };
 
 export function sharptailMeadowAt(x: number, y: number, swale: number, out: SharptailMeadowSample): SharptailMeadowSample {
   let crown = 0, cured = 0, exposed = 0;
@@ -48,12 +49,16 @@ export function sharptailMeadowAt(x: number, y: number, swale: number, out: Shar
       exposed = Math.max(exposed, face.strength * Math.exp(-(along ** 4 * 1.4 + edge ** 4)));
     }
   }
-  out.hollow = swale * swale;
+  sharptailToeGrowth(x, y, toeGrowth);
+  crown = Math.max(crown, toeGrowth.low);
+  // Lee ribbons are attached to real secondary brows. The same fields drive
+  // near stem height, middle-canopy relief and the far terrain value masses.
+  out.hollow = Math.max(swale * swale, toeGrowth.lee * .88);
   out.crown = crown * (1 - out.hollow * .85);
   out.cured = cured * (1 - out.hollow * .58) * (1 - out.crown * .55);
   // Till remains visible beneath vegetated faces. The grass placement layer
   // separately preserves cover-core density using the same stand mask.
-  out.exposed = exposed * (1 - out.hollow * .32);
+  out.exposed = Math.max(exposed * .62, toeGrowth.face * .72) * (1 - out.hollow * .68);
   return out;
 }
 

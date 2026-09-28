@@ -24,10 +24,10 @@ export class SharptailSwardField {
     const near = landscape.propertyToWorld(area.x, area.y, { x: 0, z: 0 });
     const far = landscape.propertyToWorld(area.x + area.w, area.y + area.h, { x: 0, z: 0 });
     this.minX = near.x; this.maxX = far.x; this.minZ = near.z; this.maxZ = far.z;
-    // Twelve-yard cells retain the curved crown/lee transition. Six scalar
-    // fields total about 193 KB for the full property, created once.
-    this.columns = Math.ceil(area.w / 12) + 1;
-    this.rows = Math.ceil(area.h / 12) + 1;
+    // Eight-yard cells retain the curved crown/lee transition. Six scalar
+    // fields total about 427 KB for the full property, created once.
+    this.columns = Math.ceil(area.w / 8) + 1;
+    this.rows = Math.ceil(area.h / 8) + 1;
     this.swales = new Float32Array(this.columns * this.rows);
     this.stands = new Float32Array(this.columns * this.rows);
     this.crowns = new Float32Array(this.columns * this.rows);

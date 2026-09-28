@@ -892,9 +892,9 @@ export class GrassSystem implements Subsystem {
     this.prairieForm.drift = drift;
     this.prairieForm.knot = knot;
     this.prairieForm.openFace = sharptailGrassOpening(this.prairieMeadow.exposed, this.prairieZones.stand);
-    this.prairieForm.rank = THREE.MathUtils.clamp(.13 + this.prairieZones.stand * .22 + drift * .12
-      + this.prairieMeadow.hollow * .61 + this.prairieMeadow.cured * .05
-      - this.prairieMeadow.crown * .33 - this.prairieForm.openFace * .35, 0, 1);
+    this.prairieForm.rank = THREE.MathUtils.clamp(.04 + this.prairieZones.stand * .17 + drift * .09
+      + this.prairieMeadow.hollow * .98 + this.prairieMeadow.cured * .06
+      - this.prairieMeadow.crown * .30 - this.prairieForm.openFace * .35, 0, 1);
     this.prairieForm.yaw = .7 + (drift - .5) * 1.0;
   }
 
@@ -1827,8 +1827,8 @@ export class GrassSystem implements Subsystem {
       // cereal canopy, while tall native stands remain legible to a hunter.
       const width = sxz * (this.cfg.bladeWide > 1 ? 1.20 : 1.06)
         * (1 + this.prairieMeadow.crown * (vi === V_OPEN ? .30 : .12));
-      const height = vi === V_OPEN ? .79 + rank * .22 :
-        vi === V_COVER ? .79 + rank * .53 : .84 + rank * .51;
+      const height = vi === V_OPEN ? .50 + rank * .45 :
+        vi === V_COVER ? .82 + rank * .63 : .55 + rank * .88;
       this.s.set(width, vigor * height * (.77 + rng() * .47) * (1 - prairiePocket * .58), width * (.82 + rng() * .20));
     }
     this.v.set(px, y, pz);
@@ -1893,7 +1893,7 @@ export class GrassSystem implements Subsystem {
         if (rng() > growth) continue;
         // Crown grass is wind-scoured and low, rather than the same tall
         // carpet painted a different colour. Keep its rooted basal layer.
-        const shortChance = .38 - rank * .27 - knot * .10 + this.prairieMeadow.crown * .18 + this.prairieForm.openFace * .15;
+        const shortChance = .66 - rank * .59 - knot * .08 + this.prairieMeadow.crown * .12 + this.prairieForm.openFace * .12;
         const vi = rng() < shortChance && counts[V_OPEN] < caps[V_OPEN] ? V_OPEN : V_TUFT;
         const vigor = .93 + drift * .19 + knot * .12 + rng() * .13;
         this.placeTuft(tile, counts, caps, vi, x, z, vigor, rng);
@@ -1915,7 +1915,7 @@ export class GrassSystem implements Subsystem {
         if (this.outsideField(x, z)) continue;
         this.samplePrairieForm(x, z);
         const { rank, knot } = this.prairieForm;
-        const cover = Math.max(this.coverAt(x, z), this.prairieZones.stand * .72);
+        const cover = Math.max(this.coverAt(x, z), this.prairieZones.stand * .72, this.prairieMeadow.hollow * .74);
         const rankCover = THREE.MathUtils.smoothstep(cover, .05, .72)
           * (1 - this.prairieMeadow.crown * .35) * (1 - this.prairieForm.openFace);
         if (rng() < rankCover * (.24 + knot * .34)) {
