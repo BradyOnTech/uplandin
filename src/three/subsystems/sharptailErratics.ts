@@ -48,25 +48,25 @@ export function createSharptailErratic(
     return Math.min(1 + .13 * u - .055 * v, 1.01 - .085 * u + .035 * v);
   };
   const top: Point = { x: leanX, y: crownHeight(leanX, leanZ), z: leanZ, height: 1 };
-  // The widest contour is buried, not floating above a narrow foot. Squared,
-  // worn corners and a coherent unequal planform distinguish a carried slab
-  // of granite from a flattened sphere without using boxes or jagged noise.
+  // The widest contour is buried, not floating above a narrow foot. Unequal
+  // rounded shoulders taper into a small fractured crown; broad vertical
+  // walls and a large flat lid would read as dressed building blocks.
   const angles = Array.from({ length: sides }, (_, i) => i / sides * Math.PI * 2 + (random() - .5) * .13);
   for (const a of angles) {
     const lobe = 1 + Math.sin(a * 3 + phase) * .095 + Math.cos(a * 2 - phase * .7) * .065;
     const cos = Math.cos(a), sin = Math.sin(a);
-    const x = Math.sign(cos) * Math.abs(cos) ** .78 * lobe;
-    const z = Math.sign(sin) * Math.abs(sin) ** .78 * lobe;
+    const x = cos * lobe;
+    const z = sin * lobe;
     const base: Point = { x: x + z * .12, y: 0, z, height: 0 };
     const shoulderHeight = .52 + Math.sin(a + phase) * .16 + Math.cos(a * 2 - phase) * .045;
     const shoulder: Point = {
-      x: base.x * .92 + leanX * .34,
+      x: base.x * .83 + leanX * .34,
       y: shoulderHeight,
-      z: base.z * .91 + leanZ * .34,
+      z: base.z * .84 + leanZ * .34,
       height: shoulderHeight,
     };
     const crown: Point = {
-      x: base.x * .60 + leanX, y: 0, z: base.z * .63 + leanZ, height: .94,
+      x: base.x * .38 + leanX, y: 0, z: base.z * .41 + leanZ, height: .94,
     };
     crown.y = crownHeight(crown.x, crown.z);
     rings[0].push(base);
