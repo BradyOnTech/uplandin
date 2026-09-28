@@ -12,7 +12,7 @@ export const SHARPTAIL_ACCENT_POCKETS = [
   { id: 'west-shoulder', x: 335, y: 442, rx: 10, ry: 5 },
   { id: 'west-crossing', x: 469, y: 411, rx: 13, ry: 5 },
   { id: 'windbreak-reveal', x: 992, y: 345, rx: 9, ry: 4.5 },
-  { id: 'windbreak-upper-lip', x: 946, y: 264, rx: 12, ry: 5 },
+  { id: 'windbreak-upper-lip', x: 1000, y: 276, rx: 12, ry: 5 },
   { id: 'east-return-reveal', x: 1142, y: 383, rx: 12, ry: 5 },
   { id: 'east-return-lee', x: 1128, y: 477, rx: 15, ry: 7 },
   { id: 'east-lower-shoulder', x: 1094, y: 568, rx: 14, ry: 7 },

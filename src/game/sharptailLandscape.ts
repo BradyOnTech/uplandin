@@ -169,14 +169,15 @@ export const SHARPTAIL_SWALES: readonly Swale[] = [
   { points: [{ x: -50, y: 642 }, { x: 240, y: 598 }, { x: 470, y: 506 }, { x: 664, y: 463 }, { x: 885, y: 417 }, { x: 1145, y: 362 }, { x: 1480, y: 392 }], width: 64, depth: 5.4, basinX: 810, basinRadius: 220, basinDepth: 4.5 },
 ];
 
-/** Two distant shelterbelts frame the Line Shack and north boundary. Never
- * distribute lonely trees uniformly across a landscape defined by open grass. */
+/** Northern shelterbelts and a broken windbreak behind the Line Shack.
+ * Reuse the property's 49 trees as unequal groups, retaining broad open
+ * casts and a clear view of the building between the two nearer groups. */
 export const SHARPTAIL_SHELTERBELTS = [
-  // Keep the original49-tree budget, but surviving groves overlap into
-  // three unequal masses per line with genuine gaps between them.
   { a: { x: 850, y: 127 }, b: { x: 910, y: 141 }, trees: 8, width: 25 },
-  { a: { x: 969, y: 143 }, b: { x: 1019, y: 155 }, trees: 9, width: 32 },
-  { a: { x: 1090, y: 165 }, b: { x: 1138, y: 173 }, trees: 7, width: 23 },
+  // Two existing eastern groups shelter the hollow's rear shoulder. Their
+  // gap frames the Shack roof; both walking approaches remain south of them.
+  { a: { x: 995, y: 260 }, b: { x: 1014, y: 263 }, trees: 9, width: 11 },
+  { a: { x: 1055, y: 277 }, b: { x: 1070, y: 284 }, trees: 7, width: 15 },
   { a: { x: 160, y: 109 }, b: { x: 219, y: 114 }, trees: 10, width: 29 },
   { a: { x: 294, y: 112 }, b: { x: 343, y: 124 }, trees: 8, width: 24 },
   { a: { x: 427, y: 123 }, b: { x: 476, y: 125 }, trees: 7, width: 28 },

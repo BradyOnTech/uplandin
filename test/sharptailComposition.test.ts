@@ -159,7 +159,7 @@ describe('Sharptail shelterbelts', () => {
     expect(Array.from(remainingCrowns.instanceMatrix.array)).toEqual(Array.from(remainingTrunks.instanceMatrix.array));
     before.system.dispose(before.ctx); crossing.system.dispose(crossing.ctx);
   });
-  it('uses paired trees at the north edge with the same roots on both quality tiers', () => {
+  it('keeps paired trees north of the Shack approaches with the same roots on both quality tiers', () => {
     const high = woodyFixture('high'), lite = woodyFixture('lite');
     const matrix = new THREE.Matrix4();
     for (const fixture of [high, lite]) {
@@ -171,7 +171,7 @@ describe('Sharptail shelterbelts', () => {
       for (let i = 0; i < trunks.count; i++) {
         trunks.getMatrixAt(i, matrix);
         const point = fixture.landscape.worldToProperty(matrix.elements[12], matrix.elements[14], { x: 0, y: 0 });
-        expect(point.y).toBeLessThan(200);
+        expect(point.y).toBeLessThan(300);
       }
     }
     const roots = (fixture: ReturnType<typeof woodyFixture>) => Array.from(fixture.meshes.find(mesh => mesh.name.includes('trunk'))!.instanceMatrix.array);
