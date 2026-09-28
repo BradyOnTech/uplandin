@@ -1340,12 +1340,18 @@ export class BirdsSystem implements Subsystem {
     const climb = THREE.MathUtils.clamp(fl.climb * doctrine.flight.climb, 0.2, 1.6);
     profile.clearance = 0.9 + climb * (species.timber ? 2.8 : 3.3) + rng() * 0.65;
 
-    const bearingSpread = THREE.MathUtils.clamp(
+    const bearingSpread = species.id === 'bobwhite' ? .82 : THREE.MathUtils.clamp(
       (0.12 + fl.wobble / 190) * (species.timber ? 1.1 : 1) * Math.max(0.65, doctrine.flight.lateral),
       0.1,
       0.7,
     );
     profile.bearing = Math.atan2(escapeZ, escapeX) + (rng() - 0.5) * bearingSpread;
+    if (species.id === 'bobwhite') {
+      // Let the individual burst remain readable before birds choose a
+      // shared refuge. The species adapter previously compressed the .82
+      // authored fan to .226 radians and cover steering erased it at once.
+      profile.coverTurn = { startSeconds: 1, durationSeconds: 1.5 };
+    }
     const bendRange = THREE.MathUtils.clamp(
       (0.06 + fl.wobble / 220) * doctrine.flight.wobble * (species.timber ? 1.2 : 1),
       0.04,

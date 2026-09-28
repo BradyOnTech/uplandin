@@ -33,6 +33,64 @@ function fixture(areaId = 'quail-fields') {
 }
 
 describe('continuous Quail coveys', () => {
+  it('keeps distinct bobwhite departure bearings through the actual covey launch loop', () => {
+    const launch = () => {
+      const f = fixture();
+      for (let id = 1; id <= 12; id++) f.add(id, 1, 15 + id * .2, (id % 3 - 1) * .3);
+      f.runtime.tickBirds(1000 / 30);
+      return f;
+    };
+    const f = launch(), repeated = launch();
+    const profiles = f.runtime.slots.filter(s => s.simId > 0);
+    const offsets = profiles.map(s => Math.atan2(Math.sin(s.spatialFlight.bearing - Math.atan2(s.flight.escZ, s.flight.escX)), Math.cos(s.spatialFlight.bearing - Math.atan2(s.flight.escZ, s.flight.escX))));
+    // A narrow stream of nearly parallel departures is not the authored
+    // bobwhite burst. Exercise the species adapter, not just its helper.
+    expect(Math.max(...offsets) - Math.min(...offsets)).toBeGreaterThan(.48);
+    expect(Math.max(...offsets.map(Math.abs))).toBeLessThan(.42);
+    for (const s of profiles) {
+      const bird = f.birds.find(b => b.id === s.simId)!;
+      expect([s.x, s.z]).toEqual([bird.pos.x, bird.pos.y]);
+      expect(s.spatialFlight).toEqual(repeated.runtime.slots.find(r => r.simId === s.simId)!.spatialFlight);
+      expect(s.spatialFlight.speed).toBeGreaterThanOrEqual(115 * .12 * .92);
+      expect(s.spatialFlight.speed).toBeLessThanOrEqual(155 * .12 * .92);
+    }
+  });
+
+  it('holds a bobwhite departure before smoothly finding and landing in its actual escape cover', () => {
+    const f = fixture(), free = fixture();
+    for (const run of [f, free]) {
+      (run.runtime.hunt as { coverPatches: () => unknown[] }).coverPatches = () => [{ cx: 70, cz: 22, hx: 14, hz: 12 }];
+      for (let id = 1; id <= 9; id++) run.add(id, 1, 12 + id * .25, (id % 3 - 1) * .4);
+      run.runtime.tickBirds(1000 / 30);
+    }
+    const slot = f.runtime.slots.find(s => s.spatialFlight?.target)!;
+    expect(slot).toBeDefined();
+    const target = { ...slot.spatialFlight.target };
+    const freeSlot = free.runtime.slots.find(s => s.simId === slot.simId)!;
+    freeSlot.spatialFlight.target = undefined;
+    let compared = 0, previousHeading: number | undefined, maxTurn = 0;
+    for (let tick = 0; tick < 300 && slot.status !== 'done'; tick++) {
+      f.runtime.tickBirds(1000 / 30); free.runtime.tickBirds(1000 / 30);
+      if (slot.status !== 'flying') continue;
+      if (slot.airMs <= 1000) {
+        expect(slot.x).toBeCloseTo(freeSlot.x, 10);
+        expect(slot.z).toBeCloseTo(freeSlot.z, 10);
+        compared++;
+      }
+      const heading = Math.atan2(slot.vzW, slot.vxW);
+      // The initial impulse has its own bearing; measure continuity of
+      // the cover turn once fixed-loop flight has established departure.
+      if (previousHeading !== undefined && slot.airMs > 100 && slot.airMs < 2800) maxTurn = Math.max(maxTurn, Math.abs(Math.atan2(Math.sin(heading - previousHeading), Math.cos(heading - previousHeading))));
+      previousHeading = heading;
+      expect([slot.x, slot.y, slot.z, slot.vxW, slot.vyW, slot.vzW].every(Number.isFinite)).toBe(true);
+    }
+    expect(compared).toBeGreaterThan(20);
+    expect(maxTurn).toBeLessThan(.09);
+    expect(Math.hypot(slot.x - target.x, slot.z - target.z)).toBeLessThan(.5);
+    expect(slot.y).toBeCloseTo(.25);
+    expect((f.runtime.hunt as { resolveBird: ReturnType<typeof vi.fn> }).resolveBird).toHaveBeenCalledWith(slot.simId, 'escaped', { x: slot.x, z: slot.z });
+  });
+
   it('releases the recovery fold when a pheasant glides or falls', () => {
     const f=fixture();f.add(1,1,4,0);f.birds[0].speciesId='ringneck';f.runtime.tickBirds(1000/30);
     const slot=f.runtime.slots[0];

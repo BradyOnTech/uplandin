@@ -12,6 +12,9 @@ export interface QuailFlight {
   clearance: number;
   glideAt: number;
   target?: { x: number; z: number };
+  /** Optional held departure and eased cover turn, in seconds. Profiles
+   * without it retain the established steering law for other species. */
+  coverTurn?: { startSeconds: number; durationSeconds: number };
 }
 
 /** Select another patch ahead of the flush, leaving room for a short flight.
@@ -57,7 +60,9 @@ export function stepQuailFlight(flight:QuailFlight,body:{x:number;y:number;z:num
     distance=Math.hypot(dx,dz);
     const desiredHeading=Math.atan2(dz,dx);
     // Retain the individual burst, then converge toward cover without a snap.
-    const blend=Math.min(1,Math.max(0,(seconds-.25)/1.25));
+    const turn=flight.coverTurn;
+    const turnProgress=Math.min(1,Math.max(0,(seconds-(turn?.startSeconds??.25))/(turn?.durationSeconds??1.25)));
+    const blend=turn ? turnProgress*turnProgress*(3-2*turnProgress) : turnProgress;
     heading+=Math.atan2(Math.sin(desiredHeading-heading),Math.cos(desiredHeading-heading))*blend;
     speed=Math.min(speed,Math.max(3,distance*1.8),distance/Math.max(dt,.0001));
   }
