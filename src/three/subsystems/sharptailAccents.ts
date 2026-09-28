@@ -1,14 +1,15 @@
 import { mulberry32 } from '../../game/math';
 import { SHARPTAIL_SHOULDERS, sharptailGroundZones } from '../../game/sharptailLandscape';
-import { sharptailStoneClearance } from '../../game/sharptailFeatures';
+import { SHARPTAIL_ERRATICS, sharptailStoneClearance } from '../../game/sharptailFeatures';
 
-/** Sheltered ground below the four erratic groups. Unequal low lobes leave
+/** Sheltered ground below the erratic groups. Unequal low lobes leave
  * exposed stone and grass gaps; their orientation follows each till shoulder. */
 export const SHARPTAIL_ERRATIC_POCKETS = [
   { id: 'west-graystone-lee', x: 257, y: 548, rx: 6.8, ry: 3.6, yaw: -.48 },
   { id: 'south-stone-lee', x: 450, y: 708, rx: 5.7, ry: 3.3, yaw: -.18 },
   { id: 'middle-stone-lee', x: 590, y: 525, rx: 7.5, ry: 3.4, yaw: -.36 },
   { id: 'east-stone-lee', x: 1040, y: 500, rx: 5.9, ry: 3.7, yaw: .35 },
+  { id: 'west-swale-stone-lee', x: 126, y: 527, rx: 8.2, ry: 4.8, yaw: -.28 },
 ] as const;
 const erraticIds = new Set<string>(SHARPTAIL_ERRATIC_POCKETS.map(pocket => pocket.id));
 const erraticFrames = SHARPTAIL_ERRATIC_POCKETS.map(pocket => ({
@@ -17,6 +18,13 @@ const erraticFrames = SHARPTAIL_ERRATIC_POCKETS.map(pocket => ({
     { u: 0, v: 0, rx: pocket.rx * .62, ry: pocket.ry * .9 },
     { u: pocket.rx * .82, v: -pocket.ry * .18, rx: pocket.rx * .32, ry: pocket.ry * .5 },
   ],
+}));
+// Short, worn litter around the western cluster exposes its full weight at
+// eye level. Unequal overlapping footprints stay attached to the real stones;
+// the same mask colors their ground and lowers/thins the near grass.
+const westernStoneAprons = SHARPTAIL_ERRATICS.filter(stone => stone.id.startsWith('west-swale-')).map(stone => ({
+  x: stone.x, y: stone.y, rx: stone.width / (2 * .9144) + 5.5,
+  ry: stone.depth / (2 * .9144) + 4.5, cos: Math.cos(stone.yaw), sin: Math.sin(stone.yaw),
 }));
 
 /** Property-space pockets on shoulder lips, sheltered swales and the open
@@ -36,6 +44,9 @@ export const SHARPTAIL_ACCENT_POCKETS = [
   { id: 'east-lower-shoulder', x: 1094, y: 568, rx: 14, ry: 7 },
   { id: 'north-lee', x: 1026, y: 344, rx: 11, ry: 5 },
   ...SHARPTAIL_ERRATIC_POCKETS,
+  // A separate low wind-lip patch makes a nearer layer above the western
+  // swale stones. It leaves the broad open cast between the two groups.
+  { id: 'west-outlook-windlip', x: 91, y: 512, rx: 8, ry: 4, yaw: -.28 },
 ] as const;
 
 // A broken low edge on the sheltered side of the Shack approach. The two
@@ -94,6 +105,15 @@ export function sharptailAccentGroundAt(x: number, y: number): number {
       strongest = Math.max(strongest, falloff * falloff * (3 - 2 * falloff));
     }
   }
+  for (const apron of westernStoneAprons) {
+    const dx = x - apron.x, dy = y - apron.y;
+    if (Math.abs(dx) > apron.rx + apron.ry || Math.abs(dy) > apron.rx + apron.ry) continue;
+    const u = (dx * apron.cos - dy * apron.sin) / apron.rx;
+    const v = (dx * apron.sin + dy * apron.cos) / apron.ry;
+    const brokenEdge = 1 + .12 * Math.sin(x * .29 + y * .47) + .10 * Math.sin(x * .53 - y * .19);
+    const falloff = Math.max(0, 1 - (u * u + v * v) * brokenEdge);
+    strongest = Math.max(strongest, falloff * falloff * (3 - 2 * falloff));
+  }
   return strongest;
 }
 
@@ -107,8 +127,8 @@ export interface SharptailAccent {
   color: number;
 }
 
-/** Fixed budgets before normal route/set-piece clearance: 224/336 shrubs,
- * 44/72 dry-forb sprays and 44/72 low stone groups. Lite keeps the same main
+/** Fixed budgets before normal route/set-piece clearance: 258/387 shrubs,
+ * 49/80 dry-forb sprays and 49/80 low stone groups. Lite keeps the same main
  * roots and adds no new batches. The centers remain identical from either
  * parking place; only outer satellites are removed on Lite. */
 export function sharptailAccentPlacements(lite: boolean): SharptailAccent[] {
@@ -158,7 +178,7 @@ export function sharptailAccentPlacements(lite: boolean): SharptailAccent[] {
       // An unequal core and a thinner trailing edge: no ring of identical
       // bushes and no equally spaced confetti across the whole property.
       const angle = index * 2.399963 + rng() * .7;
-      const anchor = pocket.id === 'south-reveal' || pocket.id === 'middle-swale' || pocket.id === 'windbreak-reveal' || pocket.id === 'north-lee' || pocket.id === 'west-shoulder';
+      const anchor = pocket.id === 'south-reveal' || pocket.id === 'middle-swale' || pocket.id === 'windbreak-reveal' || pocket.id === 'north-lee' || pocket.id === 'west-shoulder' || pocket.id === 'west-outlook-windlip';
       const radius = index < 8 && kind === 'shrub' ? (anchor ? .12 + rng() * .27 : .17 + rng() * .40)
         : .48 + rng() * .49;
       const u = Math.cos(angle) * pocket.rx * radius + (index % 3 === 0 ? pocket.rx * .15 : 0);
@@ -184,7 +204,8 @@ export function sharptailAccentPlacements(lite: boolean): SharptailAccent[] {
   }
   for (const [pocketIndex, { pocket, cos, sin, lobes }] of erraticFrames.entries()) {
     const rng = mulberry32(0x57e011 + pocketIndex * 0x9e3779b9);
-    for (const [kind, count, liteCount] of [['shrub', 21, 14], ['reed', 3, 2], ['rock', 3, 2]] as const) {
+    const westernApron = pocket.id === 'west-swale-stone-lee';
+    for (const [kind, count, liteCount] of [['shrub', westernApron ? 30 : 21, westernApron ? 20 : 14], ['reed', 3, 2], ['rock', 3, 2]] as const) {
       const localCounts = [0, 0];
       for (let i = 0; i < count; i++) {
         const secondary = kind === 'shrub' ? i % 4 === 3 : i % 2 === 1;
@@ -193,9 +214,11 @@ export function sharptailAccentPlacements(lite: boolean): SharptailAccent[] {
         const angle = ordinal * 2.399963 + rng() * .55 + (secondary ? .7 : 0);
         // Dense low cores and a few uneven tips, rather than a halo of
         // uniformly spaced bushes around every boulder.
-        const radius = kind === 'shrub' ? .15 + .72 * Math.sqrt((ordinal + .5) / (secondary ? 5 : 16))
+        const radius = kind === 'shrub' ? .15 + .72 * Math.sqrt((ordinal + .5) / (secondary ? westernApron ? 7 : 5 : westernApron ? 23 : 16))
           : .42 + rng() * .45;
-        const scale = kind === 'shrub' ? .80 + rng() * .50
+        // The closer western anchor has a fuller, unequal brush apron that
+        // reads at normal hunting distance; smaller lee pockets stay low.
+        const scale = kind === 'shrub' ? westernApron ? (1.25 + rng() * .55) * (secondary ? .85 : 1) : .80 + rng() * .50
           : kind === 'reed' ? .76 + rng() * .32 : .68 + rng() * .32;
         let x = 0, y = 0, accepted = false;
         // A tiny bounded retry is only for solid clearance. Both tiers

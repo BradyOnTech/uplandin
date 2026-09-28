@@ -8,6 +8,7 @@ import { huntingDoctrine, type HuntStyle } from '../../game/huntDoctrine';
 import type { Ctx, Subsystem } from '../engine';
 import { sharptailForbGeometry, sharptailShrubGeometry, sharptailStoneGeometry, sharptailTreeGeometry } from './sharptailWoody';
 import { sharptailAccentPlacements } from './sharptailAccents';
+import { sharptailDrawBrushPlacements } from './sharptailDrawBrush';
 import { VegetationWind, VEGETATION_GUST_GLSL, VEGETATION_INSTANCE_WIND_GLSL } from './vegetationWind';
 
 type HabitatKind = 'trunk' | 'canopy' | 'shrub' | 'reed' | 'rock' | 'cactus' | 'log';
@@ -31,6 +32,8 @@ interface HabitatPlacement {
   gradeX: number;
   gradeZ: number;
   scale: number;
+  /** Low draw colonies broaden crowns without turning shrubs into trees. */
+  spread?: number;
   yOffset: number;
   yaw: number;
   color: number;
@@ -393,15 +396,17 @@ export class PropertyHabitatSystem implements Subsystem {
       if (middle) anchors.push(middle);
     }
     const wetPools = area.id === 'woodcock-bottoms' ? wetPondLayout(area) : [];
-    const addHero = (kind: HabitatKind, x: number, y: number, size: number, yaw: number, yOffset = 0, tint?: number): void => {
-      if (!lists.has(kind) || x < minX + 8 || x > maxX - 8 || y < minY + 8 || y > maxY - 8) return;
+    const addHero = (kind: HabitatKind, x: number, y: number, size: number, yaw: number, yOffset = 0, tint?: number,
+      draw?: { exterior: boolean; spread: number }): void => {
+      if (!lists.has(kind)) return;
+      if (!draw?.exterior && (x < minX + 8 || x > maxX - 8 || y < minY + 8 || y > maxY - 8)) return;
       this.landscape.propertyToWorld(x, y, this.world);
       if (Math.hypot(this.world.x - HUNT_WORLD_ANCHOR.x, this.world.z - HUNT_WORLD_ANCHOR.z) < profile.nearClear + 6) return;
       // Use the paired crown's footprint for the trunk too, so a route
       // clearance cannot accept one half of a tree and reject the other.
       const clearanceRadius = kind === 'canopy' ? size * .82
         : kind === 'trunk' ? size * (area.id === 'sharptail-prairie' ? 1 : .55) * .82
-        : kind === 'rock' ? size * .72 : size * .45;
+        : kind === 'rock' ? size * .72 : size * .45 * (draw?.spread ?? 1);
       if (!propertyPositionClear(area, x, y, clearanceRadius)) return;
       if (wetPools.some(pond => wetPondRadius(pond, x, y) < 1.2)) return;
       this.landscape.surfaceAtProperty(x, y, this.surface);
@@ -413,6 +418,7 @@ export class PropertyHabitatSystem implements Subsystem {
         gradeX: this.surface.gradeX,
         gradeZ: this.surface.gradeZ,
         scale: size,
+        spread: draw?.spread,
         yOffset,
         yaw,
         color: tint ?? palette[0],
@@ -438,6 +444,12 @@ export class PropertyHabitatSystem implements Subsystem {
       }
       for (const item of sharptailAccentPlacements(ctx.quality === 'lite')) {
         addHero(item.kind, item.x, item.y, item.scale, item.yaw, 0, item.color);
+      }
+      for (const item of sharptailDrawBrushPlacements(ctx.quality === 'lite')) {
+        // Same shrub geometry/material/batch as the interior. Exterior roots
+        // sample the actual continued landscape above; no boundary clamp or
+        // flattened edge elevation. Interior route/spawn rules still apply.
+        addHero('shrub', item.x, item.y, item.scale, item.yaw, 0, item.color, item);
       }
     }
     const heroAnchors = area.id === 'sharptail-prairie' ? [] : anchors.slice(0, doctrine.style === 'open-covey' ? 2 : 3);
@@ -529,7 +541,7 @@ export class PropertyHabitatSystem implements Subsystem {
       // Hard caps keep a worst-case wide map within a predictable mobile
       // budget; deterministic order means the cutoff never shimmers.
       const cap = area.id === 'sharptail-prairie'
-        ? kind === 'shrub' ? ctx.quality === 'lite' ? 320 : 520
+        ? kind === 'shrub' ? ctx.quality === 'lite' ? 416 : 680
           : kind === 'rock' || kind === 'reed' ? ctx.quality === 'lite' ? 48 : 72 : 60
         : woodland ? 12000 : ctx.quality === 'lite' ? 420 : kind === 'canopy' || kind === 'trunk' ? 280 : 760;
       const heroes = placements.filter((placement) => placement.hero);
@@ -609,6 +621,7 @@ export class PropertyHabitatSystem implements Subsystem {
           this.yaw.setFromAxisAngle(this.up, item.yaw);
           this.rotation.multiply(this.yaw);
           this.scale.setScalar(item.scale);
+          if (item.spread !== undefined) this.scale.set(item.scale * item.spread, item.scale, item.scale * item.spread);
           if (kind === 'trunk' && !prairieTree) this.scale.set(item.scale * (woodland ? .16 : .62), item.scale * 1.3, item.scale * (woodland ? .16 : .62));
           if (woodland && kind === 'trunk') {
             // Match the rooted cylinder's widest radius; rendering distance

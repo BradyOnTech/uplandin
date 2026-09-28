@@ -22,7 +22,7 @@ describe('Sharptail connected middle-distance canopy', () => {
       geometry.computeBoundingBox(); extent.union(geometry.boundingBox!);
       for (let i = 0; i < p.count; i += 7) {
         const ground = landscape.heightAtWorld(p.getX(i), p.getZ(i));
-        expect(Math.abs(floor.getX(i) - ground + .045)).toBeLessThan(.0001);
+        expect(Math.abs(floor.getX(i) - ground + .025)).toBeLessThan(.0001);
         expect(p.getY(i) - floor.getX(i)).toBeGreaterThanOrEqual(0);
         expect(p.getY(i) - floor.getX(i)).toBeLessThan(.72);
       }

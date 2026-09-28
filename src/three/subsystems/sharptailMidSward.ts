@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { sharptailGroundZones } from '../../game/sharptailLandscape';
+import { sharptailAccentGroundAt } from './sharptailAccents';
 import { sharptailStoneClearance } from '../../game/sharptailFeatures';
 import type { LandscapeModel } from '../../game/landscape';
 import type { Ctx } from '../engine';
@@ -46,11 +47,11 @@ uniform float uPrairieWindStrength;
 ${VEGETATION_GUST_GLSL}`)
         .replace('#include <begin_vertex>', `#include <begin_vertex>
 float prairieDistance = distance(position.xz, cameraPosition.xz);
-float prairieKeep = smoothstep(22.0, 46.0, prairieDistance) * (1.0 - smoothstep(200.0, 280.0, prairieDistance));
+float prairieKeep = smoothstep(18.0, 34.0, prairieDistance) * (1.0 - smoothstep(200.0, 280.0, prairieDistance));
 transformed.y = prairieFloor + (position.y - prairieFloor) * prairieKeep;
 transformed.y += vegetationGust(uPrairieTime, position.xz, uPrairieWind) * .025 * uPrairieWindStrength * prairieFlex * prairieKeep;`);
     };
-    this.material.customProgramCacheKey = () => `${surfaceKey}-sharptail-connected-middle-sward-v3`;
+    this.material.customProgramCacheKey = () => `${surfaceKey}-sharptail-connected-middle-sward-v4`;
     for (let row = 0; row < rows; row += perCell) for (let column = 0; column < columns; column += perCell) {
       const width = Math.min(perCell, columns - column), depth = Math.min(perCell, rows - row);
       const positions: number[] = [], colors: number[] = [], floors: number[] = [], flex: number[] = [], indices: number[] = [];
@@ -67,7 +68,8 @@ transformed.y += vegetationGust(uPrairieTime, position.xz, uPrairieWind) * .025 
         // The relief is below a metre; it cannot create new walking hills.
         const crest = .5 + .28 * Math.sin(property.x * .67 + property.y * .31)
           + .22 * Math.sin(property.x * .39 - property.y * .71);
-        let cover = (1 - opening) ** 2 * sharptailStoneClearance(property.x, property.y);
+        let cover = (1 - opening) ** 2 * sharptailStoneClearance(property.x, property.y)
+          * (1 - sharptailAccentGroundAt(property.x, property.y) * .9);
         if (shack) cover *= THREE.MathUtils.smoothstep(Math.hypot(property.x - shack.position.x, property.y - shack.position.y), 7, 15);
         for (const trail of landscape.area.trails) for (let i = 1; i < trail.points.length; i++) {
           const a = trail.points[i - 1], b = trail.points[i], dx = b.x - a.x, dy = b.y - a.y;
@@ -75,8 +77,11 @@ transformed.y += vegetationGust(uPrairieTime, position.xz, uPrairieWind) * .025 
           const distance = Math.hypot(property.x - a.x - t * dx, property.y - a.y - t * dy);
           cover *= THREE.MathUtils.smoothstep(distance, 1.4, 4.4);
         }
-        const canopy = (.12 + rank * .59) * (.4 + crest * .6) * cover;
-        const floor = landscape.heightAtWorld(x, z) - .045;
+        // Common sward needs a visible body before Lite blades finish their
+        // 40m fade. Millimetres of lift were being swallowed by the ground's
+        // coarser triangles, exposing a smooth painted slope underneath.
+        const canopy = (.22 + rank * .49) * (.65 + crest * .35) * cover;
+        const floor = landscape.heightAtWorld(x, z) - .025;
         positions.push(x, floor + canopy, z); floors.push(floor); flex.push(canopy);
         if (surface) surface.paint(property.x, property.y, color);
         else color.setHex(0xb9ac79).lerp(crown, meadow.crown * .82).lerp(hollow, meadow.hollow * .97).lerp(cured, meadow.cured * .64);

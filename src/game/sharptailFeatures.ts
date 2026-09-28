@@ -19,6 +19,12 @@ export const SHARPTAIL_ERRATICS = [
   { id: 'middle-lone-stone', x: 583, y: 517, width: 4.1, height: 2.15, depth: 3.4, yaw: 1.8, seed: 209 },
   { id: 'east-saddle-stone', x: 1038, y: 487, width: 3.1, height: 1.55, depth: 2.7, yaw: -.4, seed: 71 },
   { id: 'east-saddle-low', x: 1045, y: 494, width: 2.0, height: .85, depth: 1.6, yaw: .8, seed: 152 },
+  // The western swale stays open, but its near lip has one remembered stone
+  // group visible from West Track's outward-facing shoulder. These are well
+  // west of the concealed stand at x110, with open ground around each rock.
+  { id: 'west-swale-stone', x: 115, y: 515, width: 6.5, height: 3.0, depth: 5.2, yaw: -.35, seed: 312 },
+  { id: 'west-swale-low', x: 105, y: 523, width: 3.2, height: 1.25, depth: 2.8, yaw: .95, seed: 422 },
+  { id: 'west-swale-satellite', x: 100, y: 531, width: 2.25, height: .85, depth: 1.9, yaw: -1.7, seed: 617 },
 ] as const;
 
 const frames = SHARPTAIL_LANDFORM_DETAILS.map(shape => ({ ...shape, cos: Math.cos(shape.yaw), sin: Math.sin(shape.yaw) }));

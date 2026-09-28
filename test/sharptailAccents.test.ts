@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { getArea } from '../src/game/areas';
 import { LandscapeModel } from '../src/game/landscape';
-import { sharptailStoneClearance } from '../src/game/sharptailFeatures';
+import { SHARPTAIL_ERRATICS, sharptailStoneClearance } from '../src/game/sharptailFeatures';
 import type { Ctx } from '../src/three/engine';
 import { PropertyHabitatSystem } from '../src/three/subsystems/propertyHabitat';
 import { SHARPTAIL_ACCENT_POCKETS, SHARPTAIL_ERRATIC_POCKETS, sharptailAccentGroundAt, sharptailAccentPlacements } from '../src/three/subsystems/sharptailAccents';
@@ -14,7 +14,7 @@ describe('composed low prairie habitat', () => {
   it('preserves pocket roots across quality tiers with bounded decorative counts', () => {
     const high = sharptailAccentPlacements(false), lite = sharptailAccentPlacements(true);
     expect(high).toEqual(sharptailAccentPlacements(false));
-    expect(lite).toHaveLength(312); expect(high).toHaveLength(480);
+    expect(lite).toHaveLength(356); expect(high).toHaveLength(547);
     const identity = (item: typeof high[number]) => JSON.stringify(item);
     const highItems = new Set(high.map(identity));
     for (const item of lite) {
@@ -37,15 +37,16 @@ describe('composed low prairie habitat', () => {
       return Math.hypot(x - a.x - dx * t, y - a.y - dy * t);
     };
     for (const pocket of SHARPTAIL_ERRATIC_POCKETS) {
+      const westernApron = pocket.id === 'west-swale-stone-lee';
       for (const kind of ['shrub', 'reed', 'rock'] as const) {
         const highRoots = high.filter(item => item.pocket === pocket.id && item.kind === kind);
         const liteRoots = lite.filter(item => item.pocket === pocket.id && item.kind === kind);
-        expect(highRoots).toHaveLength(kind === 'shrub' ? 21 : 3);
-        expect(liteRoots).toEqual(highRoots.slice(0, kind === 'shrub' ? 14 : 2));
+        expect(highRoots).toHaveLength(kind === 'shrub' ? westernApron ? 30 : 21 : 3);
+        expect(liteRoots).toEqual(highRoots.slice(0, kind === 'shrub' ? westernApron ? 20 : 14 : 2));
         for (const root of highRoots) {
           expect(sharptailAccentGroundAt(root.x, root.y)).toBeGreaterThan(.05);
           if (kind === 'shrub') {
-            expect(root.scale).toBeGreaterThanOrEqual(.8); expect(root.scale).toBeLessThanOrEqual(1.3);
+            expect(root.scale).toBeGreaterThanOrEqual(.8); expect(root.scale).toBeLessThanOrEqual(westernApron ? 1.8 : 1.3);
           }
           // Probe the occupied footprint, not merely the shared origin.
           const radius = (kind === 'rock' ? .82 : kind === 'shrub' ? .55 : .32) * root.scale / .9144;
@@ -73,6 +74,32 @@ describe('composed low prairie habitat', () => {
     for (const [x, y] of [[0, 0], [680, 770], [1190, 448], [800, 600]]) expect(sharptailAccentGroundAt(x, y)).toBe(0);
   });
 
+  it('opens a local grass-and-litter fringe around the closer western stone footprints', () => {
+    const stones = SHARPTAIL_ERRATICS.filter(stone => stone.id.startsWith('west-swale-'));
+    expect(stones).toHaveLength(3);
+    const main = stones.find(stone => stone.id === 'west-swale-stone')!;
+    expect(Math.hypot(main.x - 135, main.y - 495)).toBeGreaterThan(25);
+    expect(Math.hypot(main.x - 135, main.y - 495)).toBeLessThan(40);
+    for (const stone of stones) {
+      expect(sharptailAccentGroundAt(stone.x, stone.y)).toBe(1);
+      // Sample just beyond each rotated solid rather than only its buried
+      // center: the full silhouette needs low grass at the visible foot.
+      for (let i = 0; i < 16; i++) {
+        const angle = i * Math.PI / 8;
+        const u = Math.cos(angle) * (stone.width / 2 + .8) / .9144;
+        const v = Math.sin(angle) * (stone.depth / 2 + .8) / .9144;
+        const x = stone.x + u * Math.cos(stone.yaw) + v * Math.sin(stone.yaw);
+        const y = stone.y - u * Math.sin(stone.yaw) + v * Math.cos(stone.yaw);
+        expect(sharptailAccentGroundAt(x, y)).toBeGreaterThan(.5);
+      }
+    }
+    // These are local foot clearings, not a visual reduction in stocked cover.
+    for (const patch of area.patches) {
+      const x = patch.x + patch.w / 2, y = patch.y + patch.h / 2;
+      if (x < 300 && y < 600) expect(sharptailAccentGroundAt(x, y)).toBe(0);
+    }
+  });
+
   it('keeps dry forbs rooted and decorative stone groups below a boot step', () => {
     const forb = sharptailForbGeometry(), rock = sharptailStoneGeometry();
     expect(forb.attributes.position.count / 3).toBeLessThanOrEqual(90);
@@ -91,12 +118,14 @@ describe('composed low prairie habitat', () => {
     const meshes = ctx.scene.children as THREE.InstancedMesh[];
     expect(meshes).toHaveLength(5);
     const shrubs = meshes.find(mesh => mesh.name.includes('shrub'))!;
-    expect(shrubs.count).toBe(quality === 'lite' ? 280 : 382);
+    expect(shrubs.count).toBe(quality === 'lite' ? 410 : 593);
     let triangles = 0;
     for (const mesh of meshes) triangles += (mesh.geometry.index?.count ?? mesh.geometry.attributes.position.count) / 3 * mesh.count;
-    // Measured complete habitat, including the unchanged49 tree pairs:
-    // +56/84 shrubs and +8/12 each of bootstones/forbs, no extra batches.
-    expect(triangles).toBeLessThanOrEqual(quality === 'lite' ? 47240 : 62510);
+    // Complete habitat, including the unchanged49 tree pairs: the closer
+    // western stone apron and wind lip add34/51 shrubs and5/8 each of
+    // bootstones/forbs; eight broken draw colonies add96/160 shrubs. The
+    // complete property and exterior still use only five existing batches.
+    expect(triangles).toBeLessThanOrEqual(quality === 'lite' ? 63490 : 88870);
     const matrix = new THREE.Matrix4(), vertex = new THREE.Vector3();
     const rocks = meshes.find(mesh => mesh.name.includes('rock'))!;
     for (let i = 0; i < rocks.count; i++) {

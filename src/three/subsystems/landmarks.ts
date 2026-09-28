@@ -1,5 +1,6 @@
 import { createPheasantHomestead, PHEASANT_HOMESTEAD_OBSTACLES } from './pheasantHomestead';
 import { createSharptailLineShack } from './sharptailEnvironment';
+import { createSharptailStoneSurface } from './sharptailStoneSurface';
 import { createSharptailErratic } from './sharptailErratics';
 import { SHARPTAIL_ERRATICS } from '../../game/sharptailFeatures';
 import * as THREE from 'three';
@@ -52,6 +53,7 @@ export class LandmarksSystem implements Subsystem {
   private quail = false;
   private chukar?:ReturnType<typeof createChukarLandmarks>;
   private landscape?: LandscapeModel;
+  private prairieStoneSurface?: ReturnType<typeof createSharptailStoneSurface>;
   private obstacles: { x: number; z: number; radius: number }[] = [];
   private shotSolids: THREE.Mesh[] = [];
   private shotRay = new THREE.Raycaster();
@@ -142,10 +144,11 @@ export class LandmarksSystem implements Subsystem {
       }
     }
     if (hunt.areaConfig().id === 'sharptail-prairie') {
+      this.prairieStoneSurface = createSharptailStoneSurface(MAT.prairieStone);
       for (const stone of SHARPTAIL_ERRATICS) {
         const world = hunt.simToWorld(stone.x, stone.y, { x: 0, z: 0 });
         const c = Math.cos(stone.yaw), s = Math.sin(stone.yaw);
-        const root = createSharptailErratic(MAT.prairieStone,
+        const root = createSharptailErratic(this.prairieStoneSurface.material,
           (x, z) => terrain.heightAt(world.x + x * c + z * s, world.z - x * s + z * c), stone);
         root.name = `Sharptail ${stone.id}`;
         root.position.set(world.x, terrain.heightAt(world.x, world.z), world.z);
@@ -207,6 +210,7 @@ export class LandmarksSystem implements Subsystem {
 
   dispose(ctx: Ctx): void {
     this.chukar?.dispose();this.chukar=undefined;
+    this.prairieStoneSurface?.dispose(); this.prairieStoneSurface = undefined;
     const geometries = new Set<THREE.BufferGeometry>(); const materials = new Set<THREE.Material>();
     for (const object of this.objects) {
       ctx.scene.remove(object);

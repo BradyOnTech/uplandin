@@ -60,7 +60,7 @@ const cases = entries.flatMap(drop => (['high', 'lite'] as const).map(quality =>
 describe('live Sharptail erratic solids', () => {
   it.each(cases)('grounds physical rocks and blocks their visible bodies at $dropId / $quality', ({ dropId, quality }) => {
     const f = fixture(dropId, quality);
-    expect(f.rocks).toHaveLength(8);
+    expect(f.rocks).toHaveLength(11);
     const rays: { start: THREE.Vector3; end: THREE.Vector3 }[] = [];
     for (const { stone, root, mesh, bounds } of f.rocks) {
       const property = f.landscape.worldToProperty(root.position.x, root.position.z, { x: 0, y: 0 });
