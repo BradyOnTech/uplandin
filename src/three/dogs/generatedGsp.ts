@@ -146,38 +146,42 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
     [0,.526,-.39,.040,.067,.065], [0,.528,-.355,.070,.089,.088], [0,.534,-.30,.091,.097,.102],
     [0,.548,-.23,.088,.083,.103], [0,.548,-.16,.081,.087,.098], [0,.53,-.08,.091,.107,.107],
     [0,.516,0,.108,.129,.137], [0,.51,.08,.115,.140,.158], [0,.513,.16,.114,.143,.168],
-    [0,.535,.23,.100,.127,.177], [0,.567,.275,.082,.103,.145], [0,.596,.315,.066,.089,.105],
-    [0,.622,.35,.052,.070,.077], [0,.642,.385,.043,.052,.060], [0,.649,.410,.039,.042,.050],
+    // The supported sternum turns into a rising throat beneath the neck.
+    // These landmarks describe a chest and neck, not one triangular wedge.
+    [0,.531,.23,.099,.132,.173], [0,.546,.25,.091,.118,.143],
+    [0,.582,.275,.082,.093,.134], [0,.613,.305,.067,.076,.090],
+    [0,.635,.337,.055,.061,.060], [0,.649,.367,.047,.047,.053],
+    [0,.653,.393,.041,.038,.046], [0,.653,.415,.036,.033,.038],
   ], WHITE), .88);
   const neck = joint('neck', body, [0,.51,.245]);
   torsoMesh.userData.neckJoint = neck;
   const head = joint('head', neck, [0,.155,.135]);
   surface(head, s => {
-    // The upper muzzle ends at the lip, leaving room for a real mandible.
-    // A long nasal bridge and shallow stop retain the adult GSP profile.
-    s.loft([[0,.006,-.072,.037,.037,.042],[0,.008,-.048,.049,.035,.044],
-      [0,.008,-.012,.060,.041,.049],[0,.005,.026,.060,.037,.052],
-      [0,-.003,.056,.054,.032,.020],[0,-.008,.077,.046,.030,.013],
-      [0,-.006,.111,.042,.029,.013],[0,-.003,.145,.035,.027,.015],
-      [0,-.002,.171,.035,.024,.017]], pigment);
-    s.loft([[0,-.001,.166,.035,.024,.027],[0,.001,.18,.034,.022,.023]], nose);
+    // An adult head has a cranial vault and cheeks behind the shallow stop.
+    // The nasal bridge narrows toward the nose; its lip meets the mandible.
+    s.loft([[0,.008,-.078,.032,.037,.038],[0,.016,-.054,.049,.045,.048],
+      [0,.020,-.026,.061,.047,.055],[0,.015,.009,.063,.043,.058],
+      [0,.011,.039,.058,.034,.043],[0,.003,.061,.049,.030,.025],
+      [0,-.002,.087,.042,.027,.021],[0,-.003,.116,.037,.025,.019],
+      [0,-.002,.145,.032,.023,.019],[0,-.001,.171,.032,.022,.021]], pigment);
+    s.loft([[0,-.001,.166,.033,.023,.023],[0,0,.18,.032,.021,.022]], nose);
     // The oral roof stays dark, including when viewed from below; it is
     // geometry in the existing skin, not a hole through the head or a decal.
-    s.loft([[0,-.022,.044,.028,.0015],[0,-.020,.088,.035,.0015],
-      [0,-.018,.137,.029,.0015],[0,-.017,.165,.024,.0015]], NOSE);
-    // Small eyes sit at the skull/muzzle transition, without white cartoon sclera.
-    for (const side of [-1, 1]) s.loft([[side*.057,.017,.027,.0025,.0031],
-      [side*.055,.017,.037,.0027,.0026]], EYE);
+    s.loft([[0,-.023,.044,.027,.0015],[0,-.022,.088,.032,.0015],
+      [0,-.020,.137,.027,.0015],[0,-.020,.165,.024,.0015]], NOSE);
+    // The eyes sit below the brow, not on the narrow nasal bridge.
+    for (const side of [-1, 1]) s.loft([[side*.059,.027,.021,.0025,.0031],
+      [side*.057,.026,.031,.0027,.0026]], EYE);
   }, .78);
   const jaw = joint('jaw', head, [0,-.027,.026]);
   surface(jaw, s => {
-    s.loft([[0,-.004,.003,.034,.012],[0,-.014,.045,.037,.013],
-      [0,-.008,.091,.033,.012],[0,-.003,.126,.029,.009],
-      [0,0,.142,.023,.007]], pigment);
-    // A small dark inner surface and soft lower lip describe a relaxed
-    // grip without large white teeth or a bright, cartoon tongue.
-    s.loft([[0,.003,.021,.027,.0015],[0,0,.065,.030,.0015],
-      [0,.005,.112,.025,.0015],[0,.006,.135,.020,.001]], NOSE);
+    // A rounded mandibular angle supports the cheek, then rises into a
+    // lighter chin. The unchanged hinge closes this against the upper lip.
+    s.loft([[0,-.002,.003,.033,.016,.020],[0,-.005,.030,.038,.017,.022],
+      [0,-.006,.067,.035,.015,.019],[0,-.005,.101,.030,.012,.014],
+      [0,-.001,.128,.026,.009,.009],[0,.002,.141,.021,.006,.008]], pigment);
+    s.loft([[0,.009,.021,.027,.0015],[0,.008,.065,.030,.0015],
+      [0,.008,.112,.023,.0015],[0,.007,.135,.019,.001]], NOSE);
   }, .78);
   for (const side of [-1, 1]) {
     const ear = joint(side < 0 ? 'ear-left' : 'ear-right', head, [side*.052,.019,-.012]);
@@ -241,11 +245,14 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
       positions.push(p.x,p.y,p.z); normals.push(n.x,n.y,n.z); colors.push(color.getX(i),color.getY(i),color.getZ(i));
       let first = bones.indexOf(owner), second = first, blend = 0;
       if (mesh.userData.neckJoint) {
-        // A shared surface bridges chest and neck. Favor the neck above
-        // the shoulder while the deep brisket remains attached to the body.
+        // Keep the sternum on the chest while the throat above it follows
+        // the cervical column. The nape begins turning above the shoulder;
+        // the upper throat reaches full neck weight before meeting the head.
         second = bones.indexOf(mesh.userData.neckJoint);
-        blend = THREE.MathUtils.smoothstep(p.z, .18, .39)
-          * THREE.MathUtils.smoothstep(p.y, .43, .61);
+        const nape = THREE.MathUtils.smoothstep(p.z, .19, .355)
+          * THREE.MathUtils.smoothstep(p.y, .49, .655);
+        const throat = THREE.MathUtils.smoothstep(p.z, .255, .367);
+        blend = Math.max(nape, throat);
       }
       if (chain && chainY) {
         // The shoulder/hip surface stays attached to the torso while the
