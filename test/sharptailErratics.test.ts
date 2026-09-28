@@ -22,7 +22,7 @@ describe('Sharptail glacial erratics', () => {
     expect(bounds.min.y).toBeLessThan(0);
     const faces = mesh.geometry.attributes.position.count / 3;
     expect(faces).toBeGreaterThanOrEqual(150);
-    expect(faces).toBeLessThanOrEqual(300);
+    expect(faces).toBeLessThanOrEqual(700);
     expect(mesh.geometry.attributes.color.count).toBe(mesh.geometry.attributes.position.count);
     mesh.geometry.dispose();
   });
@@ -55,8 +55,9 @@ describe('Sharptail glacial erratics', () => {
     first.mesh.geometry.dispose(); same.mesh.geometry.dispose(); otherGeometry.dispose();
   });
 
-  it('closes every triangle edge and points caps outward for solid shots and shadows', () => {
-    const { mesh } = rock();
+  it.each([21, 84, 33, 117, 53, 209, 71, 152, 312, 422, 617, 1624])('keeps fractured seed %s watertight with outward caps and a bounded budget', seed => {
+    const root = createSharptailErratic(material, () => 17, { ...size, seed });
+    const mesh = root.children[0] as THREE.Mesh<THREE.BufferGeometry>;
     const positions = mesh.geometry.attributes.position;
     const normals = mesh.geometry.attributes.normal;
     const edges = new Map<string, number>();
@@ -69,10 +70,20 @@ describe('Sharptail glacial erratics', () => {
       }
       const ys = [0, 1, 2].map(j => positions.getY(i + j));
       if (ys.every(y => y >= size.height * .98)) expect(normals.getY(i)).toBeGreaterThan(0);
-      if (ys.every(y => y < 0)) expect(normals.getY(i)).toBeLessThan(0);
       expect(Math.hypot(normals.getX(i), normals.getY(i), normals.getZ(i))).toBeCloseTo(1, 5);
     }
     expect([...edges.values()].every(count => count === 2)).toBe(true);
+    expect(positions.count / 3).toBeLessThanOrEqual(700);
+    // The buried side faces can point outward/upward below y0. Check the
+    // actual basal and top caps from outside with a front-side ray instead
+    // of mistaking all underground faces for the bottom of the solid.
+    mesh.updateMatrixWorld(true);
+    const above = new THREE.Raycaster(new THREE.Vector3(0, size.height + 1, 0), new THREE.Vector3(0, -1, 0));
+    const below = new THREE.Raycaster(new THREE.Vector3(0, mesh.geometry.boundingBox!.min.y - 1, 0), new THREE.Vector3(0, 1, 0));
+    const topHit = above.intersectObject(mesh)[0], baseHit = below.intersectObject(mesh)[0];
+    expect(topHit).toBeDefined(); expect(baseHit).toBeDefined();
+    expect(topHit.face!.normal.y).toBeGreaterThan(0);
+    expect(baseHit.face!.normal.y).toBeLessThan(0);
     mesh.geometry.dispose();
   });
 });

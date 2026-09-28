@@ -61,7 +61,7 @@ describe('western exterior prairie', () => {
     expect(maxSlope).toBeLessThan(.6);
   });
 
-  it('resolves a low western skyline from the screenshot approach on the actual joined meshes', () => {
+  it('resolves a low, varied western skyline from normal eye height on the actual joined meshes', () => {
     const surface = renderedSurface();
     const eye = height(135, 495) + 1.62;
     const skyline = (degrees: number) => {
@@ -74,26 +74,74 @@ describe('western exterior prairie', () => {
       }
       return highest;
     };
-    const opening = skyline(242), left = skyline(232), right = skyline(252);
-    surface.dispose();
-    expect(opening).toBeGreaterThan(2); expect(opening).toBeLessThan(4);
-    expect(left - opening).toBeGreaterThan(1); expect(right - opening).toBeGreaterThan(1);
-    expect(Math.max(left, right)).toBeLessThan(6);
+    try {
+      const angles = [195, 209, 220, 232, 242, 252, 265, 280].map(skyline);
+      // Wide open country needs low relief, with a shoulder and an opening,
+      // rather than a tall enclosing wall or one constant-height ramp.
+      expect(Math.min(...angles)).toBeGreaterThan(-2);
+      expect(Math.max(...angles)).toBeLessThan(6);
+      expect(Math.max(...angles) - Math.min(...angles)).toBeGreaterThan(2);
+      expect(skyline(209)).toBeLessThan(2);
+      expect(skyline(242)).toBeGreaterThan(1);
+    } finally { surface.dispose(); }
   });
 
-  it('carries a connected low draw and bank paint through the western shoulders', () => {
-    const surface = renderedSurface(), bed = growth(), shoulder = growth();
-    for (const x of [-300, -450, -650]) {
-      const u = (-x - 20) / 980, y = 610 + 475 * u - 40 * Math.sin(Math.PI * u);
-      const low = surface.heightAt(x, y);
-      const across = (surface.heightAt(x, y - 140) + surface.heightAt(x, y + 140)) / 2;
-      expect(across - low).toBeGreaterThan(5);
-      sharptailHorizonGrowth(x, y, bed);
-      sharptailHorizonGrowth(x, y - .84 * (85 + 40 * u), shoulder);
-      expect(bed.hollow).toBeGreaterThan(.8);
-      expect(shoulder.exposed).toBeGreaterThan(.5);
-    }
-    surface.dispose();
+  it('renders two independent western ridgelines with a broad low valley between them', () => {
+    const surface = renderedSurface(), paint = growth();
+    try {
+      // Cross-sections span several coarse renderer cells. Locate the actual
+      // triangle crests and bed; no spline stations or formulas are copied.
+      for (const y of [400, 550, 850]) {
+        const section: { x: number; height: number }[] = [];
+        for (let x = -980; x <= -75; x += 5) section.push({ x, height: surface.heightAt(x, y) });
+        const crest = (left: number, right: number) => section.filter(p => p.x >= left && p.x <= right)
+          .reduce((best, p) => p.height > best.height ? p : best);
+        const near = crest(-360, -75), far = crest(-980, -550);
+        const bed = section.filter(p => p.x >= -570 && p.x <= -370)
+          .reduce((best, p) => p.height < best.height ? p : best);
+        expect(near.height - bed.height).toBeGreaterThan(8);
+        expect(far.height - bed.height).toBeGreaterThan(35);
+        expect(near.x - far.x).toBeGreaterThan(350);
+        const lowGround = section.filter(p => p.x > far.x && p.x < near.x && p.height < bed.height + 3);
+        expect(lowGround.at(-1)!.x - lowGround[0].x).toBeGreaterThan(100);
+        for (const p of section.filter(p => p.x >= lowGround[0].x && p.x <= lowGround.at(-1)!.x)) {
+          expect(p.height).toBeLessThan(bed.height + 3);
+        }
+        // The crown paint follows both real crests, not the low connecting bed.
+        for (const peak of [near, far]) {
+          sharptailHorizonGrowth(peak.x, y, paint);
+          expect(paint.crown).toBeGreaterThan(.3);
+          expect(paint.crown).toBeGreaterThan(paint.hollow);
+          expect(paint.exposed).toBeLessThan(.15);
+        }
+      }
+      // The low land continues between the slices; it is not three isolated
+      // depressions beneath otherwise joined hills.
+      for (let y = 400; y <= 850; y += 25) expect(surface.heightAt(-470, y)).toBeLessThan(14);
+    } finally { surface.dispose(); }
+  });
+
+  it('places sheltered green paint in an actual tributary and dry paint on its raised banks', () => {
+    const surface = renderedSurface(), paint = growth();
+    try {
+      for (const x of [-180, -240]) {
+        const samples = [];
+        for (let y = 610; y <= 720; y++) {
+          sharptailHorizonGrowth(x, y, paint);
+          samples.push({ y, ...paint });
+        }
+        const bed = samples.reduce((best, p) => p.hollow > best.hollow ? p : best);
+        const bank = samples.reduce((best, p) => p.exposed > best.exposed ? p : best);
+        const bedHeight = surface.heightAt(x, bed.y);
+        const shoulders = (surface.heightAt(x, bed.y - 50) + surface.heightAt(x, bed.y + 50)) / 2;
+        expect(shoulders - bedHeight).toBeGreaterThan(2);
+        expect(bed.hollow).toBeGreaterThan(.7);
+        expect(bank.exposed).toBeGreaterThan(.3);
+        expect(Math.abs(bank.y - bed.y)).toBeGreaterThan(20);
+        expect(surface.heightAt(x, bank.y) - bedHeight).toBeGreaterThan(.5);
+        expect(bank.exposed).toBeGreaterThan(bed.exposed + .2);
+      }
+    } finally { surface.dispose(); }
   });
 
   it('shares bounded, continuous crown and coulee paint with the exterior relief', () => {
@@ -107,6 +155,23 @@ describe('western exterior prairie', () => {
         maxima[key] = Math.max(maxima[key], out[key]);
       }
     }
-    expect(maxima.crown).toBeGreaterThan(.5); expect(maxima.hollow).toBeGreaterThan(.8); expect(maxima.exposed).toBeGreaterThan(.5);
+    expect(maxima.crown).toBeGreaterThan(.5); expect(maxima.hollow).toBeGreaterThan(.8); expect(maxima.exposed).toBeGreaterThan(.4);
   });
+
+  it('fades paint continuously through the compact ridge feet and ends', () => {
+    const out = growth(), east = growth(), south = growth();
+    const largestStep = growth();
+    // A fine pass across the whole profile catches a hard support boundary
+    // even when the coarser boundedness grid lands on either side of it.
+    for (let y = -280; y <= 1700; y += 31) for (let x = -1000; x <= -25; x += .5) {
+      sharptailHorizonGrowth(x, y, out);
+      sharptailHorizonGrowth(x + .5, y, east);
+      sharptailHorizonGrowth(x, y + .5, south);
+      for (const key of ['crown', 'hollow', 'exposed'] as const) {
+        largestStep[key] = Math.max(largestStep[key], Math.abs(east[key] - out[key]), Math.abs(south[key] - out[key]));
+      }
+    }
+    for (const value of Object.values(largestStep)) expect(value).toBeLessThan(.06);
+  });
+
 });

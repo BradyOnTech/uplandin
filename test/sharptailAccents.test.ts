@@ -76,7 +76,7 @@ describe('composed low prairie habitat', () => {
 
   it('opens a local grass-and-litter fringe around the closer western stone footprints', () => {
     const stones = SHARPTAIL_ERRATICS.filter(stone => stone.id.startsWith('west-swale-'));
-    expect(stones).toHaveLength(3);
+    expect(stones).toHaveLength(5);
     const main = stones.find(stone => stone.id === 'west-swale-stone')!;
     expect(Math.hypot(main.x - 135, main.y - 495)).toBeGreaterThan(25);
     expect(Math.hypot(main.x - 135, main.y - 495)).toBeLessThan(40);
@@ -102,7 +102,7 @@ describe('composed low prairie habitat', () => {
 
   it('keeps dry forbs rooted and decorative stone groups below a boot step', () => {
     const forb = sharptailForbGeometry(), rock = sharptailStoneGeometry();
-    expect(forb.attributes.position.count / 3).toBeLessThanOrEqual(90);
+    expect(forb.attributes.position.count / 3).toBeLessThanOrEqual(120);
     expect(forb.boundingBox!.max.y).toBeLessThan(.75);
     expect(Math.abs(forb.boundingBox!.min.y)).toBeLessThan(.025);
     expect(rock.attributes.position.count / 3).toBeLessThanOrEqual(40);
@@ -125,7 +125,9 @@ describe('composed low prairie habitat', () => {
     // western stone apron and wind lip add34/51 shrubs and5/8 each of
     // bootstones/forbs; eight broken draw colonies add96/160 shrubs. The
     // complete property and exterior still use only five existing batches.
-    expect(triangles).toBeLessThanOrEqual(quality === 'lite' ? 63490 : 88870);
+    // The open shrub kit may spend260 triangles per root, and branched
+    // forbs120. Existing roots and five draw batches remain unchanged.
+    expect(triangles).toBeLessThanOrEqual(quality === 'lite' ? 123000 : 175000);
     const matrix = new THREE.Matrix4(), vertex = new THREE.Vector3();
     const rocks = meshes.find(mesh => mesh.name.includes('rock'))!;
     for (let i = 0; i < rocks.count; i++) {

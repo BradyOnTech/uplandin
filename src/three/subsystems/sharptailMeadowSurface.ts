@@ -91,6 +91,9 @@ export const SHARPTAIL_SURFACE_COLOR_FRAGMENT = /* glsl */ `
   float swardRange = smoothstep(12.0, 36.0, pDistance) * (1.0 - smoothstep(170.0, 320.0, pDistance));
   float swardMass = smoothstep(.08, .78, swardTexel.a);
   diffuseColor.rgb *= mix(1.0, mix(1.055, .925, swardMass), swardRange * swardResolved);
+  // The resolved bunches shade their litter; transition to the lit canopy
+  // at the same range where individual leaves hand over to the middle sward.
+  diffuseColor.rgb *= mix(.72, 1.0, smoothstep(12.0, 48.0, pDistance));
 `;
 
 export const SHARPTAIL_SURFACE_NORMAL_FRAGMENT = /* glsl */ `

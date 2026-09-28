@@ -25,6 +25,8 @@ export const SHARPTAIL_ERRATICS = [
   { id: 'west-swale-stone', x: 115, y: 515, width: 6.5, height: 3.0, depth: 5.2, yaw: -.35, seed: 312 },
   { id: 'west-swale-low', x: 105, y: 523, width: 3.2, height: 1.25, depth: 2.8, yaw: .95, seed: 422 },
   { id: 'west-swale-satellite', x: 100, y: 531, width: 2.25, height: .85, depth: 1.9, yaw: -1.7, seed: 617 },
+  { id: 'west-swale-fore-stone', x: 125, y: 508, width: 3.6, height: 1.55, depth: 2.7, yaw: .65, seed: 913 },
+  { id: 'west-swale-fore-chip', x: 106, y: 505, width: 1.75, height: .65, depth: 1.4, yaw: -.7, seed: 821 },
 ] as const;
 
 const frames = SHARPTAIL_LANDFORM_DETAILS.map(shape => ({ ...shape, cos: Math.cos(shape.yaw), sin: Math.sin(shape.yaw) }));

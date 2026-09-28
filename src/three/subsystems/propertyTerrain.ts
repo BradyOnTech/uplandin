@@ -331,7 +331,7 @@ export class PropertyTerrain {
     const painted = landscape.area.id === 'pheasant-coverts' || wetSoil || prairie;
     const woodland = landscape.area.id === 'grouse-woods';
     const origin = landscape.propertyToWorld(0, 0, { x: 0, z: 0 });
-    this.material.customProgramCacheKey = () => `property-surface-v${prairie ? 10 : 6}-${landscape.area.terrain.kind}-${painted}-${woodland}-${wetSoil}-${prairie}`;
+    this.material.customProgramCacheKey = () => `property-surface-v${prairie ? 11 : 6}-${landscape.area.terrain.kind}-${painted}-${woodland}-${wetSoil}-${prairie}`;
     this.material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, uniforms);
       shader.uniforms.uPropertyFloorOrigin = { value: new THREE.Vector2(origin.x, origin.z) };
@@ -405,7 +405,7 @@ export class PropertyTerrain {
         this.soil.value = texture;
         // Ground identity comes from broad habitat paint; keep the repeating
         // grit subordinate so the farm and open cut fields retain clear masses.
-        this.soilStrength.value = wetSoil ? .32 : prairie ? .50 : .40;
+        this.soilStrength.value = wetSoil ? .32 : prairie ? .30 : .40;
       } catch (error) {
         // The baked habitat paint remains usable if an optional art asset
         // cannot load; a missing texture must not prevent entering a hunt.

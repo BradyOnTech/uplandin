@@ -9,16 +9,59 @@ export interface SharptailErraticSize {
   seed: number;
 }
 
-type Point = { x: number; y: number; z: number; height: number };
+type Face = { points: THREE.Vector3[]; basal: boolean };
+type Joint = { normal: THREE.Vector3; offset: number; width: number; depth: number; primary: boolean };
+type SurfacePoint = THREE.Vector3 & { height: number; joint: number };
+const EPSILON = 1e-7;
+const key = (point: THREE.Vector3) => `${Math.round(point.x * 1e8)},${Math.round(point.y * 1e8)},${Math.round(point.z * 1e8)}`;
+const snap = (point: THREE.Vector3) => point.set(Math.round(point.x * 1e8) / 1e8, Math.round(point.y * 1e8) / 1e8, Math.round(point.z * 1e8) / 1e8);
+
+/** Clip a surface polygon; its original outward winding stays intact. */
+function clip(points: THREE.Vector3[], normal: THREE.Vector3, offset: number, intersections?: THREE.Vector3[]): THREE.Vector3[] {
+  const result: THREE.Vector3[] = [];
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i], b = points[(i + 1) % points.length];
+    const da = normal.dot(a) - offset, db = normal.dot(b) - offset;
+    const insideA = da <= EPSILON, insideB = db <= EPSILON;
+    if (insideA) result.push(a);
+    if (insideA !== insideB) {
+      const point = snap(a.clone().lerp(b, da / (da - db)));
+      result.push(point); intersections?.push(point);
+    }
+  }
+  const cleaned = result.filter((point, i) => key(point) !== key(result[(i + result.length - 1) % result.length]));
+  if (cleaned.length < 3) return [];
+  const area = new THREE.Vector3();
+  for (let i = 0; i < cleaned.length; i++) area.add(new THREE.Vector3().crossVectors(cleaned[i], cleaned[(i + 1) % cleaned.length]));
+  return area.lengthSq() > 1e-14 ? cleaned : [];
+}
+
+/** Remove a fractured corner and close the newly exposed plane. */
+function cutSolid(faces: Face[], normal: THREE.Vector3, offset: number): Face[] {
+  const intersections: THREE.Vector3[] = [];
+  const clipped = faces.map(face => ({ ...face, points: clip(face.points, normal, offset, intersections) })).filter(face => face.points.length);
+  const cap = [...new Map(intersections.map(point => [key(point), point])).values()];
+  if (cap.length >= 3) {
+    const center = cap.reduce((sum, point) => sum.add(point), new THREE.Vector3()).divideScalar(cap.length);
+    const n = normal.clone().normalize();
+    const u = new THREE.Vector3().crossVectors(Math.abs(n.y) < .9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0), n).normalize();
+    const v = new THREE.Vector3().crossVectors(n, u);
+    cap.sort((a, b) => Math.atan2(a.clone().sub(center).dot(v), a.clone().sub(center).dot(u))
+      - Math.atan2(b.clone().sub(center).dot(v), b.clone().sub(center).dot(u)));
+    clipped.push({ points: cap, basal: false });
+  }
+  return clipped;
+}
 
 /**
- * A glacial erratic: broad worn shoulders and an off-center crown, with no
- * repeated cliff strata. One static, flat-shaded vertex-color mesh (224 faces).
+ * Sculpt a single fractured glacial block from unequal intersecting planes.
+ * Side planes carry most of the mass; three shoulder cuts and narrow worn
+ * bevels break the slab's outline. Continuous recessed joints cross the
+ * actual surface instead of painting a crack onto a dome.
  *
- * groundAt receives local x/z and returns ground elevation in a consistent
- * frame. Its center elevation is subtracted here. Place the returned root at
- * that center ground elevation, and include any root yaw in the sampler.
- * The caller owns the supplied vertexColors material; the root owns geometry.
+ * groundAt accepts local x/z and a consistent elevation frame. Place the
+ * root at groundAt(0,0), including root yaw in the sampler. The root owns its
+ * single closed geometry; the supplied vertexColors material stays external.
  */
 export function createSharptailErratic(
   material: THREE.Material,
@@ -28,150 +71,136 @@ export function createSharptailErratic(
   if (![size.width, size.height, size.depth].every(value => Number.isFinite(value) && value > 0)) {
     throw new Error('Sharptail erratic dimensions must be positive finite metres.');
   }
-  const random = mulberry32(size.seed);
-  const sides = 16;
+  const random = mulberry32(size.seed), variant = Math.abs(size.seed | 0) % 3;
   const phase = random() * Math.PI * 2;
-  const leanX = (random() - .5) * .42;
-  const leanZ = (random() - .5) * .36;
-  const ground = groundAt(0, 0);
-  const burial = Math.min(.34, Math.max(.14, size.height * .15));
-  const rings: Point[][] = Array.from({ length: 7 }, () => []);
-  const blend = (a: Point, b: Point, t: number): Point => ({
-    x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t,
-    z: a.z + (b.z - a.z) * t, height: a.height + (b.height - a.height) * t,
+  const p = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+  // Temporary enclosing half-spaces, all cut away except the buried floor.
+  // The visible shape is built by the authored fracture planes below.
+  let faces: Face[] = [
+    { points: [p(-1.5, 0, -1.5), p(1.5, 0, -1.5), p(1.5, 0, 1.5), p(-1.5, 0, 1.5)], basal: true },
+    { points: [p(-1.5, 1.6, 1.5), p(1.5, 1.6, 1.5), p(1.5, 1.6, -1.5), p(-1.5, 1.6, -1.5)], basal: false },
+    { points: [p(-1.5, 0, 1.5), p(1.5, 0, 1.5), p(1.5, 1.6, 1.5), p(-1.5, 1.6, 1.5)], basal: false },
+    { points: [p(1.5, 0, -1.5), p(-1.5, 0, -1.5), p(-1.5, 1.6, -1.5), p(1.5, 1.6, -1.5)], basal: false },
+    { points: [p(1.5, 0, 1.5), p(1.5, 0, -1.5), p(1.5, 1.6, -1.5), p(1.5, 1.6, 1.5)], basal: false },
+    { points: [p(-1.5, 0, -1.5), p(-1.5, 0, 1.5), p(-1.5, 1.6, 1.5), p(-1.5, 1.6, -1.5)], basal: false },
+  ];
+  const bearings = [-12, 34, 81, 130, 173, 223, 274, 318];
+  const reaches = [.96, .88, 1.02, .90, 1.10, .83, 1.0, .95];
+  const tapers = [.08, .18, .27, .12, .04, .15, .21, .10];
+  const sides = bearings.map((angle, i) => {
+    const a = angle * Math.PI / 180 + phase;
+    return { normal: p(Math.cos(a), tapers[(i + variant * 2) % 8], Math.sin(a)), offset: reaches[i] + (random() - .5) * .10 };
   });
-  const crownHeight = (x: number, z: number) => {
-    const u = x * Math.cos(phase) + z * Math.sin(phase);
-    const v = -x * Math.sin(phase) + z * Math.cos(phase);
-    // Two broad, shallow fracture planes meet off center. A large tilted cap
-    // replaces the little rounded peak that made every stone read as a dome.
-    return Math.min(1 + .13 * u - .055 * v, 1.01 - .085 * u + .035 * v);
-  };
-  const top: Point = { x: leanX, y: crownHeight(leanX, leanZ), z: leanZ, height: 1 };
-  // The widest contour is buried, not floating above a narrow foot. Unequal
-  // rounded shoulders taper into a small fractured crown; broad vertical
-  // walls and a large flat lid would read as dressed building blocks.
-  const angles = Array.from({ length: sides }, (_, i) => i / sides * Math.PI * 2 + (random() - .5) * .13);
-  for (const a of angles) {
-    const lobe = 1 + Math.sin(a * 3 + phase) * .095 + Math.cos(a * 2 - phase * .7) * .065;
-    const cos = Math.cos(a), sin = Math.sin(a);
-    const x = cos * lobe;
-    const z = sin * lobe;
-    const base: Point = { x: x + z * .12, y: 0, z, height: 0 };
-    const shoulderHeight = .52 + Math.sin(a + phase) * .16 + Math.cos(a * 2 - phase) * .045;
-    const shoulder: Point = {
-      x: base.x * .83 + leanX * .34,
-      y: shoulderHeight,
-      z: base.z * .84 + leanZ * .34,
-      height: shoulderHeight,
-    };
-    const crown: Point = {
-      x: base.x * .38 + leanX, y: 0, z: base.z * .41 + leanZ, height: .94,
-    };
-    crown.y = crownHeight(crown.x, crown.z);
-    rings[0].push(base);
-    rings[1].push(blend(base, shoulder, .45));
-    rings[2].push(shoulder);
-    rings[3].push(blend(shoulder, crown, .5));
-    rings[4].push(crown);
-    for (const [level, t] of [[5, .40], [6, .78]]) {
-      const point = blend(crown, top, t);
-      point.y = crownHeight(point.x, point.z);
-      rings[level].push(point);
+  for (const plane of sides) faces = cutSolid(faces, plane.normal, plane.offset);
+  const roof = variant === 0
+    ? [{ normal: p(.32, 1, .16), offset: 1.04 }, { normal: p(-.42, 1, -.07), offset: 1.19 }]
+    : variant === 1
+      ? [{ normal: p(-.39, 1, .23), offset: 1.02 }, { normal: p(.16, 1, -.30), offset: 1.18 }]
+      : [{ normal: p(.15, 1, -.32), offset: 1.10 }, { normal: p(-.29, 1, .21), offset: 1.06 }];
+  for (const plane of roof) faces = cutSolid(faces, plane.normal, plane.offset);
+  // A dominant broken shoulder and two smaller unequal chips. They cut into
+  // selected flanks rather than rounding every direction into one dome.
+  for (const [ordinal, side] of [variant, (variant + 3) % 8, (variant + 5) % 8].entries()) {
+    const direction = sides[side].normal;
+    faces = cutSolid(faces, p(direction.x, .61 + ordinal * .10, direction.z), 1.24 + ordinal * .08);
+  }
+  // Narrow worn arrises give broad faces a credible transition. No random
+  // vertex displacement: these are real small bevel planes on the solid.
+  for (let i = 0; i < sides.length; i++) {
+    const a = sides[i], b = sides[(i + 1) % sides.length];
+    faces = cutSolid(faces, a.normal.clone().add(b.normal), a.offset + b.offset - (.035 + random() * .035));
+  }
+  for (const i of [1, 4, 6]) {
+    faces = cutSolid(faces, sides[i].normal.clone().add(roof[0].normal), sides[i].offset + roof[0].offset - .045);
+  }
+  const joints: Joint[] = [
+    { normal: p(.84, -.19, .38).normalize(), offset: (variant - 1) * .12 + .05, width: .052, depth: .12, primary: true },
+    { normal: p(-.17, 1, .23).normalize(), offset: .39 + variant * .075, width: .024, depth: .038, primary: false },
+  ];
+  for (const joint of joints) for (const edge of [-joint.width, 0, joint.width]) {
+    const offset = joint.offset + edge;
+    const opposite = joint.normal.clone().negate();
+    faces = faces.flatMap(face => [
+      { ...face, points: clip(face.points, joint.normal, offset) },
+      { ...face, points: clip(face.points, opposite, -offset) },
+    ].filter(part => part.points.length));
+  }
+  // Canonical shared vertices keep the surface watertight after the cuts.
+  const vertices = new Map<string, SurfacePoint>();
+  for (const face of faces) face.points = face.points.map(point => {
+    const id = key(point), existing = vertices.get(id);
+    if (existing) return existing;
+    const transformed = point.clone() as SurfacePoint;
+    transformed.joint = 0;
+    for (const joint of joints) {
+      const distance = Math.abs(joint.normal.dot(point) - joint.offset);
+      const groove = Math.max(0, 1 - distance / joint.width);
+      const lift = THREE.MathUtils.smoothstep(point.y, .10, .34);
+      const flank = joint.primary ? 1 : THREE.MathUtils.smoothstep(point.x + point.z, -.7, .25);
+      const amount = groove * lift * flank;
+      transformed.x -= point.x * amount * joint.depth;
+      transformed.z -= point.z * amount * joint.depth;
+      transformed.y -= amount * joint.depth * (joint.primary ? .72 : .12);
+      transformed.joint = Math.max(transformed.joint, amount);
+    }
+    transformed.height = transformed.y;
+    vertices.set(id, transformed); return transformed;
+  });
+  const points = [...vertices.values()];
+  const minX = Math.min(...points.map(point => point.x)), maxX = Math.max(...points.map(point => point.x));
+  const minZ = Math.min(...points.map(point => point.z)), maxZ = Math.max(...points.map(point => point.z));
+  const topY = Math.max(...points.map(point => point.y));
+  const ground = groundAt(0, 0), burial = Math.min(.36, Math.max(.14, size.height * .15));
+  const footprint: { x: number; z: number; groundY: number; bottomY: number }[] = [];
+  for (const point of points) {
+    point.x = ((point.x - minX) / (maxX - minX) - .5) * size.width;
+    point.z = ((point.z - minZ) / (maxZ - minZ) - .5) * size.depth;
+    point.height = point.y / topY; point.y = point.height * size.height;
+    if (point.height < EPSILON) {
+      const groundY = groundAt(point.x, point.z) - ground;
+      point.y = Math.min(groundY - burial, -burial);
+      footprint.push({ x: point.x, z: point.z, groundY, bottomY: point.y });
     }
   }
-  // Center and normalize the whole envelope once, so authored width/depth
-  // remain full extents rather than approximate radius multipliers.
-  const points = [...rings.flat(), top];
-  const minX = Math.min(...points.map(p => p.x)), maxX = Math.max(...points.map(p => p.x));
-  const minZ = Math.min(...points.map(p => p.z)), maxZ = Math.max(...points.map(p => p.z));
-  const topY = Math.max(...points.map(p => p.y));
-  for (const p of points) {
-    p.x = ((p.x - minX) / (maxX - minX) - .5) * size.width;
-    p.z = ((p.z - minZ) / (maxZ - minZ) - .5) * size.depth;
-    p.height = p.y / topY;
-    p.y = p.height * size.height;
-  }
-  const footprint = rings[0].map((p, i) => {
-    const terrainY = groundAt(p.x, p.z) - ground;
-    // On an uphill shoulder, bury the base farther instead of folding its
-    // bottom edge above the next ring. Upper planes keep their solid shape.
-    p.y = Math.min(terrainY - burial, rings[1][i].y - burial);
-    // The intermediate row subdivides the same broad basal planes. It must
-    // follow their buried foot, not introduce a separate horizontal bevel.
-    rings[1][i] = blend(p, rings[2][i], .45);
-    return { x: p.x, z: p.z, groundY: terrainY, bottomY: p.y };
-  });
-  const bottom: Point = {
-    x: 0,
-    y: Math.min(...footprint.map(p => p.bottomY)) - burial,
-    z: 0,
-    height: 0,
-  };
   const positions: number[] = [], colors: number[] = [];
-  const granite = new THREE.Color(0x858582);
-  const feldspar = new THREE.Color(0x9c8e85);
-  const lichen = new THREE.Color(0x9a9a76);
-  const shadow = new THREE.Color(0x68645c);
-  const color = new THREE.Color();
+  const granite = new THREE.Color(0x888988), feldspar = new THREE.Color(0x9a918a);
+  const lichen = new THREE.Color(0x9d9f83), crevice = new THREE.Color(0x565a58), color = new THREE.Color();
   const ab = new THREE.Vector3(), ac = new THREE.Vector3(), normal = new THREE.Vector3();
-  const triangle = (a: Point, b: Point, c: Point) => {
-    ab.set(b.x - a.x, b.y - a.y, b.z - a.z);
-    ac.set(c.x - a.x, c.y - a.y, c.z - a.z);
-    normal.crossVectors(ab, ac).normalize();
-    const x = (a.x + b.x + c.x) / (3 * size.width);
-    const z = (a.z + b.z + c.z) / (3 * size.depth);
+  const triangle = (a: SurfacePoint, b: SurfacePoint, c: SurfacePoint) => {
+    ab.subVectors(b, a); ac.subVectors(c, a); normal.crossVectors(ab, ac).normalize();
+    const x = (a.x + b.x + c.x) / (3 * size.width), z = (a.z + b.z + c.z) / (3 * size.depth);
     const h = (a.height + b.height + c.height) / 3;
-    // Large mineral domains span neighboring faces; mild face values describe
-    // worn planes without making every triangle an unrelated painted patch.
-    const mineral = Math.sin(x * 6 + z * 3 + phase) * .5 + .5;
-    color.copy(granite).lerp(feldspar, mineral * .44);
-    const lichenField = Math.sin(x * 10 - z * 7 + phase * .6) * .5 + .5;
-    const lichenAmount = THREE.MathUtils.smoothstep(lichenField, .53, .85)
-      * THREE.MathUtils.smoothstep(h, .30, .67) * Math.max(0, normal.y) * .58;
+    const mineral = .5 + .5 * Math.sin(x * 5 + z * 3 + phase);
+    color.copy(granite).lerp(feldspar, mineral * .30);
+    const lichenAmount = THREE.MathUtils.smoothstep(.5 + .5 * Math.sin(x * 8 - z * 6 + phase), .55, .9)
+      * THREE.MathUtils.smoothstep(h, .35, .75) * Math.max(0, normal.y) * .32;
     color.lerp(lichen, lichenAmount);
-    color.lerp(shadow, (1 - THREE.MathUtils.smoothstep(h, .01, .18)) * .36);
-    color.multiplyScalar(.96 + Math.sin(x * 8 + z * 9 + phase) * .035);
-    for (const p of [a, b, c]) {
-      positions.push(p.x, p.y, p.z);
-      colors.push(color.r, color.g, color.b);
+    color.lerp(crevice, ((a.joint + b.joint + c.joint) / 3) * .44);
+    color.multiplyScalar(.98 + Math.sin(x * 5 + z * 7 + phase) * .02);
+    for (const point of [a, b, c]) {
+      positions.push(point.x, point.y, point.z); colors.push(color.r, color.g, color.b);
     }
   };
-  for (let level = 0; level < rings.length - 1; level++) {
-    for (let i = 0; i < sides; i++) {
-      const next = (i + 1) % sides;
-      const a = rings[level][i], b = rings[level + 1][i];
-      const c = rings[level + 1][next], d = rings[level][next];
-      // Alternate the seam, avoiding long visible diagonal bands around the
-      // entire rock. Every face has outward winding for front-side materials.
-      if ((i + level) % 2) { triangle(a, b, d); triangle(b, c, d); }
-      else { triangle(a, b, c); triangle(a, c, d); }
-    }
-  }
-  for (let i = 0; i < sides; i++) {
-    const next = (i + 1) % sides;
-    triangle(rings.at(-1)![i], top, rings.at(-1)![next]);
-    triangle(rings[0][next], bottom, rings[0][i]);
+  for (const face of faces) {
+    const polygon = face.points as SurfacePoint[];
+    const center = polygon.reduce((sum, point) => sum.add(point), new THREE.Vector3()).divideScalar(polygon.length) as SurfacePoint;
+    center.height = polygon.reduce((sum, point) => sum + point.height, 0) / polygon.length;
+    center.joint = polygon.reduce((sum, point) => sum + point.joint, 0) / polygon.length;
+    if (face.basal) center.y = Math.min(...polygon.map(point => point.y)) - burial;
+    for (let i = 0; i < polygon.length; i++) triangle(polygon[i], polygon[(i + 1) % polygon.length], center);
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geometry.computeVertexNormals();
-  geometry.computeBoundingBox();
-  geometry.computeBoundingSphere();
-  geometry.userData = { kind: 'sharptail-glacial-erratic', triangles: positions.length / 9 };
+  geometry.computeVertexNormals(); geometry.computeBoundingBox(); geometry.computeBoundingSphere();
+  geometry.userData = { kind: 'sharptail-glacial-erratic', triangles: positions.length / 9, variant };
   const mesh = new THREE.Mesh(geometry, material);
-  mesh.name = 'Weathered granite erratic';
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
+  mesh.name = 'Fractured granite erratic'; mesh.castShadow = true; mesh.receiveShadow = true;
   mesh.userData.shotSolid = true;
-  const root = new THREE.Group();
-  root.name = 'Sharptail glacial erratic';
+  const root = new THREE.Group(); root.name = 'Sharptail glacial erratic';
   root.userData = {
     kind: 'sharptail-glacial-erratic', seed: size.seed, dimensions: { ...size },
-    contactFootprint: footprint,
-    footprintRadius: Math.max(...points.map(p => Math.hypot(p.x, p.z))),
+    contactFootprint: footprint, footprintRadius: Math.max(...points.map(point => Math.hypot(point.x, point.z))),
   };
-  root.add(mesh);
-  return root;
+  root.add(mesh); return root;
 }

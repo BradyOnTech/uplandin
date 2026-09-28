@@ -132,7 +132,7 @@ describe('Sharptail shelterbelts', () => {
     const shrubSize = shrub.boundingBox!.getSize(new THREE.Vector3());
     expect(Math.max(crownSize.x, crownSize.z) / crownSize.y).toBeLessThan(.8);
     expect(trunk.attributes.position.count / 3 + crown.attributes.position.count / 3).toBeLessThanOrEqual(170);
-    expect(shrub.attributes.position.count / 3).toBeLessThanOrEqual(120);
+    expect(shrub.attributes.position.count / 3).toBeLessThanOrEqual(260);
     expect(shrubSize.y).toBeGreaterThan(.6);
     expect(shrubSize.y).toBeLessThan(.9);
     expect(Math.max(shrubSize.x, shrubSize.z)).toBeGreaterThan(shrubSize.y * .9);

@@ -24,9 +24,9 @@ const exposedFaces: Readonly<Record<number, { along: number; reach: number; acro
 };
 
 export const SHARPTAIL_MEADOW_COLORS = {
-  crown: 0xc3ae78,
-  hollow: 0x657857,
-  cured: 0xac955f,
+  crown: 0xcbb17a,
+  hollow: 0x607864,
+  cured: 0xb39a61,
   exposed: 0xb9b4a0,
 } as const;
 const toeGrowth = { low: 0, lee: 0, face: 0 };

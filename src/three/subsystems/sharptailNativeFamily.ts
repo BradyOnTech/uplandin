@@ -1,10 +1,8 @@
 import * as THREE from 'three';
-import { NATIVE_LEAF_DATA as DATA } from './sharptailNativeLeafData';
+import { prairieBunchGeometry } from './sharptailBunchGeometry';
 
 export type CommonGrassForm = 'windlaid' | 'bunch';
 export type CommonGrassPart = 'base' | 'middle' | 'near';
-const SCALE = { windlaid: [1.45941, 1.40273, 1.30053], bunch: [1.80837, 1.96445, 1.92431] } as const;
-const GAIN = { windlaid: 1.410600904966941, bunch: 1.4195522438026273 };
 export const COMMON_GRASS_LIMITS = {
   high: { middle: 1800, near: 256, middleRadius: 18, nearRadius: 6 },
   lite: { middle: 640, near: 96, middleRadius: 12, nearRadius: 4.5 },
@@ -12,49 +10,9 @@ export const COMMON_GRASS_LIMITS = {
 const GUARD = .85;
 const REFRESH = .35;
 
-/** Disjoint subsets of the SAME authored leaf surfaces:112+162+266 triangles.
- * Source coordinates are metres/Y-up. Fitting retains the previous common
- * plant envelopes; only the neutral albedo is calibrated to the field band. */
-export function nativeFamilyGeometry(form: CommonGrassForm, part: CommonGrassPart): THREE.BufferGeometry {
-  const whole = new THREE.BufferGeometry();
-  whole.setAttribute('position', new THREE.Float32BufferAttribute(DATA.positions, 3));
-  whole.setIndex(DATA.indices); whole.computeVertexNormals();
-  const normals = whole.getAttribute('normal'), scale = SCALE[form];
-  const far = new Set(DATA.coarseLeafIds), mid = new Set(DATA.middleLeafIds);
-  const p: number[] = [], n: number[] = [], c: number[] = [], uv: number[] = [];
-  const roots: number[] = [], tiers: number[] = [], bend: number[] = [], ids: number[] = [];
-  const normal = new THREE.Vector3(); let face = 0;
-  for (let leaf = 0; leaf < 216; leaf++) {
-    const tier = far.has(leaf) ? 0 : mid.has(leaf) ? 1 : 2;
-    const count = leaf % 2 === 0 ? 9 : 6;
-    if (tier === (part === 'base' ? 0 : part === 'middle' ? 1 : 2)) {
-      for (let j = face; j < face + count; j++) {
-        const i = DATA.indices[j], at = i * 3;
-        p.push(DATA.positions[at] * scale[0], DATA.positions[at + 1] * scale[1], DATA.positions[at + 2] * scale[2]);
-        normal.fromBufferAttribute(normals, i); normal.y = Math.abs(normal.y);
-        normal.multiplyScalar(.2).add(new THREE.Vector3(0, .8, 0)).normalize();
-        normal.set(normal.x / scale[0], normal.y / scale[1], normal.z / scale[2]).normalize(); n.push(normal.x, normal.y, normal.z);
-        const gain = GAIN[form], peak = Math.max(DATA.colors[at], DATA.colors[at + 1], DATA.colors[at + 2]) * gain;
-        const soft = peak > .9 ? .9 + .08 * (1 - Math.exp(-(peak - .9) / .08)) : peak;
-        const k = peak > 0 ? soft / peak * gain : gain;
-        c.push(DATA.colors[at] * k, DATA.colors[at + 1] * k, DATA.colors[at + 2] * k);
-        uv.push(DATA.uv[i * 2], DATA.uv[i * 2 + 1]);
-        roots.push(DATA.roots[leaf][0] * scale[0], DATA.roots[leaf][1] * scale[1], DATA.roots[leaf][2] * scale[2]);
-        tiers.push(tier); bend.push(Math.max(0, DATA.positions[at + 1] / .37) ** 2); ids.push(leaf);
-      }
-    }
-    face += count;
-  }
-  whole.dispose();
-  const g = new THREE.BufferGeometry();
-  for (const [name, values, size] of [['position', p, 3], ['normal', n, 3], ['color', c, 3], ['uv', uv, 2],
-    ['familyRoot', roots, 3], ['familyTier', tiers, 1], ['nativeBend', bend, 1], ['familyLeaf', ids, 1]] as const) {
-    g.setAttribute(name, new THREE.Float32BufferAttribute(values, size));
-  }
-  g.computeBoundingBox(); g.computeBoundingSphere();
-  g.userData = { kind: part === 'base' ? `sharptail-native-${form === 'windlaid' ? 'short' : 'medium'}` : 'sharptail-common-extra', form, part, detailed: false, triangles: p.length / 9 };
-  return g;
-}
+/** The three complementary parts preserve one rooted plant as distance
+ * changes. Runtime selection, wind, contact and site ownership stay shared. */
+export const nativeFamilyGeometry = prairieBunchGeometry;
 
 /** Pre-compaction sites preserve the existing rank-detail selection law.
  * Only X/Z is needed; rank matrices and their placement remain untouched. */
@@ -130,7 +88,7 @@ export class SharptailCommonPlants {
   constructor(private readonly scene: THREE.Scene, private readonly sourceMaterial: THREE.MeshLambertMaterial,
     private readonly sources: readonly THREE.InstancedMesh[], lite: boolean) {
     this.limits = COMMON_GRASS_LIMITS[lite ? 'lite' : 'high'];
-    this.material = sourceMaterial.clone(); this.material.customProgramCacheKey = () => 'sharptail-common-opaque-family-v1';
+    this.material = sourceMaterial.clone(); this.material.customProgramCacheKey = () => 'sharptail-common-opaque-family-v2';
     this.material.onBeforeCompile = (shader, renderer) => {
       sourceMaterial.onBeforeCompile(shader, renderer);
       shader.uniforms.uFamilyNear = this.nearRange; shader.uniforms.uFamilyMiddle = this.middleRange;

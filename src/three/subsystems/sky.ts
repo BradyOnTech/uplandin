@@ -5,6 +5,7 @@ import type { Ctx, Subsystem } from '../engine';
 import { fieldTimeOfDay, type TimeOfDay } from '../palette';
 import { samplePheasantSkyline } from '../pheasantSkyline';
 import { snapShadowTarget } from '../shadowPlacement';
+import { createSharptailCloudAtlas, SHARPTAIL_CLOUD_ATLAS_GLSL } from './sharptailCloudAtlas';
 
 /*
  * SKY subsystem: graded dome, sun disc + glow, layered distant ridges,
@@ -91,9 +92,11 @@ vec2 cloudLocal(vec2 ae, vec2 c, vec2 ms) {
   return vec2(dx, ae.y - c.y) * ms;        // ms: (mirror/scale, 1/scale)
 }
 
+${SHARPTAIL_CLOUD_ATLAS_GLSL}
+
 float cloudField(vec2 ae) {
   if (uSharptail > 0.5) {
-    // Wind-stretched northern prairie banks retain broad open sightlines.
+    // Nonblocking fallback while the painted atlas loads, or if it fails.
     float f = prairieBank(cloudLocal(ae, vec2(-2.55, .25), vec2(1.10, 2.25)));
     f = max(f, prairieBank(cloudLocal(ae, vec2(.75, .22), vec2(-.9, 2.15))));
     f = max(f, prairieBank(cloudLocal(ae, vec2(2.35, .12), vec2(1.55, 2.7))));
@@ -173,16 +176,25 @@ void main() {
   // Flat cumulus ride above the wide glow but under the hot core + disc,
   // so a low sun still burns through them instead of being pasted over.
   vec2 ae = vec2(atan(dir.x, dir.z), h);
-  float cf = cloudField(ae);
+  bool paintedPrairie = uSharptail > .5 && uSharptailCloudReady > .5;
+  vec4 prairieCloud = vec4(0.0);
+  float cf = 0.0;
+  if (paintedPrairie) prairieCloud = sharptailPaintedCloud(ae);
+  else cf = cloudField(ae);
   float layered = max(max(uQuail, uPheasant), max(uChukar, uSharptail));
-  float cm = smoothstep(mix(0.55, 0.45, layered), mix(0.60, 0.58, layered), cf) * uCloudAmt * smoothstep(0.05, 0.10, h);
+  // Painted bodies need readable volume; the thin procedural bank amount
+  // would make the whole illustration translucent. Keep fractional edges.
+  float cloudOpacity = paintedPrairie ? clamp(.76 + uCloudAmt * .7, .85, .95) : uCloudAmt;
+  float cm = (paintedPrairie ? prairieCloud.a : smoothstep(mix(0.55, 0.45, layered), mix(0.60, 0.58, layered), cf))
+    * cloudOpacity * smoothstep(0.05, 0.10, h);
   // Flat painted plates (round 5): fw-e3-5's cumulus is 2-3 VALUE STEPS
   // with hard undersides — not an airbrushed gradient (measured: our cloud
   // interior ramped 0.69->0.87 with 13% banding edges; the ref holds ~3
   // flat plates at 0.85/0.92/1.0). Quantize the thickness-above field into
   // a lit face, a mid plate, and a shaded belly; smoothsteps kept tight so
   // edges are anti-aliased, never gradients.
-  float cAboveRaw = cloudField(ae + vec2(0.0, mix(0.055, 0.016, layered)));
+  float cAboveRaw = 0.0;
+  if (!paintedPrairie) cAboveRaw = cloudField(ae + vec2(0.0, mix(0.055, 0.016, layered)));
   float plateMid = smoothstep(0.32, 0.38, cAboveRaw);
   float plateDeep = smoothstep(0.60, 0.66, cAboveRaw);
   // Round 6 (item 4): the underside shade answers the SUN'S HEIGHT. At the
@@ -201,6 +213,14 @@ void main() {
     // while the thicker middle carries one cool underside and warm crown.
     float belly = smoothstep(0.35, 1.35, cAboveRaw);
     cCol = mix(uCloudLit * 1.12, mix(uCloudLit, cShade, 0.55), belly);
+  }
+  if (paintedPrairie) {
+    // The atlas supplies painted form, not a fixed noon light. Its linear
+    // value maps into the same TOD cream and cool-shadow palette as the sky.
+    // Using value also prevents colored RGB under wispy alpha from tinting
+    // the cloud edge. Alpha is sampled once and remains fractional.
+    float paintLight = clamp((dot(prairieCloud.rgb, vec3(.2126, .7152, .0722)) - .10) / .72, 0.0, 1.0);
+    cCol = mix(cShade, uCloudLit * 1.12, paintLight);
   }
   col = mix(col, cCol, cm);
 
@@ -722,6 +742,7 @@ export class SkySystem implements Subsystem {
   readonly id = 'sky';
   private dome!: THREE.Mesh;
   private mat!: THREE.ShaderMaterial;
+  private cloudAtlas?: ReturnType<typeof createSharptailCloudAtlas>;
   private sun!: THREE.DirectionalLight;
   private fill!: THREE.DirectionalLight;
   private hemi!: THREE.HemisphereLight;
@@ -748,6 +769,7 @@ export class SkySystem implements Subsystem {
   }
 
   init(ctx: Ctx): void {
+    if (this.areaId === 'sharptail-prairie') this.cloudAtlas = createSharptailCloudAtlas();
     this.mat = new THREE.ShaderMaterial({
       vertexShader: VERT,
       fragmentShader: FRAG,
@@ -772,6 +794,8 @@ export class SkySystem implements Subsystem {
         uCloudLit: { value: new THREE.Color() },
         uCloudShade: { value: new THREE.Color() },
         uCloudAmt: { value: 0 },
+        uSharptailCloudAtlas: this.cloudAtlas?.atlas ?? { value: null },
+        uSharptailCloudReady: this.cloudAtlas?.ready ?? { value: 0 },
         uChukar: { value: this.areaId === 'chukar-ridge' ? 1 : 0 },
         uSharptail: { value: this.areaId === 'sharptail-prairie' ? 1 : 0 },
         uQuail: { value: this.quail ? 1 : 0 },
@@ -1140,6 +1164,8 @@ export class SkySystem implements Subsystem {
   }
 
   dispose(ctx: Ctx): void {
+    this.cloudAtlas?.dispose();
+    this.cloudAtlas = undefined;
     ctx.scene.remove(this.dome);
     this.dome.geometry.dispose();
     this.mat.dispose();

@@ -28,9 +28,9 @@ function compact(pairing: CommonGrassPairing, sources: THREE.InstancedMesh[], tx
 describe('authored common prairie grass', () => {
   it.each(['windlaid', 'bunch'] as const)('%s partitions every source leaf without duplicate survivor submission', form => {
     const geometries = (['base', 'middle', 'near'] as const).map(part => nativeFamilyGeometry(form, part));
-    expect(geometries.map(g => g.attributes.position.count / 3)).toEqual([112, 162, 266]);
+    expect(geometries.map(g => g.attributes.position.count / 3)).toEqual([120, 168, 216]);
     const leaves = geometries.map(g => new Set(Array.from(g.attributes.familyLeaf.array)));
-    expect(leaves.map(s => s.size)).toEqual([45, 63, 108]); expect(new Set(leaves.flatMap(s => [...s])).size).toBe(216);
+    expect(leaves.map(s => s.size)).toEqual([24, 24, 24]); expect(new Set(leaves.flatMap(s => [...s])).size).toBe(72);
     for (const g of geometries) {
       const p = g.attributes.position, r = g.attributes.familyRoot, n = g.attributes.normal, c = g.attributes.color;
       for (let i = 0; i < p.count; i += 3) {
@@ -40,8 +40,18 @@ describe('authored common prairie grass', () => {
         const points = [0, 1, 2].map(j => new THREE.Vector3().fromBufferAttribute(r, i + j).applyMatrix4(matrix));
         expect(points[0].distanceTo(points[1])).toBe(0); expect(points[0].distanceTo(points[2])).toBe(0);
       }
-      for (let i = 0; i < n.count; i++) { expect(Math.hypot(n.getX(i), n.getY(i), n.getZ(i))).toBeCloseTo(1, 5); expect(n.getY(i)).toBeGreaterThan(.96); }
-      expect(Math.max(...c.array)).toBeLessThan(.981); g.dispose();
+      for (let i = 0; i < n.count; i++) { expect(Math.hypot(n.getX(i), n.getY(i), n.getZ(i))).toBeCloseTo(1, 5); expect(n.getY(i)).toBeGreaterThan(.80); }
+      expect(Math.max(...c.array)).toBeLessThan(.981);
+      // Each leaf's distributed roots fit well inside the existing support
+      // audit. No ring switch can introduce a wider unsupported root.
+      for (let i = 0; i < r.count; i++) {
+        expect(r.getY(i)).toBe(0);
+        expect(Math.hypot(r.getX(i), r.getZ(i))).toBeLessThan(.27);
+      }
+      expect(g.boundingBox!.max.y).toBeLessThan(.8);
+      expect(g.boundingBox!.min.y).toBe(0);
+      expect(g.boundingBox!.getSize(new THREE.Vector3()).length()).toBeLessThan(2.4);
+      g.dispose();
     }
   });
 

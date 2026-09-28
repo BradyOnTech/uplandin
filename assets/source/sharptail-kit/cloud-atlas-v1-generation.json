@@ -1,0 +1,8 @@
+{
+  "tool": "image_gen",
+  "transparent_background": true,
+  "prompt": "Create a production game texture asset: a square 2 by 2 atlas of FOUR DIFFERENT isolated painterly cumulus cloud banks, on truly transparent alpha background. Each quadrant contains exactly one complete horizontally spreading cloud bank centered with generous transparent margin so no pixels touch quadrant borders. TOP LEFT a grand uneven ascending fair-weather cumulus bank with small lobes and broken wispy lateral scraps; TOP RIGHT a longer lower cloud bank; BOTTOM LEFT a fragmented cluster with two asymmetrical rising towers; BOTTOM RIGHT a distant thin broken cumulus bank. Each bank roughly 2.4 to 1 width to height. These are mature art-directed low-poly adventure game sky assets inspired by Firewatch landscape painting: sculpted uneven silhouettes, simplified angular gouache brush planes, lots of unequal small billows composing a larger mass, cream-white sunlit tops, desaturated cool blue-gray undersides, restrained interior shadow planes. Natural cloud anatomy and scale, not weather icons, not cartoon symbols, not outlined blobs, no concentric contour bands, no blue sky or background rectangle, no terrain, no text or labels, no borders or grid lines. Fine transparent torn edges, opacity in main cloud body. The cloud banks must look distinct from each other. Daylight neutral lighting, suitable to tint dynamically in a game shader. Square texture, clean detailed edges, professional hand-painted environment asset.",
+  "source": "cloud-atlas-v1.png",
+  "runtime": "public/textures/sky/sharptail-cloud-atlas-v1.webp",
+  "encoding": "WebP quality 88, original size and alpha"
+}

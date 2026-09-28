@@ -15,50 +15,66 @@ const retained = [
   { x: 580, y: 1350, rx: 820, ry: 240, yaw: .15, height: 16, bend: .31, face: .20, rise: .25 },
 ].map(frame);
 
-// Three unequal, oblique shoulders overlap from the west access and its
-// southwest outlook. The nearer ridge is lower and interrupted; the farther
-// ridges rise behind its gaps. Their long axes continue beyond the view rather
-// than making a row of separate round hills along the boundary.
-const western = [
-  { x: -245, y: 680, rx: 540, ry: 180, yaw: 1.13, height: 36, bend: -.38, face: -.24, rise: .24, rhythm: .13, phase: .8 },
-  { x: -690, y: 560, rx: 650, ry: 250, yaw: 1.29, height: 94, bend: .32, face: .20, rise: -.32, rhythm: .16, phase: 2.1 },
-  { x: -180, y: 1335, rx: 810, ry: 230, yaw: .18, height: 44, bend: -.29, face: .22, rise: .20, rhythm: .12, phase: -.7 },
-].map(shape => ({ ...frame(shape), rhythm: shape.rhythm, phase: shape.phase }));
-// A broad saddle interrupts only the nearest shoulder. Its lower opening
-// reveals the taller oblique western backdrop instead of raising one uniform
-// skyline across the whole southwest-facing view.
-const nearSaddle = frame({ x: -230, y: 715, rx: 145, ry: 240, yaw: 1.13, height: .64, bend: .2, face: 0, rise: 0 });
-
+/** Authored ridgelines give the west view separate overlapping landforms.
+ * Each station is [north/south yard, east/west yard, height, half-width].
+ * The intervening valley remains low; adding broad overlapping Gaussian
+ * hills here previously filled it and produced one unbroken smooth ramp. */
+const westSpines = [
+  { side: .82, points: [
+    [-140, -380, 4, 170], [180, -250, 24, 145], [390, -160, 31, 140],
+    [535, -205, 26, 145], [705, -155, 9, 120], [875, -250, 30, 155],
+    [1080, -370, 24, 180], [1380, -400, 3, 190],
+  ] },
+  { side: 1.16, points: [
+    [-280, -950, 8, 270], [80, -830, 72, 250], [340, -780, 84, 260],
+    [590, -830, 72, 250], [790, -780, 58, 250], [980, -850, 80, 270],
+    [1220, -910, 55, 280], [1660, -950, 4, 290],
+  ] },
+] as const;
 const smooth = (amount: number) => {
   const t = Math.max(0, Math.min(1, amount));
   return t * t * (3 - 2 * t);
 };
+const spineSample = { center: 0, height: 0, width: 0, across: 0, section: 0 };
+function spineAt(x: number, y: number, spine: typeof westSpines[number]): void {
+  const points = spine.points;
+  spineSample.height = 0; spineSample.section = 0;
+  if (y <= points[0][0] || y >= points[points.length - 1][0]) return;
+  let i = 0;
+  while (i < points.length - 2 && y > points[i + 1][0]) i++;
+  const a = points[i], b = points[i + 1], before = points[Math.max(0, i - 1)], after = points[Math.min(points.length - 1, i + 2)];
+  const span = b[0] - a[0], t = (y - a[0]) / span;
+  const h00 = 2 * t ** 3 - 3 * t * t + 1, h10 = t ** 3 - 2 * t * t + t;
+  const h01 = -2 * t ** 3 + 3 * t * t, h11 = t ** 3 - t * t;
+  const component = (channel: 1 | 2 | 3) => h00 * a[channel] + h01 * b[channel]
+    + h10 * span * (b[channel] - before[channel]) / (b[0] - before[0])
+    + h11 * span * (after[channel] - a[channel]) / (after[0] - a[0]);
+  spineSample.center = component(1); spineSample.width = component(3);
+  const u = (x - spineSample.center) / (spineSample.width * (x > spineSample.center ? spine.side : 1));
+  const cross = Math.abs(u);
+  // A broad crown, a steeper middle face and a tapering foot. Compact
+  // support leaves real low ground between the two independent ridgelines.
+  const section = cross >= 1 ? 0 : 1 - smooth(cross);
+  const endFade = smooth((y - points[0][0]) / 110) * smooth((points[points.length - 1][0] - y) / 130);
+  spineSample.height = Math.max(0, component(2)) * section * endFade;
+  spineSample.across = u; spineSample.section = section * endFade;
+}
 
 const drainage = { depth: 0, bed: 0, bank: 0 };
 function drainageAt(x: number, y: number): void {
-  // Continue the west access draw through the first shoulder, then turn
-  // southwest into the distant coulee. A compact cross-section gives it two
-  // visible banks rather than another broad depression between round hills.
-  const u = Math.max(0, Math.min(1, (-x - 20) / 980));
-  const center = 610 + 475 * u - 40 * Math.sin(Math.PI * u);
-  const v = (y - center) / (85 + 40 * u);
-  const support = smooth((-x - 24) / 120) * (1 - smooth((-x - 1000) / 250));
-  const profile = Math.abs(v) < 1 ? (1 - v * v) ** 2 : 0;
-  const bank = support * Math.exp(-(((Math.abs(v) - .84) / .25) ** 2));
-
-  // One shorter fork meets the main draw obliquely. It divides the near brow
-  // into unequal attached shoulders, without creating isolated round mounds.
-  const t = Math.max(0, Math.min(1, (-x - 100) / 460));
-  const fingerCenter = 560 + 300 * t;
-  const fingerV = (y - fingerCenter) / (60 + 20 * t);
-  const fingerSupport = smooth((-x - 100) / 100) * (1 - smooth((-x - 460) / 160));
-  const fingerProfile = Math.abs(fingerV) < 1 ? (1 - fingerV * fingerV) ** 2 : 0;
-  const finger = fingerSupport * fingerProfile;
-  const bed = support * profile;
-  // Taking the larger incision avoids doubling depth where the fork joins.
-  drainage.depth = Math.max((24 + 14 * u) * bed, 18 * finger);
-  drainage.bed = Math.max(bed, finger);
-  drainage.bank = Math.max(bank, fingerSupport * Math.exp(-(((Math.abs(fingerV) - .84) / .25) ** 2)));
+  // Three unequal tributaries articulate the near shoulder. Their heads
+  // taper before the crown instead of cutting identical notches in every hill.
+  const reach = smooth((-x - 22) / 65) * (1 - smooth((-x - 310) / 100));
+  let bed = 0, bank = 0, depth = 0;
+  for (const [mouth, bend, width, incision] of [[512, -.26, 37, 7], [667, -.12, 55, 9], [913, .32, 43, 8]]) {
+    const center = mouth + bend * (-x - 55) + Math.sin((-x - 30) / 120) * 15;
+    const v = (y - center) / width;
+    const profile = Math.abs(v) < 1 ? (1 - v * v) ** 2 * reach : 0;
+    bed = Math.max(bed, profile);
+    bank = Math.max(bank, Math.exp(-(((Math.abs(v) - .83) / .3) ** 2)) * reach);
+    depth = Math.max(depth, profile * incision);
+  }
+  drainage.depth = depth; drainage.bed = bed; drainage.bank = bank;
 }
 
 /** Keep the complete playable surface and its normal-sampling collar exact.
@@ -92,16 +108,10 @@ export function sharptailHorizonHeight(x: number, y: number): number {
   if (fade === 0) return 0;
   let height = 0, westHeight = 0;
   for (const ridge of retained) { ridgeAt(x, y, ridge); height += sample.height; }
-  ridgeAt(x, y, nearSaddle); const cut = sample.height;
-  for (let index = 0; index < western.length; index++) {
-    const ridge = western[index];
-    ridgeAt(x, y, ridge, ridge.rhythm, ridge.phase); westHeight += sample.height * (index === 0 ? 1 - cut : 1);
-  }
+  for (const spine of westSpines) { spineAt(x, y, spine); westHeight += spineSample.height; }
   drainageAt(x, y);
-  // A shallow tapering ridge cannot be cut below its original plain. The
-  // depth limit remains smooth and only acts on the western landform mass.
-  const incision = drainage.depth * (1 - Math.exp(-westHeight / 40));
-  return height * exteriorFade(x, y, 150) + (westHeight - incision) * fade;
+  const incision = drainage.depth * (1 - Math.exp(-westHeight / 12));
+  return height * exteriorFade(x, y, 150) + Math.max(0, westHeight - incision) * fade;
 }
 
 /** Broad paint/vegetation fields from the same ridge and coulee coordinates.
@@ -110,19 +120,19 @@ export function sharptailHorizonGrowth(x: number, y: number, out: { crown: numbe
   out.crown = 0; out.hollow = 0; out.exposed = 0;
   const fade = exteriorFade(x, y);
   if (fade === 0) return;
-  ridgeAt(x, y, nearSaddle); const cut = sample.height;
-  for (let index = 0; index < western.length; index++) {
-    const ridge = western[index];
-    ridgeAt(x, y, ridge, ridge.rhythm, ridge.phase);
-    const crown = sample.along * Math.exp(-sample.v * sample.v * 4) * (index === 0 ? 1 - cut : 1);
-    const face = sample.along * Math.exp(-(((sample.v + .68) / .52) ** 2));
-    out.crown = Math.max(out.crown, crown);
-    out.exposed = Math.max(out.exposed, face * .78);
-    if (index === 0) out.hollow = Math.max(out.hollow, cut * sample.along * Math.exp(-sample.v * sample.v));
+  for (const spine of westSpines) {
+    spineAt(x, y, spine);
+    if (spineSample.section <= 0) continue;
+    const v = spineSample.across;
+    out.crown = Math.max(out.crown, Math.exp(-v * v * 12) * spineSample.section);
+    // Dry weathered lips sit above narrow sheltered green feet. Keep most
+    // of the long view vegetated; pale till is a local seam, not a whole hill.
+    out.exposed = Math.max(out.exposed, Math.exp(-(((v - .52) / .15) ** 2)) * spineSample.section * .55);
+    out.hollow = Math.max(out.hollow, Math.exp(-(((v - .78) / .30) ** 2)) * .72 * smooth(spineSample.section * 7));
   }
   drainageAt(x, y);
   out.hollow = Math.max(out.hollow, drainage.bed);
-  out.exposed = Math.max(out.exposed, drainage.bank * .9);
+  out.exposed = Math.max(out.exposed, drainage.bank * .55);
   out.crown *= fade * (1 - out.hollow * .6);
   out.exposed *= fade * (1 - out.hollow * .5);
   out.hollow *= fade;

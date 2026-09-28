@@ -115,10 +115,10 @@ const GRASS_ART_BY_AREA: Readonly<Record<string, GrassArtProfile>> = {
     heightScale: 0.98,
     bodyDensity: 0.93,
     coverDensity: 0.86,
-    grassGold: 0xb9ac79,
+    grassGold: 0xc5ad74,
     grassOlive: 0x819266,
     forbGreen: 0x748966,
-    strawLight: 0xc9bc90,
+    strawLight: 0xd2ba88,
     strawPale: 0xcec8a6,
     khaki: 0x989269,
     oliveMid: 0x7c875e,
@@ -911,7 +911,7 @@ export class GrassSystem implements Subsystem {
     this.prairieBaseColor.copy(this.grassGold).lerp(this.prairieCrown, meadow.crown * .82);
     this.prairieBaseColor.lerp(this.prairieHollow, meadow.hollow * .97);
     this.prairieBaseColor.lerp(this.prairieCured, meadow.cured * .64);
-    this.c.lerp(this.prairieBaseColor, .94);
+    this.c.lerp(this.prairieBaseColor, .78);
   }
 
   private cfg!: QualityCfg;
@@ -1835,8 +1835,8 @@ export class GrassSystem implements Subsystem {
       // cereal canopy, while tall native stands remain legible to a hunter.
       const width = sxz * (this.cfg.bladeWide > 1 ? 1.20 : 1.06)
         * (1 + this.prairieMeadow.crown * (vi === V_OPEN ? .30 : .12));
-      const height = vi === V_OPEN ? .50 + rank * .45 :
-        vi === V_COVER ? .82 + rank * .63 : .55 + rank * .88;
+      const height = vi === V_OPEN ? .78 + rank * .32 :
+        vi === V_COVER ? .82 + rank * .63 : vi === V_STALK ? .55 + rank * .52 : .84 + rank * .45;
       this.s.set(width, vigor * height * (.77 + rng() * .47) * (1 - prairiePocket * .58), width * (.82 + rng() * .20));
     }
     this.v.set(px, y, pz);

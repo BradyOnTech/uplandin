@@ -14,7 +14,9 @@ export default defineConfig({
       const files = [
         'index.html', 'index3d.html', 'prepare3d.html', 'shotguns3d.html', 'manifest.webmanifest', 'manifest3d.webmanifest', 'icon-192.png', 'icon-512.png',
         'textures/terrain/prairie-painted.webp',
-        'textures/terrain/sharptail-sward-v1.webp',
+        'textures/terrain/sharptail-sward-v2.webp',
+        'textures/terrain/sharptail-granite-v1.webp',
+        'textures/sky/sharptail-cloud-atlas-v1.webp',
         'textures/terrain/chukar-dry-ground.webp',
         'textures/terrain/wet-alder-painted.webp',
         ...Object.keys(bundle).filter(name => /\.(js|css)$/.test(name)),
