@@ -232,7 +232,6 @@ body.touch-controls-active #field-map-toggle kbd,body.touch-controls-active #fie
   #touch-controls { bottom:max(14px,env(safe-area-inset-bottom)); right:max(14px,env(safe-area-inset-right)); gap:8px; }
   #touch-controls button { min-height:48px; padding-block:10px; }
   #touch-controls .fire { width:72px; height:72px; }
-  #end-hunt { top:max(12px,env(safe-area-inset-top)); bottom:auto; right:max(86px,calc(env(safe-area-inset-right) + 74px)); min-height:44px; padding:10px 12px; }
 }
 
 /* Guides show where each thumb belongs without intercepting the field. */
