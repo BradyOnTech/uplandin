@@ -4,6 +4,7 @@ import { huntComplete } from '../../game/state';
 import { nextHuntUrl } from '../../game/huntSeed';
 import { huntingDoctrine } from '../../game/huntDoctrine';
 import { renderFieldNotes } from '../fieldNotes';
+import { focusedFieldDog } from '../fieldDogFocus';
 import { dogRelativeBearing, dogWorkLabel, fieldCompassHeading, fieldSearchGuidance, pointApproachCue, pheasantPointGuidance, trackingApproachGuidance } from '../dogLocator';
 import type { Ctx, Subsystem } from '../engine';
 import type { BirdsSystem } from './birds';
@@ -174,14 +175,14 @@ export class HuntHudSystem implements Subsystem {
     }
 
     const dogs = Array.from({ length: this.hunt.dogCount() }, (_, slot) => this.hunt.dog(slot));
-    const trackedDog = dogs.find(dog => dog.state === 'pointing') ?? dogs[0];
+    const trackedDog = focusedFieldDog(dogs);
     if (trackedDog) this.hunt.simToWorld(trackedDog.pos.x, trackedDog.pos.y, this.dogWorld);
     const dogDx = this.dogWorld.x - ctx.camera.position.x;
     const dogDz = this.dogWorld.z - ctx.camera.position.z;
     const dogRange = Math.hypot(dogDx, dogDz);
     const rise = this.birds.isRiseActive();
     const encounter = rise ? 'rise' : trackedDog?.state === 'pointing' ? 'point'
-      : dogs.some(dog => dog.state === 'retrieving') ? 'retrieve' : 'search';
+      : trackedDog?.state === 'retrieving' ? 'retrieve' : 'search';
     if (this.panel && encounter !== this.lastEncounter) {
       this.panel.dataset.encounter = encounter; this.lastEncounter = encounter;
     }
@@ -195,11 +196,11 @@ export class HuntHudSystem implements Subsystem {
       ? `RELOADING · ${shells}/${capacity}`
       : rise
         ? `${this.hunt.riseLabel() ?? 'BIRD FLUSH'} · shells ${shells}/${capacity}${shells === 0 ? ' · R RELOAD' : ''}`
-      : dogs.some((candidate) => candidate.state === 'retrieving')
-        ? dogs.some((candidate) => candidate.carryingBirdId !== null)
+      : trackedDog?.state === 'retrieving'
+        ? trackedDog.carryingBirdId !== null
           ? 'DOG RETURNING WITH BIRD'
           : 'DOG HUNTING DEAD'
-        : dogs.some((candidate) => candidate.state === 'pointing')
+        : trackedDog?.state === 'pointing'
           ? pointApproachCue(dogRange, this.player.isRunning(), hunt.areaId)
           : trackingCue
             ? trackingCue

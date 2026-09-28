@@ -19,6 +19,7 @@ import type { Hunt3DSystem } from './subsystems/hunt3d';
 import { requestOfflineUpdate, type OfflineUpdateState } from './offline';
 import { openHuntJournal } from './huntJournalView';
 import { FieldGuide, FIELD_GUIDE_KEY, readFieldGuide, type GuideInput } from './fieldGuide';
+import { focusedFieldDog } from './fieldDogFocus';
 import type { BirdsSystem } from './subsystems/birds';
 
 /** Lifecycle UI owns pause and preferences, never hunt outcomes. */
@@ -307,7 +308,7 @@ export class FieldInterface {
     const elapsed = this.guideElapsed; this.guideElapsed = 0;
     const ctx = this.engine.ctx, hunt = ctx.get<Hunt3DSystem>('hunt3d'), gun = ctx.get<GunSystem>('gun');
     const dogs = Array.from({ length: hunt.dogCount() }, (_, i) => hunt.dog(i));
-    const dog = dogs.find(d => d.state === 'pointing') ?? dogs.find(d => d.state === 'retrieving') ?? dogs[0];
+    const dog = focusedFieldDog(dogs);
     if (!dog) { line.hidden = true; return; }
     const world = hunt.simToWorld(dog.pos.x, dog.pos.y, { x: 0, z: 0 });
     const fallback = document.getElementById('mouse-look-fallback');
