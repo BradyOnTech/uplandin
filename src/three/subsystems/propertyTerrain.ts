@@ -1,5 +1,4 @@
 import { wetPondLayout, wetPondRadius } from '../../game/wetPonds';
-import { pheasantHomesteadYard } from '../../game/pheasantHabitat';
 import * as THREE from 'three';
 import type { TerrainKind } from '../../game/areas';
 import { PROPERTY_PX_TO_M, type GroundSample, type LandscapeModel } from '../../game/landscape';
@@ -8,6 +7,7 @@ import { buildQuailTerrainGeometry } from './quailTerrain';
 import { quailGroundNearDistance, quailGroundTiles, quailGroundUsesNear } from './quailGroundGeometry';
 import { PHEASANT_MATERIALS, fieldTimeOfDay, type TimeOfDay } from '../palette';
 import { pheasantFields, pheasantPonds, samplePheasantHarvest } from './pheasantLandscape';
+import { createPheasantFarmPainter } from './pheasantFarmSurface';
 import { sharptailGroundZones } from '../../game/sharptailLandscape';
 import { sharptailAccentGroundAt } from './sharptailAccents';
 import { sharptailMeadowAt, SHARPTAIL_MEADOW_COLORS } from './sharptailMeadow';
@@ -170,8 +170,7 @@ function paintFor(property: LandscapeModel): Paint {
   const fields = areaId === 'pheasant-coverts' ? pheasantFields(property.area) : [];
   const wetPools = areaId === 'woodcock-bottoms' ? wetPondLayout(property.area) : [];
   const ponds = areaId === 'pheasant-coverts' ? pheasantPonds(property) : [];
-  const farmyard = areaId === 'pheasant-coverts' ? pheasantHomesteadYard(property.area.landmarks) : undefined;
-  const yardSoil = new THREE.Color(0x8c8b78), yardGravel = new THREE.Color(0xbcb49e);
+  const farmPaint = createPheasantFarmPainter(property.area);
   const harvestSample = { amount: 0, row: 0, angle: 0 };
   const cutStraw = new THREE.Color(PHEASANT_MATERIALS.cutStraw);
   const cutSoil = new THREE.Color(PHEASANT_MATERIALS.drySoil);
@@ -280,12 +279,7 @@ function paintFor(property: LandscapeModel): Paint {
       const edge = 1 - THREE.MathUtils.smoothstep(radius, 1.0, 1.65);
       out.lerp(bankMud, edge * .8);
     }
-    if (farmyard) {
-      const distance = Math.hypot(Math.max(farmyard.x - x, 0, x - farmyard.x - farmyard.w),
-        Math.max(farmyard.y - y, 0, y - farmyard.y - farmyard.h));
-      const maintained = 1 - THREE.MathUtils.smoothstep(distance, 0, 5);
-      out.lerp(yardSoil, maintained * .94).lerp(yardGravel, maintained * (.12 + meso * .34));
-    }
+    farmPaint?.(x, y, meso, out);
     out.multiplyScalar(.96 + meso * .08);
     return out;
   };

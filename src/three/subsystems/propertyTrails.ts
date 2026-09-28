@@ -16,6 +16,7 @@ export class PropertyTrailsSystem implements Subsystem {
     const doctrine = huntingDoctrine(this.landscape.area.id);
     const areaId = this.landscape.area.id;
     const prairie = areaId === 'sharptail-prairie';
+    const farm = areaId === 'pheasant-coverts';
     // The route surface is part of the property's land-use story. Sharptail
     // lanes are faint two-track grass roads across a huge prairie; Valley
     // Oak lanes are darker, softer foot-and-stock paths under the trees. The
@@ -32,7 +33,7 @@ export class PropertyTrailsSystem implements Subsystem {
         : doctrine.style === 'woods' || doctrine.style === 'bottoms' ? 0x48513e
           : doctrine.style === 'desert-wash' || doctrine.style === 'canyon' ? 0x806b4d
             : doctrine.style === 'alpine-edge' ? 0x596157 : 0x75684c;
-    const opacity = areaId === 'pheasant-coverts' ? .46 : prairie ? .42
+    const opacity = farm ? .44 : prairie ? .42
       : areaId === 'valley-oaks' ? .68 : .78;
     const positions: number[] = [], colors: number[] = [], indices: number[] = [], edges: number[] = [];
     const routeSurface: number[] = [];
@@ -43,9 +44,9 @@ export class PropertyTrailsSystem implements Subsystem {
       if (trail.points.length < 2) continue;
       const worldPoints = this.sampleTrail(trail.points);
       // Distance stays tied to the authored route from either parking place.
-      // Only prairie uses it: all other maps retain their original vertices.
+      // Prairie and farm wear use it without changing the route vertices.
       const distances: number[] = [0];
-      if (prairie) for (let i = 1; i < worldPoints.length; i++) {
+      if (prairie || farm) for (let i = 1; i < worldPoints.length; i++) {
         distances.push(distances[i - 1] + Math.hypot(
           worldPoints[i].x - worldPoints[i - 1].x,
           worldPoints[i].z - worldPoints[i - 1].z,
@@ -88,7 +89,7 @@ export class PropertyTrailsSystem implements Subsystem {
           const x = point.x + normal.x * side, z = point.z + normal.z * side;
           positions.push(x, this.landscape.heightAtWorld(x, z) + .035, z);
           edges.push(side);
-          if (prairie) routeSurface.push(normal.halfWidth * side, distances[i] + phase);
+          if (prairie || farm) routeSurface.push(normal.halfWidth * side, distances[i] + phase);
         }
         const areaPoint = this.landscape.worldToProperty(point.x, point.z, { x: 0, y: 0 });
         const wet = this.landscape.surfaceAtProperty(areaPoint.x, areaPoint.y, sample).moisture;
@@ -106,14 +107,49 @@ export class PropertyTrailsSystem implements Subsystem {
     this.geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     this.geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     this.geometry.setAttribute('routeEdge', new THREE.Float32BufferAttribute(edges, 1));
-    if (prairie) this.geometry.setAttribute('routeSurface', new THREE.Float32BufferAttribute(routeSurface, 2));
+    if (prairie || farm) this.geometry.setAttribute('routeSurface', new THREE.Float32BufferAttribute(routeSurface, 2));
     this.geometry.setIndex(indices);
     this.geometry.computeVertexNormals();
     this.material = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, transparent: true, opacity, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-    if (prairie) this.material.forceSinglePass = true;
+    if (prairie || farm) this.material.forceSinglePass = true;
     this.material.customProgramCacheKey = () => prairie ? 'property-route-prairie-wheel-wear-v1'
+      : farm ? 'property-route-farm-wheel-wear-v1'
       : `property-route-soft-shoulder-v2-${areaId === 'pheasant-coverts'}`;
     this.material.onBeforeCompile = shader => {
+      if (farm) {
+        // A farm lane is compacted soil with intermittent wheel pressure,
+        // not two dark rails. Metre coordinates preserve the wear scale at
+        // bends and from either entry. The original grounded ribbon stays.
+        shader.vertexShader = shader.vertexShader
+          .replace('#include <common>', '#include <common>\nattribute vec2 routeSurface; varying vec2 vRouteSurface; varying vec2 vRouteWorld;')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRouteSurface = routeSurface; vRouteWorld = (modelMatrix * vec4(position, 1.0)).xz;');
+        shader.fragmentShader = shader.fragmentShader
+          .replace('#include <common>', '#include <common>\nvarying vec2 vRouteSurface; varying vec2 vRouteWorld;')
+          .replace('#include <color_fragment>', `#include <color_fragment>
+            float routeAlong = vRouteSurface.y;
+            float routeSide = sign(vRouteSurface.x);
+            float wander = sin(routeAlong * .24) * .045 + sin(routeAlong * .63) * .018;
+            float wheelDistance = abs(abs(vRouteSurface.x - wander) - .88);
+            float wheelWidth = .14 + sin(routeAlong * .37 + routeSide * 1.8) * .035;
+            float sideFootprint = fwidth(vRouteSurface.x);
+            float routeAA = min(.35, sideFootprint * 1.5);
+            float wheel = 1.0 - smoothstep(wheelWidth, wheelWidth + .17 + routeAA, wheelDistance);
+            float wearDetail = 1.0 - smoothstep(.6, 2.8, fwidth(routeAlong));
+            float brokenWear = smoothstep(-.48, .75,
+              sin(routeAlong * .33 + routeSide * 1.6)
+              + .48 * sin(routeAlong * .79 + routeSide * 2.7)
+              + .3 * sin(routeAlong * .105 + 2.0));
+            brokenWear = mix(.42, brokenWear, wearDetail);
+            float shoulder = 1.0 - smoothstep(.8, 1.85, abs(vRouteSurface.x));
+            float distanceFade = 1.0 - smoothstep(65.0, 195.0, length(vRouteWorld - cameraPosition.xz));
+            // Widened derivative filtering loses opacity as a wheel becomes
+            // subpixel, avoiding a pair of persistent distant dark lines.
+            float wheelResolve = 1.0 - smoothstep(.16, .8, sideFootprint);
+            diffuseColor.a *= (.045 * shoulder + .76 * wheel * brokenWear * wheelResolve) * distanceFade;
+            diffuseColor.rgb *= .97 + .03 * sin(routeAlong * .18 + routeSide);
+          `);
+        return;
+      }
       if (prairie) {
         // One existing ribbon carries both worn wheels. A clear center lets
         // the actual ground and short grass show through; there is no solid
@@ -151,16 +187,6 @@ export class PropertyTrailsSystem implements Subsystem {
         .replace('#include <color_fragment>', `#include <color_fragment>
           float shoulder = abs(vRouteEdge) + sin(vRouteWorld.x * 2.1 + sin(vRouteWorld.y * 1.7)) * .07;
           diffuseColor.a *= 1.0 - smoothstep(.5, 1.0, shoulder);
-          ${areaId === 'pheasant-coverts' ? `
-          // Wheel wear belongs inside the existing farm lane. The center
-          // and soft shoulders retain more of the underlying grass color.
-          float wander = sin(vRouteWorld.x * .31 + vRouteWorld.y * .23) * .016;
-          float wheelDistance = abs(abs(vRouteEdge + wander) - .43);
-          float wheelWear = 1.0 - smoothstep(.065, .15, wheelDistance);
-          float brokenWear = .78 + .22 * sin(vRouteWorld.x * 1.9 + vRouteWorld.y * 1.3);
-          diffuseColor.a *= .18 + wheelWear * brokenWear * 2.0;
-          diffuseColor.rgb *= mix(1.0, .83, wheelWear);
-          ` : ''}
           diffuseColor.rgb *= .97 + .06 * sin(vRouteWorld.x * 3.7) * sin(vRouteWorld.y * 4.1);
         `);
     };
