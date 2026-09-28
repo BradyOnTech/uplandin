@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { commonOriginalSites } from './sharptailNativeFamily';
 export type NativePlantForm = 'windlaid' | 'bunch' | 'rank';
 type Point = readonly [number, number, number];
 interface SurfaceVertex { point: Point; t: number; across: number }
@@ -230,13 +231,15 @@ export class SharptailNativePlants {
     private readonly sourceMaterial: THREE.MeshLambertMaterial,
     private readonly sources: readonly THREE.InstancedMesh[],
     lite: boolean,
+    private readonly commonReplacement = false,
   ) {
     this.budget = lite ? SHARPTAIL_NATIVE_BUDGET.lite : SHARPTAIL_NATIVE_BUDGET.high;
     this.radius = lite ? 6 : 8;
     this.baseMaterial = this.material(sourceMaterial, false);
     this.detailMaterial = this.material(sourceMaterial, true);
     this.batches = (['windlaid', 'bunch', 'rank'] as const).map(form => {
-      const mesh = new THREE.InstancedMesh(nativePlantGeometry(form, true), this.detailMaterial, this.budget);
+      const geometry = commonReplacement && form !== 'rank' ? new THREE.BufferGeometry() : nativePlantGeometry(form, true);
+      const mesh = new THREE.InstancedMesh(geometry, this.detailMaterial, this.budget);
       mesh.name = `sharptail-close-${form}`;
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.budget * 3), 3);
@@ -249,7 +252,7 @@ export class SharptailNativePlants {
       scene.add(mesh);
       return mesh;
     });
-    for (const source of sources) source.material = this.baseMaterial;
+    for (const source of sources) if (!commonReplacement || source.geometry.userData.form === 'rank') source.material = this.baseMaterial;
   }
 
   private material(source: THREE.MeshLambertMaterial, detail: boolean): THREE.MeshLambertMaterial {
@@ -300,14 +303,24 @@ export class SharptailNativePlants {
     this.roots.length = 0;
     const reach = this.radius + SUPPORT_GUARD;
     for (const source of this.sources) {
-      if (!source.visible || source.count === 0) continue;
-      const sphere = source.boundingSphere;
-      if (sphere && Math.hypot(camera.x - sphere.center.x, camera.z - sphere.center.z) > reach + sphere.radius) continue;
-      const matrices = source.instanceMatrix.array;
-      for (let index = 0; index < source.count; index++) {
-        const offset = index * 16;
-        const distance = Math.hypot(matrices[offset + 12] - camera.x, matrices[offset + 14] - camera.z);
-        if (distance <= reach) this.roots.push({ source, index, distance });
+      const original = this.commonReplacement ? commonOriginalSites(source) : undefined;
+      if (original) {
+        if (!original.active || !original.count) continue;
+        if (Math.hypot(camera.x - original.centerX, camera.z - original.centerZ) > reach + original.radius) continue;
+        for (let index = 0; index < original.count; index++) {
+          const distance = Math.hypot(original.positions[index * 2] - camera.x, original.positions[index * 2 + 1] - camera.z);
+          if (distance <= reach) this.roots.push({ source, index, distance });
+        }
+      } else {
+        if (!source.visible || source.count === 0) continue;
+        const sphere = source.boundingSphere;
+        if (sphere && Math.hypot(camera.x - sphere.center.x, camera.z - sphere.center.z) > reach + sphere.radius) continue;
+        const matrices = source.instanceMatrix.array;
+        for (let index = 0; index < source.count; index++) {
+          const offset = index * 16;
+          const distance = Math.hypot(matrices[offset + 12] - camera.x, matrices[offset + 14] - camera.z);
+          if (distance <= reach) this.roots.push({ source, index, distance });
+        }
       }
     }
     this.roots.sort((a, b) => a.distance - b.distance);
@@ -318,6 +331,9 @@ export class SharptailNativePlants {
     for (let i = 0; i < this.selected; i++) {
       const { source, index } = this.roots[i];
       const form: NativePlantForm = source.geometry.userData.form;
+      // Virtual pre-compaction common sites only preserve rank's old cutoff;
+      // their new complementary geometry is owned by SharptailCommonPlants.
+      if (this.commonReplacement && form !== 'rank') continue;
       const slot = form === 'windlaid' ? 0 : form === 'rank' ? 2 : 1;
       const mesh = this.batches[slot];
       source.getMatrixAt(index, this.matrix);

@@ -10,6 +10,7 @@ import type { LandscapeModel } from '../../game/landscape';
 import { SharptailSwardField } from './sharptailSward';
 import { sharptailGrassGeometry } from './sharptailGrass';
 import { SharptailNativePlants, nativePlantGeometry, NativePlantGroundPatch } from './sharptailNativePlants';
+import { CommonGrassPairing, SharptailCommonPlants, nativeFamilyGeometry, deactivateCommonSites } from './sharptailNativeFamily';
 import { SharptailMidSward } from './sharptailMidSward';
 import { sharptailShackYardAt } from './sharptailEnvironment';
 import { sharptailAccentGroundAt } from './sharptailAccents';
@@ -937,6 +938,8 @@ export class GrassSystem implements Subsystem {
   private prairieFarGeo?: THREE.BufferGeometry;
   private prairieMidSward?: SharptailMidSward;
   private prairieNativePlants?: SharptailNativePlants;
+  private prairieCommonPlants?: SharptailCommonPlants;
+  private prairiePairing?: CommonGrassPairing;
   private prairieGroundPatch?: NativePlantGroundPatch;
   private openMat!: THREE.MeshLambertMaterial;
   private coverMat!: THREE.MeshLambertMaterial;
@@ -997,7 +1000,7 @@ export class GrassSystem implements Subsystem {
     this.cfg = CFG[ctx.quality];
     this.terrain = ctx.get<TerrainSystem>('terrain');
     this.hunt = ctx.get<Hunt3DSystem>('hunt3d');
-    if(this.prairie){this.huntWind.connect(ctx);this.prairieGroundPatch = new NativePlantGroundPatch();}
+    if(this.prairie){this.huntWind.connect(ctx);this.prairieGroundPatch = new NativePlantGroundPatch();this.prairiePairing = new CommonGrassPairing(this.cfg.capOpen, this.cfg.capTuft);}
     this.art = grassArtFor(this.hunt.huntState().areaId);
     this.grassGold.setHex(this.art.grassGold);
     this.grassOlive.setHex(this.art.grassOlive);
@@ -1068,13 +1071,16 @@ export class GrassSystem implements Subsystem {
 
     if (this.prairie) this.prairieNativePlants = new SharptailNativePlants(ctx.scene, this.openMat,
       this.pool.flatMap(tile => [tile.meshes[V_OPEN], tile.meshes[V_TUFT], tile.meshes[V_COVER]]),
-      ctx.quality === 'lite');
+      ctx.quality === 'lite', true);
+    if (this.prairie) this.prairieCommonPlants = new SharptailCommonPlants(ctx.scene, this.openMat,
+      this.pool.flatMap(tile => [tile.meshes[V_OPEN], tile.meshes[V_TUFT]]), ctx.quality === 'lite');
 
     this.applyTod(ctx.timeOfDay);
     ctx.events.addEventListener('tod', ((e: CustomEvent) => this.applyTod(e.detail)) as EventListener);
 
     this.rebuild(ctx);
     this.prairieNativePlants?.update(ctx.camera.position, true);
+    this.prairieCommonPlants?.update(ctx.camera.position, true);
   }
 
   /**
@@ -1155,9 +1161,13 @@ export class GrassSystem implements Subsystem {
     const rebuilt = cx !== this.lastCellX || cz !== this.lastCellZ;
     if (rebuilt) this.rebuild(ctx);
     this.prairieNativePlants?.update(ctx.camera.position, rebuilt);
+    this.prairieCommonPlants?.update(ctx.camera.position, rebuilt);
   }
 
   dispose(ctx: Ctx): void {
+    this.prairieCommonPlants?.dispose();
+    this.prairieCommonPlants = undefined;
+    this.prairiePairing = undefined;
     this.prairieNativePlants?.dispose();
     this.prairieNativePlants = undefined;
     this.prairieGroundPatch = undefined;
@@ -1333,9 +1343,9 @@ export class GrassSystem implements Subsystem {
       for (const variant of [V_OPEN, V_STALK, V_TUFT]) this.variantGeos[variant].dispose();
       this.coverGeo.dispose();
       const detail = this.cfg.bladeWide > 1 ? 'mobile' : 'field';
-      this.variantGeos[V_OPEN] = nativePlantGeometry('windlaid', false);
+      this.variantGeos[V_OPEN] = nativeFamilyGeometry('windlaid', 'base');
       this.variantGeos[V_STALK] = sharptailGrassGeometry('stalk', detail);
-      this.variantGeos[V_TUFT] = nativePlantGeometry('bunch', false);
+      this.variantGeos[V_TUFT] = nativeFamilyGeometry('bunch', 'base');
       this.coverGeo = nativePlantGeometry('rank', false);
       this.prairieFarGeo = sharptailGrassGeometry('cover', 'distant');
     }
@@ -1726,6 +1736,7 @@ export class GrassSystem implements Subsystem {
       for (const mesh of tile.meshes) {
         mesh.count = 0;
         mesh.visible = false;
+        if (this.prairie) deactivateCommonSites(mesh);
       }
       this.free.push(tile);
     }
@@ -1925,6 +1936,11 @@ export class GrassSystem implements Subsystem {
         }
       }
     }
+    // All original placements/RNG draws (including rank and seedheads) are
+    // complete before the tile-owned common sites are paired.
+    const retained = this.prairiePairing!.compact([tile.meshes[V_OPEN], tile.meshes[V_TUFT]],
+      [counts[V_OPEN], counts[V_TUFT]], tile.tx, tile.tz, bodyStep);
+    counts[V_OPEN] = retained[0]; counts[V_TUFT] = retained[1];
     for (let vi = 0; vi < N_VARIANTS; vi++) {
       const mesh = tile.meshes[vi];
       mesh.count = counts[vi];

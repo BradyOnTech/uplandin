@@ -1,0 +1,21 @@
+{
+  "method": "Code-authored native grass source, reviewed in Blender and real Sharptail field; no AI bitmap or third-party asset.",
+  "reproduce": "node tools3d/build-sharptail-native-grass.mjs",
+  "author": "assets/source/sharptail-kit/native-grass/author_source.py",
+  "authorSha256": "10f6e7ffb81b7b9b38f0eb72d58c894ac0d865728067502dd6712332c736e092",
+  "reducer": "assets/source/sharptail-kit/native-grass/reduce_source.ts",
+  "reducerSha256": "202cf4f589c850f69aa09e46bbd1289a02564db75d66e2f6af7794cbfdc53875",
+  "sourceSha256": "a074629ae4b5f7722e3c43d64aa1d3bcf833038312244e7a9c7ea8192420736c",
+  "runtime": "src/three/subsystems/sharptailNativeLeafData.ts",
+  "runtimeSha256": "1d10aa8c2ee5392be049ebc4d484c14894a48e64f99b99e263bc686ff157b415",
+  "runtimeBytes": 74129,
+  "sourceLeaves": 216,
+  "sourceTriangles": 4320,
+  "runtimeTriangles": {
+    "far": 112,
+    "middle": 274,
+    "near": 540
+  },
+  "roundingMaxMetres": 5e-7,
+  "reviewEvidence": "output/sharptail-cutout-study/opaque-r3/assessment.json"
+}
