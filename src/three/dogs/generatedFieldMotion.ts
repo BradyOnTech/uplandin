@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GeneratedEarGravity } from './generatedEarGravity';
-import type { LocomotionGait } from './locomotion';
+import { selectLocomotionGait, type LocomotionGait, type LocomotionSpeedThresholds } from './locomotion';
 import { createGeneratedGsp, GENERATED_STRIDE } from './generatedGsp';
 import { GeneratedScentMotion, fieldPerformance, type GeneratedFieldIntent } from './generatedScentMotion';
 import { GeneratedBodySupport } from './generatedBodySupport';
@@ -8,6 +8,14 @@ import { GeneratedMouthMotion } from './generatedMouth';
 import type { GspCoatId } from './germanShorthairedPointer';
 import { GeneratedPickupReach } from './generatedPickupReach';
 import { GeneratedPivotSteps } from './generatedPivotSteps';
+
+// Retain the generated dog's established pace centers, but require a real
+// acceleration/deceleration through a band before changing footfall law.
+const GENERATED_GAIT_SPEEDS: LocomotionSpeedThresholds = {
+  walkToTrot: 1.33, trotToWalk: .97,
+  trotToCanter: 2.68, canterToTrot: 2.32,
+  canterToGallop: 4.48, gallopToCanter: 4.12,
+};
 
 export interface GeneratedRetrievePose {
   stage: 'pickup' | 'carry' | 'deliver'; holdMs: number; speciesId?: string;
@@ -56,7 +64,7 @@ export class GeneratedFieldMotion {
     // position a second time would accumulate the ribcage pivot offset.
     this.pose=Object.values(this.asset.joints).filter(node=>node!==this.asset.joints.body).map(node=>({node,previousPosition:node.position.clone(),previousRotation:node.quaternion.clone(),fromPosition:node.position.clone(),fromRotation:node.quaternion.clone()}));
   }
-  update(x:number,z:number,yaw:number,dt:number,moving:boolean,point:boolean,retrieve?:GeneratedRetrievePose,field?:GeneratedFieldIntent) {
+  update(x:number,z:number,yaw:number,dt:number,moving:boolean,point:boolean,retrieve?:GeneratedRetrievePose,field?:GeneratedFieldIntent,presentationSpeed?:number) {
     const root=this.asset.root,ground=this.ground(x,z),distance=this.placed?Math.hypot(x-this.last.x,z-this.last.z):0;
     const depth=this.waterDepth(x,z);
     const wasSwimming=this.swimming;
@@ -115,7 +123,18 @@ export class GeneratedFieldMotion {
       if(!this.wasMoving){this.gait=speed>4.3?'gallop':speed>2.5?'canter':speed>1.15?'trot':'walk';this.cycle=0;}
       const previous=this.cycle,stride=GENERATED_STRIDE[this.gait];
       this.cycle=(this.cycle+(reset?0:distance)/stride)%1;
-      if(reset||this.cycle<previous)this.gait=speed>4.3?'gallop':speed>2.5?'canter':speed>1.15?'trot':'walk';
+      // Distance still advances the stride exactly. Only classification
+      // uses the subsystem's filtered physical speed, at a stride boundary.
+      if(reset||this.cycle<previous) {
+        // Preserve the generated controller's ability to respond directly
+        // to a large pace change, rather than inserting entire walk/trot
+        // strides at running speed. Small variations settle in the band.
+        for(let pass=0;pass<3;pass++) {
+          const next=selectLocomotionGait(presentationSpeed??speed,this.gait,GENERATED_GAIT_SPEEDS);
+          if(next===this.gait)break;
+          this.gait=next;
+        }
+      }
       contacts=this.asset.setLocomotion(this.gait,this.cycle);
     } else {
       const t=this.pointPresence;

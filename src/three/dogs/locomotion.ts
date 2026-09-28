@@ -136,24 +136,43 @@ export function wrapCycle(value: number): number {
   return ((value % 1) + 1) % 1;
 }
 
-/** Physical pace chooses the footfall law; hunt state is layered elsewhere. */
-export function selectLocomotionGait(speedMps: number, current: LocomotionGait): LocomotionGait {
+export interface LocomotionSpeedThresholds {
+  walkToTrot: number;
+  trotToWalk: number;
+  trotToCanter: number;
+  canterToTrot: number;
+  canterToGallop: number;
+  gallopToCanter: number;
+}
+
+const DEFAULT_SPEED_THRESHOLDS: LocomotionSpeedThresholds = {
+  walkToTrot: 1.75, trotToWalk: 1.45,
+  trotToCanter: 3.15, canterToTrot: 2.75,
+  canterToGallop: 4.85, gallopToCanter: 4.35,
+};
+
+/** Physical pace chooses the footfall law; breed-specific bands may differ. */
+export function selectLocomotionGait(
+  speedMps: number,
+  current: LocomotionGait,
+  thresholds: LocomotionSpeedThresholds = DEFAULT_SPEED_THRESHOLDS,
+): LocomotionGait {
   // Hysteresis keeps noisy render-speed estimates from switching gait at a
   // threshold every other frame.
   if (current === 'gallop') {
-    return speedMps >= 4.35 ? 'gallop' : 'canter';
+    return speedMps >= thresholds.gallopToCanter ? 'gallop' : 'canter';
   }
   if (current === 'canter') {
-    if (speedMps >= 4.85) return 'gallop';
-    if (speedMps >= 2.75) return 'canter';
-    return speedMps < 1.45 ? 'walk' : 'trot';
+    if (speedMps >= thresholds.canterToGallop) return 'gallop';
+    if (speedMps >= thresholds.canterToTrot) return 'canter';
+    return speedMps < thresholds.trotToWalk ? 'walk' : 'trot';
   }
   if (current === 'walk') {
-    return speedMps >= 1.75 ? 'trot' : 'walk';
+    return speedMps >= thresholds.walkToTrot ? 'trot' : 'walk';
   }
-  if (speedMps >= 4.85) return 'gallop';
-  if (speedMps >= 3.15) return 'canter';
-  return speedMps < 1.45 ? 'walk' : 'trot';
+  if (speedMps >= thresholds.canterToGallop) return 'gallop';
+  if (speedMps >= thresholds.trotToCanter) return 'canter';
+  return speedMps < thresholds.trotToWalk ? 'walk' : 'trot';
 }
 
 export function strideLength(gait: LocomotionGait, strideScale = 1): number {

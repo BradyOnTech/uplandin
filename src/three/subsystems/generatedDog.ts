@@ -71,7 +71,7 @@ export class GeneratedDogSystem implements Subsystem {
     const retrievePose = retrieve?.stage === 'pickup' && dog.gait !== 'still' ? undefined : retrieve;
     if(retrievePose?.stage==='pickup'&&retrieveId!=null&&ctx.get<BirdsSystem>('birds').groundedTarget?.(retrieveId,this.pickupTarget))
       retrievePose.target=this.pickupTarget;
-    this.motion.update(this.position.x,this.position.z,Math.PI/2-this.heading,dt,dog.gait!=='still'&&this.speed>.06&&!point,point,retrievePose,this.field);
+    this.motion.update(this.position.x,this.position.z,Math.PI/2-this.heading,dt,dog.gait!=='still'&&this.speed>.06&&!point,point,retrievePose,this.field,this.speed);
     this.auditFrame++;
     const watching=dog.state==='marking' && ctx.get<BirdsSystem>('birds').markingTarget(dog.watchedBirdIds(),this.attentionTarget);
     this.attention.update(this.motion.asset,watching?this.attentionTarget:null,dt);
