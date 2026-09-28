@@ -9,6 +9,7 @@ import type { TerrainSystem } from './terrain';
 import type { LandscapeModel } from '../../game/landscape';
 import { SharptailSwardField } from './sharptailSward';
 import { sharptailGrassGeometry } from './sharptailGrass';
+import { SharptailNativePlants, nativePlantGeometry, NativePlantGroundPatch } from './sharptailNativePlants';
 import { SharptailMidSward } from './sharptailMidSward';
 import { sharptailShackYardAt } from './sharptailEnvironment';
 import { sharptailAccentGroundAt } from './sharptailAccents';
@@ -935,6 +936,8 @@ export class GrassSystem implements Subsystem {
   private coverGeo!: THREE.BufferGeometry;
   private prairieFarGeo?: THREE.BufferGeometry;
   private prairieMidSward?: SharptailMidSward;
+  private prairieNativePlants?: SharptailNativePlants;
+  private prairieGroundPatch?: NativePlantGroundPatch;
   private openMat!: THREE.MeshLambertMaterial;
   private coverMat!: THREE.MeshLambertMaterial;
   private openUniforms!: GrassUniforms;
@@ -994,7 +997,7 @@ export class GrassSystem implements Subsystem {
     this.cfg = CFG[ctx.quality];
     this.terrain = ctx.get<TerrainSystem>('terrain');
     this.hunt = ctx.get<Hunt3DSystem>('hunt3d');
-    if(this.prairie)this.huntWind.connect(ctx);
+    if(this.prairie){this.huntWind.connect(ctx);this.prairieGroundPatch = new NativePlantGroundPatch();}
     this.art = grassArtFor(this.hunt.huntState().areaId);
     this.grassGold.setHex(this.art.grassGold);
     this.grassOlive.setHex(this.art.grassOlive);
@@ -1063,10 +1066,15 @@ export class GrassSystem implements Subsystem {
       this.free.push(tile);
     }
 
+    if (this.prairie) this.prairieNativePlants = new SharptailNativePlants(ctx.scene, this.openMat,
+      this.pool.flatMap(tile => [tile.meshes[V_OPEN], tile.meshes[V_TUFT], tile.meshes[V_COVER]]),
+      ctx.quality === 'lite');
+
     this.applyTod(ctx.timeOfDay);
     ctx.events.addEventListener('tod', ((e: CustomEvent) => this.applyTod(e.detail)) as EventListener);
 
     this.rebuild(ctx);
+    this.prairieNativePlants?.update(ctx.camera.position, true);
   }
 
   /**
@@ -1144,10 +1152,15 @@ export class GrassSystem implements Subsystem {
     }
     const cx = Math.floor(ctx.camera.position.x / TILE);
     const cz = Math.floor(ctx.camera.position.z / TILE);
-    if (cx !== this.lastCellX || cz !== this.lastCellZ) this.rebuild(ctx);
+    const rebuilt = cx !== this.lastCellX || cz !== this.lastCellZ;
+    if (rebuilt) this.rebuild(ctx);
+    this.prairieNativePlants?.update(ctx.camera.position, rebuilt);
   }
 
   dispose(ctx: Ctx): void {
+    this.prairieNativePlants?.dispose();
+    this.prairieNativePlants = undefined;
+    this.prairieGroundPatch = undefined;
     this.prairieMidSward?.dispose(ctx);
     this.prairieMidSward = undefined;
     for (const tile of this.pool) {
@@ -1320,10 +1333,10 @@ export class GrassSystem implements Subsystem {
       for (const variant of [V_OPEN, V_STALK, V_TUFT]) this.variantGeos[variant].dispose();
       this.coverGeo.dispose();
       const detail = this.cfg.bladeWide > 1 ? 'mobile' : 'field';
-      this.variantGeos[V_OPEN] = sharptailGrassGeometry('short', detail);
+      this.variantGeos[V_OPEN] = nativePlantGeometry('windlaid', false);
       this.variantGeos[V_STALK] = sharptailGrassGeometry('stalk', detail);
-      this.variantGeos[V_TUFT] = sharptailGrassGeometry('medium', detail);
-      this.coverGeo = sharptailGrassGeometry('cover', detail);
+      this.variantGeos[V_TUFT] = nativePlantGeometry('bunch', false);
+      this.coverGeo = nativePlantGeometry('rank', false);
       this.prairieFarGeo = sharptailGrassGeometry('cover', 'distant');
     }
   }
@@ -1820,6 +1833,9 @@ export class GrassSystem implements Subsystem {
     }
     this.v.set(px, y, pz);
     this.m.compose(this.v, this.q, this.s);
+    if (this.prairie && (vi === V_OPEN || vi === V_TUFT || vi === V_COVER)) {
+      this.prairieGroundPatch!.conform(this.m);
+    }
 
     // Grass-band base color + per-variant character.
     this.groundColorAt(px, pz, y);
@@ -1857,6 +1873,8 @@ export class GrassSystem implements Subsystem {
    * accents. Unlike the generic meadow, rank cover never removes its basal
    * leaf layer. Caps, tile count, fade ranges and materials stay unchanged. */
   private fillPrairieTile(tile: Tile, counts: number[], caps: number[], rng: () => number): void {
+    this.prairieGroundPatch!.prepare(tile.tx * TILE, tile.tz * TILE,
+      (x, z) => this.terrain.heightAt(x, z));
     // Wider three-root mats cover more ground per instance. A slightly
     // coarser lattice repays their extra visible geometry on both tiers.
     const bodyStep = this.cfg.tuftStep * (this.cfg.bladeWide > 1 ? 1.08 : 1.04);
