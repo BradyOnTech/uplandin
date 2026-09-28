@@ -192,6 +192,7 @@ export class Hunt3DSystem implements Subsystem {
   private careerResult: CareerHuntResult | null = null;
   private careerSettled = false;
   private gearTier = 0;
+  private pointRevisions: number[] = [];
   private seedValue?: number;
   private activeChallenge: HuntChallenge = 'balanced';
   falconry: GoshawkFlight | null = null;
@@ -202,6 +203,7 @@ export class Hunt3DSystem implements Subsystem {
   getActiveChallenge(): HuntChallenge { return this.activeChallenge; }
 
   init(ctx: Ctx): void {
+    this.pointRevisions = [];
     this.frozen = new URLSearchParams(location.search).has('capture');
 
     const search = new URLSearchParams(location.search);
@@ -478,6 +480,10 @@ export class Hunt3DSystem implements Subsystem {
 
   private recordEvents(events: readonly HuntSimulationEvent[]): void {
     for (const event of events) {
+      if (event.type === 'dog-pointed') {
+        this.pointRevisions[event.dogIndex] = (this.pointRevisions[event.dogIndex] ?? 0) + 1;
+        continue;
+      }
       if (event.type !== 'covey-flushed') continue;
       const doctrine = huntingDoctrine(this.area.id);
       // Continuous world rises must stay visible before a circle-back is
@@ -653,6 +659,13 @@ export class Hunt3DSystem implements Subsystem {
   }
 
   seed(): number | undefined { return this.seedValue; }
+
+  /** Selected tracking gear, shared by field presentation and recall rules. */
+  trackingGearTier(): number { return this.gearTier; }
+
+  /** Point and flush can occur between rendered frames. Monotonic per-dog
+   * revisions preserve that observed state transition without a bird marker. */
+  dogPointRevision(slot = 0): number { return this.pointRevisions[slot] ?? 0; }
 
   areaConfig(): AreaConfig {
     return this.area;

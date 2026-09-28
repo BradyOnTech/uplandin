@@ -3,6 +3,7 @@ import { synthesizeBirdLaunch, BIRD_FLUSH_AUDIO_RATE, type BirdLaunchVoice } fro
 import { fieldSoundscape, fieldWindSamples } from './three/fieldSoundscape';
 import type { WindStrength } from './game/wind';
 import type { ShotgunActionCue } from './three/shotgunActionTiming';
+import type { DogCollarCue } from './three/dogCollarAudio';
 /**
  * Procedural sound effects — no audio assets, everything is synthesized
  * with WebAudio. Mobile browsers require a user gesture before audio can
@@ -12,9 +13,11 @@ import type { ShotgunActionCue } from './three/shotgunActionTiming';
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 let audioEnabled = true;
+const dogCollarVoices = new Set<DogCollarSound>();
 
 export function setAudioEnabled(enabled: boolean): void {
   audioEnabled = enabled;
+  if (!enabled) for (const voice of dogCollarVoices) voice.stop();
   if (master && ctx) master.gain.setTargetAtTime(enabled ? 1 : 0, ctx.currentTime, 0.08);
 }
 function output(c: AudioContext): GainNode {
@@ -253,8 +256,7 @@ export function playThunder(): void {
 
 /** Beeper collar locate tone: a sharp electronic beep while the dog stands on point. */
 export function playBeeper(): void {
-  tone(2750, 0, 0.1, { type: 'square', volume: 0.1 });
-  tone(2750, 0.16, 0.1, { type: 'square', volume: 0.1 });
+  for (const note of COLLAR_NOTES.beeper) tone(note.frequency, note.start, note.duration, { type: note.type, volume: note.volume });
 }
 
 /**
@@ -263,8 +265,74 @@ export function playBeeper(): void {
  */
 export function playBell(volume: number): void {
   if (volume <= 0.005) return;
-  tone(2350, 0, 0.09, { volume: volume * 0.7 });
-  tone(3520, 0, 0.05, { volume: volume * 0.35 });
+  for (const note of COLLAR_NOTES.bell) tone(note.frequency, note.start, note.duration, { type: note.type, volume: volume * note.volume });
+}
+
+const COLLAR_NOTES: Record<DogCollarCue, readonly { frequency: number; start: number; duration: number; volume: number; type: OscillatorType }[]> = {
+  bell: [
+    { frequency: 2350, start: 0, duration: .09, volume: .7, type: 'sine' },
+    { frequency: 3520, start: 0, duration: .05, volume: .35, type: 'sine' },
+  ],
+  beeper: [
+    { frequency: 2750, start: 0, duration: .1, volume: .1, type: 'square' },
+    { frequency: 2750, start: .16, duration: .1, volume: .1, type: 'square' },
+  ],
+};
+
+export interface DogCollarSound {
+  readonly active: boolean;
+  updateSpatial(volume: number, direction: SoundDirection): void;
+  stop(): void;
+}
+
+/** Short, cancellable versions of the existing collar sounds. The direction
+ * is listener-relative and updated while the player turns, even mid-beep. */
+export function playDogCollar(kind: DogCollarCue, volume: number, source: SoundDirection): DogCollarSound | undefined {
+  const c = ready();
+  if (!c || !Number.isFinite(volume) || volume <= .001) return;
+  const direction = c.createPanner(), level = c.createGain();
+  direction.panningModel = 'HRTF'; direction.rolloffFactor = 0;
+  level.connect(direction).connect(output(c));
+  const position = (gain: number, offset: SoundDirection, smooth: boolean) => {
+    const length = Math.hypot(offset.x, offset.y, offset.z);
+    const valid = Number.isFinite(length) && length > .001;
+    const values = [valid ? offset.x / length : 0, valid ? offset.y / length : 0, valid ? offset.z / length : -1];
+    for (const [i, param] of [direction.positionX, direction.positionY, direction.positionZ].entries()) {
+      if (smooth) param.setTargetAtTime(values[i], c.currentTime, .02);
+      else param.value = values[i];
+    }
+    const safeGain = Number.isFinite(gain) ? Math.max(0, Math.min(1, gain)) : 0;
+    if (smooth) level.gain.setTargetAtTime(safeGain, c.currentTime, .02);
+    else level.gain.value = safeGain;
+  };
+  position(volume, source, false);
+  let active = true, remaining = COLLAR_NOTES[kind].length;
+  const notes: { source: OscillatorNode; envelope: GainNode }[] = [];
+  const handle: DogCollarSound = {
+    get active() { return active; },
+    updateSpatial(gain, offset) { if (active) position(gain, offset, true); },
+    stop() {
+      if (!active) return;
+      active = false;
+      for (const note of notes) { note.source.stop(c.currentTime); note.source.disconnect(); note.envelope.disconnect(); }
+      level.disconnect(); direction.disconnect(); dogCollarVoices.delete(handle);
+    },
+  };
+  dogCollarVoices.add(handle);
+  for (const note of COLLAR_NOTES[kind]) {
+    const oscillator = c.createOscillator(), envelope = c.createGain();
+    const start = c.currentTime + note.start;
+    oscillator.type = note.type; oscillator.frequency.value = note.frequency;
+    envelope.gain.setValueAtTime(0, start);
+    envelope.gain.linearRampToValueAtTime(note.volume, start + .004);
+    envelope.gain.exponentialRampToValueAtTime(.001, start + note.duration);
+    envelope.gain.linearRampToValueAtTime(0, start + note.duration + .02);
+    oscillator.connect(envelope).connect(level);
+    notes.push({ source: oscillator, envelope });
+    oscillator.onended = () => { if (--remaining === 0) handle.stop(); };
+    oscillator.start(start); oscillator.stop(start + note.duration + .02);
+  }
+  return handle;
 }
 
 /** Handler's whistle: two sliding notes. */
