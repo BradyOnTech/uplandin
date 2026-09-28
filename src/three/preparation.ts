@@ -340,7 +340,8 @@ function launch(): void {
   saveGameplayMode('3d');
   try { localStorage.setItem(HUNT_CHALLENGE_KEY, challenge); } catch { /* The URL also carries this choice. */ }
   const url = new URL(result.href, location.href); url.searchParams.set('challenge', challenge); url.searchParams.set('tod', light); url.searchParams.set('dog', 'generated');
-  if (quality === 'high' || quality === 'lite') url.searchParams.set('quality', quality);
+  // Keep Auto distinct from the effective tier chosen by device preference.
+  url.searchParams.set('quality', quality);
   if (coat) url.searchParams.set('coat', coat);
   if (controls) url.searchParams.set('controls', controls);
   rememberPreparationLaunch(currentDraft(), preferenceStorage());

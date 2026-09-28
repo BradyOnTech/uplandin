@@ -202,6 +202,7 @@ export class FieldInterface {
         const url = new URL(location.href); url.searchParams.set('quality', quality.value); location.replace(url);
       } else {
         const url = new URL(location.href); url.searchParams.set('quality', quality.value); history.replaceState(null, '', url);
+        if (preparationLink) preparationLink.href = build3DPreparationHref(url.search, landscape.area.id, landscape.dropPoint.id);
         this.status.hidden = false; this.status.textContent = 'Display change saved for the next hunt.';
       }
     }, { signal });

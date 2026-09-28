@@ -75,10 +75,13 @@ export function build3DHuntHref(launch: HuntLaunch, dropPointId?: string): strin
   return `./index3d.html?${params.toString()}`;
 }
 
-/** Return to preparation with this property's entry and the same save mode. */
+/** Return with the chosen graphics preference, never the device's effective tier. */
 export function build3DPreparationHref(search: string, areaId: string, dropPointId: string): string {
   const mode = parseHuntLaunch(search)?.kind === 'career' ? 'career' : 'quick';
-  return `./prepare3d.html?${new URLSearchParams({ mode, area: areaId, drop: dropPointId })}`;
+  const params = new URLSearchParams({ mode, area: areaId, drop: dropPointId });
+  const quality = new URLSearchParams(search).get('quality');
+  if (quality === 'auto' || quality === 'lite' || quality === 'high') params.set('quality', quality);
+  return `./prepare3d.html?${params}`;
 }
 
 export function parseDropPointId(search: string): string | undefined {

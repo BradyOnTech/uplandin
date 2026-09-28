@@ -135,13 +135,14 @@ export class HuntHudSystem implements Subsystem {
     }
     if (this.summary) this.summary.hidden = true;
     const options = { signal: this.abort.signal };
-    const preparationHref = build3DPreparationHref(location.search, this.hunt.areaConfig().id, this.hunt.dropPoint().id);
+    // Graphics may have changed in Pause after this HUD was initialized.
+    const preparationHref = () => build3DPreparationHref(location.search, this.hunt.areaConfig().id, this.hunt.dropPoint().id);
     if (isFalconryPractice(location.search)) document.getElementById('hunt-again')!.textContent = 'New drill';
     document.getElementById('hunt-again')?.addEventListener('click', () => {
-      location.assign(this.seasonEnded ? preparationHref : nextHuntUrl(location.href));
+      location.assign(this.seasonEnded ? preparationHref() : nextHuntUrl(location.href));
     }, options);
-    document.getElementById('hunt-menu')?.addEventListener('click', () => location.assign(preparationHref), options);
-    document.getElementById('field-menu')?.addEventListener('click', () => location.assign(preparationHref), options);
+    document.getElementById('hunt-menu')?.addEventListener('click', () => location.assign(preparationHref()), options);
+    document.getElementById('field-menu')?.addEventListener('click', () => location.assign(preparationHref()), options);
     this.endButton?.addEventListener('click', () => {
       if (!this.birds.isRiseActive() && !this.endButton?.disabled) {
         this.hunt.endHunt();
