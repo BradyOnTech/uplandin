@@ -30,7 +30,8 @@ describe('Shot view when optional storage is unavailable', () => {
     const action = (detail: string) => ctx.events.dispatchEvent(Object.assign(new Event('hunt-action'), { detail }));
     const step = () => { ctx.time += .2; gun.update(ctx, .2); };
     try {
-      action('mount'); step(); expect(camera.fov).toBe(70);
+      expect(camera.fov).toBe(70);
+      action('mount'); step(); expect(camera.fov).toBe(failure === 'stale-read' ? 70 : 58);
       // The shared setter and event are the actual field-select change path.
       saveShotSightPicture('closer'); ctx.events.dispatchEvent(new Event('touch-sight-change')); step();
       expect(camera.fov).toBe(58);

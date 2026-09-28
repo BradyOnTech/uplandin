@@ -36,15 +36,15 @@ export function saveInputMode(mode: InputMode): void {
 
 export type TouchSensitivity = 'look' | 'swing';
 let visitShotSight: 'closer' | 'wide' | undefined;
-/** Honor an explicit choice on either input device. Existing mouse players
- * keep Wide unless they opt in; touch retains its established Closer default. */
-export function shotSightPicture(touch: boolean): 'closer' | 'wide' {
+/** Use the same readable mounted view on either input device. An explicit
+ * Wide choice still wins; walking optics are independent of this preference. */
+export function shotSightPicture(_touch: boolean): 'closer' | 'wide' {
   if (visitShotSight !== undefined) return visitShotSight;
   try {
     const saved = localStorage.getItem('uplandin.3d.sight');
     if (saved === 'wide' || saved === 'closer') return saved;
   } catch { /* Storage is optional. */ }
-  return touch ? 'closer' : 'wide';
+  return 'closer';
 }
 export function saveShotSightPicture(value: 'closer' | 'wide'): void {
   // The current visit must honor the control even if storage is blocked or

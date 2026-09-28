@@ -14,16 +14,16 @@ const projectedSpan = (width: number, height: number, fov: number, distance: num
     - new Vector3(-.5, 0, -distance).project(camera).x) * width / 2;
 };
 
-describe('mobile Closer sight picture', () => {
-  it.each([null, 'invalid', 'closer', 'wide'])('preserves saved sight %s with input-specific defaults', saved => {
+describe('Closer sight picture', () => {
+  it.each([null, 'invalid', 'closer', 'wide'])('preserves saved sight %s with a readable default on either input', saved => {
     vi.stubGlobal('localStorage', { getItem: () => saved });
-    expect(shotSightPicture(false)).toBe(saved === 'closer' ? 'closer' : 'wide');
+    expect(shotSightPicture(false)).toBe(saved === 'wide' ? 'wide' : 'closer');
     expect(shotSightPicture(true)).toBe(saved === 'wide' ? 'wide' : 'closer');
   });
 
-  it('keeps desktop Wide and touch Closer when storage is unavailable', () => {
+  it('defaults to Closer on either input when storage is unavailable', () => {
     vi.stubGlobal('localStorage', { getItem: () => { throw new Error('Storage unavailable'); } });
-    expect(shotSightPicture(false)).toBe('wide');
+    expect(shotSightPicture(false)).toBe('closer');
     expect(shotSightPicture(true)).toBe('closer');
   });
   it.each([[844,390], [915,412]])('gives a short %s by %s landscape screen a readable but bounded field', (width,height) => {

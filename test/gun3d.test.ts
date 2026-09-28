@@ -72,7 +72,7 @@ describe('3D shotgun action', () => {
     gun.dispose(ctx);
   });
 
-  it.each(['semi-auto', 'remington-870', 'over-under', 'side-by-side'])('opts %s into the desktop Closer view without changing its bead or action lifecycle', gunId => {
+  it.each(['semi-auto', 'remington-870', 'over-under', 'side-by-side'])('defaults %s to desktop Closer while preserving Wide, its bead and action lifecycle', gunId => {
     let savedSight: string | null = null, touch = false;
     vi.stubGlobal('window', new EventTarget()); vi.stubGlobal('location', { search: '' });
     vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'uplandin.3d.sight' ? savedSight : null });
@@ -94,9 +94,12 @@ describe('3D shotgun action', () => {
       return view.sporting.bead.clone().applyMatrix4(view.rig.matrixWorld).project(camera);
     };
     try {
+      expect(camera.fov).toBe(70); // Ordinary field view stays wide.
       key('f', 'KeyF'); step(1);
-      expect(camera.fov).toBe(70); // No saved desktop preference remains Wide.
+      expect(camera.fov).toBe(58);
       const shellCount = gun.shellsRemaining();
+      savedSight = 'wide'; ctx.events.dispatchEvent(new Event('touch-sight-change')); step(1);
+      expect(camera.fov).toBe(70);
       savedSight = 'closer'; ctx.events.dispatchEvent(new Event('touch-sight-change')); step(1);
       expect(camera.fov).toBe(58);
       expect(Math.abs(bead().x)).toBeLessThan(.002);
