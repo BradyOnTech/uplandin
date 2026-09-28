@@ -32,6 +32,17 @@ h1 { margin-top:12px; font:400 clamp(34px,4vw,54px)/1.12 Georgia,serif; }
 .mode-switch button[aria-pressed=true] { background:#3b4e3e; box-shadow:0 2px 4px #0002,inset 0 1px #fff1; }
 .prep-status { color:var(--muted); margin:20px 0 30px; font-size:13px; font-variant-numeric:tabular-nums; }
 .prep-message { margin:0 0 24px; padding:14px 18px; background:#dec18b14; box-shadow:inset 3px 0 var(--gold); color:#f1dab0; }
+.career-outlook { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; margin:0 0 24px; padding:14px 16px; border-radius:12px; background:#d9c4980a; box-shadow:inset 0 1px #ffffff0d; }
+.career-outlook progress,.dog-outlook progress { display:block; width:100%; height:5px; margin:9px 0; border:0; border-radius:3px; overflow:hidden; accent-color:var(--gold); background:#ffffff12; }
+.career-outlook progress::-webkit-progress-bar,.dog-outlook progress::-webkit-progress-bar { background:#ffffff12; }
+.career-outlook progress::-webkit-progress-value,.dog-outlook progress::-webkit-progress-value { background:var(--gold); border-radius:3px; }
+.career-outlook progress::-moz-progress-bar,.dog-outlook progress::-moz-progress-bar { background:var(--gold); border-radius:3px; }
+.progress-label { font-size:12px; color:var(--cream); font-variant-numeric:tabular-nums; }
+.progress-detail,.progress-age,.progress-earning { color:var(--muted); font-size:11px; font-variant-numeric:tabular-nums; }
+.progress-reward { margin-top:3px; color:var(--gold); font-size:13px; }
+.dog-outlook { margin:-3px 0 18px; padding-left:12px; box-shadow:inset 2px 0 #dfc38c40; }
+.progress-age { margin-top:5px; }
+.progress-earning { margin:0 0 12px; }
 .prep-grid { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(320px,.8fr); gap:38px; align-items:start; }
 .property-panel { overflow:hidden; border-radius:20px; background:#22352a; box-shadow:0 16px 50px #0002,inset 0 1px #fff1; }
 .property-panel>.setup-field { padding:20px 24px; }

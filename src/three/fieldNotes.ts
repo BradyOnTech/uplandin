@@ -1,6 +1,6 @@
 import type { HuntState } from '../game/state';
 import type { CareerHuntResult } from '../game/huntResults';
-import { HUNTER_LEVEL_CAP, hunterXpForLevel } from '../game/progression';
+import { dogCareerProgress, hunterCareerProgress } from '../game/careerProgress';
 import { dateLabel } from '../game/season';
 
 /** Observed field outcomes only; hidden stocking is not a completion target. */
@@ -28,20 +28,24 @@ export function fieldNotes(hunt: HuntState, dogCount: number, seconds: number) {
 /** Presentation of the already-settled award; never mutates or settles saves. */
 export function careerFieldNotes(result: CareerHuntResult) {
   const level = result.hunterLevel;
-  let previous = 0;
-  for (let n = 1; n < level; n++) previous += hunterXpForLevel(n);
-  const required = hunterXpForLevel(level);
-  const earned = Math.max(0, Math.min(required, result.career.hunter.xp - previous));
+  const outlook = hunterCareerProgress(result.career);
   return {
     heading: result.hunterLevelsGained > 0 ? `Hunter level ${level} reached` : `Hunter level ${level}`,
     hunterAward: `+${result.hunterGained} XP${result.henFine > 0 ? ` · protected-hen penalty applied (${result.henFine} XP)` : ''}`,
-    progress: level < HUNTER_LEVEL_CAP ? { earned, required, remaining: required - earned, nextLevel: level + 1 } : null,
-    dogs: result.dogAwards.map(award => ({
-      name: award.name,
-      award: `+${award.gained} XP`,
-      level: award.levelsGained > 0 ? `Level ${award.newLevel} reached` : `Level ${award.newLevel}`,
-      advanced: award.levelsGained > 0,
-    })),
+    progress: outlook.progress,
+    dogs: result.dogAwards.map(award => {
+      const dog = result.career.kennel.find(candidate => candidate.id === award.dogId);
+      const development = dog ? dogCareerProgress(result.career, dog) : null;
+      return {
+        name: award.name,
+        award: `+${award.gained} XP`,
+        level: award.levelsGained > 0 ? `Level ${award.newLevel} reached` : `Level ${award.newLevel}`,
+        advanced: award.levelsGained > 0,
+        next: development ? development.progress
+          ? `${development.progress.remaining} XP to level ${development.progress.nextLevel} · ${development.nextBenefit}`
+          : 'Maximum experience reached' : null,
+      };
+    }),
     unlocks: result.unlocks,
     calendar: `${result.weeks} week${result.weeks === 1 ? '' : 's'} passed · ${dateLabel(result.career.date)}`,
     next: result.seasonEnded ? 'The season is complete. Return home and open Career to begin the next season with your kennel.' : '',
@@ -64,6 +68,12 @@ export function renderCareerFieldNotes(container: HTMLElement, result: CareerHun
     remaining.textContent = `${notes.progress.remaining} XP to level ${notes.progress.nextLevel}`;
     panel.append(progress, remaining);
   }
+  if (notes.unlocks.length) {
+    const label = document.createElement('h4'); label.textContent = 'Newly available';
+    const unlocks = document.createElement('ul'); unlocks.className = 'field-career-unlocks';
+    for (const name of notes.unlocks) { const item = document.createElement('li'); item.textContent = name; unlocks.append(item); }
+    panel.append(label, unlocks);
+  }
   if (notes.dogs.length) {
     const dogs = document.createElement('dl'); dogs.className = 'field-career-dogs';
     for (const dog of notes.dogs) {
@@ -71,15 +81,14 @@ export function renderCareerFieldNotes(container: HTMLElement, result: CareerHun
       const name = document.createElement('dt'); name.textContent = dog.name;
       const detail = document.createElement('dd'); detail.textContent = `${dog.award} · ${dog.level}`;
       if (dog.advanced) detail.className = 'field-career-advanced';
-      row.append(name, detail); dogs.append(row);
+      row.append(name, detail);
+      if (dog.next) {
+        const next = document.createElement('dd'); next.className = 'field-career-dog-next'; next.textContent = dog.next;
+        row.append(next);
+      }
+      dogs.append(row);
     }
     panel.append(dogs);
-  }
-  if (notes.unlocks.length) {
-    const label = document.createElement('h4'); label.textContent = 'Newly available';
-    const unlocks = document.createElement('ul'); unlocks.className = 'field-career-unlocks';
-    for (const name of notes.unlocks) { const item = document.createElement('li'); item.textContent = name; unlocks.append(item); }
-    panel.append(label, unlocks);
   }
   const calendar = document.createElement('p'); calendar.className = 'field-career-calendar'; calendar.textContent = notes.calendar;
   panel.append(calendar);

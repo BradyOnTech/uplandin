@@ -140,10 +140,11 @@ input { accent-color:var(--gold); }
 .field-notes-career progress { display:block; margin:12px 0 0; width:100%; }
 .field-notes-career .field-career-next,.field-notes-career .field-career-calendar { color:#aeb8a2; font-size:11px; }
 .field-career-dogs { display:grid; gap:10px; margin:16px 0; }
-.field-career-dogs div { display:flex; justify-content:space-between; gap:12px; }
+.field-career-dogs div { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:3px 12px; }
 .field-career-dogs dt { min-width:0; overflow-wrap:anywhere; color:#eee8d5; }
 .field-career-dogs dd { flex:none; margin:0; font-size:12px; }
 .field-career-dogs .field-career-advanced { color:var(--gold); }
+.field-career-dogs .field-career-dog-next { grid-column:1 / -1; color:#aeb8a2; font-size:11px; text-wrap:pretty; font-variant-numeric:tabular-nums; }
 .field-notes-career h4 { margin:16px 0 6px; font-size:10px; letter-spacing:.10em; text-transform:uppercase; color:#aeb8a2; }
 .field-career-unlocks { margin:0; padding-left:17px; color:#f2e7c8; }
 .field-career-unlocks li + li { margin-top:5px; }

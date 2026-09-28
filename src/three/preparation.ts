@@ -2,6 +2,7 @@ import './preparation.css';
 import { AREAS, getArea } from '../game/areas';
 import { BREEDS, getBreed } from '../game/breeds';
 import { CAREER_KEY, loadCareer, saveCareer, type Career } from '../game/career';
+import { dogCareerProgress, hunterCareerProgress, type ExperienceProgress } from '../game/careerProgress';
 import { GUNS } from '../game/guns';
 import { saveGameplayMode } from '../game/gameplayMode';
 import { HUNT_CHALLENGES, HUNT_CHALLENGE_KEY, parseHuntChallenge } from '../game/huntChallenge';
@@ -97,6 +98,22 @@ const choices = (values: readonly string[]) => values.map(id => ({ id, label: id
 const breeds = () => BREEDS.map(b => ({ id: b.id, label: b.name }));
 function section(title: string, intro?: string): HTMLElement {
   const el = node('section', '', 'setup-section'); el.append(node('h2', title)); if (intro) el.append(node('p', intro, 'section-intro')); return el;
+}
+function experienceBar(progress: ExperienceProgress, label: string): HTMLProgressElement {
+  const meter = node('progress'); meter.max = progress.required; meter.value = progress.earned;
+  meter.setAttribute('aria-label', `${label}: ${progress.earned} of ${progress.required} XP toward level ${progress.nextLevel}`);
+  return meter;
+}
+function dogOutlook(dog: NonNullable<ReturnType<typeof careerPreparation>['activeDog']>, role: string): HTMLElement {
+  const outlook = dogCareerProgress(career, dog), panel = node('div', '', 'dog-outlook');
+  panel.dataset.dogId = dog.id; panel.setAttribute('aria-label', `${role} development: ${dog.name}`);
+  panel.append(node('p', `${dog.name} · ${outlook.ageLabel}`, 'progress-label'));
+  if (outlook.progress) {
+    panel.append(experienceBar(outlook.progress, dog.name),
+      node('p', `${outlook.progress.remaining} XP to level ${outlook.progress.nextLevel} · ${outlook.nextBenefit}`, 'progress-detail'));
+  } else panel.append(node('p', 'Maximum experience reached', 'progress-detail'));
+  if (outlook.ageEffect) panel.append(node('p', outlook.ageEffect, 'progress-age'));
+  return panel;
 }
 function error(value: string): void { message = value; render(); document.getElementById('preparation-message')?.focus(); }
 function persistCareer(next: Career): boolean {
@@ -228,7 +245,12 @@ function render(focusId?: string): void {
     if (mode === 'career') {
       if (!career.kennel.some(d => d.id === dogId)) dogId = career.activeDogId ?? '';
       companions.append(select('prep-dog', 'Working dog', career.kennel.map(d => ({ id: d.id, label: `${d.name} · ${getBreed(d.breedId).name} · Level ${d.level}` })), dogId, value => { dogId = value; if (braceId === value) braceId = ''; }));
-      if (preparation.canBrace) companions.append(select('prep-brace', 'Second dog', [{ id: '', label: 'Hunt with one dog' }, ...career.kennel.filter(d => d.id !== dogId).map(d => ({ id: d.id, label: `${d.name} · Level ${d.level}` }))], braceId, value => { braceId = value; }));
+      if (preparation.activeDog) companions.append(dogOutlook(preparation.activeDog, 'Working dog'));
+      if (preparation.canBrace) {
+        companions.append(select('prep-brace', 'Second dog', [{ id: '', label: 'Hunt with one dog' }, ...career.kennel.filter(d => d.id !== dogId).map(d => ({ id: d.id, label: `${d.name} · Level ${d.level}` }))], braceId, value => { braceId = value; }));
+        if (preparation.braceDog) companions.append(dogOutlook(preparation.braceDog, 'Second dog'));
+      }
+      companions.append(node('p', 'Points, retrieves and birds downed over a point build your dog’s experience.', 'progress-earning'));
       companions.append(node('p', `${GEAR_NAMES[preparation.gearTier]} · ${career.kennel.length}/${preparation.kennelCapacity} kennel places`, 'help'));
       if (addingDog) dogForm(companions, false);
       else if (preparation.canAddDog) {
@@ -250,6 +272,19 @@ function render(focusId?: string): void {
       const rack = link('Explore the 3D gun rack ↗', `./shotguns3d.html?gun=${encodeURIComponent(mode === 'career' ? gunId : quick.gunId)}`); rack.target = '_blank'; rack.rel = 'noopener'; rack.className = 'text-link'; equipment.append(rack);
     }
     settings.append(equipment);
+    if (mode === 'career') {
+      const outlook = hunterCareerProgress(career), panel = node('aside', '', 'career-outlook');
+      panel.id = 'prep-career-outlook'; panel.setAttribute('aria-label', 'Hunter progress');
+      const progress = node('div');
+      progress.append(node('p', outlook.progress
+        ? `${outlook.progress.remaining} XP to hunter level ${outlook.progress.nextLevel}` : 'Maximum hunter level reached', 'progress-label'));
+      if (outlook.progress) progress.append(experienceBar(outlook.progress, 'Hunter'));
+      progress.append(node('p', 'Hunts completed, downed birds and doubles earn XP.', 'progress-detail'));
+      const reward = node('div');
+      reward.append(node('p', outlook.nextUnlock ? `Ahead at level ${outlook.nextUnlock.level}` : 'Your equipment is fully unlocked', 'progress-detail'));
+      if (outlook.nextUnlock) reward.append(node('p', outlook.nextUnlock.labels.join(' · '), 'progress-reward'));
+      panel.append(progress, reward); settings.append(panel);
+    }
     const conditions = node('details', '', 'hunt-options'); conditions.append(node('summary', 'Conditions & display'));
     if (mode === 'quick') {
       conditions.append(select('prep-method', 'Hunting method', [{ id: 'shotgun', label: 'Shotgun' }, { id: 'goshawk', label: 'Goshawk · Cattail Coverts' }], quick.huntingMethod ?? 'shotgun', value => updateQuick({ huntingMethod: value as QuickConfig['huntingMethod'] })));

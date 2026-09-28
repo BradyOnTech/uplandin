@@ -45,6 +45,7 @@ describe('Career field notes', () => {
     expect(notes.progress).toEqual({ earned: 1, required: 28, remaining: 27, nextLevel: 3 });
     expect(notes.unlocks).toContain('the truck — the whole map is open');
     expect(notes.dogs[0]).toMatchObject({ name: 'Sage', level: 'Level 2 reached', advanced: true });
+    expect(notes.dogs[0].next).toBe('56 XP to level 3 · Stronger scenting and steadier points');
     expect(JSON.stringify(result)).toBe(before);
     expect(careerFieldNotes(result)).toEqual(notes);
   });
@@ -66,5 +67,14 @@ describe('Career field notes', () => {
     const career = emptyCareer(); career.hunter.level = HUNTER_LEVEL_CAP; career.hunter.xp = 100_000;
     const result = settleCareerHunt(career, createHunt(getArea('quail-fields'), mulberry32(2)), []);
     expect(careerFieldNotes(result).progress).toBeNull();
+  });
+
+  it('keeps capped dogs and missing legacy award snapshots honest', () => {
+    const { career, dog } = addDogToKennel(emptyCareer(), 'Sage', 'gsp');
+    dog.level = 10; dog.xp = 100_000;
+    const result = settleCareerHunt(career, createHunt(getArea('quail-fields'), mulberry32(2)), [dog]);
+    expect(careerFieldNotes(result).dogs[0].next).toBe('Maximum experience reached');
+    result.career = { ...result.career, kennel: [] };
+    expect(careerFieldNotes(result).dogs[0]).toMatchObject({ name: 'Sage', award: '+0 XP', next: null });
   });
 });
