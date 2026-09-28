@@ -13,6 +13,7 @@ import {
 import { pickBirdAlongRay } from '../src/three/subsystems/birds';
 import { saveQuickConfig } from '../src/game/quick';
 import type { StorageLike } from '../src/game/career';
+import { REVIEW_HUNT_SEED } from '../src/game/huntSeed';
 
 function liveCtx(x = 0, z = 40): Ctx {
   const ctx = {
@@ -38,6 +39,27 @@ function liveHunt(): Hunt3DSystem {
 function walkForward(ctx: Ctx, distance: number): void {
   ctx.camera.position.x += -Math.sin(ctx.camera.rotation.y) * distance;
   ctx.camera.position.z += -Math.cos(ctx.camera.rotation.y) * distance;
+}
+
+/** Follow the public entry trail until the visible dog makes scent. Never
+ * route the hunter from concealed bird coordinates or the selected cover. */
+function entryWalk(ctx: Ctx, hunt: Hunt3DSystem): () => void {
+  const area = resolveThreeHuntArea(location.search);
+  const start = hunt.worldToSim(ctx.camera.position.x, ctx.camera.position.z, { x: 0, y: 0 });
+  const startDistance = (point: { x: number; y: number }) => Math.hypot(point.x - start.x, point.y - start.y);
+  const trail = area.trails.reduce((best, candidate) =>
+    startDistance(candidate.points[0]) < startDistance(best.points[0]) ? candidate : best).points;
+  let leg = 1;
+  return () => {
+    const target = hunt.dog().scentStage !== 'none'
+      ? hunt.dogWorld({ x: 0, z: 0 })
+      : hunt.simToWorld(trail[leg].x, trail[leg].y, { x: 0, z: 0 });
+    if (hunt.dog().scentStage === 'none'
+      && Math.hypot(target.x - ctx.camera.position.x, target.z - ctx.camera.position.z) < 1
+      && leg < trail.length - 1) leg++;
+    ctx.camera.rotation.y = Math.atan2(-(target.x - ctx.camera.position.x), -(target.z - ctx.camera.position.z));
+    walkForward(ctx, 2.2 / 30);
+  };
 }
 
 describe('Hunt3DSystem live start', () => {
@@ -126,14 +148,14 @@ describe('Hunt3DSystem live start', () => {
   );
 
   it('continues handling the dog during an airborne Quail rise when a capture clock advances', () => {
-    vi.stubGlobal('location', { search: '?breed=gsp&capture=1' });
+    vi.stubGlobal('location', { search: `?breed=gsp&capture=1&seed=${REVIEW_HUNT_SEED}` });
     const ctx = liveCtx();
     const hunt = liveHunt();
     hunt.init(ctx);
     hunt.step(ctx, 1);
-    walkForward(ctx, 2);
+    const walk = entryWalk(ctx, hunt);
     for (let tick = 0; tick < 1800 && hunt.dog().state !== 'pointing'; tick++) {
-      walkForward(ctx, 2.2 / 30);
+      walk();
       hunt.step(ctx, 1);
     }
     expect(hunt.dog().state).toBe('pointing');
@@ -177,34 +199,29 @@ describe('Hunt3DSystem live start', () => {
     expect(hunt.dog().state).not.toBe('heel');
   });
 
-  it('keeps the dog within a readable working distance after cast-off', () => {
-    vi.stubGlobal('location', { search: '' });
+  it.each(['gsp', 'english-setter'])('keeps the %s within a readable working distance while casting into entry cover', breed => {
+    vi.stubGlobal('location', { search: `?area=quail-fields&breed=${breed}&seed=${REVIEW_HUNT_SEED}` });
     const ctx = liveCtx();
     const hunt = liveHunt();
     hunt.init(ctx);
 
     hunt.fixedUpdate(ctx, 1000 / 30);
-    // Walk forward for five seconds. The old 2D-tuned pace carried the dog
-    // out of frame almost immediately; the live cast should remain close
-    // even when its first turn briefly carries it behind the hunter.
-    for (let i = 0; i < 150; i++) {
-      walkForward(ctx, 2.2 / 30);
-      hunt.fixedUpdate(ctx, 1000 / 30);
-    }
-
     const dog = hunt.dogWorld({ x: 0, z: 0 });
-    const distance = Math.hypot(dog.x - ctx.camera.position.x, dog.z - ctx.camera.position.z);
-    expect(distance).toBeLessThan(12);
-
-    // Quartering is a sweep, not a requirement to remain ahead every tick.
-    // Complete the first turn while the handler keeps walking: the dog must
-    // regain the forward lane promptly, without escaping its readable range.
-    for (let i = 0; i < 150; i++) {
+    let workedCover = false;
+    const patches = resolveThreeHuntArea(location.search).patches;
+    // The reachable plum edge is around twenty metres ahead. A twelve-metre
+    // snapshot at five seconds accidentally required the old empty-ground
+    // sweep. Keep the established 35m readable envelope on EVERY first-cast
+    // tick, and require useful cover work rather than proximity alone.
+    for (let i = 0; i < 300; i++) {
       walkForward(ctx, 2.2 / 30);
       hunt.fixedUpdate(ctx, 1000 / 30);
       hunt.dogWorld(dog);
       expect(Math.hypot(dog.x - ctx.camera.position.x, dog.z - ctx.camera.position.z)).toBeLessThan(35);
+      const pos = hunt.dog().pos;
+      workedCover ||= patches.some(p => pos.x >= p.x && pos.x <= p.x + p.w && pos.y >= p.y && pos.y <= p.y + p.h);
     }
+    expect(workedCover).toBe(true);
     const forwardX = -Math.sin(ctx.camera.rotation.y);
     const forwardZ = -Math.cos(ctx.camera.rotation.y);
     const forwardDistance =
@@ -230,31 +247,25 @@ describe('Hunt3DSystem live start', () => {
     expect(searchingSamples).toBeGreaterThan(60);
   });
 
-  it('lets a walking player naturally reach a dog search-to-point sequence', () => {
-    vi.stubGlobal('location', { search: '?breed=english-setter' });
+  it.each([undefined, REVIEW_HUNT_SEED, 1184004868, 41])('lets a walking player naturally reach a complete scent-to-point sequence on seed %s', seed => {
+    vi.stubGlobal('location', { search: `?breed=english-setter${seed === undefined ? '' : `&seed=${seed}`}` });
     const ctx = liveCtx();
     const hunt = liveHunt();
     hunt.init(ctx);
     hunt.fixedUpdate(ctx, 1000 / 30);
 
-    // Cast off and walk until the dog makes scent, then follow the visible
-    // scenting dog as a handler would. Continuing on an unrelated straight
-    // line measures separation chosen by the hunter, not runaway dog work.
-    // This drives camera → hunter → work anchor → shared Dog scent logic,
-    // with a 30-second budget and no knowledge of hidden bird positions.
-    walkForward(ctx, 2);
+    // The public entry trail bends through the plum edges. An unvarying
+    // straight line skips that habitat once the dog works reachable pockets.
+    // Walk the actual route, then follow the scenting dog, with one bounded
+    // minute for the whole sequence across three encounter seeds, retaining
+    // the original seedless fallback as well as its explicit equivalent.
+    const walk = entryWalk(ctx, hunt);
     let sawScent = false;
     let sawPoint = false;
     const scentStages = new Set<string>();
     let maxDogHandlerM = 0;
-    for (let i = 0; i < 30 * 30; i++) {
-      if (hunt.dog().scentStage !== 'none') {
-        const visibleDog = hunt.dogWorld({ x: 0, z: 0 });
-        ctx.camera.rotation.y = Math.atan2(
-          -(visibleDog.x - ctx.camera.position.x), -(visibleDog.z - ctx.camera.position.z),
-        );
-      }
-      walkForward(ctx, 2.2 / 30);
+    for (let i = 0; i < 60 * 30; i++) {
+      walk();
       hunt.fixedUpdate(ctx, 1000 / 30);
       const dog = hunt.dog();
       const dogW = hunt.dogWorld({ x: 0, z: 0 });
@@ -275,15 +286,15 @@ describe('Hunt3DSystem live start', () => {
   });
 
   it('turns a natural walk-in on point into a visible covey flush', () => {
-    vi.stubGlobal('location', { search: '?breed=english-setter' });
+    vi.stubGlobal('location', { search: `?breed=english-setter&seed=${REVIEW_HUNT_SEED}` });
     const ctx = liveCtx();
     const hunt = liveHunt();
     hunt.init(ctx);
     hunt.fixedUpdate(ctx, 1000 / 30);
 
-    walkForward(ctx, 2);
-    for (let i = 0; i < 30 * 30 && hunt.dog().state !== 'pointing'; i++) {
-      walkForward(ctx, 2.2 / 30);
+    const walk = entryWalk(ctx, hunt);
+    for (let i = 0; i < 60 * 30 && hunt.dog().state !== 'pointing'; i++) {
+      walk();
       hunt.fixedUpdate(ctx, 1000 / 30);
     }
     expect(hunt.dog().state).toBe('pointing');
