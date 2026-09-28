@@ -67,6 +67,31 @@ export function sharptailCrestOffset(u: number, bend: number): number {
 // constant rotations rather than evaluating trigonometry per sample.
 const shoulderFrames = SHARPTAIL_SHOULDERS.map(shape => ({ ...shape, cos: Math.cos(shape.yaw), sin: Math.sin(shape.yaw) }));
 const saddleFrames = SADDLES.map(shape => ({ ...shape, cos: Math.cos(shape.yaw), sin: Math.sin(shape.yaw) }));
+
+// The working property is one part of a larger rolling prairie. Continue its
+// long glacial shoulders beyond the boundary instead of letting every authored
+// hill decay into a flat, sea-like horizon. Broad overlapping forms remain
+// resolved by the existing horizon mesh; no new geometry or detail layer.
+const horizonFrames = [
+  { x: 1750, y: -100, rx: 710, ry: 205, yaw: .36, height: 43, bend: -.32, face: .22, rise: .28 },
+  { x: 1580, y: 495, rx: 520, ry: 190, yaw: 1.06, height: 28, bend: .30, face: -.22, rise: -.26 },
+  { x: 820, y: -290, rx: 880, ry: 240, yaw: -.12, height: 36, bend: .24, face: .28, rise: -.20 },
+  { x: -480, y: 120, rx: 690, ry: 245, yaw: .93, height: 24, bend: -.27, face: -.18, rise: .22 },
+  { x: 580, y: 1350, rx: 820, ry: 240, yaw: .15, height: 16, bend: .31, face: .20, rise: .25 },
+].map(shape => ({ ...shape, cos: Math.cos(shape.yaw), sin: Math.sin(shape.yaw) }));
+
+/** Exterior scenery only. A flat 24-yard collar and a zero-slope transition
+ * preserve every huntable height/normal, route, root and drop-point transform.
+ * Bounds match this authored property's 1400 by 800 yard layout. */
+function horizonHeight(x: number, y: number): number {
+  if (x >= 0 && x <= 1400 && y >= 0 && y <= 800) return 0;
+  const outside = Math.hypot(Math.max(-x, 0, x - 1400), Math.max(-y, 0, y - 800));
+  if (outside <= 24) return 0;
+  const t = Math.min(1, (outside - 24) / 150);
+  let height = 0;
+  for (const ridge of horizonFrames) height += ridgeAt(x, y, ridge);
+  return height * t * t * (3 - 2 * t);
+}
 /** Attached toes divide the long existing shoulders into overlapping faces.
  * These are broad glacial rolls, not independent hill objects. Their finite
  * support joins with zero slope, keeping the walking surface continuous. */
@@ -180,7 +205,7 @@ export function sharptailAuthoredHeight(x: number, y: number): number {
     height -= swaleAt(x, y, swale) * (swale.depth + swale.basinDepth * Math.exp(-along * along));
   }
   // Subtle long undulations, not a field of small hemispherical hills.
-  return height + Math.sin(x * .009 + y * .004) * .48 + Math.sin(y * .017 - x * .003) * .24;
+  return height + Math.sin(x * .009 + y * .004) * .48 + Math.sin(y * .017 - x * .003) * .24 + horizonHeight(x, y);
 }
 
 export interface SharptailGroundZones { swale: number; stand: number }

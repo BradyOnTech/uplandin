@@ -62,6 +62,14 @@ export function buildQuailTerrainGeometry(
 ): THREE.BufferGeometry {
   const positions: number[] = []; const colors: number[] = []; const indices: number[] = [];
   const world = { x: 0, z: 0 }; const color = new THREE.Color();
+  const bounds = landscape.area.world;
+  const exterior = px + width <= bounds.x || px >= bounds.x + bounds.w
+    || py + depth <= bounds.y || py >= bounds.y + bounds.h;
+  // Unequal horizon-strip grids sample their shared edge differently. The
+  // prairie extension exposes up to 2.3m of that coarse interpolation error;
+  // deeper hidden skirts close it without adding terrain subdivisions. Keep
+  // ordinary huntable terrain and every other property's skirts unchanged.
+  const skirtDepth = exterior && landscape.area.id === 'sharptail-prairie' ? 4 : .85;
   const add = (x: number, y: number, sink = 0) => {
     landscape.propertyToWorld(x, y, world);
     positions.push(world.x, landscape.heightAtProperty(x, y) - sink, world.z);
@@ -83,7 +91,7 @@ export function buildQuailTerrainGeometry(
       const t = n / divisions;
       const x = px + (edge === 0 ? t : edge === 1 ? 1 : edge === 2 ? 1 - t : 0) * width;
       const y = py + (edge === 0 ? 0 : edge === 1 ? t : edge === 2 ? 1 : 1 - t) * depth;
-      const top = positions.length / 3; add(x, y); const bottom = positions.length / 3; add(x, y, 0.85);
+      const top = positions.length / 3; add(x, y); const bottom = positions.length / 3; add(x, y, skirtDepth);
       if (n > 0) indices.push(prevTop, top, bottom, prevTop, bottom, prevBottom);
       prevTop = top; prevBottom = bottom;
     }
