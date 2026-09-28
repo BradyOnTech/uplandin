@@ -1653,10 +1653,13 @@ export class DogSystem implements Subsystem {
           pawPivotHeight +
           foot.lift * scaleY;
         if (this.releaseT[i] < 1) {
-          const rawBlend = THREE.MathUtils.clamp(this.releaseT[i], 0, 1);
+          // Release in the first part of this paw's swing. A fixed-time
+          // hold consumed much of a fast stride, leaving the paw behind
+          // its carrier until it snapped forward at mid-swing.
+          this.releaseT[i] = Math.min(1, foot.swing / 0.2);
+          const rawBlend = this.releaseT[i];
           const blend = rawBlend * rawBlend * (3 - 2 * rawBlend);
           this.pawTargetW.lerpVectors(this.releaseLocks[i], this.pawTargetW, blend);
-          this.releaseT[i] = Math.min(1, this.releaseT[i] + this.solveDt / 0.14);
         }
       }
 
