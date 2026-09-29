@@ -94,16 +94,17 @@
     </section>
     <section id="field-overlay" aria-label="Field menu" role="dialog" aria-modal="true">
       <div class="field-card">
+        <header class="field-menu-heading">
         <p class="eyebrow">UPLANDIN · SOUTHERN PLAINS</p>
         <h1 id="field-title">Quail Fields</h1>
         <p id="field-description">A good dog. A little wind. A field worth walking.</p>
         <p id="field-species" aria-label="Species">Northern Bobwhite</p>
         <p id="field-method" aria-label="Hunting method">COVEY EDGE · HOLD AND WALK IN</p>
-        <div class="field-divider"></div>
         <p id="loading-status" role="status">Preparing the field…</p>
         <progress id="loading-progress" max="1" value="0" aria-label="Loading the field"></progress>
-        <button id="enter-field" class="primary" type="button" hidden>Enter the field <span aria-hidden="true">↗</span></button>
         <button id="retry-field" type="button" hidden>Reload the field</button>
+        </header>
+        <div class="field-menu-body">
         <section id="shotgun-options" aria-labelledby="shotgun-label" hidden>
           <label id="shotgun-label" for="shotgun-setting">Shotgun</label>
           <select id="shotgun-setting" aria-describedby="shotgun-equipped" disabled></select>
@@ -129,6 +130,8 @@
             <p id="field-guide-status" role="status"></p>
           </div>
         </details>
+        <details id="field-settings" class="field-settings">
+          <summary>Hunt settings <span>Light, display &amp; controls</span></summary>
         <div id="field-options">
           <label id="property-option">Property <select id="property-setting">
             <option value="quail-fields">Quail Fields</option>
@@ -160,13 +163,14 @@
           <label for="shot-assistance-setting">Shot assistance <select id="shot-assistance-setting" aria-describedby="shot-assistance-help"><option value="difficulty">Match difficulty</option><option value="off">Off</option><option value="light">Light</option><option value="generous">Generous</option></select></label>
           <p id="shot-assistance-help" aria-live="polite"></p></div>
         </div>
-        <div id="mobile-hunt-actions"></div>
         <div id="challenge-options">
           <label>Hunt challenge <select id="challenge-setting" aria-describedby="challenge-help"><option value="relaxed">Relaxed</option><option value="balanced">Balanced</option><option value="wild">Wild</option></select></label>
           <p id="challenge-help">Work the cover and approach quietly. Birds can still surprise you.</p>
         </div>
+        </details>
+        <div class="field-menu-utilities">
+        <div id="mobile-hunt-actions"></div>
         <button id="field-journal-open" type="button">Field journal <span>Recent career hunts</span></button>
-        <a id="field-preparation" class="menu-link" href="./prepare3d.html">Back to hunt preparation</a>
         <small id="offline-status" aria-live="polite"></small>
         <details id="install-help">
           <summary>Play as an app</summary>
@@ -185,6 +189,12 @@
           <button id="performance-save" type="button">Save report</button>
           <p id="performance-status" role="status">Capture starts after the field is ready.</p>
         </details>
+        </div>
+        </div>
+        <footer class="field-menu-footer">
+        <a id="field-preparation" class="menu-link" href="./prepare3d.html">Back to hunt preparation</a>
+        <button id="enter-field" class="primary" type="button" hidden>Enter the field <span aria-hidden="true">↗</span></button>
+        </footer>
       </div>
     </section>
     <script type="module" src="/src/three/main3d.ts"></script>

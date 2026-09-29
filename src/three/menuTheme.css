@@ -1,0 +1,16 @@
+/* Shared menu palette. These tokens do not restyle the in-field HUD. */
+:root {
+  --menu-forest:#20372d;
+  --menu-deep:#15291f;
+  --menu-panel:#2b4337;
+  --menu-paper:#f1edde;
+  --menu-paper-shade:#e7e2d2;
+  --menu-ink:#283b30;
+  --menu-muted:#627062;
+  --menu-light-muted:#bec9b6;
+  --menu-ochre:#dfbf7e;
+  --menu-line:#ffffff16;
+  --menu-radius:20px;
+  --menu-shadow:0 2px 4px #00000012,0 18px 60px #00000026,inset 0 1px #ffffff18;
+  --menu-serif:Georgia,'Times New Roman',serif;
+}

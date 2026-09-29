@@ -186,7 +186,7 @@ function render(focusId?: string): void {
   const journal = button('Field journal', () => openHuntJournal(loadCareer(), journal)); journal.id = 'prep-journal';
   const classic = link('2D classic', './index.html'); classic.onclick = () => saveGameplayMode('2d'); nav.append(journal, classic); header.append(brand, nav);
   const main = node('main');
-  const opening = node('div', '', 'prep-opening'); const intro = node('div'); intro.append(node('p', 'THE NEXT OUTING', 'eyebrow'), node('h1', 'Where will you hunt?'));
+  const opening = node('div', '', 'prep-opening'); const intro = node('div'); intro.append(node('p', 'YOUR FIELD BOOK', 'eyebrow'), node('h1', 'A good day starts here.'));
   const modes = node('div', '', 'mode-switch'); modes.setAttribute('role', 'group'); modes.setAttribute('aria-label', 'Hunt mode');
   for (const [id, label] of [['quick', 'Quick hunt'], ['career', 'Your career']] as const) {
     const control = button(label, () => {
@@ -199,11 +199,14 @@ function render(focusId?: string): void {
   }
   opening.append(intro, modes); main.append(opening);
   const status = node('p', mode === 'career' ? `${dateLabel(career.date)} · Hunter level ${career.hunter.level} · ${career.hunts} hunts`
-    : 'Choose your day, your dog and your ground. Everything is available; your career stays unchanged.', 'prep-status'); main.append(status);
+    : 'Choose a property, bring a good dog, and head out. Quick hunts leave your career unchanged.', 'prep-status'); main.append(status);
   const notice = node('p', message, 'prep-message'); notice.id = 'preparation-message'; notice.setAttribute('role', 'status'); notice.tabIndex = -1; notice.hidden = !message; main.append(notice);
   const grid = node('div', '', 'prep-grid');
   grid.classList.toggle('first-season', mode === 'career' && (preparation.needsDog || preparation.needsHome));
   const property = node('section', '', 'property-panel');
+  const propertyHeading = node('div', '', 'property-heading');
+  propertyHeading.append(node('p', '01 / THE GROUND', 'eyebrow'), node('h2', area.name), node('p', doctrine.region, 'property-region'));
+  property.append(propertyHeading);
   const field = select('prep-area', 'Hunting ground', AREAS.map(a => ({ id: a.id, label: `${a.name} · ${regionOfArea(a.id).name}` })), areaId,
     value => { areaId = value; dropPointId = ''; if (mode === 'quick') updateQuick({ areaId: value }); });
   field.querySelector('select')!.disabled = mode === 'quick' && quick.huntingMethod === 'goshawk'; property.append(field);
@@ -220,12 +223,14 @@ function render(focusId?: string): void {
     marker.style.top = `calc(${y * 100}% + ${30 - 60 * y}px)`; map.append(marker);
   });
   property.append(map);
+  const mapCaption = node('p', 'Select a numbered entry on the map, or choose below.', 'map-caption'); property.append(mapCaption);
   property.append(select('prep-drop', 'Park the truck', area.dropPoints.map((drop, i) => ({ id: drop.id, label: `${i + 1}. ${drop.name}` })), dropPointId, value => { dropPointId = value; }));
-  const notes = node('div', '', 'property-notes'); notes.append(node('p', doctrine.region, 'eyebrow'), node('h2', area.name), node('p', doctrine.description), node('p', doctrine.tip, 'field-advice'));
+  const notes = node('div', '', 'property-notes'); notes.append(node('p', doctrine.description), node('p', doctrine.tip, 'field-advice'));
   const speciesIds = mode === 'career' ? entry.openSpeciesIds : area.speciesMix.map(s => s.speciesId);
   notes.append(node('p', speciesIds.length ? speciesIds.map(id => getSpecies(id).name).join(' · ') : 'Season currently closed', 'species-line')); property.append(notes);
   grid.append(property);
   const settings = node('div', '', 'setup-panel');
+  const kitHeading = node('div', '', 'kit-heading'); kitHeading.append(node('p', '02 / YOUR COMPANY & KIT', 'eyebrow'), node('p', 'Ready for the field.', 'kit-title')); settings.append(kitHeading);
   if (mode === 'career' && (preparation.needsDog || preparation.needsHome)) {
     const setup = section('Your first season', 'Choose a home ground and a dog to grow with you.');
     if (preparation.needsDog) dogForm(setup, true);
@@ -269,6 +274,8 @@ function render(focusId?: string): void {
       const guns = mode === 'career' ? preparation.availableGuns : GUNS;
       if (mode === 'career' && !guns.some(g => g.id === gunId)) gunId = guns[0].id;
       equipment.append(select('prep-gun', 'Shotgun', guns.map(g => ({ id: g.id, label: g.name })), mode === 'career' ? gunId : quick.gunId, value => { if (mode === 'career') gunId = value; else updateQuick({ gunId: value }); }));
+      const selectedGun = guns.find(g => g.id === (mode === 'career' ? gunId : quick.gunId)) ?? guns[0];
+      equipment.append(node('p', `${selectedGun.shells} shells · ${selectedGun.blurb}`, 'equipment-note'));
       const rack = link('Explore the 3D gun rack ↗', `./shotguns3d.html?gun=${encodeURIComponent(mode === 'career' ? gunId : quick.gunId)}`); rack.target = '_blank'; rack.rel = 'noopener'; rack.className = 'text-link'; equipment.append(rack);
     }
     settings.append(equipment);
@@ -285,7 +292,10 @@ function render(focusId?: string): void {
       if (outlook.nextUnlock) reward.append(node('p', outlook.nextUnlock.labels.join(' · '), 'progress-reward'));
       panel.append(progress, reward); settings.append(panel);
     }
-    const conditions = node('details', '', 'hunt-options'); conditions.append(node('summary', 'Conditions & display'));
+    const conditions = node('details', '', 'hunt-options');
+    const conditionsHeading = node('summary', 'Conditions & display');
+    conditionsHeading.append(node('span', `${light.charAt(0).toUpperCase() + light.slice(1)} · ${HUNT_CHALLENGES[challenge].label}`, 'details-preview'));
+    conditions.append(conditionsHeading);
     if (mode === 'quick') {
       conditions.append(select('prep-method', 'Hunting method', [{ id: 'shotgun', label: 'Shotgun' }, { id: 'goshawk', label: 'Goshawk · Cattail Coverts' }], quick.huntingMethod ?? 'shotgun', value => updateQuick({ huntingMethod: value as QuickConfig['huntingMethod'] })));
       conditions.append(select('prep-weather', 'Weather', choices(WEATHER_CHOICES), quick.weather, value => updateQuick({ weather: value as QuickConfig['weather'] })),
@@ -309,8 +319,8 @@ function render(focusId?: string): void {
     }
   }
   settings.append(offlinePanel); grid.append(settings); main.append(grid);
-  const footer = node('footer', '', 'launch-bar'); const outing = node('div');
-  outing.append(node('strong', area.name), node('span', mode === 'career' && entry.reason ? entry.reason
+  const footer = node('footer', '', 'launch-bar'); const outing = node('div', '', 'launch-destination');
+  outing.append(node('small', '03 / YOUR NEXT OUTING'), node('strong', area.name), node('span', mode === 'career' && entry.reason ? entry.reason
     : `${selectedDrop.name}${mode === 'career' ? ` · ${entry.weeks} week${entry.weeks === 1 ? '' : 's'}` : ' · Quick hunt'}`));
   const start = button('Head to the field ↗', launch, 'primary'); start.id = 'prep-start';
   const unavailable = mode === 'career' && (!entry.selectable || preparation.needsDog || preparation.needsHome);

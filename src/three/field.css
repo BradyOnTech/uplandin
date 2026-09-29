@@ -1,3 +1,4 @@
+@import './menuTheme.css';
 @import './huntJournal.css';
 
 :root { color-scheme: dark; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; color: #f3edda; --ink: #21332b; --cream: #f3edda; --gold: #d7b776; }
@@ -364,4 +365,110 @@ body.touch-controls-active.touch-gun-held #touch-controls [data-action="reload"]
 @media (orientation:portrait) {
  body.touch-controls-active #field-map-toggle { top:max(64px,calc(env(safe-area-inset-top) + 52px)); right:max(12px,env(safe-area-inset-right)); }
  body.touch-controls-active #hunt-hud { max-width:calc(100vw - 104px); }
+}
+
+/* Fieldbook menus: separate the place, the choices, and the return action.
+   Scope deliberately excludes every in-field HUD and thumb control. */
+#field-overlay { place-items:center; padding:max(24px,env(safe-area-inset-top)) max(24px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(24px,env(safe-area-inset-left)); background:linear-gradient(115deg,#10261ce8,#10261c80); overflow:hidden; }
+#field-overlay .field-card { display:flex; flex-direction:column; width:min(860px,100%); max-height:100%; min-height:0; padding:0; overflow:hidden; border-radius:var(--menu-radius); background:var(--menu-forest); box-shadow:var(--menu-shadow); }
+.field-menu-heading { flex:none; padding:28px 32px 24px; color:var(--menu-ink); background:var(--menu-paper); }
+.field-menu-heading>.eyebrow { margin:0; color:#887240; }
+#field-title { margin:12px 0 10px; font-size:clamp(29px,3.5vw,42px); }
+#field-description { max-width:590px; margin:0; color:var(--menu-muted); font-size:14px; line-height:1.65; }
+#field-species { color:#766333; margin-top:16px; }
+#field-method { border-color:#a48f56; color:#506044; font-size:10px; }
+#loading-status { color:var(--menu-muted); margin:16px 0 4px; }
+#loading-progress { margin:12px 0 0; accent-color:#8e793f; }
+.field-menu-body { min-height:0; overflow:auto; overscroll-behavior:contain; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:start; gap:20px; padding:26px 32px; scrollbar-gutter:stable; }
+.field-menu-body>*,.field-menu-utilities { min-width:0; }
+#shotgun-options { grid-column:1; grid-row:1; margin:0; padding:20px; border:0; border-radius:12px; background:#ffffff06; box-shadow:inset 0 1px #ffffff12; }
+#shotgun-label { font:400 23px/1.2 var(--menu-serif); text-transform:none; letter-spacing:0; color:var(--menu-paper); margin-bottom:16px; }
+#shotgun-setting { background:var(--menu-deep); font-size:16px; min-width:0; }
+#shotgun-equipped { font-size:12px; line-height:1.6; color:var(--menu-light-muted); margin:12px 0; }
+#shotgun-rack { min-height:46px; background:#dfbf7e17; box-shadow:inset 0 0 0 1px #dfbf7e35; color:var(--menu-ochre); font-size:12px; }
+#shotgun-rack:hover { background:#dfbf7e28; }
+#field-guide { grid-column:1; margin:0; border-radius:10px; background:#ffffff05; padding:0 16px; }
+#field-guide summary { padding:14px 0; min-height:48px; }
+#field-instructions { line-height:1.7; }
+#field-instructions p { margin:0 0 16px; }
+#field-guide-preferences { padding-bottom:16px; }
+.field-settings { grid-column:2; grid-row:1 / span 2; padding:0 18px; border-radius:12px; background:#ffffff06; }
+.field-settings>summary { min-height:66px; padding:16px 0; cursor:pointer; color:var(--menu-paper); font-size:14px; }
+.field-settings>summary span { display:block; font-size:11px; color:var(--menu-light-muted); margin-top:5px; }
+.field-settings[open]>summary { margin-bottom:16px; box-shadow:0 1px #ffffff16; }
+#field-options { display:grid; gap:18px; margin:0 0 22px; }
+#field-options label { display:flex; flex-direction:column; align-items:stretch; gap:8px; font-size:11px; color:var(--menu-light-muted); }
+#field-options label:has(input[type=checkbox]) { flex-direction:row; align-items:center; min-height:44px; }
+#field-options select,#challenge-setting,#touch-sight-setting,#shot-assistance-setting { width:100%; min-width:0; font-size:16px; min-height:44px; padding:10px; background:var(--menu-deep); border:1px solid #ffffff20; border-radius:7px; }
+#shot-view-options label,#challenge-options label,.field-settings .touch-sensitivity label { display:grid; gap:8px; font-size:12px; }
+#shot-view-help,#challenge-help,#shot-assistance-help { max-width:none; color:var(--menu-light-muted); line-height:1.65; }
+#field-options input[type=checkbox] { width:18px; height:18px; margin:0; }
+.field-menu-utilities { grid-column:1 / -1; padding-top:2px; }
+#field-journal-open { width:100%; margin:0 0 12px; background:#ffffff08; padding:12px 16px; }
+#install-help { margin-top:8px; }
+#offline-status:empty { display:none; }
+.field-menu-footer { flex:none; display:flex; justify-content:space-between; align-items:center; gap:20px; padding:18px 32px; background:var(--menu-deep); box-shadow:0 -1px #ffffff13; }
+#enter-field { width:auto; min-width:230px; min-height:50px; gap:24px; margin:0; padding:13px 20px; background:var(--menu-ochre); color:var(--menu-ink); }
+#field-preparation { display:flex; align-items:center; min-height:44px; padding:8px 0; font-size:12px; color:var(--menu-light-muted); }
+#field-preparation:hover { color:var(--menu-paper); }
+#field-overlay.field-has-entered #field-title { margin-bottom:0; }
+#field-overlay.field-has-entered .field-menu-heading { padding-bottom:22px; }
+#field-overlay summary:focus-visible { outline:2px solid var(--menu-ochre); outline-offset:4px; border-radius:4px; }
+#hunt-summary { width:min(680px,calc(100vw - 48px)); border-radius:var(--menu-radius); background:var(--menu-forest); box-shadow:var(--menu-shadow); }
+#hunt-summary-content { padding:32px 36px; }
+.hunt-summary-heading { align-items:center; margin-bottom:22px; gap:18px; }
+#hunt-summary h2 { font:400 clamp(28px,3vw,36px)/1.1 var(--menu-serif); margin:0; letter-spacing:-.02em; }
+#summary-journal-open { background:#ffffff0b; }
+#hunt-summary-copy { font-size:14px; }
+.field-notes-location { color:var(--menu-light-muted); margin:0 0 24px; }
+.field-notes-bag { padding:22px 24px; border-radius:12px; background:var(--menu-paper); gap:18px; }
+.field-notes-bag strong { color:var(--menu-ink); font-size:66px; }
+.field-notes-bag span { color:var(--menu-muted); }
+.field-notes-stats { gap:18px; padding:18px 0; }
+.field-notes-stats dt { font-size:11px; color:var(--menu-light-muted); }
+.field-notes-stats dd { font-size:21px; }
+.field-notes-career { padding:22px; border-radius:12px; background:#ffffff05; box-shadow:inset 0 1px #fff1; }
+.field-notes-career h3 { font-size:24px; }
+.hunt-summary-actions { justify-content:flex-end; padding:18px 36px; gap:10px; background:var(--menu-deep); }
+.hunt-summary-actions button { min-height:48px; padding:12px 20px; }
+#hunt-menu { background:#ffffff0b; }
+#field-map { background:#10241dde; }
+.field-map-card { width:min(1240px,100%); border-radius:var(--menu-radius); padding:26px; background:var(--menu-forest); box-shadow:var(--menu-shadow); }
+.field-map-heading h2 { font-family:var(--menu-serif); }
+.field-map-sheet { border-radius:10px; }
+.field-map-toolbar button { background:#ffffff0a; }
+.field-map-toolbar button:hover { background:#ffffff15; }
+@media(min-width:1000px) and (min-height:650px) {
+ #hunt-summary:has(.field-notes-career) { width:min(880px,calc(100vw - 64px)); }
+ #hunt-summary-copy:has(.field-notes-career) { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:0 26px; }
+ #hunt-summary-copy:has(.field-notes-career) .field-notes-location { grid-column:1 / -1; }
+ #hunt-summary-copy:has(.field-notes-career) .field-notes-bag,#hunt-summary-copy:has(.field-notes-career) .field-notes-stats,#hunt-summary-copy:has(.field-notes-career) .field-notes-note { grid-column:1; }
+ #hunt-summary-copy .field-notes-career { grid-column:2; grid-row:2 / span 3; margin:0; align-self:start; }
+}
+@media(max-width:600px) {
+ #field-overlay,body.touch-controls-active #field-overlay { padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left)); }
+ #field-overlay .field-card { border-radius:16px; padding:0; }
+ .field-menu-heading { padding:22px; }#field-title { font-size:32px; }
+ .field-menu-body { display:flex; flex-direction:column; gap:16px; padding:20px; }.field-menu-body>* { width:100%; }#shotgun-options { padding:18px; }.field-settings { order:2; }#field-guide { order:3; }.field-menu-utilities { order:4; }
+ .field-menu-footer { padding:12px 20px; flex-direction:column-reverse; gap:4px; }#enter-field { width:100%; min-width:0; }#field-preparation { min-height:40px; font-size:11px; }
+ #hunt-summary { width:calc(100vw - 20px); max-height:calc(100dvh - 20px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); border-radius:16px; }
+ #hunt-summary-content { padding:24px; }.hunt-summary-actions { padding:14px 24px; }.hunt-summary-actions button { flex:1; padding-inline:12px; font-size:12px; }
+ .field-notes-bag { padding:18px; }.field-notes-bag strong { font-size:56px; }.field-notes-stats { gap:12px; }
+ .field-map-card { padding:16px; gap:12px; border-radius:14px; }
+}
+@media(orientation:landscape) and (max-height:550px) {
+ #field-overlay,body.touch-controls-active #field-overlay { padding:8px max(12px,env(safe-area-inset-right)) 8px max(12px,env(safe-area-inset-left)); }
+ #field-overlay .field-card { width:min(920px,100%); padding:0; }
+ .field-menu-heading,#field-overlay.field-has-entered .field-menu-heading { padding:15px 24px; }
+ #field-title { margin:6px 0 0; font-size:28px; }.field-menu-heading>.eyebrow { font-size:9px; }
+ #field-description { font-size:12px; margin-top:6px; }#field-species,#field-method { display:none; }
+ .field-menu-body { padding:18px 24px; gap:16px; }
+ .field-menu-footer { padding:10px 24px; }#enter-field { min-height:44px; min-width:220px; }
+ #hunt-summary { width:min(780px,calc(100vw - 32px - env(safe-area-inset-left) - env(safe-area-inset-right))); }
+ #hunt-summary-content { padding:18px 24px; }#hunt-summary h2 { font-size:27px; }.hunt-summary-heading { margin-bottom:15px; }.field-notes-bag { padding:14px 18px; margin-bottom:15px; }.field-notes-bag strong { font-size:42px; }.hunt-summary-actions { padding:10px 24px; }.hunt-summary-actions button { min-height:44px; }
+ .field-map-card { padding:12px 18px; gap:8px; }
+}
+@media(prefers-reduced-motion:reduce) {
+ #field-overlay button,#field-overlay a,#hunt-summary button,#field-map button { transition:none; }
+ #field-overlay button:active,#hunt-summary button:active,#field-map button:active { transform:none; }
 }
