@@ -8,10 +8,12 @@ Phaser 3, Three.js, and Vite. Installable as a PWA: serve the
 production build over HTTPS, open it on your phone, and "Add to Home
 Screen" — it runs fullscreen landscape and boots from cache offline.
 
-**Status: shared 2D/3D hunting is implemented; the 3D art is still being refined.**
-The current milestone is one complete Quail Fields hunt with a rigged GSP.
-See the [3D production slice](docs/3d/PRODUCTION-SLICE.md) for scope and open quality gates,
-and [docs/DESIGN.md](docs/DESIGN.md) for the broader game design.
+**Work from `main`.** It contains the integrated mobile controls, generated dogs,
+Quail Fields, Cattail Coverts, Chukar Ridge and Sharptail Prairie refinements,
+and the shared menu redesign. Art and gameplay are still being refined.
+See the [current menu review](docs/3d/menu-redesign-audit.md),
+[production progress](docs/3d/production-finish.md), and
+[game design](docs/DESIGN.md) for implementation and remaining acceptance work.
 
 ## Playing
 
@@ -22,12 +24,15 @@ npm test        # Vitest suite over the pure sim
 npm run build   # production build
 ```
 
-For the current 3D slice, run `npm run dev:3d` and open `/index3d.html`.
+Open `/` for the shared home and preparation flow. Choose the 3D or Classic 2D
+hunting view through Play settings. `npm run dev:3d` also serves this flow;
+`/index3d.html` remains the standalone 3D field entry.
 The standalone Quail field defaults to the liver-and-white GSP and morning light.
 `?drop=west-track` selects the second truck drop; `?quality=lite` selects lighter rendering.
 Saved Career and Quick Hunt launches retain their selected dogs and gear.
 For a phone playtest on the same Wi-Fi, run `npm run play:mobile` and open the
-printed Network address with `/index3d.html?quality=lite&controls=touch` appended.
+printed Network address. Preparation's Conditions panel includes the display
+quality choice; phones select touch controls automatically.
 See the [mobile playtest guide](docs/3d/mobile-playtest.md) for controls and validation limits.
 
 Two modes from the title screen:
@@ -42,6 +47,11 @@ The title screen also remembers a **2D / 3D** hunt preference. After choosing
 a covert, a shared terrain map shows cover, trails, landmarks, and two truck
 drop points. The selected truck, heading, dog spawn, and bird-free safety zone
 are the same in either renderer.
+
+**Independent 2D experiment:** Briar Glen is preserved in the same repository
+under `src/twod/`, with its own assets and save key. It is separate from Classic
+2D hunting. Run `npm run dev:2d` and open `/index2d.html`; `npm run build:2d`
+creates `dist-2d/`. The normal build and home menu remain the hunting game.
 
 Dev helpers: `?doglevel=N` on the URL runs career hunts at that dog level
 (save untouched); press `B` in the field to peek at hidden birds;
@@ -119,8 +129,12 @@ Dev helpers: `?doglevel=N` on the URL runs career hunts at that dog level
   in named constants — **[docs/TUNING.md](docs/TUNING.md) maps every knob**,
   including the full flush-pipeline walkthrough. Covered by the Vitest
   suite in `test/`.
-- `src/scenes/` — thin Phaser scenes (title, breed, map, drop selection,
-  kennel, quick setup, field, flush) that render and route input.
+- `src/scenes/` — Classic Phaser field/flush gameplay. Older selection scenes
+  remain as historical source; normal navigation uses the shared native menus.
+- `src/ui/` — the Classic field report; shared home, preparation and choice
+  controls live in `src/three/` and serve both hunting views.
+- `src/twod/` — the independent Briar Glen village and wildlife experiment,
+  built through `vite.2d.config.ts` and `public2d/`.
 - `src/three/` — the Three.js adapter and low-poly presentation. Its player,
   dog team, birds, gun, terrain, landmarks, and HUD consume the same shared
   hunt state; a rendered fall is written back before retrieval begins.

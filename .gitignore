@@ -1,5 +1,7 @@
 node_modules/
 dist/
+dist-2d/
+.cache-2d/
 *.local
 .DS_Store
 .git.icloud-backup/
