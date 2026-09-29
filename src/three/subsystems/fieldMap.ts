@@ -130,6 +130,7 @@ export class FieldMapSystem implements Subsystem {
     this.paintFrame=requestAnimationFrame(()=>{this.paintFrame=0;if(this.open)this.draw(ctx);});
   }
   private setOpen(open:boolean,ctx:Ctx):void{
+    if(open&&document.body.classList.contains('hunt-arriving'))return;
     if(!this.panel||this.open===open)return;
     this.open=open;this.panel.hidden=!open;this.toggleButton?.setAttribute('aria-expanded',String(open));
     if(open&&!this.hasOpened){

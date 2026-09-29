@@ -11,6 +11,7 @@ import type { BirdsSystem } from './birds';
 import type { GeneratedFieldIntent } from '../dogs/generatedScentMotion';
 import type { GspCoatId } from '../dogs/germanShorthairedPointer';
 import { dogRendererId } from '../dogs/rendererId';
+import type { HuntArrivalFrame } from '../huntArrival';
 
 type AuditScope = { __generatedDogAudit?: unknown; __generatedDogAudits?: Record<string, unknown> };
 
@@ -30,6 +31,21 @@ export class GeneratedDogSystem implements Subsystem {
   private attention=new GeneratedAttention();
   private attentionTarget=new THREE.Vector3();
   private pickupTarget=new THREE.Vector3();
+  private arrival: { pose: HuntArrivalFrame['dog']; elapsed: number; dt: number } | null = null;
+  private arrivalFeet = Array.from({ length: 4 }, () => new THREE.Vector3());
+  private arrivalNormals = Array.from({ length: 4 }, () => new THREE.Vector3(0, 1, 0));
+  setArrivalPose(pose: HuntArrivalFrame['dog'] | null, elapsed = 0, dt = 0): void {
+    this.arrival = pose ? { pose, elapsed, dt } : null;
+    if (!pose) {
+      this.placed = false; this.speed = 0;
+      this.attention.yaw = 0; this.attention.pitch = 0;
+      if (this.motion) {
+        this.motion.cycle = 0; this.motion.scentMotion.reset(); this.motion.mouthMotion.reset();
+        this.motion.feet.forEach(foot => { foot.locked = false; foot.initialized = false; foot.step = 0; });
+        this.motion.asset.root.rotation.x = this.motion.asset.root.rotation.z = 0;
+      }
+    }
+  }
   private field:GeneratedFieldIntent={state:'quartering',scentStage:'none',scentProgress:0,waitingForHandler:false,intentYaw:0};
   private audit=()=>{
     if(!this.motion)return null;
@@ -47,7 +63,9 @@ export class GeneratedDogSystem implements Subsystem {
     if(this.slot===0)scope.__generatedDogAudit=this.audit;
   }
   update(ctx:Ctx,dt:number){
-    if(!this.motion)return;const dog=this.hunt.dog(this.slot);this.hunt.dogRenderWorld(ctx.fixedAlpha,this.position,this.slot);
+    if(!this.motion)return;
+    if(this.arrival){this.updateArrival();return;}
+    const dog=this.hunt.dog(this.slot);this.hunt.dogRenderWorld(ctx.fixedAlpha,this.position,this.slot);
     const distance=this.placed?Math.hypot(this.position.x-this.previous.x,this.position.z-this.previous.z):0;
     // The hunt snaps its first live placement away from the authored map
     // spawn. That relocation is not a traveled stride or a speed sample.
@@ -77,6 +95,51 @@ export class GeneratedDogSystem implements Subsystem {
     this.attention.update(this.motion.asset,watching?this.attentionTarget:null,dt);
     this.previous.x=this.position.x;this.previous.z=this.position.z;this.placed=true;
   }
+  private updateArrival(): void {
+    const motion = this.motion!, { pose, elapsed } = this.arrival!, asset = motion.asset;
+    const walking = pose.locomotion === 'walk', airborne = pose.locomotion === 'hop';
+    const contacts = walking ? asset.setLocomotion('trot', Math.max(0, elapsed - 1.02) * 3.1 % 1) : undefined;
+    if (!walking) asset.setPose('stand');
+    asset.root.position.set(pose.x, pose.y, pose.z);
+    asset.root.rotation.set(-pose.pitch, Math.PI / 2 - pose.heading, 0, 'YXZ');
+    const joints = asset.joints;
+    joints.body.position.y -= pose.bodyCompression * .12;
+    joints.neck.rotation.x -= .075 * pose.excitement;
+    joints.head.rotation.y += Math.sin(elapsed * 5) * .065 * pose.excitement;
+    joints.tail.rotation.x = .16;
+    joints.tail.rotation.y = Math.sin(elapsed * 19) * .25 * pose.excitement;
+    joints['ear-left'].rotation.z += Math.sin(elapsed * 15 + .35) * .025 * pose.excitement;
+    joints['ear-right'].rotation.z -= Math.sin(elapsed * 15 - .35) * .025 * pose.excitement;
+    if (airborne) {
+      const fold = Math.sin(Math.PI * THREE.MathUtils.clamp((elapsed - 1.52) / .64, 0, 1));
+      for (const side of ['left', 'right']) {
+        joints[`front-${side}`].rotation.x += .38 * fold;
+        joints[`front-${side}-lower`].rotation.x -= 1.20 * fold;
+        joints[`front-${side}-distal`].rotation.x += 1.15 * fold;
+        joints[`front-${side}-paw`].rotation.x -= .33 * fold;
+        joints[`hind-${side}`].rotation.x -= .28 * fold;
+        joints[`hind-${side}-lower`].rotation.x += .72 * fold;
+        joints[`hind-${side}-distal`].rotation.x -= .44 * fold;
+      }
+    } else {
+      // During the box/ground beats, solve against the supplied platform,
+      // never against terrain a metre underneath the transport box.
+      asset.root.updateMatrixWorld(true);
+      asset.paws.forEach((paw, i) => {
+        paw.getWorldPosition(this.arrivalFeet[i]);
+        this.arrivalFeet[i].y = pose.y + .023 + (contacts?.feet[i].lift ?? 0);
+      });
+      asset.solveWorldFeet(this.arrivalFeet, this.arrivalNormals);
+    }
+    asset.root.updateMatrixWorld(true); asset.skeleton.update();
+    this.position.x = pose.x; this.position.z = pose.z; this.heading = pose.heading;
+    this.previous.x = pose.x; this.previous.z = pose.z; this.speed = 0;
+    motion.feet.forEach((foot, i) => {
+      asset.paws[i].getWorldPosition(foot.target);
+      foot.locked = false; foot.initialized = false; foot.step = 0;
+    });
+    this.auditFrame++;
+  }
   partingPoint(out:{x:number;z:number;r:number}){out.x=this.position.x;out.z=this.position.z;out.r=.44;}
   mouthWorld(out:THREE.Vector3){if(!this.motion)return false;out.copy(this.motion.mouthMotion.grip);this.motion.asset.joints.head.localToWorld(out);return true;}
   dispose(){
@@ -85,5 +148,6 @@ export class GeneratedDogSystem implements Subsystem {
     if(scope.__generatedDogAudits?.[this.id]===this.audit)delete scope.__generatedDogAudits[this.id];
     if(scope.__generatedDogAudits&&Object.keys(scope.__generatedDogAudits).length===0)delete scope.__generatedDogAudits;
     this.motion?.dispose();this.motion=undefined;
+    this.arrival=null;
   }
 }

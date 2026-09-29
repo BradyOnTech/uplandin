@@ -1,3 +1,4 @@
+import { HuntArrivalController } from './huntArrivalController';
 import { isFalconryPractice } from '../game/falconryPractice';
 import { bindTouchActionControl } from './touchActionControl';
 import { bindTouchShotControl } from './touchShotControl';
@@ -26,6 +27,7 @@ import type { BirdsSystem } from './subsystems/birds';
 export class FieldInterface {
   private abort = new AbortController();
   private entered = false;
+  private arrival?: HuntArrivalController;
   private readyState = false;
   private complete = false;
   private lostContext = false;
@@ -129,7 +131,8 @@ export class FieldInterface {
       if (event.code === 'Escape' && document.body.classList.contains('field-map-open')) return;
       if (event.code === 'Escape' && this.readyState && !this.capture && !this.complete) {
         event.preventDefault();
-        if (this.engine.ctx.paused) this.resume(); else this.pause();
+        if (this.arrival?.active) this.pause();
+        else if (this.engine.ctx.paused) this.resume(); else this.pause();
       }
       if (event.code === 'Tab' && !this.overlay.hidden) {
         const focusable = Array.from(this.overlay.querySelectorAll<HTMLElement>('button,select,input,a,summary'))
@@ -417,6 +420,7 @@ export class FieldInterface {
     this.progress.value = current / total;
   };
   ready(): void {
+    if (!this.capture && !this.falconry && !isFalconryPractice(location.search)) this.arrival = new HuntArrivalController(this.engine);
     this.readyState = true;
     this.activeChallenge = this.engine.ctx.get<Hunt3DSystem>('hunt3d').getActiveChallenge();
     this.refreshShotAssistance();
@@ -442,6 +446,7 @@ export class FieldInterface {
   }
   pause(): void {
     if (this.capture || this.complete || !this.readyState) return;
+    this.arrival?.finish(false);
     if (document.body.classList.contains('field-map-open')) {
       // A visibility change or window blur should land on the pause card,
       // never leave a survey dialog layered over it.
@@ -458,6 +463,7 @@ export class FieldInterface {
   }
   private resume(): void {
     if (!this.readyState || this.complete || this.lostContext) return;
+    const firstEntry = !this.entered;
     this.entered = true; unlockAudio();
     this.offlineUpdateState(this.updateState);
     this.overlay.classList.add('field-has-entered');
@@ -470,12 +476,13 @@ export class FieldInterface {
     document.getElementById('touch-controls')!.hidden = !this.touch;
     const mapToggle=document.getElementById('field-map-toggle') as HTMLButtonElement|null;
     if (mapToggle) mapToggle.hidden=this.capture;
+    if (firstEntry && this.arrival?.start(() => this.resume())) return;
     this.engine.pause(false);
     const canvas = this.engine.ctx.renderer.domElement;
     canvas.focus();
     if (!this.touch) canvas.requestPointerLock()?.catch(() => undefined);
   }
-  dispose(): void { this.abort.abort(); }
+  dispose(): void { this.arrival?.dispose(); this.abort.abort(); }
 }
 
 export function preferredQuality(params: URLSearchParams): Quality {

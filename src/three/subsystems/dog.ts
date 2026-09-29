@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { HuntArrivalFrame } from '../huntArrival';
 import type { Ctx, Subsystem } from '../engine';
 import { fieldTimeOfDay, P, type TimeOfDay } from '../palette';
 import {
@@ -383,6 +384,18 @@ export class DogSystem implements Subsystem {
   private appearance!: DogAppearance;
   private geos: THREE.BufferGeometry[] = [];
 
+  private arrival: { pose: HuntArrivalFrame['dog']; elapsed: number; dt: number } | null = null;
+  setArrivalPose(pose: HuntArrivalFrame['dog'] | null, elapsed = 0, dt = 0): void {
+    this.arrival = pose ? { pose, elapsed, dt } : null;
+    if (!pose) {
+      this.hasLast = false; this.speedMps = 0; this.shadowGrp.visible = true;
+      this.footLocked.fill(false); this.releaseT.fill(1); this.priorContact.fill('swing');
+      this.pointLanding = 1; this.staticPointStance = 0;
+      this.groundOffset = 0; this.slopePitch = this.slopeRoll = this.yawRate = 0;
+    }
+  }
+  private arrivalSoleRotation = new THREE.Quaternion();
+  private arrivalUp = new THREE.Vector3(0, 1, 0);
   private root = new THREE.Group();
   private body = new THREE.Group();
   /** Stable ribcage plus a caudal loin/pelvis pivot; low-poly surfaces stay rigid. */
@@ -1845,6 +1858,78 @@ export class DogSystem implements Subsystem {
     this.root.updateMatrixWorld(true);
   }
 
+  /** Flat crate/tailgate support after all presentation transforms. These
+   * targets never sample terrain below the vehicle or reuse field locks. */
+  private solveArrivalLegs(plane: number, locomoting: boolean): void {
+    this.root.updateMatrixWorld(true);
+    const scale = this.root.scale.y;
+    this.arrivalSoleRotation.setFromAxisAngle(this.arrivalUp, this.root.rotation.y);
+    this.staticSoleOffset.set(0, PAW_SOLE_Y, .018).multiplyScalar(scale).applyQuaternion(this.arrivalSoleRotation);
+    let supportHeight = Infinity;
+    for (let i = 0; i < 4; i++) {
+      const fore = i < 2, carrier = this.limbCarrier[i], foot = this.locomotion.feet[i];
+      const drop = fore ? FORE_UPPER_LEN + FORE_LOWER_LEN + FORE_CARPUS_LEN
+        : HIND_UPPER_LEN + HIND_SHANK_LEN + HIND_HOCK_LEN;
+      const targetZ = locomoting ? foot.z - (fore ? this.scapulaZ[i] : 0) : fore ? 0 : -drop * .035;
+      const sole = this.staticSoles[i];
+      sole.set(0, -drop, targetZ); carrier.localToWorld(sole);
+      sole.y = plane + (locomoting ? foot.lift * scale : 0);
+      if (locomoting && foot.contact === 'swing') continue;
+      carrier.getWorldPosition(this.staticHip); carrier.getWorldQuaternion(this.staticRotation);
+      const distal = fore ? FORE_CARPUS_LEN : HIND_HOCK_LEN, angle = fore ? 0 : -.08;
+      this.staticAnkle.set(0, Math.cos(angle) * distal, -Math.sin(angle) * distal)
+        .multiplyScalar(scale).applyQuaternion(this.staticRotation).add(sole).sub(this.staticSoleOffset);
+      const dx = this.staticAnkle.x - this.staticHip.x, dz = this.staticAnkle.z - this.staticHip.z;
+      const reach = (fore ? FORE_UPPER_LEN + FORE_LOWER_LEN : HIND_UPPER_LEN + HIND_SHANK_LEN) * scale * .98;
+      supportHeight = Math.min(supportHeight, this.staticAnkle.y - this.staticHip.y
+        + Math.sqrt(Math.max(0, reach * reach - dx * dx - dz * dz)));
+    }
+    // Keep crouch/compression instead of lifting it back out of the pose.
+    // Only lower the torso if a pitched support would exhaust the leg reach.
+    this.root.position.y += Math.min(0, Math.max(-.18, supportHeight));
+    this.root.updateMatrixWorld(true);
+    for (let i = 0; i < 4; i++) {
+      const fore = i < 2, carrier = this.limbCarrier[i];
+      this.pawTargetL.copy(this.staticSoles[i]).sub(this.staticSoleOffset); carrier.worldToLocal(this.pawTargetL);
+      const abduct = Math.atan2(this.pawTargetL.x, Math.max(.05, -this.pawTargetL.y));
+      const distal = fore ? FORE_CARPUS_LEN : HIND_HOCK_LEN, angle = fore ? 0 : -.08;
+      const solved = solveTwoBone(-Math.hypot(this.pawTargetL.y, this.pawTargetL.x) + Math.cos(angle) * distal,
+        this.pawTargetL.z - Math.sin(angle) * distal, fore ? FORE_UPPER_LEN : HIND_UPPER_LEN,
+        fore ? FORE_LOWER_LEN : HIND_SHANK_LEN, fore ? -1 : 1, this.ik[i]);
+      this.legU[i].rotation.set(-solved.upper, 0, abduct);
+      this.legL[i].rotation.x = solved.lower;
+      this.legD[i].rotation.x = solved.lowerAbsolute - angle;
+      this.legD[i].getWorldQuaternion(this.staticParentRotation);
+      this.paws[i].quaternion.copy(this.staticParentRotation).invert().multiply(this.arrivalSoleRotation);
+    }
+    this.root.updateMatrixWorld(true);
+  }
+
+  private applyArrivalPose(locomoting: boolean): void {
+    const { pose: p, elapsed } = this.arrival!;
+    // This rig's neutral sole plane is below its authored body root; retain
+    // a small supported lift without borrowing any terrain-shaped offset.
+    this.root.position.set(p.x, p.y + .075, p.z);
+    this.root.rotation.set(-p.pitch, Math.PI / 2 - p.heading, 0, 'YXZ');
+    this.body.position.y -= p.bodyCompression * .12;
+    this.tailRoot.rotation.y = Math.sin(elapsed * 19) * .22 * p.excitement;
+    this.tailFlag.rotation.y = Math.sin(elapsed * 19 - .45) * .16 * p.excitement;
+    this.head.rotation.y = Math.sin(elapsed * 5) * .08 * p.excitement;
+    this.neck.rotation.x -= .08 * p.excitement;
+    if (p.locomotion === 'hop') {
+      const fold = Math.sin(Math.PI * THREE.MathUtils.clamp((elapsed - 1.52) / .64, 0, 1));
+      for (let i = 0; i < 4; i++) {
+        this.legU[i].rotation.x += fold * (i < 2 ? .35 : -.18);
+        this.legL[i].rotation.x += fold * (i < 2 ? -1.4 : .5);
+        if (i < 2) this.legD[i].rotation.x += fold * 1.2;
+      }
+    } else this.solveArrivalLegs(p.y, locomoting);
+    this.footLocked.fill(false); this.releaseT.fill(1); this.priorContact.fill('swing');
+    this.shadowGrp.visible = false;
+    this.tone.uDogCtrW.value.set(p.x, this.root.position.y + .43, p.z);
+    this.root.updateMatrixWorld(true);
+  }
+
   /**
    * img2threejs action-ready hand-off. Uplandin keeps several visual
    * features integral to a parent mesh to keep the game budget tiny,
@@ -1946,16 +2031,26 @@ export class DogSystem implements Subsystem {
   /* ------------------------------- update ------------------------------ */
 
   update(ctx: Ctx, dt: number): void {
-    const sd = this.hunt.dog(this.slot);
+    const simulationDog = this.hunt.dog(this.slot);
+    const arrival = this.arrival;
+    // Release choreography is presentation-only; the shared dog is untouched
+    // until the controller hands its grounded endpoint to the hunt.
+    const sd = arrival ? Object.assign(Object.create(simulationDog), {
+      state: 'heel', gait: arrival.pose.locomotion === 'walk' ? 'trot' : 'still',
+      heading: arrival.pose.heading, scentStage: 'none', scentCheck: false,
+    }) as typeof simulationDog : simulationDog;
+    if (arrival) dt = arrival.dt;
     // Capture advances the frozen sim in large explicit batches; its render
     // loop must show the exact latest snapshot. Live play interpolates the
     // adjacent 30 Hz snapshots using the engine alpha.
-    if (this.frozen) this.hunt.dogWorld(this.posW, this.slot);
+    if (arrival) { this.posW.x = arrival.pose.x; this.posW.z = arrival.pose.z; }
+    else if (this.frozen) this.hunt.dogWorld(this.posW, this.slot);
     else this.hunt.dogRenderWorld(ctx.fixedAlpha, this.posW, this.slot);
     const x = this.posW.x;
     const z = this.posW.z;
-    const gy = this.terrain.heightAt(x, z);
-    const snap = this.frozen;
+    const gy = arrival ? arrival.pose.y : this.terrain.heightAt(x, z);
+    const snap = this.frozen || !!arrival;
+    if (arrival) this.yaw = Math.PI / 2 - arrival.pose.heading;
     this.solveDt = dt;
 
     // Movement since last frame drives BOTH facing and stride phase — legs
@@ -2002,6 +2097,7 @@ export class DogSystem implements Subsystem {
     // Turn rate → lean into the turn (zeroed rigid when frozen/pointing).
     const rawRate = dt > 0 ? (dYaw * yawK) / dt : 0;
     this.yawRate = approach(this.yawRate, THREE.MathUtils.clamp(rawRate, -4, 4), 6, dt, snap);
+    if (arrival) { this.yaw = Math.PI / 2 - arrival.pose.heading; this.yawRate = 0; }
 
     // Physical pace selects the footfall law. Hunt state remains an intent
     // overlay (track head-low, retrieve carriage, cover tail) instead of
@@ -2041,12 +2137,13 @@ export class DogSystem implements Subsystem {
       strideScale = breedStrideScale(sd.profile.breed.motion, this.locomotionGait);
     }
     this.gaitTransitionRemaining = Math.max(0, this.gaitTransitionRemaining - dt);
+    if (arrival) this.locomotionCycle = Math.max(0, arrival.elapsed - 1.02) * 3.1 % 1;
     this.phase = this.locomotionCycle * Math.PI * 2;
 
     // Terrain slope under the spine (nose-down positive).
     const fx = Math.sin(this.yaw) * 0.3;
     const fz = Math.cos(this.yaw) * 0.3;
-    const slope = Math.atan2(
+    const slope = arrival ? 0 : Math.atan2(
       this.terrain.heightAt(x - fx, z - fz) - this.terrain.heightAt(x + fx, z + fz),
       0.6,
     );
@@ -2058,7 +2155,7 @@ export class DogSystem implements Subsystem {
     // rotation.z tips it up, so the roll target tracks (hRight - hLeft).
     const rxs = Math.cos(this.yaw) * 0.22;
     const rzs = -Math.sin(this.yaw) * 0.22;
-    const lat = Math.atan2(
+    const lat = arrival ? 0 : Math.atan2(
       this.terrain.heightAt(x + rxs, z + rzs) - this.terrain.heightAt(x - rxs, z - rzs),
       0.44,
     );
@@ -2442,6 +2539,7 @@ export class DogSystem implements Subsystem {
     this.earL.rotation.x = this.earFlop;
     this.earR.rotation.x = this.earFlop * 0.86 - this.yawRate * 0.008;
 
+    if (arrival) { this.applyArrivalPose(locomoting); return; }
     if (locomoting) this.solveLocomotionLegs();
     this.root.updateMatrixWorld(true);
 

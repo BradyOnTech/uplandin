@@ -65,6 +65,42 @@ function entryWalk(ctx: Ctx, hunt: Hunt3DSystem): () => void {
 describe('Hunt3DSystem live start', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it('hands a truck release into both render snapshots and holds until the hunter walks', () => {
+    vi.stubGlobal('location', { search: '?breed=gsp&area=quail-fields&seed=1184004868' });
+    const ctx = liveCtx();
+    const hunt = liveHunt(); hunt.init(ctx);
+    const release = { x: ctx.camera.position.x - 3, z: ctx.camera.position.z - 2, heading: .7 };
+    const birdsBefore = JSON.stringify(hunt.huntState().birds);
+    expect(hunt.releaseFromTruck(ctx, [release])).toBe(true);
+    expect(JSON.stringify(hunt.huntState().birds)).toBe(birdsBefore);
+    for (const alpha of [0, .5, 1]) {
+      const rendered = hunt.dogRenderWorld(alpha, { x: 0, z: 0 });
+      expect(rendered.x).toBeCloseTo(release.x, 8);
+      expect(rendered.z).toBeCloseTo(release.z, 8);
+      expect(hunt.dogRenderHeading(alpha)).toBeCloseTo(release.heading, 8);
+    }
+    hunt.fixedUpdate(ctx, 1000 / 30);
+    expect(hunt.dog().state).toBe('heel');
+    const afterTick = hunt.dogWorld({ x: 0, z: 0 });
+    // Heel may take a real step toward the handler, never snap to old spawn.
+    expect(Math.hypot(afterTick.x - release.x, afterTick.z - release.z)).toBeLessThan(.25);
+    expect(hunt.releaseFromTruck(ctx, [{ ...release, x: 99 }])).toBe(false);
+    walkForward(ctx, 4);
+    hunt.fixedUpdate(ctx, 1000 / 30);
+    expect(hunt.dog().state).not.toBe('heel');
+  });
+
+  it('rejects an incomplete or non-finite release without consuming normal spawn', () => {
+    vi.stubGlobal('location', { search: '?breed=gsp&area=quail-fields&seed=1184004868' });
+    const ctx = liveCtx(); const hunt = liveHunt(); hunt.init(ctx);
+    expect(hunt.releaseFromTruck(ctx, [])).toBe(false);
+    expect(hunt.releaseFromTruck(ctx, [{ x: NaN, z: 40, heading: 0 }])).toBe(false);
+    hunt.fixedUpdate(ctx, 1000 / 30);
+    const dog = hunt.dogWorld({ x: 0, z: 0 });
+    expect(Math.hypot(dog.x - ctx.camera.position.x, dog.z - ctx.camera.position.z)).toBeGreaterThan(4.8);
+    expect(Math.hypot(dog.x - ctx.camera.position.x, dog.z - ctx.camera.position.z)).toBeLessThan(5.5);
+  });
+
   it('keeps the active challenge when the next-hunt URL changes', () => {
     vi.stubGlobal('location', { search: '?area=pheasant-coverts&challenge=relaxed&seed=1' });
     const hunt = liveHunt();

@@ -329,6 +329,31 @@ export class Hunt3DSystem implements Subsystem {
     for (let i = 0; i < ticks; i++) this.advance(ctx, 1000 / 30);
   }
 
+  /** The arrival presentation hands grounded dogs back before the first live
+   * tick. Snap both interpolation endpoints; never run the hunt during release. */
+  releaseFromTruck(ctx: Ctx, positions: readonly { x: number; z: number; heading: number }[]): boolean {
+    if (this.liveSpawnSynced || this.frozen || positions.length !== this.simDogs.length) return false;
+    if (positions.some(p => !Number.isFinite(p.x + p.z + p.heading))) return false;
+    this.worldToSim(ctx.camera.position.x, ctx.camera.position.z, this.hunt.hunterPos);
+    this.liveIntroHunter.x = this.hunt.hunterPos.x;
+    this.liveIntroHunter.y = this.hunt.hunterPos.y;
+    this.simDogs.forEach((dog, slot) => {
+      this.worldToSim(positions[slot].x, positions[slot].z, dog.pos);
+      dog.state = 'heel'; dog.gait = 'still'; dog.heading = positions[slot].heading;
+      const snapshot = this.dogSnapshots[slot];
+      snapshot.prevX = snapshot.currX = dog.pos.x;
+      snapshot.prevY = snapshot.currY = dog.pos.y;
+      snapshot.prevHeading = snapshot.currHeading = dog.heading;
+      snapshot.prevTravelHeading = snapshot.currTravelHeading = dog.heading;
+      snapshot.ready = true;
+      this.hunt.dogsPos[slot].x = dog.pos.x;
+      this.hunt.dogsPos[slot].y = dog.pos.y;
+    });
+    this.liveSpawnSynced = true;
+    this.liveIntroHolding = true;
+    return true;
+  }
+
   private tick(ctx: Ctx, dtMs: number): void {
     const t0 = performance.now();
     this.syncDogObstacles(ctx);

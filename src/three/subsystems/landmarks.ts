@@ -11,8 +11,10 @@ import { createChukarLandmarks } from './chukarLandmarks';
 import type { Ctx, Subsystem } from '../engine';
 import type { Hunt3DSystem } from './hunt3d';
 import type { TerrainSystem } from './terrain';
-import { createQuailGate, createQuailTruck, createQuailWindmill } from './quailLandmarks';
+import { createQuailGate, createQuailWindmill } from './quailLandmarks';
 import { deriveQuailEntrances, deriveQuailParkingPose, QUAIL_GATE } from './quailEntrances';
+import { createHuntingTruck, type HuntingTruckAsset } from './huntingTruck';
+import type { HuntArrivalSite } from '../huntArrival';
 
 const MAT = {
   homestead: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true, emissive: 0x302a20, emissiveIntensity: .14 }),
@@ -60,8 +62,12 @@ export class LandmarksSystem implements Subsystem {
   private shotStart = new THREE.Vector3();
   private shotDirection = new THREE.Vector3();
   private shotHits: THREE.Intersection[] = [];
+  private truckAsset?: HuntingTruckAsset;
+  private truckArrival?: HuntArrivalSite;
 
   collisionCircles(): readonly { x: number; z: number; radius: number }[] { return this.obstacles; }
+  arrivalSite(): HuntArrivalSite | undefined { return this.truckArrival; }
+  setTruckRelease(state: { crateDoor: number; tailgate: number }): void { this.truckAsset?.setRelease(state); }
 
   /** Authored farm/shack construction is solid to a travelling shot. Ray-test
    * the walls and roof, so empty sky above them stays shootable. */
@@ -169,11 +175,26 @@ export class LandmarksSystem implements Subsystem {
     const world = hunt.truckWorld({ x: 0, z: 0 });
     const ground = terrain.heightAt(world.x, world.z);
     const yaw = deriveQuailParkingPose(hunt.areaConfig(), drop.id)?.yaw ?? -drop.heading;
-    const truck = this.quail ? createQuailTruck((x, z) => terrain.heightAt(
-      world.x + Math.cos(yaw) * x + Math.sin(yaw) * z,
-      world.z - Math.sin(yaw) * x + Math.cos(yaw) * z) - ground) : this.buildTruck();
+    if (['quail-fields', 'pheasant-coverts', 'chukar-ridge', 'sharptail-prairie'].includes(hunt.areaConfig().id)) {
+      this.truckAsset = createHuntingTruck((x, z) => terrain.heightAt(
+        world.x + Math.cos(yaw) * x + Math.sin(yaw) * z,
+        world.z - Math.sin(yaw) * x + Math.cos(yaw) * z) - ground);
+    }
+    const truck = this.truckAsset?.root ?? this.buildTruck();
+    if (this.quail) truck.name = 'Quail hunting pickup';
     truck.position.set(world.x, ground, world.z);
     truck.rotation.y = yaw;
+    truck.updateMatrixWorld(true);
+    if (this.truckAsset) {
+      const point = (name: keyof HuntingTruckAsset['localSite']) => {
+        const p = this.truckAsset!.localSite[name];
+        const worldPoint = new THREE.Vector3(p.x, p.y, p.z).applyMatrix4(truck.matrixWorld);
+        return Object.freeze({ x: worldPoint.x, y: worldPoint.y, z: worldPoint.z });
+      };
+      this.truckArrival = Object.freeze({ crateFloor: point('crateFloor'), boxThreshold: point('boxThreshold'),
+        tailgateEdge: point('tailgateEdge'), landing: point('landing'),
+        releaseHeading: Math.atan2(Math.cos(yaw), Math.sin(yaw)), fieldHeading: drop.heading });
+    }
     ctx.scene.add(truck);
     this.objects.push(truck);
     if (this.quail) {
@@ -217,7 +238,7 @@ export class LandmarksSystem implements Subsystem {
       object.traverse((child) => {
         if (child instanceof THREE.Mesh) {
           geometries.add(child.geometry);
-          if (this.quail) for (const material of Array.isArray(child.material) ? child.material : [child.material]) materials.add(material);
+          if (this.quail || child.userData.huntingTruck) for (const material of Array.isArray(child.material) ? child.material : [child.material]) materials.add(material);
         }
       });
     }
@@ -226,6 +247,7 @@ export class LandmarksSystem implements Subsystem {
     this.objects.length = 0; this.obstacles.length = 0; this.rotor = undefined;
     this.shotSolids.length = 0; this.shotHits.length = 0;
     this.landscape = undefined;
+    this.truckAsset = undefined; this.truckArrival = undefined;
   }
 
   private buildLandmark(landmark: AreaLandmark): THREE.Group {

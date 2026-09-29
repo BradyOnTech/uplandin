@@ -1,0 +1,9 @@
+#hunt-arrival[hidden] { display: none; }
+#hunt-arrival { position: fixed; inset: auto max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); z-index: 35; display: flex; align-items: end; justify-content: space-between; gap: 20px; color: #f5ecd5; pointer-events: none; text-shadow: 0 1px 8px #15231a; }
+#hunt-arrival .arrival-kicker { font-size: 10px; letter-spacing: .2em; font-weight: 700; }
+#hunt-arrival p { margin: 8px 0 0; font: 28px/1.1 Georgia, serif; }
+#hunt-arrival button { pointer-events: auto; min-height: 46px; padding: 12px 18px; border: 1px solid #b2b69a66; border-radius: 8px; color: #eee8d6; background: #1f342de8; cursor: pointer; font: inherit; }
+#hunt-arrival button:focus-visible { outline: 3px solid #e5c981; outline-offset: 3px; }
+#hunt-arrival button:active { transform: scale(.97); }
+.hunt-arriving :is(#hunt-hud,#controls,#pause-hunt,#end-hunt,#touch-controls,#field-map-toggle,#first-hunt-guide,#reticle,#shot-cue,#bird-call-cue) { visibility: hidden !important; pointer-events: none !important; }
+@media (max-width: 600px), (max-height: 480px) { #hunt-arrival { inset: auto max(16px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); } #hunt-arrival p { font-size: 21px; } #hunt-arrival button { font-size: 13px; } }

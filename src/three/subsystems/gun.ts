@@ -81,6 +81,7 @@ export class GunSystem implements Subsystem {
   /** Staged visual inspection only; never changes ammo or reload timing. */
   private visualReloadPreview: number | null = null;
   private root = new THREE.Group();
+  setArrivalHidden(hidden: boolean): void { this.root.visible = !hidden; }
   private rig = new THREE.Group();
   private frozen = false;
 
