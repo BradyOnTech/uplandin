@@ -4,6 +4,7 @@ const SCOPE = self.registration.scope;
 const PREFIX = `uplandin-v4-${encodeURIComponent(new URL(SCOPE).pathname)}-`;
 const CACHE = `${PREFIX}${BUILD}`;
 const ART_CACHE = `uplandin-art-v2-${encodeURIComponent(new URL(SCOPE).pathname)}`;
+const MENU_ART = new URL('art/menus3d/', SCOPE).href;
 const READY = new URL('__offline-ready__', SCOPE).href;
 const ACTIVE = new URL('__offline-active__', SCOPE).href;
 
@@ -44,7 +45,8 @@ self.addEventListener('activate', (event) => {
       }
       // Preserve previously visited 2D images, including the prior cache format.
       for (const request of requests) {
-        if (!request.url.startsWith(SCOPE) || !new URL(request.url).pathname.includes('/art/') || await art.match(request)) continue;
+        if (!request.url.startsWith(SCOPE) || request.url.startsWith(MENU_ART)
+          || !new URL(request.url).pathname.includes('/art/') || await art.match(request)) continue;
         const response = await cache.match(request);
         if (response) await art.put(request, response);
       }
@@ -101,7 +103,10 @@ self.addEventListener('fetch', (event) => {
   // Never pin the update manifest or service worker in the application cache.
   if (url.pathname.endsWith('/precache.json') || url.pathname.endsWith('/sw.js')) return;
   event.respondWith((async () => {
-    const publicArt = url.pathname.includes('/art/');
+    // Menu art is bundled with this shell, unlike visited legacy 2D artwork.
+    // Keeping it versioned also makes precached images available before their
+    // first online visit instead of looking only in the shared artwork cache.
+    const publicArt = url.pathname.includes('/art/') && !url.href.startsWith(MENU_ART);
     const cache = await caches.open(publicArt ? ART_CACHE : CACHE);
     const navigation = request.mode === 'navigate';
     const key = navigation ? new URL(url.pathname.endsWith('/') ? `${url.pathname}index.html` : url.pathname, url.origin).href : request;

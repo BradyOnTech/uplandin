@@ -10,7 +10,7 @@ button,a,input,select,summary { -webkit-tap-highlight-color:transparent; scroll-
 button,a { touch-action:manipulation; }
 button { cursor:pointer; min-height:44px; padding:10px 16px; border:0; border-radius:8px; background:#ffffff0a; color:var(--cream); box-shadow:inset 0 1px #ffffff12; transition:background-color 150ms,scale 150ms; }
 button:hover { background:#ffffff16; }
-button:active:not(:disabled) { scale:.97; }
+button:active:not(:disabled) { scale:.96; }
 button:disabled { cursor:default; opacity:.5; }
 :focus-visible { outline:3px solid var(--gold); outline-offset:3px; }
 a { color:var(--gold); text-underline-offset:4px; }
@@ -22,7 +22,7 @@ p { text-wrap:pretty; }
 
 /* The frame owns the viewport. Only a panel's reading area scrolls. */
 .prep-header { flex:none; display:flex; align-items:center; justify-content:space-between; gap:24px; padding:max(10px,env(safe-area-inset-top)) max(28px,env(safe-area-inset-right)) 10px max(28px,env(safe-area-inset-left)); box-shadow:0 1px #ffffff0d; }
-.brand { display:flex; align-items:baseline; gap:16px; min-width:0; }
+.brand { text-decoration:none; color:var(--cream); display:flex; align-items:baseline; gap:16px; min-width:0; }
 .brand strong { font-size:15px; letter-spacing:.19em; }
 .brand span { font:italic 14px var(--menu-serif); color:var(--muted); white-space:nowrap; }
 .prep-header nav { display:flex; align-items:center; gap:20px; font-size:12px; }
@@ -39,29 +39,43 @@ p { text-wrap:pretty; }
 .prep-tabs button { min-width:84px; padding-inline:18px; background:transparent; box-shadow:none; font-size:13px; color:var(--muted); }
 .prep-tabs button[aria-pressed=true] { background:#ffffff0e; color:var(--cream); box-shadow:inset 0 -2px var(--gold); }
 .prep-message { flex:none; max-height:76px; overflow:auto; margin:0 0 12px; padding:10px 14px; border-radius:8px; background:#dec18b14; box-shadow:inset 3px 0 var(--gold); color:#f1dab0; font-size:12px; }
-.prep-grid { flex:1; min-height:0; display:grid; grid-template-columns:minmax(0,1.05fr) minmax(340px,1fr); gap:22px; }
+.prep-grid { flex:1; min-height:0; display:grid; grid-template-columns:minmax(0,1.12fr) minmax(360px,1fr); gap:22px; }
 .prep-panel { min-width:0; min-height:0; display:flex; flex-direction:column; overflow:hidden; border-radius:18px; background:var(--menu-forest); box-shadow:var(--menu-shadow); }
-.prep-panel-heading { flex:none; padding:20px 24px 16px; box-shadow:0 1px #ffffff0b; }
+.prep-panel-heading { flex:none; padding:16px 22px 14px; box-shadow:0 1px #ffffff0b; }
 .eyebrow { color:var(--gold); font-size:9px; line-height:1.5; letter-spacing:.16em; font-weight:700; }
-.prep-panel-heading h2 { margin-top:6px; font:400 26px/1.18 var(--menu-serif); letter-spacing:-.02em; }
+.prep-panel-heading h2 { margin-top:5px; font:400 25px/1.18 var(--menu-serif); letter-spacing:-.02em; }
 .prep-panel-scroll { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:#bcc8b03d transparent; scroll-padding-block:16px; }
-.kit-scroll,.conditions-scroll { padding:20px 24px; }
+.kit-scroll,.conditions-scroll { padding:16px 18px; }
 .conditions-panel { display:none; }
 #preparation[data-view=conditions] .kit-panel { display:none; }
 #preparation[data-view=conditions] .conditions-panel { display:flex; }
 
-/* The map keeps the same 30px inset as its property-space entry markers. */
-.property-panel { color:var(--menu-ink); background:var(--menu-paper); color-scheme:light; --menu-select-surface:#ffffff9c; --menu-select-hover:#ffffff; }
-.property-top { flex:none; }
-.property-heading { flex:none; padding:18px 24px 12px; }
-.property-heading .eyebrow { color:#82703f; }
-.property-heading h2 { margin-top:4px; font:400 clamp(25px,2.5vw,34px)/1.12 var(--menu-serif); letter-spacing:-.025em; }
-.property-top>.setup-field { flex:none; padding:0 24px 14px; margin:0; }
-.property-panel .setup-field>span { color:var(--menu-muted); }
+/* A property is a destination first; its survey is one deliberate view away. */
+.property-panel { color:var(--menu-ink); background:var(--menu-paper); color-scheme:light; --menu-select-surface:#ffffff80; --menu-select-hover:#ffffff; }
+.property-top { flex:none; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:16px; padding:13px 20px; }
+.property-top>.setup-field { margin:0; gap:3px; }
+.property-top .setup-field>span { color:#795e31; font-size:8px; letter-spacing:.15em; }
+.property-top button.menu-select-trigger { padding:4px 0; background:transparent; box-shadow:none; font-family:var(--menu-serif); font-size:23px; }
 .property-panel select { background:#fff9; color:var(--menu-ink); border-color:#283b302e; }
 .property-panel :focus-visible { outline-color:#677147; }
+.ground-tabs { display:flex; gap:3px; padding:3px; border-radius:10px; background:#283b300a; }
+.ground-tabs button { min-height:44px; padding:8px 12px; background:transparent; box-shadow:none; color:#566345; font-size:11px; white-space:nowrap; }
+.ground-tabs button[aria-pressed=true] { color:var(--menu-ink); background:var(--menu-paper); box-shadow:0 1px 4px #00000017; }
 .ground-scroll { display:flex; flex-direction:column; scrollbar-color:#53654650 transparent; }
-.map-stage { flex:1 0 190px; min-height:190px; display:grid; place-items:center; overflow:hidden; background:#ccc7a9; box-shadow:inset 0 1px #0001,inset 0 -1px #0001; container-type:size; }
+.ground-overview { flex:1; min-height:275px; display:flex; flex-direction:column; }
+.property-hero { position:relative; flex:1; min-height:155px; isolation:isolate; overflow:hidden; background:linear-gradient(168deg,#a2b2a7 0 40%,#7b8767 40% 48%,#646e4b 48% 65%,#b1a475 65%); }
+.property-hero::before { content:''; position:absolute; inset:27% -2% -2%; z-index:-1; background:#65745b; clip-path:polygon(0 47%,12% 36%,25% 49%,40% 23%,51% 17%,69% 38%,83% 12%,100% 35%,100% 100%,0 100%); }
+.property-hero::after { content:''; position:absolute; inset:0; z-index:1; background:linear-gradient(180deg,#11251c00 20%,#16251d12 35%,#0f211cdc 100%); pointer-events:none; }
+.property-art { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0; outline:1px solid #ffffff1a; outline-offset:-1px; }
+.property-hero-copy { position:absolute; z-index:2; inset:auto 24px 20px; color:#fff6df; }
+.property-hero-copy .eyebrow { font-size:9px; color:#ead6a0; }
+.property-hero-copy h2 { margin:7px 0 6px; font:400 clamp(31px,3.5vw,48px)/1.02 var(--menu-serif); letter-spacing:-.035em; }
+.property-species { font-size:11px; color:#e5e6cc; letter-spacing:.025em; }
+.property-approach { flex:none; padding:15px 22px 12px; }
+.property-approach>.eyebrow { color:#795e31; font-size:8px; }
+.property-approach h3 { margin:4px 0 6px; font:400 20px/1.2 var(--menu-serif); color:#3b4c3a; }
+.property-approach>p { font-size:12px; line-height:1.6; color:#616c50; }
+.map-stage { flex:1 0 200px; min-height:200px; display:grid; place-items:center; overflow:hidden; background:#d2ccb1; box-shadow:inset 0 1px #0001,inset 0 -1px #0001; container-type:size; }
 .property-map { position:relative; width:100%; max-width:100%; padding:30px; }
 @supports (height:1cqh) { .property-map { width:min(100%,calc((100cqh - 60px) * var(--map-aspect) + 60px)); } }
 .property-map canvas { display:block; width:100%; height:auto; outline:1px solid #0002; box-shadow:0 2px 6px #0001; }
@@ -69,21 +83,58 @@ p { text-wrap:pretty; }
 .map-entry { position:absolute; translate:-50% -50%; width:44px; height:44px; padding:0; border-radius:50%; background:#294634; color:#fff5d8; box-shadow:0 2px 8px #0004,0 0 0 2px #eee2c3; font-weight:700; }
 .map-entry:hover { background:#476346; }
 .map-entry[aria-pressed=true] { background:var(--gold); color:var(--ink); box-shadow:0 2px 8px #0004,0 0 0 3px #213c2a,0 0 0 6px #eee2c377; }
-.property-notes { flex:none; padding:0 24px; }
-.property-notes summary { min-height:44px; padding:12px 0; color:#6c673f; font-size:12px; font-weight:600; cursor:pointer; }
-.property-notes>p { padding-bottom:14px; font-size:12px; line-height:1.7; color:#57614f; }
+.property-panel[data-ground-view=scene] .map-stage,.property-panel[data-ground-view=atlas] .ground-overview { display:none; }
+.property-notes { flex:none; padding:0 22px; }
+.property-notes summary { min-height:40px; padding:11px 0; color:#566345; font-size:11px; font-weight:600; cursor:pointer; }
+.property-notes>p { padding-bottom:14px; font-size:12px; line-height:1.65; color:#57614f; }
 .property-notes .field-advice { margin:0 0 14px; padding:0 0 0 12px; box-shadow:-2px 0 #b3a36d; font-style:italic; }
-.property-notes .species-line { padding-top:12px; box-shadow:0 -1px #253a2917; color:#6c673f; font-size:11px; font-weight:600; }
-.ground-entry { flex:none; padding:14px 24px 18px; box-shadow:0 -1px #253a2917; }
-.ground-entry>.setup-field { margin:0; }
+.ground-entry { flex:none; padding:12px 20px 14px; background:#eae4d3; box-shadow:0 -1px #253a2917; }
+.ground-entry>.setup-field { display:grid; grid-template-columns:90px minmax(0,1fr); align-items:center; gap:12px; margin:0; }
+.ground-entry .setup-field>span { font-size:8px; letter-spacing:.13em; color:#795e31; }
+
+/* Selected companions and equipment are loadout cards, not rows of settings. */
+.loadout-card { position:relative; padding:11px 16px 12px; margin:0 0 10px; background:#ffffff04; border-radius:12px; box-shadow:inset 0 1px #ffffff0e,0 3px 7px #071c130c; }
+.loadout-card>h2 { font:600 9px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; letter-spacing:.15em; text-transform:uppercase; color:#d2c08f; margin-bottom:9px; }
+.dog-identity { display:grid; grid-template-columns:106px minmax(0,1fr); align-items:center; gap:16px; margin-bottom:10px; }
+.dog-portrait { position:relative; width:106px; height:104px; display:grid; place-items:center; overflow:hidden; border-radius:8px; background:radial-gradient(ellipse at 50% 72%,#aeb19a45,transparent 70%),#31493b; box-shadow:inset 0 0 0 1px #ffffff09; }
+.breed-monogram { font:400 29px var(--menu-serif); color:#c2c8ac; letter-spacing:.07em; opacity:.7; }
+/* Frame the model, not the transparent margins of the 3:2 source canvas. */
+.dog-art { position:absolute; top:50%; left:50%; width:168%; max-width:none; height:auto; transform:translate(-44%,-50%); }
+[data-art=ready]>.breed-monogram,[data-art=ready]>.gun-art-fallback { visibility:hidden; }
+.dog-profile { min-width:0; }
+.dog-profile>h3 { font:400 21px/1.1 var(--menu-serif); }
+.loadout-caption { color:#b9c6af; font-size:11px; line-height:1.5; margin:4px 0 10px; }
+.dog-profile>.setup-field { margin:0; }
+.dog-profile>.setup-field>span,.gun-card>.setup-field>span { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+.dog-profile button.menu-select-trigger,.gun-card>.setup-field button.menu-select-trigger { padding:5px 0; min-height:44px; background:transparent; box-shadow:none; font-family:var(--menu-serif); font-size:21px; line-height:1.15; }
+.breed-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.breed-stat>span { display:block; font-size:9px; color:#aebba5; margin-bottom:4px; }
+.breed-stat meter { display:block; width:100%; height:4px; border:0; border-radius:0; background:#ffffff13; }
+.breed-stat meter::-webkit-meter-bar { background:#ffffff13; height:4px; border:0; border-radius:0; }
+.breed-stat meter::-webkit-meter-optimum-value { background:#c9b783; }
+.breed-stat meter::-moz-meter-bar { background:#c9b783; }
+.dog-card>.setup-field { display:grid; grid-template-columns:82px minmax(0,1fr); align-items:center; gap:10px; margin:0; }
+.dog-card>.setup-field button.menu-select-trigger { min-height:44px; font-size:12px; padding-block:8px; }
+.gun-card>.setup-field { margin:0; }
+.gun-portrait { position:relative; height:74px; display:grid; place-items:center; margin:2px 0 4px; overflow:hidden; background:radial-gradient(ellipse at 50% 90%,#d1c69a10,transparent 70%); }
+.gun-art { position:absolute; top:50%; left:50%; width:108%; max-width:600px; height:auto; transform:translate(-50%,-54%); }
+.gun-art-fallback { color:#a5b499; font:italic 16px var(--menu-serif); }
+.gun-facts { display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:10px; color:#aebb9f; padding:4px 0 8px; }
+.gun-facts strong { font-size:10px; font-weight:500; color:#d5c599; }
+.gun-card .text-link { min-height:44px; margin:3px 0 0; padding:8px 0 0; border-radius:0; background:transparent; box-shadow:inset 0 1px #ffffff0b; font-size:11px; }
+.conditions-group { padding:14px 16px; margin:0 0 12px; border-radius:12px; background:#ffffff04; box-shadow:inset 0 1px #ffffff0e; }
+.conditions-group h2 { margin-bottom:12px; font:400 21px var(--menu-serif); }
+.conditions-group .setup-field { display:grid; grid-template-columns:85px minmax(0,1fr); align-items:center; gap:12px; margin-bottom:9px; }
+.conditions-group .setup-field:last-child { margin-bottom:0; }
+.conditions-group .help { margin-bottom:0; }
 
 /* The familiar native fields remain the value authority for the shared picker. */
 .setup-field { display:flex; flex-direction:column; gap:6px; margin:0 0 14px; min-width:0; }
 .setup-field>span { font-size:11px; color:var(--muted); font-weight:600; }
 select,input { display:block; width:100%; min-height:46px; min-width:0; padding:10px 12px; border:1px solid #ffffff24; border-radius:9px; background:#152b20; color:var(--cream); font-size:16px; }
 #preparation .menu-select-value { white-space:normal; text-wrap:pretty; }
-.setup-section { padding:0 0 16px; margin:0 0 18px; box-shadow:0 1px #ffffff16; }
-.setup-section h2 { font:400 21px/1.2 var(--menu-serif); margin-bottom:12px; }
+.setup-section:not(.loadout-card):not(.conditions-group) { padding:0 0 16px; margin:0 0 18px; box-shadow:0 1px #ffffff16; }
+.setup-section:not(.loadout-card):not(.conditions-group) h2 { font:400 21px/1.2 var(--menu-serif); margin-bottom:12px; }
 .setup-section>.setup-field:last-child { margin-bottom:0; }
 .section-intro { margin:-3px 0 16px; color:var(--muted); font-size:12px; }
 .help,.equipment-note { font-size:12px; line-height:1.55; color:var(--muted); margin:8px 0 12px; }
@@ -121,29 +172,24 @@ select,input { display:block; width:100%; min-height:46px; min-width:0; padding:
 .loading { padding:40px; }
 
 @media (min-width:900px) {
-  .property-top { display:grid; grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr); align-items:center; gap:20px; padding:16px 22px; }
-  .property-heading { padding:0; }
-  .property-heading h2 { font-size:28px; }
-  .property-top>.setup-field { padding:0; }
-  .ground-entry { padding:10px 22px 12px; }
-  .ground-entry>.setup-field { display:grid; grid-template-columns:90px minmax(0,1fr); align-items:center; gap:12px; }
-  .kit-panel .prep-panel-heading { padding:16px 22px 14px; }
+  .kit-panel .prep-panel-heading { padding:13px 20px 11px; }
   .kit-panel .prep-panel-heading .eyebrow { display:none; }
   .kit-panel .prep-panel-heading h2 { margin:0; font-size:24px; }
-  .kit-scroll { padding:16px 22px; }
-  .kit-scroll .setup-section { padding-bottom:14px; margin-bottom:14px; }
-  .kit-scroll .setup-section h2 { font-size:20px; margin-bottom:10px; }
-  .kit-scroll .setup-field { display:grid; grid-template-columns:82px minmax(0,1fr); align-items:center; gap:12px; margin-bottom:10px; }
-  .kit-scroll .help,.kit-scroll .equipment-note { font-size:11px; margin:6px 0 10px; }
-  .kit-scroll .text-link { margin-top:10px; }
   .conditions-shortcut { display:none; }
   #preparation .menu-select-trigger { font-size:14px; }
+  #preparation .property-top .menu-select-trigger { font-size:23px; }
+  #preparation .dog-profile .menu-select-trigger,#preparation .gun-card>.setup-field .menu-select-trigger { font-size:20px; }
+  #preparation .dog-card>.setup-field .menu-select-trigger { font-size:12px; }
 }
 @media (max-width:1100px) {
   .brand span { display:none; }
   .prep-header { padding-inline:max(20px,env(safe-area-inset-left)); gap:16px; }
-  .prep-main { padding:16px 20px 20px; }
-  .prep-grid { grid-template-columns:minmax(0,1.05fr) minmax(330px,1fr); gap:18px; }
+  .prep-main { padding:14px 20px 16px; }
+  .prep-grid { grid-template-columns:minmax(0,1.05fr) minmax(340px,1fr); gap:18px; }
+  .property-top { gap:10px; padding-inline:16px; }
+  .ground-tabs button { padding-inline:9px; }
+  .dog-identity { grid-template-columns:90px minmax(0,1fr); gap:12px; }
+  .dog-portrait { width:90px; height:96px; }
   .launch-reason { display:none; }
 }
 @media (max-width:899px) {
@@ -162,15 +208,35 @@ select,input { display:block; width:100%; min-height:46px; min-width:0; padding:
   .prep-grid { display:block; }
   .prep-panel,#preparation[data-view=conditions] .conditions-panel { display:none; height:100%; border-radius:14px; }
   #preparation[data-view=ground] .property-panel,#preparation[data-view=kit] .kit-panel,#preparation[data-view=conditions] .conditions-panel { display:flex; }
-  .property-heading { padding:16px 18px 10px; }
-  .property-heading h2 { font-size:28px; }
-  .property-top>.setup-field { padding:0 18px 12px; }
+  .property-top { padding:11px 16px; gap:12px; }
+  .property-top button.menu-select-trigger { font-size:22px; }
+  .ground-tabs button { min-height:44px; font-size:10px; padding-inline:8px; }
+  .ground-tabs button[data-ground-tab=scene] { max-width:58px; white-space:normal; line-height:1.2; }
+  .property-hero { max-height:40dvh; }
+  .property-hero-copy { inset:auto 19px 17px; }
+  .property-hero-copy h2 { font-size:36px; }
+  .property-hero-copy .eyebrow { font-size:8px; }
+  .property-species { font-size:10px; }
+  .property-approach { padding:14px 18px 10px; }
+  .property-approach h3 { font-size:19px; }
+  .property-approach>p { font-size:11px; }
   .property-notes { padding-inline:18px; }
-  .ground-entry { padding:12px 18px 16px; }
-  .ground-entry>.setup-field { display:grid; grid-template-columns:74px minmax(0,1fr); gap:10px; align-items:center; }
-  .prep-panel-heading { padding:17px 20px 14px; }
-  .prep-panel-heading h2 { font-size:26px; }
-  .kit-scroll,.conditions-scroll { padding:18px 20px; }
+  .ground-entry { padding:10px 16px 12px; }
+  .ground-entry>.setup-field { grid-template-columns:76px minmax(0,1fr); gap:10px; }
+  .prep-panel-heading { padding:15px 18px 13px; }
+  .prep-panel-heading h2 { font-size:25px; }
+  .kit-scroll,.conditions-scroll { padding:14px; }
+  .first-season .kit-panel>.prep-panel-heading { display:none; }
+  .first-season .setup-section.career-onboarding { padding:0; margin:0; box-shadow:none; }
+  .first-season .career-onboarding .section-intro { margin-bottom:12px; }
+  .first-season #prep-dog-save,.first-season #prep-home-save,.first-season .conditions-shortcut { display:none; }
+  .dog-identity { grid-template-columns:94px minmax(0,1fr); gap:13px; }
+  .dog-portrait { width:94px; height:100px; }
+  .gun-portrait { height:60px; }
+  .loadout-card { padding:12px 14px; }
+  .dog-profile button.menu-select-trigger,.gun-card>.setup-field button.menu-select-trigger { font-size:20px; }
+  .conditions-group { padding:13px 14px; }
+  .conditions-group .setup-field { grid-template-columns:75px minmax(0,1fr); gap:10px; }
   .launch-bar { gap:16px; padding:12px max(16px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left)); }
   .launch-destination { flex:1; }
   .launch-bar strong { font-size:18px; }
@@ -181,42 +247,59 @@ select,input { display:block; width:100%; min-height:46px; min-width:0; padding:
   .prep-header { gap:7px; padding-left:max(12px,env(safe-area-inset-left)); padding-right:max(12px,env(safe-area-inset-right)); }
   .mode-switch button { padding-inline:10px; }
   .prep-header nav button { padding-inline:7px; }
-  .property-top>.setup-field { display:grid; grid-template-columns:73px minmax(0,1fr); align-items:center; gap:10px; }
-  .property-heading h2 { font-size:26px; }
-  .property-heading .eyebrow { font-size:8px; }
+  .property-top { padding-inline:14px; }
+  .property-top button.menu-select-trigger { font-size:20px; }
+  .ground-tabs { padding:2px; gap:0; }
+  .ground-tabs button { padding-inline:7px; }
+  .dog-identity { grid-template-columns:82px minmax(0,1fr); gap:10px; }
+  .dog-portrait { width:82px; height:94px; }
+  .dog-profile button.menu-select-trigger { font-size:18px; }
+  .breed-stats { gap:7px; }
   .launch-destination small { display:none; }
   .launch-bar strong { font-size:17px; }
   .launch-bar .primary { padding-inline:12px; }
 }
-/* Sideways phones use the width: choices on the left, the whole survey on
-   the right. Long notes/settings scroll locally within that bounded frame. */
-@media (max-width:899px) and (max-height:500px) {
+/* A sideways phone keeps its destination on the right, with the choices
+   and departure always reachable; long notes remain locally scrollable. */
+@media (min-width:600px) and (max-width:899px) and (max-height:500px) {
   .prep-header { padding-top:max(3px,env(safe-area-inset-top)); padding-bottom:3px; }
   .prep-main { padding-top:6px; padding-bottom:8px; }
   .prep-toolbar { margin-bottom:6px; }
   .prep-tabs button { min-height:40px; }
-  #preparation[data-view=ground] .property-panel { display:grid; grid-template-columns:minmax(280px,.85fr) minmax(0,1.15fr); grid-template-rows:auto auto minmax(0,1fr); }
-  .property-top { grid-column:1; grid-row:1; padding:12px 16px 6px; }
-  .property-heading { padding:0; margin-bottom:8px; }
-  .property-heading .eyebrow { font-size:8px; }
-  .property-heading h2 { margin-top:2px; font-size:22px; }
-  .property-top>.setup-field { display:grid; grid-template-columns:74px minmax(0,1fr); align-items:center; gap:10px; padding:0; }
-  .ground-entry { grid-column:1; grid-row:2; padding:0 16px 6px; box-shadow:none; }
-  .ground-scroll { display:contents; }
-  .map-stage { grid-column:2; grid-row:1 / 4; height:100%; min-height:0; }
-  .property-notes { grid-column:1; grid-row:3; min-height:0; overflow:auto; overscroll-behavior:contain; padding-inline:16px; }
+  #preparation[data-view=ground] .property-panel { display:grid; grid-template-columns:minmax(265px,.8fr) minmax(0,1.2fr); grid-template-rows:1fr auto; }
+  .property-top { grid-column:1; grid-row:1; display:flex; flex-direction:column; align-items:stretch; justify-content:center; padding:10px 16px 6px; gap:7px; }
+  .property-top>.setup-field { margin:0; }
+  .ground-tabs { align-self:start; }
+  .ground-tabs button[data-ground-tab=scene] { max-width:none; }
+  .ground-entry { grid-column:1; grid-row:2; padding:0 16px 12px; background:transparent; box-shadow:none; }
+  .ground-scroll { grid-column:2; grid-row:1 / 3; height:100%; }
+  .ground-overview { min-height:0; height:100%; flex:1 0 100%; }
+  .property-hero { min-height:0; max-height:none; }
+  .property-hero-copy h2 { font-size:33px; }
+  .property-approach { display:none; }
+  .property-notes { padding-inline:16px; }
   .property-notes summary { font-size:11px; }
+  .map-stage { flex:1 0 calc(100% - 40px); min-height:0; }
   .kit-panel .prep-panel-heading,.conditions-panel .prep-panel-heading { display:none; }
-  .kit-scroll,.conditions-scroll { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-content:start; align-items:start; gap:0 22px; padding:14px 18px; }
-  .kit-scroll .setup-section { margin:0; padding:0; box-shadow:none; }
-  .kit-scroll .setup-section h2 { font-size:20px; margin-bottom:8px; }
-  .kit-scroll .setup-field,.conditions-scroll .setup-field { display:grid; grid-template-columns:74px minmax(0,1fr); align-items:center; gap:10px; margin-bottom:8px; }
-  #preparation .menu-select-trigger { font-size:13px; }
-  .kit-scroll .help,.kit-scroll .equipment-note { font-size:11px; margin:6px 0 8px; }
-  .kit-scroll .text-link { margin-top:8px; }
-  .kit-scroll .conditions-shortcut { display:none; }
-  .conditions-scroll>.hunt-options,.conditions-scroll>.help { grid-column:1 / -1; }
-  .first-season .kit-scroll { display:block; }
+  .kit-scroll { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-content:start; align-items:start; gap:12px; padding:10px; }
+  .loadout-card { margin:0; padding:10px 12px; }
+  .loadout-card>h2 { margin-bottom:5px; font-size:8px; }
+  .dog-identity { grid-template-columns:78px minmax(0,1fr); gap:10px; margin-bottom:7px; }
+  .dog-portrait { width:78px; height:85px; }
+  .dog-profile button.menu-select-trigger,.gun-card>.setup-field button.menu-select-trigger { font-size:18px; }
+  .loadout-caption { margin:1px 0 6px; font-size:10px; }
+  .breed-stat>span { font-size:8px; }
+  .dog-card>.setup-field { grid-template-columns:68px minmax(0,1fr); gap:8px; }
+  .gun-portrait { height:48px; }
+  .gun-facts { padding-bottom:5px; }
+  .gun-card .text-link { min-height:44px; }
+  .conditions-scroll { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-content:start; gap:12px; padding:10px; }
+  .conditions-group { margin:0; }
+  .conditions-group h2 { font-size:19px; margin-bottom:9px; }
+  .conditions-group .setup-field { grid-template-columns:67px minmax(0,1fr); gap:8px; }
+  .conditions-scroll>.hunt-options { grid-column:1 / -1; }
+  .conditions-shortcut { display:none; }
+  .first-season .kit-scroll { display:block; padding:14px 18px; }
   .launch-bar { padding-top:7px; padding-bottom:max(7px,env(safe-area-inset-bottom)); }
   .launch-destination small { display:none; }
   .launch-bar strong { font-size:18px; }

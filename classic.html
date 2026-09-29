@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#101410" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" type="image/png" href="icon-192.png" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <title>Classic hunt · Uplandin</title>
+    <style>
+      html, body { margin:0; padding:0; height:100%; background:#101410; overflow:hidden; }
+      canvas { display:block; margin:0 auto; touch-action:none; }
+      #classic-loading { position:fixed; inset:0; display:grid; place-content:center; gap:16px; margin:0; text-align:center; color:#f1edde; font:16px/1.5 system-ui,sans-serif; }
+      #classic-loading[hidden] { display:none; }
+      #classic-loading a { color:#dfbf7e; padding:12px; }
+    </style>
+  </head>
+  <body>
+    <div id="classic-loading" role="status"><p>Preparing your classic hunt…</p><a href="./home3d.html">Return to Uplandin</a></div>
+    <noscript>Uplandin needs JavaScript to play a hunt.</noscript>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

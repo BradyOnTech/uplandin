@@ -45,6 +45,7 @@ export class FieldInterface {
   private guide = new FieldGuide(readFieldGuide((() => { try { return localStorage; } catch { return null; } })()));
   private guideSaved = JSON.stringify(this.guide.snapshot());
   private guideElapsed = 0;
+  private arrivalReviewExpanded = false;
   private menuSelects?: ReturnType<typeof enhanceMenuSelects>;
   constructor(private engine: Engine, landscape: LandscapeModel) {
     const signal = this.abort.signal;
@@ -67,13 +68,22 @@ export class FieldInterface {
         event.preventDefault(); selectTab(tabs[next]); tabs[next].focus();
       }, { signal });
     });
+    const arrivalReview = document.getElementById('field-arrival-review')!;
+    arrivalReview.addEventListener('click', () => {
+      if (!this.launch || this.entered) return;
+      this.arrivalReviewExpanded = !this.arrivalReviewExpanded;
+      this.syncArrivalMenu();
+      if (this.arrivalReviewExpanded) { selectTab(tabs[0]); tabs[0].focus(); }
+      else arrivalReview.focus();
+    }, { signal });
+    this.syncArrivalMenu();
     const preparationLink = document.getElementById('field-preparation') as HTMLAnchorElement | null;
     if (preparationLink) preparationLink.href = build3DPreparationHref(location.search, landscape.area.id, landscape.dropPoint.id);
     document.body.classList.toggle('capture', this.capture);
     document.body.classList.toggle('touch-controls-active', this.touch);
     const placeEndControl = () => {
       const end = document.getElementById('end-hunt')!;
-      (this.touch ? document.getElementById('mobile-hunt-actions')! : document.body).append(end);
+      document.getElementById('mobile-hunt-actions')!.append(end);
     };
     placeEndControl();
     const tips = document.getElementById('field-guide-enabled') as HTMLInputElement;
@@ -474,6 +484,21 @@ export class FieldInterface {
     document.getElementById('retry-field')!.hidden = false;
     console.error('Field loading failed', error);
   }
+  /** Prepared hunts arrive in the world; inspecting setup is optional. This
+   * only changes presentation, never loading, pause, or launch authority. */
+  private syncArrivalMenu(forceFull = false): void {
+    const prepared = this.launch !== null && !this.entered && !forceFull;
+    this.overlay.classList.toggle('prepared-arrival', prepared);
+    this.overlay.classList.toggle('review-expanded', prepared && this.arrivalReviewExpanded);
+    const review = document.getElementById('field-arrival-review')!;
+    review.hidden = !prepared;
+    review.setAttribute('aria-expanded', String(prepared && this.arrivalReviewExpanded));
+    review.innerHTML = this.arrivalReviewExpanded
+      ? 'Back to arrival <span aria-hidden="true">−</span>'
+      : 'Review equipment &amp; settings <span aria-hidden="true">+</span>';
+    const preparation = document.getElementById('field-preparation');
+    if (preparation) preparation.textContent = prepared ? 'Back to preparation' : 'Hunt preparation';
+  }
   pause(): void {
     if (this.capture || this.complete || !this.readyState) return;
     this.arrival?.finish(false);
@@ -485,6 +510,7 @@ export class FieldInterface {
     this.engine.pause(true);
     if (document.pointerLockElement) document.exitPointerLock();
     document.body.classList.add('field-paused');
+    this.syncArrivalMenu(true);
     this.overlay.hidden = false;
     this.refreshShotgunMenu();
     document.getElementById('shotgun-status')!.textContent = '';
@@ -497,6 +523,7 @@ export class FieldInterface {
     this.entered = true; unlockAudio();
     this.offlineUpdateState(this.updateState);
     this.overlay.classList.add('field-has-entered');
+    this.syncArrivalMenu();
     const property=document.getElementById('property-setting') as HTMLSelectElement|null;
     if(property)property.disabled=true;
     this.overlay.hidden = true;

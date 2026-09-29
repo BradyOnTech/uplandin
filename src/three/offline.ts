@@ -19,9 +19,9 @@ function defaultStorage(): PreferenceStorage | undefined {
 }
 
 function rememberChoices(url: URL, storage: PreferenceStorage | undefined): void {
-  // Preparation owns an editable draft, not a standalone field visit. Its
-  // mode/property URL must not erase the older direct-install preferences.
-  if (url.pathname.endsWith('/prepare3d.html')) return;
+  // Only a direct 3D field visit owns these legacy installed choices. Shared
+  // home, preparation and classic pages must not replace them on pagehide.
+  if (!url.pathname.endsWith('/index3d.html')) return;
   if (url.searchParams.has('play') || url.searchParams.has('capture') || url.searchParams.has('practice')) return;
   const choices = new URLSearchParams();
   for (const key of CHOICES) {

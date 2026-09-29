@@ -12,6 +12,7 @@ import {
   unlockAudio,
 } from '../audio';
 import { AREAS, getArea, type AreaConfig } from '../game/areas';
+import { buildClassicPreparationHref } from '../game/classicLaunch';
 import {
   circleBack,
   type Bird,
@@ -41,9 +42,10 @@ import {
 } from '../game/fieldLayouts';
 import { dist, moveToward, mulberry32, windArrow } from '../game/math';
 import { settleCareerHunt } from '../game/huntResults';
+import { openClassicSummary } from '../ui/classicSummary';
 import { gearTierFor, twoDogUnlocked } from '../game/progression';
 import type { QuickConfig } from '../game/quick';
-import { ageMult, dateLabel, educatedNerveMult, openMix, seasonalBias, youngShare } from '../game/season';
+import { ageMult, educatedNerveMult, openMix, seasonalBias, youngShare } from '../game/season';
 import { regionOfArea } from '../game/regions';
 import { getSpecies } from '../game/species';
 import { birdsRemaining, createHunt, endHuntEarly, huntComplete, type HuntState } from '../game/state';
@@ -208,6 +210,7 @@ export class FieldScene extends Phaser.Scene {
   private shiftKey?: Phaser.Input.Keyboard.Key;
   private flushing = false;
   private summaryShown = false;
+  private summaryUi: { dispose(): void } | null = null;
   private simulation!: HuntSimulation;
   private recallPending = false;
   private bellMs = 0;
@@ -322,7 +325,14 @@ export class FieldScene extends Phaser.Scene {
     simulation?: HuntSimulation;
     dropPointId?: string;
   }): void {
+    this.disposeSummary();
+    // A scene restart after FlushScene must not retain old DOM or handlers.
+    this.events.off(Phaser.Scenes.Events.SHUTDOWN, this.disposeSummary, this);
+    this.events.off(Phaser.Scenes.Events.DESTROY, this.disposeSummary, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.disposeSummary, this);
+    this.events.once(Phaser.Scenes.Events.DESTROY, this.disposeSummary, this);
     configureLogicalViewport(this, 'pixel');
+    if (this.input.keyboard) this.input.keyboard.enabled = true;
     // Quick Hunt: the picked setup rides inside HuntState so it survives the
     // trip through FlushScene. Career mode reads the kennel as usual.
     this.quick = data.quick ?? data.hunt?.quick ?? null;
@@ -647,7 +657,7 @@ export class FieldScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
-    if (this.flushing) return;
+    if (this.flushing || this.summaryShown) return;
     const dt = delta / 1000;
     const recall = this.recallPending;
     this.recallPending = false;
@@ -915,90 +925,41 @@ export class FieldScene extends Phaser.Scene {
     this.showSummary();
   }
 
-  private showSummary(): void {
-    this.summaryShown = true;
-
-    const lines: { text: string; color: string }[] = [];
-    let seasonEnded = false;
-    if (this.quick) {
-      lines.push({ text: 'quick hunt — career untouched', color: '#9fb896' });
-    } else {
-      const result = settleCareerHunt(loadCareer(), this.hunt, this.kennelDogs);
-      result.dogAwards.forEach((award) => {
-        lines.push({ text: `${award.name} +${award.gained} xp`, color: '#9fd88f' });
-        if (award.levelsGained > 0) {
-          lines.push({ text: `LEVEL UP! ${award.name} is level ${award.newLevel}!`, color: '#ffd23f' });
-        }
-      });
-      if (this.hunt.henDowns > 0) {
-        lines.push({
-          text: `${this.hunt.henDowns} hen${this.hunt.henDowns > 1 ? 's' : ''} down — game warden fines you ${result.henFine} xp`,
-          color: '#ff6a5a',
-        });
-      }
-      lines.push({ text: `hunter +${result.hunterGained} xp${this.hunt.doubles > 0 ? ' (double!)' : ''}`, color: '#8fc7ff' });
-      if (result.hunterLevelsGained > 0) {
-        lines.push({ text: `HUNTER LEVEL ${result.hunterLevel}!`, color: '#ffd23f' });
-        result.unlocks.forEach((unlock) => {
-          lines.push({ text: `unlocked: ${unlock}`, color: '#ffd23f' });
-        });
-      }
-      lines.push({
-        text: `${result.weeks} week${result.weeks > 1 ? 's' : ''} pass${result.weeks > 1 ? '' : 'es'} — ${dateLabel(result.career.date)}`,
-        color: '#c9dcc0',
-      });
-      seasonEnded = result.seasonEnded;
-      if (seasonEnded) {
-        lines.push({ text: 'the season is over — head home for summer', color: '#ffd23f' });
-      }
-      saveCareer(result.career);
-    }
-
-    const cx = VIEWPORT.w / 2;
-    const cy = VIEWPORT.h / 2;
-    this.add.rectangle(cx, cy, VIEWPORT.w, VIEWPORT.h, 0x000000, 0.65).setScrollFactor(0).setDepth(20);
-    const total = this.hunt.birds.length;
-    pixelText(this, cx, cy - 42, 'HUNT OVER', 2, '#ffd23f')
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(21);
-    pixelText(this, cx, cy - 18, `${this.area.name} — downed: ${this.hunt.downed} / ${total}   lost: ${this.hunt.escaped}`, 1, '#ffffff')
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(21);
-    lines.forEach((line, i) => {
-      pixelText(this, cx, cy - 2 + i * 11, line.text, 1, '#ffffff')
-        .setOrigin(0.5)
-        .setScrollFactor(0)
-        .setDepth(21);
-    });
-    const buttonY = Math.max(cy + 44, cy - 2 + lines.length * 11 + 16);
-    if (this.quick) {
-      this.summaryButton(cx - 62, buttonY, 'hunt again', () => this.scene.restart({ quick: this.quick }));
-      this.summaryButton(cx + 62, buttonY, 'setup', () => this.scene.start('QuickScene'));
-    } else if (seasonEnded) {
-      this.summaryButton(cx, buttonY, 'head home', () => this.scene.start('MapScene'));
-    } else {
-      this.summaryButton(cx - 62, buttonY, 'hunt again', () => this.scene.restart({ areaId: this.area.id }));
-      this.summaryButton(cx + 62, buttonY, 'menu', () => this.scene.start('TitleScene'));
-    }
+  private disposeSummary(): void {
+    this.summaryUi?.dispose();
+    this.summaryUi = null;
   }
 
-  private summaryButton(x: number, y: number, label: string, onTap: () => void): void {
-    this.add
-      .rectangle(x, y, 104, 20, 0x101410, 0.85)
-      .setScrollFactor(0)
-      .setDepth(21)
-      .setInteractive()
-      .on('pointerdown', () => {
-        unlockAudio();
-        playBlip();
-        onTap();
-      });
-    pixelText(this, x, y, label, 1, '#dfe9d8')
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(22);
+  private showSummary(): void {
+    // End-button and natural completion share one irreversible settlement.
+    // Latch before saving or opening DOM so repeated callbacks cannot award twice.
+    if (this.summaryShown) return;
+    this.summaryShown = true;
+    this.hunterTarget = null;
+    this.recallPending = false;
+    this.input.enabled = false;
+    if (this.input.keyboard) this.input.keyboard.enabled = false;
+    const result = this.quick ? null : settleCareerHunt(loadCareer(), this.hunt, this.kennelDogs);
+    if (result) saveCareer(result.career);
+
+    const returnParams = new URLSearchParams(location.search);
+    returnParams.set('play', this.quick ? 'quick' : 'career');
+    const prepare = () => location.assign(buildClassicPreparationHref(
+      returnParams.toString(), this.area.id, this.hunt.dropPointId,
+    ));
+    // A fresh page revalidates the current season/loadout and preserves the
+    // selected truck entry. Live FlushScene returns never pass through here.
+    const replay = () => {
+      const params = new URLSearchParams(returnParams);
+      params.set('drop', this.hunt.dropPointId);
+      if (!this.quick) params.set('area', this.area.id);
+      location.assign(`./classic.html?${params}`);
+    };
+    this.summaryUi = openClassicSummary({
+      hunt: this.hunt, dogCount: this.dogs.length, career: result,
+      onReplay: replay, onPrepare: prepare, onContinue: prepare,
+    });
+    this.scene.pause();
   }
 
   private presentFlush(

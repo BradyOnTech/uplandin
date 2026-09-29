@@ -18,11 +18,13 @@ import { createPreparationMap } from './maps/preparationMap';
 import { enableOfflineHunts, requestOfflineUpdate, type OfflineUpdateState } from './offline';
 import { preparationInstalledEntry, rememberPreparationLaunch, preservePreparationDraft, consumePreparationDraft, discardPreparationDraft, type PreparationDraft } from './preparationOffline';
 import { enhanceMenuSelects } from './menuSelect';
+import { propertyMenuArt } from './menuArt';
 
 const root = document.getElementById('preparation')!;
 const installedEntry = preparationInstalledEntry(location.href, loadQuickConfig(), preferenceStorage());
 if (installedEntry.url.href !== location.href) history.replaceState(null, '', installedEntry.url);
 const params = installedEntry.url.searchParams;
+const requestedRenderer = params.get('renderer') === '2d' ? '2d' : '3d';
 let career = loadCareer(), quick = installedEntry.quick;
 let mode: 'quick' | 'career' = params.get('mode') === 'career' ? 'career' : 'quick';
 let areaId = params.get('area') ?? (mode === 'career'
@@ -38,6 +40,7 @@ let light = ['morning', 'noon', 'evening'].includes(params.get('tod') ?? '') ? p
 let coat = params.get('coat') ?? undefined, controls = params.get('controls') ?? undefined;
 let message = '', addingDog = false, launching = false, updating = false, updateRequested = false;
 type PreparationView = 'ground' | 'kit' | 'conditions';
+let groundView: 'scene' | 'atlas' = 'scene';
 let activeView: PreparationView = mode === 'career' && (careerPreparation(career).needsDog || careerPreparation(career).needsHome) ? 'kit' : 'ground';
 let pickers: ReturnType<typeof enhanceMenuSelects> | undefined;
 const panelScroll: Record<PreparationView, number> = { ground: 0, kit: 0, conditions: 0 };
@@ -105,9 +108,6 @@ function select(id: string, label: string, options: { id: string; label: string;
 const choices = (values: readonly string[]) => values.map(id => ({ id, label: id === 'random' ? 'Let the day decide' : id.charAt(0).toUpperCase() + id.slice(1) }));
 const breeds = () => BREEDS.map(b => ({ id: b.id, label: b.name, description: b.blurb }));
 function scrollPanel(view: PreparationView): HTMLElement | null {
-  if (view === 'ground' && window.matchMedia('(max-width:899px) and (max-height:500px)').matches) {
-    return document.getElementById('prep-property-notes');
-  }
   return root.querySelector<HTMLElement>(`[data-scroll-panel="${view}"]`);
 }
 function rememberPanelScroll(): void {
@@ -127,6 +127,46 @@ function showView(view: PreparationView, remember = true): void {
   activeView = view; root.dataset.view = view;
   root.querySelectorAll<HTMLButtonElement>('[data-prep-tab]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.prepTab === view)));
   restorePanelScroll();
+}
+function showGround(view: 'scene' | 'atlas'): void {
+  groundView = view;
+  const panel = document.getElementById('prep-ground-panel');
+  if (panel) panel.dataset.groundView = view;
+  root.querySelectorAll<HTMLButtonElement>('[data-ground-tab]').forEach(tab => tab.setAttribute('aria-pressed', String(tab.dataset.groundTab === view)));
+}
+function artUrl(path: string): string { return `${import.meta.env.BASE_URL}art/menus3d/${path}.webp`; }
+function cardArt(container: HTMLElement, imageSrc: string, className: string): void {
+  const image = node('img', '', className);
+  image.alt = ''; image.decoding = 'async';
+  image.addEventListener('load', () => { container.dataset.art = 'ready'; }, { once: true });
+  image.addEventListener('error', () => { image.remove(); container.dataset.art = 'missing'; }, { once: true });
+  image.src = imageSrc; container.prepend(image);
+}
+function dogIdentity(breedId: string, dogName?: string): HTMLElement {
+  const breed = getBreed(breedId), identity = node('div', '', 'dog-identity');
+  const portrait = node('div', '', 'dog-portrait');
+  portrait.append(node('span', breed.name.split(' ').map(word => word[0]).join('').slice(0, 3), 'breed-monogram'));
+  if (['gsp', 'english-setter'].includes(breed.id)) cardArt(portrait, artUrl(`dogs/${breed.id}`), 'dog-art');
+  const profile = node('div', '', 'dog-profile');
+  profile.append(node('p', dogName ? 'YOUR WORKING DOG' : 'BIRD DOG', 'eyebrow'), node('h3', dogName ?? breed.name), node('p', dogName ? breed.name : breed.blurb, 'loadout-caption'));
+  const stats = node('div', '', 'breed-stats');
+  for (const [label, value] of [['Nose', breed.stats.nose], ['Range', breed.stats.range], ['Stamina', breed.stats.stamina]] as const) {
+    const stat = node('div', '', 'breed-stat'); stat.append(node('span', label));
+    const meter = node('meter'); meter.min = 0; meter.max = 5; meter.value = value;
+    meter.setAttribute('aria-label', `${breed.name} ${label.toLowerCase()}: ${value} of 5`);
+    stat.append(meter); stats.append(stat);
+  }
+  profile.append(stats); identity.append(portrait, profile); return identity;
+}
+function gunIdentity(gun: (typeof GUNS)[number]): HTMLElement {
+  const actions: Record<string, string> = { 'remington-870': 'Pump action', 'semi-auto': 'Semiautomatic', 'over-under': 'Over / under', 'side-by-side': 'Side by side' };
+  const profile = node('div', '', 'gun-identity');
+  const stage = node('div', '', 'gun-portrait');
+  stage.append(node('span', actions[gun.id] ?? 'Sporting shotgun', 'gun-art-fallback'));
+  cardArt(stage, artUrl(`guns/${gun.id}`), 'gun-art');
+  const facts = node('div', '', 'gun-facts');
+  facts.append(node('span', actions[gun.id] ?? 'Sporting shotgun'), node('strong', `${gun.shells} shells`));
+  profile.append(stage, facts); return profile;
 }
 function section(title: string, intro?: string): HTMLElement {
   const el = node('section', '', 'setup-section'); el.append(node('h2', title)); if (intro) el.append(node('p', intro, 'section-intro')); return el;
@@ -206,6 +246,7 @@ function render(focusId?: string): void {
   if (!saved.availableGuns.some(gun => gun.id === gunId)) gunId = saved.availableGuns[0].id;
   const projected = commitCareerLoadout(career, { activeDogId: dogId || undefined, braceDogId: braceId || null, gunId });
   const preparation = careerPreparation(projected.ok ? projected.career : career);
+  const onboarding = mode === 'career' && (preparation.needsDog || preparation.needsHome);
   if (!AREAS.some(a => a.id === areaId)) areaId = 'quail-fields';
   if (mode === 'quick' && quick.huntingMethod === 'goshawk') areaId = 'pheasant-coverts';
   const area = getArea(areaId), doctrine = huntingDoctrine(area.id), entry = preparation.areas.find(a => a.area.id === areaId)!;
@@ -220,10 +261,11 @@ function render(focusId?: string): void {
   pickers?.destroy(); pickers = undefined;
   root.replaceChildren();
   const header = node('header', '', 'prep-header');
-  const brand = node('div', '', 'brand'); brand.append(node('strong', 'UPLANDIN'), node('span', 'The field book'));
+  const brand = link('', './home3d.html'); brand.className = 'brand'; brand.setAttribute('aria-label', 'Uplandin home'); brand.append(node('strong', 'UPLANDIN'), node('span', 'The field book'));
   const nav = node('nav'); nav.setAttribute('aria-label', 'Game');
   const journal = button('Journal', () => openHuntJournal(loadCareer(), journal)); journal.id = 'prep-journal'; journal.setAttribute('aria-label', 'Field journal');
-  const classic = link('2D classic', './index.html'); classic.onclick = () => saveGameplayMode('2d'); nav.append(journal, classic);
+  const otherRenderer = requestedRenderer === '3d' ? '2d' : '3d';
+  const classic = link(otherRenderer === '2d' ? 'Classic field' : '3D field', `./prepare3d.html?renderer=${otherRenderer}&mode=${mode}&area=${encodeURIComponent(areaId)}&drop=${encodeURIComponent(dropPointId)}`); nav.append(journal, classic);
   const modes = node('div', '', 'mode-switch'); modes.setAttribute('role', 'group'); modes.setAttribute('aria-label', 'Hunt mode');
   for (const [id, label] of [['quick', 'Quick hunt'], ['career', 'Career']] as const) {
     const control = button(label, () => {
@@ -232,7 +274,7 @@ function render(focusId?: string): void {
       ({ areaId, dropPointId } = propertyDrafts[mode]);
       const next = careerPreparation(career);
       activeView = mode === 'career' && (next.needsDog || next.needsHome) ? 'kit' : 'ground';
-      render(`mode-${id}`); history.replaceState(null, '', `?mode=${mode}`);
+      render(`mode-${id}`); history.replaceState(null, '', `?renderer=${requestedRenderer}&mode=${mode}`);
     });
     control.id = `mode-${id}`; control.setAttribute('aria-pressed', String(mode === id)); modes.append(control);
   }
@@ -250,17 +292,30 @@ function render(focusId?: string): void {
   toolbar.append(intro, tabs); main.append(toolbar);
   const notice = node('p', message, 'prep-message'); notice.id = 'preparation-message'; notice.setAttribute('role', 'status'); notice.tabIndex = -1; notice.hidden = !message; main.append(notice);
   const grid = node('div', '', 'prep-grid');
-  grid.classList.toggle('first-season', mode === 'career' && (preparation.needsDog || preparation.needsHome));
-  const property = node('section', '', 'prep-panel property-panel'); property.id = 'prep-ground-panel'; property.dataset.prepView = 'ground';
+  grid.classList.toggle('first-season', onboarding);
+  const property = node('section', '', 'prep-panel property-panel'); property.id = 'prep-ground-panel'; property.dataset.prepView = 'ground'; property.dataset.groundView = groundView;
   const propertyTop = node('div', '', 'property-top');
-  const propertyHeading = node('div', '', 'property-heading');
-  propertyHeading.append(node('p', doctrine.region, 'eyebrow'), node('h2', area.name));
-  propertyTop.append(propertyHeading);
-  const field = select('prep-area', 'Hunting ground', AREAS.map(a => ({ id: a.id, label: a.name, description: regionOfArea(a.id).name })), areaId,
+  const field = select('prep-area', 'YOUR HUNTING GROUND', AREAS.map(a => ({ id: a.id, label: a.name, description: regionOfArea(a.id).name })), areaId,
     value => { areaId = value; dropPointId = ''; if (mode === 'quick') updateQuick({ areaId: value }); });
-  field.querySelector('select')!.disabled = mode === 'quick' && quick.huntingMethod === 'goshawk'; propertyTop.append(field); property.append(propertyTop);
+  field.querySelector('select')!.disabled = mode === 'quick' && quick.huntingMethod === 'goshawk';
+  const groundTabs = node('div', '', 'ground-tabs'); groundTabs.setAttribute('role', 'group'); groundTabs.setAttribute('aria-label', 'Property view');
+  for (const [view, label] of [['scene', 'The ground'], ['atlas', 'Atlas']] as const) {
+    const tab = button(label, () => showGround(view)); tab.id = `prep-show-${view}`; tab.dataset.groundTab = view;
+    tab.setAttribute('aria-pressed', String(groundView === view)); tab.setAttribute('aria-controls', `prep-ground-${view}`); groundTabs.append(tab);
+  }
+  propertyTop.append(field, groundTabs); property.append(propertyTop);
+  const speciesIds = mode === 'career' ? entry.openSpeciesIds : area.speciesMix.map(s => s.speciesId);
+  const speciesLabel = speciesIds.length ? speciesIds.map(id => getSpecies(id).name).join(' · ') : 'Season currently closed';
   const groundScroll = node('div', '', 'prep-panel-scroll ground-scroll'); groundScroll.dataset.scrollPanel = 'ground';
-  const mapStage = node('div', '', 'map-stage'); mapStage.style.setProperty('--map-aspect', String(area.world.w / area.world.h));
+  const overview = node('div', '', 'ground-overview'); overview.id = 'prep-ground-scene';
+  const hero = node('div', '', 'property-hero');
+  const propertyArt = propertyMenuArt(area.id);
+  if (propertyArt) cardArt(hero, propertyArt, 'property-art');
+  const heroCopy = node('div', '', 'property-hero-copy'); heroCopy.append(node('p', doctrine.region, 'eyebrow'), node('h2', area.name), node('p', speciesLabel, 'property-species')); hero.append(heroCopy);
+  const approach = node('div', '', 'property-approach');
+  approach.append(node('span', 'THE APPROACH', 'eyebrow'), node('h3', doctrine.method.toLowerCase().replace(/(^| · )([a-z])/g, (_, gap: string, letter: string) => gap + letter.toUpperCase())), node('p', doctrine.description));
+  overview.append(hero, approach); groundScroll.append(overview);
+  const mapStage = node('div', '', 'map-stage'); mapStage.id = 'prep-ground-atlas'; mapStage.style.setProperty('--map-aspect', String(area.world.w / area.world.h));
   const map = node('div', '', 'property-map'); map.setAttribute('aria-label', `${area.name} terrain and truck entries`);
   let atlas = atlases.get(area.id);
   if (!atlas) { atlas = createPreparationMap(area); if (atlases.size >= 2) atlases.delete(atlases.keys().next().value!); atlases.set(area.id, atlas); }
@@ -275,32 +330,33 @@ function render(focusId?: string): void {
   });
   mapStage.append(map); groundScroll.append(mapStage);
   const notes = node('details', '', 'property-notes'); notes.id = 'prep-property-notes';
-  notes.append(node('summary', 'Field notes'), node('p', doctrine.description), node('p', doctrine.tip, 'field-advice'));
-  const speciesIds = mode === 'career' ? entry.openSpeciesIds : area.speciesMix.map(s => s.speciesId);
-  notes.append(node('p', speciesIds.length ? speciesIds.map(id => getSpecies(id).name).join(' · ') : 'Season currently closed', 'species-line'));
+  notes.append(node('summary', 'In the field'), node('p', doctrine.tip, 'field-advice'));
   groundScroll.append(notes); property.append(groundScroll);
   const entryControls = node('div', '', 'ground-entry');
-  entryControls.append(select('prep-drop', 'Truck entry', area.dropPoints.map((drop, i) => ({ id: drop.id, label: `${i + 1}. ${drop.name}` })), dropPointId, value => { dropPointId = value; })); property.append(entryControls);
+  entryControls.append(select('prep-drop', 'TRUCK ENTRY', area.dropPoints.map((drop, i) => ({ id: drop.id, label: `${i + 1}. ${drop.name}` })), dropPointId, value => { dropPointId = value; })); property.append(entryControls);
   grid.append(property);
   const kitPanel = node('section', '', 'prep-panel kit-panel'); kitPanel.id = 'prep-kit-panel'; kitPanel.dataset.prepView = 'kit';
-  const kitHeading = node('div', '', 'prep-panel-heading'); kitHeading.append(node('p', 'YOUR COMPANY & EQUIPMENT', 'eyebrow'), node('h2', 'Your field kit')); kitPanel.append(kitHeading);
+  const kitHeading = node('div', '', 'prep-panel-heading'); kitHeading.append(node('p', 'A GOOD DOG. A TRUSTED GUN.', 'eyebrow'), node('h2', 'Your company afield')); kitPanel.append(kitHeading);
   const settings = node('div', '', 'prep-panel-scroll kit-scroll'); settings.dataset.scrollPanel = 'kit'; kitPanel.append(settings);
-  if (mode === 'career' && (preparation.needsDog || preparation.needsHome)) {
+  if (onboarding) {
     const setup = section('Your first season', 'Choose a home ground and a dog to grow with you.');
+    setup.classList.add('career-onboarding');
     if (preparation.needsDog) dogForm(setup, true);
     else {
       let homeId = puppyDraft.homeRegionId;
       const home = node('select'); home.id = 'home-region'; home.setAttribute('aria-label', 'Home region');
       for (const region of REGIONS.filter(r => r.built)) { const option = node('option', region.name); option.value = region.id; home.append(option); }
       home.value = homeId; home.onchange = () => { homeId = home.value; puppyDraft.homeRegionId = homeId; };
-      setup.append(home, button('Set home ground', () => {
+      const saveHome = button('Set home ground', () => {
         const result = commitCareerSetup(loadCareer(), { homeRegionId: homeId });
         if (!result.ok) error(result.message); else if (persistCareer(result.career)) { areaId = careerPreparation(career).areas.find(a => a.isHome)!.area.id; render(); }
-      }, 'primary'));
+      }, 'primary'); saveHome.id = 'prep-home-save'; setup.append(home, saveHome);
     }
     settings.append(setup);
   } else {
-    const companions = section('Your dog');
+    const companions = section('The dog'); companions.classList.add('loadout-card', 'dog-card');
+    const workingDog = mode === 'career' ? preparation.activeDog : undefined;
+    companions.append(dogIdentity(workingDog?.breedId ?? quick.breedId, workingDog?.name));
     if (mode === 'career') {
       if (!career.kennel.some(d => d.id === dogId)) dogId = career.activeDogId ?? '';
       companions.append(select('prep-dog', 'Working dog', career.kennel.map(d => ({ id: d.id, label: `${d.name} · ${getBreed(d.breedId).name} · Level ${d.level}` })), dogId, value => { dogId = value; if (braceId === value) braceId = ''; }));
@@ -317,20 +373,22 @@ function render(focusId?: string): void {
       }
     } else {
       companions.append(select('prep-breed', 'Breed', breeds(), quick.breedId, value => updateQuick({ breedId: value })));
-      companions.append(node('p', getBreed(quick.breedId).blurb, 'help'));
       if (quick.huntingMethod !== 'goshawk') companions.append(select('prep-level', 'Experience', Array.from({ length: 10 }, (_, i) => ({ id: String(i + 1), label: `Level ${i + 1}${i === 0 ? ' · First season' : i === 9 ? ' · Finished dog' : ''}` })), String(quick.level), value => updateQuick({ level: Number(value) })));
       else { companions.querySelector('select')!.disabled = true; companions.append(node('p', 'A finished GSP works with your goshawk.', 'help')); }
     }
+    const dogChoice = companions.querySelector<HTMLSelectElement>('#prep-breed, #prep-dog')?.closest('.setup-field');
+    const dogProfile = companions.querySelector('.dog-profile');
+    if (dogChoice && dogProfile) { dogProfile.querySelector('h3')?.remove(); dogProfile.querySelector('.eyebrow')?.remove(); dogProfile.prepend(dogChoice); }
     settings.append(companions);
-    const equipment = section(quick.huntingMethod === 'goshawk' && mode === 'quick' ? 'Hunting partner' : 'Your shotgun');
+    const equipment = section(quick.huntingMethod === 'goshawk' && mode === 'quick' ? 'Hunting partner' : 'The shotgun'); equipment.classList.add('loadout-card', 'gun-card');
     if (mode === 'quick' && quick.huntingMethod === 'goshawk') equipment.append(node('p', 'Goshawk · From the fist', 'section-intro'));
     else {
       const guns = mode === 'career' ? preparation.availableGuns : GUNS;
       if (mode === 'career' && !guns.some(g => g.id === gunId)) gunId = guns[0].id;
       equipment.append(select('prep-gun', 'Shotgun', guns.map(g => ({ id: g.id, label: g.name, description: `${g.shells} shells · ${g.blurb}` })), mode === 'career' ? gunId : quick.gunId, value => { if (mode === 'career') gunId = value; else updateQuick({ gunId: value }); }));
       const selectedGun = guns.find(g => g.id === (mode === 'career' ? gunId : quick.gunId)) ?? guns[0];
-      equipment.append(node('p', `${selectedGun.shells} shells · ${selectedGun.blurb}`, 'equipment-note'));
-      const rack = link('Explore the 3D gun rack ↗', `./shotguns3d.html?gun=${encodeURIComponent(mode === 'career' ? gunId : quick.gunId)}`); rack.target = '_blank'; rack.rel = 'noopener'; rack.className = 'text-link'; equipment.append(rack);
+      equipment.append(gunIdentity(selectedGun));
+      const rack = link('Inspect in the gun rack ↗', `./shotguns3d.html?gun=${encodeURIComponent(mode === 'career' ? gunId : quick.gunId)}`); rack.target = '_blank'; rack.rel = 'noopener'; rack.className = 'text-link'; equipment.append(rack);
     }
     settings.append(equipment);
     if (mode === 'career') {
@@ -360,26 +418,39 @@ function render(focusId?: string): void {
   const conditionsPanel = node('section', '', 'prep-panel conditions-panel'); conditionsPanel.id = 'prep-conditions-panel'; conditionsPanel.dataset.prepView = 'conditions';
   const conditionsHeading = node('div', '', 'prep-panel-heading'); conditionsHeading.append(node('p', 'SET THE DAY', 'eyebrow'), node('h2', 'Conditions & display')); conditionsPanel.append(conditionsHeading);
   const conditions = node('div', '', 'prep-panel-scroll conditions-scroll'); conditions.dataset.scrollPanel = 'conditions'; conditionsPanel.append(conditions);
+  const day = section('The day'); day.classList.add('conditions-group');
+  const experience = section('The hunt'); experience.classList.add('conditions-group');
+  const extras = section('Equipment & display'); extras.classList.add('conditions-group');
+  day.append(select('prep-light', 'Light', choices(['morning', 'noon', 'evening']), light, value => { light = value; }));
   if (mode === 'quick') {
-    conditions.append(select('prep-method', 'Hunting method', [{ id: 'shotgun', label: 'Shotgun' }, { id: 'goshawk', label: 'Goshawk · Cattail Coverts' }], quick.huntingMethod ?? 'shotgun', value => updateQuick({ huntingMethod: value as QuickConfig['huntingMethod'] })));
-    conditions.append(select('prep-weather', 'Weather', choices(WEATHER_CHOICES), quick.weather, value => updateQuick({ weather: value as QuickConfig['weather'] })),
+    day.append(select('prep-weather', 'Weather', choices(WEATHER_CHOICES), quick.weather, value => updateQuick({ weather: value as QuickConfig['weather'] })),
       select('prep-wind', 'Wind', choices(WIND_CHOICES), quick.wind, value => updateQuick({ wind: value as QuickConfig['wind'] })));
-    if (quick.huntingMethod !== 'goshawk') conditions.append(select('prep-quick-brace', 'Second dog', [{ id: 'none', label: 'Hunt with one dog' }, ...breeds()], quick.breed2Id, value => updateQuick({ breed2Id: value })));
-    conditions.append(select('prep-gear', 'Tracking gear', GEAR_NAMES.map((label, i) => ({ id: String(i), label })), String(quick.gearTier), value => updateQuick({ gearTier: Number(value) })));
-  } else conditions.append(node('p', 'Weather and bird experience follow your career season.', 'help'));
-  conditions.append(select('prep-challenge', 'Challenge', Object.entries(HUNT_CHALLENGES).map(([id, value]) => ({ id, label: value.label })), challenge, value => { challenge = parseHuntChallenge(value); }),
-    select('prep-light', 'Light', choices(['morning', 'noon', 'evening']), light, value => { light = value; }),
-    select('prep-quality', 'Graphics', [{ id: 'auto', label: 'Use device preference' }, { id: 'lite', label: 'Lightweight' }, { id: 'high', label: 'High' }], quality, value => { quality = value; }));
+    experience.append(select('prep-method', 'Method', [{ id: 'shotgun', label: 'Shotgun' }, { id: 'goshawk', label: 'Goshawk · Cattail Coverts' }], quick.huntingMethod ?? 'shotgun', value => updateQuick({ huntingMethod: value as QuickConfig['huntingMethod'] })));
+    if (quick.huntingMethod !== 'goshawk') extras.append(select('prep-quick-brace', 'Second dog', [{ id: 'none', label: 'Hunt with one dog' }, ...breeds()], quick.breed2Id, value => updateQuick({ breed2Id: value })));
+    extras.append(select('prep-gear', 'Tracking gear', GEAR_NAMES.map((label, i) => ({ id: String(i), label })), String(quick.gearTier), value => updateQuick({ gearTier: Number(value) })));
+  } else day.append(node('p', 'Weather and bird experience follow your career season.', 'help'));
+  experience.append(select('prep-challenge', 'Challenge', Object.entries(HUNT_CHALLENGES).map(([id, value]) => ({ id, label: value.label, description: value.description })), challenge, value => { challenge = parseHuntChallenge(value); }), node('p', HUNT_CHALLENGES[challenge].description, 'help'));
+  if (requestedRenderer === '3d' || (mode === 'quick' && quick.huntingMethod === 'goshawk')) extras.append(select('prep-quality', 'Graphics', [{ id: 'auto', label: 'Use device preference' }, { id: 'lite', label: 'Lightweight' }, { id: 'high', label: 'High' }], quality, value => { quality = value; }));
+  if (requestedRenderer === '2d' && mode === 'quick' && quick.huntingMethod === 'goshawk') experience.append(node('p', 'Goshawk hunts open in the 3D field.', 'help'));
+  conditions.append(day, experience, extras);
 
   conditions.append(offlinePanel);
   const reviewConditions = button(`${light.charAt(0).toUpperCase() + light.slice(1)} · ${HUNT_CHALLENGES[challenge].label}  →`, () => { showView('conditions'); document.getElementById('prep-view-conditions')?.focus(); }, 'conditions-shortcut');
   reviewConditions.setAttribute('aria-label', 'Review conditions and display'); settings.append(reviewConditions);
   grid.append(kitPanel, conditionsPanel); main.append(grid);
   const footer = node('footer', '', 'launch-bar'); const outing = node('div', '', 'launch-destination');
-  outing.append(node('small', 'YOUR NEXT OUTING'), node('strong', area.name), node('span', mode === 'career' && entry.reason ? entry.reason
+  if (onboarding) outing.append(node('small', 'A HUNTING LIFE'), node('strong', 'Your first season'), node('span', preparation.needsDog ? 'A home ground and a good dog.' : 'Choose your home ground.'));
+  else outing.append(node('small', 'YOUR NEXT OUTING'), node('strong', area.name), node('span', mode === 'career' && entry.reason ? entry.reason
     : `${selectedDrop.name}${mode === 'career' ? ` · ${entry.weeks} week${entry.weeks === 1 ? '' : 's'}` : ' · Quick hunt'}`));
-  const start = button('Head to the field ↗', launch, 'primary'); start.id = 'prep-start';
-  const unavailable = mode === 'career' && (!entry.selectable || preparation.needsDog || preparation.needsHome);
+  const start = button(onboarding ? preparation.needsDog ? 'Begin your career' : 'Set home ground' : 'Head to the field ↗', () => {
+    if (!onboarding) { launch(); return; }
+    // Reveal the form before native validation tries to focus its required
+    // name field. The footer submits the same form, never a second save path.
+    showView('kit');
+    if (preparation.needsDog) root.querySelector<HTMLFormElement>('#puppy-form')?.requestSubmit();
+    else document.getElementById('prep-home-save')?.click();
+  }, 'primary'); start.id = 'prep-start';
+  const unavailable = mode === 'career' && !onboarding && !entry.selectable;
   start.dataset.unavailable = String(unavailable); start.disabled = launching || updating || unavailable;
   const reason = node('p', mode === 'career' && !entry.selectable ? '' : 'Read the wind. Trust your dog.', 'launch-reason'); footer.append(outing, reason, start);
   root.append(header, main, footer);
@@ -391,6 +462,8 @@ function render(focusId?: string): void {
     if (view && (view !== 'ground' || window.matchMedia('(max-width:899px)').matches)) activeView = view;
     nativeFocus.closest('details')?.setAttribute('open', '');
   }
+  if (focusId?.startsWith('map-drop-')) groundView = 'atlas';
+  showGround(groundView);
   showView(activeView, false);
   pickers = enhanceMenuSelects(root);
   restorePanelScroll();
@@ -410,9 +483,12 @@ function launch(): void {
     saveQuickConfig(result.config);
     if (readPreference(QUICK_KEY) !== JSON.stringify(result.config)) { error('Your browser could not save this setup. Allow site storage, then try again.'); return; }
   }
-  saveGameplayMode('3d');
+  const renderer = mode === 'quick' && quick.huntingMethod === 'goshawk' ? '3d' : requestedRenderer;
+  saveGameplayMode(renderer);
   try { localStorage.setItem(HUNT_CHALLENGE_KEY, challenge); } catch { /* The URL also carries this choice. */ }
-  const url = new URL(result.href, location.href); url.searchParams.set('challenge', challenge); url.searchParams.set('tod', light); url.searchParams.set('dog', 'generated');
+  const url = new URL(result.href, location.href);
+  if (renderer === '2d') url.pathname = url.pathname.replace(/index3d\.html$/, 'classic.html');
+  url.searchParams.set('challenge', challenge); url.searchParams.set('tod', light); url.searchParams.set('dog', 'generated');
   // Keep Auto distinct from the effective tier chosen by device preference.
   url.searchParams.set('quality', quality);
   if (coat) url.searchParams.set('coat', coat);

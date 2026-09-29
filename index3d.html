@@ -33,7 +33,7 @@
     <div id="reticle" hidden aria-hidden="true"></div>
     <div id="shot-callout" hidden aria-live="assertive"></div>
     <section id="hunt-summary" hidden aria-label="Hunt summary">
-      <div class="hunt-summary-heading"><h2>Hunt complete</h2><button id="summary-journal-open" type="button">Journal</button></div>
+      <div class="hunt-summary-heading"><div><p class="report-eyebrow">UPLANDIN / FIELD REPORT</p><h2>Hunt complete</h2></div><button id="summary-journal-open" type="button">Field journal <span aria-hidden="true">↗</span></button></div>
       <div id="hunt-summary-content">
         <div id="hunt-summary-copy"></div>
       </div>
@@ -103,15 +103,21 @@
         <p id="loading-status" role="status">Preparing the field…</p>
         <progress id="loading-progress" max="1" value="0" aria-label="Loading the field"></progress>
         <button id="retry-field" type="button" hidden>Reload the field</button>
+        <button id="field-arrival-review" type="button" aria-expanded="false" aria-controls="field-menu-tabs field-menu-body" hidden>Review equipment &amp; settings <span aria-hidden="true">+</span></button>
         </header>
-        <nav class="field-menu-tabs" role="tablist" aria-label="Field menu sections">
-          <button id="field-tab-hunt" type="button" role="tab" data-field-tab="hunt" aria-selected="true" aria-controls="field-panel-hunt">Your hunt</button>
-          <button id="field-tab-settings" type="button" role="tab" data-field-tab="settings" aria-selected="false" aria-controls="field-panel-settings" tabindex="-1">Settings</button>
-          <button id="field-tab-guide" type="button" role="tab" data-field-tab="guide" aria-selected="false" aria-controls="field-panel-guide" tabindex="-1">Field guide</button>
+        <nav id="field-menu-tabs" class="field-menu-tabs" role="tablist" aria-label="Field menu sections">
+          <button id="field-tab-hunt" type="button" role="tab" data-field-tab="hunt" aria-selected="true" aria-controls="field-panel-hunt"><span aria-hidden="true">01</span>Your hunt</button>
+          <button id="field-tab-settings" type="button" role="tab" data-field-tab="settings" aria-selected="false" aria-controls="field-panel-settings" tabindex="-1"><span aria-hidden="true">02</span>Settings</button>
+          <button id="field-tab-guide" type="button" role="tab" data-field-tab="guide" aria-selected="false" aria-controls="field-panel-guide" tabindex="-1"><span aria-hidden="true">03</span>Field guide</button>
         </nav>
-        <div class="field-menu-body">
+        <div id="field-menu-body" class="field-menu-body">
         <section id="field-panel-hunt" class="field-menu-panel" role="tabpanel" aria-labelledby="field-tab-hunt">
+        <div class="field-session-strip">
+          <button id="field-journal-open" type="button"><span class="session-action-title">Field journal <i aria-hidden="true">↗</i></span><span>Recent career hunts &amp; dog work</span></button>
+          <div id="mobile-hunt-actions"></div>
+        </div>
         <section id="shotgun-options" aria-labelledby="shotgun-label" hidden>
+          <p class="field-section-kicker">FIELD EQUIPMENT</p>
           <label id="shotgun-label" for="shotgun-setting">Shotgun</label>
           <select id="shotgun-setting" aria-describedby="shotgun-equipped" disabled></select>
           <p id="shotgun-equipped"></p>
@@ -119,6 +125,7 @@
           <p id="shotgun-status" role="status" aria-live="polite"></p>
         </section>
         <div id="challenge-options">
+          <p class="field-section-kicker">THE ENCOUNTER</p>
           <label>Hunt challenge <select id="challenge-setting" aria-describedby="challenge-help"><option value="relaxed">Relaxed</option><option value="balanced">Balanced</option><option value="wild">Wild</option></select></label>
           <p id="challenge-help">Work the cover and approach quietly. Birds can still surprise you.</p>
         </div>
@@ -126,6 +133,8 @@
         <section id="field-panel-settings" class="field-menu-panel" role="tabpanel" aria-labelledby="field-tab-settings" hidden>
         <div id="field-settings" class="field-settings">
         <div id="field-options">
+          <section class="field-settings-group" aria-labelledby="field-atmosphere-heading">
+          <p class="field-section-kicker">THE WORLD</p><h3 id="field-atmosphere-heading">Field &amp; atmosphere</h3>
           <label id="property-option">Property <select id="property-setting">
             <option value="quail-fields">Quail Fields</option>
             <option value="pheasant-coverts">Cattail Coverts</option>
@@ -140,15 +149,21 @@
             <option value="valley-oaks">Valley Oaks</option>
           </select></label>
           <label>Light <select id="light-setting"><option value="dawn">Dawn</option><option value="morning">Morning</option><option value="noon">Midday</option><option value="evening">Evening</option><option value="lastlight">Last light</option></select></label>
+          <label class="field-audio-option"><input id="sound-setting" type="checkbox" checked> Field audio</label>
+          </section>
+          <section class="field-settings-group" aria-labelledby="field-device-heading">
+          <p class="field-section-kicker">YOUR DEVICE</p><h3 id="field-device-heading">Display &amp; input</h3>
           <label>Display <select id="quality-setting"><option value="high">Standard</option><option value="lite">Lightweight</option></select></label>
           <label>Controls <select id="controls-setting"><option value="auto">Automatic</option><option value="touch">Touch</option><option value="desktop">Mouse &amp; keyboard</option></select></label>
-          <label><input id="sound-setting" type="checkbox" checked> Field audio</label>
+          </section>
         </div>
         <div id="shot-view-options" class="shotgun-sensitivity">
+          <p class="field-section-kicker">THE SIGHT PICTURE</p><h3>Shot presentation</h3>
           <label for="touch-sight-setting">Shot view <select id="touch-sight-setting" aria-describedby="shot-view-help"><option value="closer">Closer</option><option value="wide">Wide</option></select></label>
           <p id="shot-view-help">Closer narrows your view while aiming. Wide keeps your usual field of view.</p>
         </div>
         <div class="touch-instructions touch-sensitivity">
+          <p class="field-section-kicker">TOUCH RESPONSE</p><h3>Look &amp; swing</h3>
           <label for="touch-look-sensitivity">Look speed <output id="touch-look-value">1.0×</output></label>
           <input id="touch-look-sensitivity" type="range" min="0.5" max="2" step="0.1" value="1">
           <div class="shotgun-sensitivity"><label for="touch-swing-sensitivity">Shotgun swing <output id="touch-swing-value">1.0×</output></label>
@@ -161,6 +176,7 @@
         </section>
         <section id="field-panel-guide" class="field-menu-panel" role="tabpanel" aria-labelledby="field-tab-guide" hidden>
         <div id="field-guide" hidden>
+        <p class="field-section-kicker">FIELDCRAFT</p><h3 class="field-section-heading">A little know-how</h3>
         <div id="field-instructions">
           <p class="desktop-instructions"><kbd>W A S D</kbd> Walk <span>·</span> <kbd>Shift</kbd> Run <span>·</span> <kbd>Q</kbd> Whistle <span>·</span> <kbd>M</kbd> Survey map</p>
           <p class="desktop-instructions"><kbd>F</kbd> Toggle aim · <kbd>Space</kbd> Shoot · <kbd>R</kbd> Reload.<br>Mouse: hold right button to aim, left button to shoot.</p>
@@ -178,8 +194,7 @@
           </div>
         </div>
         <div class="field-menu-utilities">
-        <div id="mobile-hunt-actions"></div>
-        <button id="field-journal-open" type="button">Field journal <span>Recent career hunts</span></button>
+        <p class="field-section-kicker">TAKE IT WITH YOU</p><h3 class="field-section-heading">Ready for the field</h3>
         <small id="offline-status" aria-live="polite"></small>
         <details id="install-help">
           <summary>Play as an app</summary>

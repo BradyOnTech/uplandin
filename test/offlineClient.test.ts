@@ -109,3 +109,24 @@ it('reports actual cache readiness without claiming only Quail or all 2D art is 
   f.serviceWorker.dispatchEvent(new MessageEvent('message', { data: { type: 'offline-unavailable' } }));
   expect(f.status.textContent).toContain('incomplete');
 });
+
+
+it('keeps direct 3D installed choices when shared menu or classic pages become hidden', async () => {
+  const values = new Map<string, string>();
+  const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
+  vi.stubGlobal('localStorage', storage);
+  const f = await fixture();
+  f.module.prepareInstalledHuntUrl('https://game.test/play/index3d.html?area=chukar-ridge&drop=west-track&gun=over-under&quality=lite', storage);
+  const before = [...values];
+  for (const page of ['home3d.html', 'index.html', '', 'prepare3d.html?mode=quick&area=quail-fields', 'classic.html?play=quick&area=pheasant-coverts']) {
+    vi.stubGlobal('location', { href: `https://game.test/play/${page}`, reload: f.reload });
+    window.dispatchEvent(new Event('pagehide'));
+    Object.assign(document, { hidden: true }); document.dispatchEvent(new Event('visibilitychange'));
+    Object.assign(document, { hidden: false });
+    expect([...values], page).toEqual(before);
+  }
+  vi.stubGlobal('location', { href: 'https://game.test/play/index3d.html?area=quail-fields&drop=south-gate&quality=high', reload: f.reload });
+  window.dispatchEvent(new Event('pagehide'));
+  expect(f.module.loadInstalledHuntChoices(storage).get('area')).toBe('quail-fields');
+  expect(f.module.loadInstalledHuntChoices(storage).get('quality')).toBe('high');
+});

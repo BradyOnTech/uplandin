@@ -1,18 +1,27 @@
 import Phaser from 'phaser';
-import { AreaScene } from './scenes/AreaScene';
-import { BreedScene } from './scenes/BreedScene';
+import { resolveClassicLaunch } from './game/classicLaunch';
 import { FieldScene } from './scenes/FieldScene';
 import { FlushScene } from './scenes/FlushScene';
-import { KennelScene } from './scenes/KennelScene';
-import { MapScene } from './scenes/MapScene';
-import { QuickScene } from './scenes/QuickScene';
 import { TitleScene } from './scenes/TitleScene';
-import { DropScene } from './scenes/DropScene';
 import { LOGICAL_HEIGHT, LOGICAL_WIDTH, RENDER_HEIGHT, RENDER_WIDTH } from './scenes/logicalViewport';
 
-/** Stable world/UI coordinates; front-end scenes start with a 2× backing buffer. */
 export const GAME_WIDTH = LOGICAL_WIDTH;
 export const GAME_HEIGHT = LOGICAL_HEIGHT;
+
+// This module is the classic gameplay entry only. Shared DOM preparation
+// validates/saves the draft; this boundary rechecks the current save before play.
+const launch = resolveClassicLaunch(location.search);
+class ClassicEntryScene extends Phaser.Scene {
+  constructor() { super('ClassicEntryScene'); }
+  create(): void {
+    if (launch.kind !== 'field') return;
+    this.scene.get('FieldScene').events.once(Phaser.Scenes.Events.CREATE, () => {
+      const loading = document.getElementById('classic-loading');
+      if (loading) loading.hidden = true;
+    });
+    this.scene.start('FieldScene', launch.data);
+  }
+}
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -21,38 +30,27 @@ const config: Phaser.Types.Core.GameConfig = {
   pixelArt: true,
   roundPixels: true,
   backgroundColor: '#101410',
-  render: {
-    // Menus and gameplay swap backing-buffer sizes. Always clear the whole
-    // buffer first so pixels from the previous scene cannot survive a swap.
-    clearBeforeRender: true,
-  },
-  scale: {
-    mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
-  },
-  scene: [TitleScene, BreedScene, MapScene, KennelScene, QuickScene, AreaScene, DropScene, FieldScene, FlushScene],
+  render: { clearBeforeRender: true },
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  // FlushScene returns its existing live hunt/dogs/simulation to FieldScene.
+  // TitleScene is retained only as a compatibility redirect, never an old menu.
+  scene: [ClassicEntryScene, FieldScene, FlushScene, TitleScene],
 };
 
-// Vite HMR can re-evaluate this module (any update it can't accept in place
-// falls through to here). Never let two Phaser games race one page: the old
-// loop keeps ticking under the new canvas and both crawl.
 const w = window as unknown as Record<string, unknown>;
 const prev = w.__uplandin as Phaser.Game | undefined;
 if (prev && typeof prev.destroy === 'function') prev.destroy(true);
+let game: Phaser.Game | undefined;
+if (launch.kind === 'redirect') {
+  location.replace(launch.href);
+} else {
+  game = new Phaser.Game(config);
+  w.__uplandin = game;
+}
 
-const game = new Phaser.Game(config);
-
-// Handle for poking at the running game from devtools / browser automation.
-w.__uplandin = game;
-
-// PWA: register the service worker in production builds only, so dev never
-// fights a cache. Installed to a phone's home screen, the game runs
-// fullscreen and offline; updates land on the next launch.
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {
-      // No SW support or a blocked context — the game still runs normally.
-    });
+    navigator.serviceWorker.register('./sw.js').catch(() => { /* Online play remains available. */ });
   });
 }
 

@@ -12,7 +12,8 @@ export default defineConfig({
     writeBundle(options, bundle) {
       const directory = resolve(options.dir ?? 'dist');
       const files = [
-        'index.html', 'index3d.html', 'prepare3d.html', 'shotguns3d.html', 'manifest.webmanifest', 'manifest3d.webmanifest', 'icon-192.png', 'icon-512.png',
+        'index.html', 'home3d.html', 'classic.html', 'index3d.html', 'prepare3d.html', 'shotguns3d.html', 'manifest.webmanifest', 'manifest3d.webmanifest', 'icon-192.png', 'icon-512.png',
+        ...['title-landscape', 'quail-fields', 'pheasant-coverts', 'chukar-ridge', 'sharptail-prairie', 'dogs/gsp', 'dogs/english-setter', 'guns/remington-870', 'guns/semi-auto', 'guns/over-under', 'guns/side-by-side'].map(name => `art/menus3d/${name}.webp`),
         'textures/terrain/prairie-painted.webp',
         'textures/terrain/sharptail-sward-v2.webp',
         'textures/terrain/sharptail-granite-v1.webp',
@@ -46,6 +47,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
+        home: resolve(__dirname, 'home3d.html'),
+        classic: resolve(__dirname, 'classic.html'),
         three: resolve(__dirname, 'index3d.html'),
         preparation: resolve(__dirname, 'prepare3d.html'),
         shotguns: resolve(__dirname, 'shotguns3d.html'),

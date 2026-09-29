@@ -6,19 +6,21 @@ import './shotgunViewer.css';
 
 const descriptions: Record<string, { action: string; copy: string }> = {
   'remington-870': { action: 'PUMP ACTION', copy: 'A ribbed walnut forend travels with the support hand to work the action. A single barrel sits above the magazine tube.' },
-  'semi-auto': { action: 'BROWNING A5 · SEMIAUTOMATIC', copy: 'The signature humpback receiver meets a long walnut forend and single sighting rib. The bolt cycles while the support grip stays planted.' },
+  'semi-auto': { action: 'SEMIAUTOMATIC', copy: 'The signature humpback receiver meets a long walnut forend and single sighting rib. The bolt cycles while the support grip stays planted.' },
   'over-under': { action: 'OVER / UNDER', copy: 'Modeled after the Beretta 686 Silver Pigeon: a slim silver action, engraved details and a curved walnut pistol grip beneath stacked barrels.' },
   'side-by-side': { action: 'SIDE BY SIDE', copy: 'Modeled after Upland Gun Company’s RFM Venus: dark figured walnut, a straight English stock, rounded silver action, slender forend and paired triggers.' },
 };
 const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const viewport = el<HTMLDivElement>('viewport');
 const canvas = el<HTMLCanvasElement>('shotgun-view');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x39483e);
+// The equipment stage is a static CSS light field; the live model remains a
+// single transparent canvas, without extra scene geometry or continuous work.
+renderer.setClearColor(0x000000, 0);
 scene.add(new THREE.HemisphereLight(0xe8eedc, 0x77705b, 2.5));
 const key = new THREE.DirectionalLight(0xffe7c5, 3.4); key.position.set(2, 3, 1); scene.add(key);
 const fill = new THREE.DirectionalLight(0xc0d6dc, 2); fill.position.set(-2, 1, -2); scene.add(fill);
@@ -31,6 +33,7 @@ let selected = getGun(new URLSearchParams(location.search).get('gun') ?? 'reming
 let model: SportingShotgun;
 let motion: 'ready' | 'reload' | 'cycle' = 'ready';
 let elapsed = 0, reloadProgress = 0, last = 0, raf = 0;
+let activeView = 'three-quarter';
 const phase = el<HTMLInputElement>('reload-phase');
 const status = el<HTMLParagraphElement>('motion-status');
 const duration = () => .55 + selected.shells * .38;
@@ -60,10 +63,14 @@ function render(now: number) {
 }
 function invalidate() { if (!raf) raf = requestAnimationFrame(render); }
 function setView(name: string) {
+  activeView = name;
   // Leave room for the complete side profile on narrow portrait stages.
   const distance = Math.max(2, 2.6 / Math.max(.6, camera.aspect));
   camera.position.copy(presetDirections[name]).normalize().multiplyScalar(distance).add(controls.target);
   controls.update(); invalidate();
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-view]')) {
+    button.setAttribute('aria-pressed', String(button.dataset.view === name));
+  }
 }
 function chooseGun(id: string) {
   selected = getGun(id);
@@ -72,6 +79,8 @@ function chooseGun(id: string) {
   scene.add(model.root);
   motion = 'ready'; elapsed = 0; reloadProgress = 0; phase.value = '0'; status.textContent = 'Ready';
   el('gun-name').textContent = selected.name;
+  el('stage-gun-name').textContent = selected.name;
+  el('stage-gun-number').textContent = `0${GUNS.indexOf(selected) + 1} / 04`;
   el('gun-description').textContent = descriptions[selected.id].copy;
   el('action-label').textContent = descriptions[selected.id].action;
   el('capacity').textContent = `${selected.shells} shells`;
@@ -84,12 +93,18 @@ function chooseGun(id: string) {
 }
 GUNS.forEach((gun, i) => {
   const button = document.createElement('button'); button.type = 'button'; button.dataset.gun = gun.id;
-  const number = document.createElement('span'); number.textContent = `0${i + 1}`;
-  button.append(number, document.createTextNode(gun.name)); button.onclick = () => chooseGun(gun.id);
+  const number = document.createElement('span'); number.className = 'gun-number'; number.textContent = `0${i + 1}`;
+  const label = document.createElement('span'); label.className = 'gun-choice-label';
+  const name = document.createElement('strong'); name.textContent = gun.name;
+  const action = document.createElement('small'); action.textContent = descriptions[gun.id].action;
+  label.append(name, action); button.append(number, label); button.onclick = () => chooseGun(gun.id);
   el('gun-choices').append(button);
 });
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-view]')) button.onclick = () => setView(button.dataset.view!);
 controls.addEventListener('change', invalidate);
+controls.addEventListener('start', () => {
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-view]')) button.setAttribute('aria-pressed', 'false');
+});
 el('play-reload').onclick = () => { model.update(0, 0, 0, 0, 1); motion = 'reload'; elapsed = 0; reloadProgress = 0; last = 0; status.textContent = 'Reloading'; invalidate(); };
 el('cycle-action').onclick = () => {
   motion = 'cycle'; elapsed = 0; reloadProgress = 0; phase.value = '0'; last = 0; model.fire(); status.textContent = 'Cycling action';
@@ -107,9 +122,10 @@ canvas.addEventListener('keydown', event => {
   if (keyViews[event.key]) { event.preventDefault(); setView(keyViews[event.key]); }
 });
 new ResizeObserver(() => {
+  if (!viewport.clientWidth || !viewport.clientHeight) return;
   camera.aspect = viewport.clientWidth / viewport.clientHeight; camera.updateProjectionMatrix();
   renderer.setSize(viewport.clientWidth, viewport.clientHeight, false);
-  setView('three-quarter');
+  setView(activeView);
 }).observe(viewport);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { cancelAnimationFrame(raf); raf = 0; last = 0; }

@@ -80,6 +80,33 @@ it('stages a complete build without replacing an open hunt, then cold-launches o
   expect(await js?.text()).toBe('new game');
 });
 
+it('serves bundled menu artwork from the installed build on its first offline visit, never stale shared art', async () => {
+  const f = fixture();
+  const menuArt = `${scope}art/menus3d/title-landscape.webp`;
+  const newMenuArt = `${scope}art/menus3d/quail-fields.webp`;
+  f.networkFiles.set(`${scope}precache.json`, JSON.stringify({
+    build: 'new', files: ['index3d.html', 'assets/boot-new.js', 'art/menus3d/title-landscape.webp', 'art/menus3d/quail-fields.webp'],
+  }));
+  f.networkFiles.set(menuArt, 'current bundled landscape');
+  f.networkFiles.set(newMenuArt, 'first-visit property image');
+  const old = await f.caches.open(`${prefix}old`);
+  await old.put(activeUrl, new Response('10'));
+  await old.put(menuArt, new Response('previous bundled landscape'));
+  const sharedArt = await f.caches.open('uplandin-art-v2-%2Fplay%2F');
+  await sharedArt.put(menuArt, new Response('stale shared landscape'));
+
+  await f.dispatch('install');
+  await f.dispatch('activate');
+  f.offline();
+  expect(await (await f.dispatch('fetch', { request: new Request(menuArt) }))?.text()).toBe('current bundled landscape');
+  expect(await (await f.dispatch('fetch', { request: new Request(newMenuArt) }))?.text()).toBe('first-visit property image');
+  // A new menu image which was not precached must not silently use an old
+  // mutable image from a different shell version.
+  const missingArt = `${scope}art/menus3d/removed.webp`;
+  await sharedArt.put(missingArt, new Response('old menu image'));
+  await expect(f.dispatch('fetch', { request: new Request(missingArt) })).rejects.toThrow('network offline');
+});
+
 it('rejects interrupted or mixed-deployment installs and leaves the old shell usable', async () => {
   const f = fixture();
   const old = await f.caches.open(`${prefix}old`);
