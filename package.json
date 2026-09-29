@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:2d": "vite --config vite.2d.config.ts --port 4590",
     "build": "tsc && vite build",
+    "build:2d": "tsc && vite build --config vite.2d.config.ts",
     "preview": "vite preview",
     "play:mobile": "npm run build && vite preview --host 0.0.0.0 --port 4593 --strictPort",
+    "preview:2d": "vite preview --outDir dist-2d --host 0.0.0.0 --port 4591",
     "test": "vitest run",
     "dev:3d": "vite --port 4517",
     "build:3d": "tsc && vite build",
