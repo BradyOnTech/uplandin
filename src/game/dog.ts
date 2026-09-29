@@ -426,6 +426,12 @@ export class Dog {
   private scentStageTotalMs = 0;
   private scentTargetId: number | null = null;
   private scentArcSign = 1;
+  private scentSample: Vec2 | null = null;
+  private scentCloseOrigin: Vec2 | null = null;
+  private scentCastPhase = 0;
+  private scentLocatedMs = 0;
+  private scentLostMs = 0;
+  private scentHandlerHoldMs = 0;
   private markingBirdIds: number[] = [];
 
   constructor(
@@ -763,19 +769,20 @@ export class Dog {
       }
     }
 
+    const fieldScent = env.rangeRadius !== undefined && (env.movementScale ?? 1) < 1;
     const smelledBird = this.nearestHiddenBird(birds, env);
-    // Once a dog has made game, hold that scent for a modest margin. This
-    // prevents a running bird or one lateral locating step from flickering
-    // the sequence back to open search, while still allowing a truly lost
-    // bird to break the approach.
+    // Legacy approaches retain their forgiving scent margin. In the field,
+    // losing the live cone starts a bounded check of its last sampled place.
     const rememberedBird = this.scentTargetId === null
       ? null
       : birds.find((candidate) => candidate.id === this.scentTargetId && candidate.state === 'hidden') ?? null;
     const rememberedInRange = rememberedBird !== null &&
       dist(this.pos, rememberedBird.pos) <=
         this.scentDistance(rememberedBird.pos.x - this.pos.x, rememberedBird.pos.y - this.pos.y, env) *
-          SCENT_MEMORY_MULT;
+          (fieldScent ? 1 : SCENT_MEMORY_MULT);
     const bird = rememberedInRange ? rememberedBird : smelledBird;
+    if (fieldScent && !bird && rememberedBird && this.scentSample && this.state === 'tracking'
+      && this.checkLostFieldScent(dtMs, movementDt, env, wasWaitingForHandler)) return;
     if (bird) {
       if (this.state !== 'tracking' || this.scentTargetId !== bird.id || this.scentStage === 'none') {
         this.beginScentApproach(bird, 'checking');
@@ -785,15 +792,22 @@ export class Dog {
       const style = scentApproachStyle(this.profile.breed, this.profile.level);
       const direct = Math.atan2(bird.pos.y - this.pos.y, bird.pos.x - this.pos.x);
       const birdDistance = dist(this.pos, bird.pos);
+      if (fieldScent) {
+        // Only a source still inside the live wind cone updates this sample.
+        // Memory retains a place to check, never a moving bird's unseen position.
+        if (!this.scentSample) this.scentSample = { ...bird.pos };
+        else { this.scentSample.x = bird.pos.x; this.scentSample.y = bird.pos.y; }
+        this.scentLostMs = 0;
+        if ((this.scentStage === 'stalking' || this.scentStage === 'locking') &&
+          (birdDistance > POINT_SETTLE_RANGE + 8 ||
+            (this.scentCloseOrigin && dist(this.scentCloseOrigin, bird.pos) > 3))) {
+          this.startScentStage('locating', style.locateMs);
+        }
+      }
       // Handler range must also constrain a long scent road-in.
       // Retain the scent and its current beat rather than abandon game or
       // declare a point early. Hysteresis avoids repeated stop/start steps.
-      const closeCover = this.doctrineFor(env).style === 'woods' || this.doctrineFor(env).style === 'bottoms';
-      const trackingLimit = env.trackingRange !== undefined
-        ? env.trackingRange * (wasWaitingForHandler ? .7 : 1)
-        : closeCover && env.rangeRadius !== undefined
-          ? this.effectiveRangeRadius(env) * (wasWaitingForHandler ? 1.2 : 1.6)
-          : Infinity;
+      const trackingLimit = this.scentHandlerLimit(env, wasWaitingForHandler);
       if (env.hunterPos && birdDistance > POINT_SETTLE_RANGE &&
         dist(this.pos, env.hunterPos) > trackingLimit) {
         this.waitingForHandler = true;
@@ -815,6 +829,42 @@ export class Dog {
       }
 
       if (this.scentStage === 'locating') {
+        if (fieldScent) {
+          // A long wind-borne road-in is active locating, not a half-second
+          // animation followed by tens of metres of straight slow stalking.
+          const reach = this.scentDistance(bird.pos.x - this.pos.x, bird.pos.y - this.pos.y, env);
+          const confidence = clamp((reach - birdDistance) / Math.max(1, reach - POINT_SETTLE_RANGE), 0, 1);
+          this.scentLocatedMs += dtMs;
+          this.scentProgress = confidence;
+          // A steady field dog can hold off the final pressure while its
+          // handler closes. This finite window is not a point and does not
+          // refill when a runner briefly reopens the same scent approach.
+          const handlerReady = !env.hunterPos || dist(this.pos, env.hunterPos) <= this.effectiveRangeRadius(env);
+          if (birdDistance <= POINT_SETTLE_RANGE + 5 && !handlerReady && this.scentHandlerHoldMs < 8000) {
+            this.scentHandlerHoldMs += dtMs;
+            this.waitingForHandler = true;
+            this.gait = 'still';
+            this.heading = turnToward(this.heading, direct, 4 * dt);
+            return;
+          }
+          const maturity = clamp((this.level - 1) / 9, 0, 1);
+          this.scentCastPhase += dt * Math.PI * 2 / (3.2 + this.profile.breed.motion.searchLooseness * .8 - maturity * .4);
+          const close = clamp((birdDistance - POINT_SETTLE_RANGE - 5) / 25, 0, 1);
+          const arc = style.locateArc * (1 + (1 - confidence) * .5) * (.3 + close * .7);
+          const offset = Math.sin(this.scentCastPhase) * arc * this.scentArcSign;
+          this.heading = turnToward(this.heading, direct + offset, 3.6 * dt);
+          // Use the field's active travel capacity; the old trot scale would
+          // make extending this stage slower than the already-slow stalk.
+          this.gait = 'run';
+          const pace = .64 + close * (.12 + maturity * .04);
+          this.advanceTowardPoint(this.heading, birdDistance, this.workingSpeed(env, this.trackSpeed) * pace * movementDt);
+          if (dist(this.pos, bird.pos) <= POINT_SETTLE_RANGE + 5 && this.scentLocatedMs >= style.locateMs &&
+            (handlerReady || this.scentHandlerHoldMs >= 8000)) {
+            this.scentCloseOrigin = { ...bird.pos };
+            this.startScentStage('stalking', 0);
+          }
+          return;
+        }
         // Tightening lateral casts identify the exact source instead of a
         // straight-line charge. The arc collapses as confidence builds.
         this.tickTimedScentStage(dtMs);
@@ -834,7 +884,7 @@ export class Dog {
         // Low, increasingly careful road-in. Progress is distance-based so
         // movementScale can slow 3D presentation without desynchronizing it.
         const d = dist(this.pos, bird.pos);
-        this.scentProgress = clamp(1 - (d - POINT_SETTLE_RANGE) / Math.max(1, SCENT_RADIUS - POINT_SETTLE_RANGE), 0, 1);
+        this.scentProgress = clamp(1 - (d - POINT_SETTLE_RANGE) / (fieldScent ? 5 : Math.max(1, SCENT_RADIUS - POINT_SETTLE_RANGE)), 0, 1);
         this.heading = turnToward(this.heading, direct, (2.8 + this.scentProgress * 2.2) * dt);
         this.gait = 'track';
         this.advanceTowardPoint(this.heading, d, this.workingSpeed(env, this.trackSpeed) * style.stalkPace * movementDt);
@@ -1002,6 +1052,11 @@ export class Dog {
   private beginScentApproach(bird: Bird, stage: Exclude<DogScentStage, 'none'>): void {
     const style = scentApproachStyle(this.profile.breed, this.profile.level);
     this.scentTargetId = bird.id;
+    this.scentSample = null;
+    this.scentCloseOrigin = stage === 'stalking' ? { ...bird.pos } : null;
+    this.scentCastPhase = 0;
+    this.scentLostMs = 0;
+    this.scentHandlerHoldMs = 0;
     // Alternate the opening cast without consuming the gameplay RNG stream
     // used by creep, break and honor rolls.
     this.scentArcSign *= -1;
@@ -1020,6 +1075,43 @@ export class Dog {
     this.scentStageMs = durationMs;
     this.scentStageTotalMs = durationMs;
     this.scentProgress = 0;
+    if (stage === 'locating') this.scentLocatedMs = 0;
+  }
+
+  /** A finite check of the last sampled cone, not tracking through lost scent. */
+  private checkLostFieldScent(dtMs: number, movementDt: number, env: DogEnv, wasWaiting: boolean): boolean {
+    const sample = this.scentSample!;
+    this.scentLostMs += dtMs;
+    const duration = 1400 + this.profile.breed.motion.searchLooseness * 500;
+    if (this.scentLostMs >= duration) return false;
+    this.scentStage = 'locating';
+    this.scentProgress = 0;
+    this.scentCloseOrigin = null;
+    this.scentLocatedMs = 0;
+    this.scentCastPhase += dtMs / 1000 * Math.PI;
+    this.work(dtMs * (env.drainMult ?? 1));
+    const direct = Math.atan2(sample.y - this.pos.y, sample.x - this.pos.x);
+    const offset = Math.sin(this.scentCastPhase) * .8 * this.scentArcSign;
+    this.heading = turnToward(this.heading, direct + offset, 3.6 * dtMs / 1000);
+    if (env.hunterPos && dist(this.pos, env.hunterPos) > this.scentHandlerLimit(env, wasWaiting)) {
+      this.waitingForHandler = true;
+      this.gait = 'still';
+      return true;
+    }
+    this.gait = 'trot';
+    this.advanceTowardPoint(this.heading, dist(this.pos, sample), this.workingSpeed(env, this.trackSpeed) * .6 * movementDt);
+    return true;
+  }
+
+  private scentHandlerLimit(env: DogEnv, wasWaiting: boolean): number {
+    const style = this.doctrineFor(env).style;
+    return env.trackingRange !== undefined
+      ? env.trackingRange * (wasWaiting ? .7 : 1)
+      : (style === 'woods' || style === 'bottoms') && env.rangeRadius !== undefined
+        ? this.effectiveRangeRadius(env) * (wasWaiting ? 1.2 : 1.6)
+        : env.rangeRadius !== undefined && (env.movementScale ?? 1) < 1
+          ? this.effectiveRangeRadius(env) * (wasWaiting ? 1.3 : 1.6)
+          : Infinity;
   }
 
   private tickTimedScentStage(dtMs: number): void {
@@ -1035,6 +1127,8 @@ export class Dog {
     this.scentStageMs = 0;
     this.scentStageTotalMs = 0;
     this.scentTargetId = null;
+    this.scentSample = this.scentCloseOrigin = null;
+    this.scentCastPhase = this.scentLocatedMs = this.scentLostMs = this.scentHandlerHoldMs = 0;
     this.scentCheck = false;
   }
 

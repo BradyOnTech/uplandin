@@ -88,7 +88,10 @@ it('retains less-forgiving Wild and running approaches instead of guaranteeing a
   const rushed = walkIn(41, 'balanced', 'run');
   expect(relaxed.rangeM).toBeLessThan(quiet.rangeM);
   expect(wary.flush.cause).toBe('nerve');
-  expect(wary.rangeM).toBeGreaterThan(quiet.rangeM + 5);
+  // Handler-aware scent work now finishes its point closer to the hunter.
+  // Wild must still rise appreciably earlier, without requiring the old
+  // long straight road-in's exact initial separation.
+  expect(wary.rangeM).toBeGreaterThan(quiet.rangeM + 3);
   // A rushed approach can exhaust the point or enter the larger sprint
   // spook radius first. Either is a genuine earlier wild rise.
   expect(['nerve', 'spook']).toContain(rushed.flush.cause);
@@ -99,7 +102,9 @@ it('retains less-forgiving Wild and running approaches instead of guaranteeing a
 it('still loses a distant covey naturally if the handler never closes the point', () => {
   const result = walkIn(41, 'balanced', 'wait');
   expect(result.flush.cause).toBe('nerve');
-  expect(result.rangeM).toBeGreaterThan(40);
+  // The trained dog holds off close pressure before pointing; stopping
+  // after that earned point still loses a distant, unapproached covey.
+  expect(result.rangeM).toBeGreaterThan(30);
   expect(result.holdMs).toBeGreaterThan(0);
   expect(result.holdMs).toBeLessThan(35_000);
 });
