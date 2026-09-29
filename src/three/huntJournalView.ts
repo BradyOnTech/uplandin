@@ -14,15 +14,18 @@ export function openHuntJournal(career: Career, opener?: HTMLElement): void {
   const entries = readHuntJournal(career);
   const dialog = document.createElement('dialog'); dialog.id = 'hunt-journal';
   dialog.setAttribute('aria-labelledby', 'hunt-journal-title');
-  const header = document.createElement('header');
+  const header = document.createElement('header'); header.className = 'hunt-journal-header';
   const title = document.createElement('div');
   title.append(text('p', 'UPLANDIN · YOUR SEASON', 'eyebrow'));
   const heading = text('h2', 'Field journal'); heading.id = 'hunt-journal-title'; title.append(heading);
+  const summary = text('p', `${career.hunts} career hunt${career.hunts === 1 ? '' : 's'} · ${entries.length} recent ${entries.length === 1 ? 'entry' : 'entries'}`, 'hunt-journal-intro');
+  summary.id = 'hunt-journal-summary'; title.append(summary);
+  dialog.setAttribute('aria-describedby', summary.id);
   const close = text('button', 'Close'); close.type = 'button'; close.id = 'hunt-journal-close';
   close.addEventListener('click', () => dialog.close()); header.append(title, close);
   const content = document.createElement('div'); content.className = 'hunt-journal-content';
+  content.tabIndex = 0; content.setAttribute('role', 'region'); content.setAttribute('aria-label', 'Recent hunt entries');
   if (entries.length) {
-    content.append(text('p', `${career.hunts} career hunt${career.hunts === 1 ? '' : 's'} · ${entries.length} recent ${entries.length === 1 ? 'entry' : 'entries'}`, 'hunt-journal-intro'));
     const list = document.createElement('ol'); list.className = 'hunt-journal-list';
     for (const entry of entries) {
       const notes = formatHuntJournalEntry(entry);

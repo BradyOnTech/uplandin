@@ -33,8 +33,8 @@
     <div id="reticle" hidden aria-hidden="true"></div>
     <div id="shot-callout" hidden aria-live="assertive"></div>
     <section id="hunt-summary" hidden aria-label="Hunt summary">
+      <div class="hunt-summary-heading"><h2>Hunt complete</h2><button id="summary-journal-open" type="button">Journal</button></div>
       <div id="hunt-summary-content">
-        <div class="hunt-summary-heading"><h2>HUNT COMPLETE</h2><button id="summary-journal-open" type="button">Journal</button></div>
         <div id="hunt-summary-copy"></div>
       </div>
       <div class="hunt-summary-actions">
@@ -104,34 +104,27 @@
         <progress id="loading-progress" max="1" value="0" aria-label="Loading the field"></progress>
         <button id="retry-field" type="button" hidden>Reload the field</button>
         </header>
+        <nav class="field-menu-tabs" role="tablist" aria-label="Field menu sections">
+          <button id="field-tab-hunt" type="button" role="tab" data-field-tab="hunt" aria-selected="true" aria-controls="field-panel-hunt">Your hunt</button>
+          <button id="field-tab-settings" type="button" role="tab" data-field-tab="settings" aria-selected="false" aria-controls="field-panel-settings" tabindex="-1">Settings</button>
+          <button id="field-tab-guide" type="button" role="tab" data-field-tab="guide" aria-selected="false" aria-controls="field-panel-guide" tabindex="-1">Field guide</button>
+        </nav>
         <div class="field-menu-body">
+        <section id="field-panel-hunt" class="field-menu-panel" role="tabpanel" aria-labelledby="field-tab-hunt">
         <section id="shotgun-options" aria-labelledby="shotgun-label" hidden>
           <label id="shotgun-label" for="shotgun-setting">Shotgun</label>
           <select id="shotgun-setting" aria-describedby="shotgun-equipped" disabled></select>
           <p id="shotgun-equipped"></p>
-          <a id="shotgun-rack" href="./shotguns3d.html" target="_blank" rel="noopener">3D Gun Rack <span aria-hidden="true">↗</span></a>
+          <a id="shotgun-rack" href="./shotguns3d.html" target="_blank" rel="noopener">Open 3D gun rack <span aria-hidden="true">↗</span></a>
           <p id="shotgun-status" role="status" aria-live="polite"></p>
         </section>
-        <details id="field-guide" hidden>
-          <summary>Controls &amp; field guide</summary>
-        <div id="field-instructions">
-          <p class="desktop-instructions"><kbd>W A S D</kbd> Walk <span>·</span> <kbd>Shift</kbd> Run <span>·</span> <kbd>Q</kbd> Whistle <span>·</span> <kbd>M</kbd> Survey map</p>
-          <p class="desktop-instructions"><kbd>F</kbd> Toggle aim · <kbd>Space</kbd> Shoot · <kbd>R</kbd> Reload.<br>Mouse: hold right button to aim, left button to shoot.</p>
-          <p class="desktop-instructions">On a trackpad, use <kbd>F</kbd> to raise the gun and <kbd>Space</kbd> to fire. If mouse lock is unavailable, drag to look and swing.</p>
-          <p class="touch-instructions">Drag left to walk; farther to run. Drag right to look. Hold Shotgun to raise it, drag to swing, then release to shoot. At the screen edge, keep holding to continue the swing; move inward to stop. For another shot, press and swing again. Release over Lower to cancel, or tap Lower to put the gun down. Whistle recalls your dog; whistle again at heel to send it hunting.</p>
-          <p class="touch-instructions orientation-tip">Turn your phone sideways for a wider view of the field.</p>
-          <p>You can fire whenever the gun is raised. Swing ahead of crossing birds; let distant birds go.</p>
-          <p>Your dog searches on its own. Whistle recalls it; whistle again once all dogs are at heel to send them hunting. A fallen bird is recovered and brought to hand automatically.</p>
-          <p class="field-tip">Work the edges into the wind. When your dog holds point, walk in steadily.</p>
+        <div id="challenge-options">
+          <label>Hunt challenge <select id="challenge-setting" aria-describedby="challenge-help"><option value="relaxed">Relaxed</option><option value="balanced">Balanced</option><option value="wild">Wild</option></select></label>
+          <p id="challenge-help">Work the cover and approach quietly. Birds can still surprise you.</p>
         </div>
-          <div id="field-guide-preferences">
-            <label><input id="field-guide-enabled" type="checkbox" checked> Show occasional field tips</label>
-            <button id="field-guide-repeat" type="button">Show tips again</button>
-            <p id="field-guide-status" role="status"></p>
-          </div>
-        </details>
-        <details id="field-settings" class="field-settings">
-          <summary>Hunt settings <span>Light, display &amp; controls</span></summary>
+        </section>
+        <section id="field-panel-settings" class="field-menu-panel" role="tabpanel" aria-labelledby="field-tab-settings" hidden>
+        <div id="field-settings" class="field-settings">
         <div id="field-options">
           <label id="property-option">Property <select id="property-setting">
             <option value="quail-fields">Quail Fields</option>
@@ -163,11 +156,27 @@
           <label for="shot-assistance-setting">Shot assistance <select id="shot-assistance-setting" aria-describedby="shot-assistance-help"><option value="difficulty">Match difficulty</option><option value="off">Off</option><option value="light">Light</option><option value="generous">Generous</option></select></label>
           <p id="shot-assistance-help" aria-live="polite"></p></div>
         </div>
-        <div id="challenge-options">
-          <label>Hunt challenge <select id="challenge-setting" aria-describedby="challenge-help"><option value="relaxed">Relaxed</option><option value="balanced">Balanced</option><option value="wild">Wild</option></select></label>
-          <p id="challenge-help">Work the cover and approach quietly. Birds can still surprise you.</p>
+
         </div>
-        </details>
+        </section>
+        <section id="field-panel-guide" class="field-menu-panel" role="tabpanel" aria-labelledby="field-tab-guide" hidden>
+        <div id="field-guide" hidden>
+        <div id="field-instructions">
+          <p class="desktop-instructions"><kbd>W A S D</kbd> Walk <span>·</span> <kbd>Shift</kbd> Run <span>·</span> <kbd>Q</kbd> Whistle <span>·</span> <kbd>M</kbd> Survey map</p>
+          <p class="desktop-instructions"><kbd>F</kbd> Toggle aim · <kbd>Space</kbd> Shoot · <kbd>R</kbd> Reload.<br>Mouse: hold right button to aim, left button to shoot.</p>
+          <p class="desktop-instructions">On a trackpad, use <kbd>F</kbd> to raise the gun and <kbd>Space</kbd> to fire. If mouse lock is unavailable, drag to look and swing.</p>
+          <p class="touch-instructions">Drag left to walk; farther to run. Drag right to look. Hold Shotgun to raise it, drag to swing, then release to shoot. At the screen edge, keep holding to continue the swing; move inward to stop. For another shot, press and swing again. Release over Lower to cancel, or tap Lower to put the gun down. Whistle recalls your dog; whistle again at heel to send it hunting.</p>
+          <p class="touch-instructions orientation-tip">Turn your phone sideways for a wider view of the field.</p>
+          <p>You can fire whenever the gun is raised. Swing ahead of crossing birds; let distant birds go.</p>
+          <p>Your dog searches on its own. Whistle recalls it; whistle again once all dogs are at heel to send them hunting. A fallen bird is recovered and brought to hand automatically.</p>
+          <p class="field-tip">Work the edges into the wind. When your dog holds point, walk in steadily.</p>
+        </div>
+          <div id="field-guide-preferences">
+            <label><input id="field-guide-enabled" type="checkbox" checked> Show occasional field tips</label>
+            <button id="field-guide-repeat" type="button">Show tips again</button>
+            <p id="field-guide-status" role="status"></p>
+          </div>
+        </div>
         <div class="field-menu-utilities">
         <div id="mobile-hunt-actions"></div>
         <button id="field-journal-open" type="button">Field journal <span>Recent career hunts</span></button>
@@ -190,9 +199,10 @@
           <p id="performance-status" role="status">Capture starts after the field is ready.</p>
         </details>
         </div>
+        </section>
         </div>
         <footer class="field-menu-footer">
-        <a id="field-preparation" class="menu-link" href="./prepare3d.html">Back to hunt preparation</a>
+        <a id="field-preparation" class="menu-link" href="./prepare3d.html">Hunt preparation</a>
         <button id="enter-field" class="primary" type="button" hidden>Enter the field <span aria-hidden="true">↗</span></button>
         </footer>
       </div>

@@ -1,0 +1,53 @@
+/* The native field remains the form/value authority and is restored on destroy. */
+select.menu-select-native { display:none !important; }
+button.menu-select-trigger {
+  display:flex; align-items:center; justify-content:space-between; gap:14px;
+  width:100%; min-width:0; min-height:46px; padding:11px 13px;
+  border:0; border-radius:9px; background:var(--menu-select-surface,#ffffff08);
+  color:inherit; font:inherit; font-size:15px; text-align:left; cursor:pointer;
+  box-shadow:inset 0 0 0 1px #86998242,inset 0 1px #ffffff0b,0 1px 2px #00000008;
+  transition:background-color 140ms,box-shadow 140ms,scale 140ms;
+}
+button.menu-select-trigger[hidden] { display:none; }
+button.menu-select-trigger:hover:not(:disabled) { background:var(--menu-select-hover,#899c8620); }
+button.menu-select-trigger[aria-expanded=true] { box-shadow:inset 0 0 0 1px var(--menu-ochre,#dfbf7e),0 0 0 3px #dfbf7e12; }
+button.menu-select-trigger:active:not(:disabled) { transform:none; scale:.96; }
+button.menu-select-trigger:disabled { cursor:default; opacity:.48; }
+.menu-select-value { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.menu-select-chevron { flex:none; width:7px; height:7px; margin:0 2px 4px 0; border-right:1.5px solid currentColor; border-bottom:1.5px solid currentColor; rotate:45deg; opacity:.65; transition:rotate 140ms; }
+[aria-expanded=true]>.menu-select-chevron { rotate:225deg; margin-bottom:0; }
+.menu-select-dialog {
+  position:fixed; inset:auto; margin:0; padding:0; border:0; border-radius:14px;
+  max-width:none; min-width:0; overflow:hidden; box-sizing:border-box;
+  background:var(--menu-panel,#2b4337); color:var(--menu-paper,#f1edde);
+  box-shadow:0 0 0 1px #ffffff19,0 6px 12px #07170f26,0 22px 65px #07170f70;
+  font:15px/1.35 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  -webkit-font-smoothing:antialiased; color-scheme:dark;
+}
+.menu-select-dialog[open] { display:flex; flex-direction:column; }
+.menu-select-dialog::backdrop { background:#06170e38; }
+.menu-select-dialog[data-layout=sheet] { border-radius:18px; padding-bottom:env(safe-area-inset-bottom,0px); }
+.menu-select-header { display:flex; flex:none; align-items:center; justify-content:space-between; gap:12px; padding:8px 8px 6px 16px; box-shadow:0 1px #ffffff0e; }
+.menu-select-header h2 { margin:0; min-width:0; font:600 12px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; color:var(--menu-light-muted,#bec9b6); text-wrap:balance; }
+button.menu-select-close { flex:none; width:44px; min-height:44px; padding:0; border:0; border-radius:8px; background:transparent; color:inherit; font:300 26px/1 sans-serif; box-shadow:none; }
+.menu-select-options { min-height:0; overflow:auto; padding:5px; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:#d9dfc947 transparent; touch-action:pan-y; scroll-padding-block:5px; }
+button.menu-select-option {
+  display:flex; align-items:center; justify-content:space-between; gap:16px;
+  width:100%; min-height:46px; margin:0; padding:11px 12px; border:0; border-radius:9px;
+  background:transparent; color:inherit; text-align:left; font:inherit; box-shadow:none;
+  cursor:pointer; scroll-margin-block:5px; transition:background-color 120ms,scale 120ms;
+}
+.menu-select-words { display:flex; flex-direction:column; min-width:0; gap:4px; }
+.menu-select-option-name { text-wrap:pretty; overflow-wrap:anywhere; }
+.menu-select-description { font-size:12px; line-height:1.45; color:var(--menu-light-muted,#bec9b6); text-wrap:pretty; }
+.menu-select-check { flex:none; width:16px; color:var(--menu-ochre,#dfbf7e); opacity:0; }
+.menu-select-option[aria-selected=true] { background:#dfbf7e12; }
+.menu-select-option[aria-selected=true]>.menu-select-check { opacity:1; }
+button.menu-select-option:hover:not(:disabled),button.menu-select-close:hover { background:#ffffff0d; }
+button.menu-select-option:focus-visible,button.menu-select-close:focus-visible { outline:2px solid var(--menu-ochre,#dfbf7e); outline-offset:-2px; background:#ffffff0d; }
+button.menu-select-option:active:not(:disabled),button.menu-select-close:active { transform:none; scale:.96; }
+button.menu-select-option:disabled { cursor:default; opacity:.42; }
+.menu-select-group { padding:11px 12px 5px; font-size:11px; font-weight:600; color:var(--menu-light-muted,#bec9b6); }
+@media (prefers-reduced-motion:reduce) {
+  button.menu-select-trigger,button.menu-select-option,.menu-select-chevron { transition:none; }
+}

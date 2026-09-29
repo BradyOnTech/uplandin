@@ -9,32 +9,37 @@
 <body>
   <main>
     <section class="rack" aria-labelledby="rack-title">
-      <a class="back" href="./index.html">← Uplandin</a>
-      <p class="eyebrow">FIELD EQUIPMENT / 01</p>
-      <h1 id="rack-title">The gun rack</h1>
-      <p class="intro">Four actions. A different way to carry the field.</p>
-      <div id="gun-choices" role="group" aria-label="Choose a shotgun"></div>
-      <div class="gun-copy" aria-live="polite">
-        <h2 id="gun-name"></h2>
-        <p id="gun-description"></p>
-        <dl><div><dt>Capacity</dt><dd id="capacity"></dd></div><div><dt>Career unlock</dt><dd id="unlock"></dd></div></dl>
+      <header class="rack-header">
+        <a class="back" href="./index.html">← Uplandin</a>
+        <p class="eyebrow">FIELD EQUIPMENT</p>
+        <h1 id="rack-title">The gun rack</h1>
+        <p class="intro">Choose a shotgun. Get to know its action.</p>
+      </header>
+      <div class="rack-scroll">
+        <div id="gun-choices" role="group" aria-label="Choose a shotgun"></div>
+        <div class="gun-copy" aria-live="polite">
+          <h2 id="gun-name"></h2>
+          <dl><div><dt>Capacity</dt><dd id="capacity"></dd></div><div><dt>Career unlock</dt><dd id="unlock"></dd></div></dl>
+          <details class="gun-details"><summary>Design notes</summary><p id="gun-description"></p></details>
+        </div>
       </div>
-      <a id="try-gun" class="primary" href="./index3d.html?area=pheasant-coverts">Try in Pheasant Coverts <span aria-hidden="true">↗</span></a>
-      <p class="footnote">All four are available in Quick Hunt. This field preview starts a separate hunt.</p>
+      <footer class="rack-footer">
+        <a id="try-gun" class="primary" href="./index3d.html?area=pheasant-coverts">Try in Pheasant Coverts <span aria-hidden="true">↗</span></a>
+        <p class="footnote">Starts a separate Quick Hunt. All four guns are available.</p>
+      </footer>
     </section>
     <section class="stage" aria-label="Interactive shotgun view">
       <div class="stage-heading"><span id="action-label">PUMP ACTION</span><span>LOW-POLY FIELD SERIES</span></div>
       <div id="viewport"><canvas id="shotgun-view" tabindex="0" aria-label="3D shotgun. Drag to rotate, scroll or pinch to zoom. Use the view buttons for fixed angles."></canvas></div>
       <div class="stage-footer">
-        <p class="gesture-hint">Drag to rotate · Scroll or pinch to zoom</p>
         <div class="view-controls" role="group" aria-label="Viewing angle">
-          <button type="button" data-view="profile">Side</button><button type="button" data-view="top">Above</button><button type="button" data-view="breech">Breech</button><button type="button" data-view="muzzle">Barrels</button><button type="button" data-view="three-quarter">Reset view</button>
+          <button type="button" data-view="profile">Side</button><button type="button" data-view="top">Above</button><button type="button" data-view="breech">Breech</button><button type="button" data-view="muzzle">Barrels</button><button type="button" data-view="three-quarter" aria-label="Reset view">Reset</button>
         </div>
         <div class="motion-controls">
           <button type="button" id="cycle-action">Cycle action</button><button type="button" id="play-reload">Play reload</button>
           <label class="reload-slider">Reload <input id="reload-phase" type="range" min="0" max="1" step="0.001" value="0"></label>
         </div>
-        <p id="motion-status" role="status">Ready</p>
+        <div class="stage-meta"><p class="gesture-hint">Drag to rotate · Pinch or scroll to zoom</p><p id="motion-status" role="status">Ready</p></div>
       </div>
     </section>
   </main>

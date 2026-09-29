@@ -1,0 +1,141 @@
+/* Menus use the viewport as a frame. Only the selected panel scrolls. */
+#field-overlay {
+  place-items:center; overflow:hidden;
+  padding:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));
+  background:linear-gradient(115deg,#10261ce8,#10261c80);
+}
+#field-overlay .field-card {
+  width:min(900px,100%); height:min(590px,100%); max-height:100%; min-height:0;
+  display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; padding:0; overflow:hidden;
+  border-radius:16px; background:var(--menu-forest); box-shadow:var(--menu-shadow);
+}
+.field-menu-heading { padding:24px 30px 20px; color:var(--menu-ink); background:var(--menu-paper); }
+.field-menu-heading>.eyebrow { margin:0 0 8px; color:#786333; font-size:10px; letter-spacing:.15em; }
+#field-title { margin:0; font:400 clamp(28px,3vw,38px)/1.12 var(--menu-serif); letter-spacing:-.035em; }
+#field-description { max-width:740px; margin:10px 0 0; color:var(--menu-muted); font-size:13px; line-height:1.5; }
+#field-species { margin:10px 0 0; color:#766333; font-size:11px; }
+#field-method { margin:7px 0 0; padding:0; border:0; color:#506044; font-size:10px; letter-spacing:.08em; }
+#loading-status { color:var(--menu-muted); margin:12px 0 4px; }
+#loading-progress { margin:8px 0 0; accent-color:#8e793f; }
+.field-has-entered #field-description,.field-has-entered #field-species { display:none; }
+.field-menu-tabs { display:flex; gap:4px; padding:8px 26px 0; border-bottom:1px solid var(--menu-line); background:var(--menu-deep); }
+.field-menu-tabs button { min-height:48px; padding:12px 20px; border-radius:6px 6px 0 0; box-shadow:none; background:transparent; color:var(--menu-light-muted); font-size:13px; }
+.field-menu-tabs button:hover { color:var(--menu-paper); background:#ffffff08; }
+.field-menu-tabs button[aria-selected=true] { color:var(--menu-ochre); background:var(--menu-forest); box-shadow:inset 0 -2px var(--menu-ochre); }
+.field-menu-body { min-height:0; min-width:0; overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; padding:24px 28px; }
+.field-menu-panel { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:28px; align-items:start; }
+.field-menu-panel>* { min-width:0; }
+#shotgun-options { margin:0; padding:0; border:0; border-radius:0; background:none; box-shadow:none; }
+#shotgun-label { display:block; margin:0 0 12px; color:var(--menu-paper); font:400 24px/1.2 var(--menu-serif); letter-spacing:-.02em; text-transform:none; }
+#shotgun-setting { width:100%; min-height:48px; font-size:16px; background:var(--menu-deep); }
+#shotgun-equipped { color:var(--menu-light-muted); margin:12px 0; font-size:12px; line-height:1.55; }
+#shotgun-rack { display:flex; justify-content:space-between; align-items:center; min-height:48px; padding:12px 16px; color:var(--menu-ochre); border-radius:8px; background:#dfbf7e12; box-shadow:inset 0 0 0 1px #dfbf7e35; font-size:13px; }
+#shotgun-rack:hover { background:#dfbf7e26; }
+#shotgun-status:empty { display:none; }
+#challenge-options { margin:0; padding:0; border:0; }
+#challenge-options>label { display:grid; justify-content:stretch; grid-template-columns:minmax(0,1fr); gap:12px; font:400 24px/1.2 var(--menu-serif); letter-spacing:-.02em; }
+#challenge-options .menu-select-trigger { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; letter-spacing:0; }
+#challenge-help,#shot-view-help,#shot-assistance-help { max-width:none; color:var(--menu-light-muted); font-size:12px; line-height:1.55; margin:12px 0 0; }
+#field-panel-settings { display:block; }
+#field-settings { padding:0; background:none; border:0; }
+#field-settings>summary,#field-guide>summary { display:none; }
+#field-settings { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:24px 28px; }
+#field-options { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:18px 16px; margin:0; grid-column:1 / -1; }
+#field-options label,#shot-view-options label,.touch-sensitivity label { display:grid; justify-content:stretch; grid-template-columns:minmax(0,1fr); align-items:stretch; gap:8px; font-size:12px; color:var(--menu-light-muted); }
+#field-options label:has(input[type=checkbox]) { display:flex; align-items:center; min-height:44px; gap:10px; }
+#field-options select,#challenge-setting,#touch-sight-setting,#shot-assistance-setting { min-width:0; width:100%; min-height:48px; padding:10px; background:var(--menu-deep); border:1px solid #ffffff20; border-radius:8px; font:16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+#field-options input[type=checkbox],#field-guide-enabled { accent-color:var(--menu-ochre); width:20px; height:20px; margin:0; }
+#shot-view-options,.touch-sensitivity { margin:0; }
+.touch-sensitivity output { float:right; }
+.touch-sensitivity input[type=range] { width:100%; min-height:32px; accent-color:var(--menu-ochre); }
+#field-guide { margin:0; padding:0; background:none; }
+#field-instructions { line-height:1.65; font-size:12px; }
+#field-instructions p { margin:0 0 16px; }
+#field-guide-preferences { padding:8px 0; }
+#field-guide-preferences label { display:flex; align-items:center; gap:10px; min-height:44px; font-size:12px; }
+.field-menu-utilities { min-width:0; }
+#field-journal-open { width:100%; margin:0 0 16px; padding:14px 16px; text-align:left; background:#ffffff08; font-size:13px; }
+#field-journal-open span { display:block; margin-top:5px; color:var(--menu-light-muted); font-size:11px; }
+#mobile-hunt-actions { margin-bottom:16px; }
+#mobile-hunt-actions:empty { display:none; }
+#install-help { margin:12px 0; }
+#install-help summary { min-height:44px; display:flex; align-items:center; cursor:pointer; }
+#offline-status:empty { display:none; }
+.field-menu-footer { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:14px 28px; border-top:1px solid var(--menu-line); background:var(--menu-deep); }
+#enter-field { width:auto; min-width:220px; min-height:48px; margin:0; padding:12px 20px; background:var(--menu-ochre); color:var(--menu-ink); font-size:14px; }
+#field-preparation { display:flex; align-items:center; min-height:44px; padding:8px 0; color:var(--menu-light-muted); font-size:13px; }
+#field-preparation:hover { color:var(--menu-paper); }
+#field-overlay summary:focus-visible { outline:2px solid var(--menu-ochre); outline-offset:4px; border-radius:4px; }
+#hunt-summary { width:min(720px,calc(100vw - 40px)); max-height:calc(100dvh - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); border-radius:16px; background:var(--menu-forest); box-shadow:var(--menu-shadow); }
+.hunt-summary-heading { flex:none; padding:20px 28px; gap:16px; align-items:center; color:var(--menu-ink); background:var(--menu-paper); }
+#hunt-summary h2 { margin:0; font:400 clamp(26px,3vw,34px)/1.12 var(--menu-serif); letter-spacing:-.025em; }
+#summary-journal-open { background:#20372d10; color:var(--menu-ink); box-shadow:none; }
+#hunt-summary-content { padding:24px 28px; }
+#hunt-summary-copy { font-size:14px; }
+.field-notes-location { color:var(--menu-light-muted); margin:0 0 18px; }
+.field-notes-bag { padding:18px 20px; border-radius:10px; background:#ffffff08; gap:18px; }
+.field-notes-bag strong { color:var(--menu-ochre); font-size:56px; }
+.field-notes-bag span { color:var(--menu-light-muted); }
+.field-notes-stats { gap:16px; padding:18px 0; }
+.field-notes-stats dt { font-size:11px; color:var(--menu-light-muted); }
+.field-notes-stats dd { font-size:21px; }
+.field-notes-career { padding:20px; border-radius:10px; background:#ffffff05; box-shadow:inset 0 1px #fff1; }
+.field-notes-career h3 { font-size:23px; }
+.hunt-summary-actions { justify-content:flex-end; padding:14px 28px; gap:10px; background:var(--menu-deep); }
+.hunt-summary-actions button { min-height:48px; padding:12px 20px; }
+#hunt-menu { background:var(--menu-ochre); color:var(--menu-ink); }
+#field-map { background:#10241dde; }
+.field-map-card { width:min(1240px,100%); border-radius:16px; padding:22px; background:var(--menu-forest); box-shadow:var(--menu-shadow); }
+.field-map-heading h2 { font-family:var(--menu-serif); }
+.field-map-sheet { border-radius:8px; }
+.field-map-toolbar button { background:#ffffff0a; }
+.field-map-toolbar button:hover { background:#ffffff15; }
+@media (max-width:600px) {
+  #field-overlay,body.touch-controls-active #field-overlay { padding:max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left)); }
+  #field-overlay .field-card { height:100%; border-radius:12px; }
+  .field-menu-heading { padding:18px; }
+  #field-title { font-size:30px; }
+  #field-description { font-size:12px; }
+  #field-method { font-size:9px; }
+  .field-menu-tabs { padding:4px 12px 0; gap:0; }
+  .field-menu-tabs button { flex:1; padding:12px 8px; }
+  .field-menu-body { padding:20px 18px; }
+  .field-menu-panel { grid-template-columns:minmax(0,1fr); gap:24px; }
+  #field-settings { grid-template-columns:minmax(0,1fr); gap:24px; }
+  #field-options { grid-template-columns:minmax(0,1fr); }
+  .field-menu-footer { padding:10px 16px; gap:12px; }
+  #field-preparation { font-size:12px; max-width:90px; line-height:1.4; }
+  #enter-field { flex:1; min-width:0; padding:12px; font-size:13px; }
+  #hunt-summary { width:calc(100vw - 16px); max-height:calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); border-radius:12px; }
+  .hunt-summary-heading { padding:18px; }
+  #hunt-summary-content { padding:20px; }
+  .hunt-summary-actions { padding:12px 18px; }
+  .hunt-summary-actions button { flex:1; padding-inline:12px; font-size:12px; }
+  .field-map-card { padding:14px; gap:10px; border-radius:12px; }
+}
+@media (max-height:550px) and (min-width:601px) {
+  #field-overlay,body.touch-controls-active #field-overlay { padding:8px max(12px,env(safe-area-inset-right)) 8px max(12px,env(safe-area-inset-left)); }
+  #field-overlay .field-card { width:min(1000px,100%); height:100%; }
+  .field-menu-heading { padding:12px 22px; display:flex; align-items:baseline; gap:20px; }
+  .field-menu-heading>.eyebrow { margin:0; max-width:170px; line-height:1.4; font-size:9px; }
+  #field-title { margin:0; font-size:27px; }
+  #field-description,#field-species,#field-method { display:none; }
+  #loading-status { margin:0; font-size:12px; }
+  #loading-progress { max-width:100px; }
+  .field-menu-tabs { padding:0 16px; }
+  .field-menu-tabs button { min-height:44px; padding:10px 18px; }
+  .field-menu-body { padding:16px 22px; }
+  .field-menu-footer { padding:8px 22px; }
+  #enter-field { min-height:44px; }
+  #shotgun-label,#challenge-options>label { font-size:20px; }
+  #hunt-summary { width:min(860px,calc(100vw - 32px)); max-height:calc(100dvh - 16px); }
+  .hunt-summary-heading { padding:10px 22px; }
+  #hunt-summary-content { padding:16px 22px; }
+  .hunt-summary-actions { padding:8px 22px; }
+  .hunt-summary-actions button { min-height:44px; }
+  .field-map-card { padding:12px 18px; gap:8px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  #field-overlay button,#field-overlay a,#hunt-summary button,#field-map button { transition:none; }
+  #field-overlay button:active,#hunt-summary button:active,#field-map button:active { transform:none; }
+}

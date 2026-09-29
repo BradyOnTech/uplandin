@@ -22,6 +22,7 @@ import { openHuntJournal } from './huntJournalView';
 import { FieldGuide, FIELD_GUIDE_KEY, readFieldGuide, type GuideInput } from './fieldGuide';
 import { focusedFieldDog } from './fieldDogFocus';
 import type { BirdsSystem } from './subsystems/birds';
+import { enhanceMenuSelects } from './menuSelect';
 
 /** Lifecycle UI owns pause and preferences, never hunt outcomes. */
 export class FieldInterface {
@@ -44,8 +45,28 @@ export class FieldInterface {
   private guide = new FieldGuide(readFieldGuide((() => { try { return localStorage; } catch { return null; } })()));
   private guideSaved = JSON.stringify(this.guide.snapshot());
   private guideElapsed = 0;
+  private menuSelects?: ReturnType<typeof enhanceMenuSelects>;
   constructor(private engine: Engine, landscape: LandscapeModel) {
     const signal = this.abort.signal;
+    const tabs = Array.from(this.overlay.querySelectorAll<HTMLButtonElement>('[data-field-tab]'));
+    const selectTab = (tab: HTMLButtonElement) => {
+      for (const item of tabs) {
+        const selected = item === tab;
+        item.setAttribute('aria-selected', String(selected)); item.tabIndex = selected ? 0 : -1;
+        document.getElementById(item.getAttribute('aria-controls')!)!.hidden = !selected;
+      }
+      this.overlay.querySelector('.field-menu-body')!.scrollTop = 0;
+    };
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => selectTab(tab), { signal });
+      tab.addEventListener('keydown', event => {
+        const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length
+          : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length
+          : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1;
+        if (next < 0) return;
+        event.preventDefault(); selectTab(tabs[next]); tabs[next].focus();
+      }, { signal });
+    });
     const preparationLink = document.getElementById('field-preparation') as HTMLAnchorElement | null;
     if (preparationLink) preparationLink.href = build3DPreparationHref(location.search, landscape.area.id, landscape.dropPoint.id);
     document.body.classList.toggle('capture', this.capture);
@@ -127,6 +148,7 @@ export class FieldInterface {
       if (this.canApplyOfflineUpdate()) requestOfflineUpdate();
     }, { signal });
     document.addEventListener('keydown', (event) => {
+      if (document.querySelector('dialog.menu-select-dialog[open]')) return;
       if ((document.getElementById('hunt-journal') as HTMLDialogElement | null)?.open) return;
       if (event.code === 'Escape' && document.body.classList.contains('field-map-open')) return;
       if (event.code === 'Escape' && this.readyState && !this.capture && !this.complete) {
@@ -134,9 +156,11 @@ export class FieldInterface {
         if (this.arrival?.active) this.pause();
         else if (this.engine.ctx.paused) this.resume(); else this.pause();
       }
-      if (event.code === 'Tab' && !this.overlay.hidden) {
-        const focusable = Array.from(this.overlay.querySelectorAll<HTMLElement>('button,select,input,a,summary'))
-          .filter(element => !element.closest('[hidden]') && !element.matches(':disabled') && element.getClientRects().length > 0);
+      const summary = document.getElementById('hunt-summary');
+      const activeMenu = !this.overlay.hidden ? this.overlay : summary && !summary.hidden ? summary : null;
+      if (event.code === 'Tab' && activeMenu) {
+        const focusable = Array.from(activeMenu.querySelectorAll<HTMLElement>('button,select,input,a,summary'))
+          .filter(element => element.tabIndex >= 0 && !element.closest('[hidden]') && !element.matches(':disabled') && element.getClientRects().length > 0);
         const first = focusable[0], last = focusable[focusable.length - 1];
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -217,6 +241,7 @@ export class FieldInterface {
       saveInputMode(mode); this.touch = usesTouchControls(mode);
       document.body.classList.toggle('touch-controls-active', this.touch);
       sight.value = shotSightPicture(this.touch);
+      this.menuSelects?.sync();
       placeEndControl();
       const url = new URL(location.href); url.searchParams.set('controls', mode); history.replaceState(null, '', url);
       this.engine.ctx.events.dispatchEvent(new Event('input-reset'));
@@ -290,6 +315,8 @@ export class FieldInterface {
       } });
     }
     window.addEventListener('resize', () => this.engine.ctx.events.dispatchEvent(new Event('touch-shot-cancel')), { signal });
+    for (const option of challenge.options) option.dataset.description = HUNT_CHALLENGES[parseHuntChallenge(option.value)].description;
+    this.menuSelects = enhanceMenuSelects(this.overlay);
   }
   canApplyOfflineUpdate(): boolean { return !this.capture && (!this.entered || this.complete); }
 
@@ -369,6 +396,7 @@ export class FieldInterface {
     select.replaceChildren(...choices.map(choice => {
       const option = document.createElement('option');
       option.value = choice.id; option.textContent = choice.name;
+      option.setAttribute('data-description', `${choice.shells} shells · ${choice.blurb}`);
       return option;
     }));
     select.value = gun.id;
@@ -377,6 +405,7 @@ export class FieldInterface {
     document.getElementById('shotgun-equipped')!.textContent = `${gun.name} · ${gun.shells}-shell capacity`;
     const rack = document.getElementById('shotgun-rack') as HTMLAnchorElement;
     rack.href = `./shotguns3d.html?gun=${encodeURIComponent(gun.id)}`;
+    this.menuSelects?.sync();
   }
   private changeShotgun(id: string): void {
     if (this.falconry || !this.readyState || !this.engine.ctx.paused || this.complete || this.lostContext) return;
@@ -432,6 +461,7 @@ export class FieldInterface {
     document.getElementById('field-instructions')!.hidden = false;
     this.refreshShotgunMenu();
     this.enter.hidden = false;
+    this.menuSelects?.sync();
     const mapToggle=document.getElementById('field-map-toggle') as HTMLButtonElement|null;
     if (mapToggle) mapToggle.hidden=this.capture || !this.entered;
     if (!this.capture) this.enter.focus();
@@ -467,7 +497,6 @@ export class FieldInterface {
     this.entered = true; unlockAudio();
     this.offlineUpdateState(this.updateState);
     this.overlay.classList.add('field-has-entered');
-    (document.getElementById('field-guide') as HTMLDetailsElement).open = false;
     const property=document.getElementById('property-setting') as HTMLSelectElement|null;
     if(property)property.disabled=true;
     this.overlay.hidden = true;
@@ -482,7 +511,7 @@ export class FieldInterface {
     canvas.focus();
     if (!this.touch) canvas.requestPointerLock()?.catch(() => undefined);
   }
-  dispose(): void { this.arrival?.dispose(); this.abort.abort(); }
+  dispose(): void { this.arrival?.dispose(); this.menuSelects?.destroy(); this.abort.abort(); }
 }
 
 export function preferredQuality(params: URLSearchParams): Quality {

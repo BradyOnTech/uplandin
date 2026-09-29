@@ -16,7 +16,7 @@ function menu(search: string, equipped = 'remington-870') {
     children: [] as { value: string; textContent: string }[],
     replaceChildren(...children: { value: string; textContent: string }[]) { this.children = children; },
   }]));
-  vi.stubGlobal('document', { getElementById: (id: string) => elements[id], createElement: () => ({ value: '', textContent: '' }) });
+  vi.stubGlobal('document', { getElementById: (id: string) => elements[id], createElement: () => ({ value: '', textContent: '', setAttribute: vi.fn() }) });
   const location = { search, href: `http://localhost/index3d.html${search}#field` };
   vi.stubGlobal('location', location);
   const replaceState = vi.fn((_state, _title, url) => { location.href = String(url); location.search = new URL(location.href).search; });

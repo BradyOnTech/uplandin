@@ -1,32 +1,54 @@
-#hunt-journal { width:min(920px,calc(100vw - 40px)); max-height:calc(100dvh - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); padding:0; border:0; border-radius:20px; background:var(--menu-paper,#f1edde); color:var(--menu-ink,#283b30); box-shadow:0 3px 8px #0002,0 26px 100px #0007; color-scheme:light; }
-#hunt-journal[open] { display:flex; flex-direction:column; }
+/* A bounded sheet: header and storage note stay visible while records scroll. */
+#hunt-journal { box-sizing:border-box; width:min(880px,calc(100vw - 48px - env(safe-area-inset-left) - env(safe-area-inset-right))); height:min(700px,calc(100dvh - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom))); max-width:none; max-height:none; margin:auto; padding:0; overflow:hidden; border:0; border-radius:20px; background:var(--menu-paper,#f1edde); color:var(--menu-ink,#283b30); box-shadow:0 3px 8px #0002,0 26px 100px #0007; color-scheme:light; font:14px/1.5 system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+#hunt-journal *,#hunt-journal *::before,#hunt-journal *::after { box-sizing:border-box; }
+#hunt-journal[open] { display:grid; grid-template-rows:auto minmax(0,1fr) auto; }
 #hunt-journal::backdrop { background:#10241dd4; }
-#hunt-journal header { display:flex; flex:none; justify-content:space-between; align-items:center; gap:20px; padding:28px 32px 24px; background:var(--menu-forest,#20372d); color:var(--menu-paper,#f1edde); }
-#hunt-journal .eyebrow { margin:0 0 10px; font-size:10px; color:var(--menu-ochre,#dfbf7e); letter-spacing:.15em; }
-#hunt-journal h2 { margin:0; font:400 36px/1.1 Georgia,serif; letter-spacing:-.025em; text-wrap:balance; }
-#hunt-journal-close { min-height:44px; padding:10px 17px; font-size:12px; background:#ffffff0d; color:#f1edde; }
+#hunt-journal .hunt-journal-header { display:flex; justify-content:space-between; align-items:center; gap:20px; min-width:0; padding:20px 24px; background:var(--menu-forest,#20372d); color:var(--menu-paper,#f1edde); }
+#hunt-journal .hunt-journal-header>div { min-width:0; }
+#hunt-journal .eyebrow { margin:0 0 6px; font-size:9px; font-weight:600; color:var(--menu-ochre,#dfbf7e); letter-spacing:.14em; }
+#hunt-journal h2 { margin:0; font:400 32px/1.1 Georgia,serif; letter-spacing:-.025em; text-wrap:balance; }
+#hunt-journal-close { display:inline-flex; flex:none; align-items:center; justify-content:center; min-height:44px; min-width:64px; margin:0; padding:10px 14px; border:1px solid #ffffff20; border-radius:8px; font:500 12px/1.4 system-ui,sans-serif; background:#ffffff0d; color:#f1edde; cursor:pointer; transition:background-color .15s,scale .15s; }
 #hunt-journal-close:hover { background:#ffffff18; }
-#hunt-journal :focus-visible { outline:3px solid #bc974f; outline-offset:4px; }
-.hunt-journal-content { min-height:0; overflow:auto; overscroll-behavior:contain; padding:26px 32px 32px; }
-.hunt-journal-intro { margin:0 0 22px; font-size:12px; color:#64705c; }
-.hunt-journal-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; list-style:none; padding:0; margin:0; }
-.hunt-journal-list li { min-width:0; padding:24px; border-radius:12px; background:#faf7ec; box-shadow:0 1px 3px #00000008,inset 0 0 0 1px #00000009; }
-.hunt-journal-list li:only-child { grid-column:1 / -1; }
-.hunt-journal-date { margin:0 0 12px; font-size:10px; font-weight:600; letter-spacing:.04em; color:#86713f; }
-.hunt-journal-list h3,.hunt-journal-empty h3 { margin:0; font:400 25px/1.2 Georgia,serif; text-wrap:balance; }
-.hunt-journal-dogs { margin:9px 0 22px; color:#64705c; font-size:12px; line-height:1.65; overflow-wrap:anywhere; }
-.hunt-journal-outcomes { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:0; padding-top:18px; box-shadow:0 -1px #283b3018; }
-.hunt-journal-outcomes dt { font-size:10px; line-height:1.4; color:#64705c; }
-.hunt-journal-outcomes dd { margin:8px 0 0; color:#283b30; font:400 28px/1 Georgia,serif; font-variant-numeric:tabular-nums; }
-.hunt-journal-detail { margin:20px 0 0; font-size:11px; line-height:1.6; color:#86713f; }
-.hunt-journal-footer { flex:none; margin:0; padding:16px 32px; box-shadow:0 -1px #283b3014; font-size:11px; color:#64705c; background:#e8e3d3; }
-.hunt-journal-empty { padding:28px 0 44px; max-width:440px; }
-.hunt-journal-empty p { margin:18px 0 0; font-size:14px; line-height:1.75; color:#64705c; }
+#hunt-journal-close:active { scale:.96; }
+#hunt-journal :focus-visible { outline:3px solid #bc974f; outline-offset:3px; }
+#hunt-journal .hunt-journal-content { min-width:0; min-height:0; overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable; scrollbar-width:thin; scrollbar-color:#87917f transparent; padding:20px 24px 24px; }
+#hunt-journal .hunt-journal-content:focus-visible { outline-offset:-4px; }
+#hunt-journal .hunt-journal-intro { margin:8px 0 0; color:#c5cebb; font-size:11px; font-variant-numeric:tabular-nums; text-wrap:pretty; }
+#hunt-journal .hunt-journal-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; gap:14px; list-style:none; padding:0; margin:0; }
+#hunt-journal .hunt-journal-list li { min-width:0; padding:18px; border-radius:12px; background:#faf7ec; box-shadow:0 1px 3px #00000008,inset 0 0 0 1px #0000000b; }
+#hunt-journal .hunt-journal-list li:only-child { grid-column:1 / -1; }
+#hunt-journal .hunt-journal-date { margin:0 0 9px; font-size:10px; font-weight:600; letter-spacing:.025em; color:#86713f; font-variant-numeric:tabular-nums; }
+#hunt-journal .hunt-journal-list h3,#hunt-journal .hunt-journal-empty h3 { margin:0; font:400 25px/1.2 Georgia,serif; text-wrap:balance; }
+#hunt-journal .hunt-journal-dogs { margin:7px 0 16px; color:#64705c; font-size:12px; line-height:1.55; overflow-wrap:anywhere; text-wrap:pretty; }
+#hunt-journal .hunt-journal-outcomes { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin:0; padding:14px 0 0; border:0; border-top:1px solid #283b3018; box-shadow:none; }
+#hunt-journal .hunt-journal-outcomes>div { min-width:0; }
+#hunt-journal .hunt-journal-outcomes dt { font-size:10px; line-height:1.4; color:#64705c; }
+#hunt-journal .hunt-journal-outcomes dd { margin:6px 0 0; color:#283b30; font:400 26px/1 Georgia,serif; font-variant-numeric:tabular-nums; }
+#hunt-journal .hunt-journal-detail { margin:16px 0 0; font-size:11px; line-height:1.55; color:#86713f; overflow-wrap:anywhere; text-wrap:pretty; }
+#hunt-journal .hunt-journal-footer { margin:0; padding:13px 24px; border-top:1px solid #283b3014; font-size:11px; line-height:1.45; color:#64705c; background:#e8e3d3; text-wrap:pretty; }
+#hunt-journal .hunt-journal-empty { display:flex; flex-direction:column; justify-content:center; min-height:100%; max-width:440px; margin:auto; padding:24px 0; }
+#hunt-journal .hunt-journal-empty p { margin:16px 0 0; font-size:13px; line-height:1.7; color:#64705c; text-wrap:pretty; }
 @media(max-width:600px) {
- #hunt-journal { width:calc(100vw - 20px); max-height:calc(100dvh - 20px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); border-radius:16px; }
- #hunt-journal header { padding:22px; }#hunt-journal h2 { font-size:31px; }.hunt-journal-content { padding:22px; }.hunt-journal-list { grid-template-columns:minmax(0,1fr); gap:16px; }.hunt-journal-list li { padding:20px; }.hunt-journal-footer { padding:15px 22px; }
+ #hunt-journal { width:calc(100vw - 16px - env(safe-area-inset-left) - env(safe-area-inset-right)); height:calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); border-radius:16px; }
+ #hunt-journal .hunt-journal-header { padding:16px; gap:12px; }
+ #hunt-journal h2 { font-size:29px; }
+ #hunt-journal .eyebrow { font-size:8px; }
+ #hunt-journal .hunt-journal-intro { font-size:10px; margin-top:6px; }
+ #hunt-journal .hunt-journal-content { padding:14px 16px 18px; }
+ #hunt-journal .hunt-journal-list { grid-template-columns:minmax(0,1fr); gap:12px; }
+ #hunt-journal .hunt-journal-list li { padding:16px; }
+ #hunt-journal .hunt-journal-list h3 { font-size:24px; }
+ #hunt-journal .hunt-journal-footer { padding:12px 16px; font-size:10px; }
 }
 @media(orientation:landscape) and (max-height:550px) {
- #hunt-journal { width:calc(100vw - 32px - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height:calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
- #hunt-journal header { padding:14px 24px; }#hunt-journal h2 { font-size:28px; }#hunt-journal .eyebrow { margin-bottom:5px; }.hunt-journal-content { padding:18px 24px; }.hunt-journal-intro { margin-bottom:14px; }.hunt-journal-list li { padding:18px; }.hunt-journal-dogs { margin-bottom:14px; }.hunt-journal-detail { margin-top:14px; }.hunt-journal-footer { padding:12px 24px; }
+ #hunt-journal { width:calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)); height:calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); border-radius:14px; }
+ #hunt-journal .hunt-journal-header { padding:10px 20px; }
+ #hunt-journal h2 { font-size:26px; }
+ #hunt-journal .eyebrow { display:none; }
+ #hunt-journal .hunt-journal-intro { margin-top:3px; font-size:10px; }
+ #hunt-journal .hunt-journal-content { padding:12px 20px 16px; }
+ #hunt-journal .hunt-journal-list { gap:12px; }
+ #hunt-journal .hunt-journal-list li { padding:16px; }
+ #hunt-journal .hunt-journal-footer { padding:9px 20px; font-size:10px; }
 }
+@media(prefers-reduced-motion:reduce) { #hunt-journal-close { transition:none; }#hunt-journal-close:active { scale:1; } }

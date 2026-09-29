@@ -17,6 +17,7 @@ import { openHuntJournal } from './huntJournalView';
 import { createPreparationMap } from './maps/preparationMap';
 import { enableOfflineHunts, requestOfflineUpdate, type OfflineUpdateState } from './offline';
 import { preparationInstalledEntry, rememberPreparationLaunch, preservePreparationDraft, consumePreparationDraft, discardPreparationDraft, type PreparationDraft } from './preparationOffline';
+import { enhanceMenuSelects } from './menuSelect';
 
 const root = document.getElementById('preparation')!;
 const installedEntry = preparationInstalledEntry(location.href, loadQuickConfig(), preferenceStorage());
@@ -36,6 +37,11 @@ if (!['auto', 'lite', 'high'].includes(quality)) quality = 'auto';
 let light = ['morning', 'noon', 'evening'].includes(params.get('tod') ?? '') ? params.get('tod')! : 'morning';
 let coat = params.get('coat') ?? undefined, controls = params.get('controls') ?? undefined;
 let message = '', addingDog = false, launching = false, updating = false, updateRequested = false;
+type PreparationView = 'ground' | 'kit' | 'conditions';
+let activeView: PreparationView = mode === 'career' && (careerPreparation(career).needsDog || careerPreparation(career).needsHome) ? 'kit' : 'ground';
+let pickers: ReturnType<typeof enhanceMenuSelects> | undefined;
+const panelScroll: Record<PreparationView, number> = { ground: 0, kit: 0, conditions: 0 };
+const openDetails = new Set<string>();
 let puppyDraft = { breedId: 'gsp', name: '', homeRegionId: career.homeRegionId ?? 'southern-plains' };
 const propertyDrafts: Record<string, { areaId: string; dropPointId: string }> = {
   quick: { areaId: quick.areaId, dropPointId: '' },
@@ -47,6 +53,7 @@ if (restored) {
   ({ mode, areaId, dropPointId, quick, dogId, braceId, gunId, quality, light, coat, controls, addingDog, puppyDraft } = restored);
   challenge = parseHuntChallenge(restored.challenge); Object.assign(propertyDrafts, restored.propertyDrafts);
   message = 'Your hunt setup is ready to continue.';
+  activeView = mode === 'career' && (careerPreparation(career).needsDog || careerPreparation(career).needsHome) ? 'kit' : 'ground';
 }
 
 // Keep these nodes alive across setup changes: the offline client holds the
@@ -79,6 +86,7 @@ function offlineUpdateState(state: OfflineUpdateState): void {
     failed: 'The update did not finish. Reconnect, then try again. Your setup is still here.' })[state];
   const start = document.getElementById('prep-start') as HTMLButtonElement | null;
   if (start) start.disabled = launching || updating || start.dataset.unavailable === 'true';
+  pickers?.sync();
 }
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, value = '', className = ''): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag); el.textContent = value; el.className = className; return el;
@@ -87,15 +95,39 @@ function button(label: string, action: () => void, className = ''): HTMLButtonEl
   const el = node('button', label, className); el.type = 'button'; el.addEventListener('click', action); return el;
 }
 function link(label: string, href: string): HTMLAnchorElement { const el = node('a', label); el.href = href; return el; }
-function select(id: string, label: string, options: { id: string; label: string }[], value: string, change: (value: string) => void): HTMLLabelElement {
+function select(id: string, label: string, options: { id: string; label: string; description?: string }[], value: string, change: (value: string) => void): HTMLLabelElement {
   const wrapper = node('label', '', 'setup-field'); wrapper.htmlFor = id; wrapper.append(node('span', label));
   const input = node('select'); input.id = id;
-  for (const choice of options) { const option = node('option', choice.label); option.value = choice.id; input.append(option); }
+  for (const choice of options) { const option = node('option', choice.label); option.value = choice.id; if (choice.description) option.dataset.description = choice.description; input.append(option); }
   input.value = value; input.addEventListener('change', () => { change(input.value); render(id); });
   wrapper.append(input); return wrapper;
 }
 const choices = (values: readonly string[]) => values.map(id => ({ id, label: id === 'random' ? 'Let the day decide' : id.charAt(0).toUpperCase() + id.slice(1) }));
-const breeds = () => BREEDS.map(b => ({ id: b.id, label: b.name }));
+const breeds = () => BREEDS.map(b => ({ id: b.id, label: b.name, description: b.blurb }));
+function scrollPanel(view: PreparationView): HTMLElement | null {
+  if (view === 'ground' && window.matchMedia('(max-width:899px) and (max-height:500px)').matches) {
+    return document.getElementById('prep-property-notes');
+  }
+  return root.querySelector<HTMLElement>(`[data-scroll-panel="${view}"]`);
+}
+function rememberPanelScroll(): void {
+  for (const view of ['ground', 'kit', 'conditions'] as const) {
+    const panel = scrollPanel(view);
+    if (panel?.clientHeight) panelScroll[view] = panel.scrollTop;
+  }
+}
+function restorePanelScroll(): void {
+  for (const view of ['ground', 'kit', 'conditions'] as const) {
+    const panel = scrollPanel(view);
+    if (panel?.clientHeight) panel.scrollTop = panelScroll[view];
+  }
+}
+function showView(view: PreparationView, remember = true): void {
+  if (remember) rememberPanelScroll();
+  activeView = view; root.dataset.view = view;
+  root.querySelectorAll<HTMLButtonElement>('[data-prep-tab]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.prepTab === view)));
+  restorePanelScroll();
+}
 function section(title: string, intro?: string): HTMLElement {
   const el = node('section', '', 'setup-section'); el.append(node('h2', title)); if (intro) el.append(node('p', intro, 'section-intro')); return el;
 }
@@ -179,37 +211,56 @@ function render(focusId?: string): void {
   const area = getArea(areaId), doctrine = huntingDoctrine(area.id), entry = preparation.areas.find(a => a.area.id === areaId)!;
   if (!area.dropPoints.some(drop => drop.id === dropPointId)) dropPointId = area.dropPoints[0].id;
   const selectedDrop = area.dropPoints.find(drop => drop.id === dropPointId)!;
+  // Preserve the local reading position and disclosure state before replacing
+  // controls. The native choice remains authoritative; its picker is transient.
+  rememberPanelScroll();
+  root.querySelectorAll<HTMLDetailsElement>('details[id]').forEach(details => {
+    if (details.open) openDetails.add(details.id); else openDetails.delete(details.id);
+  });
+  pickers?.destroy(); pickers = undefined;
   root.replaceChildren();
   const header = node('header', '', 'prep-header');
-  const brand = node('div', '', 'brand'); brand.append(node('strong', 'UPLANDIN'), node('span', 'A field. A good dog.'));
+  const brand = node('div', '', 'brand'); brand.append(node('strong', 'UPLANDIN'), node('span', 'The field book'));
   const nav = node('nav'); nav.setAttribute('aria-label', 'Game');
-  const journal = button('Field journal', () => openHuntJournal(loadCareer(), journal)); journal.id = 'prep-journal';
-  const classic = link('2D classic', './index.html'); classic.onclick = () => saveGameplayMode('2d'); nav.append(journal, classic); header.append(brand, nav);
-  const main = node('main');
-  const opening = node('div', '', 'prep-opening'); const intro = node('div'); intro.append(node('p', 'YOUR FIELD BOOK', 'eyebrow'), node('h1', 'A good day starts here.'));
+  const journal = button('Journal', () => openHuntJournal(loadCareer(), journal)); journal.id = 'prep-journal'; journal.setAttribute('aria-label', 'Field journal');
+  const classic = link('2D classic', './index.html'); classic.onclick = () => saveGameplayMode('2d'); nav.append(journal, classic);
   const modes = node('div', '', 'mode-switch'); modes.setAttribute('role', 'group'); modes.setAttribute('aria-label', 'Hunt mode');
-  for (const [id, label] of [['quick', 'Quick hunt'], ['career', 'Your career']] as const) {
+  for (const [id, label] of [['quick', 'Quick hunt'], ['career', 'Career']] as const) {
     const control = button(label, () => {
       if (mode === id) return;
       propertyDrafts[mode] = { areaId, dropPointId }; mode = id; message = ''; addingDog = false; career = loadCareer();
       ({ areaId, dropPointId } = propertyDrafts[mode]);
+      const next = careerPreparation(career);
+      activeView = mode === 'career' && (next.needsDog || next.needsHome) ? 'kit' : 'ground';
       render(`mode-${id}`); history.replaceState(null, '', `?mode=${mode}`);
     });
     control.id = `mode-${id}`; control.setAttribute('aria-pressed', String(mode === id)); modes.append(control);
   }
-  opening.append(intro, modes); main.append(opening);
+  header.append(brand, modes, nav);
+  const main = node('main', '', 'prep-main');
+  const toolbar = node('div', '', 'prep-toolbar');
+  const intro = node('div', '', 'prep-intro'); intro.append(node('h1', 'Plan your hunt.'));
   const status = node('p', mode === 'career' ? `${dateLabel(career.date)} · Hunter level ${career.hunter.level} · ${career.hunts} hunts`
-    : 'Choose a property, bring a good dog, and head out. Quick hunts leave your career unchanged.', 'prep-status'); main.append(status);
+    : 'Your ground. Your dog. Your kind of day.', 'prep-status'); intro.append(status);
+  const tabs = node('nav', '', 'prep-tabs'); tabs.setAttribute('aria-label', 'Hunt preparation');
+  for (const [view, label] of [['ground', 'Ground'], ['kit', 'Kit'], ['conditions', 'Conditions']] as const) {
+    const tab = button(label, () => showView(view)); tab.id = `prep-view-${view}`; tab.dataset.prepTab = view;
+    tab.setAttribute('aria-controls', `prep-${view}-panel`); tab.setAttribute('aria-pressed', String(activeView === view)); tabs.append(tab);
+  }
+  toolbar.append(intro, tabs); main.append(toolbar);
   const notice = node('p', message, 'prep-message'); notice.id = 'preparation-message'; notice.setAttribute('role', 'status'); notice.tabIndex = -1; notice.hidden = !message; main.append(notice);
   const grid = node('div', '', 'prep-grid');
   grid.classList.toggle('first-season', mode === 'career' && (preparation.needsDog || preparation.needsHome));
-  const property = node('section', '', 'property-panel');
+  const property = node('section', '', 'prep-panel property-panel'); property.id = 'prep-ground-panel'; property.dataset.prepView = 'ground';
+  const propertyTop = node('div', '', 'property-top');
   const propertyHeading = node('div', '', 'property-heading');
-  propertyHeading.append(node('p', '01 / THE GROUND', 'eyebrow'), node('h2', area.name), node('p', doctrine.region, 'property-region'));
-  property.append(propertyHeading);
-  const field = select('prep-area', 'Hunting ground', AREAS.map(a => ({ id: a.id, label: `${a.name} · ${regionOfArea(a.id).name}` })), areaId,
+  propertyHeading.append(node('p', doctrine.region, 'eyebrow'), node('h2', area.name));
+  propertyTop.append(propertyHeading);
+  const field = select('prep-area', 'Hunting ground', AREAS.map(a => ({ id: a.id, label: a.name, description: regionOfArea(a.id).name })), areaId,
     value => { areaId = value; dropPointId = ''; if (mode === 'quick') updateQuick({ areaId: value }); });
-  field.querySelector('select')!.disabled = mode === 'quick' && quick.huntingMethod === 'goshawk'; property.append(field);
+  field.querySelector('select')!.disabled = mode === 'quick' && quick.huntingMethod === 'goshawk'; propertyTop.append(field); property.append(propertyTop);
+  const groundScroll = node('div', '', 'prep-panel-scroll ground-scroll'); groundScroll.dataset.scrollPanel = 'ground';
+  const mapStage = node('div', '', 'map-stage'); mapStage.style.setProperty('--map-aspect', String(area.world.w / area.world.h));
   const map = node('div', '', 'property-map'); map.setAttribute('aria-label', `${area.name} terrain and truck entries`);
   let atlas = atlases.get(area.id);
   if (!atlas) { atlas = createPreparationMap(area); if (atlases.size >= 2) atlases.delete(atlases.keys().next().value!); atlases.set(area.id, atlas); }
@@ -222,15 +273,18 @@ function render(focusId?: string): void {
     marker.style.left = `calc(${x * 100}% + ${30 - 60 * x}px)`;
     marker.style.top = `calc(${y * 100}% + ${30 - 60 * y}px)`; map.append(marker);
   });
-  property.append(map);
-  const mapCaption = node('p', 'Select a numbered entry on the map, or choose below.', 'map-caption'); property.append(mapCaption);
-  property.append(select('prep-drop', 'Park the truck', area.dropPoints.map((drop, i) => ({ id: drop.id, label: `${i + 1}. ${drop.name}` })), dropPointId, value => { dropPointId = value; }));
-  const notes = node('div', '', 'property-notes'); notes.append(node('p', doctrine.description), node('p', doctrine.tip, 'field-advice'));
+  mapStage.append(map); groundScroll.append(mapStage);
+  const notes = node('details', '', 'property-notes'); notes.id = 'prep-property-notes';
+  notes.append(node('summary', 'Field notes'), node('p', doctrine.description), node('p', doctrine.tip, 'field-advice'));
   const speciesIds = mode === 'career' ? entry.openSpeciesIds : area.speciesMix.map(s => s.speciesId);
-  notes.append(node('p', speciesIds.length ? speciesIds.map(id => getSpecies(id).name).join(' · ') : 'Season currently closed', 'species-line')); property.append(notes);
+  notes.append(node('p', speciesIds.length ? speciesIds.map(id => getSpecies(id).name).join(' · ') : 'Season currently closed', 'species-line'));
+  groundScroll.append(notes); property.append(groundScroll);
+  const entryControls = node('div', '', 'ground-entry');
+  entryControls.append(select('prep-drop', 'Truck entry', area.dropPoints.map((drop, i) => ({ id: drop.id, label: `${i + 1}. ${drop.name}` })), dropPointId, value => { dropPointId = value; })); property.append(entryControls);
   grid.append(property);
-  const settings = node('div', '', 'setup-panel');
-  const kitHeading = node('div', '', 'kit-heading'); kitHeading.append(node('p', '02 / YOUR COMPANY & KIT', 'eyebrow'), node('p', 'Ready for the field.', 'kit-title')); settings.append(kitHeading);
+  const kitPanel = node('section', '', 'prep-panel kit-panel'); kitPanel.id = 'prep-kit-panel'; kitPanel.dataset.prepView = 'kit';
+  const kitHeading = node('div', '', 'prep-panel-heading'); kitHeading.append(node('p', 'YOUR COMPANY & EQUIPMENT', 'eyebrow'), node('h2', 'Your field kit')); kitPanel.append(kitHeading);
+  const settings = node('div', '', 'prep-panel-scroll kit-scroll'); settings.dataset.scrollPanel = 'kit'; kitPanel.append(settings);
   if (mode === 'career' && (preparation.needsDog || preparation.needsHome)) {
     const setup = section('Your first season', 'Choose a home ground and a dog to grow with you.');
     if (preparation.needsDog) dogForm(setup, true);
@@ -273,7 +327,7 @@ function render(focusId?: string): void {
     else {
       const guns = mode === 'career' ? preparation.availableGuns : GUNS;
       if (mode === 'career' && !guns.some(g => g.id === gunId)) gunId = guns[0].id;
-      equipment.append(select('prep-gun', 'Shotgun', guns.map(g => ({ id: g.id, label: g.name })), mode === 'career' ? gunId : quick.gunId, value => { if (mode === 'career') gunId = value; else updateQuick({ gunId: value }); }));
+      equipment.append(select('prep-gun', 'Shotgun', guns.map(g => ({ id: g.id, label: g.name, description: `${g.shells} shells · ${g.blurb}` })), mode === 'career' ? gunId : quick.gunId, value => { if (mode === 'career') gunId = value; else updateQuick({ gunId: value }); }));
       const selectedGun = guns.find(g => g.id === (mode === 'career' ? gunId : quick.gunId)) ?? guns[0];
       equipment.append(node('p', `${selectedGun.shells} shells · ${selectedGun.blurb}`, 'equipment-note'));
       const rack = link('Explore the 3D gun rack ↗', `./shotguns3d.html?gun=${encodeURIComponent(mode === 'career' ? gunId : quick.gunId)}`); rack.target = '_blank'; rack.rel = 'noopener'; rack.className = 'text-link'; equipment.append(rack);
@@ -292,21 +346,6 @@ function render(focusId?: string): void {
       if (outlook.nextUnlock) reward.append(node('p', outlook.nextUnlock.labels.join(' · '), 'progress-reward'));
       panel.append(progress, reward); settings.append(panel);
     }
-    const conditions = node('details', '', 'hunt-options');
-    const conditionsHeading = node('summary', 'Conditions & display');
-    conditionsHeading.append(node('span', `${light.charAt(0).toUpperCase() + light.slice(1)} · ${HUNT_CHALLENGES[challenge].label}`, 'details-preview'));
-    conditions.append(conditionsHeading);
-    if (mode === 'quick') {
-      conditions.append(select('prep-method', 'Hunting method', [{ id: 'shotgun', label: 'Shotgun' }, { id: 'goshawk', label: 'Goshawk · Cattail Coverts' }], quick.huntingMethod ?? 'shotgun', value => updateQuick({ huntingMethod: value as QuickConfig['huntingMethod'] })));
-      conditions.append(select('prep-weather', 'Weather', choices(WEATHER_CHOICES), quick.weather, value => updateQuick({ weather: value as QuickConfig['weather'] })),
-        select('prep-wind', 'Wind', choices(WIND_CHOICES), quick.wind, value => updateQuick({ wind: value as QuickConfig['wind'] })));
-      if (quick.huntingMethod !== 'goshawk') conditions.append(select('prep-quick-brace', 'Second dog', [{ id: 'none', label: 'Hunt with one dog' }, ...breeds()], quick.breed2Id, value => updateQuick({ breed2Id: value })));
-      conditions.append(select('prep-gear', 'Tracking gear', GEAR_NAMES.map((label, i) => ({ id: String(i), label })), String(quick.gearTier), value => updateQuick({ gearTier: Number(value) })));
-    } else conditions.append(node('p', 'Weather and bird experience follow your career season.', 'help'));
-    conditions.append(select('prep-challenge', 'Challenge', Object.entries(HUNT_CHALLENGES).map(([id, value]) => ({ id, label: value.label })), challenge, value => { challenge = parseHuntChallenge(value); }),
-      select('prep-light', 'Light', choices(['morning', 'noon', 'evening']), light, value => { light = value; }),
-      select('prep-quality', 'Graphics', [{ id: 'auto', label: 'Use device preference' }, { id: 'lite', label: 'Lightweight' }, { id: 'high', label: 'High' }], quality, value => { quality = value; }));
-    settings.append(conditions);
     if (mode === 'career') {
       const calendar = preparation.calendarAction;
       if (calendar) {
@@ -318,22 +357,46 @@ function render(focusId?: string): void {
       }
     }
   }
-  settings.append(offlinePanel); grid.append(settings); main.append(grid);
+  const conditionsPanel = node('section', '', 'prep-panel conditions-panel'); conditionsPanel.id = 'prep-conditions-panel'; conditionsPanel.dataset.prepView = 'conditions';
+  const conditionsHeading = node('div', '', 'prep-panel-heading'); conditionsHeading.append(node('p', 'SET THE DAY', 'eyebrow'), node('h2', 'Conditions & display')); conditionsPanel.append(conditionsHeading);
+  const conditions = node('div', '', 'prep-panel-scroll conditions-scroll'); conditions.dataset.scrollPanel = 'conditions'; conditionsPanel.append(conditions);
+  if (mode === 'quick') {
+    conditions.append(select('prep-method', 'Hunting method', [{ id: 'shotgun', label: 'Shotgun' }, { id: 'goshawk', label: 'Goshawk · Cattail Coverts' }], quick.huntingMethod ?? 'shotgun', value => updateQuick({ huntingMethod: value as QuickConfig['huntingMethod'] })));
+    conditions.append(select('prep-weather', 'Weather', choices(WEATHER_CHOICES), quick.weather, value => updateQuick({ weather: value as QuickConfig['weather'] })),
+      select('prep-wind', 'Wind', choices(WIND_CHOICES), quick.wind, value => updateQuick({ wind: value as QuickConfig['wind'] })));
+    if (quick.huntingMethod !== 'goshawk') conditions.append(select('prep-quick-brace', 'Second dog', [{ id: 'none', label: 'Hunt with one dog' }, ...breeds()], quick.breed2Id, value => updateQuick({ breed2Id: value })));
+    conditions.append(select('prep-gear', 'Tracking gear', GEAR_NAMES.map((label, i) => ({ id: String(i), label })), String(quick.gearTier), value => updateQuick({ gearTier: Number(value) })));
+  } else conditions.append(node('p', 'Weather and bird experience follow your career season.', 'help'));
+  conditions.append(select('prep-challenge', 'Challenge', Object.entries(HUNT_CHALLENGES).map(([id, value]) => ({ id, label: value.label })), challenge, value => { challenge = parseHuntChallenge(value); }),
+    select('prep-light', 'Light', choices(['morning', 'noon', 'evening']), light, value => { light = value; }),
+    select('prep-quality', 'Graphics', [{ id: 'auto', label: 'Use device preference' }, { id: 'lite', label: 'Lightweight' }, { id: 'high', label: 'High' }], quality, value => { quality = value; }));
+
+  conditions.append(offlinePanel);
+  const reviewConditions = button(`${light.charAt(0).toUpperCase() + light.slice(1)} · ${HUNT_CHALLENGES[challenge].label}  →`, () => { showView('conditions'); document.getElementById('prep-view-conditions')?.focus(); }, 'conditions-shortcut');
+  reviewConditions.setAttribute('aria-label', 'Review conditions and display'); settings.append(reviewConditions);
+  grid.append(kitPanel, conditionsPanel); main.append(grid);
   const footer = node('footer', '', 'launch-bar'); const outing = node('div', '', 'launch-destination');
-  outing.append(node('small', '03 / YOUR NEXT OUTING'), node('strong', area.name), node('span', mode === 'career' && entry.reason ? entry.reason
+  outing.append(node('small', 'YOUR NEXT OUTING'), node('strong', area.name), node('span', mode === 'career' && entry.reason ? entry.reason
     : `${selectedDrop.name}${mode === 'career' ? ` · ${entry.weeks} week${entry.weeks === 1 ? '' : 's'}` : ' · Quick hunt'}`));
   const start = button('Head to the field ↗', launch, 'primary'); start.id = 'prep-start';
   const unavailable = mode === 'career' && (!entry.selectable || preparation.needsDog || preparation.needsHome);
   start.dataset.unavailable = String(unavailable); start.disabled = launching || updating || unavailable;
   const reason = node('p', mode === 'career' && !entry.selectable ? '' : 'Read the wind. Trust your dog.', 'launch-reason'); footer.append(outing, reason, start);
   root.append(header, main, footer);
+  root.querySelectorAll<HTMLDetailsElement>('details[id]').forEach(details => { if (openDetails.has(details.id)) details.open = true; });
+  const nativeFocus = focusId ? document.getElementById(focusId) : null;
+  if (nativeFocus) {
+    const view = nativeFocus.closest<HTMLElement>('[data-prep-view]')?.dataset.prepView as PreparationView | undefined;
+    // Ground stays alongside the selected right-hand panel on desktop.
+    if (view && (view !== 'ground' || window.matchMedia('(max-width:899px)').matches)) activeView = view;
+    nativeFocus.closest('details')?.setAttribute('open', '');
+  }
+  showView(activeView, false);
+  pickers = enhanceMenuSelects(root);
+  restorePanelScroll();
   if (focusId) {
-    const focused = document.getElementById(focusId); focused?.closest('details')?.setAttribute('open', '');
-    if (focused) {
-      const box = focused.getBoundingClientRect(), footerTop = footer.getBoundingClientRect().top;
-      if (box.top < 16 || box.bottom > footerTop - 16) focused.scrollIntoView({ block: 'center', inline: 'nearest' });
-      focused.focus({ preventScroll: true });
-    }
+    const focused = Array.from(root.querySelectorAll<HTMLButtonElement>('[data-menu-select-for]')).find(trigger => trigger.dataset.menuSelectFor === focusId) ?? nativeFocus;
+    if (focused) { focused.scrollIntoView({ block: 'nearest', inline: 'nearest' }); focused.focus({ preventScroll: true }); }
   }
 }
 
@@ -362,6 +425,7 @@ function launch(): void {
 window.addEventListener('storage', event => {
   if (event.key === CAREER_KEY && mode === 'career') { refreshFromCareer(); message = 'Your career changed in another tab. Review your setup before heading out.'; render(); }
 });
+window.addEventListener('pagehide', event => { if (!event.persisted) { pickers?.destroy(); pickers = undefined; } });
 render();
 enableOfflineHunts({ canReload: () => !launching && updateRequested && preservePreparationDraft(location.href, currentDraft(), draftStorage()),
   onUpdateState: offlineUpdateState });
