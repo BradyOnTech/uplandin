@@ -11,6 +11,7 @@ import { pheasantPlantClear, pheasantPonds, pheasantShelterbelts, pheasantTrackD
 import { pheasantFarmFenceLines, pheasantFarmFields } from '../../game/pheasantFarm';
 import { createQuailWindmill } from './quailLandmarks';
 import { createPrairieWater } from '../prairieWater';
+import { buildCattailFeatures } from './cattailFeatures';
 
 function seeded(seed: number, salt: number): number {
   let h = seed ^ Math.imul(salt, 0x9e3779b1);
@@ -290,6 +291,12 @@ export class PheasantScenerySystem implements Subsystem {
     this.buildFence(ctx, fenceMaterial, wireMaterial, castShadow);
     this.buildFarmFences(ctx, fenceMaterial, wireMaterial);
     this.buildBales(ctx, castShadow);
+    buildCattailFeatures(ctx, {
+      landscape: this.landscape, castShadow, obstacles: this.obstacles, shotSolids: this.shotWood, waterMaterial,
+      keep: object => { ctx.scene.add(object); this.objects.push(object); },
+      own: resource => { if (resource instanceof THREE.BufferGeometry) this.geometries.push(resource); else this.materials.push(resource); },
+      tree: (species, seed, height) => this.buildTree(species, seeded(this.landscape.area.terrain.seed, seed), height, castShadow),
+    });
   }
 
   /** Three-wire section fences along the farm's field lines. Openings are
@@ -507,8 +514,12 @@ export class PheasantScenerySystem implements Subsystem {
 
   /** A slough cottonwood: grown, gold and ragged, the tallest thing on the farm. */
   private buildCottonwood(seed: number, height: number, castShadow: boolean): THREE.Group {
+    return this.buildTree('cottonwood', seed, height, castShadow);
+  }
+
+  private buildTree(species: PlainsTreeSpecies, seed: number, height: number, castShadow: boolean): THREE.Group {
     const root = new THREE.Group();
-    const tree = buildPlainsTree('cottonwood', seed);
+    const tree = buildPlainsTree(species, seed);
     this.geometries.push(tree.wood, tree.foliage);
     const wood = new THREE.Mesh(tree.wood, this.woodMaterial!), crown = new THREE.Mesh(tree.foliage, this.leafMaterial!);
     for (const mesh of [wood, crown]) {

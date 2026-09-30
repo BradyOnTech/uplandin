@@ -1,4 +1,5 @@
 import type { AreaConfig } from '../src/game/areas';
+import { pheasantBaleRows, pheasantDuckBlind, pheasantOldFarmstead, pheasantRockPiles, pheasantSheetWater } from '../src/game/pheasantFeatures';
 
 /** One staged review camera in property yards. `lift` raises the eye for
  * overviews; every other view stands at the hunter's normal eye height. */
@@ -45,7 +46,25 @@ export function cattailCovertsViews(area: AreaConfig): MapReviewView[] {
     v('verge', 'Fence-line verge', { x: 878, y: 430 }, { x: 893, y: 350 }, -6),
     v('stubble-close', 'Corn stubble underfoot', { x: 450, y: 740 }, { x: 430, y: 700 }, -24),
     v('wheat-close', 'Wheat stubble underfoot', { x: 1100, y: 690 }, { x: 1140, y: 650 }, -22),
+    ...featureViews(area, v),
     v('overview-south', 'Overview from the south', { x: drop.x, y: area.world.h - 4 }, { x: drop.x + 20, y: area.world.h * .45 }, -20, 55),
     v('overview-north', 'Overview from the north', { x: area.world.w * .5, y: 6 }, { x: area.world.w * .47, y: area.world.h * .6 }, -20, 55),
+  ];
+}
+
+/** The farm details: the hilltop rock pile, the bale rows, the old place,
+ * the blind on the Slough and the sheet water in the east corn. */
+function featureViews(area: AreaConfig, v: (id: string, name: string, from: { x: number; y: number }, to: { x: number; y: number }, pitch: number, lift?: number) => MapReviewView): MapReviewView[] {
+  const hill = pheasantRockPiles(area.world).reduce((a, b) => (b.radius > a.radius ? b : a));
+  const bales = pheasantBaleRows(area.world)[0], home = pheasantOldFarmstead(area.world), sheet = pheasantSheetWater(area.world);
+  const blind = pheasantDuckBlind(area.landmarks)!;
+  return [
+    v('rock-pile', 'Hilltop rock pile', { x: hill.x - 14, y: hill.y + 12 }, hill, -6),
+    v('bale-rows', 'Stored bale rows', { x: bales.x + 30, y: bales.y + 52 }, { x: bales.x + 6, y: bales.y + 10 }, -3),
+    v('old-farmstead', 'Old farmstead', { x: home.x + 16, y: home.y + 13 }, home, -24, 2.5),
+    v('duck-blind', 'Duck blind', { x: blind.x - Math.cos(blind.angle) * 12 + 4, y: blind.y - Math.sin(blind.angle) * 12 }, blind, -10, 1.5),
+    v('blind-inside', 'From the blind', { x: blind.x - Math.cos(blind.angle) * 1.4, y: blind.y - Math.sin(blind.angle) * 1.4 },
+      { x: blind.x + Math.cos(blind.angle) * 40, y: blind.y + Math.sin(blind.angle) * 40 }, -4),
+    v('sheet-water', 'Sheet water in the corn', { x: sheet.x + 8, y: sheet.y - 24 }, sheet, -12, 1),
   ];
 }

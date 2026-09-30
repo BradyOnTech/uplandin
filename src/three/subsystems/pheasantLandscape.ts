@@ -1,3 +1,4 @@
+import { pheasantFeatureFootprints } from '../../game/pheasantFeatures';
 import type { AreaConfig } from '../../game/areas';
 import { PROPERTY_PX_TO_M, type LandscapeModel } from '../../game/landscape';
 import { pheasantHomesteadYard, pheasantManagedParcels, pheasantPondRadii, pheasantWestHarvest } from '../../game/pheasantHabitat';
@@ -135,7 +136,20 @@ export function pheasantPlantClear(area: AreaConfig, x: number, y: number, radiu
   if (area.dropPoints.some(d => Math.hypot(x - d.position.x, y - d.position.y) * PROPERTY_PX_TO_M < 7 + radius)) return false;
   const yard = pheasantHomesteadYard(area.landmarks);
   if (yard && x >= yard.x - radius && x <= yard.x + yard.w + radius && y >= yard.y - radius && y <= yard.y + yard.h + radius) return false;
-  return !area.landmarks.some(l => l.kind !== 'pond' && Math.hypot(x - l.position.x, y - l.position.y) * PROPERTY_PX_TO_M < (l.kind === 'barn' ? 12 : 3) + radius);
+  if (area.landmarks.some(l => l.kind !== 'pond' && Math.hypot(x - l.position.x, y - l.position.y) * PROPERTY_PX_TO_M < (l.kind === 'barn' ? 12 : 3) + radius)) return false;
+  // Rock piles, bale rows, the old foundation and the blind stand on bare ground.
+  for (const f of featureFootprints(area)) {
+    const dx = x - f.x, dy = y - f.y;
+    if (dx * dx + dy * dy < f.radius * f.radius) return false;
+  }
+  return true;
+}
+
+const footprints = new WeakMap<AreaConfig, { x: number; y: number; radius: number }[]>();
+function featureFootprints(area: AreaConfig): { x: number; y: number; radius: number }[] {
+  let cached = footprints.get(area);
+  if (!cached) { cached = area.id === 'pheasant-coverts' ? pheasantFeatureFootprints(area.world, area.landmarks) : []; footprints.set(area, cached); }
+  return cached;
 }
 
 export function pheasantPonds(landscape: LandscapeModel): PheasantPond[] {

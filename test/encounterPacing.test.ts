@@ -97,7 +97,9 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
 describe('encounter pacing on a balanced hunt', () => {
   it.each(['quail-fields', 'sharptail-prairie', 'chukar-ridge', 'pheasant-coverts'])(
     '%s: something happens every couple of minutes and the dog finds birds by working scent', area => {
-      const runs = [23, 41, 73].map(seed => hunt(area, seed * 1009, 360));
+      // Six hunts: three were few enough that one new patch of cover far from
+      // the roaming route swung the average by half a contact.
+      const runs = [23, 41, 73, 11, 37, 53].map(seed => hunt(area, seed * 1009, 360));
       const contactsPerFiveMinutes = runs.reduce((sum, r) => sum + r.points + r.wild, 0) / runs.length * 300 / 360;
       const points = runs.reduce((sum, r) => sum + r.points, 0);
       // Not a slog: a point or a rise every four minutes at worst, usually two for a

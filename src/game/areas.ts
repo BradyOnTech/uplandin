@@ -5,6 +5,7 @@ import type { SpeciesShare } from './species';
 import type { Vec2 } from './types';
 import { pheasantDryCover, pheasantShoreCover, pheasantWestFence } from './pheasantHabitat';
 import { pheasantFarmCover } from './pheasantFarm';
+import { pheasantOldFarmsteadCover } from './pheasantFeatures';
 import { chukarCoverPatches } from './chukarLandscape';
 import { quailCoverPatches } from './quailComposition';
 import { SHARPTAIL_COVER_PATCHES } from './sharptailLandscape';
@@ -260,6 +261,7 @@ function pheasantGeography(w: number, h: number) {
     // then the authored pond pockets and farmstead windbreak take precedence.
     patches: pheasantDryCover([
       ...pheasantFarmCover(world(w, h)),
+      ...pheasantOldFarmsteadCover(world(w, h)),
       ...pheasantShoreCover(landmarks),
     ], landmarks),
     // Work the live shore from the entry, or heel across the cut field and
