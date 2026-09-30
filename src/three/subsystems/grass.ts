@@ -16,6 +16,7 @@ import { sharptailShackYardAt } from './sharptailEnvironment';
 import { sharptailAccentGroundAt } from './sharptailAccents';
 import { sharptailStoneClearance } from '../../game/sharptailFeatures';
 import { SHARPTAIL_MEADOW_COLORS, sharptailGrassOpening } from './sharptailMeadow';
+import { sharptailCommunityAt, tintSharptailCommunity, type SharptailCommunitySample } from './sharptailCommunities';
 import { VegetationWind, VEGETATION_GUST_GLSL } from './vegetationWind';
 
 /*
@@ -912,7 +913,12 @@ export class GrassSystem implements Subsystem {
     this.prairieBaseColor.lerp(this.prairieHollow, meadow.hollow * .97);
     this.prairieBaseColor.lerp(this.prairieCured, meadow.cured * .64);
     this.c.lerp(this.prairieBaseColor, .78);
+    // Plant communities: copper bluestem, bronze swales, blue-grey
+    // wheatgrass and silver needlegrass, by colony, at this tuft's yard.
+    sharptailCommunityAt(this.prairieProperty.x, this.prairieProperty.y, meadow, this.prairieCommunity);
+    tintSharptailCommunity(this.c, this.prairieCommunity, .62);
   }
+  private readonly prairieCommunity: SharptailCommunitySample = { bluestem: 0, bigBluestem: 0, wheatgrass: 0, needle: 0 };
 
   private cfg!: QualityCfg;
   private art: GrassArtProfile = DEFAULT_GRASS_ART;

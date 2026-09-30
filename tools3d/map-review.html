@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Map review</title>
+<style>
+*{box-sizing:border-box}body{height:100dvh;display:grid;grid-template-rows:auto auto minmax(250px,1fr) auto;margin:0;background:#232822;color:#eee7d5;font:13px system-ui}header{padding:14px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}h1{font:22px Georgia;margin:0}p{margin:0;color:#bcc3b3;font-size:12px}nav{display:flex;gap:6px;flex-wrap:wrap;padding:0 18px 12px}button,select,a{font:inherit;color:inherit;background:#39422f;border:1px solid #5d6750;border-radius:6px;padding:10px 12px;min-height:44px;cursor:pointer;text-decoration:none}button[aria-pressed=true]{background:#c2b27b;color:#1d241b}button:focus-visible,a:focus-visible,select:focus-visible{outline:2px solid #e3cf8a;outline-offset:2px}iframe{display:block;width:100%;height:100%;min-height:0;border:0}footer{padding:8px 18px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}output{font-variant-numeric:tabular-nums;color:#d6d8bd}a{margin-left:auto}label{display:flex;gap:7px;align-items:center}
+</style>
+<header><div><h1 id="name">Map</h1><p>Environment study · actual game renderer · staged views, not a hunt test</p></div>
+<label>Light<select id="light"><option value="dawn">Dawn</option><option value="morning" selected>Morning</option><option value="noon">Noon</option><option value="evening">Evening</option><option value="lastlight">Last light</option></select></label>
+<label>Detail<select id="detail"><option value="high">Standard</option><option value="lite">Lightweight</option></select></label>
+<a id="play" href="../index3d.html">Play this property</a></header>
+<nav id="views" aria-label="Review locations"></nav><iframe id="world" title="Map environment"></iframe>
+<footer><button id="left">Look left</button><button id="right">Look right</button><button id="down">Look down</button><button id="walk">Walk route study</button><output id="stats">Preparing property…</output></footer>
+<script type="module">
+import {getArea} from '../src/game/areas.ts';
+import {LandscapeModel} from '../src/game/landscape.ts';
+import {mapReviewViews} from './mapReviewViews.ts';
+const areaId=new URLSearchParams(location.search).get('area')||'sharptail-prairie';
+const area=getArea(areaId),landscape=new LandscapeModel(area),views=mapReviewViews(area);
+document.querySelector('#name').textContent=area.name;document.title=`${area.name} · environment review`;
+const $=selector=>document.querySelector(selector);
+const frame=$('#world'),stats=$('#stats'),nav=$('#views');
+const params=new URLSearchParams(location.search);
+let api,index=Math.max(0,views.findIndex(v=>v.id===params.get('view'))),turn=0,tilt=0,touring=false,travel=0,last=0;
+const buttons=views.map((view,i)=>{const button=document.createElement('button');button.textContent=view.name;button.onclick=()=>{index=i;turn=0;tilt=0;touring=false;paint();};nav.append(button);return button;});
+function info(){const t=api.telemetry(),r=api.info();stats.textContent=`${touring?'Route study':views[index].name} · ${Math.round(t.camera.y)} m elevation · ${r.calls} draws · ${r.triangles.toLocaleString()} triangles`;}
+function pose(x,y,tx,ty,pitch=-2,lift=0){const p=landscape.propertyToWorld(x,y,{x:0,z:0});api.setPose(p.x,p.z,-Math.atan2(tx-x,-(ty-y))*180/Math.PI+turn,pitch+tilt,lift);api.renderOnce();info();}
+function paint(){if(!api)return;const v=views[index];pose(...v.at,...v.toward,v.pitch,v.lift??0);buttons.forEach((button,i)=>button.setAttribute('aria-pressed',String(i===index)));$('#walk').textContent='Walk route study';}
+async function ready(){api=undefined;stats.textContent='Preparing property…';const started=performance.now();while(!frame.contentWindow?.__ready3d){if(performance.now()-started>45000){stats.textContent='Field did not become ready; inspect the game error.';return;}await new Promise(resolve=>setTimeout(resolve,100));}api=frame.contentWindow.__api3d;api.pause(true);api.setTod($('#light').value);paint();}
+function query(capture){const q=new URLSearchParams({area:areaId,drop:'south-gate',quality:$('#detail').value,tod:$('#light').value,dog:'generated',seed:'7701'});if(capture)q.set('capture','1');return q;}
+function load(){$('#play').href=`../index3d.html?${query(false)}`;api=undefined;$('#walk').textContent='Walk route study';frame.src=`../index3d.html?${query(true)}`;}
+frame.onload=ready;
+$('#detail').onchange=()=>{touring=false;load();};
+$('#light').onchange=event=>{$('#play').href=`../index3d.html?${query(false)}`;if(api){api.setTod(event.target.value);api.renderOnce();info();}};
+$('#left').onclick=()=>{touring=false;turn+=25;paint();};$('#right').onclick=()=>{touring=false;turn-=25;paint();};
+$('#down').onclick=()=>{touring=false;tilt=tilt<=-30?0:tilt-15;paint();};
+// Walk the property's first authored route at a handler's pace.
+const route=area.trails[0].points;
+const lengths=route.slice(1).map((p,i)=>Math.hypot(p.x-route[i].x,p.y-route[i].y));
+$('#walk').onclick=()=>{if(!api)return;touring=!touring;travel=0;last=performance.now();turn=0;tilt=0;$('#walk').textContent=touring?'Stop route study':'Walk route study';};
+function tick(now){if(touring&&api){travel+=(now-last)/1000*5.2;let distance=travel,n=0;while(n<lengths.length-1&&distance>lengths[n]){distance-=lengths[n];n++;}if(distance>lengths[n]){touring=false;paint();}else{const a=route[n],b=route[n+1],t=distance/lengths[n];pose(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,b.x,b.y);}}last=now;requestAnimationFrame(tick);}load();requestAnimationFrame(tick);
+</script></html>

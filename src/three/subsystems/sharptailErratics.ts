@@ -86,7 +86,9 @@ export function createSharptailErratic(
   ];
   const bearings = [-12, 34, 81, 130, 173, 223, 274, 318];
   const reaches = [.96, .88, 1.02, .90, 1.10, .83, 1.0, .95];
-  const tapers = [.08, .18, .27, .12, .04, .15, .21, .10];
+  // Ice-worn flanks slope back from the base: a glacial boulder, not a
+  // quarried slab standing on end.
+  const tapers = [.26, .42, .55, .31, .2, .37, .48, .28];
   const sides = bearings.map((angle, i) => {
     const a = angle * Math.PI / 180 + phase;
     return { normal: p(Math.cos(a), tapers[(i + variant * 2) % 8], Math.sin(a)), offset: reaches[i] + (random() - .5) * .10 };
@@ -163,8 +165,10 @@ export function createSharptailErratic(
     }
   }
   const positions: number[] = [], colors: number[] = [];
-  const granite = new THREE.Color(0x888988), feldspar = new THREE.Color(0x9a918a);
-  const lichen = new THREE.Color(0x9d9f83), crevice = new THREE.Color(0x565a58), color = new THREE.Color();
+  // Weathered pink-grey prairie granite with orange and sage lichen.
+  const granite = new THREE.Color(0xa29f98), feldspar = new THREE.Color(0xb3a093);
+  const lichen = new THREE.Color(0xa7a98a), orangeLichen = new THREE.Color(0xc0955a);
+  const crevice = new THREE.Color(0x5e615d), color = new THREE.Color();
   const ab = new THREE.Vector3(), ac = new THREE.Vector3(), normal = new THREE.Vector3();
   const triangle = (a: SurfacePoint, b: SurfacePoint, c: SurfacePoint) => {
     ab.subVectors(b, a); ac.subVectors(c, a); normal.crossVectors(ab, ac).normalize();
@@ -175,6 +179,9 @@ export function createSharptailErratic(
     const lichenAmount = THREE.MathUtils.smoothstep(.5 + .5 * Math.sin(x * 8 - z * 6 + phase), .55, .9)
       * THREE.MathUtils.smoothstep(h, .35, .75) * Math.max(0, normal.y) * .32;
     color.lerp(lichen, lichenAmount);
+    // Xanthoria-orange crusts gather on the sunny upper faces.
+    color.lerp(orangeLichen, THREE.MathUtils.smoothstep(.5 + .5 * Math.sin(x * 11 + z * 4 - phase), .78, .95)
+      * THREE.MathUtils.smoothstep(h, .5, .9) * Math.max(0, normal.y) * .5);
     color.lerp(crevice, ((a.joint + b.joint + c.joint) / 3) * .44);
     color.multiplyScalar(.98 + Math.sin(x * 5 + z * 7 + phase) * .02);
     for (const point of [a, b, c]) {

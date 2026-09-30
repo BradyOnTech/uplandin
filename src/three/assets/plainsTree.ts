@@ -11,7 +11,7 @@ import { mulberry32 } from '../../game/math';
  * Wood and foliage come back as separate geometries (unit height, base at
  * the origin) so they can be instanced with their own materials.
  */
-export type PlainsTreeSpecies = 'cottonwood' | 'ash' | 'elm' | 'boxelder';
+export type PlainsTreeSpecies = 'cottonwood' | 'ash' | 'elm' | 'boxelder' | 'poplar';
 
 interface SpeciesShape {
   /** Crown base and top as fractions of height. */
@@ -32,6 +32,10 @@ const SPECIES: Record<PlainsTreeSpecies, SpeciesShape> = {
   // Vase-shaped and arching, yellow-green.
   elm: { base: .36, top: 1, width: .38, trunk: .027, limbs: [4, 5], clumps: 38, clump: .1, drop: .2, lean: .06,
     bark: 0x746b5d, leaves: [0xb4a64e, 0x9aa052, 0xc8b45c, 0x87904a] },
+  // Tall, narrow shelterbelt poplar: a columnar gold crown on a straight
+  // leader, the northern prairie's landmark tree.
+  poplar: { base: .22, top: 1, width: .17, trunk: .026, limbs: [4, 5], clumps: 30, clump: .075, drop: .2, lean: .04,
+    bark: 0x8c877a, leaves: [0xcdb24e, 0xbca445, 0xa3a150, 0xdac56c] },
   // Short, crooked windbreak filler, still greenish and low-crowned.
   boxelder: { base: .3, top: 1, width: .44, trunk: .034, limbs: [3, 5], clumps: 30, clump: .13, drop: .12, lean: .14,
     bark: 0x7e7667, leaves: [0x8e9a4e, 0xa7a355, 0x7f8c48, 0xb59c4c] },

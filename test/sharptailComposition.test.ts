@@ -153,7 +153,8 @@ describe('Sharptail shelterbelts', () => {
     const crownSize = crown.boundingBox!.getSize(new THREE.Vector3());
     const shrubSize = shrub.boundingBox!.getSize(new THREE.Vector3());
     expect(Math.max(crownSize.x, crownSize.z) / crownSize.y).toBeLessThan(.8);
-    expect(trunk.attributes.position.count / 3 + crown.attributes.position.count / 3).toBeLessThanOrEqual(170);
+    // Grown poplars: limbs and faceted leaf clumps, about 49 trees in all.
+    expect(trunk.attributes.position.count / 3 + crown.attributes.position.count / 3).toBeLessThanOrEqual(900);
     expect(shrub.attributes.position.count / 3).toBeLessThanOrEqual(260);
     expect(shrubSize.y).toBeGreaterThan(.6);
     expect(shrubSize.y).toBeLessThan(.9);

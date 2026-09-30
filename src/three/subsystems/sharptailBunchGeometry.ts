@@ -11,9 +11,12 @@ type Part = 'base' | 'middle' | 'near';
  * The tiers contain separate leaves of one plant: 120 + 168 + 216 triangles.
  * Surviving leaves never move between tiers. Extra leaves use the existing
  * root-collapse shader and the same local contact and wind as the base. */
+// Mixed-grass bunches are upright fountains of fine leaves, not wide
+// arching ribbons: a tighter reach and narrower blades keep them from
+// reading as crop seedlings, and the wind comb still lays them over.
 const FORM = {
-  windlaid: { height: .52, spread: .49, width: .030, rootScale: .76, comb: .34 },
-  bunch: { height: .75, spread: .65, width: .039, rootScale: 1, comb: .16 },
+  windlaid: { height: .55, spread: .34, width: .022, rootScale: .7, comb: .34 },
+  bunch: { height: .8, spread: .42, width: .027, rootScale: .86, comb: .16 },
 } as const;
 const CROWNS = [
   { x: -.19, z: .035, vigor: 1, bearing: .18 },

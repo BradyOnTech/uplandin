@@ -1,13 +1,6 @@
 import * as THREE from 'three';
+import { buildPlainsTree } from '../assets/plainsTree';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-
-function branch(a: THREE.Vector3, b: THREE.Vector3, radius: number, tip: number): THREE.BufferGeometry {
-  const geometry = new THREE.CylinderGeometry(tip, radius, a.distanceTo(b), 5, 1, true).toNonIndexed();
-  geometry.deleteAttribute('uv');
-  geometry.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()));
-  geometry.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
-  return geometry;
-}
 
 function merge(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
   const geometry = mergeGeometries(parts)!;
@@ -19,36 +12,17 @@ function merge(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
 /** Open, narrow deciduous crowns on a visible forked stem. Both meshes share
  * the same basal origin/transform, preserving every existing shelterbelt root.
  * The 170-triangle pair costs less than the former 580-triangle Quail tree. */
+/** Shelterbelt poplar: a grown, faceted columnar crown (unit height, base
+ * at the origin) whose limbs show through the thinning October leaves.
+ * Trunk and crown share one transform, so every instance pairs exactly. */
 export function sharptailTreeGeometry(): { trunk: THREE.BufferGeometry; crown: THREE.BufferGeometry } {
-  const root = new THREE.Vector3(0, -.035, 0), fork = new THREE.Vector3(.008, .40, .014);
-  const upper = new THREE.Vector3(.025, .92, .035);
-  const branches = [branch(root, fork, .018, .011), branch(fork, upper, .011, .005)];
-  const foliage: THREE.BufferGeometry[] = [];
-  const masses = [
-    [-.12, .69, .045, .17, .21, .13], [.10, .82, -.055, .16, .23, .14],
-    [.015, 1.01, .025, .14, .19, .13], [-.06, .87, .105, .12, .18, .13],
-    [.13, .62, .085, .12, .14, .12],
-  ];
-  for (const [index, [x, y, z, sx, sy, sz]] of masses.entries()) {
-    const target = new THREE.Vector3(x, y, z);
-    branches.push(branch(fork, target, .006, .002));
-    const lobe = new THREE.IcosahedronGeometry(1, 0); lobe.deleteAttribute('uv');
-    const p = lobe.getAttribute('position');
-    const colors = new Float32Array(p.count * 3);
-    for (let i = 0; i < p.count; i++) {
-      const vx = p.getX(i), vy = p.getY(i), vz = p.getZ(i);
-      const irregular = 1 + Math.sin(vx * 3.1 + vz * 2.7 + index * 1.8) * .10;
-      p.setXYZ(i, x + vx * sx * irregular, y + vy * sy, z + vz * sz * irregular);
-      const shade = .87 + (vy + 1) * .07;
-      colors.set([shade, shade, shade], i * 3);
-    }
-    lobe.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    lobe.computeVertexNormals(); foliage.push(lobe);
-  }
-  const trunk = merge(branches), crown = merge(foliage);
-  trunk.userData = { kind: 'sharptail-shelterbelt-trunk' };
-  crown.userData = { kind: 'sharptail-shelterbelt-crown' };
-  return { trunk, crown };
+  const tree = buildPlainsTree('poplar', 0x51e1);
+  // The trunk batch is instance-tinted wood; keep its faces a neutral bark.
+  tree.wood.deleteAttribute('color');
+  tree.wood.computeBoundingBox(); tree.foliage.computeBoundingBox();
+  tree.wood.userData = { kind: 'sharptail-shelterbelt-trunk' };
+  tree.foliage.userData = { kind: 'sharptail-shelterbelt-crown' };
+  return { trunk: tree.wood, crown: tree.foliage };
 }
 
 /** Three-sided tapered wood is enough for these small, visible branchlets.

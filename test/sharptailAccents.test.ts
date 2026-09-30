@@ -130,7 +130,9 @@ describe('composed low prairie habitat', () => {
     // The approaching boundary cape adds24/40 roots below1.45m.
     // The open shrub kit may spend260 triangles per root, and branched
     // forbs120. Existing roots and five draw batches remain unchanged.
-    expect(triangles).toBeLessThanOrEqual(quality === 'lite' ? 155000 : 228000);
+    // The 49 shelterbelt poplars are grown faceted trees (under 900
+    // triangles each, previously 170), adding about 31k to either tier.
+    expect(triangles).toBeLessThanOrEqual(quality === 'lite' ? 186000 : 259000);
     const matrix = new THREE.Matrix4(), vertex = new THREE.Vector3();
     const rocks = meshes.find(mesh => mesh.name.includes('rock'))!;
     for (let i = 0; i < rocks.count; i++) {

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { sharptailCommunityAt, tintSharptailCommunity, type SharptailCommunitySample } from './sharptailCommunities';
 import { sharptailGroundZones } from '../../game/sharptailLandscape';
 import { sharptailAccentGroundAt } from './sharptailAccents';
 import { sharptailStoneClearance } from '../../game/sharptailFeatures';
@@ -114,6 +115,7 @@ transformed += vegetationInstanceWind(uPrairieWind) * vegetationGust(uPrairieTim
     const position = new THREE.Vector3(), scale = new THREE.Vector3(), normal = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
     const rotation = new THREE.Quaternion(), yaw = new THREE.Quaternion(), matrix = new THREE.Matrix4(), color = new THREE.Color();
     const dry = new THREE.Color(0xc2ad76), sheltered = new THREE.Color(0xb1ab7b), cured = new THREE.Color(0xbda16b);
+    const community: SharptailCommunitySample = { bluestem: 0, bigBluestem: 0, wheatgrass: 0, needle: 0 };
     const step = SHARPTAIL_MID_SWARD_BUDGET.rootStepYards, cells = SHARPTAIL_MID_SWARD_BUDGET.chunkYards / step;
     const shack = landscape.area.landmarks.find(item => item.kind === 'barn');
     const area = landscape.area.world;
@@ -176,6 +178,7 @@ transformed += vegetationInstanceWind(uPrairieWind) * vegetationGust(uPrairieTim
           matrices.push(matrix.compose(position, rotation, scale).clone());
           color.copy(dry).lerp(sheltered, Math.max(meadow.hollow, bands.grass * .55) * .42).lerp(cured, meadow.cured * .40)
             .multiplyScalar(.95 + noise(gx, gy, salt + 337) * .09);
+          tintSharptailCommunity(color, sharptailCommunityAt(px, py, meadow, community), .62);
           colors.push(color.clone());
         }
       }

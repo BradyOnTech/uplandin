@@ -85,7 +85,7 @@ function profileFor(style: HuntStyle, lite: boolean, areaId?: string): HabitatPr
       // Most low habitat now lives in composed pockets, leaving long casts
       // through open grass. Sparse fill only bridges those remembered groups.
       chances: { shrub: .026, trunk: 0, rock: .0015, reed: 0 },
-      colors: colors({ shrub: [0xa4ae91, 0x96a58a, 0xb0b79c], trunk: [0x929384], canopy: [0x899379, 0x99a083], rock: [0xa7a38d], reed: [0xb0a47b] }),
+      colors: colors({ shrub: [0xa4ae91, 0x96a58a, 0xb0b79c], trunk: [0x8c877a], canopy: [0xece6d6, 0xdcd9c8], rock: [0xa7a38d], reed: [0xb0a47b] }),
       scale: { shrub: [.77, 1.1], trunk: [3.2, 5.8], canopy: [1.7, 3.1], rock: [.74, 1.1], reed: [.85, 1.2] }, };
   }
   switch (style) {

@@ -9,6 +9,7 @@ import { quailGroundNearDistance, quailGroundTiles, quailGroundUsesNear } from '
 import { PHEASANT_MATERIALS, fieldTimeOfDay, type TimeOfDay } from '../palette';
 import { pheasantFields, pheasantNeighbourFields, pheasantPonds, samplePheasantHarvest, type PheasantHarvestSample } from './pheasantLandscape';
 import { createPheasantFarmPainter } from './pheasantFarmSurface';
+import { sharptailCommunityAt, tintSharptailCommunity, type SharptailCommunitySample } from './sharptailCommunities';
 import { createPheasantFarmMap, pheasantHarvestOnSoil, PHEASANT_FARM_DECLARATIONS, PHEASANT_FARM_FRAGMENT } from './pheasantCropSurface';
 import { createPheasantHomesteadGround } from '../../game/pheasantHomesteadGround';
 import { sharptailGroundZones } from '../../game/sharptailLandscape';
@@ -204,9 +205,12 @@ function paintFor(property: LandscapeModel): Paint {
   const prairieZones = { swale: 0, stand: 0 };
   const prairieExposure = new THREE.Color(SHARPTAIL_MEADOW_COLORS.exposed);
   const prairieMeadow = { crown: 0, hollow: 0, cured: 0, exposed: 0 };
-  const prairieCrown = new THREE.Color(SHARPTAIL_MEADOW_COLORS.crown).multiplyScalar(.87);
+  const prairieCommunity: SharptailCommunitySample = { bluestem: 0, bigBluestem: 0, wheatgrass: 0, needle: 0 };
+  // Crowns carry a litter-dark sward floor so the cured blades above them
+  // stand out; only the authored exposed faces show pale till.
+  const prairieCrown = new THREE.Color(SHARPTAIL_MEADOW_COLORS.crown).multiplyScalar(.74);
   const prairieHollow = new THREE.Color(SHARPTAIL_MEADOW_COLORS.hollow).multiplyScalar(.81);
-  const prairieCured = new THREE.Color(SHARPTAIL_MEADOW_COLORS.cured).multiplyScalar(.86);
+  const prairieCured = new THREE.Color(SHARPTAIL_MEADOW_COLORS.cured).multiplyScalar(.78);
   const nativeLitter = new THREE.Color(0xb2aa80), swaleSward = new THREE.Color(0x627d63);
   const prairieDryLitter = new THREE.Color(0x827958), prairieSageFloor = new THREE.Color(0x596c50);
   const prairiePocketFloor = new THREE.Color();
@@ -250,6 +254,9 @@ function paintFor(property: LandscapeModel): Paint {
       out.lerp(prairieHollow, prairieMeadow.hollow * .86);
       out.lerp(prairieCured, prairieMeadow.cured * .66);
       out.lerp(prairieExposure, prairieMeadow.exposed * .92);
+      // The ground beneath each plant community takes a little of its hue,
+      // so the colony mosaic survives past the blade distance.
+      tintSharptailCommunity(out, sharptailCommunityAt(x, y, prairieMeadow, prairieCommunity), .34);
       // Root authored sage/forb pockets in accumulated litter. Shared masks
       // place these value masses beneath the actual vegetation, not random
       // decorative spots; geometry bakes this once with no new shader work.
