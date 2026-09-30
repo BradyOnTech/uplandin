@@ -73,12 +73,14 @@ function forbGeometry(): THREE.BufferGeometry {
     const top = [x + lean, h, z];
     tri([x - w, 0, z], [x + w, 0, z], top, stem);
     tri([x, 0, z - w], [x, 0, z + w], top, stem);
-    // A small faceted head: two crossed diamonds.
-    for (const [dx, dz] of [[1, 0], [0, 1]]) {
-      const s = .045 + rng() * .02;
-      const a = [top[0] - dx * s, top[1] + .01, top[2] - dz * s], b = [top[0] + dx * s, top[1] + .01, top[2] + dz * s];
-      tri(a, [top[0], top[1] + s * 1.6, top[2]], b, head);
-      tri(a, b, [top[0], top[1] - s * .5, top[2]], head.map(v => v * .8));
+    // A loose head of small florets around the stem tip. Single large
+    // diamonds read as flags at the hunter's feet.
+    for (let j = 0; j < 4; j++) {
+      const fa = rng() * Math.PI * 2, fr = .006 + rng() * .02, s = .011 + rng() * .008;
+      const cx = top[0] + Math.cos(fa) * fr, cy = top[1] - .035 + j * .016, cz = top[2] + Math.sin(fa) * fr;
+      const dx = Math.cos(fa + 1.3), dz = Math.sin(fa + 1.3), shade = head.map(v => v * (.8 + j * .07));
+      tri([cx - dx * s, cy, cz - dz * s], [cx + dx * s, cy, cz + dz * s], [cx, cy + s * 1.7, cz], shade);
+      tri([cx - dz * s, cy, cz + dx * s], [cx + dz * s, cy, cz - dx * s], [cx, cy + s * 1.7, cz], shade);
     }
   }
   const geometry = new THREE.BufferGeometry();
