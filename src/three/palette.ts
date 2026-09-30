@@ -593,16 +593,18 @@ const CHUKAR_TOD = Object.fromEntries((Object.keys(BASE_QUAIL_TOD) as TimeOfDay[
 const PHEASANT_TOD = Object.fromEntries((Object.keys(TOD) as TimeOfDay[]).map((tod) => [tod, {
   ...TOD[tod],
   ...(tod === 'morning' || tod === 'noon' ? {
-    skyTop: 0x4c7180, skyMid: 0x9eb4b7, skyHorizon: 0xd8cfb5,
-    fogColor: 0xb4c0bc, fogDensity: tod === 'noon' ? .00155 : .0019,
-    sunColor: 0xffe8c8, sunIntensity: tod === 'noon' ? 2.85 : 2.7,
-    fillColor: 0xaac4d1, fillIntensity: .26,
-    ambientSky: 0xb1c5cf, ambientGround: 0x747d69, ambientIntensity: .86,
+    // Clear October air over the potholes: a deeper sky, a longer view and
+    // a firmer sun so the field patchwork and windbreaks read at distance.
+    skyTop: 0x41708e, skyMid: 0x9bb6bf, skyHorizon: 0xd9d0b6,
+    fogColor: 0xb7c3c2, fogDensity: tod === 'noon' ? .0012 : .00142,
+    sunColor: 0xffe6c2, sunIntensity: tod === 'noon' ? 3.0 : 2.9,
+    fillColor: 0xaac4d1, fillIntensity: .24,
+    ambientSky: 0xb1c5cf, ambientGround: 0x747d69, ambientIntensity: .78,
     ridge: 0x53665b, ridgeFar: 0x95a9aa, landform: 0x75816d,
     floraWarm: .23, floraCool: .55, exposure: 1.0,
   } : tod === 'dawn' || tod === 'evening' ? {
     skyTop: 0x536d82, skyMid: 0xa7afb0, skyHorizon: 0xd7b69b,
-    fogColor: 0xa9b2b2, fogDensity: .00225, fillColor: 0x9cb6c9,
+    fogColor: 0xa9b2b2, fogDensity: .0018, fillColor: 0x9cb6c9,
     sunColor: 0xffdab0, sunIntensity: 2.7,
     fillIntensity: .40, ambientSky: 0xabb8c3, ambientGround: 0x666d64, ambientIntensity: .96,
     floraWarm: .23, floraCool: .55, exposure: 1.01,

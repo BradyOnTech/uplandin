@@ -7,7 +7,7 @@ import { buildQuailTerrainGeometry } from './quailTerrain';
 import { buildSharptailHorizonGeometries } from './sharptailHorizonGeometry';
 import { quailGroundNearDistance, quailGroundTiles, quailGroundUsesNear } from './quailGroundGeometry';
 import { PHEASANT_MATERIALS, fieldTimeOfDay, type TimeOfDay } from '../palette';
-import { pheasantFields, pheasantPonds, samplePheasantHarvest, type PheasantHarvestSample } from './pheasantLandscape';
+import { pheasantFields, pheasantNeighbourFields, pheasantPonds, samplePheasantHarvest, type PheasantHarvestSample } from './pheasantLandscape';
 import { createPheasantFarmPainter } from './pheasantFarmSurface';
 import { createPheasantFarmMap, pheasantHarvestOnSoil, PHEASANT_FARM_DECLARATIONS, PHEASANT_FARM_FRAGMENT } from './pheasantCropSurface';
 import { createPheasantHomesteadGround } from '../../game/pheasantHomesteadGround';
@@ -183,6 +183,8 @@ function paintFor(property: LandscapeModel): Paint {
   const stone = new THREE.Color(finish.stone);
   const litter = new THREE.Color(areaId === 'woodcock-bottoms' ? 0x65583f : areaId === 'sharptail-prairie' ? 0xaaa078 : finish.litter);
   const fields = areaId === 'pheasant-coverts' ? pheasantFields(property.area) : [];
+  const neighbours = areaId === 'pheasant-coverts' ? pheasantNeighbourFields(property.area) : [];
+  const world = property.area.world;
   const wetPools = areaId === 'woodcock-bottoms' ? wetPondLayout(property.area) : [];
   const ponds = areaId === 'pheasant-coverts' ? pheasantPonds(property) : [];
   const farmPaint = createPheasantFarmPainter(property.area);
@@ -272,7 +274,8 @@ function paintFor(property: LandscapeModel): Paint {
       // Broad cool litter beneath the standing crop separates the habitat
       // from sunlit harvested soil even as individual stems recede in view.
       out.lerp(standingGrass, standing * (.75 + meso * .18));
-      samplePheasantHarvest(landscape.area, x, y, fields, harvestSample);
+      const outside = x < world.x || y < world.y || x > world.x + world.w || y > world.y + world.h;
+      samplePheasantHarvest(landscape.area, x, y, outside ? neighbours : fields, harvestSample);
       // Match the dry-ground cutoff used by stubble placement, feathered
       // into the wet fringe so harvested rectangles do not paint over mud.
       const harvest = pheasantHarvestOnSoil(harvestSample.amount, moisture);
@@ -500,7 +503,10 @@ export class PropertyTerrain {
       [bounds.x + bounds.w, bounds.y, margin, bounds.h],
     ];
     const horizonGeometries = prairie ? buildSharptailHorizonGeometries(this.landscape, this.paint)
-      : strips.map(([x, y, width, depth]) => buildQuailTerrainGeometry(this.landscape, x, y, width, depth, 42, this.paint));
+      // The farm's neighbours carry a field patchwork, so the pheasant
+      // horizon needs enough vertices to hold a field's edges.
+      : strips.map(([x, y, width, depth]) => buildQuailTerrainGeometry(this.landscape, x, y, width, depth,
+        this.landscape.area.id === 'pheasant-coverts' ? 80 : 42, this.paint));
     for (const geometry of horizonGeometries) {
       const mesh = new THREE.Mesh(geometry, this.material);
       mesh.name = `${this.landscape.area.name} horizon ground`;

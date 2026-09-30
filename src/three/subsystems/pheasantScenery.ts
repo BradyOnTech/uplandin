@@ -17,26 +17,29 @@ function seeded(seed: number, salt: number): number {
   return (h ^ (h >>> 13)) >>> 0;
 }
 
+/** A pond surface in concentric rings so it can carry faceted waves. The
+ * shoreline keeps broad bends; uv stays radial for the soft margin. */
 function irregularDisc(rx: number, rz: number, seed: number, y = 0): THREE.BufferGeometry {
   const rng = mulberry32(seed);
-  const segments = 96;
+  const segments = 72, rings = 9;
   const phase = rng() * Math.PI * 2;
-  const ring: Array<[number, number]> = [];
-  for (let i = 0; i < segments; i++) {
-    const angle = i / segments * Math.PI * 2;
+  const point = (ring: number, i: number): [number, number, number, number] => {
+    const angle = i / segments * Math.PI * 2, t = ring / rings;
     // Broad shoreline bends, not independent spikes at every vertex.
     const wobble = .97 + Math.sin(angle * 3 + phase) * .025 + Math.sin(angle * 5 - phase) * .012;
-    ring.push([Math.cos(angle) * rx * wobble, Math.sin(angle) * rz * wobble]);
-  }
-  const positions: number[] = [];
-  const uv: number[] = [];
-  for (let i = 0; i < segments; i++) {
-    const a = ring[i];
-    const b = ring[(i + 1) % segments];
-    positions.push(0, y, 0, b[0], y, b[1], a[0], y, a[1]);
-    const angleA = i / segments * Math.PI * 2, angleB = (i + 1) / segments * Math.PI * 2;
-    uv.push(.5, .5, .5 + Math.cos(angleB) * .5, .5 + Math.sin(angleB) * .5,
-      .5 + Math.cos(angleA) * .5, .5 + Math.sin(angleA) * .5);
+    // Offset alternate rings so the facets form triangles, not a web.
+    const skew = ring % 2 ? .5 / segments * Math.PI * 2 : 0;
+    const a = angle + skew * (1 - t);
+    return [Math.cos(a) * rx * wobble * t, Math.sin(a) * rz * wobble * t, .5 + Math.cos(a) * .5 * t, .5 + Math.sin(a) * .5 * t];
+  };
+  const positions: number[] = [], uv: number[] = [];
+  const push = (...points: [number, number, number, number][]) => {
+    for (const [x, z, u, v] of points) { positions.push(x, y, z); uv.push(u, v); }
+  };
+  for (let ring = 0; ring < rings; ring++) for (let i = 0; i < segments; i++) {
+    const a = point(ring, i), b = point(ring, i + 1), c = point(ring + 1, i), d = point(ring + 1, i + 1);
+    if (ring === 0) { push(a, d, c); continue; }
+    push(a, d, c); push(a, b, d);
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -46,7 +49,6 @@ function irregularDisc(rx: number, rz: number, seed: number, y = 0): THREE.Buffe
   return geometry;
 }
 
-/** Prairie-pothole water, seasonal remnants, cottonwoods, and long fence structure. */
 export class PheasantScenerySystem implements Subsystem {
   readonly id = 'flora';
   private objects: THREE.Object3D[] = [];
@@ -81,8 +83,13 @@ export class PheasantScenerySystem implements Subsystem {
   constructor(private readonly landscape: LandscapeModel) {}
 
   private rotor?: THREE.Object3D;
+  private waterTime = { value: 0 };
+  private waterSky = { value: new THREE.Color(0x9fb3bd) };
 
   update(ctx: Ctx): void {
+    this.waterTime.value = ctx.time;
+    const fog = ctx.scene.fog as THREE.Fog | THREE.FogExp2 | null;
+    if (fog) this.waterSky.value.copy(fog.color);
     const time = this.leafMaterial?.userData.time as { value: number } | undefined;
     if (time) time.value = ctx.time;
     if (this.rotor) this.rotor.rotation.z = -ctx.time * .32;
@@ -94,27 +101,41 @@ export class PheasantScenerySystem implements Subsystem {
     // shadow pass; they remain visible and receive light, while a phone avoids
     // re-rendering dozens of small casters into the shadow map every frame.
     const castShadow = ctx.quality === 'high';
+    // Prairie slough water: dark and peaty in the middle, lighter over the
+    // mud margin, faceted by a slow wind chop that catches the sun, and
+    // reflecting the sky toward the horizon.
     const waterMaterial = new THREE.MeshStandardMaterial({
-      color: 0x7396a0,
-      roughness: 0.28,
-      metalness: 0.08,
+      color: 0x51707a,
+      roughness: 0.22,
+      metalness: 0.1,
       transparent: true,
-      opacity: 0.86,
+      opacity: 0.92,
       depthWrite: false,
+      flatShading: true,
       side: THREE.DoubleSide,
     });
-    waterMaterial.customProgramCacheKey = () => 'pheasant-water-soft-margin-v1';
+    waterMaterial.customProgramCacheKey = () => 'pheasant-water-faceted-v2';
     waterMaterial.onBeforeCompile = shader => {
+      shader.uniforms.uWaterTime = this.waterTime;
+      shader.uniforms.uWaterSky = this.waterSky;
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nvarying vec2 vPondUV;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPondUV = uv;');
+        .replace('#include <common>', '#include <common>\nvarying vec2 vPondUV;\nuniform float uWaterTime;')
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+          vPondUV = uv;
+          vec3 pondWorld = (modelMatrix * vec4(position, 1.0)).xyz;
+          float calm = 1.0 - smoothstep(.72, 1.0, length(uv * 2.0 - 1.0));
+          transformed.y += (sin(pondWorld.x * .55 + uWaterTime * 1.1) * .5 + sin(pondWorld.z * .8 - uWaterTime * .8 + pondWorld.x * .3) * .5) * .045 * calm;`);
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying vec2 vPondUV;')
+        .replace('#include <common>', '#include <common>\nvarying vec2 vPondUV;\nuniform vec3 uWaterSky;')
         .replace('#include <color_fragment>', `#include <color_fragment>
           float shore = length(vPondUV * 2.0 - 1.0);
           diffuseColor.a *= 1.0 - smoothstep(.965, 1.0, shore);
-          diffuseColor.rgb *= 1.0 - smoothstep(.78, 1.0, shore) * .12;
-        `);
+          // Deep peat water in the middle, olive shallows over the mud.
+          diffuseColor.rgb = mix(diffuseColor.rgb * .62, diffuseColor.rgb * vec3(1.12, 1.12, .92), smoothstep(.45, .97, shore));
+        `)
+        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+          float waterFresnel = pow(1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0), 3.0);
+          totalEmissiveRadiance += uWaterSky * waterFresnel * .45;`);
     };
     const snowMaterial = new THREE.MeshStandardMaterial({
       color: 0xd9dcd4,

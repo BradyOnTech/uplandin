@@ -31,6 +31,7 @@ export function cattailCovertsViews(area: AreaConfig): MapReviewView[] {
     v('truck', 'Truck', { x: drop.x, y: drop.y - 8 }, { x: drop.x + 20, y: drop.y - 180 }, -3),
     v('slough-shore', 'Slough shore', { x: slough.x + 60, y: slough.y + 64 }, slough, -4),
     v('slough-water', 'Slough water', { x: slough.x - 20, y: slough.y + 36 }, { x: slough.x + 10, y: slough.y - 10 }, -7),
+    v('slough-over', 'Over the slough', { x: slough.x + 5, y: slough.y + 44 }, { x: slough.x, y: slough.y - 20 }, -12, 3),
     v('cottonwood', 'Slough cottonwood', { x: slough.x - 20, y: slough.y + 40 }, { x: slough.x - 60, y: slough.y - 12 }, 8),
     v('slough-neck', 'Slough neck', { x: slough.x + 50, y: slough.y - 112 }, { x: slough.x - 10, y: slough.y - 30 }, -4),
     v('homestead', 'Homestead yard', { x: barn.x + 24, y: barn.y + 46 }, barn, -2),

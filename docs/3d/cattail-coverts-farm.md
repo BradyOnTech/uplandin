@@ -92,6 +92,42 @@ The old sparse "stubble" and litter in harvested ground were removed from
   - the section road above the east corn
   - the south-east line
 
+## Trees and landmarks
+
+### Grown hardwoods (`src/three/assets/plainsTree.ts`)
+
+The old umbrella crowns read as acacias. Each tree is now grown crown-first:
+
+- Two or three overlapping lobes set the species silhouette: cottonwood,
+  green ash, elm or boxelder.
+- Faceted icosahedron leaf clumps fill the lobe shell, and core masses keep
+  the crown one body.
+- Scaffold limbs and twigs grow from the trunk to carry the clumps.
+- October thinning leaves gaps where the limbs show.
+- Leaves sway gently, more toward the top (`plainsTreeMaterials.ts`).
+
+Windbreaks instance seven grown variants (ash, elm, boxelder and a rare
+cottonwood). Saplings are always leadered ash or elm, so every trunk still
+stops shots at eye height. Neighbouring farms use three cheap distant crowns.
+Review the trees in `tools3d/plains-tree-review.html`.
+
+### Stock Pond windmill
+
+The quail windmill and tank stand on the Stock Pond's dry west shoulder. The
+rotor turns, and both parts are solid.
+
+## Water and air
+
+- **Slough water:** the surface is built in rings so it can carry a slow,
+  faceted wind chop. It is dark peat in the middle, olive over the mud margin,
+  and a Fresnel term reflects the current fog and sky colour.
+- **Air:** morning and noon are clearer, with less fog and a firmer sun, so
+  the patchwork and windbreaks hold at distance. Dawn and evening are slightly
+  clearer too.
+- **Neighbouring farms:** the ground beyond the property line paints a
+  section-grid patchwork (`pheasantNeighbourFields`). The pheasant horizon
+  strips carry enough vertices to hold field edges.
+
 ## Survey map
 
 The survey map tints harvested ground by crop, hatches it along each field's
@@ -112,14 +148,23 @@ rows and draws the section fences.
 
 ## Budget
 
-Staged high-quality frames, before → after (draws / triangles):
+Staged high-quality frames, before this work → after (draws / triangles):
 
 | View | Before | After |
 | --- | --- | --- |
-| Truck | 260 / 1.10 M | 270 / 1.12 M |
-| Slough neck | 259 / 1.31 M | 262 / 1.44 M |
-| Harvest field | 207 / 0.48 M | 217 / 0.73 M |
-| East fields | 137 / 1.21 M | 143 / 1.30 M |
-| Overview (north) | 239 / 0.43 M | 200 / 0.54 M |
+| Truck | 260 / 1.10 M | 298 / 1.28 M |
+| Slough neck | 259 / 1.31 M | 282 / 1.58 M |
+| Harvest field | 207 / 0.48 M | 248 / 0.90 M |
+| East fields | 137 / 1.21 M | 169 / 1.46 M |
+| Overview (north) | 239 / 0.43 M | 220 / 0.70 M |
 
-On lite, the truck and harvest views are 232 / 0.70 M and 194 / 0.54 M.
+On lite:
+
+| View | Draws / triangles |
+| --- | --- |
+| Truck | 254 / 0.84 M |
+| Shelterbelt | 155 / 0.71 M |
+| Over the slough | 230 / 0.90 M |
+
+Grown trees, residue and the wider horizon account for most of the increase.
+Measure on real hardware before trimming.

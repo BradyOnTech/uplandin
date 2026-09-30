@@ -37,6 +37,23 @@ export function pheasantFields(area: AreaConfig): PheasantField[] {
   })];
 }
 
+/** Neighbouring farms beyond the property line: a section-grid patchwork
+ * of harvested fields that only the terrain paint reads, so the distant
+ * ground carries the same crops instead of fading to bare tan. */
+export function pheasantNeighbourFields(area: AreaConfig): PheasantField[] {
+  const { x: ox, y: oy, w, h } = area.world, crops: PheasantCrop[] = ['corn', 'beans', 'wheat', 'hay', 'corn', 'beans'];
+  const out: PheasantField[] = [];
+  const cellW = 440, cellH = 330, margin = 1100;
+  for (let y = oy - margin; y < oy + h + margin; y += cellH) for (let x = ox - margin; x < ox + w + margin; x += cellW) {
+    if (x + cellW > ox && x < ox + w && y + cellH > oy && y < oy + h) continue;
+    const hash = Math.abs(Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1;
+    const crop = crops[Math.floor(hash * crops.length)], alongX = hash * 7 % 1 > .5;
+    const rx = cellW / 2 - 4, ry = cellH / 2 - 4, cx = x + cellW / 2, cy = y + cellH / 2;
+    out.push(alongX ? { x: cx, y: cy, rx, ry, angle: 0, crop } : { x: cx, y: cy, rx: ry, ry: rx, angle: Math.PI / 2, crop });
+  }
+  return out;
+}
+
 export function pheasantCoverAt(area: AreaConfig, x: number, y: number): boolean {
   return area.patches.some(p => x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h);
 }
