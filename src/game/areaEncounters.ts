@@ -10,7 +10,7 @@ import { huntHabitatAffinity, huntingDoctrine } from './huntDoctrine';
  * are still cover anchors, so the existing spawn code remains responsible for
  * species mix, covey size, jitter, and all exclusion rules.
  */
-const MAX_ANCHORS = 16;
+const MAX_ANCHORS = 28;
 const CANDIDATES_PER_PATCH = 12;
 const PATCH_EDGE = 10;
 const DROP_BUFFER = 16;
@@ -141,7 +141,9 @@ export function authoredEncounterAnchors(
 
   const chosen: Candidate[] = [];
   const style = area.terrain.kind;
-  const spacing = style === 'woods' || style === 'wetland' ? 72 : style === 'rimrock' || style === 'canyon' ? 84 : 96;
+  // Close enough that a hunter working the routes meets birds every minute
+  // or two; far enough that one flush never spills into the next covey.
+  const spacing = style === 'woods' || style === 'wetland' ? 56 : style === 'rimrock' || style === 'canyon' ? 64 : 72;
   // Each visit leans the day a different way: an opening further out or
   // closer in, a favoured flank, and a pick among the good cover rather
   // than the single best spot, so the birds are not waiting in the same
@@ -149,7 +151,7 @@ export function authoredEncounterAnchors(
   const firstDistance = 72 + rng() * 108;
   const flank = rng() < .34 ? 0 : rng() < .5 ? 1 : -1;
   for (let index = 0; index < MAX_ANCHORS; index++) {
-    const wantedDistance = firstDistance + index * (spacing + 18) + rng() * 80;
+    const wantedDistance = firstDistance + index * (spacing + 8) + rng() * 80;
     const previousDistance = chosen.at(-1)?.distanceFromDrop ?? 0;
     const remaining = candidates.filter((candidate) =>
       !chosen.some((picked) => dist(picked.point, candidate.point) < spacing) &&

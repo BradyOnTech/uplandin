@@ -98,6 +98,9 @@ export interface HuntSimulationInput {
   commands?: readonly HandlerCommand[];
 }
 
+/** Share of the legacy bird-winds-dog radius that applies in the open field. */
+const FIELD_BIRD_WINDS_DOG_SCALE = .5;
+
 export interface HuntSimulationConfig {
   challenge?: HuntChallenge;
   hunt: HuntState;
@@ -271,7 +274,10 @@ export class HuntSimulation {
           this.hunt.birds,
           dog.pos,
           this.hunt.wind,
-          dogScentRadius(dog.level) * wind.dogScent,
+          // The open field's dogs wind birds at tens of yards, so they come
+          // closer to sitting birds than the old long-reach dogs did; a
+          // bird only catches a young dog's scent when it is nearly on it.
+          dogScentRadius(dog.level) * wind.dogScent * (spatialEncounter ? FIELD_BIRD_WINDS_DOG_SCALE : 1),
         );
         if (scented.length > 0) {
           const event = this.flushBird(scented[0].id, 'scent', null);

@@ -116,7 +116,7 @@ describe('world-scale held-point walk-in', () => {
     expect(exhausted.step()).toContainEqual(expect.objectContaining({ type: 'covey-flushed', cause: 'nerve' }));
     const scented = fixture('sharptail', 60);
     scented.dog.state = 'quartering'; scented.dog.pointedBirdId = null;
-    scented.dog.pos = { x: 288, y: 300 }; scented.hunt.wind = 0;
+    scented.dog.pos = { x: 294, y: 300 }; scented.hunt.wind = 0;
     expect(scented.step()).toContainEqual(expect.objectContaining({ type: 'covey-flushed', cause: 'scent' }));
   });
 });

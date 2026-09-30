@@ -206,6 +206,9 @@ export function resolveThreeHuntArea(
  * Deep launch seam for Three.js: URL + shared saves in, complete hunt setup
  * out. The renderer never needs to know career calendar or Quick Hunt rules.
  */
+/** Coveys a balanced 3D property holds; challenge stocking scales it. */
+export const FIELD_COVEY_TARGET = 10;
+
 export function createThreeHuntSetup(
   search: string,
   rng: RNG = Math.random,
@@ -239,7 +242,7 @@ export function createThreeHuntSetup(
       // Hun covey. A full 3D property needs more than one opportunity even
       // after an opening covey escapes. Weights are shares of birds, so the
       // harmonic mean matches spawnBirds' covey-weight conversion.
-      birdCount: Math.max(areaBirdCount(resolvedArea), Math.round(3 *
+      birdCount: Math.max(areaBirdCount(resolvedArea), Math.round(FIELD_COVEY_TARGET *
         resolvedArea.speciesMix.reduce((sum, entry) => sum + entry.weight, 0) /
         resolvedArea.speciesMix.reduce((sum, entry) => {
           const species = getSpecies(entry.speciesId);

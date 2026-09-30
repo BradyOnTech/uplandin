@@ -74,7 +74,10 @@ function walkIn(seed: number, challenge: HuntChallenge, action: 'walk' | 'run' |
 
 it.each([41, 1184004868])('allows the quiet Balanced world-space walk-in after a natural distant point (seed %i)', seed => {
   const result = walkIn(seed, 'balanced');
-  expect(result.pointDogRange).toBeGreaterThan(18);
+  // The dog makes game at a working pace and the handler follows it in, so
+  // the point lands nearer the gun than the old straight road-in did; it
+  // is still a point the hunter has to walk in on.
+  expect(result.pointDogRange).toBeGreaterThan(10);
   expect(result.flush.cause).toBe('proximity');
   expect(result.flush.pointCredit).toBe(true);
   expect(result.flush.birdIds.length).toBeGreaterThanOrEqual(5);
@@ -104,7 +107,7 @@ it('still loses a distant covey naturally if the handler never closes the point'
   expect(result.flush.cause).toBe('nerve');
   // The trained dog holds off close pressure before pointing; stopping
   // after that earned point still loses a distant, unapproached covey.
-  expect(result.rangeM).toBeGreaterThan(30);
+  expect(result.rangeM).toBeGreaterThan(18);
   expect(result.holdMs).toBeGreaterThan(0);
   expect(result.holdMs).toBeLessThan(35_000);
 });

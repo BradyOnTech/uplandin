@@ -70,7 +70,7 @@ describe('independent Setter search lifecycle review', () => {
     const field = searchFixture();
     field.until(() => field.dog.state === 'heel');
     // Outside hunter exclusion but within the Setter's ordinary calm scent reach.
-    const bird = ringneckAt(field.hunter.x + 40, field.hunter.y);
+    const bird = ringneckAt(field.hunter.x + 17, field.hunter.y);
     field.tick([bird]);
     expect(field.dog.state).toBe('tracking');
     expect(field.dog.scentStage).toBe('checking');

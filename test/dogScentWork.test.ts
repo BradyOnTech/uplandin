@@ -17,7 +17,7 @@ const properties = [
 /** Controlled scent diagnosis, not a natural encounter. The actual shared
  * simulation supplies wind, weather, handler constraints and field rules;
  * the movement adapter uses the same gait-dependent scale as live Three. */
-function fixture(areaId = 'quail-fields', speciesId = 'bobwhite', breedId = 'gsp', level = 5, birdX = 380) {
+function fixture(areaId = 'quail-fields', speciesId = 'bobwhite', breedId = 'gsp', level = 5, birdX = 345) {
   const area = getArea(areaId), breed = getBreed(breedId);
   const hunt = createHunt(area, mulberry32(1), { wind: 'breezy', condition: 'mild' });
   const bird = { ...hunt.birds[0], id: 9001, coveyId: 9001, speciesId,
@@ -45,16 +45,23 @@ function fixture(areaId = 'quail-fields', speciesId = 'bobwhite', breedId = 'gsp
 
 describe('continuous-field scent work', () => {
   it.each(properties.flatMap(([area, species]) => ['gsp', 'english-setter'].map(breed => [area, species, breed] as const)))(
-    'actively locates distant %s scent with a %s/%s before a brief close stalk', (area, species, breed) => {
+    'works the %s scent cone with a %s/%s before a brief close stalk', (area, species, breed) => {
       const f = fixture(area, species, breed);
       let pointEvents = 0;
       for (let i = 0; i < 30 * 40 && f.dog.state !== 'pointing'; i++) pointEvents += f.tick().filter(e => e.type === 'dog-pointed').length;
       expect(f.dog.state).toBe('pointing');
       expect(pointEvents).toBe(1);
-      const far = f.rows.filter(r => r.stage === 'locating' && r.distance > 30);
-      expect(far.length).toBeGreaterThan(60);
-      expect(far.reduce((sum, r) => sum + r.speed, 0) / far.length).toBeGreaterThan(3.2);
-      expect((Math.max(...far.map(r => r.y)) - Math.min(...far.map(r => r.y))) * M).toBeGreaterThan(1.5);
+      // Locating is visible work across the cone at a working pace, not a
+      // straight sprint at the bird: casts to both sides, a real path.
+      const locating = f.rows.filter(r => r.stage === 'locating' && r.distance > 16);
+      expect(locating.length).toBeGreaterThan(30);
+      const pace = locating.reduce((sum, r) => sum + r.speed, 0) / locating.length;
+      expect(pace).toBeGreaterThan(1.2);
+      expect(pace).toBeLessThan(4.6);
+      expect((Math.max(...locating.map(r => r.y)) - Math.min(...locating.map(r => r.y))) * M).toBeGreaterThan(1.5);
+      const path = locating.slice(1).reduce((sum, r, i) => sum + Math.hypot(r.x - locating[i].x, r.y - locating[i].y), 0);
+      const straight = Math.hypot(locating.at(-1)!.x - locating[0].x, locating.at(-1)!.y - locating[0].y);
+      expect(straight / path).toBeLessThan(.97);
       const stalk = f.rows.filter(r => r.stage === 'stalking');
       expect(stalk.length).toBeGreaterThan(0);
       expect(stalk.length / 30).toBeLessThan(4);
@@ -63,6 +70,15 @@ describe('continuous-field scent work', () => {
       expect(f.rows.slice(-4).every(r => r.speed === 0)).toBe(true);
     },
   );
+
+  it('winds a sitting bird at tens of yards, not a hundred', () => {
+    const far = fixture('sharptail-prairie', 'sharptail', 'english-setter', 8, 400);
+    for (let i = 0; i < 20; i++) far.tick(false);
+    expect(far.dog.scentStage).toBe('none');
+    const near = fixture('sharptail-prairie', 'sharptail', 'english-setter', 8, 330);
+    for (let i = 0; i < 20; i++) near.tick(false);
+    expect(near.dog.scentStage).not.toBe('none');
+  });
 
   it('reopens locating when a runner leaves the close stalk, then establishes the relocated point', () => {
     const f = fixture('pheasant-coverts', 'ringneck', 'gsp', 5, 330);
@@ -79,9 +95,9 @@ describe('continuous-field scent work', () => {
 
   it('checks the last actual scent briefly without steering from an out-of-cone hidden target', () => {
     const a = fixture(), b = fixture();
-    for (let i = 0; i < 40; i++) { a.tick(false); b.tick(false); }
-    // Both birds leave live scent reach but remain within the old 1.35×
-    // memory envelope. Their unseen divergence must not direct the dog.
+    for (let i = 0; i < 300 && a.dog.scentStage !== 'locating'; i++) { a.tick(false); b.tick(false); }
+    // Both birds leave live scent reach. Their unseen divergence must not
+    // direct the dog.
     a.bird.pos = { x: 430, y: 300 }; b.bird.pos = { x: 430, y: 312 };
     for (let i = 0; i < 20; i++) {
       a.tick(false); b.tick(false);
@@ -98,7 +114,7 @@ describe('continuous-field scent work', () => {
 
   it('reacquires scent during its short check and cancels a stale locking pose after relocation', () => {
     const f = fixture();
-    for (let i = 0; i < 40; i++) f.tick();
+    for (let i = 0; i < 300 && f.dog.scentStage !== 'locating'; i++) f.tick();
     f.bird.pos.x = 480;
     for (let i = 0; i < 15; i++) f.tick();
     expect(f.dog.scentStage).toBe('locating');

@@ -3,7 +3,7 @@ import { getArea } from '../src/game/areas';
 import { createThreeHuntSetup } from '../src/game/gameplayMode';
 import { huntStreamSeed, nextHuntUrl, parseHuntSeed, prepareHuntUrl, REVIEW_HUNT_SEED } from '../src/game/huntSeed';
 import { mulberry32, dist } from '../src/game/math';
-import { quailEncounterAnchors } from '../src/game/quailEncounters';
+import { QUAIL_COVEY_SPACING, QUAIL_FIELD_BIRD_COUNT, quailEncounterAnchors } from '../src/game/quailEncounters';
 
 it('keeps a visit stable across reload/settings, while Hunt again requests a fresh seed', () => {
   const original = 'https://example.test/index3d.html?area=quail-fields&drop=west-track&challenge=wild&quality=lite';
@@ -35,7 +35,7 @@ it('places varied, separated coveys in physical cover outside both parking clear
         const anchor = anchors[i];
         expect(area.patches.some(p => anchor.x >= p.x + 10 && anchor.x <= p.x + p.w - 10 && anchor.y >= p.y + 10 && anchor.y <= p.y + p.h - 10)).toBe(true);
         for (const entry of area.dropPoints) expect(dist(anchor, entry.position)).toBeGreaterThanOrEqual(entry.safetyRadius + 16);
-        for (const other of anchors.slice(0, i)) expect(dist(anchor, other)).toBeGreaterThanOrEqual(90);
+        for (const other of anchors.slice(0, i)) expect(dist(anchor, other)).toBeGreaterThanOrEqual(QUAIL_COVEY_SPACING);
       }
     }
     expect(openings.size).toBeGreaterThan(40);
@@ -47,9 +47,9 @@ it('keeps wind, the common birds and the potential layout stable across challeng
   for (const seed of [0, 1, 7, 41, 981, 0xffffffff]) {
     const setup = (challenge: string) => createThreeHuntSetup(`?area=quail-fields&seed=${seed}&challenge=${challenge}`, () => { throw Error('Explicit seed must not consume outside randomness'); }, null);
     const relaxed = setup('relaxed'), balanced = setup('balanced'), wild = setup('wild');
-    expect([relaxed.hunt.birds.length, balanced.hunt.birds.length, wild.hunt.birds.length]).toEqual([56, 35, 30]);
+    expect([relaxed.hunt.birds.length, balanced.hunt.birds.length, wild.hunt.birds.length]).toEqual([Math.round(QUAIL_FIELD_BIRD_COUNT * 1.6), QUAIL_FIELD_BIRD_COUNT, Math.round(QUAIL_FIELD_BIRD_COUNT * .85)]);
     expect([relaxed.hunt.wind, wild.hunt.wind]).toEqual([balanced.hunt.wind, balanced.hunt.wind]);
-    expect(new Set(balanced.hunt.birds.map(b => b.coveyId)).size).toBeGreaterThanOrEqual(4);
+    expect(new Set(balanced.hunt.birds.map(b => b.coveyId)).size).toBeGreaterThanOrEqual(7);
     for (let i = 0; i < wild.hunt.birds.length; i++) {
       expect(relaxed.hunt.birds[i].pos).toEqual(balanced.hunt.birds[i].pos);
       expect(wild.hunt.birds[i].pos).toEqual(balanced.hunt.birds[i].pos);

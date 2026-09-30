@@ -9,11 +9,11 @@ import { Hunt3DSystem } from '../src/three/subsystems/hunt3d';
 const DT = 1000 / 30;
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-function fixture(areaId: string, breedId: string, level: number, withBirds: boolean) {
+function fixture(areaId: string, breedId: string, level: number, withBirds: boolean, range = 'close') {
   const quick = { ...defaultQuickConfig(), areaId, breedId, level, weather: 'mild' };
   vi.stubGlobal('localStorage', { getItem: (key: string) => key === QUICK_KEY ? JSON.stringify(quick) : null });
   vi.stubGlobal('window', {});
-  vi.stubGlobal('location', { search: '?play=quick&seed=1184004868&challenge=relaxed' });
+  vi.stubGlobal('location', { search: `?play=quick&seed=1184004868&challenge=relaxed&range=${range}` });
   const area = getArea(areaId), landscape = new LandscapeModel(area, 'south-gate');
   const hunt = new Hunt3DSystem(landscape), camera = new THREE.PerspectiveCamera();
   camera.position.set(0, 1.62, 40); camera.rotation.y = Math.PI;
@@ -39,8 +39,8 @@ function fixture(areaId: string, breedId: string, level: number, withBirds: bool
   return { hunt, camera, walk };
 }
 
-function measure(areaId: string, breedId: string, level = 7, seconds = 180, speed = 1.5) {
-  const f = fixture(areaId, breedId, level, false);
+function measure(areaId: string, breedId: string, level = 7, seconds = 180, speed = 1.5, range = 'close') {
+  const f = fixture(areaId, breedId, level, false, range);
   let ahead = 0, behind = 0, n = 0, crossings = 0, lastSide = 0, sumDist = 0, sumAbsLat = 0, sumFwd = 0;
   const dists: number[] = [], turn: number[] = [], speeds: number[] = [], accel: number[] = [];
   let prevH: number | null = null, prev = f.hunt.dogWorld({ x: 0, z: 0 }), prevSpeed = 0;
@@ -97,6 +97,21 @@ describe('field quartering and search movement', () => {
     expect(m.behindPct).toBeLessThanOrEqual(10);
     expect(m.snapTurnPct).toBeLessThan(1);
   }, 60_000);
+});
+
+// The default Medium range hunts wider. Switchback trails turn the gun
+// round under a wide dog, so "ahead" is looser on the chukar ridge; the dog
+// still works the front and goes further out than a close dog.
+describe('wider dog ranges', () => {
+  it.each([['quail-fields', 80], ['sharptail-prairie', 75], ['pheasant-coverts', 80], ['chukar-ridge', 50]] as const)(
+    'a Medium dog in %s ranges further than a Close one and still hunts in front', (area, ahead) => {
+      const close = measure(area, 'gsp', 7, 120, 1.5, 'close');
+      const medium = measure(area, 'gsp', 7, 120, 1.5, 'medium');
+      expect(medium.aheadPct).toBeGreaterThanOrEqual(ahead);
+      expect(medium.meanFwd).toBeGreaterThan(5);
+      expect(medium.p90Dist).toBeGreaterThan(close.p90Dist);
+      expect(medium.snapTurnPct).toBeLessThan(1);
+    }, 60_000);
 });
 
 describe('search momentum', () => {

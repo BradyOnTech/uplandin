@@ -4,7 +4,9 @@ import { pickAmongBest } from './areaEncounters';
 import type { RNG, Vec2 } from './types';
 
 /** Starting tuning for a field worth exploring; challenge multiplies this. */
-export const QUAIL_FIELD_BIRD_COUNT = 35;
+export const QUAIL_FIELD_BIRD_COUNT = 56;
+/** Minimum distance between two quail coveys' home cover. */
+export const QUAIL_COVEY_SPACING = 72;
 
 /** Choose a seeded sequence of separated cover locations. Every challenge
  * uses the same sequence, then stocks a shorter or longer prefix. Each seed
@@ -24,11 +26,11 @@ export function quailEncounterAnchors(area: AreaConfig, dropId: string | undefin
   }))).filter(point => area.dropPoints.every(entry => dist(point, entry.position) >= entry.safetyRadius + 16));
   const anchors: Vec2[] = [];
   const firstDistance = 76 + rng() * 96;
-  for (let index = 0; index < 14; index++) {
-    const wanted = index === 0 ? firstDistance : 160 + index * 95 + rng() * 80;
+  for (let index = 0; index < 20; index++) {
+    const wanted = index === 0 ? firstDistance : 140 + index * 72 + rng() * 70;
     const scored: { candidate: typeof candidates[number]; score: number }[] = [];
     for (const candidate of candidates) {
-      if (anchors.some(anchor => dist(anchor, candidate) < 90)) continue;
+      if (anchors.some(anchor => dist(anchor, candidate) < QUAIL_COVEY_SPACING)) continue;
       const dx = candidate.x - drop.position.x, dy = candidate.y - drop.position.y;
       const distance = Math.hypot(dx, dy);
       const ahead = dx * forward.x + dy * forward.y;

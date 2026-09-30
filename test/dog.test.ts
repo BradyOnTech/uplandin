@@ -99,8 +99,9 @@ describe('Dog', () => {
     });
 
   it.each(['grouse-woods', 'woodcock-bottoms'])('holds distant scent work in %s and resumes when the handler closes', huntAreaId => {
-    const dog = makeDog(100, 100), bird = birdAt(145, 100);
-    const env = { huntAreaId, hunterPos: { x: 100, y: 100 }, rangeRadius: 24, movementScale: .04 };
+    // The handler is well back when the dog winds a bird in front of it.
+    const dog = makeDog(100, 100), bird = birdAt(122, 100);
+    const env = { huntAreaId, hunterPos: { x: 60, y: 100 }, rangeRadius: 24, movementScale: .04 };
     run(dog, [bird], 1000, env);
     expect(dog.waitingForHandler).toBe(true);
     expect(dog.state).toBe('tracking');
@@ -116,7 +117,7 @@ describe('Dog', () => {
   });
 
   it.each(['pheasant-coverts', 'chukar-ridge'])('retains uninterrupted scent work in %s', huntAreaId => {
-    const dog = makeDog(100, 100), bird = birdAt(145, 100);
+    const dog = makeDog(100, 100), bird = birdAt(122, 100);
     const env = { huntAreaId, hunterPos: { x: 100, y: 100 }, rangeRadius: 24, movementScale: .04 };
     run(dog, [bird], 1000, env);
     expect(dog.waitingForHandler).toBe(false);
@@ -124,12 +125,13 @@ describe('Dog', () => {
   });
 
   it('holds a long pheasant road-in until the handler closes, without inventing a point', () => {
-    const dog = makeDog(100, 100), bird = birdAt(130, 100, { speciesId: 'ringneck' });
+    // A running rooster: its foot scent carries further than a sitting bird's.
+    const dog = makeDog(100, 100), bird = birdAt(122, 100, { speciesId: 'ringneck', runs: true, restingMs: 60_000 });
     const env: DogEnv = { huntAreaId: 'pheasant-coverts', hunterPos: { x: 100, y: 100 },
       rangeRadius: 24, trackingRange: 52.5, movementScale: .04 };
     // Keep real scent ahead, as a runner does, without letting it reach point range.
     for (let i = 0; i < 1000 && !dog.waitingForHandler; i++) {
-      bird.pos = { x: dog.pos.x + 30, y: dog.pos.y };
+      bird.pos = { x: dog.pos.x + 21, y: dog.pos.y };
       dog.update(50, [bird], env);
     }
     expect(dog.waitingForHandler).toBe(true);

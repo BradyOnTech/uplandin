@@ -1,5 +1,5 @@
 import { DogObstacleMotion, type DogObstacle } from './dogObstacles';
-import type { Bird } from './birds';
+import { RUNNER_MAX_ENERGY, type Bird } from './birds';
 import {
   breakChance as breedBreakChance,
   creepChance as breedCreepChance,
@@ -81,6 +81,24 @@ const WEAVE_RATE = 2.2; // how fast the weave swings
 const EDGE_MARGIN = 14;
 const EDGE_TURN_RATE = 2.4; // rad/s pulled back toward the middle of the field
 const AVOID_HUNTER_RADIUS = 28; // won't point a bird sitting right on the hunter
+/** In the open 3D field the hunter walks with the dog, so it may work birds
+ * much closer to the gun; the hunter's own disturbance still flushes the
+ * ones he walks onto. */
+const FIELD_AVOID_HUNTER_RADIUS = 14;
+/** Live body scent in the open field. Bird dogs make game at tens of yards,
+ * not a hundred: the full legacy reach turned every contact into a long
+ * straight run at an unseen bird. */
+export const FIELD_LIVE_SCENT_SCALE = .5;
+/** Scent arrives on the wind in puffs. The reach swells and fades per bird
+ * on a few-second cycle, so a dog can pass one bird close and wind another
+ * from well out, and a faint contact can be lost and taken up again. */
+const FIELD_SCENT_GUST_FLOOR = .6;
+/** Base half-width, in radians, of the casts a field dog makes across a
+ * scent cone while locating. */
+const FIELD_CONE_ARC = .95;
+/** A bird that has been running leaves foot scent along the ground: a dog
+ * can road a running rooster from much further than it winds a sitting one. */
+const FIELD_FOOT_SCENT = 1.8;
 const RETRIEVE_RANGE = 6; // close enough to pick a downed bird up
 const RETRIEVE_HOLD_MS = 700; // mouthing the bird takes a moment
 const RETRIEVE_DELIVERY_HOLD_MS = 350; // settle at hand before casting off
@@ -422,6 +440,8 @@ export class Dog {
   scentCheck = false;
   /** Close-timber scent approach pauses until the handler can follow. */
   waitingForHandler = false;
+  /** Drives the field scent gusts; advances with simulated time only. */
+  private scentClockMs = 0;
   /** Current shared search-to-point beat, consumed by both presentations. */
   scentStage: DogScentStage = 'none';
   /** Whoa'd on point or while backing: steadier when the birds go up. */
@@ -568,6 +588,22 @@ export class Dog {
   }
 
   /** Scent reach in a direction, if the dog is old enough to use the wind. */
+  private isFieldScent(env: DogEnv): boolean {
+    return env.rangeRadius !== undefined && (env.movementScale ?? 1) < 1;
+  }
+
+  /** Live-bird scent reach: the open field's shorter body scent, carried in
+   * gusts. Dead-bird scent and legacy scenes keep scentDistance. */
+  private liveScentDistance(bird: Bird, env: DogEnv): number {
+    const reach = this.scentDistance(bird.pos.x - this.pos.x, bird.pos.y - this.pos.y, env);
+    if (!this.isFieldScent(env)) return reach;
+    const t = this.scentClockMs / 1000, phase = bird.id * 2.39996;
+    const gust = .5 + .5 * Math.sin(t * 1.9 + phase) * Math.sin(t * .73 + phase * 1.7);
+    const running = bird.runs && (bird.restingMs > 0 || bird.runEnergy < RUNNER_MAX_ENERGY);
+    return reach * FIELD_LIVE_SCENT_SCALE * (running ? FIELD_FOOT_SCENT : 1) *
+      (FIELD_SCENT_GUST_FLOOR + (1 - FIELD_SCENT_GUST_FLOOR) * gust);
+  }
+
   private scentDistance(dx: number, dy: number, env: DogEnv): number {
     const windedNose = this.winded ? 0.8 : 1;
     const base =
@@ -581,6 +617,7 @@ export class Dog {
   private maxTravel = Infinity;
 
   update(dtMs: number, birds: Bird[], env: DogEnv = {}): void {
+    this.scentClockMs += dtMs;
     const wasWaitingForHandler = this.waitingForHandler;
     if (this.state !== 'quartering') {
       this.localSearchWeave = 0;
@@ -925,8 +962,8 @@ export class Dog {
       : birds.find((candidate) => candidate.id === this.scentTargetId && candidate.state === 'hidden') ?? null;
     const rememberedInRange = rememberedBird !== null &&
       dist(this.pos, rememberedBird.pos) <=
-        this.scentDistance(rememberedBird.pos.x - this.pos.x, rememberedBird.pos.y - this.pos.y, env) *
-          (fieldScent ? 1 : SCENT_MEMORY_MULT);
+        (fieldScent ? this.liveScentDistance(rememberedBird, env)
+          : this.scentDistance(rememberedBird.pos.x - this.pos.x, rememberedBird.pos.y - this.pos.y, env) * SCENT_MEMORY_MULT);
     const bird = rememberedInRange ? rememberedBird : smelledBird;
     if (fieldScent && !bird && rememberedBird && this.scentSample && this.state === 'tracking'
       && this.checkLostFieldScent(dtMs, movementDt, env, wasWaitingForHandler)) return;
@@ -979,7 +1016,7 @@ export class Dog {
         if (fieldScent) {
           // A long wind-borne road-in is active locating, not a half-second
           // animation followed by tens of metres of straight slow stalking.
-          const reach = this.scentDistance(bird.pos.x - this.pos.x, bird.pos.y - this.pos.y, env);
+          const reach = this.liveScentDistance(bird, env);
           const confidence = clamp((reach - birdDistance) / Math.max(1, reach - POINT_SETTLE_RANGE), 0, 1);
           this.scentLocatedMs += dtMs;
           this.scentProgress = confidence;
@@ -995,15 +1032,22 @@ export class Dog {
             return;
           }
           const maturity = clamp((this.level - 1) / 9, 0, 1);
-          this.scentCastPhase += dt * Math.PI * 2 / (3.2 + this.profile.breed.motion.searchLooseness * .8 - maturity * .4);
+          this.scentCastPhase += dt * Math.PI * 2 / (2.6 + this.profile.breed.motion.searchLooseness * .8 - maturity * .4);
           const close = clamp((birdDistance - POINT_SETTLE_RANGE - 5) / 25, 0, 1);
-          const arc = style.locateArc * (1 + (1 - confidence) * .5) * (.3 + close * .7);
-          const offset = Math.sin(this.scentCastPhase) * arc * this.scentArcSign;
-          this.heading = turnToward(this.heading, direct + offset, 3.6 * dt);
-          // Use the field's active travel capacity; the old trot scale would
-          // make extending this stage slower than the already-slow stalk.
-          this.gait = 'run';
-          const pace = .64 + close * (.12 + maturity * .04);
+          // Working the cone: the dog casts back and forth across the wind
+          // to find the edges of the scent and moves up it, rather than
+          // running a straight line at a bird it cannot see. Casts are wide
+          // while the scent is faint and narrow as it firms up; a mature
+          // dog wastes fewer steps.
+          const faint = 1 - confidence;
+          const arc = (FIELD_CONE_ARC + style.locateArc * .5) * (.55 + faint * .75) * (.3 + close * .7) * (1.1 - maturity * .2);
+          const cross = env.windAngle === undefined ? 0 : Math.sin(env.windAngle - direct);
+          const offset = Math.sin(this.scentCastPhase) * arc * this.scentArcSign + cross * arc * .25;
+          this.heading = turnToward(this.heading, direct + offset, 3.2 * dt);
+          // Birdy: the dog stays up on its feet through the first, faint part
+          // of the cone and comes down to a careful trot as the scent firms.
+          this.gait = confidence < .45 ? 'run' : 'trot';
+          const pace = (.5 + close * (.1 + maturity * .04)) * (confidence < .45 ? 1 : 1.6);
           this.advanceTowardPoint(this.heading, birdDistance, this.workingSpeed(env, this.trackSpeed) * pace * movementDt);
           if (dist(this.pos, bird.pos) <= POINT_SETTLE_RANGE + 5 && this.scentLocatedMs >= style.locateMs &&
             (handlerReady || this.scentHandlerHoldMs >= 8000)) {
@@ -1640,8 +1684,11 @@ export class Dog {
       const r = this.localCoverBeat.rect;
       // A pheasant dog works the cover ahead of the gun: a beat the walking
       // handler has left behind is dropped rather than finished.
-      const leftBehind = pheasant && this.handlerHeading !== null && env.hunterPos
-        && (rectCx(r) - env.hunterPos.x) * Math.cos(this.handlerHeading) + (rectCy(r) - env.hunterPos.y) * Math.sin(this.handlerHeading) < -LOCAL_COVER_BEAT * .5;
+      // Every field dog drops a beat once the gun has walked past it; the
+      // pheasant dog, working tight edges, lets go sooner.
+      const leftBehind = this.handlerHeading !== null && env.hunterPos
+        && (rectCx(r) - env.hunterPos.x) * Math.cos(this.handlerHeading) + (rectCy(r) - env.hunterPos.y) * Math.sin(this.handlerHeading)
+          < -(pheasant ? LOCAL_COVER_BEAT * .5 : Math.max(beatWidth, beatHeight) * .6);
       if (!leftBehind && dist({ x: rectCx(r), y: rectCy(r) }, anchor) <= range * 1.15) return r;
       this.localCoverBeat = null; this.coverIdx = null;
     }
@@ -1663,6 +1710,11 @@ export class Dog {
           if (w < 1 || h < 1) continue;
           const center = { x: x + w / 2, y: y + h / 2 };
           if (dist(center, anchor) > range - .5) continue;
+          // A wide-ranging dog still hunts the ground in front of the gun:
+          // cover level with or behind the handler is not a new objective.
+          if (this.handlerHeading !== null && env.hunterPos && !pheasant &&
+            (center.x - env.hunterPos.x) * Math.cos(this.handlerHeading) + (center.y - env.hunterPos.y) * Math.sin(this.handlerHeading)
+              < -Math.max(beatWidth, beatHeight) * .25) continue;
           const score = dist(this.pos, center) + (env.trails?.length ? distanceToTrail(center, env.trails) * routeWeight : 0)
             + (1 - (env.coverAffinity?.(center) ?? .5)) * habitatWeight
             + this.laneCost(center, anchor, Math.max(beatWidth, beatHeight), pheasant ? 3.2 : 1.1);
@@ -1816,9 +1868,9 @@ export class Dog {
     let bestRange = Infinity;
     for (const b of birds) {
       if (b.state !== 'hidden') continue;
-      if (env.hunterPos && dist(b.pos, env.hunterPos) <= AVOID_HUNTER_RADIUS) continue;
+      if (env.hunterPos && dist(b.pos, env.hunterPos) <= (this.isFieldScent(env) ? FIELD_AVOID_HUNTER_RADIUS : AVOID_HUNTER_RADIUS)) continue;
       const d = dist(this.pos, b.pos);
-      const range = this.scentDistance(b.pos.x - this.pos.x, b.pos.y - this.pos.y, env);
+      const range = this.liveScentDistance(b, env);
       if (d <= range && d < bestRange) {
         best = b;
         bestRange = d;

@@ -32,6 +32,7 @@ import { endFieldSession, endHuntEarly } from '../../game/state';
 import { windMults } from '../../game/wind';
 import { huntingDoctrine } from '../../game/huntDoctrine';
 import { getSpecies } from '../../game/species';
+import { DEFAULT_DOG_RANGE, DOG_RANGES, parseDogRange, type DogRange } from '../../game/dogRange';
 import type { Ctx, Subsystem } from '../engine';
 import { huntPaceMultiplier } from '../dogs/huntMotion';
 import type { BirdsSystem } from './birds';
@@ -126,9 +127,6 @@ export function liveDogBreedId(search: string): string {
   const requested = new URLSearchParams(search).get('breed');
   return requested && BREEDS.some((breed) => breed.id === requested) ? requested : DEFAULT_DOG_BREED;
 }
-/** Quarter around a point ahead of the player, not a huge circle behind them. */
-const LIVE_DOG_ANCHOR_AHEAD_M = 14;
-const LIVE_DOG_RANGE_M = 22;
 /** "This way" sends the dog this far out along the hunter's facing. */
 const CAST_DISTANCE_M = 30;
 /** "Dead bird" reaches this far along the look ray. */
@@ -208,6 +206,7 @@ export class Hunt3DSystem implements Subsystem {
   private careerResult: CareerHuntResult | null = null;
   private careerSettled = false;
   private gearTier = 0;
+  private dogRange: DogRange = DEFAULT_DOG_RANGE;
   private pointRevisions: number[] = [];
   private seedValue?: number;
   private activeChallenge: HuntChallenge = 'balanced';
@@ -232,6 +231,7 @@ export class Hunt3DSystem implements Subsystem {
     this.seedValue = setup.seed;
     this.flushRng = mulberry32(setup.seed === undefined ? FLUSH_SEED : huntStreamSeed(setup.seed, FLUSH_SEED));
     this.gearTier = setup.gearTier;
+    this.dogRange = parseDogRange(search.get('range')) ?? DEFAULT_DOG_RANGE;
     this.ctxRef = ctx;
     this.dogNames = [setup.kennelDog?.name ?? shortBreedName(setup.breed.id), ...(setup.brace ? [setup.brace.kennelDog?.name ?? shortBreedName(setup.brace.breedId)] : [])];
     this.careerDogIds = setup.launch?.kind === 'career'
@@ -292,7 +292,7 @@ export class Hunt3DSystem implements Subsystem {
       retrieveTurnRate: 5,
       effortScale: LIVE_DOG_EFFORT_SCALE,
       movementScale: liveMovementScaleForGait(dog.gait),
-      rangeRadius: LIVE_DOG_RANGE_M / PROPERTY_PX_TO_M,
+      rangeRadius: DOG_RANGES[this.dogRange].radiusM / PROPERTY_PX_TO_M,
       workAnchor: this.liveDogAnchor,
     }));
     this.dogObstaclesSynced = false;
@@ -377,9 +377,9 @@ export class Hunt3DSystem implements Subsystem {
     const forwardX = -Math.sin(yaw);
     const forwardZ = -Math.cos(yaw);
     this.liveDogAnchor.x =
-      hunterPos.x + (forwardX * LIVE_DOG_ANCHOR_AHEAD_M) / PROPERTY_PX_TO_M;
+      hunterPos.x + (forwardX * DOG_RANGES[this.dogRange].aheadM) / PROPERTY_PX_TO_M;
     this.liveDogAnchor.y =
-      hunterPos.y + (forwardZ * LIVE_DOG_ANCHOR_AHEAD_M) / PROPERTY_PX_TO_M;
+      hunterPos.y + (forwardZ * DOG_RANGES[this.dogRange].aheadM) / PROPERTY_PX_TO_M;
 
     // The 2D area's hunter/dog spawn lives near its bottom edge, while the
     // 3D player deliberately starts near the field center. Without this
