@@ -3,9 +3,9 @@
 
 /*
  * Hunt preparation. Layout: header / (step rail + one step) / launch bar.
- * The frame owns the viewport; only the chosen step scrolls. Every choice is
- * a visible option card or chip, so a player sees what else is on offer
- * without opening a dropdown.
+ * The frame owns the viewport and nothing scrolls: each step is laid out to
+ * fit, images give way first, and on a small screen a step's sections page
+ * (fitPager). Every choice is a visible option card or chip.
  */
 :root { color-scheme:dark; --ink:var(--menu-ink); --gold:var(--menu-ochre); --cream:var(--menu-paper); --muted:var(--menu-light-muted);
   --card:#ffffff08; --card-hover:#ffffff10; --card-line:#ffffff17; --selected:#dfbf7e1c;
@@ -78,10 +78,15 @@ progress::-moz-progress-bar { background:var(--gold); }
 .step-head h1 { margin-top:4px; font:400 30px/1.12 var(--menu-serif); letter-spacing:-.02em; }
 .step-head h1:focus { outline:none; }
 .prep-message { flex:none; margin:14px 24px 0; padding:10px 14px; border-radius:10px; background:#dec18b14; box-shadow:inset 3px 0 var(--gold); color:#f1dab0; font-size:14px; }
-.step-scroll { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:#bcc8b03d transparent; }
-.step-panel { display:grid; gap:24px; padding:20px 24px 28px; align-content:start; }
-.next-step { justify-self:end; background:transparent; border:1px solid #dfbf7e66; color:var(--gold); font-weight:600; padding-inline:20px; }
+.step-panel { flex:1; min-height:0; overflow:hidden; display:grid; gap:18px; padding:18px 24px 18px; align-content:start; }
+.step-pager { flex:none; padding:4px 24px 14px; --fit-accent:var(--gold); }
+.step-nav { display:flex; gap:8px; }
+.step-nav .secondary { min-height:48px; padding-inline:18px; font-weight:600; white-space:nowrap; }
+.next-step { border-color:#dfbf7e88; color:var(--gold); }
 .next-step:hover { background:#dfbf7e14; }
+.field-aside { min-height:0; font-size:13px; }
+.prep-field:has(>.field-aside) { grid-template-columns:minmax(0,1fr) auto; align-items:baseline; }
+.prep-field:has(>.field-aside)>:not(.field-label):not(.field-aside) { grid-column:1 / -1; }
 .prep-field { display:grid; gap:10px; min-width:0; }
 .field-label { font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:#d8cba4; font-weight:650; }
 
@@ -106,27 +111,36 @@ progress::-moz-progress-bar { background:var(--gold); }
 .segmented .choice[aria-checked=true]::after { display:none; }
 
 /* Ground */
+/* Ground: the cards row, then the chosen property filling the rest. */
+.step-ground { grid-template-rows:auto minmax(0,1fr); align-content:stretch; }
+.ground-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(128px,.22fr); gap:10px; min-width:0; }
 .ground-cards { grid-template-columns:repeat(4,minmax(0,1fr)); }
-.ground-cards .choice { flex-direction:column; align-items:stretch; padding:8px 8px 12px; gap:10px; }
+.ground-cards .choice { flex-direction:column; align-items:stretch; padding:8px 8px 10px; gap:8px; }
+.ground-more { display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-end; gap:6px; padding:12px 14px; text-align:left; border-radius:14px; background:var(--card); border:1px dashed #ffffff2a; }
+.ground-more.chosen { background:var(--selected); border:1px solid var(--gold); box-shadow:inset 0 0 0 1px var(--gold); }
+.ground-more-mark { display:grid; place-items:center; width:30px; height:30px; margin-bottom:auto; border-radius:50%; background:#ffffff14; color:var(--gold); font-weight:700; }
+.ground-more .choice-head strong { font-size:17px; }
+.more-ground-dialog { width:min(820px,calc(100vw - 32px)); }
 .ground-cards .choice-head { padding:0 4px; }
 .ground-cards .choice-head strong { font-size:17px; }
 .ground-cards .tag,.ground-cards .choice-note { margin:0 4px; width:fit-content; }
 .ground-cards .choice.unavailable .ground-thumb { filter:grayscale(.7) brightness(.8); }
-.ground-thumb { position:relative; display:block; aspect-ratio:16/9; border-radius:9px; overflow:hidden; background:linear-gradient(170deg,#9eaa92,#5e6c4a); }
+.ground-thumb { position:relative; display:block; aspect-ratio:16/8; max-height:clamp(64px,13dvh,120px); border-radius:9px; overflow:hidden; background:linear-gradient(170deg,#9eaa92,#5e6c4a); }
 .ground-thumb-art { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
-.ground-detail { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(280px,1fr); gap:18px 22px; padding:18px; border-radius:16px; background:#0e201826; box-shadow:inset 0 0 0 1px #ffffff0d; }
+.ground-detail { min-height:0; display:grid; grid-template-columns:minmax(0,1.25fr) minmax(280px,1fr); grid-template-rows:auto minmax(0,1fr); gap:12px 22px; padding:16px 18px; border-radius:16px; background:#0e201826; box-shadow:inset 0 0 0 1px #ffffff0d; }
 .ground-detail-top { grid-column:1 / -1; display:flex; justify-content:space-between; align-items:start; gap:16px; flex-wrap:wrap; }
 .ground-detail-top h3 { margin:4px 0 2px; font:400 clamp(28px,3vw,40px)/1.05 var(--menu-serif); letter-spacing:-.03em; }
 .property-species { font-size:14px; color:#d9dcc6; }
-.ground-view { min-width:0; }
-.ground-notes { display:grid; gap:18px; align-content:start; }
-.property-hero { position:relative; aspect-ratio:16/10; border-radius:12px; overflow:hidden; background:linear-gradient(168deg,#a2b2a7 0 40%,#7b8767 40% 48%,#646e4b 48% 65%,#b1a475 65%); }
+.ground-view { min-width:0; min-height:0; display:grid; }
+.ground-notes { display:grid; gap:14px; align-content:start; min-height:0; overflow:hidden; }
+.property-approach>p:not(.eyebrow):not(.field-advice) { display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; }
+.property-hero { position:relative; height:100%; min-height:140px; border-radius:12px; overflow:hidden; background:linear-gradient(168deg,#a2b2a7 0 40%,#7b8767 40% 48%,#646e4b 48% 65%,#b1a475 65%); }
 .property-art { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
 .property-approach { display:grid; gap:6px; max-width:70ch; }
 .property-approach h4 { font:400 22px/1.2 var(--menu-serif); }
-.property-approach>p:not(.eyebrow) { font-size:15px; line-height:1.6; color:#dcdfcd; }
+.property-approach>p:not(.eyebrow) { font-size:14px; line-height:1.55; color:#dcdfcd; }
 .field-advice { margin-top:6px; padding-left:12px; box-shadow:-2px 0 #b3a36d; font-style:italic; color:#cfd3c0 !important; }
-.map-stage { height:clamp(260px,40vh,420px); display:grid; place-items:center; overflow:hidden; border-radius:12px; background:#d2ccb1; container-type:size; }
+.map-stage { height:100%; min-height:160px; display:grid; place-items:center; overflow:hidden; border-radius:12px; background:#d2ccb1; container-type:size; }
 .property-map { position:relative; width:100%; max-width:100%; padding:30px; }
 @supports (height:1cqh) { .property-map { width:min(100%,calc((100cqh - 60px) * var(--map-aspect) + 60px)); } }
 .property-map canvas { display:block; width:100%; height:auto; outline:1px solid #0002; box-shadow:0 2px 6px #0001; }
@@ -149,9 +163,12 @@ progress::-moz-progress-bar { background:var(--gold); }
 .region-chip[data-region=high-rockies] { background:linear-gradient(160deg,#9fb1bf,#4f6270); }
 .region-chip[data-region=pacific-valleys] { background:linear-gradient(160deg,#d9c07a,#7f8a50); }
 
-/* Dog */
-.dog-layout { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(330px,.9fr); gap:24px; align-items:start; }
-.dog-stage-wrap { position:sticky; top:0; display:grid; gap:12px; }
+/* Dog: the stage holds the left of the step on every page; the choices page
+   down the right. */
+.step-dog { position:relative; padding-left:calc(52% + 24px); gap:16px; }
+.step-dog>.dog-stage-wrap { position:absolute; left:24px; top:18px; bottom:18px; width:52%; display:flex; flex-direction:column; gap:10px; }
+.step-dog>.dog-stage-wrap>.dog-stage { flex:1; height:auto; min-height:200px; }
+.dog-stage-wrap { display:grid; gap:12px; }
 .dog-stage { position:relative; height:clamp(300px,calc(100dvh - 470px),560px); border-radius:16px; overflow:hidden; isolation:isolate;
   background:radial-gradient(ellipse 80% 55% at 50% 80%,#8b9467 0%,#5c7050 38%,#2e4637 70%,#1b3127 100%); box-shadow:inset 0 0 0 1px #ffffff12; }
 .dog-stage-canvas { position:absolute; inset:0; z-index:1; }
@@ -174,30 +191,33 @@ progress::-moz-progress-bar { background:var(--gold); }
 .dog-stage-poses { left:12px; right:12px; bottom:12px; display:flex; justify-content:center; pointer-events:auto; }
 .dog-stage-poses .segmented { background:#0d1e17c4; backdrop-filter:blur(6px); }
 .dog-stage-hint { left:auto; right:16px; top:18px; bottom:auto; text-align:right; }
-.style-picker { display:grid; gap:8px; }
-.style-picker .help { font-size:13px; }
+.style-picker { top:auto; left:12px; right:auto; bottom:62px; pointer-events:auto; }
+.style-picker .segmented { background:#0d1e17c4; backdrop-filter:blur(6px); }
+.style-picker .choice { min-height:34px; padding:5px 11px; font-size:12px; }
 .stage-stats { padding:14px 16px; border-radius:14px; background:var(--card); }
 .dog-choices { display:grid; gap:24px; min-width:0; }
-.breed-cards { grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); }
-.breed-cards .choice { flex-direction:column; align-items:stretch; gap:12px; padding:14px 16px 16px; }
+.breed-cards { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.breed-cards .choice { flex-direction:column; align-items:stretch; gap:8px; padding:10px 14px 12px; }
+.breed-cards .choice-head small { display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; }
 .breed-cards .choice-head { padding-right:26px; }
 .breed-list { grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); }
-.breed-stats { display:grid; gap:5px; }
-.breed-stat { display:grid; grid-template-columns:78px minmax(0,1fr); align-items:center; gap:8px; }
+.breed-stats { display:grid; gap:3px; }
+.breed-stat { display:grid; grid-template-columns:minmax(58px,78px) minmax(0,1fr); align-items:center; gap:8px; }
 .breed-stat dt { font-size:12px; color:#bcc7b2; }
 .breed-stat dd { position:relative; height:5px; border-radius:3px; background:#ffffff14; overflow:hidden; }
 .breed-stat dd::after { content:''; position:absolute; inset:0 auto 0 0; width:calc(var(--value) * 100%); background:#c9b783; border-radius:inherit; }
 .choice[aria-checked=true] .breed-stat dd::after { background:var(--gold); }
 .coat-choices { display:flex; flex-wrap:wrap; gap:8px; }
-.coat-choices .choice { flex-direction:column; justify-content:start; gap:8px; width:96px; padding:12px 6px 10px; text-align:center; }
+.coat-choices .choice { flex-direction:column; justify-content:start; gap:6px; width:88px; padding:10px 6px 8px; text-align:center; }
 .coat-choices .choice[aria-checked=true]::after { top:6px; right:6px; width:18px; height:18px; font-size:10px; }
 .coat-name { font-size:12px; line-height:1.3; }
-.coat-swatch { flex:none; width:44px; height:44px; border-radius:50%; box-shadow:inset 0 0 0 1px #0003,0 1px 3px #0004; }
+.coat-swatch { flex:none; width:38px; height:38px; border-radius:50%; box-shadow:inset 0 0 0 1px #0003,0 1px 3px #0004; }
 .coat-swatch.large { width:40px; height:40px; }
 .coat-swatch.empty { background:repeating-linear-gradient(45deg,#ffffff10 0 4px,transparent 4px 8px); box-shadow:inset 0 0 0 1px #ffffff26; }
 .level-slider { display:grid; gap:6px; }
 .level-slider output { font:400 20px var(--menu-serif); }
-.level-slider input { width:100%; min-height:44px; accent-color:var(--gold); }
+.level-slider { gap:2px; }
+.level-slider input { width:100%; min-height:32px; accent-color:var(--gold); }
 .level-ends { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); }
 .brace-block { display:grid; gap:12px; }
 .kennel-list .choice { padding:10px 14px; }
@@ -216,30 +236,52 @@ progress::-moz-progress-bar { background:var(--gold); }
 .region-cards { grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); }
 .form-actions { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
 
-/* Gear and day */
+/* Gear: method and guns on the left, the kit on the right. */
+.step-gear { grid-template-columns:minmax(0,1.3fr) minmax(330px,1fr); column-gap:26px; }
+.step-gear>.gear-method,.step-gear>.gear-guns { grid-column:1; }
+.step-gear>.gear-kit { grid-column:2; grid-row:1 / span 3; }
+.step-gear .assists-panel { --assist-ink:var(--cream); }
+/* The kit panel speaks the dark preparation palette. */
+.step-gear .assist-segmented { background:#0b1b1466; box-shadow:none; }
+.step-gear .assist-chip { color:var(--cream); }
+.step-gear .assist-chip:hover:not(:disabled):not(.on) { background:#ffffff0d; }
+.step-gear .assist-chip.on { background:var(--menu-paper); color:var(--menu-ink); }
+.step-gear .assist-note { color:var(--muted); min-height:2.7em; }
+.step-gear .assist-rows { border-color:#ffffff14; }
+.step-gear .assist-row { border-color:#ffffff10; }
+.step-gear .assist-row-label { color:var(--cream); }
+.step-gear .assist-row-help { color:#aab5a0; }
+.step-gear .assist-switch { color:var(--cream); }
+.step-gear .assist-switch-track { background:#ffffff22; }
+.step-gear .assist-switch.on .assist-switch-track { background:var(--gold); }
 .method-cards,.gun-cards { grid-template-columns:repeat(2,minmax(0,1fr)); }
 .gun-cards .choice { flex-direction:column; align-items:stretch; gap:8px; padding:10px 14px 14px; }
 .gun-cards .tag { position:absolute; top:10px; left:12px; }
-.gun-portrait { position:relative; height:84px; display:grid; place-items:center; overflow:hidden; }
+.gun-portrait { position:relative; height:clamp(48px,9dvh,84px); display:grid; place-items:center; overflow:hidden; }
 .gun-art { position:absolute; top:50%; left:50%; width:104%; max-width:560px; height:auto; transform:translate(-50%,-54%); }
 .gun-art-fallback { color:#b5c1ab; font-size:12px; }
 .gun-portrait[data-art=ready] .gun-art-fallback { visibility:hidden; }
-.light-cards,.challenge-cards { grid-template-columns:repeat(3,minmax(0,1fr)); }
+/* Day */
+.light-cards { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.challenge-cards { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.day-conditions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
 .light-cards .choice { flex-direction:column; align-items:stretch; }
-.light-swatch { display:block; height:54px; border-radius:9px; }
+.light-swatch { display:block; height:clamp(28px,6dvh,54px); border-radius:9px; }
 .light-morning { background:linear-gradient(180deg,#a9bccb 0%,#e8d4a8 62%,#8f9a6c 63%,#6d7a55 100%); }
 .light-noon { background:linear-gradient(180deg,#7fa6c8 0%,#cfe0e8 62%,#b5a56e 63%,#8e8651 100%); }
 .light-evening { background:linear-gradient(180deg,#5d6a8a 0%,#e59a5b 60%,#7a6440 61%,#4f4630 100%); }
-.challenge-cards .choice { align-items:start; padding-right:36px; }
+.challenge-cards .choice { align-items:start; padding-right:30px; }
+.challenge-cards .choice-head small { font-size:12px; line-height:1.4; }
 .season-panel { display:grid; gap:10px; padding:16px; border-radius:14px; background:var(--card); justify-items:start; }
 
 /* Launch bar */
-.launch-bar { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:20px; padding:12px max(28px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(28px,env(safe-area-inset-left)); background:#10231be6; box-shadow:0 -1px #ffffff12; }
+.launch-bar { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:14px; padding:12px max(28px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(28px,env(safe-area-inset-left)); background:#10231be6; box-shadow:0 -1px #ffffff12; }
 .launch-destination { display:grid; min-width:0; }
 .launch-destination small { color:var(--gold); font-size:11px; letter-spacing:.12em; font-weight:650; }
 .launch-destination strong { font:400 22px/1.2 var(--menu-serif); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .launch-destination span { font-size:13px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-#prep-start { min-height:52px; padding-inline:28px; font-size:16px; }
+#prep-start { min-height:52px; padding-inline:28px; font-size:16px; white-space:nowrap; }
+.start-short { display:none; }
 
 /* Settings dialog */
 .prep-dialog { border:1px solid #fff3; padding:0; margin:auto; width:min(600px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); color:var(--cream); background:var(--menu-forest); border-radius:18px; box-shadow:0 24px 80px #0007; }
@@ -247,18 +289,47 @@ progress::-moz-progress-bar { background:var(--gold); }
 .prep-dialog[open] { display:flex; flex-direction:column; }
 .prep-dialog>header { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:20px 24px; box-shadow:0 1px #ffffff12; }
 .prep-dialog h2 { margin-top:4px; font:400 30px/1.1 var(--menu-serif); }
-.prep-dialog-body { display:grid; gap:24px; padding:20px 24px 26px; overflow:auto; }
+.prep-dialog-body { flex:1; min-height:0; display:grid; gap:24px; align-content:start; padding:20px 24px 20px; overflow:hidden; }
+.dialog-pager { flex:none; padding:0 24px 14px; --fit-accent:var(--gold); }
+.more-ground-dialog .prep-dialog-body { display:flex; flex-direction:column; }
+.more-ground-dialog .ground-list { flex:1; min-height:0; overflow:hidden; align-content:start; }
 .settings-group { display:grid; gap:10px; padding-top:20px; box-shadow:0 -1px #ffffff12; }
 .settings-group h3 { font:400 20px var(--menu-serif); }
 
 /* Tablet and phone: the rail becomes a step strip; the step fills the rest. */
+/* Shorter laptop screens: a slimmer step heading and tighter cards. */
+@media (max-height:820px) and (min-width:900px) {
+  .step-head { padding:10px 24px 8px; }
+  .step-head .eyebrow { display:none; }
+  .step-head h1 { font-size:24px; margin:0; }
+  .step-panel { padding-block:12px; gap:12px; }
+  .prep-field { gap:6px; }
+  .step-button { padding:10px 12px; }
+  .gun-cards { gap:8px; }
+  .gun-cards .choice { padding:6px 12px 10px; gap:4px; }
+  .gun-cards .choice-head small { display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; }
+  .segmented .choice { min-height:36px; padding-block:6px; }
+  .field-advice { display:none; }
+  .breed-cards .choice { padding:8px 12px 10px; }
+  .coat-choices .choice { width:78px; padding:8px 4px 6px; }
+  .coat-swatch { width:32px; height:32px; }
+  .assists-panel.compact { gap:8px; }
+  .assists-panel.compact .assist-note { min-height:0; font-size:12px; }
+  .assists-panel.compact .assist-row { padding:5px 0; }
+  .assists-panel.compact .assist-row-help { display:none; }
+}
 @media (max-width:1100px) {
   .prep-main { grid-template-columns:236px minmax(0,1fr); gap:16px; padding-inline:20px; }
-  .dog-layout { grid-template-columns:minmax(0,1fr); }
-  .dog-stage-wrap { position:relative; }
-  .dog-stage { height:clamp(280px,44vh,440px); }
-  .ground-cards { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .ground-detail { grid-template-columns:minmax(0,1fr); }
+  /* The stage joins the column, above the choices, on every page. */
+  .step-dog { padding-left:24px; }
+  .step-dog>.dog-stage-wrap { position:static; width:auto; }
+  .step-dog>.dog-stage-wrap>.dog-stage { flex:none; height:clamp(170px,30dvh,340px); min-height:0; }
+  .ground-cards { grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .ground-cards .choice-head small { display:none; }
+  .ground-detail { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .step-gear { grid-template-columns:minmax(0,1fr); }
+  .step-gear>.gear-kit { grid-column:1; grid-row:auto; }
+  .challenge-cards { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 @media (max-width:899px) {
   .prep-header { gap:10px; padding-inline:max(14px,env(safe-area-inset-left)); }
@@ -278,26 +349,50 @@ progress::-moz-progress-bar { background:var(--gold); }
   .step-head { padding:14px 16px 10px; }
   .step-head h1 { font-size:24px; }
   .prep-message { margin:10px 16px 0; }
-  .step-panel { padding:14px 16px 22px; gap:20px; }
-  .ground-detail { padding:12px; }
-  .property-hero { aspect-ratio:16/8; }
+  .step-panel { padding:12px 14px 12px; gap:14px; }
+  .style-picker { display:none; }
+  .breed-stats { display:none; }
+  .breed-cards .choice { padding:10px 12px; }
+  .breed-cards .choice-head strong { font-size:16px; }
+  .coat-choices { gap:6px; }
+  .gun-cards { grid-template-columns:repeat(2,minmax(0,1fr)) !important; gap:8px; }
+  .gun-cards .choice { flex-direction:column !important; align-items:stretch !important; padding:6px 10px 8px !important; gap:2px; }
+  .gun-cards .gun-portrait { width:auto !important; height:38px !important; }
+  .gun-cards .gun-art { width:112% !important; }
+  .gun-cards .choice-head small { display:none; }
+  .gun-cards .choice-head strong { font-size:14px !important; }
+  .step-pager { padding:2px 14px 10px; }
+  .step-dog { padding-left:14px; }
+  .ground-row { grid-template-columns:minmax(0,1fr); }
+  .ground-cards { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .ground-more { flex-direction:row; align-items:center; padding:8px 12px; min-height:44px; }
+  .ground-more-mark { margin:0; }
+  .ground-detail { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(120px,1fr) auto; padding:12px; }
+  .property-hero { min-height:110px; }
   .breed-cards,.method-cards,.gun-cards { grid-template-columns:minmax(0,1fr); }
+  .day-conditions { grid-template-columns:minmax(0,1fr); gap:14px; }
   .gun-cards .choice { flex-direction:row; align-items:center; padding:8px 12px; }
   .gun-cards .gun-portrait { flex:none; width:118px; height:56px; }
   .gun-cards .gun-art { width:150%; }
   .gun-cards .choice-head strong { font-size:16px; }
   .gun-cards .choice-head { padding-right:22px; }
-  .light-cards,.challenge-cards { grid-template-columns:minmax(0,1fr); }
-  .light-cards .choice { flex-direction:row; align-items:center; }
-  .light-swatch { width:64px; height:44px; flex:none; }
-  .dog-stage { height:clamp(240px,38vh,360px); }
+  .light-cards { grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+  .light-cards .choice { padding:8px; gap:6px; }
+  .light-cards .choice-head small { display:none; }
+  .challenge-cards { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .challenge-cards .choice { padding:10px 26px 10px 10px; }
+  .challenge-cards .choice-head strong { font-size:16px; }
+  .challenge-cards .choice-head small { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; font-size:11px; }
+  .step-dog>.dog-stage-wrap>.dog-stage { height:clamp(150px,26dvh,300px); }
   .dog-stage-poses .choice { padding-inline:10px; font-size:13px; }
-  .segmented { overflow-x:auto; scrollbar-width:none; }
+  .segmented.wrap { flex-wrap:wrap; }
   .coat-choices .choice { width:calc((100% - 24px) / 4); min-width:72px; }
-  .launch-bar { gap:12px; padding-inline:max(14px,env(safe-area-inset-left)); }
-  .launch-destination strong { font-size:17px; }
-  .launch-destination small { display:none; }
-  #prep-start { padding-inline:18px; font-size:15px; }
+  .launch-bar { grid-template-columns:auto minmax(0,1fr); gap:8px 10px; padding-block:8px; padding-inline:max(14px,env(safe-area-inset-left)); }
+  .launch-destination { display:none; }
+  .step-nav .secondary { min-height:46px; padding-inline:12px; font-size:14px; }
+  #prep-start { justify-self:end; padding-inline:18px; font-size:15px; }
+  .start-long { display:none; }
+  .start-short { display:inline; }
 }
 @media (max-width:420px) {
   .prep-header nav .header-button:first-child { display:none; }
@@ -307,16 +402,61 @@ progress::-moz-progress-bar { background:var(--gold); }
 }
 @media (max-height:560px) and (min-width:700px) {
   .prep-header { padding-block:4px; }
-  .prep-main { padding-block:8px; grid-template-columns:210px minmax(0,1fr); }
+  .prep-header .mode-switch .choice { min-height:34px; }
+  .header-button { min-height:36px; }
+  /* A slim vertical rail beside a full-height step. */
+  .prep-main { padding-block:8px; grid-template-columns:150px minmax(0,1fr); grid-template-rows:minmax(0,1fr); gap:10px; }
+  .prep-rail { overflow:hidden; }
+  .step-list { grid-template-columns:minmax(0,1fr); gap:4px; padding:0; background:none; }
+  .step-button { grid-template-columns:minmax(0,1fr); min-height:0; padding:6px 10px !important; text-align:left; border-radius:10px; background:var(--card); }
+  .step-button[aria-current=step] { background:var(--menu-forest); box-shadow:inset 3px 0 var(--gold); }
+  .step-text strong { display:block; font:400 14px/1.25 var(--menu-serif); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .step-label { font-size:9px; }
+  .ground-row { grid-template-columns:minmax(0,1fr) 104px; }
+  .ground-cards { grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
+  .ground-cards .choice { padding:5px 5px 6px; gap:4px; }
+  .ground-cards .choice-head strong { font-size:13px; }
+  .ground-more { padding:6px 8px; flex-direction:column; align-items:flex-start; }
+  .ground-more .choice-head small { display:none; }
+  .ground-detail { grid-template-columns:minmax(0,1fr) minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); }
+  .ground-detail-top h3 { font-size:22px; }
+  .property-species { display:none; }
+  .property-hero,.map-stage { min-height:0; }
+  .breed-cards { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .gun-cards { grid-template-columns:repeat(4,minmax(0,1fr)) !important; }
+  .step-gear .gear-kit { grid-column:1; }
+  .light-cards .choice-head strong { font-size:15px; }
+  .launch-bar { padding-block:6px; }
+  #prep-start,.step-nav .secondary { min-height:40px; }
+  .prep-field { gap:4px; }
+  .field-label { font-size:10px; }
+  .segmented .choice { min-height:34px; padding-block:4px; }
+  .gun-cards .gun-portrait { height:30px !important; }
+  .day-conditions { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+  .light-swatch { height:22px; }
+  .challenge-cards { grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
+  .challenge-cards .choice-head small { display:none; }
+  .assists-panel.compact { gap:6px; }
+  .assists-panel.compact .assist-note,.assists-panel.compact .assist-row-help { display:none; }
+  .assists-panel.compact .assist-row { padding:3px 0; }
+  .assists-panel.compact .assist-chip { min-height:28px; padding-block:3px; }
+  .assists-panel.compact .assist-switch { min-height:24px; }
   .rail-status,.career-outlook { display:none; }
   .step-button { padding:8px 10px; }
   .step-text small { display:none; }
   /* The rail already names the step; keep the heading for assistive tech only. */
   .step-head { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); }
   .step-panel { padding-top:14px; }
-  .dog-layout { grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr); gap:16px; }
-  .dog-stage-wrap { position:sticky; }
-  .dog-stage { height:calc(100dvh - 150px); min-height:200px; }
+  .step-dog { padding-left:calc(46% + 18px); }
+  .step-dog>.dog-stage-wrap { position:absolute; left:14px; top:10px; bottom:10px; width:46%; }
+  .step-dog>.dog-stage-wrap>.dog-stage { flex:1; height:auto; min-height:0; }
+  .step-panel { gap:10px; }
+  .field-label { font-size:11px; }
+  .choice { padding:8px 10px; }
+  .ground-thumb { max-height:52px; }
+  .ground-detail { padding:10px; gap:8px 14px; }
+  .property-approach h4 { font-size:18px; }
+  .property-approach>p:not(.eyebrow),.field-advice { display:none; }
   .dog-stage-tag small,.dog-stage-hint { display:none; }
   .dog-stage-poses .choice { min-height:36px; padding:6px 10px; font-size:12px; }
   .launch-bar { padding-block:6px; }

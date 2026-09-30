@@ -22,12 +22,18 @@ import { propertyMenuArt } from './menuArt';
 import { coatSwatch } from './dogs/coatSwatch';
 import { DEFAULT_DOG_STYLE, DOG_STYLE_KEY, DOG_STYLE_LABELS, DOG_STYLE_SELECTABLE, DOG_STYLES, effectiveDogStyle, preferredDogStyle, resolveDogStyle, saveDogStyle, type DogStyle } from './dogs/dogStyle';
 import type { DogPreview, PreviewDog, PreviewPose } from './dogPreview';
+import { fitPages, type FitPager } from './fitPager';
+import { createAssistsPanel } from './assistsPanel';
+import { huntAssists, onHuntAssists } from './assistsRuntime';
+import { ASSIST_PRESETS, matchingPreset } from '../game/huntAssists';
+import './fitPager.css';
 
 /*
  * Hunt preparation is four short steps: where (ground), who (dog), with what
  * (gear) and when (day). A rail summarises every choice and jumps between
- * steps; the launch bar always shows the whole outing and the way out.
- * Only the chosen step scrolls. Saves go through the same commit functions
+ * steps; the launch bar always shows the whole outing, the way between
+ * steps and the way out. Nothing scrolls: each step is laid out to fit the
+ * screen, and on a small screen its sections page with Back / More. Saves go through the same commit functions
  * as before: nothing here writes a career or Quick setup directly.
  */
 
@@ -70,8 +76,7 @@ let light = ['morning', 'noon', 'evening'].includes(params.get('tod') ?? '') ? p
 let coat = params.get('coat') ?? undefined, controls = params.get('controls') ?? undefined;
 let message = '', addingDog = false, launching = false, updating = false, updateRequested = false;
 let groundView: 'scene' | 'atlas' = 'scene';
-let previewPose: PreviewPose = 'stand', compareStyles = false, openMoreGround = false;
-const stepScroll: Record<Step, number> = { ground: 0, dog: 0, gear: 0, day: 0 };
+let previewPose: PreviewPose = 'stand', compareStyles = false;
 let puppyDraft: PreparationDraft['puppyDraft'] = { breedId: 'gsp', name: '', homeRegionId: career.homeRegionId ?? 'southern-plains' };
 const propertyDrafts: Record<string, { areaId: string; dropPointId: string }> = {
   quick: { areaId: quick.areaId, dropPointId: '' },
@@ -153,7 +158,6 @@ function cardArt(container: HTMLElement, sources: string[], className: string): 
 const capital = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 /** Short breed names for tight summaries; full names stay on the cards. */
 const shortBreed = (breedId: string) => ({ gsp: 'GSP', 'english-setter': 'English Setter', 'english-pointer': 'Pointer', gwp: 'Wirehair' } as Record<string, string>)[breedId] ?? getBreed(breedId).name;
-const choiceLabel = (id: string) => id === 'random' ? 'Let the day decide' : capital(id);
 
 /**
  * A radio group of rich option buttons. Arrow keys move and select, as with
@@ -331,20 +335,19 @@ function dogStagePanel(): HTMLElement {
       options: POSES.map(([id, label]) => ({ id, label })), onChange: value => { previewPose = value; } }));
     dogStage.append(poses);
     if (DOG_STYLE_SELECTABLE) {
-      const styles = node('div', '', 'style-picker');
-      // With no choice made yet each breed keeps its own default style.
+      // The art style sits on the stage with the poses, so the dog keeps the room.
+      const styles = node('div', '', 'dog-stage-overlay style-picker');
       const current: string = compareStyles ? 'compare' : dogStyle ?? 'breed';
-      const heading = node('p', 'Art style', 'field-label'); heading.id = 'prep-dog-style-label';
       const group = radioGroup({ id: 'prep-dog-style', label: 'Dog art style', value: current, className: 'segmented',
-        options: [...DOG_STYLES.map(style => ({ id: style as string, label: DOG_STYLE_LABELS[style].label })), { id: 'compare', label: 'Compare both' }],
+        options: [...DOG_STYLES.map(style => ({ id: style as string, label: DOG_STYLE_LABELS[style].label })), { id: 'compare', label: 'Compare' }],
         onChange: value => {
           if (value === 'compare') { compareStyles = true; return; }
           compareStyles = false; dogStyle = value as DogStyle; saveDogStyle(dogStyle);
         } });
-      group.setAttribute('aria-labelledby', heading.id); group.removeAttribute('aria-label');
-      styles.append(heading, group, node('p', compareStyles ? 'Both styles side by side. Pick one to use it for every dog.'
-        : dogStyle ? 'Applies to every dog in the field.' : `No style chosen yet: the GSP shows ${DEFAULT_DOG_STYLE.gsp} and the setter ${DEFAULT_DOG_STYLE['english-setter']}. Pick one for every dog.`, 'help'));
-      wrap.append(styles);
+      group.title = compareStyles ? 'Both styles side by side. Pick one to use it for every dog.'
+        : dogStyle ? 'Art style for every dog in the field.' : `No style chosen yet: the GSP shows ${DEFAULT_DOG_STYLE.gsp} and the setter ${DEFAULT_DOG_STYLE['english-setter']}.`;
+      styles.append(group);
+      dogStage.append(styles);
     }
   }
   return wrap;
@@ -381,10 +384,10 @@ function kennelCard(dog: KennelDog): (el: HTMLButtonElement) => void {
 }
 
 function dogStep(panel: HTMLElement): void {
-  const layout = node('div', '', 'dog-layout');
-  layout.append(dogStagePanel());
-  const choices = node('div', '', 'dog-choices');
-  layout.append(choices); panel.append(layout);
+  // The stage stays in view on every page; the choices beside it page.
+  const stage = dogStagePanel(); stage.dataset.fitIgnore = '';
+  panel.append(stage);
+  const choices = panel;
   const preparation = careerPreparation(career);
   if (mode === 'career' && (preparation.needsDog || preparation.needsHome)) { firstSeason(choices, preparation.needsDog); return; }
   if (mode === 'career') { careerDogs(choices); return; }
@@ -415,7 +418,7 @@ function dogStep(panel: HTMLElement): void {
       options: breedChoices().map(b => ({ id: b.id, label: b.name })), onChange: value => updateQuick({ breed2Id: value }) }));
     if (threeD) brace.append(coatSwatches('prep-coat2', quick.breed2Id, quick.coat2Id, value => updateQuick({ coat2Id: value })));
   }
-  choices.append(field('Second dog', brace, 'Two dogs cover more ground and back each other’s points.'));
+  choices.append(field('Second dog', brace));
 }
 
 function careerDogs(choices: HTMLElement): void {
@@ -526,15 +529,19 @@ function groundStep(panel: HTMLElement): void {
     } }));
   const featuredRows = rows.filter(row => propertyMenuArt(row.area.id)), otherRows = rows.filter(row => !propertyMenuArt(row.area.id));
   const onArea = (value: string) => { areaId = value; dropPointId = ''; if (mode === 'quick') updateQuick({ areaId: value }); };
-  panel.append(radioGroup({ id: 'prep-area', label: 'Featured grounds', value: areaId, className: 'ground-cards', options: groundOptions(featuredRows, true), onChange: onArea }));
+  const grounds = node('div', '', 'ground-row');
+  grounds.append(radioGroup({ id: 'prep-area', label: 'Featured grounds', value: areaId, className: 'ground-cards', options: groundOptions(featuredRows, true), onChange: onArea }));
   if (otherRows.length) {
-    const more = node('details', '', 'more-ground'); more.id = 'prep-more-ground';
-    if (otherRows.some(row => row.area.id === areaId) || openMoreGround) more.open = true;
-    more.addEventListener('toggle', () => { openMoreGround = more.open; });
-    more.append(node('summary', `More ground · ${otherRows.length} properties`));
-    more.append(radioGroup({ id: 'prep-area-more', label: 'More ground', value: areaId, className: 'ground-list', options: groundOptions(otherRows, false), onChange: onArea }));
-    panel.append(more);
+    // The other properties open in a picker rather than growing the page.
+    const chosenOther = otherRows.find(row => row.area.id === areaId);
+    const more = button('', () => openMoreGround(otherRows, groundOptions(otherRows, false), onArea), `ground-more${chosenOther ? ' chosen' : ''}`);
+    more.id = 'prep-more-ground'; more.setAttribute('aria-haspopup', 'dialog');
+    const head = node('span', '', 'choice-head');
+    head.append(node('strong', chosenOther ? chosenOther.area.name : 'More ground'), node('small', chosenOther ? `${regionOfArea(chosenOther.area.id).name} · change` : `${otherRows.length} more properties`));
+    more.append(node('span', chosenOther ? '✓' : '+', 'ground-more-mark'), head);
+    grounds.append(more);
   }
+  panel.append(grounds);
   const area = getArea(areaId), doctrine = huntingDoctrine(area.id);
   const entry = preparation.areas.find(a => a.area.id === areaId)!;
   const speciesIds = mode === 'career' ? entry.openSpeciesIds : area.speciesMix.map(s => s.speciesId);
@@ -565,14 +572,32 @@ function groundStep(panel: HTMLElement): void {
     });
     mapStage.append(map); view.append(mapStage);
   }
+  // The decision first (where the truck stops), then the reading.
+  notes.append(field('Truck entry', radioGroup({ id: 'prep-drop', label: 'Truck entry', value: dropPointId, className: 'segmented wrap',
+    options: area.dropPoints.map((drop, i) => ({ id: drop.id, label: `${i + 1}. ${drop.name}` })), onChange: value => { dropPointId = value; } })));
   const approach = node('div', '', 'property-approach');
   approach.append(node('p', 'THE APPROACH', 'eyebrow'), node('h4', doctrine.method.toLowerCase().replace(/(^| · )([a-z])/g, (_, gap: string, letter: string) => gap + letter.toUpperCase())), node('p', doctrine.description));
   const tip = node('p', doctrine.tip, 'field-advice');
   approach.append(tip);
   notes.append(approach);
-  notes.append(field('Truck entry', radioGroup({ id: 'prep-drop', label: 'Truck entry', value: dropPointId, className: 'segmented wrap',
-    options: area.dropPoints.map((drop, i) => ({ id: drop.id, label: `${i + 1}. ${drop.name}` })), onChange: value => { dropPointId = value; } })));
   panel.append(detail);
+}
+
+function openMoreGround(rows: { area: { id: string; name: string } }[], options: RadioOption<string>[], onArea: (value: string) => void): void {
+  const dialog = node('dialog', '', 'prep-dialog more-ground-dialog'); dialog.setAttribute('aria-labelledby', 'more-ground-title');
+  const header = node('header'); const title = node('div');
+  title.append(node('p', 'MORE GROUND', 'eyebrow'), node('h2', `${rows.length} more properties`)); title.querySelector('h2')!.id = 'more-ground-title';
+  const close = button('Close', () => dialog.close(), 'secondary');
+  header.append(title, close);
+  const body = node('div', '', 'prep-dialog-body');
+  body.append(radioGroup({ id: 'prep-area-more', label: 'More ground', value: areaId, className: 'ground-list', options,
+    onChange: value => { onArea(value); }, rerender: focusId => { dialog.close(); render(focusId.startsWith('prep-area-more') ? 'prep-more-ground' : focusId); } }));
+  const pager = node('div', '', 'dialog-pager');
+  dialog.append(header, body, pager); document.body.append(dialog);
+  const fit = fitPages(body.firstElementChild as HTMLElement, { nav: pager, key: 'prep-more-ground' });
+  dialog.addEventListener('close', () => { fit.dispose(); dialog.remove(); document.getElementById('prep-more-ground')?.focus({ preventScroll: true }); }, { once: true });
+  dialog.showModal();
+  body.querySelector<HTMLElement>('[aria-checked=true]')?.focus({ preventScroll: true });
 }
 
 /* ----------------------------------------------------------------- the gear */
@@ -580,36 +605,38 @@ function groundStep(panel: HTMLElement): void {
 function gearStep(panel: HTMLElement): void {
   const preparation = careerPreparation(career);
   if (mode === 'quick') {
-    panel.append(field('How you hunt', radioGroup({ id: 'prep-method', label: 'Hunting method', value: quick.huntingMethod ?? 'shotgun', className: 'method-cards',
+    const method = field('How you hunt', radioGroup({ id: 'prep-method', label: 'Hunting method', value: quick.huntingMethod ?? 'shotgun', className: 'segmented wide',
       options: [
-        { id: 'shotgun', label: 'Shotgun', build: el => { const h = node('span', '', 'choice-head'); h.append(node('strong', 'Shotgun'), node('small', 'Walk up on the point and take the flush.')); el.append(h); } },
-        { id: 'goshawk', label: 'Goshawk, Cattail Coverts', build: el => { const h = node('span', '', 'choice-head'); h.append(node('strong', 'Goshawk'), node('small', 'Slip a hawk at flushed pheasant on Cattail Coverts.')); el.append(h); } },
-      ], onChange: value => updateQuick({ huntingMethod: value as QuickConfig['huntingMethod'] }) })));
+        { id: 'shotgun', label: 'Shotgun' },
+        { id: 'goshawk', label: 'Goshawk' },
+      ], onChange: value => updateQuick({ huntingMethod: value as QuickConfig['huntingMethod'] }) }));
+    method.classList.add('gear-method'); panel.append(method);
   }
   if (goshawk()) {
-    panel.append(node('p', 'Your goshawk rides on the fist. A finished GSP finds and points the birds.', 'help'));
+    const note = node('p', 'Your goshawk rides on the fist. A finished GSP finds and points the birds; slip the hawk at the flush.', 'help gear-guns');
+    panel.append(note);
   } else {
     const unlocked = new Set((mode === 'career' ? preparation.availableGuns : GUNS).map(g => g.id));
     const current = mode === 'career' ? gunId : quick.gunId;
-    panel.append(field('Shotgun', radioGroup({ id: 'prep-gun', label: 'Shotgun', value: current, className: 'gun-cards',
+    const guns = field('Shotgun', radioGroup({ id: 'prep-gun', label: 'Shotgun', value: current, className: 'gun-cards',
       options: GUNS.map((gun: GunConfig) => ({ id: gun.id, label: `${gun.name}, ${gun.shells} shells${unlocked.has(gun.id) ? '' : `, unlocks at hunter level ${gun.unlockLevel}`}`, disabled: !unlocked.has(gun.id),
         build: el => {
           const art = node('span', '', 'gun-portrait'); art.append(node('span', GUN_ACTIONS[gun.id] ?? 'Shotgun', 'gun-art-fallback'));
           cardArt(art, [artUrl(`guns/${gun.id}`)], 'gun-art');
           const head = node('span', '', 'choice-head');
-          head.append(node('strong', gun.name), node('small', `${GUN_ACTIONS[gun.id] ?? 'Sporting shotgun'} · ${gun.shells} shells · ${gun.blurb}`));
+          head.append(node('strong', gun.name), node('small', `${GUN_ACTIONS[gun.id] ?? 'Sporting shotgun'} · ${gun.shells} shells · ${gun.chokes.map(c => c.name.toLowerCase()).join(' / ')}`));
           el.append(art, head);
           if (!unlocked.has(gun.id)) el.append(node('span', `Hunter level ${gun.unlockLevel}`, 'tag locked'));
         } })),
-      onChange: value => { if (mode === 'career') gunId = value; else updateQuick({ gunId: value }); } })));
-    const rack = link('Inspect it in the gun rack ↗', `./shotguns3d.html?gun=${encodeURIComponent(current)}`, 'text-link'); rack.target = '_blank'; rack.rel = 'noopener';
-    panel.append(rack);
+      onChange: value => { if (mode === 'career') gunId = value; else updateQuick({ gunId: value }); } }));
+    const rack = link('Gun rack ↗', `./shotguns3d.html?gun=${encodeURIComponent(current)}`, 'text-link field-aside'); rack.target = '_blank'; rack.rel = 'noopener';
+    guns.querySelector('.field-label')?.after(rack);
+    guns.classList.add('gear-guns'); panel.append(guns);
   }
-  if (mode === 'quick') {
-    panel.append(field('Tracking gear', radioGroup({ id: 'prep-gear', label: 'Tracking gear', value: String(quick.gearTier), className: 'segmented wrap',
-      options: GEAR_NAMES.map((label, i) => ({ id: String(i), label: capital(label) })), onChange: value => updateQuick({ gearTier: Number(value) }) }),
-    'Better gear shows where your dog is working when it is out of sight.'));
-  } else panel.append(field('Tracking gear', node('p', `${capital(GEAR_NAMES[preparation.gearTier])} · better gear comes with hunter levels.`, 'help')));
+  // Difficulty is the hunter's kit: tracking collar, map, sight picture.
+  const kit = createAssistsPanel({ compact: true, earnedTier: mode === 'career' ? preparation.gearTier : null });
+  const kitField = field('Your kit', kit);
+  kitField.classList.add('gear-kit'); panel.append(kitField);
 }
 
 /* ------------------------------------------------------------------ the day */
@@ -621,10 +648,12 @@ function dayStep(panel: HTMLElement): void {
       const h = node('span', '', 'choice-head'); h.append(node('strong', l.label), node('small', l.detail)); el.append(h);
     } })), onChange: value => { light = value; } })));
   if (mode === 'quick') {
-    panel.append(field('Weather', radioGroup({ id: 'prep-weather', label: 'Weather', value: quick.weather, className: 'segmented wrap',
-      options: WEATHER_CHOICES.map(id => ({ id, label: choiceLabel(id) })), onChange: value => updateQuick({ weather: value as QuickConfig['weather'] }) })));
-    panel.append(field('Wind', radioGroup({ id: 'prep-wind', label: 'Wind', value: quick.wind, className: 'segmented wrap',
-      options: WIND_CHOICES.map(id => ({ id, label: choiceLabel(id) })), onChange: value => updateQuick({ wind: value as QuickConfig['wind'] }) })));
+    const conditions = node('div', '', 'day-conditions');
+    conditions.append(field('Weather', radioGroup({ id: 'prep-weather', label: 'Weather', value: quick.weather, className: 'segmented wrap',
+      options: WEATHER_CHOICES.map(id => ({ id, label: id === 'random' ? 'Any' : capital(id) })), onChange: value => updateQuick({ weather: value as QuickConfig['weather'] }) })));
+    conditions.append(field('Wind', radioGroup({ id: 'prep-wind', label: 'Wind', value: quick.wind, className: 'segmented wrap',
+      options: WIND_CHOICES.map(id => ({ id, label: id === 'random' ? 'Any' : capital(id) })), onChange: value => updateQuick({ wind: value as QuickConfig['wind'] }) })));
+    panel.append(conditions);
   } else panel.append(node('p', 'Weather and bird behaviour follow your career season.', 'help'));
   panel.append(field('Challenge', radioGroup({ id: 'prep-challenge', label: 'Challenge', value: challenge, className: 'challenge-cards',
     options: (Object.entries(HUNT_CHALLENGES) as [HuntChallenge, (typeof HUNT_CHALLENGES)[HuntChallenge]][])
@@ -658,7 +687,7 @@ function summaries(): Record<Step, { value: string; detail: string }> {
   return {
     ground: { value: area.name, detail: mode === 'career' && entry && !entry.selectable ? entry.reason ?? '' : drop.name },
     dog: { value: dogValue, detail: dogDetail },
-    gear: { value: goshawk() ? 'Goshawk' : gun?.name ?? 'Shotgun', detail: goshawk() ? 'From the fist' : `${gun?.shells ?? 0} shells · ${capital(GEAR_NAMES[mode === 'quick' ? quick.gearTier : preparation.gearTier])}` },
+    gear: { value: goshawk() ? 'Goshawk' : gun?.name ?? 'Shotgun', detail: goshawk() ? 'From the fist' : `${gun?.shells ?? 0} shells · ${kitLabel()}` },
     day: { value: capital(light), detail: [mode === 'quick' && quick.weather !== 'random' ? capital(quick.weather) : null, HUNT_CHALLENGES[challenge].label].filter(Boolean).join(' · ') },
   };
 }
@@ -667,7 +696,16 @@ function syncLaunchSummary(): void {
   if (detail) detail.textContent = [s.dog.value, s.gear.value, s.day.value].join(' · ');
   const dogSummary = document.querySelector('[data-step-summary=dog] strong');
   if (dogSummary) dogSummary.textContent = s.dog.value;
+  const gearDetail = document.querySelector('[data-step-summary=gear] small');
+  if (gearDetail) gearDetail.textContent = s.gear.detail;
 }
+
+/** The kit as a rail line: the preset's name, or Custom. */
+function kitLabel(): string {
+  const preset = matchingPreset(huntAssists());
+  return preset ? `${ASSIST_PRESETS[preset].label} kit` : 'Custom kit';
+}
+onHuntAssists(() => syncLaunchSummary());
 
 /* ---------------------------------------------------------------- settings */
 
@@ -695,7 +733,9 @@ function openSettings(opener: HTMLElement): void {
   view.append(link(other === '2d' ? 'Switch to the classic 2D hunt' : 'Switch to the 3D field', `./prepare3d.html?renderer=${other}&mode=${mode}&area=${encodeURIComponent(areaId)}&drop=${encodeURIComponent(dropPointId)}`, 'text-link'));
   body.append(field('Game view', view, 'Your career and kennel are shared between both views.'));
   body.append(offlinePanel);
-  settingsDialog.append(header, body);
+  const dialogPager = node('div', '', 'dialog-pager');
+  settingsDialog.append(header, body, dialogPager);
+  dialogFit?.dispose(); dialogFit = fitPages(body, { nav: dialogPager, key: 'prep-settings' });
   if (!settingsDialog.open) {
     settingsDialog.showModal(); close.focus({ preventScroll: true });
     settingsDialog.addEventListener('close', () => { render(); opener.isConnected ? opener.focus() : document.getElementById('prep-settings')?.focus(); }, { once: true });
@@ -704,17 +744,20 @@ function openSettings(opener: HTMLElement): void {
 
 /* ------------------------------------------------------------------ render */
 
+let stepPager: FitPager | null = null;
+let dialogFit: FitPager | null = null;
+// A dog step lays out differently across the narrow breakpoint (the stage
+// joins the column), so a width change across it rebuilds the step.
+const narrowStep = window.matchMedia?.('(max-width:1100px)');
+narrowStep?.addEventListener?.('change', () => { if (step === 'dog') render(); });
+
 function showStep(next: Step, focusHeading = false): void {
-  const scroller = root.querySelector<HTMLElement>('.step-scroll');
-  if (scroller) stepScroll[step] = scroller.scrollTop;
   step = next; render();
   const url = new URL(location.href); url.searchParams.set('step', step); history.replaceState(null, '', url);
   if (focusHeading) document.getElementById('prep-step-title')?.focus({ preventScroll: true });
 }
 
 function render(focusId?: string): void {
-  const scroller = root.querySelector<HTMLElement>('.step-scroll');
-  if (scroller) stepScroll[step] = scroller.scrollTop;
   const saved = careerPreparation(career);
   if (!career.kennel.some(dog => dog.id === dogId)) dogId = saved.activeDog?.id ?? career.kennel[0]?.id ?? '';
   if (!saved.canBrace || braceId === dogId || !career.kennel.some(dog => dog.id === braceId)) braceId = '';
@@ -785,18 +828,13 @@ function render(focusId?: string): void {
   content.append(head);
   const notice = node('p', message, 'prep-message'); notice.id = 'preparation-message'; notice.setAttribute('role', 'status'); notice.tabIndex = -1; notice.hidden = !message;
   content.append(notice);
-  const scroll = node('div', '', 'step-scroll'); scroll.dataset.scrollPanel = step;
   const panel = node('div', '', `step-panel step-${step}`); panel.id = `prep-${step}-panel`;
   if (step === 'ground') groundStep(panel);
   else if (step === 'dog') dogStep(panel);
   else if (step === 'gear') gearStep(panel);
   else dayStep(panel);
-  if (!onboarding && index < STEPS.length - 1) {
-    const nextInfo = STEPS[index + 1];
-    const next = button(`Next: ${nextInfo.label.toLowerCase()} →`, () => showStep(nextInfo.id, true), 'next-step'); next.id = 'prep-next-step';
-    panel.append(next);
-  }
-  scroll.append(panel); content.append(scroll); main.append(content);
+  const pagerNav = node('div', '', 'step-pager'); pagerNav.hidden = true;
+  content.append(panel, pagerNav); main.append(content);
 
   const footer = node('footer', '', 'launch-bar'); const outing = node('div', '', 'launch-destination');
   if (onboarding) outing.append(node('small', 'A HUNTING LIFE'), node('strong', 'Your first season'), node('span', preparation.needsDog ? 'Name your dog and choose a home ground.' : 'Choose your home ground.'));
@@ -806,25 +844,35 @@ function render(focusId?: string): void {
     const detail = node('span', mode === 'career' && entry.reason ? entry.reason : [s.dog.value, s.gear.value, s.day.value].join(' · ')); detail.id = 'launch-detail';
     outing.append(detail);
   }
-  const start = button(onboarding ? preparation.needsDog ? 'Begin your career' : 'Set home ground' : 'Head to the field ↗', () => {
+  const start = button('', () => {
     if (!onboarding) { launch(); return; }
     // The footer submits the same form, never a second save path.
     if (step !== 'dog') showStep('dog');
     if (preparation.needsDog) root.querySelector<HTMLFormElement>('#puppy-form')?.requestSubmit();
     else document.getElementById('prep-home-save')?.click();
   }, 'primary'); start.id = 'prep-start';
+  if (onboarding) start.textContent = preparation.needsDog ? 'Begin your career' : 'Set home ground';
+  else { start.append(node('span', 'Head to the field', 'start-long'), node('span', 'Hunt', 'start-short'), node('span', ' ↗')); start.setAttribute('aria-label', 'Head to the field'); }
   const unavailable = mode === 'career' && !onboarding && !entry.selectable;
   start.dataset.unavailable = String(unavailable); start.disabled = launching || updating || unavailable;
-  footer.append(outing, start);
+  // The way through the steps lives beside the way out, always in reach.
+  const stepNav = node('div', '', 'step-nav');
+  if (!onboarding && index > 0) {
+    const previous = STEPS[index - 1];
+    const back = button(`‹ ${previous.label}`, () => showStep(previous.id, true), 'secondary step-back'); back.id = 'prep-previous-step';
+    back.setAttribute('aria-label', `Back to ${previous.label.toLowerCase()}`); stepNav.append(back);
+  }
+  if (!onboarding && index < STEPS.length - 1) {
+    const nextInfo = STEPS[index + 1];
+    const next = button(`Next: ${nextInfo.label} ›`, () => showStep(nextInfo.id, true), 'secondary next-step'); next.id = 'prep-next-step';
+    stepNav.append(next);
+  }
+  footer.append(outing, stepNav, start);
   root.append(header, main, footer);
 
-  const restoredScroll = stepScroll[step];
-  requestAnimationFrame(() => { const el = root.querySelector<HTMLElement>('.step-scroll'); if (el && !focusId) el.scrollTop = restoredScroll; });
-  if (focusId) {
-    const focused = document.getElementById(focusId);
-    if (focused) { focused.focus({ preventScroll: true }); focused.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
-    const el = root.querySelector<HTMLElement>('.step-scroll'); if (el && focused && !el.contains(focused)) el.scrollTop = restoredScroll;
-  }
+  stepPager?.dispose();
+  stepPager = fitPages(panel, { nav: pagerNav, key: `${mode}:${step}` });
+  if (focusId) document.getElementById(focusId)?.focus({ preventScroll: true });
   syncPreview();
 }
 

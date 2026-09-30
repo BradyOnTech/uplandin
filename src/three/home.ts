@@ -1,5 +1,7 @@
 import './home.css';
 import './huntJournal.css';
+import './fitPager.css';
+import { fitPages, type FitPager } from './fitPager';
 import { loadCareer } from '../game/career';
 import { dateLabel } from '../game/season';
 import { saveGameplayMode, type GameplayMode } from '../game/gameplayMode';
@@ -8,7 +10,10 @@ import { enableOfflineHunts, requestOfflineUpdate } from './offline';
 import { propertyMenuArt, titleMenuArt } from './menuArt';
 import { getArea } from '../game/areas';
 import { getBreed } from '../game/breeds';
-import { loadQuickConfig } from '../game/quick';
+import { loadQuickConfig, saveQuickConfig } from '../game/quick';
+import { commitQuickLaunch } from '../game/huntPreparation';
+import { HUNT_CHALLENGE_KEY } from '../game/huntChallenge';
+import { huntingDoctrine } from '../game/huntDoctrine';
 import { coatLabel, isModeledBreed, modelForBreed, resolveCoatFor } from '../game/dogCoats';
 import { coatSwatch } from './dogs/coatSwatch';
 import { DEFAULT_DOG_STYLE, DOG_STYLE_KEY, DOG_STYLE_LABELS, DOG_STYLE_SELECTABLE, DOG_STYLES, effectiveDogStyle, preferredDogStyle, saveDogStyle, type DogStyle } from './dogs/dogStyle';
@@ -42,7 +47,25 @@ const quickDetail = quick.querySelector<HTMLElement>('.home-action-detail')!;
 const hasCareer = career.kennel.length > 0;
 const careerLink = link('', './prepare3d.html?mode=career', 'home-action');
 careerLink.append(node('span', '02', 'home-action-index'), node('span', hasCareer ? 'Continue your season' : 'Start a season', 'home-action-title'), node('span', hasCareer ? `${dateLabel(career.date)} · ${career.kennel.length} ${career.kennel.length === 1 ? 'dog' : 'dogs'} in the kennel` : 'Raise your dogs. Build a hunting life.', 'home-action-detail'), node('span', '↗', 'home-action-arrow'));
-actions.append(quick, careerLink); introduction.append(actions); main.append(introduction);
+careerLink.querySelector('.home-action-index')!.textContent = '03';
+// Straight into a bird-rich preserve day on your last Quick Hunt setup.
+const loaded = button('', () => launchLoadedField(), 'home-action home-action-loaded');
+loaded.append(node('span', '02', 'home-action-index'), node('span', 'Loaded field', 'home-action-title'), node('span', 'Birds in every piece of cover. Fast action, right now.', 'home-action-detail'), node('span', '↗', 'home-action-arrow'));
+actions.append(quick, loaded, careerLink); introduction.append(actions); main.append(introduction);
+
+function launchLoadedField(): void {
+  const last = loadQuickConfig();
+  // Loaded fields are the four hand-built open properties, shotgun in hand.
+  const areaId = huntingDoctrine(last.areaId).spatialEncounter ? last.areaId : 'quail-fields';
+  const result = commitQuickLaunch({ ...last, areaId, huntingMethod: 'shotgun' });
+  if (!result.ok) { location.assign('./prepare3d.html?mode=quick&step=day&challenge=loaded'); return; }
+  saveQuickConfig(result.config);
+  try { localStorage.setItem(HUNT_CHALLENGE_KEY, 'loaded'); } catch { /* The URL carries it. */ }
+  saveGameplayMode('3d');
+  const url = new URL(result.href, location.href);
+  url.searchParams.set('challenge', 'loaded'); url.searchParams.set('tod', 'morning'); url.searchParams.set('dog', 'generated');
+  location.assign(url.href);
+}
 const side = node('div', '', 'home-side');
 // Your dog, as it will walk out of the truck, one tap from the dog chooser.
 const dogCard = link('', './prepare3d.html?mode=quick&step=dog', 'home-dog');
@@ -149,9 +172,15 @@ const offline = node('p', '', 'home-offline-status'); offline.id = 'offline-stat
 const updateStatus = node('p', '', 'home-offline-status'); updateStatus.setAttribute('role', 'status');
 const update = button('Update game', requestOfflineUpdate, 'home-update'); update.hidden = true;
 install.append(offline, updateStatus, update); dialogContent.append(install);
-dialog.append(dialogHeader, dialogContent); document.body.append(dialog);
+const dialogPager = node('div', '', 'home-dialog-pager');
+dialog.append(dialogHeader, dialogContent, dialogPager); document.body.append(dialog);
 let opener: HTMLElement | undefined;
-function showSettings(from: HTMLElement): void { opener = from; dialog.showModal(); close.focus({ preventScroll: true }); }
+let settingsFit: FitPager | null = null;
+function showSettings(from: HTMLElement): void {
+  opener = from; dialog.showModal(); close.focus({ preventScroll: true });
+  settingsFit ??= fitPages(dialogContent, { nav: dialogPager, key: 'home-settings' });
+  settingsFit.refresh();
+}
 dialog.addEventListener('close', () => opener?.focus({ preventScroll: true }));
 enableOfflineHunts({ canReload: () => true, onUpdateState: state => {
   update.hidden = state === 'none'; update.disabled = state === 'applying';

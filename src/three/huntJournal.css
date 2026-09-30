@@ -18,9 +18,11 @@
 #hunt-journal .hunt-journal-overview dl>div { display:flex; flex-direction:column-reverse; gap:5px; min-width:0; padding-left:16px; border-left:1px solid #d8d2b818; }
 #hunt-journal .hunt-journal-overview dt { font-size:12px; line-height:1.4; color:#c4c9b4; }
 #hunt-journal .hunt-journal-overview dd { margin:0; font:400 30px/1 Georgia,serif; color:#f0d69b; font-variant-numeric:tabular-nums; }
-#hunt-journal .hunt-journal-content { min-width:0; min-height:0; overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable; scrollbar-width:thin; scrollbar-color:#a99c7e transparent; padding:8px 28px 20px; background:linear-gradient(90deg,#dbcdb54a,transparent 28px),#f3eddf; }
+#hunt-journal .hunt-journal-content { min-width:0; min-height:0; overflow:hidden; display:flex; flex-direction:column; padding:8px 28px 12px; background:linear-gradient(90deg,#dbcdb54a,transparent 28px),#f3eddf; }
 #hunt-journal .hunt-journal-content:focus-visible { outline-color:#8a6d36; outline-offset:-4px; }
-#hunt-journal .hunt-journal-list { display:grid; grid-template-columns:minmax(0,1fr); align-items:start; list-style:none; padding:0; margin:0; }
+#hunt-journal .hunt-journal-list { flex:1; min-height:0; overflow:hidden; display:grid; grid-template-columns:minmax(0,1fr); align-content:start; align-items:start; list-style:none; padding:0; margin:0; }
+#hunt-journal .hunt-journal-pager { flex:1; display:flex; justify-content:center; --fit-line:#a6947055; --fit-ink:#5a654b; --fit-accent:#8e6c3b; --fit-dot:#a6947050; }
+#hunt-journal .hunt-journal-pager.fit-nav { flex:0 1 360px; }
 #hunt-journal .hunt-journal-list li { display:grid; grid-template-columns:46px minmax(0,1fr) minmax(225px,.9fr); align-items:start; gap:18px; min-width:0; padding:24px 0; border-bottom:1px solid #90806230; }
 #hunt-journal .hunt-journal-list li:last-child { border-bottom:0; }
 #hunt-journal .hunt-journal-number { display:block; padding-top:25px; font:400 27px/1 Georgia,serif; color:#7c653f; font-variant-numeric:tabular-nums; }

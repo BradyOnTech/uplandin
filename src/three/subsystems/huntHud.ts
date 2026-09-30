@@ -1,3 +1,4 @@
+import { fitPages, type FitPager } from '../fitPager';
 import { isFalconryPractice } from '../../game/falconryPractice';
 import { build3DPreparationHref } from '../../game/gameplayMode';
 import { huntComplete } from '../../game/state';
@@ -41,6 +42,7 @@ export class HuntHudSystem implements Subsystem {
   private dogDistance: HTMLElement | null = null;
   private summary: HTMLElement | null = null;
   private summaryCopy: HTMLElement | null = null;
+  private summaryPager: FitPager | null = null;
   private endButton: HTMLButtonElement | null = null;
   private frozen = false;
   private summaryShown = false;
@@ -361,6 +363,13 @@ export class HuntHudSystem implements Subsystem {
         }
       }
       if (this.summary) this.summary.hidden = false;
+      // The field notes fit the card; a long day's notes page, never scroll.
+      if (this.summaryCopy && !this.summaryPager && typeof document.createElement === 'function') {
+        const actions = this.summary?.querySelector('.hunt-summary-actions');
+        const nav = document.createElement('div'); nav.className = 'hunt-summary-pager';
+        actions?.prepend(nav);
+        this.summaryPager = fitPages(this.summaryCopy, { nav, key: 'hunt-summary' });
+      }
       ctx.events.dispatchEvent(new Event('hunt-complete'));
     }
   }

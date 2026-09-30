@@ -1,4 +1,5 @@
-/* Field folios: fixed heading and actions, one scrollable working page. */
+/* Field folios: fixed heading and actions and a working page that fits the
+   card. Nothing scrolls; a tab whose sections do not fit pages instead. */
 /* The world frames arrival and pause; gameplay labels return on entry. */
 body:has(#field-overlay:not([hidden])) :is(#hunt-hud,#controls,#pause-hunt,#field-map-toggle,#touch-controls,#touch-move-guide,#touch-look-guide,#reticle,#hit-marker,#shot-callout,#shot-cue,#bird-call-cue,#dog-appearance,#field-menu) { visibility:hidden; pointer-events:none; }
 #field-overlay {
@@ -7,8 +8,8 @@ body:has(#field-overlay:not([hidden])) :is(#hunt-hud,#controls,#pause-hunt,#fiel
   background:linear-gradient(115deg,#111e16b8,#1b281c54);
 }
 #field-overlay .field-card {
-  width:min(940px,100%); height:min(660px,100%); max-height:100%; min-height:0;
-  display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; padding:0; overflow:hidden;
+  width:min(1000px,100%); height:min(760px,100%); max-height:100%; min-height:0;
+  display:grid; grid-template-rows:auto auto minmax(0,1fr) auto auto; padding:0; overflow:hidden;
   border-radius:8px 18px 18px 8px; background:#f1ead9; color:#3b4232; color-scheme:light;
   box-shadow:0 2px 8px #0002,0 24px 80px #0005,inset 5px 0 #b4a689;
 }
@@ -19,6 +20,14 @@ body:has(#field-overlay:not([hidden])) :is(#hunt-hud,#controls,#pause-hunt,#fiel
 #field-species { margin:16px 0 0; color:#dcc491; font-size:12px; letter-spacing:.1em; }
 #field-method { margin:8px 0 0; padding:0; border:0; color:#bcc8b1; font-size:12px; letter-spacing:.07em; }
 #loading-status { color:#d2d6c5; margin:12px 0 4px; }
+/* With the tabs open the heading is a title bar: the working page gets the room. */
+#field-overlay:not(.prepared-arrival) .field-menu-heading,#field-overlay.review-expanded .field-menu-heading { display:flex; flex-wrap:wrap; align-items:baseline; column-gap:22px; row-gap:4px; padding:16px 32px 14px; }
+#field-overlay:not(.prepared-arrival) .field-menu-heading>.eyebrow,#field-overlay.review-expanded .field-menu-heading>.eyebrow { margin:0; flex-basis:100%; font-size:11px; }
+#field-overlay:not(.prepared-arrival) #field-title,#field-overlay.review-expanded #field-title { font-size:30px; }
+#field-overlay:not(.prepared-arrival) :is(#field-description,#field-species),#field-overlay.review-expanded :is(#field-description,#field-species) { display:none; }
+#field-overlay:not(.prepared-arrival) #field-method,#field-overlay.review-expanded #field-method { margin:0; }
+#field-overlay:not(.prepared-arrival) #loading-status,#field-overlay.review-expanded #loading-status { margin:0; flex:1; text-align:right; font-size:13px; }
+#field-overlay:not(.prepared-arrival) #loading-progress,#field-overlay.review-expanded #loading-progress { flex-basis:100%; margin:4px 0 0; }
 #loading-progress { margin:8px 0 0; accent-color:#d7bd85; }
 .field-has-entered #field-description,.field-has-entered #field-species { display:none; }
 .field-menu-tabs { display:flex; gap:24px; padding:0 32px; border-bottom:1px solid #a1906c30; background:#e7dfcd; }
@@ -27,8 +36,10 @@ body:has(#field-overlay:not([hidden])) :is(#hunt-hud,#controls,#pause-hunt,#fiel
 .field-menu-tabs button:hover { color:#414c37; background:transparent; }
 .field-menu-tabs button[aria-selected=true] { color:#37412e; background:transparent; box-shadow:inset 0 -2px #91703e; }
 .field-menu-tabs button[aria-selected=true] span { color:#987446; }
-.field-menu-body { --menu-select-surface:#fbf8ef; --menu-select-hover:#fffdf7; min-height:0; min-width:0; overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; scrollbar-width:thin; scrollbar-color:#aa9c7d transparent; padding:28px 32px; background:linear-gradient(90deg,#dacdb33a,transparent 28px),#f3eddf; }
-.field-menu-panel { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:26px 36px; align-items:start; }
+.field-menu-body { --menu-select-surface:#fbf8ef; --menu-select-hover:#fffdf7; min-height:0; min-width:0; overflow:hidden; padding:24px 32px; background:linear-gradient(90deg,#dacdb33a,transparent 28px),#f3eddf; }
+.field-menu-panel { min-width:0; height:100%; overflow:hidden; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:22px 36px; align-content:start; align-items:start; }
+.field-menu-panel[hidden] { display:none !important; }
+.field-menu-pager { padding:8px 32px; background:#f3eddf; box-shadow:0 -1px #a6947022; --fit-line:#a6947055; --fit-ink:#5a654b; --fit-hover:#a9724812; --fit-accent:#8e6c3b; --fit-dot:#a6947050; }
 .field-menu-panel>* { min-width:0; }
 .field-section-kicker { margin:0 0 8px; color:#7a5c31; font-size:13px; font-weight:600; letter-spacing:.15em; }
 .field-section-heading,#field-settings h3 { margin:0 0 18px; color:#3e4734; font:400 25px/1.15 var(--menu-serif); letter-spacing:-.025em; }
@@ -67,7 +78,38 @@ body:has(#field-overlay:not([hidden])) :is(#hunt-hud,#controls,#pause-hunt,#fiel
 .field-has-entered #field-dog-change { display:none; }
 @media (max-width:640px) { #field-dog { grid-template-columns:96px minmax(0,1fr); } .field-dog-portrait { height:66px; } #field-dog-change { grid-column:1 / -1; justify-content:center; } #field-dog-name { font-size:21px; } }
 #field-panel-settings { display:block; }
-#field-settings { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:28px 36px; padding:0; background:none; border:0; }
+#field-settings { height:100%; overflow:hidden; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-content:start; gap:24px 36px; padding:0; background:none; border:0; }
+/* The kit holds the left column; the rest of the settings stack on the right. */
+#field-settings { grid-auto-flow:row dense; }
+#field-settings>.assists-panel { grid-column:1; grid-row:1 / span 3; }
+#field-settings>:not(.assists-panel) { grid-column:2; }
+#field-settings #field-options { grid-template-columns:minmax(0,1fr); gap:16px; }
+#field-settings #shot-view-options,#field-settings .touch-sensitivity { padding-top:14px; }
+/* Settings read as label / control rows, like the kit beside them. */
+#field-settings .field-settings-group:not(.assists-panel) { gap:0; }
+#field-settings .field-settings-group:not(.assists-panel) h3,#field-settings #shot-view-options h3 { margin:0 0 6px; font-size:20px; }
+#field-settings #field-options label,#field-settings #shot-view-options label { grid-template-columns:minmax(0,1fr) minmax(0,1.3fr); align-items:center; gap:12px; min-height:44px; padding:4px 0; border-bottom:1px solid #a6947022; font-size:14px; color:#2f3a28; font-weight:600; }
+#field-settings #field-options label:has(input[type=checkbox]) { display:flex; font-weight:600; }
+#field-settings :is(#field-options,#shot-view-options) :is(select,.menu-select-trigger) { min-height:38px; padding-block:6px; font-size:14px; }
+#field-settings #shot-view-help { margin-top:6px; font-size:12px; line-height:1.4; }
+/* Short screens: each page uses the full width instead of half-empty columns. */
+@media (max-height:820px) and (min-width:601px) {
+  #field-settings { grid-template-columns:minmax(0,1fr); }
+  #field-settings>.assists-panel,#field-settings>:not(.assists-panel) { grid-column:1; grid-row:auto; }
+  #field-settings #field-options { grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:36px; }
+  #field-settings>.assists-panel { grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr); grid-template-rows:auto auto auto 1fr; column-gap:36px; align-items:start; }
+  #field-settings>.assists-panel>:not(.assist-rows) { grid-column:1; }
+  #field-settings>.assists-panel>.assist-rows { grid-column:2; grid-row:1 / span 4; }
+}
+@media (max-height:960px) {
+  #field-settings .assist-row-help { display:none; }
+  #field-settings .assist-row { padding:6px 0; }
+  #field-settings .assist-note { min-height:0; }
+}
+/* The guide pages its paragraphs; the utilities sit beside it. */
+#field-panel-guide { grid-template-rows:minmax(0,1fr); align-items:stretch; }
+#field-guide { min-height:0; display:flex; flex-direction:column; }
+#field-instructions { flex:1; min-height:0; overflow:hidden; }
 #field-settings>summary,#field-guide>summary { display:none; }
 #field-options { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:start; gap:36px; margin:0; grid-column:1 / -1; }
 .field-settings-group { display:grid; align-content:start; gap:14px; }
@@ -120,7 +162,8 @@ body:has(#field-overlay:not([hidden])) :is(#hunt-hud,#controls,#pause-hunt,#fiel
 #field-overlay.prepared-arrival:not(.review-expanded) .field-card { width:min(420px,100%); height:auto; max-height:100%; grid-template-rows:minmax(0,1fr) auto; box-shadow:0 3px 8px #0002,0 20px 70px #0004; }
 #field-overlay.prepared-arrival:not(.review-expanded) .field-menu-heading { min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:27px 28px 21px; background:#303d31ec; }
 #field-overlay.prepared-arrival:not(.review-expanded) .field-menu-tabs,
-#field-overlay.prepared-arrival:not(.review-expanded) .field-menu-body { display:none; }
+#field-overlay.prepared-arrival:not(.review-expanded) .field-menu-body,
+#field-overlay.prepared-arrival:not(.review-expanded) .field-menu-pager { display:none !important; }
 #field-overlay.prepared-arrival:not(.review-expanded) #field-title { font-size:38px; }
 #field-overlay.prepared-arrival:not(.review-expanded) .field-menu-footer { padding:14px 18px; gap:16px; }
 #field-overlay.prepared-arrival:not(.review-expanded) #field-preparation { max-width:120px; line-height:1.3; font-size:13px; }
@@ -203,16 +246,19 @@ body #hunt-arrival button:active { transform:scale(.96); }
   .field-menu-tabs { padding:0 16px; gap:12px; }
   .field-menu-tabs button { flex:1; justify-content:center; min-height:48px; padding:12px 2px; gap:7px; font-size:13px; }
   .field-menu-tabs button span { font-size:13px; }
-  .field-menu-body { padding:22px 18px; }
-  .field-menu-panel { grid-template-columns:minmax(0,1fr); gap:25px; }
+  .field-menu-body { padding:16px 18px; }
+  .field-menu-panel { grid-template-columns:minmax(0,1fr); gap:18px; }
+  #field-panel-guide { grid-template-rows:minmax(0,1fr) auto; }
+  .field-menu-pager { padding:6px 18px; }
   #shotgun-label,#challenge-options>label { font-size:25px; }
   .field-session-strip { gap:16px; padding-bottom:16px; }
   #field-journal-open { min-width:0; }
   #field-journal-open .session-action-title { gap:12px; }
   #field-journal-open>span:last-child { font-size:12px; }
   #field-overlay #mobile-hunt-actions #end-hunt { min-width:86px; padding-inline:12px; font-size:13px; }
-  #field-settings { grid-template-columns:minmax(0,1fr); gap:26px; }
-  #field-options { grid-template-columns:minmax(0,1fr); gap:26px; }
+  #field-settings { grid-template-columns:minmax(0,1fr); gap:18px; }
+  #field-settings>.assists-panel,#field-settings>:not(.assists-panel) { grid-column:1; grid-row:auto; }
+  #field-options { grid-template-columns:minmax(0,1fr); gap:18px; }
   .field-menu-footer { padding:10px 16px; gap:12px; }
   #field-preparation { font-size:13px; max-width:110px; line-height:1.3; }
   #enter-field { flex:1; min-width:0; padding:12px; font-size:12px; }
@@ -237,6 +283,32 @@ body #hunt-arrival button:active { transform:scale(.96); }
 }
 @media (max-height:550px) and (min-width:601px) {
   #field-overlay,body.touch-controls-active #field-overlay { padding:8px max(12px,env(safe-area-inset-right)) 8px max(12px,env(safe-area-inset-left)); }
+  /* A phone on its side: a slim frame so the working page keeps the room. */
+  #field-overlay:not(.prepared-arrival) .field-menu-heading,#field-overlay.review-expanded .field-menu-heading { padding:8px 22px 6px; }
+  #field-overlay:not(.prepared-arrival) .field-menu-heading>.eyebrow,#field-overlay.review-expanded .field-menu-heading>.eyebrow { display:none; }
+  #field-overlay:not(.prepared-arrival) #field-title,#field-overlay.review-expanded #field-title { font-size:22px; }
+  #field-overlay .field-menu-tabs button { min-height:36px; padding-block:6px; }
+  .field-menu-pager { padding:3px 22px; }
+  .field-menu-pager .fit-nav-button { min-height:30px; padding-block:4px; }
+  #field-overlay .field-menu-footer { padding-block:5px; }
+  #field-overlay #enter-field,#field-overlay #field-preparation { min-height:38px; }
+  #field-settings>.assists-panel>.field-section-kicker,#field-settings>.assists-panel>.assists-title,#field-settings .assist-note { display:none; }
+  #field-settings .assist-row { padding:3px 0; }
+  #field-settings .assist-chip { min-height:28px; padding-block:3px; }
+  #field-settings .assist-switch { min-height:26px; }
+  .field-menu-panel { gap:10px 28px; }
+  .field-session-strip { padding-bottom:6px; }
+  #field-journal-open { min-height:34px; padding:2px 0; }
+  #field-journal-open>span:last-child { display:none; }
+  #field-dog { grid-template-columns:84px minmax(0,1fr) auto; gap:12px; padding:6px 10px 6px 6px; }
+  .field-dog-portrait { height:52px; }
+  #field-dog-name { font-size:19px; }
+  #field-guide>.field-section-kicker,#field-guide>.field-section-heading { display:none; }
+  #field-instructions { font-size:12px; line-height:1.5; }
+  #field-instructions p { margin-bottom:8px; }
+  #field-guide-preferences { display:flex; flex-wrap:wrap; align-items:center; gap:4px 14px; padding:4px 0; }
+  #field-guide-preferences label,#field-guide-repeat { min-height:34px; }
+  .field-menu-utilities>.field-section-kicker,.field-menu-utilities>.field-section-heading { display:none; }
   #field-overlay .field-card { width:min(1000px,100%); height:100%; }
   #field-overlay.prepared-arrival:not(.review-expanded) { padding-left:max(16px,env(safe-area-inset-left)); padding-right:max(16px,env(safe-area-inset-right)); }
   #field-overlay.prepared-arrival:not(.review-expanded) .field-card { width:min(355px,46vw); height:auto; }
@@ -262,7 +334,8 @@ body #hunt-arrival button:active { transform:scale(.96); }
   #loading-progress { max-width:100px; }
   .field-menu-tabs { padding:0 22px; gap:24px; }
   .field-menu-tabs button { min-height:44px; padding:10px 4px; font-size:13px; }
-  .field-menu-body { padding:18px 22px; }
+  .field-menu-body { padding:14px 22px; }
+  .field-menu-pager { padding:4px 22px; }
   .field-menu-footer { padding:8px 22px; }
   #enter-field { min-height:44px; }
   #shotgun-label,#challenge-options>label { font-size:22px; }

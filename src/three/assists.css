@@ -8,7 +8,8 @@
 .assist-chip.on { background:#2f3d2b; color:#f4ecd8; box-shadow:0 1px 3px rgba(20,28,18,.28); }
 .assist-chip:disabled:not(.on) { opacity:.42; cursor:default; }
 .assist-chip:focus-visible, .assist-switch:focus-visible { outline:2px solid #b8873a; outline-offset:2px; }
-.assist-presets .assist-chip[data-value="custom"]:not(.on) { flex:0 1 auto; font-weight:500; font-style:italic; }
+.assist-presets .assist-chip[data-value="custom"]:not(.on) { display:none; }
+.assist-presets .assist-chip[data-value="custom"].on { font-style:italic; }
 .assist-note { margin:0; min-height:2.6em; color:#566049; font:400 13px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; text-wrap:pretty; }
 .assist-rows { display:grid; gap:0; border-top:1px solid rgba(60,69,50,.16); }
 .assist-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:10px 16px; padding:10px 0; border-bottom:1px solid rgba(60,69,50,.12); }

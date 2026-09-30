@@ -1,5 +1,7 @@
 import { huntAssists } from './assistsRuntime';
 import { createAssistsPanel } from './assistsPanel';
+import { fitPages, type FitPager } from './fitPager';
+import './fitPager.css';
 import { HuntArrivalController } from './huntArrivalController';
 import { isFalconryPractice } from '../game/falconryPractice';
 import { bindTouchActionControl } from './touchActionControl';
@@ -41,6 +43,7 @@ export class FieldInterface {
   private touch = usesTouchControls();
   private capture = new URLSearchParams(location.search).has('capture');
   private launch = parseHuntLaunch(location.search);
+  private menuPager: FitPager | null = null;
   private activeChallenge = resolveThreeHuntChallenge(location.search);
   private updateState: OfflineUpdateState = 'none';
   private falconry = resolveThreeHuntProfile(location.search).quick?.huntingMethod === 'goshawk';
@@ -52,6 +55,9 @@ export class FieldInterface {
   constructor(private engine: Engine, landscape: LandscapeModel) {
     const signal = this.abort.signal;
     const tabs = Array.from(this.overlay.querySelectorAll<HTMLButtonElement>('[data-field-tab]'));
+    // Each tab fits the card; what does not fit pages instead of scrolling.
+    const pagerNav = document.getElementById('field-menu-pager');
+    const pageContainers: Record<string, string> = { hunt: '#field-panel-hunt', settings: '#field-settings', guide: '#field-instructions' };
     const selectTab = (tab: HTMLButtonElement) => {
       for (const item of tabs) {
         const selected = item === tab;
@@ -59,7 +65,11 @@ export class FieldInterface {
         document.getElementById(item.getAttribute('aria-controls')!)!.hidden = !selected;
       }
       this.overlay.querySelector('.field-menu-body')!.scrollTop = 0;
+      this.menuPager?.dispose(); this.menuPager = null;
+      const container = this.overlay.querySelector<HTMLElement>(pageContainers[tab.dataset.fieldTab ?? 'hunt'] ?? '');
+      if (container && pagerNav) this.menuPager = fitPages(container, { nav: pagerNav, key: `field:${tab.dataset.fieldTab}` });
     };
+    queueMicrotask(() => { const active = tabs.find(t => t.getAttribute('aria-selected') === 'true') ?? tabs[0]; if (active) selectTab(active); });
     tabs.forEach((tab, index) => {
       tab.addEventListener('click', () => selectTab(tab), { signal });
       tab.addEventListener('keydown', event => {

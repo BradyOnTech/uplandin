@@ -75,7 +75,7 @@ select { border:0; border-radius:6px; padding:7px; background:#ffffff12; }
 #hit-marker.pop { animation:hit-marker-pop .28s ease-out both; }
 @keyframes hit-marker-pop { from { opacity:1; scale:.7; } 30% { opacity:1; scale:1.08; } to { opacity:0; scale:1; } }
 @media (prefers-reduced-motion: reduce) { #hit-marker.pop { animation:none; } }
-#field-overlay { overflow-y:auto; overscroll-behavior:contain; position:fixed; z-index:10; inset:0; display:grid; align-items:center; justify-items:start; padding:5vw; background:linear-gradient(90deg,rgba(17,32,26,.91),rgba(17,32,26,.25)); }
+#field-overlay { overflow:hidden; position:fixed; z-index:10; inset:0; display:grid; align-items:center; justify-items:start; padding:5vw; background:linear-gradient(90deg,rgba(17,32,26,.91),rgba(17,32,26,.25)); }
 .field-card { width:min(440px,100%); padding:32px; border-radius:20px; background:rgba(26,42,32,.88); box-shadow:0 2px 4px #0001,0 24px 100px #0003,inset 0 1px #fff1; }
 .eyebrow { color:var(--gold); font-size:12px; letter-spacing:.20em; font-weight:650; }
 h1 { margin:20px 0 12px; font:500 clamp(32px,5vw,44px)/1.04 Georgia,serif; letter-spacing:-.025em; text-wrap:balance; }
@@ -136,7 +136,9 @@ input { accent-color:var(--gold); }
 #app-update-button:disabled { opacity:.6; cursor:default; }
 #hunt-summary #app-update-panel button { margin:0; }
 #hunt-summary { position:fixed; z-index:11; display:flex; flex-direction:column; width:min(420px,calc(100vw - 40px)); left:50%; top:50%; transform:translate(-50%,-50%); border-radius:18px; background:rgba(26,42,32,.97); box-shadow:0 24px 100px #0007,inset 0 1px #fff1; }
-#hunt-summary-content { min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:32px 32px 24px; }
+#hunt-summary-content { min-height:0; display:flex; flex-direction:column; overflow:hidden; padding:32px 32px 24px; }
+#hunt-summary-copy { flex:0 1 auto; min-height:0; overflow:hidden; }
+.hunt-summary-pager { flex:1 1 100%; --fit-line:#a6947055; --fit-ink:#5a654b; --fit-accent:#8e6c3b; --fit-dot:#a6947050; }
 .hunt-summary-actions { display:flex; flex:none; flex-wrap:wrap; gap:8px; padding:16px 32px 24px; box-shadow:0 -1px #ffffff12; }
 #hunt-summary h2 { font:500 32px/1.1 Georgia,serif; margin:0 0 22px; text-transform:none; }
 .hunt-summary-heading { display:flex; justify-content:space-between; align-items:baseline; gap:14px; }

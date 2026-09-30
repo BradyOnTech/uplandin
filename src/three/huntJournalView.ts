@@ -1,3 +1,5 @@
+import { fitPages } from './fitPager';
+import './fitPager.css';
 import type { Career } from '../game/career';
 import { formatHuntJournalEntry, readHuntJournal } from '../game/huntJournal';
 
@@ -74,8 +76,13 @@ export function openHuntJournal(career: Career, opener?: HTMLElement): void {
     content.append(empty);
   }
   const footer = document.createElement('footer'); footer.className = 'hunt-journal-footer';
-  footer.append(text('span', 'Your latest 30 career hunts · saved on this device'), text('span', 'UPLANDIN', 'hunt-journal-imprint'));
+  // The journal turns its pages; it never scrolls.
+  const pager = document.createElement('div'); pager.className = 'hunt-journal-pager';
+  footer.append(text('span', 'Your latest 30 career hunts · saved on this device'), pager, text('span', 'UPLANDIN', 'hunt-journal-imprint'));
   dialog.append(header, content, footer);
-  dialog.addEventListener('close', () => { dialog.remove(); if (opener?.isConnected) opener.focus({ preventScroll: true }); }, { once: true });
+  const list = content.querySelector<HTMLElement>('.hunt-journal-list');
+  const fit = list ? fitPages(list, { nav: pager, key: 'hunt-journal' }) : null;
+  dialog.addEventListener('close', () => { fit?.dispose(); dialog.remove(); if (opener?.isConnected) opener.focus({ preventScroll: true }); }, { once: true });
   document.body.append(dialog); dialog.showModal(); close.focus({ preventScroll: true });
+  fit?.refresh();
 }
