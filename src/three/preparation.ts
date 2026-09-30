@@ -36,6 +36,10 @@ let gunId = career.hunter.shotgunId;
 let challenge = parseHuntChallenge(params.get('challenge') ?? readPreference(HUNT_CHALLENGE_KEY));
 let quality = params.get('quality') ?? readPreference('uplandin.3d.quality') ?? 'auto';
 if (!['auto', 'lite', 'high'].includes(quality)) quality = 'auto';
+// Dog art style under evaluation: each breed's own default, or one style for every dog.
+const DOG_STYLE_KEY = 'uplandin.3d.dogstyle';
+let dogStyle = params.get('dogstyle') ?? readPreference(DOG_STYLE_KEY) ?? 'breed';
+if (!['breed', 'smooth', 'faceted'].includes(dogStyle)) dogStyle = 'breed';
 let light = ['morning', 'noon', 'evening'].includes(params.get('tod') ?? '') ? params.get('tod')! : 'morning';
 let coat = params.get('coat') ?? undefined, controls = params.get('controls') ?? undefined;
 let message = '', addingDog = false, launching = false, updating = false, updateRequested = false;
@@ -431,6 +435,11 @@ function render(focusId?: string): void {
   } else day.append(node('p', 'Weather and bird experience follow your career season.', 'help'));
   experience.append(select('prep-challenge', 'Challenge', Object.entries(HUNT_CHALLENGES).map(([id, value]) => ({ id, label: value.label, description: value.description })), challenge, value => { challenge = parseHuntChallenge(value); }), node('p', HUNT_CHALLENGES[challenge].description, 'help'));
   if (requestedRenderer === '3d' || (mode === 'quick' && quick.huntingMethod === 'goshawk')) extras.append(select('prep-quality', 'Graphics', [{ id: 'auto', label: 'Use device preference' }, { id: 'lite', label: 'Lightweight' }, { id: 'high', label: 'High' }], quality, value => { quality = value; }));
+  if (requestedRenderer === '3d') extras.append(select('prep-dog-style', 'Dog style', [
+    { id: 'breed', label: 'Breed default', description: 'Smooth GSP · faceted English Setter' },
+    { id: 'smooth', label: 'Smooth', description: 'Skinned, softly shaded dogs' },
+    { id: 'faceted', label: 'Faceted', description: 'Articulated low-poly dogs' },
+  ], dogStyle, value => { dogStyle = value; try { localStorage.setItem(DOG_STYLE_KEY, value); } catch { /* The launch URL also carries it. */ } }));
   if (requestedRenderer === '2d' && mode === 'quick' && quick.huntingMethod === 'goshawk') experience.append(node('p', 'Goshawk hunts open in the 3D field.', 'help'));
   conditions.append(day, experience, extras);
 
@@ -491,6 +500,7 @@ function launch(): void {
   url.searchParams.set('challenge', challenge); url.searchParams.set('tod', light); url.searchParams.set('dog', 'generated');
   // Keep Auto distinct from the effective tier chosen by device preference.
   url.searchParams.set('quality', quality);
+  if (dogStyle !== 'breed') url.searchParams.set('dogstyle', dogStyle);
   if (coat) url.searchParams.set('coat', coat);
   if (controls) url.searchParams.set('controls', controls);
   rememberPreparationLaunch(currentDraft(), preferenceStorage());

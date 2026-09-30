@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { FacetBuilder, patchWeight, type CoatPainter, type SectionZ, type V3 as SculptV3 } from '../dogs/facetedSculpt';
 import type { HuntArrivalFrame } from '../huntArrival';
 import type { Ctx, Subsystem } from '../engine';
 import { fieldTimeOfDay, P, type TimeOfDay } from '../palette';
@@ -190,6 +191,23 @@ class PartBuilder {
     this.quad(A1, D1, D0, A0, color); // -x
     this.quad(A1, B1, C1, D1, color); // -y
     this.quad(D0, C0, B0, A0, color); // +y
+  }
+
+  /**
+   * Faceted joint knuckle centred on a limb joint: a squat octahedron that
+   * fills the wedge rigid segments open when a joint folds, so an elbow,
+   * wrist, stifle or hock reads as one continuous limb instead of stacked
+   * floating blocks.
+   */
+  knuckle(c: V3, hw: number, hh: number, hd: number, color: THREE.Color): void {
+    const [x, y, z] = c;
+    const top: V3 = [x, y + hh, z], bot: V3 = [x, y - hh, z];
+    const ring: V3[] = [[x + hw, y, z], [x, y, z + hd], [x - hw, y, z], [x, y, z - hd]];
+    for (let k = 0; k < 4; k++) {
+      const a = ring[k], b = ring[(k + 1) % 4];
+      this.tri(a, top, b, color);
+      this.tri(b, bot, a, color);
+    }
   }
 
   build(): THREE.BufferGeometry {
@@ -651,20 +669,22 @@ export class DogSystem implements Subsystem {
             // gSky ceiling capped at 0.8 (round 11): the up-facing topline
             // and raised flag ran a pale glowing stripe across BOTH halves
             // of every ring view — skylight on the back stays a whisper.
-            '\tvec3 gShadeTint = uCoolTint * mix( 0.66, 0.8, gSky ) * 0.75;\n' +
+            // Round 12: the continuous faceted sculpt models its own planes, so the
+            // shade mass is lifted — the lee side still reads, it is no longer slate grey.
+            '\tvec3 gShadeTint = uCoolTint * mix( 0.72, 0.86, gSky ) * 0.86;\n' +
             '\tdiffuseColor.rgb *= mix( vec3( 1.0 ), gShadeTint, gShadeW * uCoolK );\n' +
             // The core shadow takes one further VALUE step the tint mix
             // cannot reach (ACES compresses display ratios ~0.6 power —
             // a 0.5 radiance step lands as 0.87 on screen): direct sun
             // falling on the lee half is sunk like the real self-shadow
             // it stands in.
-            '\tdiffuseColor.rgb *= 1.0 - gPosShade * uCoolK * 0.6;\n' +
+            '\tdiffuseColor.rgb *= 1.0 - gPosShade * uCoolK * 0.32;\n' +
             // Away-from-sun step deepened 0.22 -> 0.36 (round 11): on the
             // backlit ring angles both centroid halves are shade — the
             // sun-ward half must still win via the facets that lean toward
             // the sun, so the squarely-away facets take a real step down.
             '\tfloat gAway = clamp( ( -dot( gWN, uSunDirW ) - 0.1 ) * 1.1, 0.0, 1.0 );\n' +
-            '\tdiffuseColor.rgb *= 1.0 - gAway * uCoolK * 0.36;',
+            '\tdiffuseColor.rgb *= 1.0 - gAway * uCoolK * 0.22;',
         )
         .replace(
           '#include <emissivemap_fragment>',
@@ -1045,449 +1065,267 @@ export class DogSystem implements Subsystem {
   ): THREE.Mesh {
     this.geos.push(geo);
     const m = new THREE.Mesh(geo, material);
-    // NEVER into the shadow map (round 7, item 2): at a grazing dawn sun
-    // the segmented body smeared into a noisy splat that read as a burn
-    // mark. The contact ellipse is the dog's grounding on every tier.
-    m.castShadow = false;
+    // Cast into the field's shadow map like the smooth dog does. Round 7
+    // kept the faceted body out after an early noisy splat at a grazing
+    // dawn sun; the current sun shadow setup resolves the segmented body
+    // cleanly, and a real shadow grounds the dog far better at play
+    // distance. The contact ellipse remains as the soft ambient contact.
+    m.castShadow = true;
     m.receiveShadow = false;
     return m;
   }
 
   private buildBody(high: boolean): void {
-    // Each breed shares one sculpt across its accepted coats. Appearance
-    // modules own palettes and pattern rules; anatomy branches on breed,
-    // never on a color name.
+    // Each breed shares one rig across its accepted coats. Appearance modules
+    // own palettes; the sculpt below branches on breed, never on a colour.
+    // Round 12: the dog is rebuilt from continuous eight-sided anatomical
+    // sections with whole-facet coat painting (see dogs/facetedSculpt.ts).
+    void high;
     const a = this.appearance;
     const gsp = this.visualBreed === 'gsp';
     const gspAppearance = gsp ? a as GermanShorthairedPointerAppearance : null;
-    const torsoSects = gsp ? GSP_TORSO_SECTS : SETTER_TORSO_SECTS;
-    const coat = new THREE.Color(a.ground);
-    const coatDim = new THREE.Color(a.groundDim);
-    // Round 9, item 4: lower legs and paws step DOWN in value so the
-    // articulation (knee/hock joints, four separate columns) reads inside
-    // the white mass, not only in silhouette.
-    const legShade = new THREE.Color(a.legShade);
-    const pawShade = new THREE.Color(a.pawShade);
-    // Dawn's four-stop key lifts albedo hard; these deliberately deep base
-    // values land as the intended marking color after lighting/ACES.
-    const patch = new THREE.Color(a.primary);
-    const patchDeep = new THREE.Color(a.primaryDeep);
     const setterAppearance = gsp ? null : a as EnglishSetterAppearance;
-    const tanPoint = setterAppearance?.tanPoint === undefined
-      ? undefined
-      : new THREE.Color(setterAppearance.tanPoint);
-    const tanPointDeep = setterAppearance?.tanPointDeep === undefined
-      ? tanPoint
-      : new THREE.Color(setterAppearance.tanPointDeep);
+    const ground = new THREE.Color(a.ground);
+    const groundDim = new THREE.Color(a.groundDim);
+    const primary = new THREE.Color(a.primary);
+    const primaryDeep = new THREE.Color(a.primaryDeep);
     const nose = new THREE.Color(a.nose);
     const eye = new THREE.Color(a.eye);
+    const tan = setterAppearance?.tanPoint === undefined ? null : new THREE.Color(setterAppearance.tanPoint);
+    // Lower limbs step down only slightly in value so joints read without
+    // the dog appearing to wear darker stockings.
+    const legTone = ground.clone().lerp(new THREE.Color(a.legShade), .38);
+    const pattern = gspAppearance?.pattern ?? 'belton';
+    const solid = pattern === 'solid';
+    const mix = (from: THREE.Color, to: THREE.Color, t: number) => from.clone().lerp(to, t);
+    const smooth = (e0: number, e1: number, x: number) => {
+      const t = THREE.MathUtils.clamp((x - e0) / (e1 - e0), 0, 1);
+      return t * t * (3 - 2 * t);
+    };
 
-    // TORSO — two overlapping rigid low-poly masses joined at the short
-    // loin. The neutral silhouette is the accepted Setter sculpt, but the
-    // pelvis can now gather under the ribcage instead of scaling one block.
-    {
-      const b = new PartBuilder();
-      loftZ(
-        b, torsoSects.slice(2), [coat, coat],
-        [0, 0.455, -0.066], [0, 0.41, 0.29],
-        coat, coat,
-        true,
-        true,
-      );
-      // Setter furnishings are silhouette, not a fur texture. Two shallow
-      // layers of rigid triangular locks put a few purposeful notches under
-      // the brisket and belly while leaving the profile's tuck exposed.
-      if (!gsp) {
-        for (const sx of [-1, 1]) {
-          const x = sx * 0.043;
-          const ox = sx * 0.052;
-          // Chest feather: deepest ahead of the elbow.
-          b.tri2([x, 0.365, 0.245], [x, 0.33, 0.105], [ox, 0.255, 0.175], coatDim);
-          // Belly locks shorten toward the loin, producing the saw-tooth
-          // setter coat edge visible in both admitted standing references.
-          b.tri2([x, 0.365, 0.1], [x, 0.37, -0.025], [ox, 0.31, 0.025], coatDim);
-        }
-      }
-      this.chest.add(this.mesh(b.build(), high));
-    }
-    {
-      const b = new PartBuilder();
-      const sections = [
-        ...torsoSects.slice(0, 3),
-        // The front of the pelvis narrows inside the overlapping loin
-        // sleeve; its closed edge can rotate without exposing an open ring.
-        { x: 0, y: 0.45, z: 0.012, hw: 0.066, hh: 0.077 },
-      ].map((s) => localSect(s, PELVIS_PIVOT));
-      loftZ(
-        b, sections, [coatDim, coat, coat],
-        localPoint([0, 0.455, -0.36], PELVIS_PIVOT),
-        localPoint([0, 0.45, 0.018], PELVIS_PIVOT),
-        coatDim, coat,
-        true,
-        true,
-      );
-      // The caudal belly feather belongs to the pelvis so it follows the
-      // gather instead of floating across the loin seam.
-      if (!gsp) {
-        for (const sx of [-1, 1]) {
-          const x = sx * 0.043;
-          const ox = sx * 0.052;
-          b.tri2(
-            localPoint([x, 0.38, -0.035], PELVIS_PIVOT),
-            localPoint([x, 0.39, -0.16], PELVIS_PIVOT),
-            localPoint([ox, 0.335, -0.105], PELVIS_PIVOT),
-            coatDim,
-          );
-        }
-      }
-      this.pelvis.add(this.mesh(b.build(), high));
-    }
-    {
-      // Short overlapping loin sleeve: hides the rigid-segment seam while
-      // leaving the pelvis free to rotate underneath. It is intentionally
-      // faceted and only a hand-span long, not a rubber torso stretch.
-      const b = new PartBuilder();
-      loftZ(
-        b,
-        [
-          { x: 0, y: 0.452, z: -0.115, hw: 0.076, hh: 0.089 },
-          { x: 0, y: 0.448, z: 0.018, hw: 0.08, hh: 0.099 },
-        ],
-        [coat],
-        [0, 0.452, -0.12],
-        [0, 0.448, 0.023],
-        coat,
-        coat,
-      );
-      this.chest.add(this.mesh(b.build(), high));
-    }
+    /** Lens-shaped hanging feather along a path of (z, top y, hang). */
+    const featherPath = (path: readonly (readonly [number, number, number])[], x: number, thickness: number): SectionZ[] =>
+      path.map(([z, y, hang]) => ({ x, y: y - hang * .5, z, w: thickness, top: hang * .5 + .006, bottom: hang * .5, bulge: -.3, shoulder: .9, belly: .55 }));
 
-    // Coat pattern overlays: restrained belton diamonds for the Setter;
-    // denser irregular ticking plus broad asymmetrical liver/black plates
-    // for a roan or patched GSP. Solid GSPs need no overlay at all.
-    if (!(gsp && gspAppearance!.pattern === 'solid')) {
-      const front = new PartBuilder();
-      const rear = new PartBuilder();
-      const sideFlecks: ReadonlyArray<readonly [number, number, number, number, number, boolean]> = gsp
-        ? [
-            [0.113, 0.49, 0.22, 0.008, 0.012, false],
-            [0.119, 0.44, 0.18, 0.006, 0.01, true],
-            [0.116, 0.38, 0.12, 0.007, 0.011, false],
-            [0.101, 0.5, 0.07, 0.006, 0.01, true],
-            [0.086, 0.425, 0.015, 0.008, 0.013, false],
-            [0.074, 0.49, -0.045, 0.006, 0.01, true],
-            [0.088, 0.47, -0.11, 0.007, 0.011, false],
-            [0.094, 0.405, -0.17, 0.006, 0.009, true],
-            [0.088, 0.49, -0.22, 0.008, 0.012, false],
-            [0.068, 0.435, -0.29, 0.006, 0.01, true],
-          ]
-        : [
-            [0.109, 0.45, 0.205, 0.014, 0.022, false],
-            [0.113, 0.405, 0.135, 0.01, 0.015, true],
-            [0.096, 0.49, 0.055, 0.012, 0.019, false],
-            [0.078, 0.43, -0.035, 0.009, 0.014, true],
-            [0.086, 0.485, -0.125, 0.013, 0.018, false],
-            [0.084, 0.405, -0.205, 0.01, 0.016, true],
-            [0.061, 0.46, -0.29, 0.009, 0.013, false],
-          ];
-      for (const side of [-1, 1]) {
-        for (let i = 0; i < sideFlecks.length; i++) {
-          const [xr, y, z, hy, hz, deep] = sideFlecks[i];
-          // Offset the two sides so the pattern is individual, not mirrored.
-          const dz = side < 0 ? 0 : ((i % 3) - 1) * 0.014;
-          const x = side * (xr + 0.002);
-          const points: [V3, V3, V3, V3] = [
-            [x, y + hy, z + dz], [x, y, z + hz + dz],
-            [x, y - hy, z + dz], [x, y, z - hz + dz],
-          ];
-          if (z < PELVIS_PIVOT[2]) {
-            rear.quad2(
-              localPoint(points[0], PELVIS_PIVOT), localPoint(points[1], PELVIS_PIVOT),
-              localPoint(points[2], PELVIS_PIVOT), localPoint(points[3], PELVIS_PIVOT),
-              deep ? patchDeep : patch,
-            );
-          } else {
-            front.quad2(points[0], points[1], points[2], points[3], deep ? patchDeep : patch);
-          }
-        }
-      }
+    // ---------------------------------------------------------------- coat
+    // Body-space coat painter: every facet takes one colour from its centroid.
+    const bodyPaint: CoatPainter = (p, n, h) => {
+      const side = p.x < 0 ? -1 : 1;
+      const lower = smooth(.34, .08, p.y);
+      const h2 = (h * 9.73) % 1, h3 = (h * 31.1) % 1;
+      const base = mix(ground, legTone, lower);
+      // Only the torso's underside planes step down into the dim ground.
+      const shaded = n.y < -.55 && p.y > .24 ? mix(base, groundDim, .5) : base;
+      if (solid) return { color: mix(primary, primaryDeep, h * .3 + lower * .25), marking: true };
       if (gsp) {
-        // Large breed-defining plates remain faceted and flush to the
-        // short coat. Different extents on each flank avoid a mirrored toy.
+        const shift = side < 0 ? 0 : -.025;
+        // Large, clean liver plates: shoulder, saddle, hip and tail set.
+        const plates = patchWeight(p, [side * .09, .5, .16 + shift], [.06, .08, .085], .035)
+          || patchWeight(p, [0, .565, -.1 + shift * .5], [.075, .042, .095], .03)
+          || patchWeight(p, [side * .075, .5, -.265 - shift], [.06, .07, .07], .035)
+          || p.z < -.335;
+        if (plates) return { color: mix(primary, primaryDeep, h * .35), marking: true };
+        const tick = mix(primary, primaryDeep, h3 * .5);
+        if (pattern === 'roan') {
+          // Roan: the grizzled ground varies facet to facet, with dense ticks.
+          return { color: mix(shaded, primary, .06 + h * .22), marking: false, fleck: h2 < .55 ? tick : undefined };
+        }
+        // Liver and white: sparse ticks on white.
+        return { color: shaded, marking: false, fleck: h2 < .22 + lower * .2 ? tick : undefined };
+      }
+      if (tan && p.y < .1) return { color: mix(tan, ground, .28 - lower * .12 + h * .1), marking: true };
+      if (patchWeight(p, [0, .6, .235], [.06, .05, .05], .06)) return { color: mix(primary, primaryDeep, h * .3), marking: true };
+      // Belton: small flush flecks, denser down the legs, on a white ground.
+      const fleck = mix(primary, primaryDeep, h3 * .45);
+      return { color: shaded, marking: false, fleck: h2 < .42 + lower * .25 ? fleck : undefined };
+    };
+    // Head-local painter: GSP liver head with an optional blaze; belton hood.
+    const headPaint: CoatPainter = (p, n, h) => {
+      const ax = Math.abs(p.x);
+      if (gsp) {
+        const blaze = gspAppearance!.headBlaze && ax < .011 && p.y > .02 && p.z < .085 && p.z > -.06;
+        if (blaze && !solid) return { color: ground, marking: false };
+        const lip = p.y < -.03 && p.z > .1;
+        return { color: mix(primary, primaryDeep, lip ? .45 : h * .3), marking: true };
+      }
+      const blaze = ax < .012 + Math.max(0, .06 - p.z) * .08;
+      const hood = p.z < .085 && p.y > -.02 && !blaze;
+      if (tan && p.y < -.005 && p.z > .045 && p.z < .12 && ax > .02) return { color: tan, marking: true };
+      if (tan && p.y > .03 && p.z > .035 && p.z < .07 && ax > .02 && ax < .045) return { color: tan, marking: true };
+      if (hood) return { color: mix(primary, primaryDeep, n.y < 0 ? .35 : h * .2), marking: true };
+      return { color: n.y < -.5 ? groundDim : ground, marking: false, fleck: p.z > .09 && (h * 9.73) % 1 < .45 ? mix(primary, primaryDeep, .2) : undefined };
+    };
+    const earPaint: CoatPainter = (p, _n, h) => ({ color: mix(primary, primaryDeep, smooth(-.02, -.13, p.y) * .45 + h * .1), marking: true });
+
+    const attach = (group: THREE.Object3D, builder: FacetBuilder) => {
+      const { coat, marking } = builder.build();
+      if (coat) group.add(this.mesh(coat, high));
+      if (marking) group.add(this.mesh(marking, high, this.markingMat!));
+    };
+
+    // --------------------------------------------------------------- torso
+    // Ribcage: keeled brisket reaching the elbow, prosternum proud of the
+    // shoulder, withers as the high point of the topline.
+    {
+      const b = new FacetBuilder(bodyPaint);
+      const deep = gsp ? 1 : .96;
+      b.loftZ([
+        { y: .462, z: -.13, w: .075, top: .085, bottom: .08 },
+        { y: .462, z: -.06, w: .08, top: .088, bottom: .09 },
+        { y: .45, z: .01, w: .1, top: .104, bottom: .122 * deep, bulge: .25 },
+        { y: .432, z: .1, w: .116, top: .128, bottom: .165 * deep, bulge: .3, belly: .7 },
+        { y: .44, z: .19, w: .11, top: .135, bottom: .152 * deep, shoulder: .82, belly: .68 },
+        { y: .432, z: .26, w: .086, top: .11, bottom: .125, shoulder: .8, belly: .5 },
+        { y: .418, z: .302, w: .048, top: .062, bottom: .075, belly: .45 },
+      ], undefined, false, true, true, 2);
+      // Scapular planes: a raised blade over each shoulder gives the
+      // forequarter its angulation from the side and width from the front.
+      for (const side of [-1, 1]) {
+        b.loftZ([
+          { x: side * .088, y: .485, z: .11, w: .022, top: .02, bottom: .06 },
+          { x: side * .098, y: .47, z: .18, w: .026, top: .045, bottom: .085 },
+          { x: side * .084, y: .44, z: .245, w: .02, top: .03, bottom: .07 },
+        ]);
+      }
+      if (!gsp) {
+        // Setter furnishings: a keel of brisket feathering between the
+        // elbows and a fringe along each side of the belly — thin lenses
+        // with facet-length steps, not jagged paper shards.
+        b.loftZ(featherPath([[-.02, .33, .012], [.05, .3, .036], [.12, .285, .05], [.19, .29, .044], [.25, .31, .02]], 0, .012));
+        for (const side of [-1, 1]) b.loftZ(featherPath([[-.12, .385, .01], [-.05, .37, .026], [.03, .345, .034], [.1, .32, .024], [.15, .31, .008]], side * .05, .008));
+      }
+      attach(this.chest, b);
+    }
+    {
+      const b = new FacetBuilder(bodyPaint, PELVIS_PIVOT as SculptV3);
+      const sections: SectionZ[] = [
+        { y: .44, z: -.352, w: .042, top: .052, bottom: .06 },
+        { y: .443, z: -.318, w: .074, top: gsp ? .08 : .085, bottom: .098 },
+        { y: .452, z: -.25, w: .092, top: .1, bottom: .11, bulge: .2 },
+        { y: .458, z: -.17, w: .086, top: .096, bottom: .092 },
+        { y: .463, z: -.08, w: .077, top: .09, bottom: .08 },
+        { y: .462, z: .012, w: .068, top: .08, bottom: .074 },
+      ];
+      b.loftZ(sections.map(s => ({ ...s, y: s.y - PELVIS_PIVOT[1], z: s.z - PELVIS_PIVOT[2] })), undefined, false, true, true, 2);
+      if (!gsp) {
         for (const side of [-1, 1]) {
-          const dz = side < 0 ? 0 : -0.022;
-          front.quad2(
-            [side * 0.1085, 0.495, 0.19 + dz],
-            [side * 0.104, 0.48, 0.09 + dz],
-            [side * 0.103, 0.395, 0.105 + dz],
-            [side * 0.112, 0.385, 0.185 + dz],
-            patch,
-          );
-          rear.quad2(
-            localPoint([side * 0.091, 0.495, -0.15 - dz], PELVIS_PIVOT),
-            localPoint([side * 0.075, 0.47, -0.265 - dz], PELVIS_PIVOT),
-            localPoint([side * 0.073, 0.385, -0.245 - dz], PELVIS_PIVOT),
-            localPoint([side * 0.091, 0.395, -0.16 - dz], PELVIS_PIVOT),
-            patchDeep,
-          );
+          b.loftZ(featherPath([[-.2, .41, .008], [-.15, .395, .02], [-.09, .385, .024], [-.02, .38, .01]], side * .05, .008)
+            .map(f => ({ ...f, x: (f.x ?? 0) - PELVIS_PIVOT[0], y: f.y - PELVIS_PIVOT[1], z: f.z - PELVIS_PIVOT[2] })));
         }
       }
-      // A few dorsal flecks keep the coat believable from the player's
-      // elevated three-quarter view.
-      const topFlecks: ReadonlyArray<readonly [number, number, number, number, number, boolean]> = gsp
-        ? [
-            [-0.045, 0.566, 0.19, 0.01, 0.015, true],
-            [0.038, 0.568, 0.1, 0.008, 0.013, false],
-            [-0.025, 0.546, -0.04, 0.009, 0.014, false],
-            [0.04, 0.554, -0.17, 0.008, 0.012, true],
-            [-0.02, 0.54, -0.275, 0.007, 0.01, false],
-          ]
-        : [
-            [-0.042, 0.563, 0.17, 0.014, 0.02, true],
-            [0.05, 0.559, 0.075, 0.012, 0.018, false],
-            [-0.025, 0.543, -0.09, 0.011, 0.017, false],
-            [0.034, 0.551, -0.235, 0.01, 0.014, true],
-          ];
-      for (const [x, y, z, hx, hz, deep] of topFlecks) {
-        const points: [V3, V3, V3, V3] = [
-          [x - hx, y, z], [x, y, z + hz],
-          [x + hx, y, z], [x, y, z - hz],
-        ];
-        if (z < PELVIS_PIVOT[2]) {
-          rear.quad2(
-            localPoint(points[0], PELVIS_PIVOT), localPoint(points[1], PELVIS_PIVOT),
-            localPoint(points[2], PELVIS_PIVOT), localPoint(points[3], PELVIS_PIVOT),
-            deep ? patchDeep : patch,
-          );
-        } else {
-          front.quad2(points[0], points[1], points[2], points[3], deep ? patchDeep : patch);
-        }
-      }
-      this.chest.add(this.mesh(front.build(), high, this.markingMat!));
-      this.pelvis.add(this.mesh(rear.build(), high, this.markingMat!));
+      attach(this.pelvis, b);
     }
 
-    // NECK — raked ~40° forward-up, baked into geometry (group stays at
-    // identity when standing so the pivot math reads clean). Round 7: the
-    // base sits WIDE and DEEP inside the chest so neck and forequarters
-    // read as one connected mass from every angle, never a stick on a box.
+    // ---------------------------------------------------------------- neck
+    // Crested, clean neck rising out of the shoulders into the poll.
     {
-      const b = new PartBuilder();
-      b.boxZ(
-        { x: 0, y: -0.075, z: -0.075, hw: 0.068, hh: 0.105 },
-        { x: 0, y: NECK_TOP[1] - 0.015, z: NECK_TOP[2] + 0.015, hw: 0.04, hh: 0.054 },
-        { side: coat, bottom: coatDim },
-      );
-      const m = this.mesh(b.build(), high);
-      this.neck.add(m);
+      const b = new FacetBuilder(bodyPaint, NECK_PIVOT);
+      b.loftZ([
+        { y: -.075, z: -.09, w: .074, top: .1, bottom: .11 },
+        { y: -.02, z: -.025, w: .066, top: .092, bottom: .085, shoulder: .8 },
+        { y: .05, z: .04, w: .052, top: .066, bottom: .058, shoulder: .8 },
+        { y: .118, z: .095, w: .044, top: .05, bottom: .048 },
+        { y: .15, z: .128, w: .036, top: .036, bottom: .042 },
+      ], undefined, false, true, true, 1);
+      attach(this.neck, b);
     }
     this.neck.position.set(NECK_PIVOT[0], NECK_PIVOT[1], NECK_PIVOT[2]);
     this.chest.add(this.neck);
 
-    // HEAD — white skull with dark patches at the eyes/ears, white muzzle,
-    // charcoal nose: at 20 m the read is a white dog with a marked face,
-    // not a featureless dark blob.
+    // ---------------------------------------------------------------- head
     {
-      const b = new PartBuilder();
-      // Faceted organic skull: broad through the eyes, tapered into the
-      // occiput and stop. The former box made the orange plate read as a
-      // literal rectangle even when its colors were correct.
-      loftZ(
-        b,
-        gsp
-          ? [
-              { x: 0, y: 0.008, z: -0.076, hw: 0.04, hh: 0.037 },
-              { x: 0, y: 0.012, z: -0.002, hw: 0.061, hh: 0.052 },
-              { x: 0, y: 0.004, z: 0.094, hw: 0.05, hh: 0.043 },
-            ]
-          : [
-              { x: 0, y: 0.008, z: -0.072, hw: 0.034, hh: 0.034 },
-              { x: 0, y: 0.012, z: -0.005, hw: 0.056, hh: 0.051 },
-              { x: 0, y: 0.006, z: 0.088, hw: 0.046, hh: 0.042 },
-            ],
-        [patchDeep, patch],
-        [0, 0.008, -0.086], [0, 0.006, 0.098],
-        patchDeep, patch,
-      );
-      // Narrow white blaze laid over the crown, matching the reference's
-      // orange eye plates without covering the whole head white.
-      if (!gsp || gspAppearance!.headBlaze) {
-        const blazeWidth = gsp ? 0.008 : 0.012;
-        b.quad2(
-          [-blazeWidth, 0.0635, -0.038], [-blazeWidth * 0.8, 0.052, 0.082],
-          [blazeWidth * 0.8, 0.052, 0.082], [blazeWidth, 0.0635, -0.038],
-          coat,
-        );
-      }
-      // Tiny warm eye beads sit proud of the dark cheek patches. They are
-      // deliberately diamonds in the same mesh: visible at macro range,
-      // zero extra draw calls, and still palette-locked.
+      const b = new FacetBuilder(headPaint);
+      // Side profile landmarks (top/bottom y) for occiput, skull, cheeks,
+      // brow, stop, muzzle and nose. The setter has the longer oval skull,
+      // the deeper stop and the squarer, level muzzle.
+      const profile: readonly [z: number, top: number, bottom: number, w: number, shoulder: number, bulge: number, belly: number][] = gsp
+        ? [[-.07, .038, -.014, .02, .8, 0, .62], [-.045, .058, -.026, .04, .86, 0, .62], [-.005, .064, -.034, .051, .88, -.15, .6],
+          [.034, .06, -.036, .049, .86, -.1, .62], [.058, .047, -.036, .04, .82, 0, .7], [.085, .042, -.037, .034, .8, 0, .74],
+          [.13, .04, -.039, .031, .8, 0, .78], [.165, .036, -.036, .028, .82, 0, .8], [.18, .03, -.028, .024, .8, 0, .72]]
+        : [[-.08, .036, -.013, .019, .8, 0, .62], [-.05, .058, -.024, .038, .82, 0, .62], [-.008, .064, -.031, .048, .82, -.12, .6],
+          [.032, .062, -.033, .047, .84, -.08, .62], [.056, .042, -.035, .04, .86, 0, .74], [.086, .038, -.04, .035, .88, 0, .84],
+          [.135, .037, -.043, .033, .88, 0, .86], [.172, .035, -.043, .031, .88, 0, .86], [.188, .029, -.036, .028, .86, 0, .8]];
+      b.loftZ(profile.map(([z, top, bottom, w, shoulder, bulge, belly]) => ({
+        y: (top + bottom) / 2, z, w, top: (top - bottom) / 2, bottom: (top - bottom) / 2, bulge, shoulder, belly,
+      })), undefined, false, true, true, 1);
+      // Nose leather and eyes are fixed pigment, not coat.
+      b.loftZ([
+        { y: .012, z: gsp ? .168 : .176, w: .018, top: .016, bottom: .013 },
+        { y: .014, z: gsp ? .188 : .196, w: .014, top: .012, bottom: .01 },
+      ], nose, true);
       for (const s of [-1, 1]) {
-        const x = s * 0.053;
-        b.quad2(
-          [x, 0.036, 0.061], [x, 0.027, 0.073],
-          [x, 0.018, 0.061], [x, 0.027, 0.049],
-          eye,
-        );
+        const x = s * (gsp ? .046 : .043), y = .028, z = gsp ? .038 : .036;
+        const lid = eye.clone().multiplyScalar(.55);
+        b.tri2(new THREE.Vector3(x, y + .011, z - .004), new THREE.Vector3(x + s * .003, y, z + .014), new THREE.Vector3(x, y - .008, z - .002), eye, true);
+        b.tri2(new THREE.Vector3(x, y + .011, z - .004), new THREE.Vector3(x - s * .002, y + .016, z + .012), new THREE.Vector3(x + s * .003, y, z + .014), lid, true);
       }
-      // Blue-belton-and-tan: small eyebrows and cheek points distinguish a
-      // true tricolor while the black ears/skull and white blaze stay intact.
-      if (!gsp && tanPoint && tanPointDeep) {
-        for (const s of [-1, 1]) {
-          const x = s * 0.0545;
-          b.quad2(
-            [x, 0.052, 0.035], [x, 0.046, 0.052],
-            [x, 0.039, 0.035], [x, 0.045, 0.019],
-            tanPoint,
-          );
-          b.quad2(
-            [x, 0.018, 0.078], [x, 0.004, 0.102],
-            [x, -0.018, 0.084], [x, -0.004, 0.062],
-            tanPointDeep,
-          );
-        }
-      }
-      // Long but softly tapered white muzzle with pendant lower flews.
-      loftZ(
-        b,
-        [
-          { x: 0, y: -0.008, z: 0.07, hw: 0.037, hh: 0.035 },
-          { x: 0, y: -0.012, z: 0.145, hw: 0.032, hh: 0.032 },
-          { x: 0, y: -0.004, z: 0.21, hw: 0.025, hh: 0.026 },
-        ],
-        [gsp ? patchDeep : coatDim, gsp ? patch : coat],
-        [0, -0.008, 0.062], [0, -0.004, 0.217],
-        gsp ? patchDeep : coatDim, gsp ? patch : coat,
-      );
-      // Nose leather.
-      b.boxZ(
-        { x: 0, y: 0.005, z: 0.2, hw: gsp ? 0.022 : 0.018, hh: gsp ? 0.02 : 0.017 },
-        { x: 0, y: 0.003, z: 0.228, hw: gsp ? 0.018 : 0.014, hh: gsp ? 0.016 : 0.013 },
-        { side: nose, front: nose },
-      );
-      this.head.add(this.mesh(b.build(), high, this.markingMat!));
+      attach(this.head, b);
     }
     this.head.position.set(NECK_TOP[0], NECK_TOP[1], NECK_TOP[2]);
-    // The admitted profile and user three-quarter both carry a visibly
-    // long, substantial setter head. The old game-scale head read as a
-    // generic pin at hunter distance; a uniform 10% lift preserves its
-    // pivots while letting the skull/muzzle ratio survive the grass.
-    this.head.scale.setScalar(gsp ? 1.06 : 1.1);
+    this.head.scale.setScalar(gsp ? .98 : 1.04);
     this.neck.add(this.head);
 
-    // EARS — broad, low-set orange flaps. A six-sided outline reads as the
-    // rounded, feathered Setter ear; the former two stacked quads looked
-    // like a rectangular card pasted to the cheek.
+    // ---------------------------------------------------------------- ears
+    // Folded leather: an outer and inner plane meet along a soft crease.
     for (const side of [-1, 1]) {
-      const b = new PartBuilder();
-      const center: V3 = [side * 0.014, -0.075, 0];
-      const outline: V3[] = gsp
-        ? [
-            [0, 0.004, -0.034],
-            [0, 0.004, 0.034],
-            [side * 0.012, -0.045, 0.058],
-            [side * 0.022, -0.112, 0.035],
-            [side * 0.021, -0.132, -0.008],
-            [side * 0.011, -0.074, -0.054],
-          ]
-        : [
-            [0, 0.004, -0.032],
-            [0, 0.004, 0.032],
-            [side * 0.014, -0.055, 0.058],
-            [side * 0.028, -0.14, 0.028],
-            [side * 0.026, -0.165, -0.014],
-            [side * 0.014, -0.09, -0.056],
-          ];
-      for (let i = 0; i < outline.length; i++) {
-        const color = i >= 2 && i <= 4 ? patchDeep : patch;
-        b.tri2(center, outline[i], outline[(i + 1) % outline.length], color);
+      const b = new FacetBuilder(earPaint);
+      const L = gsp ? .118 : .15, W = gsp ? .032 : .036, flare = gsp ? 0 : .012;
+      const v = (x: number, y: number, z: number) => new THREE.Vector3(side * x, y, z);
+      const rim = [
+        v(0, .004, -.03), v(.004, -.03, -.042), v(.012, -L * .55, -.044 - flare), v(.018, -L * .86, -.03 - flare),
+        v(.02, -L, -.004), v(.018, -L * .93, W * .7), v(.012, -L * .6, W + flare * .5), v(.004, -.025, W * .95), v(0, .004, .026),
+      ];
+      const crease = v(gsp ? .009 : .014, -L * .45, 0);
+      for (let i = 0; i < rim.length - 1; i++) b.tri2(crease, rim[i], rim[i + 1]);
+      b.tri2(crease, rim[rim.length - 1], rim[0]);
+      if (!gsp) {
+        // Silky fringe: two soft lobes below the leather.
+        b.tri2(v(.018, -L * .86, -.03 - flare), v(.024, -L - .022, -.018), v(.02, -L, -.004));
+        b.tri2(v(.02, -L, -.004), v(.024, -L - .018, .018), v(.018, -L * .93, W * .7));
       }
       const grp = side < 0 ? this.earL : this.earR;
-      grp.add(this.mesh(b.build(), high, this.markingMat!));
-      grp.position.set(side * 0.046, 0.042, 0.012);
-      grp.rotation.z = side * (gsp ? -0.24 : -0.52);
-      grp.rotation.y = side * (gsp ? 0.08 : 0.18);
+      attach(grp, b);
+      grp.position.set(side * (gsp ? .045 : .046), gsp ? .046 : .03, gsp ? -.004 : -.006);
+      grp.rotation.z = side * (gsp ? -.08 : -.16);
+      grp.rotation.y = side * (gsp ? .02 : .08);
       this.head.add(grp);
     }
 
-    // TAIL — round 9, item 4: the flag no longer hinges 90 degrees off the
-    // hip. A short tapered ROOT segment blends out of the rump and takes
-    // ~45% of the carriage angle; the FLAG (bone + notched feathering)
-    // hangs off its end and takes the rest — a raised point-flag now
-    // CURVES out of the topline instead of kinking. Round 9, item 3 gave
-    // the tip a full sunHigh whitening so the flag survived the gameplay
-    // read; round 11 TAMES it (lerp 0.35) — the near-white albedo was a
-    // fullbright element that ignored every shade term and propped up the
-    // lee half of the ring views. The flag now earns its range read from
-    // the sun paint and rim, which it catches proudly above the cover.
-    const tailCoat = gsp ? patch : coat;
-    const tailDim = gsp ? patchDeep : coatDim;
-    const flagTip = tailCoat.clone();
+    // ---------------------------------------------------------------- tail
+    const tailOrigin: V3 = [TAIL_PIVOT[0], TAIL_PIVOT[1], TAIL_PIVOT[2]];
     {
-      const b = new PartBuilder();
-      // Root: rump-thick at the hip, tapering to the flag joint.
-      b.boxZ(
-        { x: 0, y: -0.004, z: gsp ? -0.065 : -0.105, hw: gsp ? 0.018 : 0.02, hh: gsp ? 0.021 : 0.024 },
-        { x: 0, y: -0.006, z: 0.025, hw: gsp ? 0.029 : 0.034, hh: gsp ? 0.035 : 0.042 },
-        { side: tailCoat, bottom: tailDim },
-      );
-      this.tailRoot.add(this.mesh(b.build(), high));
+      const b = new FacetBuilder(bodyPaint, tailOrigin, gsp ? 1 : 1.08);
+      b.loftZ(gsp
+        ? [{ y: .002, z: -.068, w: .016, top: .018, bottom: .018 }, { y: 0, z: .03, w: .023, top: .028, bottom: .028 }]
+        : [{ y: 0, z: -.108, w: .016, top: .02, bottom: .02 }, { y: 0, z: .03, w: .024, top: .03, bottom: .03 }]);
+      attach(this.tailRoot, b);
     }
     {
-      const b = new PartBuilder();
-      // Straight bone, joint -> tip, no saber droop: the flag pole.
-      // Tip thickened (0.008 -> 0.012) and capped bright.
-      b.boxZ(
-        { x: 0, y: 0, z: gsp ? -0.11 : -0.3, hw: gsp ? 0.009 : 0.012, hh: gsp ? 0.011 : 0.014 },
-        { x: 0, y: 0, z: 0, hw: gsp ? 0.018 : 0.022, hh: gsp ? 0.022 : 0.026 },
-        { side: tailCoat, back: flagTip },
-      );
-      // Three feathering facets off the underside, each ending in a notch
-      // (the sawtooth trailing edge of real setter feathering), emitted as
-      // TWO layers in a shallow V so the flag keeps presence when the
-      // camera lines up with its plane. The close img2threejs review
-      // exposed the old deep saw edge as a white pinecone in the point;
-      // these locks stay shallow and the last takes the bright tip role.
-      if (!gsp) {
-        for (const lx of [-0.012, 0.012]) {
-          const yb = lx < 0 ? 0 : -0.008; // layered locks, not a mirror
-          b.quad2(
-            [lx, -0.018, -0.035], [lx, -0.022, -0.115],
-            [lx * 2.2, -0.078 + yb, -0.081], [lx * 2.2, -0.066 + yb, -0.028],
-            coat,
-          );
-          b.quad2(
-            [lx, -0.024, -0.12], [lx, -0.028, -0.207],
-            [lx * 2.2, -0.082 + yb, -0.173], [lx * 2.2, -0.075 + yb, -0.105],
-            coatDim,
-          );
-          b.quad2(
-            [lx, -0.03, -0.212], [lx, -0.036, -0.3],
-            [lx * 2.2, -0.066 + yb, -0.26], [lx * 2.2, -0.072 + yb, -0.192],
-            flagTip,
-          );
-        }
+      const flagOrigin: V3 = [tailOrigin[0], tailOrigin[1], tailOrigin[2] - (gsp ? .055 : .095)];
+      const b = new FacetBuilder(bodyPaint, flagOrigin, gsp ? 1 : 1.08);
+      if (gsp) {
+        b.loftZ([{ y: .002, z: -.118, w: .008, top: .009, bottom: .009 }, { y: 0, z: -.06, w: .013, top: .014, bottom: .014 }, { y: 0, z: .008, w: .017, top: .019, bottom: .019 }]);
+      } else {
+        b.loftZ([{ y: .002, z: -.27, w: .005, top: .006, bottom: .006 }, { y: .001, z: -.14, w: .011, top: .013, bottom: .014 }, { y: 0, z: .008, w: .017, top: .019, bottom: .02 }]);
+        // The flag: a lens of feathering hung from the underside, fullest
+        // through the middle of the tail and tapering to both ends.
+        const hang = [[-.02, .01], [-.065, .03], [-.12, .042], [-.175, .04], [-.225, .026], [-.265, .008]] as const;
+        const rings: SectionZ[] = hang.map(([z, h]) => ({ y: -.01 - h * .5, z, w: .008, top: h * .5, bottom: h * .5, bulge: -.4, shoulder: .9, belly: .5 }));
+        b.loftZ(rings.reverse());
       }
-      this.tailFlag.add(this.mesh(b.build(), high));
+      attach(this.tailFlag, b);
     }
-    this.tailRoot.position.set(
-      TAIL_PIVOT[0] - PELVIS_PIVOT[0],
-      TAIL_PIVOT[1] - PELVIS_PIVOT[1],
-      TAIL_PIVOT[2] - PELVIS_PIVOT[2],
-    );
-    // The flag reads at gameplay range or it doesn't exist: +18% so the
-    // raised tip clears the cover line the parting can't duck (bug 4).
-    this.tailRoot.scale.setScalar(gsp ? 1 : 1.18);
+    this.tailRoot.position.set(TAIL_PIVOT[0] - PELVIS_PIVOT[0], TAIL_PIVOT[1] - PELVIS_PIVOT[1], TAIL_PIVOT[2] - PELVIS_PIVOT[2]);
+    this.tailRoot.scale.setScalar(gsp ? 1 : 1.08);
     this.tailFlag.position.set(0, 0, gsp ? -0.055 : -0.095);
     this.tailRoot.add(this.tailFlag);
-    this.tailTip.position.set(0, 0, gsp ? -0.115 : -0.305);
+    this.tailTip.position.set(0, 0, gsp ? -0.115 : -0.27);
     this.tailFlag.add(this.tailTip);
     this.pelvis.add(this.tailRoot);
 
-    // LEGS — low-poly surfaces with an anatomical transform hierarchy.
-    // Fore carriers stand in for the muscular scapular attachment; the
-    // hind chain has a distinct shank and hock/cannon; every paw can plant
-    // and orient independently without adding texture or surface detail.
+    // ---------------------------------------------------------------- legs
+    // Muscled upper segments, clean tapering cannons, faceted joints and
+    // domed feet on the unchanged anatomical transform hierarchy.
     for (let i = 0; i < 4; i++) {
       const fore = i < 2;
       const side = i % 2 === 0 ? -1 : 1;
@@ -1496,98 +1334,91 @@ export class DogSystem implements Subsystem {
       const lower = new THREE.Group();
       const distal = new THREE.Group();
       const paw = new THREE.Group();
+      const x = side * (fore ? FORE_X : HIND_X), z = fore ? FORE_Z : HIND_Z;
+      const upperLen = fore ? FORE_UPPER_LEN : HIND_UPPER_LEN, lowerLen = fore ? FORE_LOWER_LEN : HIND_SHANK_LEN;
+      const distalLen = fore ? FORE_CARPUS_LEN : HIND_HOCK_LEN;
+      // Approximate dog-space origins for coat painting (standing, ground at 0).
+      const pawY = .02, distalY = pawY + distalLen, lowerY = distalY + lowerLen, upperY = lowerY + upperLen;
       {
-        const b = new PartBuilder();
+        const b = new FacetBuilder(bodyPaint, [x, upperY, z]);
+        const heavy = gsp ? 1.06 : 1;
         if (fore) {
-          // The chest owns the shoulder mass; only the moving humerus/forearm
-          // surface follows this joint. A huge buried rotating cap becomes
-          // a spike once a real reaching gait replaces the old small sine.
-          b.boxY(
-            { x: 0, y: 0.045, z: -0.006, hw: 0.034, hd: 0.048 },
-            { x: 0, y: -FORE_UPPER_LEN, z: 0.004, hw: 0.021, hd: 0.027 },
-            coat,
-          );
+          b.loftY([
+            { y: .05, z: -.004, w: .033, front: .038, back: .046 },
+            { y: -.03, z: -.004, w: .036 * heavy, front: .044, back: .06 * heavy },
+            { y: -.12, z: .0, w: .028, front: .03, back: .054 * heavy },
+            { y: -.2, z: .004, w: .022, front: .024, back: .036 },
+            { y: -upperLen - .004, z: .004, w: .02, front: .02, back: .03 },
+          ]);
         } else {
-          // The pelvis loft owns the haunch. This narrower mobile thigh can
-          // fold deeply under the loin without rotating a rump-sized wedge
-          // out through the dog's back.
-          b.boxY(
-            { x: 0, y: 0.04, z: -0.008, hw: gsp ? 0.036 : 0.032, hd: gsp ? 0.058 : 0.052 },
-            { x: 0, y: -HIND_UPPER_LEN, z: 0.01, hw: gsp ? 0.022 : 0.02, hd: gsp ? 0.033 : 0.03 },
-            coat,
-          );
-          // Rear furnishings trail from the broad thigh but stop above the
-          // hock, so the angled working anatomy stays readable. Mirrored
-          // thin locks live in the upper-leg mesh and add no draw calls.
+          b.loftY([
+            { y: .045, z: -.008, w: .036, front: .046, back: .066 },
+            { y: -.035, z: -.006, w: .04 * heavy, front: .052, back: .078 * heavy },
+            { y: -.12, z: .004, w: .031, front: .036, back: .054 },
+            { y: -upperLen - .004, z: .01, w: .022, front: .026, back: .03 },
+          ]);
           if (!gsp) {
-            for (const sx of [-1, 1]) {
-              const x = sx * 0.024;
-              const ox = sx * 0.032;
-              b.tri2([x, 0.018, -0.035], [x, -0.07, -0.025], [ox, -0.11, -0.075], coatDim);
-              b.tri2([x, -0.065, -0.025], [x, -0.155, -0.015], [ox, -0.18, -0.065], coatDim);
-            }
+            // Breeches: a feathered fin trailing the back of the thigh.
+            b.loftY([
+              { y: -.01, z: -.06, w: .016, front: .006, back: .012 },
+              { y: -.07, z: -.07, w: .014, front: .006, back: .032 },
+              { y: -.14, z: -.05, w: .01, front: .006, back: .028 },
+              { y: -.2, z: -.03, w: .006, front: .004, back: .01 },
+            ]);
           }
         }
-        upper.add(this.mesh(b.build(), high));
+        attach(upper, b);
       }
       {
-        const b = new PartBuilder();
-        const len = fore ? FORE_LOWER_LEN : HIND_SHANK_LEN;
-        b.boxY(
-          { x: 0, y: 0, z: 0, hw: 0.017, hd: 0.024 },
-          { x: 0, y: -len + 0.018, z: -0.004, hw: 0.013, hd: 0.018 },
-          legShade,
-        );
-        // Setter furnishings run DOWN the leg, not just off the thigh: short
-        // mirrored locks trail the rear edge of the forearm/shank and stop
-        // above the wrist/hock so both working joints stay readable. Same
-        // zero-draw-call pattern as the thigh locks; coatDim steps them down
-        // in value so the articulation reads inside the white mass.
-        // +32 tris total (tri2 both windings), no new meshes.
-        if (!gsp) {
-          const top = fore ? -0.015 : -0.008;
-          const mid = fore ? -0.095 : -0.068;
-          const bot = fore ? -0.16 : -0.132;
-          const zTop = fore ? -0.024 : -0.019;
-          const zMid = fore ? -0.021 : -0.017;
-          for (const sx of [-1, 1]) {
-            const x = sx * 0.014;
-            const ox = sx * 0.021;
-            b.tri2([x, top, zTop], [x, mid, zMid], [ox, mid - 0.028, zMid - 0.028], coatDim);
-            b.tri2([x, mid, zMid], [x, bot, zMid + 0.003], [ox, bot - 0.02, zMid - 0.024], coatDim);
+        const b = new FacetBuilder(bodyPaint, [x, lowerY, z]);
+        if (fore) {
+          b.knuckle([0, .002, -.004], .024, .016, .024, .032);
+          b.loftY([
+            { y: .004, z: -.002, w: .024, front: .025, back: .03 },
+            { y: -.05, z: -.002, w: .022, front: .024, back: .024 },
+            { y: -.15, z: -.004, w: .018, front: .019, back: .018 },
+            { y: -lowerLen + .002, z: -.004, w: .017, front: .018, back: .017 },
+          ]);
+          if (!gsp) {
+            // Feathering trails the back of the forearm and stops above the wrist.
+            b.loftY([
+              { y: -.015, z: -.018, w: .011, front: .005, back: .01 },
+              { y: -.07, z: -.02, w: .01, front: .005, back: .03 },
+              { y: -.13, z: -.018, w: .008, front: .005, back: .026 },
+              { y: -.175, z: -.014, w: .006, front: .004, back: .008 },
+            ]);
           }
+        } else {
+          b.knuckle([0, .002, .004], .025, .016, .029, .025);
+          b.loftY([
+            { y: .004, z: .004, w: .025, front: .028, back: .036 },
+            { y: -.065, z: .0, w: .022, front: .022, back: .036 },
+            { y: -lowerLen + .002, z: -.004, w: .016, front: .017, back: .02 },
+          ]);
         }
-        lower.add(this.mesh(b.build(), high));
-      }
-      if (fore) {
-        // The wrist/pastern is a small but essential third link. In a run
-        // it folds the paw under the chest during recovery, then opens for
-        // a quiet plant; leaving this joint rigid made each foreleg read as
-        // one long stick pivoting like a mechanical horse leg.
-        const b = new PartBuilder();
-        b.boxY(
-          { x: 0, y: 0.008, z: 0, hw: 0.013, hd: 0.018 },
-          { x: 0, y: -FORE_CARPUS_LEN + 0.008, z: 0.003, hw: 0.011, hd: 0.015 },
-          legShade,
-        );
-        distal.add(this.mesh(b.build(), high));
-      } else {
-        const b = new PartBuilder();
-        b.boxY(
-          { x: 0, y: 0.012, z: 0, hw: 0.014, hd: 0.019 },
-          { x: 0, y: -HIND_HOCK_LEN + 0.012, z: 0.004, hw: 0.012, hd: 0.016 },
-          legShade,
-        );
-        distal.add(this.mesh(b.build(), high));
+        attach(lower, b);
       }
       {
-        const b = new PartBuilder();
-        b.boxZ(
-          { x: 0, y: 0.006, z: gsp ? -0.022 : -0.026, hw: gsp ? 0.019 : 0.021, hh: gsp ? 0.013 : 0.014 },
-          { x: 0, y: 0.004, z: gsp ? 0.05 : 0.058, hw: gsp ? 0.017 : 0.019, hh: 0.012 },
-          { side: pawShade, top: legShade, bottom: pawShade },
-        );
-        paw.add(this.mesh(b.build(), high));
+        const b = new FacetBuilder(bodyPaint, [x, distalY, z]);
+        if (fore) {
+          b.knuckle([0, .002, 0], .017, .011, .018, .02);
+          b.loftY([
+            { y: .006, z: 0, w: .0168, front: .017, back: .018 },
+            { y: -distalLen + .004, z: .005, w: .015, front: .016, back: .015 },
+          ]);
+        } else {
+          b.knuckle([0, .004, -.006], .017, .013, .017, .03);
+          b.loftY([
+            { y: .008, z: 0, w: .0168, front: .017, back: .024 },
+            { y: -distalLen + .006, z: .004, w: .0148, front: .016, back: .015 },
+          ]);
+        }
+        attach(distal, b);
+      }
+      {
+        const b = new FacetBuilder(bodyPaint, [x, pawY, z]);
+        b.foot(PAW_SOLE_Y + .001, fore ? .074 : .068, fore ? .026 : .024, .034, .5, undefined, .014);
+        attach(paw, b);
       }
 
       carrier.position.set(
@@ -2564,7 +2395,9 @@ export class DogSystem implements Subsystem {
     // Locomotion feet solve to explicit terrain targets and stance locks;
     // moving the whole torso afterward would break those contacts. Static
     // poses keep the exact legacy grounding correction.
-    const staticSetterSupport = !locomoting && this.visualBreed === 'english-setter' &&
+    // Both faceted breeds share the leg chain, so both stand on the planted
+    // static solver; the GSP otherwise kept a stale stride stretched off the ground.
+    const staticSetterSupport = !locomoting &&
       (pointing || ((state === 'heel' || state === 'marking') && gait === 'still' && !sd.scentCheck && sd.scentStage !== 'locking' && sd.raptorDuty !== 'guarding'));
     if (staticSetterSupport) {
       this.solveStaticSetterLegs(pointing, gy, dt, snap);

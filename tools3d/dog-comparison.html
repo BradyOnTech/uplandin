@@ -8,30 +8,33 @@
 </head>
 <body>
   <header>
-    <div><p class="eyebrow">Uplandin · Current playable models</p><h1>GSP & English Setter</h1></div>
-    <p class="intro">Same ground, light, camera, and travel speed. Original sizes and animation systems.</p>
+    <div><p class="eyebrow">Uplandin · Dog art style study</p><h1>Smooth vs faceted · GSP & English Setter</h1></div>
+    <p class="intro">Both breeds in both art styles on the same ground, light, camera, and travel speed. Each style keeps its own animation system.</p>
   </header>
   <main>
     <nav aria-label="Comparison controls">
       <div class="buttons" aria-label="Dog state"><button data-pose="stand">Standing</button><button data-pose="point">Point</button><button data-pose="walk">Walk</button><button data-pose="trot">Trot</button><button data-pose="canter">Canter</button><button data-pose="run">Run</button><button data-pose="paces">Changes of pace</button></div>
       <div class="buttons"><button id="motion">Pause</button><button id="step">Step</button><button id="restart">Restart</button></div>
-      <label>View<select id="view"><option value="quarter">Three-quarter</option><option value="side">Side</option><option value="front">Front</option><option value="field">Field distance</option></select></label>
+      <label>View<select id="view"><option value="quarter">Three-quarter</option><option value="side">Side</option><option value="front">Front</option><option value="rear">Rear</option><option value="rear-quarter">Rear three-quarter</option><option value="field">Field distance</option></select></label>
       <label>Light<select id="light"><option value="noon">Noon</option><option value="morning">Morning</option><option value="evening">Evening</option></select></label>
       <label>Detail<select id="quality"><option value="high">High</option><option value="lite">Lightweight</option></select></label>
+      <label>Show<select id="layout"><option value="grid">Both styles</option><option value="smooth">Smooth only</option><option value="faceted">Faceted only</option><option value="gsp">GSP only</option><option value="english-setter">Setter only</option><option value="gsp-smooth">GSP · smooth</option><option value="setter-smooth">Setter · smooth</option><option value="gsp-faceted">GSP · faceted</option><option value="setter-faceted">Setter · faceted</option></select></label>
     </nav>
     <div id="stage">
       <canvas id="comparison" aria-label="Side-by-side current GSP and English Setter models"></canvas>
       <div id="panels">
-        <section class="panel" id="gsp-panel"><div class="breed-label"><h2>German Shorthaired Pointer</h2><p>Generated GSP · current skinned model</p></div></section>
-        <section class="panel" id="setter-panel"><div class="breed-label"><h2>English Setter</h2><p>Current articulated field model</p></div></section>
+        <section class="panel" id="gsp-smooth"><div class="breed-label"><h2>GSP · Smooth</h2><p>Skinned single-mesh style</p><a class="play" target="_blank" rel="noopener">Play ↗</a></div></section>
+        <section class="panel" id="setter-smooth"><div class="breed-label"><h2>English Setter · Smooth</h2><p>Skinned single-mesh style</p><a class="play" target="_blank" rel="noopener">Play ↗</a></div></section>
+        <section class="panel" id="gsp-faceted"><div class="breed-label"><h2>GSP · Faceted</h2><p>Articulated low-poly style</p><a class="play" target="_blank" rel="noopener">Play ↗</a></div></section>
+        <section class="panel" id="setter-faceted"><div class="breed-label"><h2>English Setter · Faceted</h2><p>Articulated low-poly style</p><a class="play" target="_blank" rel="noopener">Play ↗</a></div></section>
       </div>
       <div class="stage-note">Drag either view to orbit both · Scroll to zoom · Grid squares: 0.5 m</div>
     </div>
     <div class="coat-controls">
-      <div><label>GSP coat<select id="gsp-coat"></select></label><a id="play-gsp" target="_blank" rel="noopener">Play with this GSP ↗</a></div>
-      <div><label>Setter coat<select id="setter-coat"></select></label><a id="play-setter" target="_blank" rel="noopener">Play with this Setter ↗</a></div>
+      <div><label>GSP coat<select id="gsp-coat"></select></label></div>
+      <div><label>Setter coat<select id="setter-coat"></select></label></div>
     </div>
-    <footer><span id="status" role="status">Loading current dog models…</span><p>This is a staged level-ground comparison, using the real field renderers. Both receive matching travel inputs from 0.8 to 5.5 m/s; each renderer chooses its own gait. Changes of pace cycles smoothly from rest through the travel speeds and back. Each retains its own stride and pose. It is not a breed-behavior test or a performance benchmark.</p></footer>
+    <footer><span id="status" role="status">Loading current dog models…</span><p>This is a staged level-ground comparison of both art styles, using the real field renderers. Both receive matching travel inputs from 0.8 to 5.5 m/s; each renderer chooses its own gait. Changes of pace cycles smoothly from rest through the travel speeds and back. Each retains its own stride and pose. It is not a breed-behavior test or a performance benchmark.</p></footer>
   </main>
   <script type="module" src="./dog-comparison.ts"></script>
 </body>

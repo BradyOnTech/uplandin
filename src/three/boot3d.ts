@@ -15,6 +15,7 @@ import { PlayerSystem } from './subsystems/player';
 import { DogSystem } from './subsystems/dog';
 import { GeneratedDogSystem } from './subsystems/generatedDog';
 import { RiggedDogSystem } from './subsystems/riggedDog';
+import { DEFAULT_DOG_STYLE, resolveDogStyle } from './dogs/dogStyle';
 import { BirdsSystem } from './subsystems/birds';
 import { FalconrySystem } from './subsystems/falconry';
 import './falconry.css';
@@ -83,18 +84,22 @@ engine.register(new Hunt3DSystem(landscape));
 engine.register(new FieldMapSystem());
 for (const system of landscapeVisuals.systems) engine.register(system);
 engine.register(new LandmarksSystem());
-// The production GSP is generated on every property. Keep the rigged asset
-// available through an explicit review choice rather than a map-dependent default.
-engine.register(visualBreed === 'gsp'
-  ? coatId === 'liver-white' && params.get('dog') === 'rigged'
-    ? new RiggedDogSystem() : new GeneratedDogSystem(resolveGspCoat(coatId))
-  : new DogSystem(visualBreed, coatId));
+// Both breeds exist in two art styles: the smooth skinned mesh and the
+// faceted articulated sculpt. `dogstyle` chooses one for every dog in the hunt;
+// without it each breed keeps its established default. The rigged Blender GSP
+// stays available through an explicit review choice.
+const dogStyle = resolveDogStyle(params.get('dogstyle'));
+const dogSystemFor = (breed: 'gsp' | 'english-setter', coat: string, slot = 0) => {
+  const style = dogStyle ?? DEFAULT_DOG_STYLE[breed];
+  if (breed === 'gsp' && slot === 0 && coat === 'liver-white' && params.get('dog') === 'rigged') return new RiggedDogSystem();
+  if (style === 'smooth') return new GeneratedDogSystem(breed === 'gsp' ? resolveGspCoat(coat) : resolveEnglishSetterCoat(coat), slot);
+  return new DogSystem(breed, coat, slot);
+};
+engine.register(dogSystemFor(visualBreed, coatId));
 if (launchProfile.brace) {
   const braceVisualBreed = visualBreedFor(launchProfile.brace.breedId);
   const braceCoat = braceVisualBreed === 'gsp' ? resolveGspCoat(null) : resolveEnglishSetterCoat(null);
-  engine.register(braceVisualBreed === 'gsp'
-    ? new GeneratedDogSystem(resolveGspCoat(braceCoat), 1)
-    : new DogSystem(braceVisualBreed, braceCoat, 1));
+  engine.register(dogSystemFor(braceVisualBreed, braceCoat, 1));
 }
 engine.register(new BirdsSystem());
 engine.register(new FalconrySystem());

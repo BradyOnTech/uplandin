@@ -69,7 +69,9 @@ it('keeps the actual nose and lower-jaw skin above flat and sloped ground throug
       return influence > .001;
     };
     const all = Array.from({ length: positions.count }, (_, i) => i);
-    const nose = all.filter(i => influencedBy(i, head) && positions.getZ(i) > .535);
+    // The muzzle's front 3 cm, measured from the head joint in the bind pose.
+    const noseStart = new THREE.Vector3().setFromMatrixPosition(skeleton.boneInverses[head].clone().invert()).z + .155;
+    const nose = all.filter(i => influencedBy(i, head) && positions.getZ(i) > noseStart);
     const lower = all.filter(i => influencedBy(i, jaw));
     expect(nose.length).toBeGreaterThan(50);
     expect(lower.length).toBeGreaterThan(50);

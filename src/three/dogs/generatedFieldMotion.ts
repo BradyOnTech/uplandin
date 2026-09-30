@@ -1,11 +1,10 @@
 import * as THREE from 'three';
 import { GeneratedEarGravity } from './generatedEarGravity';
 import { selectLocomotionGait, type LocomotionGait, type LocomotionSpeedThresholds } from './locomotion';
-import { createGeneratedGsp, GENERATED_STRIDE } from './generatedGsp';
+import { createGeneratedGsp, GENERATED_STRIDE, type GeneratedCoatId } from './generatedGsp';
 import { GeneratedScentMotion, fieldPerformance, type GeneratedFieldIntent } from './generatedScentMotion';
 import { GeneratedBodySupport } from './generatedBodySupport';
 import { GeneratedMouthMotion } from './generatedMouth';
-import type { GspCoatId } from './germanShorthairedPointer';
 import { GeneratedPickupReach } from './generatedPickupReach';
 import { GeneratedPivotSteps } from './generatedPivotSteps';
 
@@ -46,6 +45,7 @@ export class GeneratedFieldMotion {
   readonly mouthMotion=new GeneratedMouthMotion();
   private pickupReach=new GeneratedPickupReach();
   private pickupPresence=0;
+  private tailStride=0;
   private pickupLean=0;
   private pickupHeadPitch=.30;
   private carryPresence=0;
@@ -58,7 +58,7 @@ export class GeneratedFieldMotion {
   private pose: {node:THREE.Bone;previousPosition:THREE.Vector3;previousRotation:THREE.Quaternion;fromPosition:THREE.Vector3;fromRotation:THREE.Quaternion}[];
   private groundNormal(x:number,z:number,out:THREE.Vector3) {const e=.04;return out.set(this.ground(x-e,z)-this.ground(x+e,z),2*e,this.ground(x,z-e)-this.ground(x,z+e)).normalize();}
   swimming=false;
-  constructor(detail:'high'|'lite',private ground:(x:number,z:number)=>number,private waterDepth:(x:number,z:number)=>number=()=>0,coatId:GspCoatId='liver-white') {
+  constructor(detail:'high'|'lite',private ground:(x:number,z:number)=>number,private waterDepth:(x:number,z:number)=>number=()=>0,coatId:GeneratedCoatId='liver-white') {
     this.asset=createGeneratedGsp(detail,true,coatId);
     // Torso support has its own continuous response; blending its solved
     // position a second time would accumulate the ribcage pivot offset.
@@ -224,6 +224,18 @@ export class GeneratedFieldMotion {
     this.pose.forEach(p=>{p.previousPosition.copy(p.node.position);p.previousRotation.copy(p.node.quaternion);});
     this.bodySupport.stabilizeHead(this.asset,point||!!retrieve);
     this.scentMotion.update(this.asset,retrieve?undefined:field,moving,this.pointPresence,dt,reset);
+    // Stride-coupled tail carriage: the tail counter-sways with each stride
+    // and bounces with the trot's two-beat suspension. Only a travelling,
+    // empty-mouthed dog; the point and carry keep their authored stillness.
+    const strideWeight=moving&&!point&&!retrieve?1:0;
+    this.tailStride=THREE.MathUtils.lerp(this.tailStride,strideWeight,reset?1:1-Math.exp(-Math.max(0,dt)*6));
+    if(this.tailStride>.001){
+      const setter=this.asset.root.userData.breedId==='english-setter';
+      const sway={walk:.13,trot:.09,canter:.07,gallop:.045}[this.gait]*(setter?1.25:1);
+      const phase=this.cycle*Math.PI*2;
+      this.asset.joints.tail.rotation.y+=Math.sin(phase)*sway*this.tailStride;
+      this.asset.joints.tail.rotation.x+=Math.cos(phase*2)*sway*.35*this.tailStride;
+    }
     // Retrieval is an upper-body layer. Foot targets and locomotion remain
     // authoritative below; entering a pickup never slides the planted paws.
     const { neck, head } = this.asset.joints;

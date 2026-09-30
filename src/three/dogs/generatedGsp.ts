@@ -1,8 +1,19 @@
 import * as THREE from 'three';
-import { createGeneratedGspHead } from './generatedGspHead';
+import { createGeneratedGspHead, createGeneratedSetterHead } from './generatedGspHead';
 import { createLocomotionPose, writeLocomotionPose, type LocomotionGait, type FootTuple } from './locomotion';
 import { createTwoBoneSolution, solveTwoBone } from './legIk';
-import { germanShorthairedPointerAppearance, type GspCoatId } from './germanShorthairedPointer';
+import { germanShorthairedPointerAppearance, isGspCoatId, type GspCoatId } from './germanShorthairedPointer';
+import { englishSetterAppearance, isEnglishSetterCoatId, type EnglishSetterCoatId } from './englishSetter';
+
+/** Coat ids are disjoint between breeds, so a coat also names its breed. */
+export type GeneratedCoatId = GspCoatId | EnglishSetterCoatId;
+export type GeneratedBreed = 'gsp' | 'english-setter';
+export function generatedBreedForCoat(coatId: GeneratedCoatId): GeneratedBreed {
+  return isEnglishSetterCoatId(coatId) ? 'english-setter' : 'gsp';
+}
+export function isGeneratedCoatId(value: string | null | undefined): value is GeneratedCoatId {
+  return isGspCoatId(value) || isEnglishSetterCoatId(value);
+}
 
 /** Authored in metres, +Z nose. Geometry is generated once, never per frame. */
 type Ring = readonly [x: number, y: number, z: number, width: number, height: number, underside?: number];
@@ -18,6 +29,7 @@ export const GENERATED_MOUTH_GRIP: Point = [0, -.065, .125];
 function applyGspCoat(material: THREE.MeshLambertMaterial, coatId: GspCoatId): void {
   const appearance = germanShorthairedPointerAppearance(coatId);
   material.onBeforeCompile = shader => {
+    withCoatLighting(shader);
     shader.uniforms.gspWhite = { value: new THREE.Color(coatId === 'liver-white' ? WHITE : appearance.ground) };
     shader.uniforms.gspLiver = { value: new THREE.Color(coatId === 'liver-white' ? LIVER : appearance.primary) };
     shader.uniforms.gspRoan = { value: appearance.pattern === 'roan' ? 1 : 0 };
@@ -26,7 +38,7 @@ function applyGspCoat(material: THREE.MeshLambertMaterial, coatId: GspCoatId): v
 varying vec3 vGspBindPosition;
 varying float vGspWhiteSurface;`).replace('#include <begin_vertex>', `#include <begin_vertex>
 vGspBindPosition = position;
-vGspWhiteSurface = step(0.25, color.r);`);
+vGspWhiteSurface = step(0.25, min(color.r, min(color.g, color.b)));`);
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
 varying vec3 vGspBindPosition;
 varying float vGspWhiteSurface;
@@ -62,7 +74,85 @@ if (vGspWhiteSurface > 0.5) {
   diffuseColor.rgb = mix(cleanCoat, gspLiver, max(gspSolid, max(liverArea, spot * mix(0.70, 0.92, gspRoan))));
 }`);
   };
-  material.customProgramCacheKey = () => 'generated-gsp-bind-coat-v2';
+  material.customProgramCacheKey = () => 'generated-gsp-bind-coat-v4';
+}
+
+/**
+ * Belton coat for the smooth English Setter. White ground carries fine,
+ * dense flecking that resolves to an even tint at field distance rather than
+ * shimmering, plus a few soft patches and optional tricolour tan points.
+ */
+function applySetterCoat(material: THREE.MeshLambertMaterial, coatId: EnglishSetterCoatId): void {
+  const a = englishSetterAppearance(coatId);
+  material.onBeforeCompile = shader => {
+    withCoatLighting(shader);
+    shader.uniforms.setterGround = { value: new THREE.Color(a.ground).lerp(new THREE.Color(0xd8d2c4), .35) };
+    shader.uniforms.setterPrimary = { value: new THREE.Color(a.primary) };
+    shader.uniforms.setterTan = { value: new THREE.Color(a.tanPoint ?? a.primary) };
+    shader.uniforms.setterTanAmount = { value: a.tanPoint === undefined ? 0 : 1 };
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>
+varying vec3 vSetterBindPosition;
+varying float vSetterCoatSurface;`).replace('#include <begin_vertex>', `#include <begin_vertex>
+vSetterBindPosition = position;
+vSetterCoatSurface = step(0.25, min(color.r, min(color.g, color.b)));`);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+varying vec3 vSetterBindPosition;
+varying float vSetterCoatSurface;
+uniform vec3 setterGround;
+uniform vec3 setterPrimary;
+uniform vec3 setterTan;
+uniform float setterTanAmount;
+float setterIsland(vec3 point, vec3 center, vec3 radius) {
+  vec3 p = (point - center) / radius;
+  float edge = length(p) + 0.09 * sin(point.z * 61.0 + point.y * 37.0) + 0.05 * sin(point.x * 83.0 - point.y * 57.0);
+  return 1.0 - smoothstep(0.95, 1.03, edge);
+}
+float setterHash(vec3 p) {
+  p = fract(p * 0.1031);
+  p += dot(p, p.yzx + 33.33);
+  return fract((p.x + p.y) * p.z);
+}`).replace('#include <color_fragment>', `#include <color_fragment>
+if (vSetterCoatSurface > 0.5) {
+  vec3 p = vSetterBindPosition;
+  // A soft patch behind the ears, continuous with the coloured hood.
+  float markPatch = setterIsland(p, vec3(0.0, 0.665, 0.425), vec3(0.07, 0.055, 0.055));
+  // Belton flecking: many small ticks, denser down the legs and muzzle.
+  vec3 cell = floor(p * 118.0);
+  float choice = setterHash(cell);
+  vec3 center = vec3(setterHash(cell + 3.1), setterHash(cell + 7.7), setterHash(cell + 11.3)) * 0.7 + 0.15;
+  float legs = 1.0 - smoothstep(0.18, 0.34, p.y);
+  // Low-frequency clustering: belton ticking gathers in drifts, not an even grid.
+  float drift = 0.5 + 0.5 * sin(p.z * 23.0 + sin(p.y * 17.0) * 2.0) * sin(p.y * 29.0 - p.x * 21.0);
+  float density = mix(0.58, 0.40, legs) + (0.5 - drift) * 0.34;
+  float tick = (1.0 - smoothstep(0.12, 0.26, length(fract(p * 118.0) - center))) * step(density, choice);
+  float footprint = max(length(dFdx(p)), length(dFdy(p)));
+  float resolve = 1.0 - smoothstep(0.002, 0.008, footprint);
+  // Beyond the resolving distance the ticks average to a light roan tint.
+  float coverage = mix(0.10, 0.16, legs);
+  float fleck = mix(coverage, tick * 0.85, resolve);
+  float underside = 1.0 - smoothstep(0.26, 0.56, p.y);
+  vec3 coat = mix(setterGround * (1.0 - underside * 0.03), setterPrimary, max(markPatch * 0.9, fleck));
+  // Tan points shade in gradually over the pasterns and feet.
+  float tanLegs = setterTanAmount * (1.0 - smoothstep(0.03, 0.15, p.y));
+  diffuseColor.rgb = mix(coat, setterTan * 0.9, tanLegs * 0.62);
+}`);
+  };
+  material.customProgramCacheKey = () => 'generated-setter-bind-coat-v2';
+}
+
+/** Shared smooth-coat lighting: baked occlusion and a soft sky rim. */
+function withCoatLighting(shader: { vertexShader: string; fragmentShader: string }): void {
+  shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>
+attribute float occlusion;
+varying float vCoatOcclusion;`).replace('#include <begin_vertex>', `#include <begin_vertex>
+vCoatOcclusion = occlusion;`);
+  shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+varying float vCoatOcclusion;`).replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+diffuseColor.rgb *= vCoatOcclusion;
+// A thin, soft rim separates the silhouette from grass and sky without
+// reading as a glossy highlight. Strongest on the lit, sky-facing coat.
+float coatRim = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 3.0);
+totalEmissiveRadiance += diffuseColor.rgb * coatRim * (0.16 + 0.1 * clamp(normal.y, 0.0, 1.0)) * vCoatOcclusion;`);
 }
 
 class Surface {
@@ -122,54 +212,82 @@ class Surface {
   }
 }
 
-export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = false, coatId: GspCoatId = 'liver-white') {
+export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = false, coatId: GeneratedCoatId = 'liver-white') {
   const sides = detail === 'high' ? 10 : 6;
-  const root = new THREE.Group(); root.name = 'generated-gsp';
-  const appearance = germanShorthairedPointerAppearance(coatId);
-  root.userData.coatId = coatId; root.userData.coatLabel = appearance.label;
+  const breed = generatedBreedForCoat(coatId), setter = breed === 'english-setter';
+  const root = new THREE.Group(); root.name = setter ? 'generated-english-setter' : 'generated-gsp';
+  const label = setter ? englishSetterAppearance(coatId as EnglishSetterCoatId).label : germanShorthairedPointerAppearance(coatId as GspCoatId).label;
+  root.userData.coatId = coatId; root.userData.coatLabel = label; root.userData.breedId = breed;
   const material = new THREE.MeshLambertMaterial({ vertexColors: true });
-  applyGspCoat(material, coatId);
+  if (setter) applySetterCoat(material, coatId as EnglishSetterCoatId); else applyGspCoat(material, coatId as GspCoatId);
   const geometries: THREE.BufferGeometry[] = [];
   const joints: Record<string, THREE.Bone> = {};
   const joint = (name: string, parent: THREE.Object3D, position: Point) => {
     const group = new THREE.Bone(); group.name = name; group.position.set(...position); parent.add(group); joints[name] = group; return group;
   };
-  const surface = (parent: THREE.Object3D, author: (s: Surface) => void, softness = 0) => {
-    const s = new Surface(sides); author(s); const geometry = s.geometry(softness); geometries.push(geometry);
+  const surface = (parent: THREE.Object3D, author: (s: Surface) => void, softness = 0, ringSides = sides) => {
+    const s = new Surface(ringSides); author(s); const geometry = s.geometry(softness); geometries.push(geometry);
     const mesh = new THREE.Mesh(geometry, material); mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh); return mesh;
   };
   const body = joint('body', root, [0, 0, 0]);
-  const torsoMesh = surface(body, s => s.loft([
-    // A continuous ribcage tapers into the flank. Keep the upper contour
-    // quiet while the underside rises gradually behind the deep chest.
-    [0,.526,-.39,.040,.067,.065], [0,.528,-.355,.070,.089,.088], [0,.534,-.30,.091,.097,.102],
-    [0,.548,-.23,.088,.083,.103], [0,.548,-.16,.081,.087,.098], [0,.53,-.08,.091,.107,.107],
-    [0,.516,0,.108,.129,.137], [0,.51,.08,.115,.140,.158], [0,.513,.16,.114,.143,.168],
-    // The supported sternum turns into a rising throat beneath the neck.
-    // These landmarks describe a chest and neck, not one triangular wedge.
-    [0,.531,.23,.099,.132,.173], [0,.546,.25,.091,.118,.143],
-    [0,.582,.275,.082,.093,.134], [0,.613,.305,.067,.076,.090],
-    [0,.635,.337,.055,.061,.060], [0,.649,.367,.047,.047,.053],
-    [0,.653,.393,.041,.038,.046], [0,.653,.415,.036,.033,.038],
-  ], WHITE), .88);
+  // Behind the ribcage the trunk is compressed toward a square outline: a
+  // GSP is barely longer than tall, a setter a little longer.
+  const rear = (z: number) => z < -.05 ? -.05 + (z + .05) * (setter ? .96 : .915) : z;
+  const tuck = setter ? .092 : .079;
+  const torsoMesh = surface(body, s => s.loft(([
+    // A continuous ribcage tapers into a tucked loin, a short sloping croup
+    // and a high tail set; the withers are the top of the outline.
+    [0,.522,-.39,.040,.064,.062], [0,.526,-.355,.070,.086,.088], [0,.532,-.30,.093,.096,.104],
+    [0,.546,-.23,.090,.086,.100], [0,.552,-.16,.082,.086,tuck], [0,.536,-.08,.093,.105,.108],
+    [0,.52,0,.112,.13,.14], [0,.512,.08,.121,.143,.162], [0,.516,.16,.12,.152,.172],
+  ] as Ring[]).map(([x, y, z, w, h, u]) => [x, y, rear(z), w, h, u] as Ring).concat([
+    [0,.531,.23,.099,.132,.173], [0,.55,.25,.092,.12,.15],
+    // A clean, slightly arched neck carries the head well above the withers.
+    [0,.59,.268,.082,.098,.13], [0,.63,.29,.068,.08,.09],
+    [0,.662,.312,.057,.063,.062], [0,.69,.335,.048,.05,.052],
+    [0,.703,.357,.042,.04,.045], [0,.707,.375,.037,.034,.038],
+  ]), WHITE), .88);
   const neck = joint('neck', body, [0,.51,.245]);
   torsoMesh.userData.neckJoint = neck;
-  const head = joint('head', neck, [0,.155,.135]);
+  const head = joint('head', neck, [0,.19,.105]);
   const jaw = joint('jaw', head, [0,-.027,.026]);
   const leftEar = joint('ear-left', head, [-.052,.019,-.012]);
   const rightEar = joint('ear-right', head, [.052,.019,-.012]);
-  const headGeometry = createGeneratedGspHead(detail, coatId);
+  const headGeometry = setter ? createGeneratedSetterHead(detail, coatId as EnglishSetterCoatId) : createGeneratedGspHead(detail, coatId as GspCoatId);
   geometries.push(headGeometry);
   const headMesh = new THREE.Mesh(headGeometry, material);
   headMesh.castShadow = true; headMesh.receiveShadow = true;
   headMesh.userData.headSkinJoints = [head, jaw, leftEar, rightEar];
   head.add(headMesh);
-  const tail = joint('tail', body, [0,.578,-.366]);
-  surface(tail, s => s.loft([[0,.018,-.252,.0025,.003],[0,.022,-.18,.006,.007],[0,.012,-.085,.013,.014],[0,0,0,.020,.022]], WHITE), .8);
+  const tail = joint('tail', body, [0,.576,rear(-.366)]);
+  if (setter) {
+    // A long, tapering setter tail carried near the topline. Its underside
+    // carries a flag of feathering that is longest through the middle third.
+    surface(tail, s => s.loft([[0,-.004,-.42,.002,.002,.006],[0,.002,-.37,.005,.005,.030],[0,.007,-.31,.007,.007,.052],
+      [0,.010,-.24,.009,.009,.064],[0,.011,-.17,.011,.011,.058],[0,.009,-.10,.013,.013,.042],[0,.005,-.045,.016,.017,.026],[0,0,0,.020,.022,.022]], WHITE), .85);
+  } else surface(tail, s => s.loft([[0,.017,-.25,.005,.006],[0,.02,-.205,.009,.01],[0,.014,-.125,.014,.015],[0,.006,-.055,.019,.02],[0,0,0,.022,.024]], WHITE), .8);
+  if (setter) {
+    // Brisket feathering hangs below the sternum between the elbows, and a
+    // light fringe follows each side of the belly toward the flank. Thin
+    // vertical blades with a scalloped lower edge read as hair, not bulk.
+    const fringe = (path: readonly (readonly [number, number, number, number])[], x: number, thickness: number) => {
+      const rings: Ring[] = [];
+      for (let k = 0; k < path.length - 1; k++) for (let j = 0; j < 2; j++) {
+        const u = j / 2, a = path[k], b = path[k + 1], i = k * 2 + j;
+        const hang = THREE.MathUtils.lerp(a[3], b[3], u) * (i % 2 ? .88 : 1.05);
+        rings.push([x, THREE.MathUtils.lerp(a[1], b[1], u), THREE.MathUtils.lerp(a[2], b[2], u), thickness, .012, hang]);
+      }
+      const last = path[path.length - 1]; rings.push([x, last[1], last[2], thickness, .012, last[3]]);
+      // A diamond cross-section is enough for a thin hanging blade.
+      surface(body, s => s.loft(rings, WHITE), .55, 4);
+    };
+    fringe([[0,.43,-.04,.01],[0,.395,.03,.03],[0,.372,.09,.046],[0,.364,.15,.052],[0,.37,.2,.04],[0,.39,.235,.02],[0,.43,.262,.008]], 0, .034);
+    for (const side of [-1, 1]) fringe([[0,.478,rear(-.20),.012],[0,.462,rear(-.14),.030],[0,.438,rear(-.07),.042],[0,.414,0,.048],[0,.394,.06,.036],[0,.386,.10,.012]], side * .040, .013);
+  }
   const paws: THREE.Bone[] = [];
   for (let i = 0; i < 4; i++) {
     const fore = i < 2, side = i % 2 ? 1 : -1, prefix = `${fore ? 'front' : 'hind'}-${side < 0 ? 'left' : 'right'}`;
-    const upper = joint(prefix, body, [side*.068,.515,fore ? .205 : -.292]);
+    const upper = joint(prefix, body, [side*.068,.515,fore ? .205 : rear(-.292)]);
     const upperEnd: Point = [0,fore ? -.195 : -.205,fore ? -.055 : .090];
     const lowerEnd: Point = [0,fore ? -.25 : -.17,fore ? .062 : -.110];
     const distalEnd: Point = [0,fore ? -.048 : -.117,fore ? .012 : .016];
@@ -180,29 +298,49 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
     // envelope; separate rigid tubes would expose caps during a stride.
     const wristY = upperEnd[1] + lowerEnd[1], wristZ = upperEnd[2] + lowerEnd[2];
     const ankleY = wristY + distalEnd[1], ankleZ = wristZ + distalEnd[2];
-    const legMesh = surface(upper, s => s.loft([
-      [0,ankleY-.004,ankleZ,.016,.018],
-      [0,(ankleY+wristY)*.5,(ankleZ+wristZ)*.5,.017,.020],
-      [0,wristY,wristZ,.021,.025],
-      [0,wristY+.030,wristZ-.005,.020,.024],
-      [0,upperEnd[1]+lowerEnd[1]*.50,upperEnd[2]+lowerEnd[2]*.50,fore ? .024 : .027,fore ? .029 : .035],
-      [0,upperEnd[1],upperEnd[2],fore ? .030 : .034,fore ? .038 : .045,fore ? .038 : .040],
-      // The rear thigh carries an oblique hamstring plane into the stifle,
-      // with a quieter anterior contour rather than a round separate bulb.
-      [side*.006,upperEnd[1]*.64,fore ? upperEnd[2]*.65 : .052,fore ? .037 : .052,fore ? .054 : .069,fore ? .054 : .065],
-      [side*.008,-.054,fore ? .006 : .016,fore ? .045 : .060,fore ? .060 : .092,fore ? .071 : .069],
-      // The shoulder blade rises back into the withers; its surface has a
-      // different direction from the unchanged upper-leg articulation.
-      [side*.003,.008,fore ? -.036 : -.006,fore ? .041 : .052,fore ? .062 : .070,fore ? .065 : .055],
-      [0,.062,fore ? -.060 : -.014,.025,.037],
+    // Setter furnishings: feathering behind the forearm and full breeches
+    // down the back of the thigh deepen only the rear contour of the limb.
+    const fb = setter ? (fore ? [1.1, 1.6, 1.9, 1.55, 1.12] : [1.28, 1.25, 1.4, 1.48, 1.32]) : [1, 1, 1, 1, 1];
+    const at = (t: number): [number, number] => [upperEnd[1] + lowerEnd[1] * t, upperEnd[2] + lowerEnd[2] * t];
+    const [lowY, lowZ] = at(.62), [highY, highZ] = at(.2);
+    // Anatomical envelope, paw to withers/croup. Fore: pastern, wrist knob,
+    // tapering cannon, forearm muscle below the elbow, olecranon, upper arm,
+    // point of shoulder, scapula. Hind: metatarsus, point of hock, gaskin,
+    // stifle, first thigh and hip. Setter feathering deepens the rear edge.
+    const legMesh = surface(upper, s => s.loft(fore ? [
+      [0,ankleY-.004,ankleZ,.0185,.019,.02],
+      [0,(ankleY+wristY)*.5,(ankleZ+wristZ)*.5,.018,.019,.021],
+      [0,wristY,wristZ,.022,.025*fb[0],.023],
+      [0,wristY+.032,wristZ-.004,.0195,.022*fb[1],.022],
+      [0,lowY,lowZ,.021,.024*fb[2],.025],
+      [0,highY,highZ,.028,.03*fb[3],.034],
+      [0,upperEnd[1],upperEnd[2],.031,.047*fb[4],.036],
+      [side*.006,upperEnd[1]*.6,upperEnd[2]*.6,.04,.058,.056],
+      [side*.008,-.054,.016,.046,.062,.074],
+      [side*.003,.008,-.036,.041,.062,.065],
+      [0,.062,-.06,.025,.037],
+    ] : [
+      [0,ankleY-.004,ankleZ,.018,.019,.02],
+      [0,(ankleY+wristY)*.5,(ankleZ+wristZ)*.5,.0175,.02,.019],
+      [0,wristY,wristZ-.004,.02,.035*fb[0],.021],
+      [0,wristY+.03,wristZ,.019,.026*fb[1],.02],
+      [0,lowY,lowZ,.023,.037*fb[2],.026],
+      [0,highY,highZ,.03,.046*fb[3],.031],
+      [0,upperEnd[1],upperEnd[2],.036,.05,.044],
+      [side*.006,upperEnd[1]*.64,.052,.056,.082*fb[4],.07],
+      [side*.008,-.054,.016,.062,.096,.07],
+      [side*.003,.008,-.006,.052,.07,.055],
+      [0,.062,-.014,.025,.037],
     ], WHITE, 'y'), .9);
     legMesh.userData.skinChain = [upper, lower, distal, paw];
-    surface(paw, s => s.loft([[0,.002,-.025,.014,.012],[0,.005,-.002,.023,.018],
-      [0,-.001,.026,.027,.018],[0,-.005,.047,.023,.013],[0,-.006,.056,.014,.010]], WHITE), .72);
+    // A compact, arched foot: knuckles rise over the pads instead of a flat
+    // slipper, and the toes close into a rounded front.
+    surface(paw, s => s.loft([[0,.003,-.024,.012,.012],[0,.007,-.004,.019,.022,.020],
+      [0,.005,.018,.022,.024,.024],[0,.002,.035,.021,.019,.021],[0,-.003,.049,.016,.013,.016],[0,-.005,.057,.008,.007,.008]], WHITE), .78);
   }
   // Bake bind-space geometry into one draw call, retaining code-authored bones.
   root.updateMatrixWorld(true);
-  const bones = Object.values(joints), positions: number[] = [], normals: number[] = [], colors: number[] = [], indices: number[] = [], weights: number[] = [];
+  const bones = Object.values(joints), positions: number[] = [], normals: number[] = [], colors: number[] = [], indices: number[] = [], weights: number[] = [], occlusion: number[] = [];
   const meshes: THREE.Mesh[] = []; root.traverse(node => { if (node instanceof THREE.Mesh) meshes.push(node); });
   for (const mesh of meshes) {
     const geometry = mesh.geometry, pos = geometry.getAttribute('position'), normal = geometry.getAttribute('normal'), color = geometry.getAttribute('color');
@@ -215,15 +353,26 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
       const p = new THREE.Vector3().fromBufferAttribute(pos,i).applyMatrix4(mesh.matrixWorld);
       const n = new THREE.Vector3().fromBufferAttribute(normal,i).applyMatrix3(normalMatrix).normalize();
       positions.push(p.x,p.y,p.z); normals.push(n.x,n.y,n.z); colors.push(color.getX(i),color.getY(i),color.getZ(i));
+      // Baked contact occlusion from bind-pose shape: undersides of the body
+      // and neck, the inner faces of the limbs where they meet the trunk, and
+      // the armpit/groin creases. It models form without a runtime AO pass.
+      {
+        const down = THREE.MathUtils.smoothstep(-n.y, .15, .95);
+        const inward = Math.max(0, -n.x * Math.sign(p.x || 1));
+        const trunk = THREE.MathUtils.smoothstep(p.y, .26, .42);
+        const crease = mesh.userData.skinChain ? THREE.MathUtils.smoothstep(p.y, .3, .46) * inward : 0;
+        const sole = 1 - THREE.MathUtils.smoothstep(p.y, .005, .03);
+        occlusion.push(THREE.MathUtils.clamp(1 - down * (.12 + .2 * trunk) - inward * .07 - crease * .16 - sole * .12, .55, 1));
+      }
       let first = bones.indexOf(owner), second = first, blend = 0;
       if (mesh.userData.neckJoint) {
         // Keep the sternum on the chest while the throat above it follows
         // the cervical column. The nape begins turning above the shoulder;
         // the upper throat reaches full neck weight before meeting the head.
         second = bones.indexOf(mesh.userData.neckJoint);
-        const nape = THREE.MathUtils.smoothstep(p.z, .19, .355)
-          * THREE.MathUtils.smoothstep(p.y, .49, .655);
-        const throat = THREE.MathUtils.smoothstep(p.z, .255, .367);
+        const nape = THREE.MathUtils.smoothstep(p.z, .2, .33)
+          * THREE.MathUtils.smoothstep(p.y, .5, .68);
+        const throat = THREE.MathUtils.smoothstep(p.z, .25, .345);
         blend = Math.max(nape, throat);
       }
       if (chain && chainY) {
@@ -263,6 +412,7 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
   skinGeometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
   skinGeometry.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));
   skinGeometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+  skinGeometry.setAttribute('occlusion',new THREE.Float32BufferAttribute(occlusion,1));
   skinGeometry.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(indices,4));
   skinGeometry.setAttribute('skinWeight',new THREE.Float32BufferAttribute(weights,4));
   geometries.push(skinGeometry);
@@ -290,7 +440,9 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
       // than stacking both paws under it. Slight asymmetry avoids a pose stamp.
       joints['hind-left'].rotation.x = .32 * t;
       joints['hind-right'].rotation.x = .22 * t;
-      tail.rotation.x = .20 * t;
+      // A setter holds a high, still flag on point; the docked GSP tail
+      // stays firm just above the topline.
+      tail.rotation.x = (setter ? .78 : .20) * t;
     }
     root.updateMatrixWorld(true); skeleton.update(); if(!live){skin.computeBoundingBox(); skin.computeBoundingSphere();}
   };
@@ -321,7 +473,8 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
       leg.distal.rotation.x=leg.distalAngle-leg.upper.rotation.x-leg.lower.rotation.x;
       leg.paw.rotation.x=-leg.upper.rotation.x-leg.lower.rotation.x-leg.distal.rotation.x;
     });
-    neck.rotation.x=gait==='gallop'?.23:gait==='canter'?.17:.11;head.rotation.x=-.07;
+    // The raised standing carriage lowers into a working reach with speed.
+    neck.rotation.x=gait==='gallop'?.36:gait==='canter'?.29:gait==='trot'?.22:.18;head.rotation.x=-.1;
     root.updateMatrixWorld(true);skeleton.update();if(!live){skin.computeBoundingBox();skin.computeBoundingSphere();}
     return {stride:locomotion.stride*strideScale,feet:locomotion.feet,clamped};
   };

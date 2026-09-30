@@ -29,6 +29,8 @@ hunting view through Play settings. `npm run dev:3d` also serves this flow;
 `/index3d.html` remains the standalone 3D field entry.
 The standalone Quail field defaults to the liver-and-white GSP and morning light.
 `?drop=west-track` selects the second truck drop; `?quality=lite` selects lighter rendering.
+`?dogstyle=smooth` or `?dogstyle=faceted` renders every dog in one art style (see the
+[dog style study](docs/3d/dog-style-study.md) and `tools3d/dog-comparison.html`).
 Saved Career and Quick Hunt launches retain their selected dogs and gear.
 For a phone playtest on the same Wi-Fi, run `npm run play:mobile` and open the
 printed Network address. Preparation's Conditions panel includes the display

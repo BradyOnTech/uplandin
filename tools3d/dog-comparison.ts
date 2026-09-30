@@ -28,7 +28,7 @@ function sequenceSpeed(seconds: number): number {
   }
   return 0;
 }
-type View = 'quarter' | 'side' | 'front' | 'field';
+type View = 'quarter' | 'side' | 'front' | 'rear' | 'rear-quarter' | 'field';
 const params = new URLSearchParams(location.search);
 // Capture mode changes the legacy renderer's motion law. This comparison
 // deliberately uses the normal runtime path on both sides.
@@ -37,9 +37,19 @@ const choice = <T extends string>(key: string, values: readonly T[], fallback: T
 let pose = choice('pose', poses, 'stand');
 let quality = choice('quality', ['high', 'lite'], 'high');
 let light = choice('tod', ['morning', 'noon', 'evening'], 'noon');
-let view = choice('view', ['quarter', 'side', 'front', 'field'], 'quarter');
+let view = choice('view', ['quarter', 'side', 'front', 'rear', 'rear-quarter', 'field'], 'quarter');
 let gspCoat = choice('gsp', GSP_COATS.map(c => c.id), 'liver-white');
 let setterCoat = choice('setter', ENGLISH_SETTER_COATS.map(c => c.id), 'orange-belton');
+type Breed = 'gsp' | 'english-setter';
+type Style = 'smooth' | 'faceted';
+// Both art styles for both breeds: the question is which style should become
+// the house style, so every breed/style pairing shares one ground and camera.
+let layout = choice('layout', ['grid', 'smooth', 'faceted', 'gsp', 'english-setter', 'gsp-smooth', 'setter-smooth', 'gsp-faceted', 'setter-faceted'] as const, 'grid');
+const PANEL_KINDS: readonly { breed: Breed; style: Style; id: string }[] = [
+  { breed: 'gsp', style: 'smooth', id: 'gsp-smooth' }, { breed: 'english-setter', style: 'smooth', id: 'setter-smooth' },
+  { breed: 'gsp', style: 'faceted', id: 'gsp-faceted' }, { breed: 'english-setter', style: 'faceted', id: 'setter-faceted' },
+];
+const panelVisible = (kind: { breed: Breed; style: Style; id: string }) => layout === 'grid' || layout === kind.style || layout === kind.breed || layout === kind.id;
 let playing = params.get('paused') !== '1', time = 0, travel = 0, paceTime = 0, speed = 0;
 const stepSeconds = 1 / 60;
 const canvas = document.querySelector<HTMLCanvasElement>('#comparison')!;
@@ -51,11 +61,12 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 const camera = new THREE.PerspectiveCamera(38, 1, .03, 600);
 const controls = new OrbitControls(camera, canvas);
-controls.enablePan = false; controls.minDistance = 1.8; controls.maxDistance = 14;
+controls.enablePan = false; controls.minDistance = 1.0; controls.maxDistance = 14;
 controls.minPolarAngle = .15; controls.maxPolarAngle = Math.PI * .49;
 const area = getArea('chukar-ridge');
 const landscape = new LandscapeModel(area, 'south-gate');
 interface Panel {
+  breed: Breed; style: Style;
   element: HTMLElement; scene: THREE.Scene; camera: THREE.PerspectiveCamera; ctx: Ctx;
   system: GeneratedDogSystem | DogSystem; dog: Dog; nodes: THREE.Object3D[];
   sun: THREE.DirectionalLight; fill: THREE.DirectionalLight; hemi: THREE.HemisphereLight;
@@ -63,7 +74,7 @@ interface Panel {
 }
 let panels: Panel[] = [];
 
-function makePanel(kind: 'gsp' | 'english-setter'): Panel {
+function makePanel(kind: Breed, style: Style, elementId: string): Panel {
   const scene = new THREE.Scene(), panelCamera = camera.clone();
   const dog = new Dog({ x: 0, y: 0 }, { breed: getBreed(kind), level: 8, ageMult: 1 }, mulberry32(1881));
   dog.heading = Math.PI / 2;
@@ -99,10 +110,11 @@ function makePanel(kind: 'gsp' | 'english-setter'): Panel {
   const grid = new THREE.GridHelper(20, 40, 0x656d5b, 0x727861); grid.position.y = .002;
   const gridMaterial = grid.material as THREE.Material; gridMaterial.transparent = true; gridMaterial.opacity = .30; scene.add(grid);
   const before = new Set(scene.children);
-  const system = kind === 'gsp' ? new GeneratedDogSystem(gspCoat) : new DogSystem('english-setter', setterCoat);
+  const coat = kind === 'gsp' ? gspCoat : setterCoat;
+  const system = style === 'smooth' ? new GeneratedDogSystem(coat) : new DogSystem(kind, coat);
   system.init(ctx);
   const nodes = scene.children.filter(node => !before.has(node));
-  return { element: document.querySelector(kind === 'gsp' ? '#gsp-panel' : '#setter-panel')!, scene, camera: panelCamera,
+  return { breed: kind, style, element: document.querySelector(`#${elementId}`)!, scene, camera: panelCamera,
     ctx, system, dog, nodes, sun, fill, hemi, floor, grid };
 }
 
@@ -134,7 +146,9 @@ function disposePanels(): void {
 }
 function rebuild(): void {
   disposePanels(); travel = 0; time = 0; paceTime = 0; speed = 0;
-  panels = [makePanel('gsp'), makePanel('english-setter')];
+  for (const kind of PANEL_KINDS) document.querySelector<HTMLElement>(`#${kind.id}`)!.hidden = !panelVisible(kind);
+  document.querySelector<HTMLElement>('#panels')!.dataset.layout = layout;
+  panels = PANEL_KINDS.filter(panelVisible).map(kind => makePanel(kind.breed, kind.style, kind.id));
   setLighting(); setView(view);
   // Establish supported standing contact before starting either runtime.
   for (let i = 0; i < 60; i++) advance(stepSeconds, false);
@@ -174,24 +188,29 @@ function advance(dt: number, move = true): void {
 function setView(value: View): void {
   view = value;
   const offsets: Record<View, [number, number, number]> = {
-    quarter: [2.5, 1.05, 2.6], side: [3.3, .92, .02], front: [0, .93, 3.3], field: [4.6, 1.62, 6.55],
+    quarter: [2.5, 1.05, 2.6], side: [3.3, .92, .02], front: [0, .93, 3.3], rear: [0, .98, -3.3], 'rear-quarter': [-2.4, 1.15, -2.5], field: [4.6, 1.62, 6.55],
   };
-  camera.position.set(...offsets[view]); camera.position.z += travel;
+  // Optional review zoom: `zoom=2` halves the camera distance for close inspection.
+  const zoom = THREE.MathUtils.clamp(Number(params.get('zoom')) || 1, .5, 5);
+  // `focus=head` or `focus=feet` aims a close review at that part.
+  const focus = params.get('focus') === 'head' ? new THREE.Vector3(0, .66, .34) : params.get('focus') === 'feet' ? new THREE.Vector3(0, .1, 0) : new THREE.Vector3(0, .4, .06);
+  camera.position.set(...offsets[view]); camera.position.sub(new THREE.Vector3(0, .40, 0)).divideScalar(zoom).add(focus);
+  camera.position.z += travel;
   camera.fov = view === 'field' ? 70 : 38; camera.updateProjectionMatrix();
-  controls.target.set(0, .40, travel + .06); controls.update();
+  controls.target.copy(focus); controls.target.z += travel; controls.update();
 }
 function syncURL(): void {
   const url = new URL(location.href);
-  for (const [key, value] of Object.entries({ pose, quality, tod: light, view, gsp: gspCoat, setter: setterCoat })) url.searchParams.set(key, value);
+  for (const [key, value] of Object.entries({ pose, quality, tod: light, view, layout, gsp: gspCoat, setter: setterCoat })) url.searchParams.set(key, value);
   if (playing) url.searchParams.delete('paused'); else url.searchParams.set('paused', '1');
   history.replaceState(null, '', url);
 }
 function updateLinks(): void {
-  for (const [id, breed, coat] of [['play-gsp', 'gsp', gspCoat], ['play-setter', 'english-setter', setterCoat]]) {
+  for (const kind of PANEL_KINDS) {
     const url = new URL('../index3d.html', location.href);
-    url.search = new URLSearchParams({ area: 'quail-fields', drop: 'south-gate', quality, tod: light, dog: 'generated', breed, coat,
-      challenge: 'relaxed', seed: '1184004868' }).toString();
-    document.querySelector<HTMLAnchorElement>(`#${id}`)!.href = url.href;
+    url.search = new URLSearchParams({ area: 'quail-fields', drop: 'south-gate', quality, tod: light, breed: kind.breed,
+      coat: kind.breed === 'gsp' ? gspCoat : setterCoat, dogstyle: kind.style, challenge: 'relaxed', seed: '1184004868' }).toString();
+    document.querySelector<HTMLAnchorElement>(`#${kind.id} .play`)!.href = url.href;
   }
 }
 function updateStatus(): void {
@@ -214,7 +233,7 @@ for (const [id, values, value] of [['gsp-coat', GSP_COATS, gspCoat], ['setter-co
   const select = document.querySelector<HTMLSelectElement>(`#${id}`)!;
   for (const coat of values) select.add(new Option(coat.label, coat.id)); select.value = value;
 }
-for (const [id, value] of [['view', view], ['light', light], ['quality', quality]]) document.querySelector<HTMLSelectElement>(`#${id}`)!.value = value;
+for (const [id, value] of [['view', view], ['light', light], ['quality', quality], ['layout', layout]]) document.querySelector<HTMLSelectElement>(`#${id}`)!.value = value;
 document.querySelectorAll<HTMLButtonElement>('[data-pose]').forEach(button => button.addEventListener('click', () => selectPose(button.dataset.pose as Pose)));
 document.querySelector('#motion')!.addEventListener('click', () => { playing = !playing; updateControls(); });
 document.querySelector('#step')!.addEventListener('click', () => { playing = false; advance(stepSeconds); updateControls(); });
@@ -222,6 +241,7 @@ document.querySelector('#restart')!.addEventListener('click', rebuild);
 document.querySelector<HTMLSelectElement>('#view')!.addEventListener('change', e => { setView((e.target as HTMLSelectElement).value as View); syncURL(); });
 document.querySelector<HTMLSelectElement>('#light')!.addEventListener('change', e => { light = (e.target as HTMLSelectElement).value as typeof light; setLighting(); updateLinks(); updateControls(); });
 document.querySelector<HTMLSelectElement>('#quality')!.addEventListener('change', e => { quality = (e.target as HTMLSelectElement).value as Quality; rebuild(); });
+document.querySelector<HTMLSelectElement>('#layout')!.addEventListener('change', e => { layout = (e.target as HTMLSelectElement).value as typeof layout; rebuild(); });
 document.querySelector<HTMLSelectElement>('#gsp-coat')!.addEventListener('change', e => { gspCoat = (e.target as HTMLSelectElement).value as GspCoatId; rebuild(); });
 document.querySelector<HTMLSelectElement>('#setter-coat')!.addEventListener('change', e => { setterCoat = (e.target as HTMLSelectElement).value as EnglishSetterCoatId; rebuild(); });
 let previous = performance.now(), accumulator = 0, raf = 0;
@@ -249,12 +269,12 @@ const review = {
   setPose(value: Pose) { if (!poses.includes(value)) throw new Error(`Unknown comparison pose: ${value}`); selectPose(value); },
   advance(seconds: number) { playing = false; for (let i = 0; i < Math.round(seconds / stepSeconds); i++) advance(stepSeconds); updateControls(); },
   state() {
-    const generated = (window as unknown as { __generatedDogAudit?: () => { feet: { i: number; groundGap: number }[] } }).__generatedDogAudit?.();
+    const generatedAudit = (p: Panel) => p.style === 'smooth' ? (p.system as GeneratedDogSystem).snapshot() : null;
     return { pose, quality, light, playing, time, travel, speed, paceTime,
-      renderers: panels.map((p, i) => ({ breed: i === 0 ? 'gsp' : 'english-setter', source: p.system.constructor.name,
-        scale: p.nodes.find(n => n.name === 'english-setter-root')?.scale.toArray() ?? [1, 1, 1],
+      renderers: panels.map(p => ({ breed: p.breed, style: p.style, source: p.system.constructor.name,
+        scale: p.nodes.find(n => n.name === `${p.breed}-root`)?.scale.toArray() ?? [1, 1, 1],
         state: p.dog.state, gait: p.dog.gait, camera: p.camera.position.toArray(), fov: p.camera.fov,
-        paws: i === 0 ? generated?.feet.map(foot => ({ i: foot.i, gap: foot.groundGap, supporting: isTravel(pose) ? null : pose !== 'point' || foot.i !== 0 }))
+        paws: p.style === 'smooth' ? generatedAudit(p)?.feet.map(foot => ({ i: foot.i, gap: foot.groundGap, supporting: isTravel(pose) ? null : pose !== 'point' || foot.i !== 0 }))
           : ['fore-paw-l', 'fore-paw-r', 'hind-paw-l', 'hind-paw-r'].map((id, foot) => {
             const sole = p.nodes.map(node => node.getObjectByName(`${id}__sole`)).find(Boolean);
             if (!sole) throw new Error(`Missing runtime sole marker: ${id}`);

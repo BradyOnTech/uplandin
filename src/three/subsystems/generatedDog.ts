@@ -9,7 +9,7 @@ import { dogTorsoHeading } from '../dogs/riggedMotion';
 import { GeneratedAttention } from '../dogs/generatedAttention';
 import type { BirdsSystem } from './birds';
 import type { GeneratedFieldIntent } from '../dogs/generatedScentMotion';
-import type { GspCoatId } from '../dogs/germanShorthairedPointer';
+import { generatedBreedForCoat, type GeneratedCoatId } from '../dogs/generatedGsp';
 import { dogRendererId } from '../dogs/rendererId';
 import type { HuntArrivalFrame } from '../huntArrival';
 
@@ -19,7 +19,7 @@ type AuditScope = { __generatedDogAudit?: unknown; __generatedDogAudits?: Record
  * authority over breed behavior, movement and bird ownership. */
 export class GeneratedDogSystem implements Subsystem {
   readonly id:string;
-  constructor(private readonly coatId:GspCoatId='liver-white',private readonly slot=0){this.id=dogRendererId(slot);}
+  constructor(private readonly coatId:GeneratedCoatId='liver-white',private readonly slot=0){this.id=dogRendererId(slot);}
   private motion?:GeneratedFieldMotion;
   private hunt!:Hunt3DSystem;
   private position={x:0,z:0};
@@ -50,10 +50,12 @@ export class GeneratedDogSystem implements Subsystem {
   private audit=()=>{
     if(!this.motion)return null;
     const mouth=new THREE.Vector3();this.mouthWorld(mouth);
-    return {source:'generated-gsp',version:1,slot:this.slot,coatId:this.coatId,frame:this.auditFrame,state:this.hunt.dog(this.slot).state,moving:this.motion.moving,speed:this.speed,gait:this.motion.gait,
+    return {source:'generated-gsp',version:1,slot:this.slot,breed:generatedBreedForCoat(this.coatId),coatId:this.coatId,frame:this.auditFrame,state:this.hunt.dog(this.slot).state,moving:this.motion.moving,speed:this.speed,gait:this.motion.gait,
       field:{...this.field,performance:this.motion.scentMotion.performance},jawAngle:this.motion.mouthMotion.angle,
       swimming:this.motion.swimming,clamped:this.motion.clamped,stats:this.motion.asset.stats,root:this.motion.asset.root.position.toArray(),mouth:mouth.toArray(),feet:this.motion.contactSnapshot()};
   };
+  /** Read-only review snapshot of this renderer, independent of window registration. */
+  snapshot(){return this.audit();}
   init(ctx:Ctx){
     this.hunt=ctx.get<Hunt3DSystem>('hunt3d');const terrain=ctx.get<TerrainSystem>('terrain');
     const water=new ShallowWater(new LandscapeModel(this.hunt.areaConfig(),this.hunt.dropPoint().id));
