@@ -3,7 +3,7 @@ import type { Hunt3DSystem } from './hunt3d';
 import { playDogCollar, playDogMovement, playFieldSong, startFieldAmbience, type DogCollarSound } from '../../audio';
 import type { Ctx, Subsystem } from '../engine';
 import { fieldSoundscape } from '../fieldSoundscape';
-import { DogCollarCadence, dogCollarGain, dogCollarMode, type DogCollarCue } from '../dogCollarAudio';
+import { DogCollarCadence, dogBellInterval, dogCollarGain, dogCollarMode, type DogCollarCue } from '../dogCollarAudio';
 import type { TerrainSystem } from './terrain';
 interface Collar {
   x: number; z: number; quietFor: number; positioned: boolean;
@@ -116,7 +116,7 @@ export class FieldAudioSystem implements Subsystem {
     this.collarOffset.applyQuaternion(this.listenerInverse);
     if (collar.soundKind && collar.sound?.active) collar.sound.updateSpatial(dogCollarGain(collar.soundKind, distance), this.collarOffset);
     if (moved >= 8) { collar.cadence.suspend(); return; }
-    const cue = collar.cadence.advance(dt, kind, gearTier >= 1 && pointed);
+    const cue = collar.cadence.advance(dt, kind, gearTier >= 1 && pointed, dogBellInterval(dog.state, dog.gait, dog.scentStage));
     if (cue) {
       collar.sound?.stop();
       collar.sound = playDogCollar(cue, dogCollarGain(cue, distance), this.collarOffset);

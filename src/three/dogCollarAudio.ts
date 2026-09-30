@@ -1,8 +1,19 @@
-import type { DogGait, DogState } from '../game/dog';
+import type { DogGait, DogScentStage, DogState } from '../game/dog';
 
 export type DogCollarCue = 'bell' | 'beeper';
 const INTERVAL: Record<DogCollarCue, number> = { bell: .62, beeper: 1.4 };
-const MOVING_STATES: readonly DogState[] = ['quartering', 'tracking', 'breaking', 'retrieving', 'recalled'];
+const MOVING_STATES: readonly DogState[] = ['quartering', 'tracking', 'breaking', 'retrieving', 'recalled', 'seeking'];
+
+/**
+ * The bell tells you what the dog is doing before you see it: a busy ring
+ * while it runs, a slower, broken ring as it works scent, a rare tinkle as
+ * it creeps in — and silence when it stops.
+ */
+export function dogBellInterval(state: DogState, gait: DogGait, stage: DogScentStage = 'none'): number {
+  if (state === 'tracking' && (stage === 'stalking' || stage === 'locking')) return 1.7;
+  if (state === 'tracking') return .9;
+  return gait === 'run' ? .42 : INTERVAL.bell;
+}
 
 /** The same gear contract as the 2D field: every collar has a movement
  * bell; tier 1 and above add a locate beeper when the dog is on point. */
@@ -17,7 +28,7 @@ export class DogCollarCadence {
   private mode: DogCollarCue | null = null;
   private remaining = 0;
 
-  advance(dt: number, mode: DogCollarCue | null, pointEvent = false): DogCollarCue | null {
+  advance(dt: number, mode: DogCollarCue | null, pointEvent = false, bellInterval = INTERVAL.bell): DogCollarCue | null {
     if (!(dt > 0) || !Number.isFinite(dt)) return null;
     if (mode !== this.mode) {
       this.mode = mode;
@@ -30,7 +41,7 @@ export class DogCollarCadence {
     if (!mode) return null;
     this.remaining -= Math.min(dt, .25);
     if (this.remaining > 0) return null;
-    this.remaining = INTERVAL[mode];
+    this.remaining = mode === 'bell' ? bellInterval : INTERVAL[mode];
     return mode;
   }
 

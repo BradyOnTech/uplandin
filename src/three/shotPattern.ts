@@ -7,6 +7,9 @@ interface Point { x: number; y: number; z: number }
 // rewards crossing lead without random pellet rolls or extra rendered objects.
 export const SHOT_SPEED_MPS = 300;
 export const SHOT_RANGE_M = 55;
+/** Outer share of the pattern, and range, past which a hit only wounds. */
+export const WOUND_FRINGE = .78;
+export const WOUND_RANGE_M = 44;
 
 export class TravellingShot {
   readonly origin: Point;
@@ -14,7 +17,16 @@ export class TravellingShot {
   private previous = new Map<number, Point>();
   private age = 0;
   private hit: Readonly<ShotTarget> | null = null;
+  /** How squarely the pattern took the bird: 0 at the core, 1 at the fringe. */
+  private hitOffset = 0;
+  private hitRange = 0;
   done = false;
+
+  /**
+   * A bird taken on the fringe of the pattern, or at the limit of range,
+   * comes down wounded and runs. Deterministic: a centred shot kills clean.
+   */
+  get wounding(): boolean { return this.hit !== null && (this.hitOffset > WOUND_FRINGE || this.hitRange > WOUND_RANGE_M); }
 
   /** Actual swept crossing point, available only after a successful hit. */
   get impact(): Readonly<ShotTarget> | null { return this.hit; }
@@ -57,7 +69,7 @@ export class TravellingShot {
       const radius = Math.max(.48, along*Math.tan(this.spread)) + shotAssistanceAllowance(along, this.assistance);
       if (perpendicular > radius) continue;
       const candidate = { simId: t.simId, status: t.status, x, y, z };
-      if (visible(candidate)) { hit = candidate; first = fraction; }
+      if (visible(candidate)) { hit = candidate; first = fraction; this.hitOffset = perpendicular / radius; this.hitRange = along; }
     }
     this.age += dt;
     this.hit = hit;

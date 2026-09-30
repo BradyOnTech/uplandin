@@ -27,7 +27,26 @@ export type DogState =
   | 'retrieving'
   | 'recalled'
   | 'heel'
-  | 'breaking';
+  | 'breaking'
+  /** Stopped on the handler's "whoa"; stands until released or whistled in. */
+  | 'whoa'
+  /** Sent to "dead bird": hunting a fall it did not mark. */
+  | 'seeking';
+
+/**
+ * What the handler can tell the dog. Every command is heard only within the
+ * whistle's carry. Targets are property positions chosen by the adapter
+ * (where the hunter is facing or looking).
+ */
+export type HandlerCommandKind = 'whoa' | 'release' | 'cast' | 'dead';
+export interface HandlerCommand { kind: HandlerCommandKind; target?: Vec2 }
+/** The dog's answer, for handler feedback. */
+export type CommandResponse = 'stopped' | 'steadied' | 'released' | 'relocating' | 'cast' | 'hunting-dead' | 'busy' | 'out-of-earshot';
+
+/** Moments of dog work worth reporting after the hunt. */
+export type DogLogKind = 'point' | 'back' | 'break' | 'bump' | 'creep' | 'relocated' | 'unproductive'
+  | 'dead-found' | 'dead-lost' | 'command';
+export interface DogLogEvent { kind: DogLogKind; command?: HandlerCommandKind; response?: CommandResponse; birdId?: number }
 
 /** Field presentation gait — set each tick by `update`, read by FieldScene. */
 export type DogGait = 'run' | 'trot' | 'track' | 'still';
@@ -79,6 +98,17 @@ const BREAK_BUMP_RADIUS = 12;
 const ANCHOR_TURN_RATE = 2.2; // rad/s pulled back toward the hunter past quartering range
 const POINT_SETTLE_RANGE = POINT_RANGE + 1.5;
 const SCENT_MEMORY_MULT = 1.35;
+/** A dead or wounded bird gives far less scent than a live one sitting tight. */
+export const DEAD_SCENT_MULT = 0.3;
+/** How long a "this way" cast keeps the dog working the chosen ground. */
+export const CAST_COMMAND_MS = 25_000;
+const CAST_ARRIVE = 5;
+/** How long a dog hunts dead where it was sent before giving up. */
+export const SEEK_COMMAND_MS = 22_000;
+/** How long a dog searches a marked fall that is no longer there (a runner). */
+export const MARK_SEARCH_MS = 14_000;
+/** Break odds at the flush for a dog the handler steadied with "whoa". */
+export const STEADIED_BREAK_MULT = 0.35;
 
 /**
  * Derive approach character from the breed facts we already tune. A steady,
@@ -394,6 +424,14 @@ export class Dog {
   waitingForHandler = false;
   /** Current shared search-to-point beat, consumed by both presentations. */
   scentStage: DogScentStage = 'none';
+  /** Whoa'd on point or while backing: steadier when the birds go up. */
+  steadied = false;
+  /** Ground the handler cast the dog toward, while that cast lasts. */
+  castTarget: Vec2 | null = null;
+  /** Where the handler sent the dog to hunt dead. */
+  seekTarget: Vec2 | null = null;
+  /** Report-worthy work since the simulation last read it. */
+  readonly log: DogLogEvent[] = [];
   /** Normalized progress through the current beat (distance-based for stalk). */
   scentProgress = 0;
 
@@ -450,6 +488,17 @@ export class Dog {
   private handlerSample: Vec2 | null = null;
   /** Side of the handler's line the previous cover beat lay on (-1, 0, 1). */
   private beatSide = 0;
+  private castMsLeft = 0;
+  private castArrived = false;
+  private seekMsLeft = 0;
+  private seekArrived = false;
+  private seekPhase = 0;
+  private seekElapsedMs = 0;
+  /** A point that broke to follow its bird; resolves as relocated or unproductive. */
+  private followingPointId: number | null = null;
+  /** Searching a marked fall whose bird has moved. */
+  private markSearchMs = 0;
+  private creepLogged = false;
   /** Open-ground cast: which side of the handler's line the dog is casting to. */
   private castSide = 1;
 
@@ -597,9 +646,11 @@ export class Dog {
         }
       }
     }
-    if (env.recall && hearsWhistle && (this.state === 'quartering' || this.state === 'tracking' || this.state === 'marking')) {
+    if (env.recall && hearsWhistle && (this.state === 'quartering' || this.state === 'tracking' || this.state === 'marking'
+      || this.state === 'whoa' || this.state === 'seeking')) {
       if (this.state === 'marking') { this.markingBirdIds = []; this.needsSearch = true; }
       this.state = 'recalled';
+      this.clearDirection();
       this.resetScentApproach();
     }
 
@@ -629,6 +680,14 @@ export class Dog {
           : Math.min(requested, Math.max(0, dist(this.pos, env.hunterPos) - env.heelFollowRange * .8) * (1 - Math.exp(-3 * dt)));
         this.advance(this.heading, step);
       }
+      return;
+    }
+
+    if (this.state === 'whoa') {
+      // Stands where it was stopped, facing its line, until released or
+      // whistled in. It still watches a rise, which the flush handles.
+      this.gait = 'still';
+      this.staminaMs = Math.min(this.maxStaminaMs, this.staminaMs + dtMs);
       return;
     }
 
@@ -670,7 +729,7 @@ export class Dog {
       this.advance(this.heading, BREAKING_SPEED * movementDt);
       // A chasing dog bumps everything it runs past.
       const bumped = this.nearestBirdWithin(birds, 'hidden', BREAK_BUMP_RADIUS);
-      if (bumped) this.bumpedBirdId = bumped.id;
+      if (bumped) { this.bumpedBirdId = bumped.id; this.log.push({ kind: 'bump', birdId: bumped.id }); }
       return;
     }
 
@@ -689,6 +748,7 @@ export class Dog {
         // A running bird broke the point — road it. Meaningful displacement
         // also breaks a stale point before the bird leaves the distance ring.
         this.state = 'tracking';
+        this.followingPointId = pointed.id;
         this.pointedBirdId = null;
         this.resetCreep();
         this.beginScentApproach(pointed, 'stalking');
@@ -711,11 +771,36 @@ export class Dog {
       }
 
       if (target.state === 'downed') {
-        if (dist(this.pos, target.pos) > (env.pickupRange ?? RETRIEVE_RANGE)) {
+        // A dog goes where it saw the bird fall. Only once it winds the bird
+        // itself does it follow a wounded runner that has left the mark.
+        const winded = dist(this.pos, target.pos) <= this.deadScentRange(env);
+        if (winded && target.marked === false) target.marked = true;
+        const goal = winded || !target.fallPos ? target.pos : target.fallPos;
+        const reach = env.pickupRange ?? RETRIEVE_RANGE;
+        if (goal !== target.pos && dist(this.pos, goal) <= (this.markSearchMs > 0 ? 16 : Math.max(reach, 3))) {
+          // At the mark with no bird: circle it, nose down, for a while.
+          this.markSearchMs += dtMs;
           this.gait = 'trot';
           this.retrieveHoldMs = 0;
-          this.advanceRetrieve(target.pos, env.pickupRange ?? RETRIEVE_RANGE, this.trackSpeed * movementDt, dt, env);
+          if (this.markSearchMs >= MARK_SEARCH_MS * (env.searchMult ?? 1)) {
+            target.lost = true; target.marked = false;
+            this.log.push({ kind: 'dead-lost', birdId: target.id });
+            this.state = 'quartering';
+            this.retrieveTargetId = null;
+            this.markSearchMs = 0;
+            return;
+          }
+          this.seekPhase += dt * 1.8;
+          const radius = 2 + Math.min(9, this.markSearchMs / 1000 * .9);
+          const aim = { x: goal.x + Math.cos(this.seekPhase) * radius, y: goal.y + Math.sin(this.seekPhase) * radius };
+          this.heading = turnToward(this.heading, Math.atan2(aim.y - this.pos.y, aim.x - this.pos.x), 4 * dt);
+          this.advance(this.heading, this.trackSpeed * .7 * movementDt);
+        } else if (dist(this.pos, target.pos) > reach) {
+          this.gait = 'trot';
+          this.retrieveHoldMs = 0;
+          this.advanceRetrieve(goal, goal === target.pos ? reach : 1, this.trackSpeed * movementDt, dt, env);
         } else {
+          this.markSearchMs = 0;
           this.gait = 'still';
           this.retrieveHoldMs += dtMs;
           const holdNeeded = RETRIEVE_HOLD_MS +
@@ -767,14 +852,49 @@ export class Dog {
       return;
     }
 
-    // A bird on the ground outranks fresh scent: fetch it first.
-    const downed = this.nearestBirdWithin(birds, 'downed', Infinity, env.reservedRetrieveIds);
+    // A bird on the ground outranks fresh scent: fetch it first. The dog
+    // knows the falls it marked; any other it has to wind for itself.
+    const downed = this.fallToFetch(birds, env);
     if (downed) {
+      if (this.state === 'seeking' || downed.marked === false) this.log.push({ kind: 'dead-found', birdId: downed.id });
+      if (downed.marked === false) downed.marked = true;
+      downed.lost = false;
       this.state = 'retrieving';
+      this.seekTarget = null;
       this.resetScentApproach();
       this.retrieveTargetId = downed.id;
       this.carryingBirdId = null;
       this.retrieveHoldMs = 0;
+      this.markSearchMs = 0;
+      return;
+    }
+
+    if (this.state === 'seeking' && this.seekTarget) {
+      // "Dead bird": get to where the handler sent it, then hunt out from
+      // there in widening, nose-down circles until the time runs out.
+      this.seekMsLeft -= dtMs;
+      this.work(dtMs * (env.drainMult ?? 1));
+      const target = this.seekTarget;
+      if (!this.seekArrived && dist(this.pos, target) <= 3) this.seekArrived = true;
+      if (this.seekMsLeft <= 0) {
+        if (birds.some(b => b.state === 'downed' && !b.fallPending && b.marked === false)) this.log.push({ kind: 'dead-lost' });
+        this.seekTarget = null;
+        this.state = 'quartering';
+        return;
+      }
+      if (!this.seekArrived) {
+        this.gait = 'run';
+        this.heading = turnToward(this.heading, Math.atan2(target.y - this.pos.y, target.x - this.pos.x), 5 * dt);
+        this.advance(this.heading, Math.min(dist(this.pos, target), this.trackSpeed * movementDt));
+        return;
+      }
+      this.seekElapsedMs += dtMs;
+      this.seekPhase += dt * 1.6;
+      const radius = 2 + Math.min(12, this.seekElapsedMs / 1000 * .8);
+      const aim = { x: target.x + Math.cos(this.seekPhase) * radius, y: target.y + Math.sin(this.seekPhase) * radius };
+      this.gait = 'trot';
+      this.heading = turnToward(this.heading, Math.atan2(aim.y - this.pos.y, aim.x - this.pos.x), 4 * dt);
+      this.advance(this.heading, this.trackSpeed * .75 * movementDt);
       return;
     }
 
@@ -787,6 +907,7 @@ export class Dog {
         this.willHonor = this.rng() >= breedBreakChance(this.profile.breed, this.profile.level);
       }
       if (this.willHonor) {
+        this.log.push({ kind: 'back' });
         this.state = 'honoring';
         this.resetScentApproach();
         this.pointedBirdId = null;
@@ -931,6 +1052,11 @@ export class Dog {
           this.resetScentApproach();
           this.heading = direct;
           this.state = 'pointing';
+          this.log.push({ kind: this.followingPointId === bird.id ? 'relocated' : 'point', birdId: bird.id });
+          this.followingPointId = null;
+          this.steadied = false;
+          this.creepLogged = false;
+          this.clearDirection();
           this.pointedBirdId = bird.id;
           this.pointOrigin = { id: bird.id, x: bird.pos.x, y: bird.pos.y };
           this.gait = 'still';
@@ -939,6 +1065,13 @@ export class Dog {
       }
     }
     this.resetScentApproach();
+    if (this.followingPointId !== null) {
+      // The bird it pointed has slipped away without being produced.
+      if (birds.some(candidate => candidate.id === this.followingPointId && candidate.state === 'hidden')) {
+        this.log.push({ kind: 'unproductive', birdId: this.followingPointId });
+      }
+      this.followingPointId = null;
+    }
 
     // Quartering: hunt objectives, not open ground. With cover in reach the
     // dog casts to a patch and works it until it feels checked; only a
@@ -946,6 +1079,28 @@ export class Dog {
     this.state = 'quartering';
     this.work(dtMs * (env.drainMult ?? 1));
     this.tickCoverMemory(dtMs);
+    if (this.castTarget) {
+      this.castMsLeft -= dtMs;
+      if (this.castMsLeft <= 0) this.castTarget = null;
+    }
+    if (this.castTarget && !this.castArrived) {
+      if (dist(this.pos, this.castTarget) <= CAST_ARRIVE) {
+        this.castArrived = true;
+        this.localCoverBeat = null; this.coverIdx = null;
+      } else {
+        // "This way": a straight, driving cast to the ground the handler
+        // pointed at. Scent still interrupts it above.
+        this.gait = 'run';
+        const aim = Math.atan2(this.castTarget.y - this.pos.y, this.castTarget.x - this.pos.x);
+        this.heading = turnToward(this.heading, aim, COVER_TURN_RATE * 1.5 * dt);
+        this.steerOffEdges(dt);
+        this.advanceSearch(0, this.workingSpeed(env, this.speed) * CAST_SPEED_MULT * movementDt, dt,
+          !!(this.localPheasantSearch(env) || this.localPrairieSearch(env) || this.localUplandSearch(env)));
+        return;
+      }
+    }
+    // Once there, the cast ground is the dog's working centre until it expires.
+    if (this.castTarget) env = { ...env, workAnchor: this.castTarget };
     const patch = this.chooseCover(env);
     const localBeat = this.localCoverBeat !== null;
     const continuousSearch = !!(this.localPheasantSearch(env) || this.localPrairieSearch(env) || this.localUplandSearch(env));
@@ -1081,6 +1236,106 @@ export class Dog {
     this.advanceSearch(weave, this.workingSpeed(env, this.speed) * movementDt, dt, continuousSearch);
   }
 
+  /**
+   * The handler speaks. Every command carries only as far as the whistle.
+   * Retrieves are never interrupted; a point can be steadied or released to
+   * relocate; a breaking dog can be stopped.
+   */
+  command(cmd: HandlerCommand, birds: readonly Bird[], hunterPos?: Vec2, hearing = WHISTLE_RANGE): CommandResponse {
+    const response = hunterPos && dist(this.pos, hunterPos) > hearing ? 'out-of-earshot' : this.obey(cmd, birds);
+    this.log.push({ kind: 'command', command: cmd.kind, response });
+    return response;
+  }
+
+  private obey(cmd: HandlerCommand, birds: readonly Bird[]): CommandResponse {
+    const s = this.state;
+    if (s === 'retrieving' || this.raptorDuty) return 'busy';
+    switch (cmd.kind) {
+      case 'whoa':
+        if (s === 'pointing' || s === 'honoring') {
+          // Steady on point: no more creeping, and a better chance to stand the flush.
+          this.steadied = true;
+          this.creepPlanned = true; this.creepStepsLeft = 0;
+          return 'steadied';
+        }
+        if (s === 'heel' || s === 'recalled') return 'busy';
+        if (s === 'whoa') return 'stopped';
+        this.state = 'whoa';
+        this.pointedBirdId = null;
+        this.markingBirdIds = [];
+        this.clearDirection();
+        this.resetScentApproach();
+        this.gait = 'still';
+        return 'stopped';
+      case 'release': {
+        if (s === 'whoa' || s === 'marking') { this.state = 'quartering'; this.markingBirdIds = []; return 'released'; }
+        if (s === 'heel') { this.castOff(); return 'released'; }
+        if (s === 'pointing') {
+          // Relocate: break the point and road in on the bird, wherever it went.
+          const bird = birds.find(candidate => candidate.id === this.pointedBirdId);
+          if (!bird || bird.state !== 'hidden') return 'busy';
+          this.state = 'tracking';
+          this.followingPointId = bird.id;
+          this.pointedBirdId = null;
+          this.steadied = false;
+          this.resetCreep();
+          this.beginScentApproach(bird, 'stalking');
+          return 'relocating';
+        }
+        return 'busy';
+      }
+      case 'cast':
+        if (!cmd.target || !['quartering', 'heel', 'whoa', 'marking', 'recalled', 'seeking'].includes(s)) return 'busy';
+        if (s === 'heel') this.castOff();
+        this.state = 'quartering';
+        this.markingBirdIds = []; this.seekTarget = null;
+        this.castTarget = { ...cmd.target };
+        this.castMsLeft = CAST_COMMAND_MS;
+        this.castArrived = false;
+        this.localCoverBeat = null; this.coverIdx = null;
+        this.checkedSearchPosition = null;
+        return 'cast';
+      case 'dead':
+        if (!cmd.target || !['quartering', 'tracking', 'heel', 'whoa', 'marking', 'recalled', 'seeking'].includes(s)) return 'busy';
+        this.state = 'seeking';
+        this.markingBirdIds = []; this.castTarget = null;
+        this.resetScentApproach();
+        this.seekTarget = { ...cmd.target };
+        this.seekMsLeft = SEEK_COMMAND_MS;
+        this.seekArrived = false;
+        this.seekElapsedMs = 0;
+        this.checkedSearchPosition = null;
+        return 'hunting-dead';
+    }
+  }
+
+  /** Drop any handler-given direction (a cast or a dead-bird send). */
+  private clearDirection(): void {
+    this.castTarget = null; this.castMsLeft = 0; this.castArrived = false;
+    this.seekTarget = null; this.seekMsLeft = 0;
+  }
+
+  /** How close a dog must get to wind a dead or wounded bird. */
+  private deadScentRange(env: DogEnv): number {
+    return SCENT_RADIUS * noseMult(this.profile.breed, this.profile.level) * DEAD_SCENT_MULT
+      * (env.scentMult ?? 1) * (this.state === 'seeking' ? 1.4 : 1);
+  }
+
+  /** The nearest fall this dog knows about or can smell right now. */
+  private fallToFetch(birds: Bird[], env: DogEnv): Bird | null {
+    let best: Bird | null = null, bestDistance = Infinity;
+    const scent = this.deadScentRange(env);
+    for (const bird of birds) {
+      if (bird.state !== 'downed' || bird.fallPending || env.reservedRetrieveIds?.includes(bird.id)) continue;
+      const d = dist(this.pos, bird.pos);
+      const known = bird.marked !== false && !bird.lost;
+      if (!known && d > scent) continue;
+      const toward = known && bird.fallPos && d > scent ? dist(this.pos, bird.fallPos) : d;
+      if (toward < bestDistance) { best = bird; bestDistance = toward; }
+    }
+    return best;
+  }
+
   private advanceSearch(weave: number, distance: number, dt: number, continuous: boolean): void {
     // Rim work uses no weave, while the interior comb may enter with its
     // sinusoid already near a peak. Ease that directional offset in both
@@ -1130,13 +1385,16 @@ export class Dog {
    * swing to the other side of that line after each beat. It never reads
    * hidden birds; it only orders reachable habitat.
    */
-  private laneCost(center: Vec2, anchor: Vec2, size: number): number {
+  private laneCost(center: Vec2, anchor: Vec2, size: number, behindWeight = 1.1): number {
     if (this.handlerHeading === null) return 0;
     const fx = Math.cos(this.handlerHeading), fy = Math.sin(this.handlerHeading);
     const dx = center.x - anchor.x, dy = center.y - anchor.y;
     const forward = dx * fx + dy * fy, lateral = fx * dy - fy * dx;
     let cost = 0;
-    if (forward < -size * .5) cost += (-forward - size * .5) * 1.1;
+    // Heavier weights (pheasant) also drop the slack, so a beat level with
+    // the gun loses to one out in front of it.
+    const slack = behindWeight > 2 ? 0 : size * .5;
+    if (forward < -slack) cost += (-forward - slack) * behindWeight;
     if (this.beatSide !== 0 && Math.sign(lateral) === this.beatSide && Math.abs(lateral) > size * .5) cost += size * 1.2;
     return cost;
   }
@@ -1377,9 +1635,14 @@ export class Dog {
     const uphillX = upland === 'chukar' && Math.abs(Math.cos(env.slopeAngle ?? -Math.PI / 2)) > Math.abs(Math.sin(env.slopeAngle ?? -Math.PI / 2));
     const beatWidth = upland === 'chukar' ? uphillX ? CHUKAR_UPHILL_BEAT : CHUKAR_CONTOUR_BEAT : beatSize;
     const beatHeight = upland === 'chukar' ? uphillX ? CHUKAR_CONTOUR_BEAT : CHUKAR_UPHILL_BEAT : beatSize;
+    const pheasant = this.localPheasantSearch(env);
     if (this.localCoverBeat) {
       const r = this.localCoverBeat.rect;
-      if (dist({ x: rectCx(r), y: rectCy(r) }, anchor) <= range * 1.15) return r;
+      // A pheasant dog works the cover ahead of the gun: a beat the walking
+      // handler has left behind is dropped rather than finished.
+      const leftBehind = pheasant && this.handlerHeading !== null && env.hunterPos
+        && (rectCx(r) - env.hunterPos.x) * Math.cos(this.handlerHeading) + (rectCy(r) - env.hunterPos.y) * Math.sin(this.handlerHeading) < -LOCAL_COVER_BEAT * .5;
+      if (!leftBehind && dist({ x: rectCx(r), y: rectCy(r) }, anchor) <= range * 1.15) return r;
       this.localCoverBeat = null; this.coverIdx = null;
     }
     let best: { key: string; rect: Rect; index: number } | null = null;
@@ -1402,7 +1665,7 @@ export class Dog {
           if (dist(center, anchor) > range - .5) continue;
           const score = dist(this.pos, center) + (env.trails?.length ? distanceToTrail(center, env.trails) * routeWeight : 0)
             + (1 - (env.coverAffinity?.(center) ?? .5)) * habitatWeight
-            + this.laneCost(center, anchor, Math.max(beatWidth, beatHeight));
+            + this.laneCost(center, anchor, Math.max(beatWidth, beatHeight), pheasant ? 3.2 : 1.1);
           if (score < bestScore) { bestScore = score; best = { key, rect: { x, y, w, h }, index }; }
         }
       }
@@ -1468,10 +1731,14 @@ export class Dog {
    */
   onFlush(rng: RNG, toward: Vec2, watchBirdIds?: readonly number[]): boolean {
     if (watchBirdIds && this.state === 'breaking') return true;
-    if (watchBirdIds && ['retrieving', 'recalled', 'heel'].includes(this.state) && !this.searchAreaChecked) return false;
+    if (watchBirdIds && ['retrieving', 'recalled', 'heel', 'seeking'].includes(this.state) && !this.searchAreaChecked) return false;
     if (this.searchAreaChecked && (this.state === 'recalled' || this.state === 'heel')) this.state = 'quartering';
     this.checkedSearchPosition = null;
-    if (rng() >= breedBreakChance(this.profile.breed, this.profile.level)) {
+    // A dog the handler steadied — whoa'd on point, backing, or stopped — is
+    // far more likely to stand through the rise than one left to itself.
+    const steady = this.steadied || this.state === 'whoa' ? STEADIED_BREAK_MULT : 1;
+    this.steadied = false;
+    if (rng() >= breedBreakChance(this.profile.breed, this.profile.level) * steady) {
       // A neighboring rise does not resolve this dog's separate point.
       // Keep the nose line and target until its own bird moves or flushes.
       // An unsteady dog can still break through the same steadiness roll.
@@ -1488,6 +1755,8 @@ export class Dog {
       return false;
     }
     this.markingBirdIds = [];
+    this.log.push({ kind: 'break' });
+    this.clearDirection();
     this.state = 'breaking';
     this.breakMsLeft = BREAKING_MS;
     this.heading = Math.atan2(toward.y - this.pos.y, toward.x - this.pos.x);
@@ -1513,6 +1782,10 @@ export class Dog {
       }
       return;
     }
+    if (this.creepStepsLeft > 0 && !this.creepLogged && this.creepTimerMs - dtMs <= 0) {
+      this.creepLogged = true;
+      this.log.push({ kind: 'creep', birdId: pointed.id });
+    }
     if (this.creepStepsLeft === 0) return;
     this.creepTimerMs -= dtMs;
     if (this.creepTimerMs > 0) return;
@@ -1522,6 +1795,7 @@ export class Dog {
     this.advance(this.heading, CREEP_STEP_PX);
     if (dist(this.pos, pointed.pos) <= BUMP_DISTANCE) {
       this.bumpedBirdId = pointed.id;
+      this.log.push({ kind: 'bump', birdId: pointed.id });
       this.creepStepsLeft = 0;
     }
   }

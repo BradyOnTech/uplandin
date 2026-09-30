@@ -88,6 +88,15 @@ describe('field quartering and search movement', () => {
       // No on-the-spot pivots while running (>6 rad/s path turn).
       expect(m.snapTurnPct).toBeLessThan(1);
     }, 60_000);
+
+  // Cattail edges run beside the trail, so a pheasant dog is often level with
+  // the gun while it works them; it should still be out in front most of the time.
+  it.each(['gsp', 'english-setter'])('keeps the pheasant search in front of the gun (%s)', breed => {
+    const m = measure('pheasant-coverts', breed, 7, 120);
+    expect(m.aheadPct).toBeGreaterThanOrEqual(68);
+    expect(m.behindPct).toBeLessThanOrEqual(10);
+    expect(m.snapTurnPct).toBeLessThan(1);
+  }, 60_000);
 });
 
 describe('search momentum', () => {

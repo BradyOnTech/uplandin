@@ -26,6 +26,8 @@ export class PlayerSystem implements Subsystem {
   private stepDistance = 0;
   private captureMode = false;
   private recallPending = false;
+  /** Dog commands pressed since the hunt last read them. */
+  private commandQueue: Array<'whoa' | 'release' | 'cast' | 'dead'> = [];
   private abort = new AbortController();
   private touchMove: { id: number; x: number; y: number; dx: number; dy: number; running:boolean } | null = null;
   private touchLook: { id: number; x: number; y: number } | null = null;
@@ -63,6 +65,7 @@ export class PlayerSystem implements Subsystem {
     signal.addEventListener('abort', clear, { once:true });
     ctx.events.addEventListener('hunt-action', ((event: CustomEvent) => {
       if (!ctx.paused && event.detail === 'recall') this.recallPending = true;
+      if (!ctx.paused && ['whoa', 'release', 'cast', 'dead'].includes(event.detail)) this.commandQueue.push(event.detail);
     }) as EventListener, { signal });
     window.addEventListener('blur', clear, { signal });
     ctx.events.addEventListener('hunt-touch-look', ((event: CustomEvent<{dx:number;dy:number}>) => {
@@ -103,6 +106,8 @@ export class PlayerSystem implements Subsystem {
         if (ctx.paused || (event.target instanceof HTMLElement && /INPUT|SELECT|BUTTON/.test(event.target.tagName))) return;
         this.keys.add(event.code);
         if (event.code === 'KeyQ' && !event.repeat) this.recallPending = true;
+        const command = ({ KeyZ: 'whoa', KeyX: 'release', KeyC: 'cast', KeyV: 'dead' } as const)[event.code as 'KeyZ'];
+        if (command && !event.repeat && !document.body?.classList.contains('falconry-hunt')) this.commandQueue.push(command);
         if (['KeyW','KeyA','KeyS','KeyD','Space'].includes(event.code)) event.preventDefault();
       }, { signal });
       window.addEventListener('keyup', (event) => this.keys.delete(event.code), { signal });
@@ -160,6 +165,7 @@ export class PlayerSystem implements Subsystem {
     return this.waterDepth < .12 && ((keyboardMoving && (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'))) || !!this.touchMove?.running);
   }
   consumeRecall(): boolean { const pending = this.recallPending; this.recallPending = false; return pending; }
+  consumeCommands(): Array<'whoa' | 'release' | 'cast' | 'dead'> { return this.commandQueue.splice(0); }
   setHuntHeading(ctx: Ctx, heading: number): void { this.yaw = -heading - Math.PI / 2; this.place(ctx); }
   setPose(ctx: Ctx, x: number, z: number, yawDeg: number, pitchDeg = 0): void {
     this.waterDepth = this.water?.depthAtWorld(x, z) ?? 0;

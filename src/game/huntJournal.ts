@@ -17,7 +17,10 @@ export interface CareerJournalEntry {
   henDowns: number;
   hunterXp: number;
   /** Names/breeds at the time; later kennel changes do not rewrite history. */
-  dogs: { name: string; breedId: string }[];
+  dogs: { name: string; breedId: string; note?: string }[];
+  /** Downed birds never recovered, and unsafe shots. Absent on older entries. */
+  lost?: number;
+  unsafe?: number;
 }
 
 export const HUNT_JOURNAL_LIMIT = 30;
@@ -33,7 +36,7 @@ function readEntry(value: unknown): CareerJournalEntry | null {
   const dogs: CareerJournalEntry['dogs'] = [];
   for (const dog of value.dogs) {
     if (!record(dog) || !text(dog.name) || !text(dog.breedId)) return null;
-    dogs.push({ name: dog.name, breedId: dog.breedId });
+    dogs.push({ name: dog.name, breedId: dog.breedId, ...(text(dog.note) ? { note: dog.note } : {}) });
   }
   return {
     huntNumber: value.huntNumber,
@@ -47,6 +50,8 @@ function readEntry(value: unknown): CareerJournalEntry | null {
     henDowns: value.henDowns as number,
     hunterXp: value.hunterXp as number,
     dogs,
+    ...(count(value.lost) && value.lost > 0 ? { lost: value.lost } : {}),
+    ...(count(value.unsafe) && value.unsafe > 0 ? { unsafe: value.unsafe } : {}),
   };
 }
 
@@ -79,8 +84,10 @@ export function formatHuntJournalEntry(entry: CareerJournalEntry): {
     dateLabel: dateLabel(safe.date),
     dogsLabel: safe.dogs.map((dog) => {
       const breed = BREEDS.find((candidate) => candidate.id === dog.breedId);
-      return breed ? `${dog.name} (${breed.name})` : dog.name;
+      const label = breed ? `${dog.name} (${breed.name})` : dog.name;
+      return dog.note ? `${label}: ${dog.note}` : label;
     }).join(' · '),
-    resultLabel: `${safe.retrieved} retrieved · ${safe.downed} down · ${safe.escaped} escaped`,
+    resultLabel: `${safe.retrieved} retrieved · ${safe.downed} down · ${safe.escaped} escaped`
+      + (safe.lost ? ` · ${safe.lost} lost` : '') + (safe.unsafe ? ` · ${safe.unsafe} unsafe shot${safe.unsafe === 1 ? '' : 's'}` : ''),
   };
 }

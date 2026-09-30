@@ -2,6 +2,7 @@ import type { HuntState } from '../game/state';
 import type { CareerHuntResult } from '../game/huntResults';
 import { dogCareerProgress, hunterCareerProgress } from '../game/careerProgress';
 import { dateLabel } from '../game/season';
+import { dogReport, handlerNotes } from '../game/dogReport';
 
 /** Observed field outcomes only; hidden stocking is not a completion target. */
 export function fieldNotes(hunt: HuntState, dogCount: number, seconds: number) {
@@ -31,7 +32,9 @@ export function careerFieldNotes(result: CareerHuntResult) {
   const outlook = hunterCareerProgress(result.career);
   return {
     heading: result.hunterLevelsGained > 0 ? `Hunter level ${level} reached` : `Hunter level ${level}`,
-    hunterAward: `+${result.hunterGained} XP${result.henFine > 0 ? ` · protected-hen penalty applied (${result.henFine} XP)` : ''}`,
+    hunterAward: `+${result.hunterGained} XP${result.henFine > 0 ? ` · protected-hen penalty applied (${result.henFine} XP)` : ''}`
+      + ((result.lostFine ?? 0) > 0 ? ` · lost-bird penalty (${result.lostFine} XP)` : '')
+      + ((result.safetyFine ?? 0) > 0 ? ` · unsafe-shot penalty (${result.safetyFine} XP)` : ''),
     progress: outlook.progress,
     dogs: result.dogAwards.map(award => {
       const dog = result.career.kennel.find(candidate => candidate.id === award.dogId);
@@ -95,7 +98,36 @@ export function renderCareerFieldNotes(container: HTMLElement, result: CareerHun
   container.append(panel);
 }
 
-export function renderFieldNotes(container: HTMLElement, hunt: HuntState, dogCount: number, seconds: number, property: string, entry: string, career: CareerHuntResult | null = null): void {
+/** The dog's day in numbers and a few plain notes, then the handler's own. */
+export function renderDogReports(container: HTMLElement, hunt: HuntState, names: readonly string[]): void {
+  const section = document.createElement('section'); section.className = 'field-dog-report';
+  section.setAttribute('aria-label', 'How the dogs worked');
+  for (let slot = 0; slot < names.length; slot++) {
+    const work = hunt.dogWork[slot]; if (!work) continue;
+    const report = dogReport(names[slot], work);
+    const card = document.createElement('div'); card.className = 'dog-report';
+    const heading = document.createElement('h3'); heading.textContent = report.name;
+    const stats = document.createElement('dl'); stats.className = 'dog-report-stats';
+    for (const stat of report.stats) {
+      const cell = document.createElement('div');
+      const term = document.createElement('dt'); term.textContent = stat.label;
+      const value = document.createElement('dd'); value.textContent = String(stat.value);
+      cell.append(term, value); stats.append(cell);
+    }
+    const notes = document.createElement('ul'); notes.className = 'dog-report-notes';
+    for (const note of report.notes) { const item = document.createElement('li'); item.textContent = note; notes.append(item); }
+    card.append(heading, stats, notes); section.append(card);
+  }
+  const handler = handlerNotes(hunt);
+  if (handler.length) {
+    const list = document.createElement('ul'); list.className = 'handler-notes';
+    for (const note of handler) { const item = document.createElement('li'); item.textContent = note; list.append(item); }
+    section.append(list);
+  }
+  container.append(section);
+}
+
+export function renderFieldNotes(container: HTMLElement, hunt: HuntState, dogCount: number, seconds: number, property: string, entry: string, career: CareerHuntResult | null = null, dogNames: readonly string[] = []): void {
   const notes = fieldNotes(hunt, dogCount, seconds);
   const location = document.createElement('p'); location.className = 'field-notes-location';
   location.textContent = `${property} · ${entry}`;
@@ -111,6 +143,9 @@ export function renderFieldNotes(container: HTMLElement, hunt: HuntState, dogCou
     cell.append(term, value); rows.append(cell);
   }
   const note = document.createElement('p'); note.className = 'field-notes-note'; note.textContent = notes.note;
-  container.replaceChildren(location, bag, rows, note);
+  container.replaceChildren(location, bag, rows);
+  // How the dog worked comes before the closing line and career progress.
+  if (dogNames.length) renderDogReports(container, hunt, dogNames.slice(0, dogCount));
+  container.append(note);
   if (career) renderCareerFieldNotes(container, career);
 }

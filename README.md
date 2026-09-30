@@ -32,9 +32,13 @@ The standalone Quail field defaults to the liver-and-white GSP and morning light
 `?dogstyle=smooth` or `?dogstyle=faceted` renders every dog in one art style (see the
 [dog style study](docs/3d/dog-style-study.md) and `tools3d/dog-comparison.html`).
 Saved Career and Quick Hunt launches retain their selected dogs and gear.
+In the 3D field you handle the dog with **Z** whoa, **X** hunt on (or relocate from a point),
+**C** cast the way you face and **V** dead bird where you look, alongside **Q** whistle; on
+touch these are Whoa and the Dog ▸ tray. See [handling and field craft](docs/3d/handling-and-field-craft.md).
 For a phone playtest on the same Wi-Fi, run `npm run play:mobile` and open the
-printed Network address. Preparation's Conditions panel includes the display
-quality choice; phones select touch controls automatically.
+printed Network address. Preparation's Settings include the display
+quality choice; phones select touch controls automatically. Add `&diagnostics=1`
+to a field URL for the frame-time capture described in the handling doc.
 See the [mobile playtest guide](docs/3d/mobile-playtest.md) for controls and validation limits.
 
 Two modes from the title screen:

@@ -9,7 +9,7 @@ import type { TerrainSystem } from './terrain';
 import type { PropertyHabitatSystem } from './propertyHabitat';
 import type { LandmarksSystem } from './landmarks';
 import { terrainBlocksShot } from '../shotVisibility';
-import { TravellingShot } from '../shotPattern';
+import { SHOT_RANGE_M, TravellingShot } from '../shotPattern';
 import { shotSightPicture, mobileShotFov, shotAssistancePreference } from '../inputMode';
 import { resolveShotAssistance, type ShotAssistanceProfile, type ShotTriggerSource } from '../shotAssistance';
 import { createSportingShotgun, type SportingShotgun } from '../assets/shotgun';
@@ -76,6 +76,7 @@ export class GunSystem implements Subsystem {
   private hunt!: Hunt3DSystem;
   private birds!: BirdsSystem;
   private terrain!: TerrainSystem;
+  private dogProbe = { x: 0, z: 0 };
   private gun!: GunConfig;
   private sporting?: SportingShotgun;
   /** Staged visual inspection only; never changes ammo or reload timing. */
@@ -457,6 +458,7 @@ export class GunSystem implements Subsystem {
     const pattern = new TravellingShot(ctx.camera.position, this.fwd, this.gun.spread / 400,
       this.birds.shotTargets(presentationPhase), request.assistance);
     const origin = pattern.origin;
+    this.judgeShotSafety(ctx);
     this.shots.push({ pattern, presentationPhase,
       visible: target => !terrainBlocksShot(origin, target, (x, z) => this.terrain.heightAt(x, z))
         && !habitat?.blocksShot?.(origin, target)
@@ -468,6 +470,39 @@ export class GunSystem implements Subsystem {
     });
   }
 
+  /**
+   * A shot with a dog in or near its line, or skimming the cover where a dog
+   * may be working, counts against the hunter and is called out at once.
+   */
+  private judgeShotSafety(ctx: Ctx): void {
+    const cam = ctx.camera.position, d = this.fwd;
+    const hunt = this.hunt as Partial<Hunt3DSystem>;
+    if (!hunt.dogCount || !hunt.dogWorld || !hunt.recordShotSafety) return;
+    for (let slot = 0; slot < hunt.dogCount(); slot++) {
+      const dog = this.hunt.dogWorld(this.dogProbe, slot);
+      const dx = dog.x - cam.x, dz = dog.z - cam.z, dy = this.terrain.heightAt(dog.x, dog.z) + .45 - cam.y;
+      const range = Math.hypot(dx, dy, dz);
+      if (range > SHOT_RANGE_M + 5 || range < .5) continue;
+      const along = (dx * d.x + dy * d.y + dz * d.z);
+      if (along <= 0) continue;
+      const off = Math.sqrt(Math.max(0, range * range - along * along));
+      // A dog within about two metres of the line is in it.
+      if (off < 1.2 + along * .035) {
+        this.hunt.recordShotSafety('dog-in-line');
+        ctx.events.dispatchEvent(new CustomEvent('dog-feedback', { detail: 'Dog in the line of fire · never swing through your dog' }));
+        return;
+      }
+    }
+    for (const distance of [12, 22, 32]) {
+      const x = cam.x + d.x * distance, y = cam.y + d.y * distance, z = cam.z + d.z * distance;
+      if (y - this.terrain.heightAt(x, z) < 1.1) {
+        this.hunt.recordShotSafety('low');
+        ctx.events.dispatchEvent(new CustomEvent('dog-feedback', { detail: 'Low shot · let the bird clear the cover' }));
+        return;
+      }
+    }
+  }
+
   // Birds advance first. Each shot samples successive fixed-tick spans at its
   // original displayed phase, avoiding a one-tick lead penalty from smoother
   // rendering or a timeline that changes with later display frame rates.
@@ -477,7 +512,8 @@ export class GunSystem implements Subsystem {
       const targets = this.birds.shotTargets(shot.presentationPhase);
       const birdId = shot.pattern.advance(dtMs / 1000, targets, shot.visible);
       if (!shot.pattern.done) return true;
-      const hit = birdId !== null && this.hunt.resolveBird(birdId, 'downed');
+      const hit = birdId !== null && (shot.pattern.wounding
+        ? this.hunt.resolveBird(birdId, 'downed', undefined, { wounded: true }) : this.hunt.resolveBird(birdId, 'downed'));
       if (hit && birdId !== null) this.birds.downBird(birdId, shot.pattern.impact ?? undefined);
       if (this.shotCallout) {
         this.shotCallout.textContent = hit ? 'HIT!' : 'MISS';

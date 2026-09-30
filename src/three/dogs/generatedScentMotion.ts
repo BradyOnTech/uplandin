@@ -17,6 +17,8 @@ export type GeneratedFieldPerformance = 'neutral' | 'search' | 'checking' | 'loc
 export function fieldPerformance(intent: GeneratedFieldIntent | undefined): GeneratedFieldPerformance {
   if (!intent) return 'neutral';
   if (intent.state === 'pointing' || intent.state === 'honoring') return 'point';
+  if (intent.state === 'whoa') return 'waiting';
+  if (intent.state === 'seeking') return 'stalking';
   if (intent.state === 'tracking') {
     // Range holds keep their scent stage, but must never lift a pointing paw
     // or continue casting while the simulation waits for the handler.
@@ -57,29 +59,31 @@ export class GeneratedScentMotion {
         // actual turn, without inventing a target beyond the dog's knowledge.
         neckPitch = -.10; headPitch = .035;
         yaw = bearing * .7 + (moving ? Math.sin(this.elapsed * 1.65) * .10 : 0);
-        tailPitch = .06;
-        tailYaw = moving ? Math.sin(this.elapsed * 6.2) * .10 : 0;
+        // A merry, busy tail while hunting: the first thing that changes on game.
+        tailPitch = .08;
+        tailYaw = moving ? Math.sin(this.elapsed * 6.2) * .24 : 0;
         break;
       case 'checking':
         // First scent: lift into the air and interrupt the searching tail.
-        neckPitch = -.25; headPitch = .12; height = .018; reach = .025;
-        yaw = bearing; tailPitch = .18;
+        neckPitch = -.32; headPitch = .15; height = .022; reach = .025;
+        yaw = bearing; tailPitch = .3;
         break;
       case 'locating':
         neckPitch = .15; headPitch = -.14; reach = .025;
         // One narrowing check tied to the real finite locating beat, rather
         // than an endless sniff loop or an animation speed unrelated to travel.
         yaw = bearing + Math.sin(progress * Math.PI * 2) * .28 * (1 - progress);
-        tailPitch = .16;
-        tailYaw = Math.sin(progress * Math.PI * 2) * .05 * (1 - progress);
+        // Tail up and feathering fast: a dog making game, readable at range.
+        tailPitch = .3;
+        tailYaw = Math.sin(progress * Math.PI * 2) * .05 * (1 - progress) + Math.sin(this.elapsed * 17) * .13;
         break;
       case 'stalking':
       case 'locking':
         // Reach low and forward, then quiet the head as the source firms up.
         // The locking foreleg and final silhouette belong to the point pose.
         neckPitch = .32 + .08 * progress; headPitch = -.27;
-        reach = .045; height = -.025;
-        yaw = bearing * .8; tailPitch = .18;
+        reach = .05; height = -.04;
+        yaw = bearing * .8; tailPitch = .32;
         break;
       case 'waiting':
         // Four feet down, alert to the scent. This is neither idle nor a point.

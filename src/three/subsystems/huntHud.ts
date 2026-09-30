@@ -12,6 +12,9 @@ import type { GunSystem } from './gun';
 import type { Hunt3DSystem } from './hunt3d';
 import type { PlayerSystem } from './player';
 
+/** Touch hints name buttons; keyboard hints name keys. Safe without a DOM. */
+const touchControlsActive = () => typeof document !== 'undefined' && !!document.body?.classList.contains('touch-controls-active');
+
 /** DOM presentation adapter for the shared hunt snapshot. */
 export class HuntHudSystem implements Subsystem {
   readonly id = 'hunt-hud';
@@ -57,6 +60,8 @@ export class HuntHudSystem implements Subsystem {
   private truck = { x: 0, z: 0 };
   private dogWorld = { x: 0, z: 0 };
   private abort = new AbortController();
+  private dogCallout: HTMLElement | null = null;
+  private dogCalloutUntil = 0;
 
   init(ctx: Ctx): void {
     this.frozen = new URLSearchParams(location.search).has('capture');
@@ -136,6 +141,14 @@ export class HuntHudSystem implements Subsystem {
     }
     if (this.summary) this.summary.hidden = true;
     const options = { signal: this.abort.signal };
+    // What the dog did with a command, or a moment of its work, for a few seconds.
+    this.dogCallout = document.getElementById('dog-callout');
+    ctx.events.addEventListener('dog-feedback', ((event: CustomEvent<string>) => {
+      if (!this.dogCallout || this.frozen) return;
+      this.dogCallout.textContent = event.detail;
+      this.dogCallout.hidden = false;
+      this.dogCalloutUntil = this.fieldTime + 2.8;
+    }) as EventListener, options);
     // Graphics may have changed in Pause after this HUD was initialized.
     const preparationHref = () => build3DPreparationHref(location.search, this.hunt.areaConfig().id, this.hunt.dropPoint().id);
     if (isFalconryPractice(location.search)) document.getElementById('hunt-again')!.textContent = 'New drill';
@@ -157,6 +170,7 @@ export class HuntHudSystem implements Subsystem {
   update(ctx: Ctx, dt: number): void {
     if (this.frozen) return;
     this.fieldTime += dt;
+    if (this.dogCallout && !this.dogCallout.hidden && this.fieldTime >= this.dogCalloutUntil) this.dogCallout.hidden = true;
     const hunt = this.hunt.huntState();
     let downOnGround = 0;
     let retrieved = 0;
@@ -186,7 +200,15 @@ export class HuntHudSystem implements Subsystem {
     if (this.panel && encounter !== this.lastEncounter) {
       this.panel.dataset.encounter = encounter; this.lastEncounter = encounter;
     }
-    if (this.endButton) this.endButton.disabled = rise || downOnGround > 0 || !!(hawk && !hawk.canEnd);
+    // A bird on its way to hand holds the hunt open; ending with others down loses them.
+    const fetching = dogs.some(dog => dog.carryingBirdId !== null || dog.state === 'retrieving')
+      || hunt.birds.some(bird => bird.state === 'downed' && bird.fallPending);
+    if (this.endButton) {
+      this.endButton.disabled = rise || fetching || !!(hawk && !hawk.canEnd);
+      const lost = hunt.birds.filter(bird => bird.state === 'downed' && !bird.fallPending).length;
+      const label = lost > 0 ? `End hunt (leaves ${lost} bird${lost === 1 ? '' : 's'})` : 'End hunt';
+      if (this.endButton.textContent !== label) this.endButton.textContent = label;
+    }
     const shells = this.gun.shellsRemaining();
     const capacity = this.gun.shellCapacity();
     const trackingGuidance = trackedDog?.state === 'tracking'
@@ -196,6 +218,10 @@ export class HuntHudSystem implements Subsystem {
       ? `RELOADING · ${shells}/${capacity}`
       : rise
         ? `${this.hunt.riseLabel() ?? 'BIRD FLUSH'} · shells ${shells}/${capacity}${shells === 0 ? ' · R RELOAD' : ''}`
+      : trackedDog?.state === 'whoa'
+        ? touchControlsActive() ? 'WHOA · HUNT ON TO RELEASE' : 'WHOA · X HUNT ON · Q WHISTLE IN'
+      : trackedDog?.state === 'seeking'
+        ? 'DOG HUNTING DEAD'
       : trackedDog?.state === 'retrieving'
         ? trackedDog.carryingBirdId !== null
           ? 'DOG RETURNING WITH BIRD'
@@ -265,6 +291,7 @@ export class HuntHudSystem implements Subsystem {
         this.lastBeacon = beacon;
       }
       if (this.guidance) {
+        const touch = touchControlsActive();
         let cue = '';
         if (hawk && !hawk.canEnd) cue = hawk.phase === 'on-quarry' || hawk.phase === 'settling'
           ? 'The dog waits beside the hawk. Walk in and pick up onto the fist.'
@@ -277,7 +304,8 @@ export class HuntHudSystem implements Subsystem {
         else if (!rise && trackingGuidance) cue = trackingGuidance.detail;
         else if (!rise && trackedDog?.searchAreaChecked && (trackedDog.state === 'recalled' || trackedDog.state === 'heel'))
           cue = 'Nearby ground checked. Walk toward fresh cover to continue the search.';
-        else if (!rise && trackedDog?.state === 'heel') cue = 'Whistle again to send the dog hunting.';
+        else if (!rise && trackedDog?.state === 'heel') cue = touch ? 'Whistle again, or Dog ▸ Hunt on, to send the dog hunting.' : 'Whistle again (or X) to send the dog hunting · C casts it the way you face.';
+        else if (!rise && trackedDog?.state === 'pointing' && !trackedDog.steadied) cue = touch ? 'Whoa steadies the dog on point · Dog ▸ Hunt on sends it in to relocate.' : 'Z steadies the dog on point · X sends it in to relocate.';
         if (!rise && trackedDog?.state === 'quartering') {
           if (this.fieldTime < 35) cue = fieldSearchGuidance(hunt.areaId);
           else if (truckMeters < 14) cue = `${this.hunt.dropPoint().name} · back at the truck`;
@@ -313,7 +341,8 @@ export class HuntHudSystem implements Subsystem {
           const title = this.summary?.querySelector('h2');
           if (title) title.textContent = 'Field notes';
           renderFieldNotes(this.summaryCopy, hunt, this.hunt.dogCount(), this.fieldTime,
-            this.hunt.areaConfig().name, this.hunt.dropPoint().name, careerResult);
+            this.hunt.areaConfig().name, this.hunt.dropPoint().name, careerResult,
+            Array.from({ length: this.hunt.dogCount() }, (_, slot) => this.hunt.dogName(slot)));
         }
       }
       if (this.summary) this.summary.hidden = false;

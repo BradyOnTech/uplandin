@@ -351,7 +351,8 @@ const GAITS: Record<'run' | 'trot' | 'track', GaitCfg> = {
   run: {
     stride: 1.55, swing: 0.8, fold: 1.25, bob: 0.028, rock: 0.05,
     off: [0, 0.55, HALF + 0.35, HALF + 0.9],
-    tail: 0.25, wag: 0.1, wagHz: 5, neck: 0.06, head: 0.04,
+    // A merry, working tail at the gallop reads across a field.
+    tail: 0.25, wag: 0.2, wagHz: 5, neck: 0.06, head: 0.04,
   },
   // Diagonal 2-beat trot — level tail, level back, workmanlike.
   trot: {
@@ -2208,8 +2209,10 @@ export class DogSystem implements Subsystem {
         tNeck = THREE.MathUtils.lerp(-0.08, 0.1, p);
         tHeadP = 0.04 - tNeck * 0.55;
         tHeadY += Math.sin(p * Math.PI * 3.4) * (1 - p) * 0.16 * freedom;
-        tTailP = this.visualBreed === 'gsp' ? 0.13 : 0.24;
+        tTailP = this.visualBreed === 'gsp' ? 0.2 : 0.34;
         tTailY += Math.sin(p * Math.PI * 3.4 + Math.PI) * 0.08 * sd.profile.breed.motion.tailAction;
+        // On game: the tail comes up and feathers fast — readable at distance.
+        tTailY += snap ? 0 : Math.sin(time * 17) * 0.11 * sd.profile.breed.motion.tailAction;
       } else if (state === 'tracking' && sd.scentStage === 'stalking') {
         // Confidence turns into a controlled crouch. The topline stays firm;
         // neck reach, forehand weight and a quieting tail carry the intent.
@@ -2224,6 +2227,18 @@ export class DogSystem implements Subsystem {
           p,
         );
         tTailY *= 1 - p * 0.8;
+      }
+      if (state === 'tracking' && sd.scentStage === 'checking') {
+        // First scent: the head snaps up and the tail stops dead.
+        tNeck = -0.14; tHeadP = 0.12; tTailY = 0; tTailP = Math.max(tTailP, 0.3);
+      }
+      if (state === 'whoa') {
+        // Stopped on whoa: square, head up, tail still, watching.
+        tNeck = -0.1; tHeadP = 0.08; tTailY = 0; tTailP = 0.18;
+      }
+      if (state === 'seeking') {
+        // Hunting dead: nose to the ground, tail busy.
+        tNeck = 0.32; tHeadP = 0.05 - tNeck * 0.55; tTailP = 0.14;
       }
       if (state === 'retrieving') {
         // Marked fetch and carry are purposeful travel, not nose-down scent work.

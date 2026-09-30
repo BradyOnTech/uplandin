@@ -287,3 +287,13 @@ body #hunt-arrival button:active { transform:scale(.96); }
   #field-overlay button,#field-overlay a,#hunt-summary button,#field-map button,body #hunt-arrival button { transition:none; }
   #field-overlay button:active,#hunt-summary button:active,#field-map button:active,body #hunt-arrival button:active { transform:none; }
 }
+
+/* The dog report on the paper field notes. */
+#hunt-summary .field-dog-report { padding:20px 0 0; margin-top:20px; box-shadow:0 -1px #aa997538; }
+#hunt-summary .dog-report { background:#e9e1cf; box-shadow:inset 0 0 0 1px #a1906c30; }
+#hunt-summary .dog-report h3 { color:#3c4532; }
+#hunt-summary .dog-report-stats dt { color:#6c7659; }
+#hunt-summary .dog-report-stats dd { color:#3e4a33; font-family:var(--menu-serif); font-size:20px; }
+#hunt-summary .dog-report-notes { color:#4f5a42; }
+#hunt-summary .handler-notes { color:#7a4e28; }
+#hunt-summary .field-notes-note { font-size:14px; }

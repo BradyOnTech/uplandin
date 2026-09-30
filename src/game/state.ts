@@ -15,10 +15,42 @@ export interface DogWork {
   pointFlushes: number;
   retrieves: number;
   downedOverPoint: number;
+  /** Points established, including ones that did not produce a bird. */
+  points?: number;
+  /** Packmate points backed. */
+  backs?: number;
+  /** Flushes the dog broke on and chased. */
+  breaks?: number;
+  /** Birds the dog bumped into the air itself. */
+  bumps?: number;
+  /** Points on which it crept in. */
+  creeps?: number;
+  /** Runners followed and pointed again. */
+  relocations?: number;
+  /** Points that ended with the bird slipping away unproduced. */
+  unproductive?: number;
+  /** Falls it did not mark, found by nose or on a dead-bird send. */
+  deadFinds?: number;
+  /** Times it hunted dead and came up empty. */
+  deadMisses?: number;
+  /** Commands obeyed, and commands it could not hear. */
+  commands?: number;
+  unheard?: number;
+  /** Times the handler steadied it with whoa. */
+  whoas?: number;
 }
 
 export function emptyDogWork(): DogWork {
-  return { pointFlushes: 0, retrieves: 0, downedOverPoint: 0 };
+  return { pointFlushes: 0, retrieves: 0, downedOverPoint: 0, points: 0, backs: 0, breaks: 0, bumps: 0, creeps: 0,
+    relocations: 0, unproductive: 0, deadFinds: 0, deadMisses: 0, commands: 0, unheard: 0, whoas: 0 };
+}
+
+/** Shots the handler should not have taken. */
+export interface ShotSafety {
+  /** Fired at a bird skimming the cover, where a dog may be working. */
+  lowShots: number;
+  /** Fired with a dog in or near the line of the shot. */
+  dogInLine: number;
 }
 
 export interface HuntState {
@@ -46,6 +78,10 @@ export interface HuntState {
   gunId: string;
   /** Per-dog work tallies, indexed by dog slot. */
   dogWork: DogWork[];
+  /** Unsafe shots this hunt. Absent on saves and scenes that do not track them. */
+  safety?: ShotSafety;
+  /** Downed birds never brought to hand when the field session ended. */
+  lostBirds?: number;
   /** Set on Quick Hunt runs: the picked setup. Career is never touched. */
   quick?: QuickConfig;
 }
@@ -133,7 +169,7 @@ export function birdsRemaining(hunt: HuntState): number {
 /** A hunt is over once every bird is lost or delivered to hand. */
 export function huntComplete(hunt: HuntState): boolean {
   return hunt.birds.every((b) => b.state === 'escaped' || b.state === 'retrieved' ||
-    (hunt.fieldSessionEnded === true && b.state === 'hidden'));
+    (hunt.fieldSessionEnded === true && (b.state === 'hidden' || (b.state === 'downed' && b.lost === true))));
 }
 
 /**
@@ -157,9 +193,15 @@ export function endHuntEarly(hunt: HuntState): number {
  * Hidden birds are neither a target quota nor escapes. Legacy scene-based
  * hunts retain endHuntEarly; this policy is selected by the 3D adapter.
  */
-export function endFieldSession(hunt: HuntState): boolean {
-  if (hunt.birds.some((bird) => bird.state === 'flushed' || bird.state === 'downed' || bird.state === 'carried' || bird.state === 'held')) {
-    return false;
+export function endFieldSession(hunt: HuntState, options: { abandonDowned?: boolean } = {}): boolean {
+  const blocking = (bird: HuntState['birds'][number]) => bird.state === 'flushed' || bird.state === 'carried' || bird.state === 'held'
+    || (bird.state === 'downed' && (bird.fallPending || !options.abandonDowned));
+  if (hunt.birds.some(blocking)) return false;
+  // Leaving the field with birds still down loses them for good.
+  for (const bird of hunt.birds) {
+    if (bird.state !== 'downed') continue;
+    bird.lost = true;
+    hunt.lostBirds = (hunt.lostBirds ?? 0) + 1;
   }
   hunt.fieldSessionEnded = true;
   return true;

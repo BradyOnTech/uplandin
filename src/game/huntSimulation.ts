@@ -12,7 +12,7 @@ import {
 } from './birds';
 import { dogScentRadius } from './breeds';
 import { conditionMults } from './conditions';
-import { Dog, type DogEnv, type DogState } from './dog';
+import { Dog, WHISTLE_RANGE, type CommandResponse, type DogEnv, type DogLogEvent, type DogState, type HandlerCommand, type HandlerCommandKind } from './dog';
 import {
   FLANK_NERVE_MULT,
   isFlanking,
@@ -49,8 +49,17 @@ export function isSpatialEncounterArea(areaId: string): boolean {
 
 export type FlushCause = 'proximity' | 'nerve' | 'bump' | 'scent' | 'spook';
 
+/** Wounded birds run at a walking pace, slower than any dog. */
+export const CRIPPLE_SPEED = 1.3 / PROPERTY_PX_TO_M;
+export const CRIPPLE_RUN_MS = 7_000;
+/** How far a dog can see a bird come down in open cover, and in cattails. */
+const FALL_SIGHT = 45;
+const FALL_SIGHT_HEAVY_COVER = 22;
+
 export type HuntSimulationEvent =
   | { type: 'dog-pointed'; dogIndex: number; birdId: number }
+  | { type: 'command'; kind: HandlerCommandKind; responses: CommandResponse[] }
+  | { type: 'dog-note'; dogIndex: number; kind: DogLogEvent['kind']; birdId?: number }
   | { type: 'bird-retrieved'; dogIndex: number; count: number }
   | {
       type: 'covey-flushed';
@@ -85,6 +94,8 @@ export interface HuntSimulationInput {
   guardRaptor?: Vec2;
   /** Presentation-scale movement overrides; gameplay rules stay internal. */
   dogMotion?: readonly HuntDogMotion[];
+  /** Handler commands given this tick, in order. */
+  commands?: readonly HandlerCommand[];
 }
 
 export interface HuntSimulationConfig {
@@ -160,6 +171,11 @@ export class HuntSimulation {
     // whistle once the pack is at heel, without immediately recalling it.
     const castOff = this.continuousEncounter && !input.holdDogs && !input.guardRaptor && input.recall && this.dogs.every(dog => dog.state === 'heel');
     if (castOff) for (const dog of this.dogs) dog.castOff();
+    for (const command of input.commands ?? []) {
+      const responses = this.dogs.map(dog => dog.command(command, this.hunt.birds, input.hunterPos, input.whistleRange ?? WHISTLE_RANGE));
+      events.push({ type: 'command', kind: command.kind, responses });
+    }
+    if (spatialEncounter) this.stepCripples(dtMs, input.hunterPos);
 
     updateBirds(dtMs, this.hunt.birds, leadDog.pos, {
       worldScale: spatialEncounter,
@@ -228,6 +244,7 @@ export class HuntSimulation {
       };
       dog.update(dtMs, this.hunt.birds, env);
       this.hunt.dogsPos[i] = { ...dog.pos };
+      this.readDogLog(i, events);
 
       if (dog.state === 'pointing' && this.previousDogStates[i] !== 'pointing' && dog.pointedBirdId !== null) {
         events.push({ type: 'dog-pointed', dogIndex: i, birdId: dog.pointedBirdId });
@@ -426,7 +443,10 @@ export class HuntSimulation {
     if (pointCredit) this.hunt.dogWork[pointingSlot].pointFlushes++;
 
     const flushed = flushCovey(this.hunt.birds, bird.id);
-    for (const dog of this.dogs) dog.onFlush(this.rng, bird.pos, spatialEncounter ? flushed.map(b => b.id) : undefined);
+    this.dogs.forEach((dog, index) => {
+      dog.onFlush(this.rng, bird.pos, spatialEncounter ? flushed.map(b => b.id) : undefined);
+      this.readDogLog(index);
+    });
     const event: Extract<HuntSimulationEvent, { type: 'covey-flushed' }> = {
       type: 'covey-flushed',
       cause,
@@ -466,11 +486,12 @@ export class HuntSimulation {
     return true;
   }
 
-  resolveBird(birdId: number, outcome: 'downed' | 'escaped', landing?: Vec2): boolean {
+  resolveBird(birdId: number, outcome: 'downed' | 'escaped', landing?: Vec2, options: { wounded?: boolean } = {}): boolean {
     const bird = this.hunt.birds.find((candidate) => candidate.id === birdId);
     if (!bird || bird.state !== 'flushed') return false;
     bird.state = outcome;
     if (outcome === 'downed') {
+      if (options.wounded) { bird.wounded = true; bird.woundRunMs = CRIPPLE_RUN_MS; }
       this.hunt.downed++;
       if (bird.sex === 'hen') this.hunt.henDowns++;
     } else {
@@ -494,8 +515,70 @@ export class HuntSimulation {
     const bird = this.hunt.birds.find((candidate) => candidate.id === birdId);
     if (!bird || bird.state !== 'downed') return false;
     bird.pos = { ...position };
+    bird.fallPos = { ...position };
     bird.fallPending = false;
+    // In the continuous field a dog only knows a fall it saw: one it was
+    // marking, or one that came down in view of a dog not busy chasing or
+    // already fetching. Heavy cattail cover hides more of them.
+    if (this.continuousEncounter && huntingDoctrine(this.area.id).spatialEncounter) {
+      const sight = huntingDoctrine(this.area.id).style === 'pheasant' ? FALL_SIGHT_HEAVY_COVER : FALL_SIGHT;
+      bird.marked = this.dogs.some(dog => dog.watchedBirdIds().includes(birdId)
+        || (dog.state !== 'breaking' && dog.state !== 'retrieving' && dist(dog.pos, position) <= sight));
+    }
     return true;
+  }
+
+  /** Wounded birds run from the nearest pursuer for a few seconds, then tuck in. */
+  private stepCripples(dtMs: number, hunter: Vec2): void {
+    for (const bird of this.hunt.birds) {
+      if (bird.state !== 'downed' || !bird.wounded || bird.fallPending || !(bird.woundRunMs! > 0)) continue;
+      bird.woundRunMs = Math.max(0, bird.woundRunMs! - dtMs);
+      let threat = hunter, nearest = dist(bird.pos, hunter);
+      for (const dog of this.dogs) {
+        const d = dist(bird.pos, dog.pos);
+        if (d < nearest) { nearest = d; threat = dog.pos; }
+      }
+      if (nearest < 1) { bird.woundRunMs = 0; continue; }
+      const away = Math.atan2(bird.pos.y - threat.y, bird.pos.x - threat.x);
+      const step = CRIPPLE_SPEED * dtMs / 1000;
+      const w = this.area.world;
+      bird.pos = {
+        x: Math.max(w.x + 4, Math.min(w.x + w.w - 4, bird.pos.x + Math.cos(away) * step)),
+        y: Math.max(w.y + 4, Math.min(w.y + w.h - 4, bird.pos.y + Math.sin(away) * step)),
+      };
+    }
+  }
+
+  /** Move a dog's reported work into the hunt tally; surface the notable moments. */
+  private readDogLog(index: number, events?: HuntSimulationEvent[]): void {
+    const dog = this.dogs[index], work = this.hunt.dogWork[index];
+    if (!dog || !work) { dog?.log.splice(0); return; }
+    for (const entry of dog.log.splice(0)) {
+      const add = (key: keyof typeof work) => { (work[key] as number) = ((work[key] as number | undefined) ?? 0) + 1; };
+      switch (entry.kind) {
+        case 'point': add('points'); break;
+        case 'back': add('backs'); break;
+        case 'break': add('breaks'); break;
+        case 'bump': add('bumps'); break;
+        case 'creep': add('creeps'); break;
+        case 'relocated': add('relocations'); break;
+        case 'unproductive': add('unproductive'); break;
+        case 'dead-found': add('deadFinds'); break;
+        case 'dead-lost': add('deadMisses'); break;
+        case 'command':
+          if (entry.response === 'out-of-earshot') add('unheard');
+          else if (entry.response !== 'busy') add('commands');
+          if (entry.response === 'steadied') add('whoas');
+          continue;
+      }
+      events?.push({ type: 'dog-note', dogIndex: index, kind: entry.kind, birdId: entry.birdId });
+    }
+  }
+
+  /** The adapter judged a shot unsafe; it counts against the hunter. */
+  recordShotSafety(kind: 'low' | 'dog-in-line'): void {
+    this.hunt.safety ??= { lowShots: 0, dogInLine: 0 };
+    if (kind === 'low') this.hunt.safety.lowShots++; else this.hunt.safety.dogInLine++;
   }
 
   /**

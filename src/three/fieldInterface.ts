@@ -316,6 +316,16 @@ export class FieldInterface {
       bindTouchActionControl(button, { signal, enabled: () => !this.engine.ctx.paused,
         events: this.engine.ctx.events, activate: () => {
         let action = button.dataset.action;
+        const tray = document.getElementById('dog-commands');
+        const trayToggle = document.querySelector<HTMLButtonElement>('[data-action="dog-commands"]');
+        if (action === 'dog-commands') {
+          // The less urgent dog commands live one tap away, beside Whoa.
+          const open = tray?.hidden ?? false;
+          if (tray) tray.hidden = !open;
+          button.setAttribute('aria-expanded', String(open));
+          return;
+        }
+        if (tray && button.closest('#dog-commands')) { tray.hidden = true; trayToggle?.setAttribute('aria-expanded', 'false'); }
         if (action === 'lower' || action === 'reload') this.engine.ctx.events.dispatchEvent(new Event('touch-shot-cancel'));
         if (action === 'aim') {
           const next = button.getAttribute('aria-pressed') !== 'true';

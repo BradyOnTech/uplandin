@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import type { SlopeApproach } from '../../game/fieldcraft';
 import { isFalconryPractice, FALCONRY_PRACTICE } from '../../game/falconryPractice';
 import { GoshawkFlight } from '../../game/falconry';
@@ -8,7 +9,8 @@ import { playWhistle } from '../../audio';
 import { circleBack } from '../../game/birds';
 import { BREEDS, getBreed, type BreedMotion } from '../../game/breeds';
 import { loadCareer, saveCareer } from '../../game/career';
-import { Dog, type DogGait, type DogState } from '../../game/dog';
+import { Dog, type CommandResponse, type DogGait, type DogState, type HandlerCommand, type HandlerCommandKind } from '../../game/dog';
+import { dogCommandFeedback, dogNoteFeedback } from '../dogFeedback';
 import { conditionMults, type Condition } from '../../game/conditions';
 import { createThreeHuntSetup } from '../../game/gameplayMode';
 import type { HuntChallenge } from '../../game/huntChallenge';
@@ -127,6 +129,11 @@ export function liveDogBreedId(search: string): string {
 /** Quarter around a point ahead of the player, not a huge circle behind them. */
 const LIVE_DOG_ANCHOR_AHEAD_M = 14;
 const LIVE_DOG_RANGE_M = 22;
+/** "This way" sends the dog this far out along the hunter's facing. */
+const CAST_DISTANCE_M = 30;
+/** "Dead bird" reaches this far along the look ray. */
+const DEAD_BIRD_REACH_M = 70;
+const shortBreedName = (id: string) => ({ gsp: 'GSP', 'english-setter': 'Setter' } as Record<string, string>)[id] ?? getBreed(id).name;
 const LIVE_DOG_INTRO_ANGLE = -1.15;
 
 /** Sim tick budget (ms). The sim is tiny; blowing this means a bug. */
@@ -167,6 +174,7 @@ export class Hunt3DSystem implements Subsystem {
   private liveIntroHunter: Vec2 = { x: 0, y: 0 };
   private liveDogAnchor: Vec2 = { x: 0, y: 0 };
   private simulation!: HuntSimulation;
+  private lookDirection = new THREE.Vector3();
   /** Adapter-only pace/range mapping passed through the shared sim seam. */
   private liveDogMotions: HuntDogMotion[] = [];
   private dogWater?: ShallowWater;
@@ -204,6 +212,9 @@ export class Hunt3DSystem implements Subsystem {
   private seedValue?: number;
   private activeChallenge: HuntChallenge = 'balanced';
   falconry: GoshawkFlight | null = null;
+  /** Call names for feedback; career dogs by name, Quick dogs by breed. */
+  private dogNames: string[] = [];
+  private ctxRef: Ctx | null = null;
 
   constructor(private readonly landscape: LandscapeModel) {}
 
@@ -221,6 +232,8 @@ export class Hunt3DSystem implements Subsystem {
     this.seedValue = setup.seed;
     this.flushRng = mulberry32(setup.seed === undefined ? FLUSH_SEED : huntStreamSeed(setup.seed, FLUSH_SEED));
     this.gearTier = setup.gearTier;
+    this.ctxRef = ctx;
+    this.dogNames = [setup.kennelDog?.name ?? shortBreedName(setup.breed.id), ...(setup.brace ? [setup.brace.kennelDog?.name ?? shortBreedName(setup.brace.breedId)] : [])];
     this.careerDogIds = setup.launch?.kind === 'career'
       ? [setup.kennelDog?.id ?? null, setup.brace?.kennelDog?.id ?? null]
       : [];
@@ -445,6 +458,7 @@ export class Hunt3DSystem implements Subsystem {
     const player = ctx.get<PlayerSystem>('player');
     const recall = player.consumeRecall();
     if (recall) playWhistle();
+    const commands = this.falconry ? [] : (player.consumeCommands?.() ?? []).map(kind => this.commandFor(ctx, kind));
     const guard = this.falconry?.guardPoint();
     const events = this.simulation.update(dtMs, {
       hunterPos: hunterPos,
@@ -454,6 +468,7 @@ export class Hunt3DSystem implements Subsystem {
       guardRaptor: guard ? this.worldToSim(guard.x,guard.z,{x:0,y:0}) : undefined,
       whistleRange: this.gearTier >= 3 ? Infinity : undefined,
       dogMotion: this.liveDogMotions,
+      commands,
     });
     this.recordEvents(events);
     for (let slot = 0; slot < this.simDogs.length; slot++) {
@@ -512,8 +527,43 @@ export class Hunt3DSystem implements Subsystem {
     this.dogObstaclesSynced = true;
   }
 
+  /** A command's target: where the hunter faces (cast) or looks (dead bird). */
+  private commandFor(ctx: Ctx, kind: HandlerCommandKind): HandlerCommand {
+    if (kind === 'whoa' || kind === 'release') return { kind };
+    const cam = ctx.camera.position, dir = ctx.camera.getWorldDirection(this.lookDirection);
+    let x = cam.x, z = cam.z;
+    if (kind === 'cast') {
+      const flat = Math.hypot(dir.x, dir.z) || 1;
+      x += dir.x / flat * CAST_DISTANCE_M; z += dir.z / flat * CAST_DISTANCE_M;
+    } else {
+      // March the look ray until it meets the ground; looking up sends the
+      // dog a fair distance out along the line instead.
+      let hit = false;
+      const terrain = ctx.get<Subsystem & { heightAt(x: number, z: number): number }>('terrain');
+      for (let t = 2; t <= DEAD_BIRD_REACH_M; t += .5) {
+        const px = cam.x + dir.x * t, py = cam.y + dir.y * t, pz = cam.z + dir.z * t;
+        if (py <= terrain.heightAt(px, pz)) { x = px; z = pz; hit = true; break; }
+      }
+      if (!hit) { const flat = Math.hypot(dir.x, dir.z) || 1; x += dir.x / flat * 20; z += dir.z / flat * 20; }
+    }
+    return { kind, target: this.worldToSim(x, z, { x: 0, y: 0 }) };
+  }
+
+  private say(text: string): void {
+    this.ctxRef?.events.dispatchEvent(new CustomEvent('dog-feedback', { detail: text }));
+  }
+
   private recordEvents(events: readonly HuntSimulationEvent[]): void {
     for (const event of events) {
+      if (event.type === 'command') {
+        this.say(dogCommandFeedback(event.kind, event.responses as CommandResponse[], this.simDogs.map(dog => dog.state), this.dogNames));
+        continue;
+      }
+      if (event.type === 'dog-note') {
+        const text = dogNoteFeedback(event.kind, this.dogNames[event.dogIndex] ?? 'Dog');
+        if (text) this.say(text);
+        continue;
+      }
       if (event.type === 'dog-pointed') {
         this.pointRevisions[event.dogIndex] = (this.pointRevisions[event.dogIndex] ?? 0) + 1;
         continue;
@@ -599,9 +649,9 @@ export class Hunt3DSystem implements Subsystem {
   }
 
   /** Resolve a 3D presentation outcome through the shared simulation. */
-  resolveBird(birdId: number, outcome: 'downed' | 'escaped', landing?: { x: number; z: number }): boolean {
+  resolveBird(birdId: number, outcome: 'downed' | 'escaped', landing?: { x: number; z: number }, options: { wounded?: boolean } = {}): boolean {
     const position = landing ? this.worldToSim(landing.x, landing.z, { x: 0, y: 0 }) : undefined;
-    const resolved = this.simulation.resolveBird(birdId, outcome, position);
+    const resolved = this.simulation.resolveBird(birdId, outcome, position, options);
     if (resolved && outcome === 'downed' && isSpatialEncounterArea(this.area.id)) this.simulation.bird(birdId)!.fallPending = true;
     return resolved;
   }
@@ -615,7 +665,16 @@ export class Hunt3DSystem implements Subsystem {
   /** Convert a presentation-space ground contact into the shared fall. */
   recordFallWorld(birdId: number, worldX: number, worldZ: number): boolean {
     const position = this.worldToSim(worldX, worldZ, { x: 0, y: 0 });
-    return this.simulation.recordFall(birdId, position);
+    const recorded = this.simulation.recordFall(birdId, position);
+    const bird = this.simulation.bird(birdId);
+    if (recorded && bird?.marked === false) this.say(`Fall not marked · send ${this.dogNames[0] ?? 'the dog'} with Dead bird`);
+    else if (recorded && bird?.wounded) this.say('Wounded bird down · it will run');
+    return recorded;
+  }
+
+  /** An unsafe shot counts against the hunter; the gun judges it. */
+  recordShotSafety(kind: 'low' | 'dog-in-line'): void {
+    this.simulation.recordShotSafety(kind);
   }
 
   finishRise(): RiseResolution | null {
@@ -632,7 +691,8 @@ export class Hunt3DSystem implements Subsystem {
   endHunt(): number {
     if (this.falconry && !this.falconry.canEnd) return 0;
     if (isSpatialEncounterArea(this.area.id)) {
-      endFieldSession(this.hunt);
+      // Ending with birds still down loses them; they count in the report.
+      endFieldSession(this.hunt, { abandonDowned: true });
       return 0;
     }
     return endHuntEarly(this.hunt);
@@ -740,6 +800,9 @@ export class Hunt3DSystem implements Subsystem {
   dogCount(): number {
     return this.simDogs.length;
   }
+
+  /** Career dogs by name; Quick dogs by breed. */
+  dogName(slot = 0): string { return this.dogNames[slot] ?? 'Dog'; }
 
   /** Every cover patch of the covert, in world meters (axis-aligned). */
   coverPatches(): readonly WorldPatch[] {

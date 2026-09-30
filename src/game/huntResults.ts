@@ -8,12 +8,17 @@ import {
   type KennelDog,
 } from './career';
 import { unlocksAtLevel } from './progression';
+import { dogReport } from './dogReport';
 import { regionOfArea } from './regions';
 import { HOME_HUNT_WEEKS, seasonOver, TRIP_HUNT_WEEKS } from './season';
 import type { HuntState } from './state';
 import { HUNT_JOURNAL_LIMIT, readHuntJournal, type CareerJournalEntry } from './huntJournal';
 
 export const HEN_FINE_XP = 4;
+/** A downed bird left in the field costs the hunter; so does an unsafe shot. */
+export const LOST_BIRD_FINE_XP = 2;
+export const LOW_SHOT_FINE_XP = 2;
+export const DOG_IN_LINE_FINE_XP = 5;
 
 export interface DogHuntAward {
   dogId: string;
@@ -31,6 +36,9 @@ export interface CareerHuntResult {
   hunterLevelsGained: number;
   unlocks: string[];
   henFine: number;
+  /** Lost birds and unsafe shots, in hunter XP. */
+  lostFine: number;
+  safetyFine: number;
   weeks: number;
   seasonEnded: boolean;
 }
@@ -42,7 +50,9 @@ export function settleCareerHunt(
   dogs: readonly (KennelDog | null)[],
 ): CareerHuntResult {
   const henFine = HEN_FINE_XP * hunt.henDowns;
-  const hunterGained = Math.max(0, hunt.downed + hunt.doubles + 2 - henFine);
+  const lostFine = LOST_BIRD_FINE_XP * (hunt.lostBirds ?? 0);
+  const safetyFine = LOW_SHOT_FINE_XP * (hunt.safety?.lowShots ?? 0) + DOG_IN_LINE_FINE_XP * (hunt.safety?.dogInLine ?? 0);
+  const hunterGained = Math.max(0, hunt.downed + hunt.doubles + 2 - henFine - lostFine - safetyFine);
   let next = recordHunt(career, hunt.areaId, hunt.downed, hunt.escaped);
   const dogAwards: DogHuntAward[] = [];
 
@@ -50,8 +60,10 @@ export function settleCareerHunt(
     if (!dog) return;
     const work = hunt.dogWork[slot];
     if (!work) return;
+    // Finding an unmarked fall and relocating a runner are skilled work too.
     const gained = Math.round(
-      (2 * work.pointFlushes + work.retrieves + 3 * work.downedOverPoint) * getBreed(dog.breedId).xpRate,
+      (2 * work.pointFlushes + work.retrieves + 3 * work.downedOverPoint + (work.deadFinds ?? 0) + (work.relocations ?? 0))
+        * getBreed(dog.breedId).xpRate,
     );
     const award = awardDogXp(next, dog.id, gained);
     next = award.career;
@@ -85,7 +97,10 @@ export function settleCareerHunt(
     doubles: hunt.doubles,
     henDowns: hunt.henDowns,
     hunterXp: hunterGained,
-    dogs: dogs.filter((dog): dog is KennelDog => dog !== null).map(({ name, breedId }) => ({ name, breedId })),
+    dogs: dogs.flatMap((dog, slot) => dog ? [{ name: dog.name, breedId: dog.breedId,
+      ...(hunt.dogWork[slot] ? { note: dogReport(dog.name, hunt.dogWork[slot]).notes[0] } : {}) }] : []),
+    ...((hunt.lostBirds ?? 0) > 0 ? { lost: hunt.lostBirds } : {}),
+    ...((hunt.safety?.lowShots ?? 0) + (hunt.safety?.dogInLine ?? 0) > 0 ? { unsafe: hunt.safety!.lowShots + hunt.safety!.dogInLine } : {}),
   };
   // The existing renderer save writes progression, calendar and this snapshot
   // together. There is no second key or reconstructed pre-journal history.
@@ -100,6 +115,8 @@ export function settleCareerHunt(
     hunterLevelsGained: hunterAward.levelsGained,
     unlocks,
     henFine,
+    lostFine,
+    safetyFine,
     weeks,
     seasonEnded: seasonOver(next.date),
   };

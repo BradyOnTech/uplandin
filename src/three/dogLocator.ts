@@ -166,6 +166,8 @@ export function dogWorkLabel(dog: { state: DogState; scentStage: DogScentStage; 
     if (dog.scentStage === 'locking') return 'SETTING POINT';
     return 'DOG WORKING SCENT';
   }
+  if (dog.state === 'whoa') return 'DOG STOPPED';
+  if (dog.state === 'seeking') return 'DOG HUNTING DEAD';
   if (dog.state === 'marking') return 'DOG MARKING THE RISE';
   if (dog.state === 'retrieving') return 'DOG HUNTING DEAD';
   if (dog.state === 'recalled') return dog.searchAreaChecked ? 'DOG REJOINING' : 'DOG COMING IN';

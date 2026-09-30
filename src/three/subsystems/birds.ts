@@ -308,6 +308,9 @@ interface Slot {
   bank?: number;
   bankYaw?: number;
   fallPose?: { startMs: number; rotation: THREE.Euler; groundedMs?: number };
+  /** A wounded bird on the ground, running from the dog. */
+  running?: boolean;
+  runYaw?: number;
   carryPose?: { elapsed: number; rotation: THREE.Quaternion };
   delayMs: number;
   wobblePh: number;
@@ -482,6 +485,7 @@ export class BirdsSystem implements Subsystem {
   // Preallocated scratch.
   private w2 = { x: 0, z: 0 };
   private carryW = { x: 0, z: 0 };
+  private crippleWorld = { x: 0, z: 0 };
 
   init(ctx: Ctx): void {
     // Vary practice flights with the visit while preserving exact URL replays
@@ -1004,6 +1008,14 @@ export class BirdsSystem implements Subsystem {
         if (!bird || bird.state === 'retrieved' || bird.state === 'escaped') {
           s.status = 'done';
           s.root.visible = false;
+        } else if (bird.state === 'downed' && bird.wounded && !bird.fallPending) {
+          // A cripple lands alive and runs; the shared sim owns where it goes.
+          this.hunt.simToWorld(bird.pos.x, bird.pos.y, this.crippleWorld);
+          const dx = this.crippleWorld.x - s.x, dz = this.crippleWorld.z - s.z;
+          s.running = (bird.woundRunMs ?? 0) > 0 && dx * dx + dz * dz > 1e-6;
+          if (s.running) s.runYaw = Math.atan2(dx, dz);
+          s.x = this.crippleWorld.x; s.z = this.crippleWorld.z;
+          s.y = this.terrain.heightAt(s.x, s.z) + .06;
         }
         continue;
       }
@@ -1846,7 +1858,7 @@ export class BirdsSystem implements Subsystem {
       s.root.visible = visible;
       if (!visible) continue;
       if (s.species.id === 'ringneck' && s.body.morphTargetInfluences) {
-        s.body.morphTargetInfluences[0] = s.status === 'grounded' ? 1
+        s.body.morphTargetInfluences[0] = s.status === 'grounded' ? s.running ? 0 : 1
           : s.status === 'falling' ? THREE.MathUtils.smoothstep(s.airMs - (s.fallPose?.startMs ?? s.airMs), 0, 300) : 0;
       }
       const simBird = s.status === 'grounded'
@@ -1900,6 +1912,13 @@ export class BirdsSystem implements Subsystem {
         const settle = Math.exp(-s.airMs / 650);
         s.tailMesh.rotation.x = flying ? -.13 * settle + .025 * Math.sin(s.airMs * .009) : .08;
         s.tailMesh.rotation.y = flying ? .045 * Math.sin(s.airMs * .005 + s.wobblePh) : 0;
+      }
+      if (s.status === 'grounded' && s.running) {
+        // Head down, running low for the nearest cover.
+        s.root.rotation.set(.12, s.runYaw ?? 0, 0, 'YXZ');
+        s.root.position.y += Math.abs(Math.sin(ctx.time * 14)) * .03;
+        this.foldWings(s);
+        continue;
       }
       if (s.status === 'grounded') {
         // Folded bird remains marked in the grass until the dog picks it up.

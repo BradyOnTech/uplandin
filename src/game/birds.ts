@@ -34,6 +34,19 @@ export interface Bird {
   nerveMs: number;
   /** Seeded individual approach temperament, retained through relights. */
   approachRoll?: number;
+  /** Where a downed bird came to earth; a wounded bird may leave it. */
+  fallPos?: Vec2;
+  /**
+   * Whether a dog saw the fall. `false` means the dog must wind the bird (or
+   * be sent to hunt dead); undefined keeps the legacy always-known fetch.
+   */
+  marked?: boolean;
+  /** Hit at the fringe of the pattern: it lands alive and runs. */
+  wounded?: boolean;
+  /** ms of running left to a wounded bird before it tucks in and hides. */
+  woundRunMs?: number;
+  /** A dog searched for it and gave up; only scent can find it now. */
+  lost?: boolean;
 }
 
 const COVEY_JITTER = 10; // fallback when a future species omits its spread
