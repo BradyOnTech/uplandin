@@ -121,6 +121,14 @@ const QUAIL_COVER_BEAT = 20; // smaller plum-edge checks before moving to the ne
 const CHUKAR_CONTOUR_BEAT = 32;
 const CHUKAR_UPHILL_BEAT = 16; // longer along the bench than up the fall line
 const SEARCH_MOVE_ON = 8 / PROPERTY_PX_TO_M;
+/** Field search locomotion: a running dog cannot pivot on the spot. It brakes
+ * into a hard turn, sweeps through it on a finite radius and drives out. */
+const SEARCH_LATERAL_ACCEL = 10; // m/s² — roughly a galloping dog's cornering grip
+const SEARCH_BRAKE_FLOOR = 0.42; // slowest fraction of search pace in a hairpin
+const SEARCH_DECEL_RATE = 3.2; // pace fraction per second when braking
+const SEARCH_ACCEL_RATE = 1.35; // pace fraction per second when driving out
+/** Handler travel must exceed this (property units) before it sets a new direction. */
+const HANDLER_HEADING_SAMPLE = 2;
 /**
  * How completely the dog checks cover before calling it empty, by level:
  * a first-season pup pops out of the ragweed early and leaves birds behind;
@@ -433,6 +441,17 @@ export class Dog {
   private scentLostMs = 0;
   private scentHandlerHoldMs = 0;
   private markingBirdIds: number[] = [];
+  /** Actual field-search travel direction; lags `heading` through a turn. */
+  private travelDir: number | null = null;
+  /** Fraction of search pace currently carried (brakes into turns). */
+  private travelPace = 1;
+  /** The handler's recent direction of travel: the front the dog quarters. */
+  private handlerHeading: number | null = null;
+  private handlerSample: Vec2 | null = null;
+  /** Side of the handler's line the previous cover beat lay on (-1, 0, 1). */
+  private beatSide = 0;
+  /** Open-ground cast: which side of the handler's line the dog is casting to. */
+  private castSide = 1;
 
   constructor(
     public pos: Vec2,
@@ -514,7 +533,14 @@ export class Dog {
 
   update(dtMs: number, birds: Bird[], env: DogEnv = {}): void {
     const wasWaitingForHandler = this.waitingForHandler;
-    if (this.state !== 'quartering') this.localSearchWeave = 0;
+    if (this.state !== 'quartering') {
+      this.localSearchWeave = 0;
+      // Leaving search resets its momentum: the next cast starts from a
+      // standing or trotting dog, not at full running pace.
+      this.travelDir = null;
+      this.travelPace = SEARCH_BRAKE_FLOOR + .1;
+    }
+    this.trackHandler(env.hunterPos);
     this.waitingForHandler = false;
     this.obstacles = env.obstacles ?? [];
     const dt = dtMs / 1000;
@@ -1027,9 +1053,26 @@ export class Dog {
       return;
     }
 
-    // No cover worth checking: the classic open-ground sweep.
+    // No cover worth checking: the classic open-ground sweep. In the field,
+    // with a walking handler, it becomes a quartering pattern: long casts
+    // across the handler's front, turning at the edge of range and swinging
+    // back through the line ahead of the gun.
     this.gait = 'run';
     this.weavePhase += movementDt * WEAVE_RATE;
+    const quarterAnchor = env.workAnchor ?? env.hunterPos;
+    if (continuousSearch && quarterAnchor && this.handlerHeading !== null) {
+      const range = this.effectiveRangeRadius(env);
+      const fx = Math.cos(this.handlerHeading), fy = Math.sin(this.handlerHeading);
+      const lateral = fx * (this.pos.y - quarterAnchor.y) - fy * (this.pos.x - quarterAnchor.x);
+      if (lateral * this.castSide > range * .62) this.castSide = -this.castSide;
+      const tx = quarterAnchor.x + fx * range * .5 - fy * this.castSide * range * .8;
+      const ty = quarterAnchor.y + fy * range * .5 + fx * this.castSide * range * .8;
+      this.heading = turnToward(this.heading, Math.atan2(ty - this.pos.y, tx - this.pos.x), 2.4 * dt);
+      this.steerOffEdges(dt);
+      this.steerToAnchor(dt, quarterAnchor, range);
+      this.advanceSearch(Math.sin(this.weavePhase) * this.weave * .3, this.workingSpeed(env, this.speed) * movementDt, dt, continuousSearch);
+      return;
+    }
     // World travel is scaled, but an approaching property edge still needs
     // a real-time turn; scaled steering left recast dogs sliding at the clamp.
     this.steerOffEdges(continuousSearch ? dt : movementDt);
@@ -1046,7 +1089,63 @@ export class Dog {
     this.localSearchWeave = continuous
       ? turnToward(this.localSearchWeave, weave, COVER_TURN_RATE * dt)
       : weave;
-    this.advance(this.heading + this.localSearchWeave, distance);
+    const desired = this.heading + this.localSearchWeave;
+    if (!continuous || dt <= 0) {
+      this.travelDir = null;
+      this.advance(desired, distance);
+      return;
+    }
+    // Field search momentum. Steering still chooses where the dog wants to
+    // go; the body gets there like a running animal: it brakes in proportion
+    // to how hard it must turn, the turn radius widens with speed, and it
+    // accelerates out of the turn instead of snapping to a new line.
+    if (this.travelDir === null) this.travelDir = desired;
+    const error = Math.abs(Math.atan2(Math.sin(desired - this.travelDir), Math.cos(desired - this.travelDir)));
+    const brake = clamp(1 - (error - .35) / 1.9, SEARCH_BRAKE_FLOOR, 1);
+    const paceRate = brake < this.travelPace ? SEARCH_DECEL_RATE : SEARCH_ACCEL_RATE;
+    this.travelPace = this.travelPace + clamp(brake - this.travelPace, -paceRate * dt, paceRate * dt);
+    const travel = distance * this.travelPace;
+    const speedMs = travel / dt * PROPERTY_PX_TO_M;
+    const maxTurn = SEARCH_LATERAL_ACCEL / Math.max(speedMs, .8) * dt;
+    this.travelDir = turnToward(this.travelDir, desired, maxTurn);
+    const before = this.heading;
+    this.advance(this.travelDir, travel);
+    // An obstacle detour bends the actual path as well as the steering line.
+    this.travelDir += this.heading - before;
+  }
+
+  /** Follow the handler's direction of travel from sampled positions. */
+  private trackHandler(hunter: Vec2 | undefined): void {
+    if (!hunter) return;
+    if (!this.handlerSample) { this.handlerSample = { ...hunter }; return; }
+    const dx = hunter.x - this.handlerSample.x, dy = hunter.y - this.handlerSample.y;
+    if (Math.hypot(dx, dy) < HANDLER_HEADING_SAMPLE) return;
+    this.handlerHeading = Math.atan2(dy, dx);
+    this.handlerSample = { ...hunter };
+  }
+
+  /**
+   * Public-ground preference that turns successive cover checks into
+   * quartering: favour ground ahead of the handler's line of travel and
+   * swing to the other side of that line after each beat. It never reads
+   * hidden birds; it only orders reachable habitat.
+   */
+  private laneCost(center: Vec2, anchor: Vec2, size: number): number {
+    if (this.handlerHeading === null) return 0;
+    const fx = Math.cos(this.handlerHeading), fy = Math.sin(this.handlerHeading);
+    const dx = center.x - anchor.x, dy = center.y - anchor.y;
+    const forward = dx * fx + dy * fy, lateral = fx * dy - fy * dx;
+    let cost = 0;
+    if (forward < -size * .5) cost += (-forward - size * .5) * 1.1;
+    if (this.beatSide !== 0 && Math.sign(lateral) === this.beatSide && Math.abs(lateral) > size * .5) cost += size * 1.2;
+    return cost;
+  }
+
+  private rememberBeatSide(center: Vec2, anchor: Vec2 | undefined, size: number): void {
+    if (this.handlerHeading === null || !anchor) { this.beatSide = 0; return; }
+    const fx = Math.cos(this.handlerHeading), fy = Math.sin(this.handlerHeading);
+    const lateral = fx * (center.y - anchor.y) - fy * (center.x - anchor.x);
+    this.beatSide = Math.abs(lateral) > size * .5 ? Math.sign(lateral) : 0;
   }
 
   private beginScentApproach(bird: Bird, stage: Exclude<DogScentStage, 'none'>): void {
@@ -1199,7 +1298,8 @@ export class Dog {
         ? distanceToTrail(c, env.trails)
         : 0;
       const habitat = env.coverAffinity?.(c) ?? .5;
-      const d = dist(this.pos, c) + routeDistance * routeWeight + (1 - habitat) * habitatWeight;
+      const d = dist(this.pos, c) + routeDistance * routeWeight + (1 - habitat) * habitatWeight
+        + (anchor && env.rangeRadius !== undefined ? this.laneCost(c, anchor, Math.max(patches[i].w, patches[i].h, 12)) : 0);
       if (d < bestDist) {
         best = i;
         bestDist = d;
@@ -1208,6 +1308,7 @@ export class Dog {
     if (best === null) return null;
     this.coverIdx = best;
     const p = patches[best];
+    if (env.rangeRadius !== undefined) this.rememberBeatSide({ x: rectCx(p), y: rectCy(p) }, anchor, Math.max(p.w, p.h, 12));
     const total =
       clamp(p.w * p.h * COVER_WORK_MS_PER_PX2, COVER_WORK_MIN_MS, COVER_WORK_MAX_MS) *
       coverThoroughness(this.profile.level) *
@@ -1300,13 +1401,15 @@ export class Dog {
           const center = { x: x + w / 2, y: y + h / 2 };
           if (dist(center, anchor) > range - .5) continue;
           const score = dist(this.pos, center) + (env.trails?.length ? distanceToTrail(center, env.trails) * routeWeight : 0)
-            + (1 - (env.coverAffinity?.(center) ?? .5)) * habitatWeight;
+            + (1 - (env.coverAffinity?.(center) ?? .5)) * habitatWeight
+            + this.laneCost(center, anchor, Math.max(beatWidth, beatHeight));
           if (score < bestScore) { bestScore = score; best = { key, rect: { x, y, w, h }, index }; }
         }
       }
     }
     if (!best) { this.coverIdx = null; return null; }
     this.localCoverBeat = best; this.coverIdx = best.index;
+    this.rememberBeatSide({ x: rectCx(best.rect), y: rectCy(best.rect) }, anchor, Math.max(beatWidth, beatHeight));
     this.coverWorkMsLeft = upland
       ? clamp(best.rect.w * best.rect.h * COVER_WORK_MS_PER_PX2, COVER_WORK_MIN_MS, COVER_WORK_MAX_MS)
         * coverThoroughness(this.level) * this.doctrineFor(env).coverWorkMult

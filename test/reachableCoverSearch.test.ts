@@ -54,7 +54,9 @@ describe('reachable Quail and Chukar cover', () => {
   it('changes a Quail edge approach with the wind', () => {
     const one = edgeSearch('quail-fields', 42, 0), other = edgeSearch('quail-fields', 42, Math.PI);
     one.dog.heading = other.dog.heading = 0; // Compare wind entry, not a random initial U-turn.
-    for (let tick = 0; tick < 30; tick++) {
+    // A running dog now curves onto its cast line on a finite turn radius,
+    // so the two wind entries separate over a second and a half, not one tick-perfect second.
+    for (let tick = 0; tick < 45; tick++) {
       one.dog.update(DT, [], one.env); other.dog.update(DT, [], other.env);
     }
     expect(Math.hypot(one.dog.pos.x - other.dog.pos.x, one.dog.pos.y - other.dog.pos.y)).toBeGreaterThan(1);
