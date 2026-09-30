@@ -7,7 +7,8 @@ import { pheasantWestFence } from '../../game/pheasantHabitat';
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
 import type { Hunt3DSystem } from './hunt3d';
-import { pheasantPlantClear, pheasantPonds, pheasantShelterbelts } from './pheasantLandscape';
+import { pheasantPlantClear, pheasantPonds, pheasantShelterbelts, pheasantTrackDistance } from './pheasantLandscape';
+import { pheasantFarmFenceLines, pheasantFarmFields } from '../../game/pheasantFarm';
 
 function seeded(seed: number, salt: number): number {
   let h = seed ^ Math.imul(salt, 0x9e3779b1);
@@ -205,6 +206,94 @@ export class PheasantScenerySystem implements Subsystem {
     this.buildShelterbelts(ctx, trunkMaterial, foliageMaterials);
     this.buildSeasonalGround(ctx, snowMaterial);
     this.buildFence(ctx, fenceMaterial, wireMaterial, castShadow);
+    this.buildFarmFences(ctx, fenceMaterial, wireMaterial);
+    this.buildBales(ctx, castShadow);
+  }
+
+  /** Three-wire section fences along the farm's field lines. Openings are
+   * left wherever a route or entry crosses, like a field gate left open. */
+  private buildFarmFences(ctx: Ctx, postMaterial: THREE.Material, wireMaterial: THREE.Material): void {
+    const area = this.landscape.area;
+    const postGeo = new THREE.CylinderGeometry(.055, .07, 1.25, 5);
+    const spanGeo = new THREE.BoxGeometry(1, .018, .018);
+    this.geometries.push(postGeo, spanGeo);
+    const posts: THREE.Matrix4[] = [], wires: THREE.Matrix4[] = [];
+    const matrix = new THREE.Matrix4(), position = new THREE.Vector3(), quaternion = new THREE.Quaternion();
+    const scale = new THREE.Vector3(1, 1, 1), xAxis = new THREE.Vector3(1, 0, 0), direction = new THREE.Vector3();
+    const tilt = new THREE.Euler();
+    const spacingYards = 4.6 / PROPERTY_PX_TO_M;
+    for (const line of pheasantFarmFenceLines(area.world)) for (let s = 1; s < line.length; s++) {
+      const a = line[s - 1], b = line[s], length = Math.hypot(b.x - a.x, b.y - a.y);
+      const count = Math.max(2, Math.ceil(length / spacingYards) + 1);
+      let previous: THREE.Vector3 | undefined;
+      for (let i = 0; i < count; i++) {
+        const t = i / (count - 1), x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t;
+        // Open where a route or truck entry passes, and inside pond margins.
+        const open = pheasantTrackDistance(area, x, y, 8) < 7.5
+          || area.dropPoints.some(d => Math.hypot(x - d.position.x, y - d.position.y) < 22)
+          || pheasantPonds(this.landscape).some(p => Math.hypot((x - p.x) * PROPERTY_PX_TO_M / p.rx, (y - p.y) * PROPERTY_PX_TO_M / p.ry) < 1.35);
+        if (open) { previous = undefined; continue; }
+        this.landscape.propertyToWorld(x, y, this.world);
+        const ground = this.landscape.heightAtWorld(this.world.x, this.world.z);
+        const rng = seeded(area.terrain.seed, Math.round(x * 31 + y * 17)) / 0x100000000;
+        tilt.set((rng - .5) * .08, rng * 6.28, (rng * 7 % 1 - .5) * .08);
+        position.set(this.world.x, ground + .55, this.world.z);
+        posts.push(matrix.compose(position, quaternion.setFromEuler(tilt), scale).clone());
+        const top = new THREE.Vector3(this.world.x, ground, this.world.z);
+        if (previous) for (const height of [.42, .74, 1.04]) {
+          const from = previous.clone().setY(previous.y + height), to = top.clone().setY(top.y + height);
+          direction.copy(to).sub(from);
+          // A slight sag between posts reads as wire, not a rail.
+          position.copy(from).add(to).multiplyScalar(.5).setY((from.y + to.y) / 2 - .035);
+          quaternion.setFromUnitVectors(xAxis, direction.clone().normalize());
+          wires.push(matrix.compose(position, quaternion, new THREE.Vector3(direction.length(), 1, 1)).clone());
+        }
+        previous = top;
+      }
+    }
+    const add = (geometry: THREE.BufferGeometry, material: THREE.Material, matrices: THREE.Matrix4[], name: string) => {
+      if (!matrices.length) return;
+      const mesh = new THREE.InstancedMesh(geometry, material, matrices.length);
+      matrices.forEach((m, i) => mesh.setMatrixAt(i, m));
+      mesh.name = name; mesh.receiveShadow = true; mesh.castShadow = false;
+      mesh.computeBoundingSphere();
+      ctx.scene.add(mesh); this.objects.push(mesh);
+    };
+    add(postGeo, postMaterial, posts, 'Farm fence posts');
+    add(spanGeo, wireMaterial, wires, 'Farm fence wires');
+  }
+
+  /** Round bales left along the edge of the cut hay, and a short row by
+   * the farmstead. Solid: the hunter and dogs walk around them. */
+  private buildBales(ctx: Ctx, castShadow: boolean): void {
+    const hay = pheasantFarmFields(this.landscape.area.world).find(field => field.crop === 'hay');
+    if (!hay) return;
+    const bale = new THREE.CylinderGeometry(.78, .78, 1.45, 14, 1);
+    bale.rotateZ(Math.PI / 2);
+    const material = new THREE.MeshStandardMaterial({ color: 0xb6a371, roughness: 1, flatShading: true });
+    const faceMaterial = new THREE.MeshStandardMaterial({ color: 0x9d8b5e, roughness: 1, flatShading: true });
+    this.geometries.push(bale); this.materials.push(material, faceMaterial);
+    const rng = mulberry32(seeded(this.landscape.area.terrain.seed, 977));
+    const spots: { x: number; y: number; yaw: number }[] = [];
+    // A broken line along the windrows near the south edge of the hay.
+    for (let i = 0; i < 9; i++) spots.push({ x: hay.rect.x + 60 + i * 44 + (rng() - .5) * 18,
+      y: hay.rect.y + hay.rect.h - 34 + (rng() - .5) * 10, yaw: (rng() - .5) * .5 });
+    const mesh = new THREE.InstancedMesh(bale, [material, faceMaterial, faceMaterial], spots.length);
+    const matrix = new THREE.Matrix4(), position = new THREE.Vector3(), rotation = new THREE.Quaternion(), scale = new THREE.Vector3(1, 1, 1);
+    let n = 0;
+    for (const spot of spots) {
+      if (!pheasantPlantClear(this.landscape.area, spot.x, spot.y, 2)) continue;
+      this.landscape.propertyToWorld(spot.x, spot.y, this.world);
+      position.set(this.world.x, this.landscape.heightAtWorld(this.world.x, this.world.z) + .72, this.world.z);
+      rotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), spot.yaw);
+      mesh.setMatrixAt(n++, matrix.compose(position, rotation, scale));
+      this.obstacles.push({ x: this.world.x, z: this.world.z, radius: .95 });
+    }
+    mesh.count = n;
+    mesh.name = 'Hay bales';
+    mesh.castShadow = castShadow; mesh.receiveShadow = true;
+    mesh.computeBoundingSphere();
+    ctx.scene.add(mesh); this.objects.push(mesh);
   }
 
   private buildShelterbelts(ctx: Ctx, trunkMaterial: THREE.Material, foliageMaterials: THREE.Material[]): void {
@@ -277,6 +366,36 @@ export class PheasantScenerySystem implements Subsystem {
         }
       }
     }
+    // Plains windbreaks carry an evergreen row: dark eastern red cedars on
+    // the field side of each belt give the farm its winter silhouette.
+    const cedarGeo = new THREE.ConeGeometry(1, 1, 7, 2);
+    cedarGeo.translate(0, .5, 0);
+    const cedarMaterial = new THREE.MeshStandardMaterial({ color: 0x3f4d3c, roughness: 1, flatShading: true });
+    this.geometries.push(cedarGeo); this.materials.push(cedarMaterial);
+    const cedars: THREE.Matrix4[] = [];
+    for (const belt of pheasantShelterbelts(this.landscape.area)) {
+      const cedarRng = mulberry32(seeded(this.landscape.area.terrain.seed, Math.round(belt.x * 17 + belt.y * 29) ^ 0xcedd));
+      const count = Math.max(3, Math.round(belt.length / 5.5));
+      for (let i = 0; i < count; i++) {
+        if (cedarRng() < .12) continue;
+        const along = (i / (count - 1) - .5) * belt.length * .92 + (cedarRng() - .5) * 2;
+        const across = 7 + (cedarRng() - .5) * 1.6;
+        const x = belt.x + Math.cos(belt.angle) * along - Math.sin(belt.angle) * across;
+        const y = belt.y + Math.sin(belt.angle) * along + Math.cos(belt.angle) * across;
+        if (!pheasantPlantClear(this.landscape.area, x, y, 1.5)) continue;
+        const ground = this.landscape.surfaceAtProperty(x, y, this.surface);
+        if (ground.moisture > .72) continue;
+        this.landscape.propertyToWorld(x, y, this.world);
+        const height = 4.2 + cedarRng() * 3.2, radius = height * (.2 + cedarRng() * .06);
+        for (const [lift, h, r] of [[0, 1, 1], [.34, .78, .72]] as const) {
+          position.set(this.world.x + (cedarRng() - .5) * .3, ground.height - .15 + height * lift, this.world.z + (cedarRng() - .5) * .3);
+          rotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), cedarRng() * Math.PI * 2);
+          scale.set(radius * r, height * h, radius * r * (.85 + cedarRng() * .25));
+          cedars.push(matrix.compose(position, rotation, scale).clone());
+        }
+        this.obstacles.push({ x: this.world.x, z: this.world.z, radius: radius * .7 });
+      }
+    }
     // Neighboring farm windbreaks extend the landscape beyond the property
     // boundary. Broken groups leave open prairie between them; they share
     // the existing low-detail trunk/crown batches and cast no shadows.
@@ -321,6 +440,7 @@ export class PheasantScenerySystem implements Subsystem {
       if (geometry === trunkGeo) this.shotWood.push(mesh);
     };
     addBatch(trunkGeo, trunkMaterial, stems, 'Pheasant shelterbelt trunks');
+    addBatch(cedarGeo, cedarMaterial, cedars, 'Pheasant shelterbelt cedars');
     crowns.forEach((transforms, i) => addBatch(crownGeo, foliageMaterials[i], transforms, 'Pheasant shelterbelt crowns'));
   }
 

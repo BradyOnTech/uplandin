@@ -7,8 +7,9 @@ import { buildQuailTerrainGeometry } from './quailTerrain';
 import { buildSharptailHorizonGeometries } from './sharptailHorizonGeometry';
 import { quailGroundNearDistance, quailGroundTiles, quailGroundUsesNear } from './quailGroundGeometry';
 import { PHEASANT_MATERIALS, fieldTimeOfDay, type TimeOfDay } from '../palette';
-import { pheasantFields, pheasantPonds, samplePheasantHarvest } from './pheasantLandscape';
+import { pheasantFields, pheasantPonds, samplePheasantHarvest, type PheasantHarvestSample } from './pheasantLandscape';
 import { createPheasantFarmPainter } from './pheasantFarmSurface';
+import { createPheasantFarmMap, pheasantHarvestOnSoil, PHEASANT_FARM_DECLARATIONS, PHEASANT_FARM_FRAGMENT } from './pheasantCropSurface';
 import { createPheasantHomesteadGround } from '../../game/pheasantHomesteadGround';
 import { sharptailGroundZones } from '../../game/sharptailLandscape';
 import { sharptailAccentGroundAt } from './sharptailAccents';
@@ -185,9 +186,16 @@ function paintFor(property: LandscapeModel): Paint {
   const wetPools = areaId === 'woodcock-bottoms' ? wetPondLayout(property.area) : [];
   const ponds = areaId === 'pheasant-coverts' ? pheasantPonds(property) : [];
   const farmPaint = createPheasantFarmPainter(property.area);
-  const harvestSample = { amount: 0, row: 0, angle: 0 };
-  const cutStraw = new THREE.Color(PHEASANT_MATERIALS.cutStraw);
-  const cutSoil = new THREE.Color(PHEASANT_MATERIALS.drySoil);
+  const harvestSample: PheasantHarvestSample = { amount: 0, row: 0, angle: 0 };
+  const crops = {
+    corn: [new THREE.Color(PHEASANT_MATERIALS.cornSoil), new THREE.Color(PHEASANT_MATERIALS.cornResidue), .58],
+    beans: [new THREE.Color(PHEASANT_MATERIALS.beanSoil), new THREE.Color(PHEASANT_MATERIALS.beanChaff), .26],
+    wheat: [new THREE.Color(PHEASANT_MATERIALS.wheatShade), new THREE.Color(PHEASANT_MATERIALS.wheatStraw), .62],
+    hay: [new THREE.Color(PHEASANT_MATERIALS.hayGreen), new THREE.Color(PHEASANT_MATERIALS.hayCured), .46],
+  } as const;
+  const cropColor = new THREE.Color();
+  const verge = new THREE.Color(PHEASANT_MATERIALS.verge), vergeDry = new THREE.Color(PHEASANT_MATERIALS.vergeDry);
+  const vergeColor = new THREE.Color();
   const bankMud = new THREE.Color(areaId === 'pheasant-coverts' ? PHEASANT_MATERIALS.bankMud : 0x514936);
   const reedLitter = new THREE.Color(PHEASANT_MATERIALS.reedLitter);
   const standingGrass = new THREE.Color(PHEASANT_MATERIALS.standingFloor);
@@ -260,19 +268,27 @@ function paintFor(property: LandscapeModel): Paint {
         coverDistanceSquared = Math.min(coverDistanceSquared, dx * dx + dy * dy);
         if (coverDistanceSquared === 0) break;
       }
-      const standing = 1 - THREE.MathUtils.smoothstep(Math.sqrt(coverDistanceSquared) * PROPERTY_PX_TO_M, 0, 9);
+      const standing = 1 - THREE.MathUtils.smoothstep(Math.sqrt(coverDistanceSquared) * PROPERTY_PX_TO_M, 0, 4.5);
       // Broad cool litter beneath the standing crop separates the habitat
       // from sunlit harvested soil even as individual stems recede in view.
       out.lerp(standingGrass, standing * (.75 + meso * .18));
       samplePheasantHarvest(landscape.area, x, y, fields, harvestSample);
       // Match the dry-ground cutoff used by stubble placement, feathered
       // into the wet fringe so harvested rectangles do not paint over mud.
-      const harvest = harvestSample.amount * (1 - THREE.MathUtils.smoothstep(moisture, .25, .36));
-      const swath = .5 + .5 * Math.sin(harvestSample.row * Math.PI / 24);
-      // Long machine swaths follow the existing field orientation. Their
-      // large scale survives the distant terrain grid without fine striping.
-      out.lerp(cutSoil, harvest * .82);
-      out.lerp(cutStraw, harvest * (.36 + swath * .43));
+      const harvest = pheasantHarvestOnSoil(harvestSample.amount, moisture);
+      // Grass verges own every dry yard that is neither crop nor cover: the
+      // headlands, fence lines and field roads between harvested parcels.
+      const dryVerge = (1 - harvest) * (1 - standing) * (1 - THREE.MathUtils.smoothstep(moisture, .3, .55));
+      vergeColor.copy(verge).lerp(vergeDry, .35 + meso * .45);
+      out.lerp(vergeColor, dryVerge * .78);
+      if (harvestSample.crop) {
+        const [soilTone, residueTone, cover] = crops[harvestSample.crop];
+        // Long machine swaths follow each field's rows. Their large scale
+        // survives the distant terrain grid; the shader draws the rows.
+        const swath = .5 + .5 * Math.sin(harvestSample.row * Math.PI / 24);
+        cropColor.copy(soilTone).lerp(residueTone, THREE.MathUtils.clamp(cover + (meso - .5) * .3 + (swath - .5) * .16, 0, 1));
+        out.lerp(cropColor, harvest * .92);
+      }
     }
     for (const pond of ponds) {
       const radius = Math.hypot((x - pond.x) * PROPERTY_PX_TO_M / pond.rx,
@@ -313,6 +329,9 @@ export class PropertyTerrain {
   private soilStrength = { value: 0 };
   private prairieSurface = { value: null as THREE.DataTexture | null };
   private prairieBands = { value: null as THREE.DataTexture | null };
+  private farmMap = { value: null as THREE.DataTexture | null };
+  private farmReady = { value: 0 };
+  private farmSize = { value: new THREE.Vector2(1, 1) };
   private light = {
     uSunXZ: { value: new THREE.Vector2(1, 0) },
     uSunTint: { value: new THREE.Color() },
@@ -343,14 +362,21 @@ export class PropertyTerrain {
     const prairie = landscape.area.id === 'sharptail-prairie';
     const painted = landscape.area.id === 'pheasant-coverts' || wetSoil || prairie;
     const woodland = landscape.area.id === 'grouse-woods';
+    const farm = landscape.area.id === 'pheasant-coverts';
     const origin = landscape.propertyToWorld(0, 0, { x: 0, z: 0 });
-    this.material.customProgramCacheKey = () => `property-surface-v${prairie ? 13 : 6}-${landscape.area.terrain.kind}-${painted}-${woodland}-${wetSoil}-${prairie}`;
+    this.material.customProgramCacheKey = () => `property-surface-v${prairie ? 13 : 6}-${landscape.area.terrain.kind}-${painted}-${woodland}-${wetSoil}-${prairie}-farm${farm ? 1 : 0}`;
     this.material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, uniforms);
       shader.uniforms.uPropertyFloorOrigin = { value: new THREE.Vector2(origin.x, origin.z) };
       if (prairie) {
         shader.uniforms.uPrairieSurfaceNormal = this.prairieSurface;
         shader.uniforms.uPrairieBands = this.prairieBands;
+      }
+      if (farm) {
+        shader.uniforms.uFarmMap = this.farmMap;
+        shader.uniforms.uFarmSize = this.farmSize;
+        shader.uniforms.uFarmReady = this.farmReady;
+        shader.uniforms.uFarmOrigin = { value: new THREE.Vector2(origin.x, origin.z) };
       }
       if (painted) {
         shader.uniforms.uPropertySoil = this.soil;
@@ -361,7 +387,7 @@ export class PropertyTerrain {
         .replace('#include <common>', '#include <common>\nvarying vec3 vPropertyWorld;')
         .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n\tvPropertyWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;');
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform vec2 uPropertyFloorOrigin;\n' + propertySurfaceDeclarations(prairie) + (painted ? '\nuniform sampler2D uPropertySoil; uniform float uPropertySoilStrength; uniform vec2 uPropertySoilOrigin;' : '') + (prairie ? '\nuniform sampler2D uPrairieSurfaceNormal; uniform sampler2D uPrairieBands;' : ''))
+        .replace('#include <common>', '#include <common>\nuniform vec2 uPropertyFloorOrigin;\n' + propertySurfaceDeclarations(prairie) + (farm ? PHEASANT_FARM_DECLARATIONS : '') + (painted ? '\nuniform sampler2D uPropertySoil; uniform float uPropertySoilStrength; uniform vec2 uPropertySoilOrigin;' : '') + (prairie ? '\nuniform sampler2D uPrairieSurfaceNormal; uniform sampler2D uPrairieBands;' : ''))
         .replace('#include <color_fragment>', '#include <color_fragment>\n' + propertySurfaceFragment(prairie) + (prairie ? SHARPTAIL_SURFACE_COLOR_FRAGMENT : '') + (painted ? `
           vec2 soilUV = (vPropertyWorld.xz - uPropertySoilOrigin) / ${prairie ? '1.6' : '4.8'};
           vec3 soilA = texture2D(uPropertySoil, soilUV).rgb;
@@ -391,7 +417,7 @@ export class PropertyTerrain {
           float standRange = smoothstep(8.0, 40.0, pDistance) * (1.0 - smoothstep(380.0, 750.0, pDistance));
           diffuseColor.rgb *= mix(1.0, mix(.90, 1.08, standMass), standRange * standResolved);
           ` : ''}
-        ` : '') + (woodland ? `
+        ` : '') + (farm ? PHEASANT_FARM_FRAGMENT : '') + (woodland ? `
           vec2 duffPosition = vPropertyWorld.xz - uPropertyFloorOrigin;
           float duff = propertyNoise(duffPosition * 9.0);
           float duffMass = propertyNoise(duffPosition * .43);
@@ -428,6 +454,12 @@ export class PropertyTerrain {
       }
     }
     if (this.abort.signal.aborted) return;
+    if (this.landscape.area.id === 'pheasant-coverts') {
+      const map = createPheasantFarmMap(this.landscape);
+      this.farmMap.value = map.texture;
+      this.farmSize.value.copy(map.size);
+      this.farmReady.value = 1;
+    }
     if (prairie) {
       this.prairieSurface.value = sharptailMeadowNormalTexture();
       this.prairieBands.value = sharptailBandSurfaceTexture();
@@ -520,6 +552,9 @@ export class PropertyTerrain {
     this.prairieSurface.value = null;
     this.prairieBands.value?.dispose();
     this.prairieBands.value = null;
+    this.farmMap.value?.dispose();
+    this.farmMap.value = null;
+    this.farmReady.value = 0;
     this.tiles.length = 0;
     this.horizon.length = 0;
   }

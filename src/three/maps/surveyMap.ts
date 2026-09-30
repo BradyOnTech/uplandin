@@ -3,7 +3,10 @@ import type { Rect } from '../../game/field';
 import { LandscapeModel, PROPERTY_PX_TO_M, type GroundSample } from '../../game/landscape';
 import { pheasantHomesteadYard, pheasantWestFence } from '../../game/pheasantHabitat';
 import type { Vec2 } from '../../game/types';
-import { pheasantCoverFringeAt, pheasantFields, pheasantPonds, pheasantShelterbelts, samplePheasantHarvest } from '../subsystems/pheasantLandscape';
+import { pheasantCoverFringeAt, pheasantFields, pheasantPonds, pheasantShelterbelts, samplePheasantHarvest, type PheasantHarvestSample } from '../subsystems/pheasantLandscape';
+import { pheasantFarmFenceLines, type PheasantCrop } from '../../game/pheasantFarm';
+/** Survey tints for the harvested fields, matching the ground in the field. */
+const SURVEY_CROP: Record<PheasantCrop, [number, number, number]> = { corn: [222, 204, 162], beans: [184, 160, 132], wheat: [236, 209, 140], hay: [188, 192, 140] };
 import { chukarBrows } from '../../game/chukarLandscape';
 
 export interface SurveyView { center: Vec2; zoom: number }
@@ -94,8 +97,8 @@ export function buildSurveyRaster(area: AreaConfig, cols = 224): SurveyRaster {
     const cover=pheasant?pheasantCoverFringeAt(area,px,py):Number(area.patches.some(p=>inRect(px,py,p)));
     color=blend(color,woods?[91,125,99]:[136,151,98],cover*.72);
     if(pheasant){
-      samplePheasantHarvest(area,px,py,fields,harvest);
-      color=blend(color,[224,194,132],harvest.amount*.72);
+      samplePheasantHarvest(area,px,py,fields,harvest as PheasantHarvestSample);
+      color=blend(color,SURVEY_CROP[(harvest as PheasantHarvestSample).crop??'corn'],harvest.amount*.72);
       if(yard&&inRect(px,py,yard))color=blend(color,[235,220,184],.85);
     }
     const shade=clamp((surface.gradeX+surface.gradeZ)*-32,-15,15)+(grain(x,y)-.5)*2;
@@ -154,7 +157,10 @@ export function createSurveyAtlas(area:AreaConfig):{canvas:HTMLCanvasElement;con
       g.strokeStyle='#61724265';g.lineWidth=.8;g.beginPath();
       g.moveTo(cx-2,cy+2);g.lineTo(cx-3,cy-2);g.moveTo(cx,cy+2);g.lineTo(cx,cy-3);g.moveTo(cx+2,cy+2);g.lineTo(cx+3,cy-1);g.stroke();
     }else if(pheasant&&samplePheasantHarvest(area,px,py,fields,sample).amount>.7){
-      g.strokeStyle='#a18a4c32';g.lineWidth=.8;g.beginPath();g.moveTo(cx-2.5,cy+1);g.lineTo(cx+2.5,cy+1);g.stroke();
+      // Hatching follows each field's planter rows.
+      const along=Math.abs(Math.sin(sample.angle))>.5;
+      g.strokeStyle='#a18a4c32';g.lineWidth=.8;g.beginPath();
+      if(along){g.moveTo(cx-2.5,cy+1);g.lineTo(cx+2.5,cy+1);}else{g.moveTo(cx+1,cy-2.5);g.lineTo(cx+1,cy+2.5);}g.stroke();
     }
   }
   if(pheasant){
@@ -173,6 +179,10 @@ export function createSurveyAtlas(area:AreaConfig):{canvas:HTMLCanvasElement;con
       const r=3+grain(i,belt.x)*2;g.fillStyle=i%3===0?'#738c65':'#7f956d';g.strokeStyle='#516e4d88';g.lineWidth=.75;
       g.beginPath();g.arc(x,y,r,0,Math.PI*2);g.fill();g.stroke();
     }
+    // Section fences between the farm's fields.
+    g.save();g.strokeStyle='#77705299';g.lineWidth=1;g.setLineDash([3,3]);
+    for(const line of pheasantFarmFenceLines(area.world)){g.beginPath();line.forEach((p,i)=>{const [x,y]=point(p.x,p.y);if(i)g.lineTo(x,y);else g.moveTo(x,y);});g.stroke();}
+    g.restore();
     const fence=pheasantWestFence(area.landmarks);g.strokeStyle='#777052';g.lineWidth=1.4;g.beginPath();
     fence.forEach((p,i)=>{const [x,y]=point(p.x,p.y);if(i)g.lineTo(x,y);else g.moveTo(x,y);});g.stroke();
     if(fence.length===2){const a=point(fence[0].x,fence[0].y),b=point(fence[1].x,fence[1].y);for(let t=0;t<=1;t+=.12){const x=a[0]+(b[0]-a[0])*t,y=a[1]+(b[1]-a[1])*t;g.beginPath();g.moveTo(x,y-3);g.lineTo(x,y+3);g.stroke();}}

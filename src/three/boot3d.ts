@@ -190,7 +190,7 @@ declare global {
       setTod(tod: TimeOfDay): void;
       telemetry(): ReturnType<typeof readTelemetry>;
       pause(paused: boolean): void;
-      setPose(x: number, z: number, yawDeg: number, pitchDeg?: number): void;
+      setPose(x: number, z: number, yawDeg: number, pitchDeg?: number, lift?: number): void;
       renderOnce(): void;
       info(): { calls: number; triangles: number };
       /** Advance the (capture-frozen) sim by exact 30 Hz ticks. */
@@ -245,7 +245,7 @@ engine.start(fieldInterface.loading).then((started) => {
     telemetry: readTelemetry,
     pause: (paused) => engine.pause(paused),
     setTod: (t) => engine.setTimeOfDay(t),
-    setPose: (x, z, yaw, pitch) => engine.ctx.get<PlayerSystem>('player').setPose(engine.ctx, x, z, yaw, pitch),
+    setPose: (x, z, yaw, pitch, lift) => engine.ctx.get<PlayerSystem>('player').setPose(engine.ctx, x, z, yaw, pitch, lift),
     renderOnce: () => engine.renderOnce(),
     info: () => ({
       calls: engine.ctx.renderer.info.render.calls,

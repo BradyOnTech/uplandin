@@ -13,6 +13,14 @@ export const PHEASANT_MATERIALS = {
   straw: 0xc3b68e, amber: 0xad8a60, olive: 0x829772, reed: 0xb9a982,
   drySoil: 0x82715b, cutStraw: 0xd1bb8f, bankMud: 0x4c554c,
   reedLitter: 0x938063, standingFloor: 0x596b52,
+  // Harvested ground, one identity per crop: bleached corn residue over dark
+  // loam, grey-brown bean ground, pale wheat straw and a cured hay aftermath.
+  cornResidue: 0xc4b79a, cornSoil: 0x5f5043,
+  beanSoil: 0x76675a, beanChaff: 0xa8987c,
+  wheatStraw: 0xe2c98a, wheatShade: 0xb89c62,
+  hayGreen: 0x8b9163, hayCured: 0xb8ab7b,
+  // Brome and foxtail along fences, headlands and field roads.
+  verge: 0x86875a, vergeDry: 0xa89f72,
 } as const;
 
 export const P = {

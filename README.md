@@ -31,6 +31,9 @@ The standalone Quail field defaults to the liver-and-white GSP and morning light
 `?drop=west-track` selects the second truck drop; `?quality=lite` selects lighter rendering.
 `?dogstyle=smooth` or `?dogstyle=faceted` renders every dog in one art style (see the
 [dog style study](docs/3d/dog-style-study.md) and `tools3d/dog-comparison.html`).
+`tools3d/cattail-coverts-review.html` stages Cattail Coverts views in the real renderer
+(see [the working farm](docs/3d/cattail-coverts-farm.md)); `node tools3d/review-cattail-coverts.mjs`
+captures the same views headless.
 Saved Career and Quick Hunt launches retain their selected dogs and gear.
 In the 3D field you handle the dog with **Z** whoa, **X** hunt on (or relocate from a point),
 **C** cast the way you face and **V** dead bird where you look, alongside **Q** whistle; on

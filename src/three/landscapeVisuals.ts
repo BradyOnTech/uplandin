@@ -11,6 +11,7 @@ import { RimrockFloraSystem } from './subsystems/rimrockFlora';
 import { ChukarEnvironmentSystem } from './subsystems/chukarEnvironment';
 import { PheasantCoverSystem } from './subsystems/pheasantCover';
 import { PheasantScenerySystem } from './subsystems/pheasantScenery';
+import { PheasantCropResidueSystem } from './subsystems/pheasantCropResidue';
 import { PropertyHabitatSystem } from './subsystems/propertyHabitat';
 import { PropertyTrailsSystem } from './subsystems/propertyTrails';
 import { HunBenchSystem } from './subsystems/hunBench';
@@ -58,7 +59,7 @@ const RIMROCK_VISUALS: LandscapeVisualAdapter = {
 
 const PHEASANT_VISUALS: LandscapeVisualAdapter = {
   create: (landscape) => ({
-    systems: [new PropertyTrailsSystem(landscape), new PheasantCoverSystem(landscape), new PheasantScenerySystem(landscape)],
+    systems: [new PropertyTrailsSystem(landscape), new PheasantCoverSystem(landscape), new PheasantCropResidueSystem(landscape), new PheasantScenerySystem(landscape)],
   }),
 };
 

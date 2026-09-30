@@ -23,6 +23,7 @@ export class PlayerSystem implements Subsystem {
   private pos = new THREE.Vector3(0, 0, 40);
   private vel = new THREE.Vector3();
   private bobPhase = 0;
+  private reviewLift = 0;
   private stepDistance = 0;
   private captureMode = false;
   private recallPending = false;
@@ -167,8 +168,11 @@ export class PlayerSystem implements Subsystem {
   consumeRecall(): boolean { const pending = this.recallPending; this.recallPending = false; return pending; }
   consumeCommands(): Array<'whoa' | 'release' | 'cast' | 'dead'> { return this.commandQueue.splice(0); }
   setHuntHeading(ctx: Ctx, heading: number): void { this.yaw = -heading - Math.PI / 2; this.place(ctx); }
-  setPose(ctx: Ctx, x: number, z: number, yawDeg: number, pitchDeg = 0): void {
+  /** Capture and review poses. `lift` raises the eye above its standing
+   * height for map-review overviews; ordinary play always passes zero. */
+  setPose(ctx: Ctx, x: number, z: number, yawDeg: number, pitchDeg = 0, lift = 0): void {
     this.waterDepth = this.water?.depthAtWorld(x, z) ?? 0;
+    this.reviewLift = Math.max(0, lift);
     this.pos.set(x, 0, z); this.yaw = THREE.MathUtils.degToRad(yawDeg); this.pitch = THREE.MathUtils.degToRad(pitchDeg); this.place(ctx);
   }
   /** Optional handler-view tracking; movement and mouse look remain grounded. */
@@ -182,7 +186,7 @@ export class PlayerSystem implements Subsystem {
   }
   private place(ctx: Ctx): void {
     const ground = ctx.get<TerrainSystem>('terrain').heightAt(this.pos.x, this.pos.z);
-    ctx.camera.position.set(this.pos.x, ground + EYE + Math.sin(this.bobPhase) * 0.018, this.pos.z);
+    ctx.camera.position.set(this.pos.x, ground + EYE + this.reviewLift + Math.sin(this.bobPhase) * 0.018, this.pos.z);
     ctx.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
   }
   update(ctx: Ctx, dt: number): void {

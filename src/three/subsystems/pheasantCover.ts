@@ -430,22 +430,11 @@ export class PheasantCoverSystem implements Subsystem {
         // Separate seed avoids shifting the established standing vegetation.
         // Keep mats patchy and on dry ground; they share the cover material.
         const litterRng = mulberry32(cellSeed(Math.round(x * 10), Math.round(y * 10), area.terrain.seed ^ 0x1177e));
-        if (moisture < .48 && litterRng() < (cover ? .28 : harvest > .3 ? .42 : .55)) {
+        // Harvested fields carry their own crop residue (PheasantCropResidue).
+        if (moisture < .48 && harvest <= .3 && litterRng() < (cover ? .28 : .55)) {
           groups.litter.push({ x, y, scale: .9 + litterRng() * .8,
             angle: harvest > .3 ? harvestSample.angle : litterRng() * Math.PI * 2,
             color: color.copy(straw).lerp(olive, moisture * .45).getHex() });
-        }
-        if (harvest > .3 && moisture < .36) {
-          // Parallel machinery rows supply agricultural scale. Gaps and a
-          // few taller grasses interrupt them along the habitat boundary.
-          const stripe = .5 + .5 * Math.cos(harvestSample.row * Math.PI * .88);
-          if (rng() < (.25 + stripe * .50) * harvest) {
-            // Consume the same variation in both tiers before fringe roots:
-            // lighter stubble must not move neighboring standing habitat.
-            const plant = { x, y, scale: .80 + rng() * .55, angle: harvestSample.angle + (rng() - .5) * .12,
-              color: color.copy(straw).lerp(amber, rng() * .35).getHex() };
-            if (!lite || keep > .35) groups.stubble.push(plant);
-          }
         }
         if (cover || pheasantCoverFringeAt(area, x, y) > .02) {
           // Overlapping rooted clumps make a stand, rather than a scatter of
@@ -487,6 +476,24 @@ export class PheasantCoverSystem implements Subsystem {
           continue;
         }
         if (harvest > .3 && moisture < .36) continue;
+        // Brome and foxtail verges along fences, headlands and field roads:
+        // knee-high, clumped and continuous enough to outline every field.
+        // A separate stream leaves the established placement untouched.
+        const vergeRng = mulberry32(cellSeed(Math.round(x * 10), Math.round(y * 10), area.terrain.seed ^ 0x7e26e));
+        if (moisture < .5 && !pond) {
+          const vergeAmount = 1 - harvest / .3;
+          for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) {
+            if (vergeRng() > .5 * vergeAmount) continue;
+            const vx = cellX + (dx + .1 + vergeRng() * .8) * spacing / 3;
+            const vy = cellY + (dy + .1 + vergeRng() * .8) * spacing / 3;
+            if (!pheasantPlantClear(area, vx, vy)) continue;
+            const seed = vergeRng();
+            if (lite && seed < .3) continue;
+            groups.prairie.push({ x: vx, y: vy, scale: .74 + vergeRng() * .3, height: .42 + seed * .36,
+              spread: 1.05 + vergeRng() * .25, angle: vergeRng() * Math.PI * 2,
+              color: color.copy(straw).lerp(olive, .22 + vergeRng() * .3).lerp(amber, vergeRng() * .18).getHex() });
+          }
+        }
         const drift = .50 + Math.sin(x * .065 + Math.sin(y * .038) * 2.4) * .27 + Math.cos(y * .07) * .20;
         // Low, weathered grass fills the spaces between standing bunches.
         // Reuse the prairie mesh so the extra ground layer needs no new draw.

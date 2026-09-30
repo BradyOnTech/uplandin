@@ -47,14 +47,14 @@ export function createPheasantFarmPainter(area: AreaConfig): FarmPaint | undefin
   }
   const soil = new THREE.Color(0x968a70);
   const gravel = new THREE.Color(0xbcb49e);
-  const shortSward = new THREE.Color(0x8b9068);
-  const dryClipping = new THREE.Color(0xa49b76);
+  const shortSward = new THREE.Color(0x9a9a72);
+  const dryClipping = new THREE.Color(0xb6a87d);
   const quietGround = new THREE.Color();
   const ground = createPheasantHomesteadGround(area)!;
   const classification = { upper: 0, turnout: 0, drive: 0, bank: 0, grading: 0 };
   const workingEarth = new THREE.Color(0xa1947a);
-  const bankSward = new THREE.Color(0x76815a);
-  const bankDry = new THREE.Color(0x969572);
+  const bankSward = new THREE.Color(0x929470);
+  const bankDry = new THREE.Color(0xa9a079);
   const bankColor = new THREE.Color();
   const smooth = THREE.MathUtils.smoothstep;
   return (x, y, variation, color) => {
@@ -80,7 +80,8 @@ export function createPheasantFarmPainter(area: AreaConfig): FarmPaint | undefin
     }
     const access = 1 - smooth(Math.sqrt(nearestSquared), 2.3, 5.8 + edgeShift * 3);
     const apron = Math.max(front, service, access);
-    quietGround.copy(shortSward).lerp(dryClipping, .22 + variation * .42);
+    // Late-October yard grass is half cured: more straw than lawn.
+    quietGround.copy(shortSward).lerp(dryClipping, .38 + variation * .42);
     color.lerp(quietGround, maintained * .88);
     color.lerp(soil, maintained * (.12 + apron * .80));
     color.lerp(gravel, maintained * apron * (.09 + variation * .15));

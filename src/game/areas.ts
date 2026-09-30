@@ -4,6 +4,7 @@ import { mulberry32 } from './math';
 import type { SpeciesShare } from './species';
 import type { Vec2 } from './types';
 import { pheasantDryCover, pheasantShoreCover, pheasantWestFence } from './pheasantHabitat';
+import { pheasantFarmCover } from './pheasantFarm';
 import { chukarCoverPatches } from './chukarLandscape';
 import { quailCoverPatches } from './quailComposition';
 import { SHARPTAIL_COVER_PATCHES } from './sharptailLandscape';
@@ -255,8 +256,10 @@ function pheasantGeography(w: number, h: number) {
       return { ...drop, heading: Math.atan2(next.y - drop.position.y, next.x - drop.position.x) };
     }),
     landmarks,
+    // Cover follows the farm: CRP blocks, fencerows and a grassed waterway,
+    // then the authored pond pockets and farmstead windbreak take precedence.
     patches: pheasantDryCover([
-      ...scatterRects(world(w, h), { count: 30, minW: 90, maxW: 170, minH: 28, maxH: 50 }, mulberry32(22)),
+      ...pheasantFarmCover(world(w, h)),
       ...pheasantShoreCover(landmarks),
     ], landmarks),
     // Work the live shore from the entry, or heel across the cut field and
