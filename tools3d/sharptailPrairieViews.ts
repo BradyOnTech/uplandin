@@ -17,9 +17,9 @@ export function sharptailPrairieViews(area: AreaConfig): MapReviewView[] {
   const graystone = stone('west-graystone'), swaleStone = stone('west-swale-stone'), lone = stone('middle-lone-stone');
   const westDraw = detail('west-draw');
   return [
-    v('truck', 'Truck', { x: south.x, y: south.y - 8 }, { x: south.x + 40, y: south.y - 200 }, -3),
+    v('truck', 'South gate', { x: south.x + 10, y: south.y - 55 }, { x: south.x + 40, y: south.y - 230 }, -3),
     v('south-shoulder', 'South shoulder', { x: 672, y: 576 }, { x: 868, y: 528 }, -4),
-    v('west-truck', 'West Track', { x: west.x + 8, y: west.y }, { x: west.x + 200, y: west.y - 40 }, -3),
+    v('west-truck', 'West Track', { x: west.x + 55, y: west.y - 6 }, { x: west.x + 230, y: west.y - 40 }, -3),
     v('west-draw', 'West draw', { x: westDraw.x - 60, y: westDraw.y + 30 }, { x: westDraw.x + 80, y: westDraw.y - 30 }, -4),
     v('erratics', 'West graystones', { x: graystone.x - 26, y: graystone.y + 18 }, { x: graystone.x, y: graystone.y }, -2),
     v('swale-stones', 'Swale stones', { x: swaleStone.x + 30, y: swaleStone.y + 20 }, { x: swaleStone.x, y: swaleStone.y }, -3),
@@ -31,6 +31,7 @@ export function sharptailPrairieViews(area: AreaConfig): MapReviewView[] {
     v('return', 'Prairie return', { x: 1190, y: 448 }, { x: 1008, y: 496 }, -4),
     v('swale', 'Swale bottom', { x: 800, y: 440 }, { x: 1000, y: 395 }, -2),
     v('cover-close', 'Native stand underfoot', { x: 700, y: 620 }, { x: 740, y: 600 }, -22),
+    v('windmill', 'Swale windmill', { x: 560, y: 520 }, { x: 600, y: 470 }, 4),
     v('fence', 'Boundary fence', { x: 640, y: 786 }, { x: 540, y: 796 }, -3),
     v('overview-south', 'Overview from the south', { x: south.x, y: area.world.h - 4 }, { x: south.x, y: area.world.h * .4 }, -18, 60),
     v('overview-west', 'Overview from the west', { x: 6, y: area.world.h * .5 }, { x: area.world.w * .6, y: area.world.h * .45 }, -18, 60),

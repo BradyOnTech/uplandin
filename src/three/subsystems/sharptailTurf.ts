@@ -18,12 +18,12 @@ import { sharptailShackYardAt } from './sharptailEnvironment';
  * middle canopy carry the ground. It never touches habitat or placement.
  */
 const CHUNK = 16;
-const SPACING = .62;
+const SPACING = .7;
 
 function turfGeometry(detail: 'near' | 'far'): THREE.BufferGeometry {
   const rng = mulberry32(detail === 'near' ? 0x7e4f : 0x7e50);
   const positions: number[] = [], colors: number[] = [];
-  const blades = detail === 'near' ? 40 : 12;
+  const blades = detail === 'near' ? 32 : 10;
   for (let i = 0; i < blades; i++) {
     // A low mat: curly, leaning blades spread over a hand-wide patch.
     const angle = rng() * Math.PI * 2, r = Math.sqrt(rng()) * .38;
@@ -60,13 +60,46 @@ function turfMaterial(): THREE.MeshLambertMaterial {
   return material;
 }
 
-interface TurfChunk { bounds: [number, number, number, number]; mesh?: THREE.InstancedMesh }
+/** Late-season forbs standing out of the turf: a stiff stem with a
+ * plume or a loose head, tinted per instance (goldenrod, aster, sage). */
+function forbGeometry(): THREE.BufferGeometry {
+  const rng = mulberry32(0xf0b5);
+  const positions: number[] = [], colors: number[] = [];
+  const stem = [.55, .5, .38], head = [1, 1, 1];
+  const tri = (a: number[], b: number[], c: number[], color: number[]) => { positions.push(...a, ...b, ...c); for (let i = 0; i < 3; i++) colors.push(...color); };
+  for (let k = 0; k < 3; k++) {
+    const angle = k / 3 * Math.PI * 2 + rng(), r = .05 + rng() * .06, x = Math.cos(angle) * r, z = Math.sin(angle) * r;
+    const h = .38 + rng() * .24, lean = (rng() - .5) * .08, w = .008;
+    const top = [x + lean, h, z];
+    tri([x - w, 0, z], [x + w, 0, z], top, stem);
+    tri([x, 0, z - w], [x, 0, z + w], top, stem);
+    // A small faceted head: two crossed diamonds.
+    for (const [dx, dz] of [[1, 0], [0, 1]]) {
+      const s = .045 + rng() * .02;
+      const a = [top[0] - dx * s, top[1] + .01, top[2] - dz * s], b = [top[0] + dx * s, top[1] + .01, top[2] + dz * s];
+      tri(a, [top[0], top[1] + s * 1.6, top[2]], b, head);
+      tri(a, b, [top[0], top[1] - s * .5, top[2]], head.map(v => v * .8));
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.computeVertexNormals();
+  const normals = geometry.getAttribute('normal') as THREE.BufferAttribute;
+  for (let i = 0; i < normals.count; i++) normals.setXYZ(i, 0, 1, 0);
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+const FORB_TINTS = [0xc9a64a, 0x9a86a8, 0xd9d2b6, 0xb88a52].map(c => new THREE.Color(c));
+
+interface TurfChunk { bounds: [number, number, number, number]; mesh?: THREE.InstancedMesh; forbs?: THREE.InstancedMesh }
 
 export class SharptailTurfSystem implements Subsystem {
   readonly id = 'sharptail-turf';
   private chunks = new Map<string, TurfChunk>();
   private near = turfGeometry('near');
   private far = turfGeometry('far');
+  private forb = forbGeometry();
   private material = turfMaterial();
   private ranges = { near: 9, visible: 18, build: 26, release: 40 };
   private shack?: { x: number; z: number };
@@ -107,9 +140,10 @@ export class SharptailTurfSystem implements Subsystem {
     for (const [key, chunk] of this.chunks) {
       const [x0, z0, x1, z1] = chunk.bounds, distance = boxDistance(cx, cz, x0, z0, x1, z1);
       if (distance > this.ranges.release) {
-        if (chunk.mesh) { ctx.scene.remove(chunk.mesh); chunk.mesh.dispose(); }
+        for (const mesh of [chunk.mesh, chunk.forbs]) if (mesh) { ctx.scene.remove(mesh); mesh.dispose(); }
         this.chunks.delete(key); continue;
       }
+      if (chunk.forbs) chunk.forbs.visible = distance < this.ranges.visible;
       if (!chunk.mesh) continue;
       chunk.mesh.visible = distance < this.ranges.visible;
       chunk.mesh.geometry = distance < this.ranges.near ? this.near : this.far;
@@ -120,7 +154,7 @@ export class SharptailTurfSystem implements Subsystem {
     const chunk: TurfChunk = { bounds: [x0, z0, x0 + CHUNK, z0 + CHUNK] };
     const area = this.landscape.area, rng = mulberry32((Math.imul(x0, 73856093) ^ Math.imul(z0, 19349663) ^ area.terrain.seed) >>> 0);
     const lite = ctx.quality === 'lite';
-    const matrices: THREE.Matrix4[] = [], colors: THREE.Color[] = [];
+    const matrices: THREE.Matrix4[] = [], colors: THREE.Color[] = [], forbMatrices: THREE.Matrix4[] = [], forbColors: THREE.Color[] = [];
     const matrix = new THREE.Matrix4(), position = new THREE.Vector3(), rotation = new THREE.Quaternion(), scale = new THREE.Vector3();
     const up = new THREE.Vector3(0, 1, 0), base = new THREE.Color(0x93875f), lee = new THREE.Color(0x6f7a58), dry = new THREE.Color(0xa99a6c);
     for (let z = z0; z < z0 + CHUNK; z += SPACING) for (let x = x0; x < x0 + CHUNK; x += SPACING) {
@@ -143,6 +177,11 @@ export class SharptailTurfSystem implements Subsystem {
       matrices.push(matrix.compose(position, rotation, scale).clone());
       const color = base.clone().lerp(lee, this.meadow.hollow * .7).lerp(dry, this.meadow.crown * .45).multiplyScalar(.9 + tone * .18);
       colors.push(tintSharptailCommunity(color, sharptailCommunityAt(px, py, this.meadow, this.community), .5));
+      // Forbs gather in loose drifts on the drier ground.
+      if (tone > .965 - this.meadow.crown * .02 && keep < .7) {
+        forbMatrices.push(matrix.compose(position, rotation, scale.set(.9 + size * .4, .85 + size * .5, .9 + size * .4)).clone());
+        forbColors.push(FORB_TINTS[Math.floor(turn * 7) % FORB_TINTS.length].clone().multiplyScalar(.9 + size * .15));
+      }
     }
     if (!matrices.length) return chunk;
     const mesh = new THREE.InstancedMesh(this.near, this.material, matrices.length);
@@ -151,13 +190,19 @@ export class SharptailTurfSystem implements Subsystem {
     mesh.computeBoundingSphere();
     ctx.scene.add(mesh);
     chunk.mesh = mesh;
+    if (forbMatrices.length) {
+      const forbs = new THREE.InstancedMesh(this.forb, this.material, forbMatrices.length);
+      forbMatrices.forEach((m, i) => { forbs.setMatrixAt(i, m); forbs.setColorAt(i, forbColors[i]); });
+      forbs.name = 'Sharptail forbs'; forbs.castShadow = false; forbs.receiveShadow = true;
+      forbs.computeBoundingSphere(); ctx.scene.add(forbs); chunk.forbs = forbs;
+    }
     return chunk;
   }
 
   dispose(ctx: Ctx): void {
-    for (const chunk of this.chunks.values()) if (chunk.mesh) { ctx.scene.remove(chunk.mesh); chunk.mesh.dispose(); }
+    for (const chunk of this.chunks.values()) for (const mesh of [chunk.mesh, chunk.forbs]) if (mesh) { ctx.scene.remove(mesh); mesh.dispose(); }
     this.chunks.clear();
-    this.near.dispose(); this.far.dispose(); this.material.dispose();
+    this.near.dispose(); this.far.dispose(); this.forb.dispose(); this.material.dispose();
   }
 }
 

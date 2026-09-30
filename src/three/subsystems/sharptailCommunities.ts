@@ -43,8 +43,8 @@ export function sharptailCommunityAt(x: number, y: number, meadow: SharptailMead
   const dry = 1 - meadow.hollow;
   out.bluestem = smooth(colony(x, y, 11, 95), .5, .68) * (.3 + meadow.crown * .7) * dry;
   out.bigBluestem = smooth(colony(x, y, 23, 70), .42, .62) * meadow.hollow;
-  out.wheatgrass = smooth(colony(x, y, 37, 110), .56, .74) * (1 - meadow.crown * .6) * (1 - meadow.hollow * .5);
-  out.needle = smooth(colony(x, y, 51, 60), .48, .66) * Math.max(meadow.cured, meadow.crown * .45) * dry;
+  out.wheatgrass = smooth(colony(x, y, 37, 110), .5, .7) * (1 - meadow.crown * .6) * (1 - meadow.hollow * .5);
+  out.needle = smooth(colony(x, y, 51, 60), .44, .62) * Math.max(meadow.cured, meadow.crown * .55) * dry;
   return out;
 }
 

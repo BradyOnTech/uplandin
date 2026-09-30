@@ -93,6 +93,7 @@ attribute float prairieBend;
 uniform float uPrairieTime;
 uniform vec2 uPrairieWind;
 uniform float uPrairieWindStrength;
+varying float vPrairieSheen;
 ${VEGETATION_GUST_GLSL}
 ${VEGETATION_INSTANCE_WIND_GLSL}`)
         .replace('#include <begin_vertex>', `#include <begin_vertex>
@@ -102,12 +103,21 @@ float prairieKeep = smoothstep(${lite ? '20.0, 36.0' : '30.0, 50.0'}, prairieDis
   * (1.0 - smoothstep(PRAIRIE_FADE_START, PRAIRIE_FADE_END, prairieDistance));
 transformed = prairieRoot + (position - prairieRoot) * prairieKeep;
 transformed += vegetationInstanceWind(uPrairieWind) * vegetationGust(uPrairieTime, prairieRootWorld.xz, uPrairieWind)
-  * uPrairieWindStrength * .045 * prairieBend * prairieKeep;`);
-      shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_begin>',
+  * uPrairieWindStrength * .045 * prairieBend * prairieKeep;
+// Wind waves: broad bands of laid-over, sun-catching grass travel downwind
+// across the prairie, broken by a slower cross-wind swell.
+vec2 sheenAxis = normalize(uPrairieWind + vec2(1e-4));
+float sheenPhase = dot(prairieRootWorld.xz, sheenAxis) * .045 - uPrairieTime * (1.0 + uPrairieWindStrength * .8);
+float sheenSwell = sin(dot(prairieRootWorld.xz, vec2(-sheenAxis.y, sheenAxis.x)) * .021 + uPrairieTime * .15) * .22;
+vPrairieSheen = smoothstep(.62, 1.0, sin(sheenPhase) * .5 + .5 + sheenSwell) * prairieBend;`);
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vPrairieSheen;\nuniform float uPrairieWindStrength;')
+        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= 1.0 + vPrairieSheen * .24 * clamp(uPrairieWindStrength, .3, 1.6);')
+        .replace('#include <normal_fragment_begin>',
         '#include <normal_fragment_begin>\nnormal = normalize(vNormal);');
     };
     this.material.defines = { PRAIRIE_FADE_START: '220.0', PRAIRIE_FADE_END: '250.0' };
-    this.material.customProgramCacheKey = () => `sharptail-upright-middle-grass-v2-${lite ? 'lite' : 'high'}`;
+    this.material.customProgramCacheKey = () => `sharptail-upright-middle-grass-v3-${lite ? 'lite' : 'high'}`;
 
     const zones = { swale: 0, stand: 0 }, meadow = { crown: 0, hollow: 0, cured: 0, exposed: 0 };
     const bands = { scrub: 0, grass: 0, litter: 0 }, world = { x: 0, z: 0 };

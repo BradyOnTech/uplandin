@@ -13,7 +13,7 @@ import { PheasantCoverSystem } from './subsystems/pheasantCover';
 import { PheasantScenerySystem } from './subsystems/pheasantScenery';
 import { PheasantCropResidueSystem } from './subsystems/pheasantCropResidue';
 import { SharptailTurfSystem } from './subsystems/sharptailTurf';
-import { SharptailFenceSystem } from './subsystems/sharptailFence';
+import { SharptailRanchSystem } from './subsystems/sharptailRanch';
 import { PropertyHabitatSystem } from './subsystems/propertyHabitat';
 import { PropertyTrailsSystem } from './subsystems/propertyTrails';
 import { HunBenchSystem } from './subsystems/hunBench';
@@ -121,7 +121,7 @@ const VALLEY_OAK_VISUALS: LandscapeVisualAdapter = {
 };
 
 const AREA_VISUALS: Readonly<Record<string, LandscapeVisualAdapter | undefined>> = {
-  'sharptail-prairie': { create: (landscape) => ({ systems: [new GrassSystem(landscape), new SharptailTurfSystem(landscape), new SharptailFenceSystem(landscape), new PropertyTrailsSystem(landscape), new PropertyHabitatSystem(landscape)] }) },
+  'sharptail-prairie': { create: (landscape) => ({ systems: [new GrassSystem(landscape), new SharptailTurfSystem(landscape), new SharptailRanchSystem(landscape), new PropertyTrailsSystem(landscape), new PropertyHabitatSystem(landscape)] }) },
   'quail-fields': { create: (landscape) => ({ systems: [new QuailEnvironmentSystem(landscape, loadQuailTreeKit), new QuailKitSystem(landscape), new QuailGroundPropsSystem(landscape)] }) },
   'chukar-ridge': { create: (landscape) => ({ systems: [new ChukarEnvironmentSystem(landscape)] }) },
   'pheasant-coverts': PHEASANT_VISUALS,

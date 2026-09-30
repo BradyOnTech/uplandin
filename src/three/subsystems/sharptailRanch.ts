@@ -3,14 +3,19 @@ import type { LandscapeModel } from '../../game/landscape';
 import { PROPERTY_PX_TO_M } from '../../game/landscape';
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
+import { createQuailWindmill } from './quailLandmarks';
 
 /**
- * The ranch's boundary fence: weathered cedar posts and four strands of
- * sagging barbed wire around the pasture, with braced corners and open wire
- * gates where the two parking places enter. It frames the property and gives
- * the long grass views a man-made scale line. Purely visual; the property
- * edge already bounds movement.
+ * Ranch furniture for the pasture. The boundary fence: weathered cedar
+ * posts and four strands of sagging barbed wire, with braced line posts and
+ * open wire gates where the two parking places enter; it frames the property
+ * and gives the long grass views a man-made scale line (visual only; the
+ * property edge already bounds movement). A windmill and stock tank stand
+ * in the lower swale, a turning landmark that is solid to hunter and dogs.
  */
+/** The windmill's footing in the south swale, well off every route. */
+export const SHARPTAIL_WINDMILL = { x: 600, y: 470 } as const;
+
 export function sharptailFenceLine(landscape: LandscapeModel): { x: number; y: number }[] {
   const { x, y, w, h } = landscape.area.world, inset = 4;
   return [
@@ -19,8 +24,13 @@ export function sharptailFenceLine(landscape: LandscapeModel): { x: number; y: n
   ];
 }
 
-export class SharptailFenceSystem implements Subsystem {
-  readonly id = 'sharptail-fence';
+export class SharptailRanchSystem implements Subsystem {
+  readonly id = 'sharptail-ranch';
+  private obstacles: { x: number; z: number; radius: number }[] = [];
+  private rotor?: THREE.Object3D;
+  private mill?: THREE.Group;
+
+  collisionCircles(): readonly { x: number; z: number; radius: number }[] { return this.obstacles; }
   private objects: THREE.InstancedMesh[] = [];
   private geometries: THREE.BufferGeometry[] = [];
   private materials: THREE.Material[] = [];
@@ -29,14 +39,16 @@ export class SharptailFenceSystem implements Subsystem {
 
   init(ctx: Ctx): void {
     const area = this.landscape.area, rng = mulberry32(area.terrain.seed ^ 0xfe7ce);
-    const postGeo = new THREE.CylinderGeometry(.06, .08, 1.35, 6);
+    // A mile of fence stays cheap: open five-sided posts (their tops are
+    // below eye level only at the heavy braces) and flat two-triangle wire.
+    const postGeo = new THREE.CylinderGeometry(.06, .08, 1.35, 5, 1, true);
     postGeo.translate(0, .6, 0);
-    const braceGeo = new THREE.CylinderGeometry(.09, .1, 1.7, 6);
+    const braceGeo = new THREE.CylinderGeometry(.09, .1, 1.7, 5, 1, false);
     braceGeo.translate(0, .75, 0);
-    const wireGeo = new THREE.BoxGeometry(1, .012, .012);
+    const wireGeo = new THREE.PlaneGeometry(1, .014);
     this.geometries.push(postGeo, braceGeo, wireGeo);
-    const wood = new THREE.MeshLambertMaterial({ color: 0x8b8272, flatShading: true });
-    const wire = new THREE.MeshLambertMaterial({ color: 0x4d4f4b });
+    const wood = new THREE.MeshLambertMaterial({ color: 0x8b8272, flatShading: true, side: THREE.DoubleSide });
+    const wire = new THREE.MeshLambertMaterial({ color: 0x4d4f4b, side: THREE.DoubleSide });
     this.materials.push(wood, wire);
     const posts: THREE.Matrix4[] = [], braces: THREE.Matrix4[] = [], wires: THREE.Matrix4[] = [];
     const matrix = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), xAxis = new THREE.Vector3(1, 0, 0);
@@ -91,9 +103,35 @@ export class SharptailFenceSystem implements Subsystem {
     add(postGeo, wood, posts, 'Sharptail fence posts', true);
     add(braceGeo, wood, braces, 'Sharptail fence line posts', true);
     add(wireGeo, wire, wires, 'Sharptail fence wire', false);
+
+    const millWorld = this.landscape.propertyToWorld(SHARPTAIL_WINDMILL.x, SHARPTAIL_WINDMILL.y, { x: 0, z: 0 });
+    const ground = this.landscape.heightAtWorld(millWorld.x, millWorld.z);
+    const mill = createQuailWindmill((x, z) => this.landscape.heightAtWorld(millWorld.x + x, millWorld.z + z) - ground);
+    mill.position.set(millWorld.x, ground, millWorld.z);
+    mill.rotation.y = -.6;
+    mill.traverse(child => { if ((child as THREE.Mesh).isMesh) { child.castShadow = ctx.quality === 'high'; child.receiveShadow = true; } });
+    this.rotor = mill.getObjectByName('Quail wind rotor');
+    // Tower and tank, matching the windmill kit's own layout under its turn.
+    const c = Math.cos(-.6), s = Math.sin(-.6);
+    this.obstacles.push({ x: millWorld.x, z: millWorld.z, radius: 1.3 },
+      { x: millWorld.x + 3.35 * c + .35 * s, z: millWorld.z - 3.35 * s + .35 * c, radius: 1.3 });
+    ctx.scene.add(mill);
+    this.mill = mill;
+  }
+
+  update(ctx: Ctx): void {
+    if (this.rotor) this.rotor.rotation.z = -ctx.time * .32;
   }
 
   dispose(ctx: Ctx): void {
+    if (this.mill) {
+      ctx.scene.remove(this.mill);
+      this.mill.traverse(child => {
+        if (child instanceof THREE.Mesh) { child.geometry.dispose(); for (const m of [child.material].flat()) m.dispose(); }
+      });
+      this.mill = undefined; this.rotor = undefined;
+    }
+    this.obstacles.length = 0;
     for (const mesh of this.objects) { ctx.scene.remove(mesh); mesh.dispose(); }
     for (const geometry of this.geometries) geometry.dispose();
     for (const material of this.materials) material.dispose();
