@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { buildPrairieCanopy } from '../assets/prairieCanopy';
-import { PHEASANT_MATERIALS } from '../palette';
+import { buildPlainsTree, type PlainsTreeSpecies } from '../assets/plainsTree';
+import { plainsFoliageMaterial, plainsWoodMaterial } from '../assets/plainsTreeMaterials';
 import type { GroundSample, LandscapeModel } from '../../game/landscape';
 import { PROPERTY_PX_TO_M } from '../../game/landscape';
 import { pheasantWestFence } from '../../game/pheasantHabitat';
@@ -9,6 +9,7 @@ import type { Ctx, Subsystem } from '../engine';
 import type { Hunt3DSystem } from './hunt3d';
 import { pheasantPlantClear, pheasantPonds, pheasantShelterbelts, pheasantTrackDistance } from './pheasantLandscape';
 import { pheasantFarmFenceLines, pheasantFarmFields } from '../../game/pheasantFarm';
+import { createQuailWindmill } from './quailLandmarks';
 
 function seeded(seed: number, salt: number): number {
   let h = seed ^ Math.imul(salt, 0x9e3779b1);
@@ -74,7 +75,18 @@ export class PheasantScenerySystem implements Subsystem {
     return this.shotRay.intersectObjects(this.shotWood, false).length > 0;
   }
 
+  private woodMaterial?: THREE.MeshStandardMaterial;
+  private leafMaterial?: THREE.MeshStandardMaterial;
+
   constructor(private readonly landscape: LandscapeModel) {}
+
+  private rotor?: THREE.Object3D;
+
+  update(ctx: Ctx): void {
+    const time = this.leafMaterial?.userData.time as { value: number } | undefined;
+    if (time) time.value = ctx.time;
+    if (this.rotor) this.rotor.rotation.z = -ctx.time * .32;
+  }
 
   init(ctx: Ctx): void {
     // The shared key light already supplies the field's major shadow shapes.
@@ -139,21 +151,13 @@ export class PheasantScenerySystem implements Subsystem {
             * mix(.22, 1.0, smoothstep(.18, .78, grain));
         `);
     };
-    const trunkMaterial = new THREE.MeshStandardMaterial({ color: PHEASANT_MATERIALS.bark, roughness: 1, flatShading: true });
-    const branchMaterial = new THREE.MeshStandardMaterial({ color: PHEASANT_MATERIALS.branch, roughness: 1, flatShading: true });
-    const foliageMaterials = PHEASANT_MATERIALS.foliage.map((color) => new THREE.MeshStandardMaterial({
-      color,
-      roughness: 1,
-      flatShading: true,
-      emissive: color,
-      emissiveIntensity: 0.025,
-      vertexColors: true,
-    }));
+    this.woodMaterial = plainsWoodMaterial();
+    this.leafMaterial = plainsFoliageMaterial();
+    this.materials.push(this.woodMaterial, this.leafMaterial);
     const fenceMaterial = new THREE.MeshStandardMaterial({ color: 0x776854, roughness: 1, flatShading: true });
     const wireMaterial = new THREE.MeshStandardMaterial({ color: 0x343836, roughness: 0.92 });
     this.materials.push(
-      waterMaterial, snowMaterial, trunkMaterial, branchMaterial,
-      ...foliageMaterials, fenceMaterial, wireMaterial,
+      waterMaterial, snowMaterial, fenceMaterial, wireMaterial,
     );
 
     // Use the same footprint and water level as rooted cattail placement.
@@ -187,14 +191,7 @@ export class PheasantScenerySystem implements Subsystem {
       if (major) {
         const treeX = pond.x + (i % 2 === 0 ? rx + 13 : -rx - 11);
         const treeZ = pond.z - rz * 0.28;
-        const tree = this.buildCottonwood(
-          seeded(this.landscape.area.terrain.seed, 90 + i),
-          15 + i * 1.8,
-          trunkMaterial,
-          branchMaterial,
-          foliageMaterials,
-          castShadow,
-        );
+        const tree = this.buildCottonwood(seeded(this.landscape.area.terrain.seed, 90 + i), 18 + i * 1.6, castShadow);
         tree.position.set(treeX, this.landscape.heightAtWorld(treeX, treeZ) - 0.1, treeZ);
         tree.rotation.y = i * 1.83 + 0.4;
         this.obstacles.push({ x: treeX, z: treeZ, radius: .70 });
@@ -203,7 +200,20 @@ export class PheasantScenerySystem implements Subsystem {
       }
     }
 
-    this.buildShelterbelts(ctx, trunkMaterial, foliageMaterials);
+    this.buildShelterbelts(ctx);
+    // The Stock Pond is fed by an old windmill and tank on its dry west
+    // shoulder: a turning landmark readable from anywhere on the farm.
+    for (const pond of visiblePonds.filter(p => p.landmarkId === 'area-feature')) {
+      const millX = pond.x - pond.rx - 9, millZ = pond.z + pond.ry * .35;
+      const ground = this.landscape.heightAtWorld(millX, millZ);
+      const mill = createQuailWindmill((x, z) => this.landscape.heightAtWorld(millX + x, millZ + z) - ground);
+      mill.position.set(millX, ground, millZ);
+      this.rotor = mill.getObjectByName('Quail wind rotor');
+      mill.traverse(child => { if ((child as THREE.Mesh).isMesh) { child.castShadow = castShadow; child.receiveShadow = true; } });
+      this.obstacles.push({ x: millX, z: millZ, radius: 1.3 }, { x: millX + 3.35, z: millZ + .35, radius: 1.3 });
+      ctx.scene.add(mill);
+      this.objects.push(mill);
+    }
     this.buildSeasonalGround(ctx, snowMaterial);
     this.buildFence(ctx, fenceMaterial, wireMaterial, castShadow);
     this.buildFarmFences(ctx, fenceMaterial, wireMaterial);
@@ -296,15 +306,20 @@ export class PheasantScenerySystem implements Subsystem {
     ctx.scene.add(mesh); this.objects.push(mesh);
   }
 
-  private buildShelterbelts(ctx: Ctx, trunkMaterial: THREE.Material, foliageMaterials: THREE.Material[]): void {
-    const trunkGeo = new THREE.CylinderGeometry(.09, .23, 1, 5);
-    const crownGeo = buildPrairieCanopy('windbreak');
-    this.geometries.push(trunkGeo, crownGeo);
-    const stems: THREE.Matrix4[] = [];
-    const crowns = foliageMaterials.map(() => [] as THREE.Matrix4[]);
-    const position = new THREE.Vector3(), scale = new THREE.Vector3();
-    const rotation = new THREE.Quaternion(), crownRotation = new THREE.Quaternion(), matrix = new THREE.Matrix4();
-    const crownEuler = new THREE.Euler();
+  private buildShelterbelts(ctx: Ctx): void {
+    // A few grown trees per species, instanced with their own scale and
+    // turn: windbreaks mix green ash, elm and boxelder with the odd
+    // cottonwood, and neighbouring farms use cheaper distant crowns.
+    const planted: { species: PlainsTreeSpecies; seed: number }[] = [
+      { species: 'ash', seed: 11 }, { species: 'ash', seed: 12 }, { species: 'elm', seed: 21 }, { species: 'elm', seed: 22 },
+      { species: 'boxelder', seed: 31 }, { species: 'boxelder', seed: 32 }, { species: 'cottonwood', seed: 41 },
+    ];
+    const variants = planted.map(({ species, seed }) => ({ species, tree: buildPlainsTree(species, seeded(this.landscape.area.terrain.seed, seed)), matrices: [] as THREE.Matrix4[] }));
+    const distant = (['elm', 'ash', 'cottonwood'] as const).map((species, i) => ({ species,
+      tree: buildPlainsTree(species, seeded(this.landscape.area.terrain.seed, 70 + i), 'distant'), matrices: [] as THREE.Matrix4[] }));
+    for (const v of [...variants, ...distant]) this.geometries.push(v.tree.wood, v.tree.foliage);
+    const position = new THREE.Vector3(), scale = new THREE.Vector3(), rotation = new THREE.Quaternion(), matrix = new THREE.Matrix4();
+    const up = new THREE.Vector3(0, 1, 0);
     const rng = mulberry32(seeded(this.landscape.area.terrain.seed, 641));
     for (const belt of pheasantShelterbelts(this.landscape.area)) {
       const rng = mulberry32(seeded(this.landscape.area.terrain.seed, Math.round(belt.x * 73 + belt.y * 97)));
@@ -312,8 +327,8 @@ export class PheasantScenerySystem implements Subsystem {
       const plantingCount = Math.ceil(belt.count * 1.65);
       for (let i = 0; i < plantingCount; i++) {
         const t = i / (plantingCount - 1);
-        // Retain the farm windbreak line, but give it surviving groups,
-        // replacement saplings and openings instead of identical spacing.
+        // Surviving groups, replacement saplings and openings instead of
+        // identical spacing along the windbreak line.
         const clustered = t + Math.sin(t * Math.PI * 6) * .035;
         const along = (clustered - .5) * belt.length + (rng() - .5) * 3;
         const across = Math.sin(t * Math.PI * 3) * 4 + (rng() - .5) * 5;
@@ -323,47 +338,21 @@ export class PheasantScenerySystem implements Subsystem {
         const ground = this.landscape.surfaceAtProperty(x, y, this.surface);
         if (ground.moisture > .72 || ground.slope > .4) continue;
         this.landscape.propertyToWorld(x, y, this.world);
-        const young = rng() < .28;
-        // Surviving windbreaks have stretches of older, spreading trees and
-        // narrower replacements. Share their stature and autumn color across
-        // neighboring roots instead of alternating a palette tree by tree.
-        // Keep the existing random draws: crown edits must not move trunks.
-        const growth = rng();
+        const young = rng() < .28, growth = rng();
+        // Neighbouring trees share a planting cohort's species and stature.
         const maturity = .5 + .5 * Math.sin((t * 2.2 + cohortPhase) * Math.PI * 2);
-        const height = young ? 3.5 + growth * 2.5 : 7.8 + growth * 2.6 + maturity * 3.2;
-        const breadth = young ? .78 : 1.16 + rng() * .32;
-        const heading = rng() * Math.PI * 2;
-        const cohort = Math.floor(t * 3.2 + cohortPhase * 3) % crowns.length;
-        rotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), heading);
-        position.set(this.world.x, ground.height + height * .36, this.world.z);
-        scale.set(.8 + rng() * .4, height * .72, .8 + rng() * .4);
-        this.obstacles.push({ x: this.world.x, z: this.world.z, radius: .23 * Math.max(scale.x, scale.z) });
-        stems.push(matrix.compose(position, rotation, scale).clone());
-        for (let lobe = 0; lobe < 3; lobe++) {
-          const turn = rng(), rise = rng(), width = rng(), depth = rng(), fullness = rng();
-          const angle = heading + lobe * 2.4 + turn * .5;
-          // One dominant leader and two unequal side boughs make a complete
-          // silhouette. Equal overlapping lobes made every tree an umbrella.
-          const spread = height * (lobe === 0 ? .045 : lobe === 1 ? .23 : .16) * (young ? .55 : .85 + maturity * .15);
-          const shoulder = young ? [.69, .52, .84][lobe] : [.75, .56, .68][lobe];
-          position.set(this.world.x + Math.cos(angle) * spread,
-            ground.height + height * (shoulder + rise * .04),
-            this.world.z + Math.sin(angle) * spread);
-          const widthFactor = (young ? [.20, .17, .13] : [.28, .235, .205])[lobe];
-          const heightFactor = (young ? [.36, .25, .22] : [.34, .23, .28])[lobe];
-          scale.set(height * (widthFactor + width * .045) * breadth,
-            height * (heightFactor + depth * .045), height * (widthFactor * .86 + fullness * .045) * breadth);
-          crownEuler.set((turn - .5) * .22, angle, (rise - .5) * .18);
-          crownRotation.setFromEuler(crownEuler);
-          crowns[cohort].push(matrix.compose(position, crownRotation, scale).clone());
-          if (!young) {
-            const base = new THREE.Vector3(this.world.x, ground.height + height * (.30 + lobe * .045), this.world.z);
-            const tip = position.clone(); tip.y -= height * .05;
-            const direction = tip.clone().sub(base), length = direction.length();
-            const fork = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
-            stems.push(new THREE.Matrix4().compose(base.add(tip).multiplyScalar(.5), fork, new THREE.Vector3(.45, length, .45)));
-          }
-        }
+        const cohort = Math.floor(t * 3.2 + cohortPhase * 3);
+        // Saplings are straight-leadered ash and elm replacements; boxelder
+        // and the odd volunteer cottonwood fill the mature rows.
+        const pick = young ? (cohort % 2 ? 0 : 2) : rng() < .08 ? 6 : (cohort * 2 + (rng() < .5 ? 0 : 1)) % 6;
+        const variant = variants[pick];
+        const height = young ? 4 + growth * 2.5 : variant.species === 'cottonwood' ? 15 + growth * 4 : 8 + growth * 2.6 + maturity * 3;
+        rotation.setFromAxisAngle(up, rng() * Math.PI * 2);
+        position.set(this.world.x, ground.height - .05, this.world.z);
+        const breadth = .88 + rng() * .28;
+        scale.set(height * breadth, height, height * (.88 + rng() * .28));
+        variant.matrices.push(matrix.compose(position, rotation, scale).clone());
+        this.obstacles.push({ x: this.world.x, z: this.world.z, radius: Math.max(.2, height * .045) });
       }
     }
     // Plains windbreaks carry an evergreen row: dark eastern red cedars on
@@ -389,16 +378,15 @@ export class PheasantScenerySystem implements Subsystem {
         const height = 4.2 + cedarRng() * 3.2, radius = height * (.2 + cedarRng() * .06);
         for (const [lift, h, r] of [[0, 1, 1], [.34, .78, .72]] as const) {
           position.set(this.world.x + (cedarRng() - .5) * .3, ground.height - .15 + height * lift, this.world.z + (cedarRng() - .5) * .3);
-          rotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), cedarRng() * Math.PI * 2);
+          rotation.setFromAxisAngle(up, cedarRng() * Math.PI * 2);
           scale.set(radius * r, height * h, radius * r * (.85 + cedarRng() * .25));
           cedars.push(matrix.compose(position, rotation, scale).clone());
         }
         this.obstacles.push({ x: this.world.x, z: this.world.z, radius: radius * .7 });
       }
     }
-    // Neighboring farm windbreaks extend the landscape beyond the property
-    // boundary. Broken groups leave open prairie between them; they share
-    // the existing low-detail trunk/crown batches and cast no shadows.
+    // Neighbouring farm windbreaks extend the landscape beyond the property
+    // boundary in broken groups with open prairie between them.
     const bounds = this.landscape.area.world;
     for (let side = 0; side < 4; side++) for (let group = 0; group < 3; group++) {
       const center = .17 + group * .31 + (rng() - .5) * .06;
@@ -412,141 +400,52 @@ export class PheasantScenerySystem implements Subsystem {
         const y = side >= 2 ? bounds.y + bounds.h * along
           : side === 0 ? bounds.y - outside : bounds.y + bounds.h + outside;
         this.landscape.propertyToWorld(x, y, this.world);
-        const ground = this.landscape.heightAtProperty(x, y);
         const height = 10 + rng() * 10;
-        rotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng() * Math.PI * 2);
-        position.set(this.world.x, ground + height * .30, this.world.z);
-        scale.set(1.1, height * .60, 1.1);
-        stems.push(matrix.compose(position, rotation, scale).clone());
-        position.y = ground + height * .68;
-        scale.set(height * .26, height * .38, height * .24);
-        crowns[group % crowns.length].push(matrix.compose(position, rotation, scale).clone());
+        rotation.setFromAxisAngle(up, rng() * Math.PI * 2);
+        position.set(this.world.x, this.landscape.heightAtProperty(x, y) - .05, this.world.z);
+        scale.set(height, height, height);
+        distant[(group + side) % distant.length].matrices.push(matrix.compose(position, rotation, scale).clone());
       }
     }
-    const addBatch = (geometry: THREE.BufferGeometry, material: THREE.Material, matrices: THREE.Matrix4[], name: string) => {
+    const addBatch = (geometry: THREE.BufferGeometry, material: THREE.Material, matrices: THREE.Matrix4[], name: string, wood: boolean, castShadow: boolean) => {
       if (!matrices.length) return;
       const mesh = new THREE.InstancedMesh(geometry, material, matrices.length);
       matrices.forEach((transform, i) => mesh.setMatrixAt(i, transform));
       mesh.name = name;
       mesh.instanceMatrix.needsUpdate = true;
       mesh.receiveShadow = true;
-      // These batches include walkable farm windbreaks as well as distant
-      // planting. Nearby trees need contact and canopy shadows; the sun's
-      // local shadow frustum clips distant planting out of the shadow map.
-      mesh.castShadow = ctx.quality === 'high';
+      // Walkable farm windbreaks need contact and canopy shadows; the sun's
+      // local frustum clips distant planting out of the shadow map anyway.
+      mesh.castShadow = castShadow && ctx.quality === 'high';
       mesh.computeBoundingSphere();
       ctx.scene.add(mesh);
       this.objects.push(mesh);
-      if (geometry === trunkGeo) this.shotWood.push(mesh);
+      if (wood) this.shotWood.push(mesh);
     };
-    addBatch(trunkGeo, trunkMaterial, stems, 'Pheasant shelterbelt trunks');
-    addBatch(cedarGeo, cedarMaterial, cedars, 'Pheasant shelterbelt cedars');
-    crowns.forEach((transforms, i) => addBatch(crownGeo, foliageMaterials[i], transforms, 'Pheasant shelterbelt crowns'));
+    for (const v of variants) {
+      addBatch(v.tree.wood, this.woodMaterial!, v.matrices, `Pheasant shelterbelt ${v.species} wood`, true, true);
+      addBatch(v.tree.foliage, this.leafMaterial!, v.matrices, `Pheasant shelterbelt ${v.species} crowns`, false, true);
+    }
+    for (const v of distant) {
+      addBatch(v.tree.wood, this.woodMaterial!, v.matrices, 'Neighbouring windbreak wood', false, false);
+      addBatch(v.tree.foliage, this.leafMaterial!, v.matrices, 'Neighbouring windbreak crowns', false, false);
+    }
+    addBatch(cedarGeo, cedarMaterial, cedars, 'Pheasant shelterbelt cedars', false, true);
   }
 
-  private buildCottonwood(
-    seed: number,
-    height: number,
-    trunkMaterial: THREE.Material,
-    branchMaterial: THREE.Material,
-    foliageMaterials: THREE.Material[],
-    castShadow: boolean,
-  ): THREE.Group {
-    const rng = mulberry32(seed);
+  /** A slough cottonwood: grown, gold and ragged, the tallest thing on the farm. */
+  private buildCottonwood(seed: number, height: number, castShadow: boolean): THREE.Group {
     const root = new THREE.Group();
-    const trunkGeo = new THREE.CylinderGeometry(0.36, 0.62, height * 0.72, 9, 4);
-    this.breakCylinder(trunkGeo, 0.075, seed);
-    this.geometries.push(trunkGeo);
-    const trunk = new THREE.Mesh(trunkGeo, trunkMaterial);
-    this.shotWood.push(trunk);
-    trunk.position.y = height * 0.36;
-    trunk.castShadow = castShadow;
-    trunk.receiveShadow = true;
-    root.add(trunk);
-
-    const branchGeo = new THREE.CylinderGeometry(0.11, 0.25, 1, 7, 2);
-    const crownGeo = buildPrairieCanopy('cottonwood');
-    this.geometries.push(branchGeo, crownGeo);
-    const up = new THREE.Vector3(0, 1, 0);
-    const branchMatrices: THREE.Matrix4[] = [];
-    const canopyMatrices = foliageMaterials.map(() => [] as THREE.Matrix4[]);
-    const branchPosition = new THREE.Vector3();
-    const branchQuaternion = new THREE.Quaternion();
-    const branchUnit = new THREE.Vector3();
-    const branchScale = new THREE.Vector3();
-    const canopyPosition = new THREE.Vector3();
-    const canopyQuaternion = new THREE.Quaternion();
-    const canopyEuler = new THREE.Euler();
-    const canopyScale = new THREE.Vector3();
-    const matrix = new THREE.Matrix4();
-    for (let i = 0; i < 7; i++) {
-      const angle = i / 7 * Math.PI * 2 + rng() * 0.55;
-      const start = new THREE.Vector3(0, height * (0.46 + rng() * 0.18), 0);
-      const reach = height * (0.2 + rng() * 0.16);
-      const end = new THREE.Vector3(
-        Math.sin(angle) * reach,
-        height * (0.63 + rng() * 0.25),
-        Math.cos(angle) * reach,
-      );
-      const direction = end.clone().sub(start);
-      branchPosition.copy(start).add(end).multiplyScalar(0.5);
-      branchUnit.copy(direction).normalize();
-      branchQuaternion.setFromUnitVectors(up, branchUnit);
-      branchScale.set(0.72 + rng() * 0.42, direction.length(), 0.72 + rng() * 0.42);
-      branchMatrices.push(matrix.compose(branchPosition, branchQuaternion, branchScale).clone());
-
-      const lobes = 2 + (i % 3 === 0 ? 1 : 0);
-      for (let lobe = 0; lobe < lobes; lobe++) {
-        const materialIndex = (i + lobe) % foliageMaterials.length;
-        canopyPosition.copy(end).add(new THREE.Vector3(
-          (rng() - 0.5) * height * 0.12,
-          (rng() - 0.35) * height * 0.1,
-          (rng() - 0.5) * height * 0.12,
-        ));
-        canopyScale.set(
-          height * (0.12 + rng() * 0.06),
-          height * (0.09 + rng() * 0.055),
-          height * (0.12 + rng() * 0.06),
-        );
-        canopyEuler.set((rng() - .5) * .35, rng() * Math.PI, (rng() - .5) * .35);
-        canopyQuaternion.setFromEuler(canopyEuler);
-        canopyMatrices[materialIndex].push(matrix.compose(canopyPosition, canopyQuaternion, canopyScale).clone());
-      }
+    const tree = buildPlainsTree('cottonwood', seed);
+    this.geometries.push(tree.wood, tree.foliage);
+    const wood = new THREE.Mesh(tree.wood, this.woodMaterial!), crown = new THREE.Mesh(tree.foliage, this.leafMaterial!);
+    for (const mesh of [wood, crown]) {
+      mesh.scale.setScalar(height);
+      mesh.castShadow = castShadow; mesh.receiveShadow = true;
+      root.add(mesh);
     }
-
-    const branches = new THREE.InstancedMesh(branchGeo, branchMaterial, branchMatrices.length);
-    branches.matrixAutoUpdate = false;
-    for (let i = 0; i < branchMatrices.length; i++) branches.setMatrixAt(i, branchMatrices[i]);
-    branches.instanceMatrix.needsUpdate = true;
-    branches.castShadow = castShadow;
-    branches.computeBoundingSphere();
-    root.add(branches);
-    this.shotWood.push(branches);
-
-    for (let materialIndex = 0; materialIndex < canopyMatrices.length; materialIndex++) {
-      const matrices = canopyMatrices[materialIndex];
-      if (matrices.length === 0) continue;
-      const canopies = new THREE.InstancedMesh(crownGeo, foliageMaterials[materialIndex], matrices.length);
-      canopies.matrixAutoUpdate = false;
-      for (let i = 0; i < matrices.length; i++) canopies.setMatrixAt(i, matrices[i]);
-      canopies.instanceMatrix.needsUpdate = true;
-      canopies.castShadow = castShadow;
-      canopies.receiveShadow = true;
-      canopies.computeBoundingSphere();
-      root.add(canopies);
-    }
+    this.shotWood.push(wood);
     return root;
-  }
-
-  private breakCylinder(geometry: THREE.BufferGeometry, amount: number, seed: number): void {
-    const position = geometry.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < position.count; i++) {
-      const y = position.getY(i);
-      const phase = Math.sin(y * 1.9 + seed * 0.01) * amount;
-      position.setX(i, position.getX(i) + phase);
-      position.setZ(i, position.getZ(i) + Math.cos(y * 1.6 + seed) * amount * 0.7);
-    }
-    geometry.computeVertexNormals();
   }
 
   private buildSeasonalGround(ctx: Ctx, material: THREE.Material): void {
@@ -667,7 +566,14 @@ export class PheasantScenerySystem implements Subsystem {
   dispose(ctx: Ctx): void {
     for (const object of this.objects) {
       ctx.scene.remove(object);
-      object.traverse(child => { if (child instanceof THREE.InstancedMesh) child.dispose(); });
+      object.traverse(child => {
+        if (child instanceof THREE.InstancedMesh) child.dispose();
+        // The windmill brings its own geometry and materials.
+        if (object.name === 'Old Windmill' && child instanceof THREE.Mesh) {
+          child.geometry.dispose();
+          for (const material of [child.material].flat()) material.dispose();
+        }
+      });
     }
     for (const geometry of this.geometries) geometry.dispose();
     for (const material of this.materials) material.dispose();
@@ -676,5 +582,6 @@ export class PheasantScenerySystem implements Subsystem {
     this.materials.length = 0;
     this.obstacles.length = 0;
     this.shotWood.length = 0;
+    this.rotor = undefined;
   }
 }

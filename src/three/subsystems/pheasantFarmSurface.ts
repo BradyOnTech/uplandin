@@ -47,14 +47,14 @@ export function createPheasantFarmPainter(area: AreaConfig): FarmPaint | undefin
   }
   const soil = new THREE.Color(0x968a70);
   const gravel = new THREE.Color(0xbcb49e);
-  const shortSward = new THREE.Color(0x9a9a72);
-  const dryClipping = new THREE.Color(0xb6a87d);
+  const shortSward = new THREE.Color(0x9f9f7a);
+  const dryClipping = new THREE.Color(0xb2ac84);
   const quietGround = new THREE.Color();
   const ground = createPheasantHomesteadGround(area)!;
   const classification = { upper: 0, turnout: 0, drive: 0, bank: 0, grading: 0 };
   const workingEarth = new THREE.Color(0xa1947a);
-  const bankSward = new THREE.Color(0x929470);
-  const bankDry = new THREE.Color(0xa9a079);
+  const bankSward = new THREE.Color(0x94977a);
+  const bankDry = new THREE.Color(0xaaa47e);
   const bankColor = new THREE.Color();
   const smooth = THREE.MathUtils.smoothstep;
   return (x, y, variation, color) => {

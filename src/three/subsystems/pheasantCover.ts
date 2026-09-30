@@ -483,13 +483,14 @@ export class PheasantCoverSystem implements Subsystem {
         if (moisture < .5 && !pond) {
           const vergeAmount = 1 - harvest / .3;
           for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) {
-            if (vergeRng() > .5 * vergeAmount) continue;
+            if (vergeRng() > .78 * vergeAmount) continue;
             const vx = cellX + (dx + .1 + vergeRng() * .8) * spacing / 3;
             const vy = cellY + (dy + .1 + vergeRng() * .8) * spacing / 3;
             if (!pheasantPlantClear(area, vx, vy)) continue;
             const seed = vergeRng();
             if (lite && seed < .3) continue;
-            groups.prairie.push({ x: vx, y: vy, scale: .74 + vergeRng() * .3, height: .42 + seed * .36,
+            // Tallest in the middle of the strip, where the mower never reaches.
+            groups.prairie.push({ x: vx, y: vy, scale: .74 + vergeRng() * .3, height: .38 + seed * .3 + vergeAmount * .22,
               spread: 1.05 + vergeRng() * .25, angle: vergeRng() * Math.PI * 2,
               color: color.copy(straw).lerp(olive, .22 + vergeRng() * .3).lerp(amber, vergeRng() * .18).getHex() });
           }

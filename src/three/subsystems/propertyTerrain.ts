@@ -189,7 +189,7 @@ function paintFor(property: LandscapeModel): Paint {
   const harvestSample: PheasantHarvestSample = { amount: 0, row: 0, angle: 0 };
   const crops = {
     corn: [new THREE.Color(PHEASANT_MATERIALS.cornSoil), new THREE.Color(PHEASANT_MATERIALS.cornResidue), .58],
-    beans: [new THREE.Color(PHEASANT_MATERIALS.beanSoil), new THREE.Color(PHEASANT_MATERIALS.beanChaff), .26],
+    beans: [new THREE.Color(PHEASANT_MATERIALS.beanSoil), new THREE.Color(PHEASANT_MATERIALS.beanChaff), .4],
     wheat: [new THREE.Color(PHEASANT_MATERIALS.wheatShade), new THREE.Color(PHEASANT_MATERIALS.wheatStraw), .62],
     hay: [new THREE.Color(PHEASANT_MATERIALS.hayGreen), new THREE.Color(PHEASANT_MATERIALS.hayCured), .46],
   } as const;
