@@ -1,3 +1,4 @@
+import { huntAssists, onHuntAssists } from './assistsRuntime';
 import { isFalconryPractice, FALCONRY_PRACTICE } from '../game/falconryPractice';
 import { bindFieldPageLifecycle } from './pageLifecycle';
 import { enableOfflineHunts, prepareInstalledHuntUrl } from './offline';
@@ -139,7 +140,8 @@ const coatPicker = document.getElementById('dog-coat') as HTMLSelectElement | nu
 const coatLabel = document.getElementById('dog-coat-label');
 const coatPanel = document.getElementById('dog-appearance') as HTMLElement | null;
 const controls = document.getElementById('controls') as HTMLElement | null;
-if (controls) controls.hidden = params.has('capture');
+const applyHints = () => { if (controls) controls.hidden = params.has('capture') || !huntAssists().hints; };
+applyHints(); onHuntAssists(applyHints);
 if (coatPicker && coatPanel) {
   coatPanel.hidden = !params.has('dev') || params.has('capture') || launch !== null;
   if (breedPicker) {

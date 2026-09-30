@@ -1,3 +1,5 @@
+import { huntAssists } from './assistsRuntime';
+import { createAssistsPanel } from './assistsPanel';
 import { HuntArrivalController } from './huntArrivalController';
 import { isFalconryPractice } from '../game/falconryPractice';
 import { bindTouchActionControl } from './touchActionControl';
@@ -278,6 +280,16 @@ export class FieldInterface {
       this.refreshShotAssistance();
     }, { signal });
     this.refreshShotAssistance();
+    // Difficulty and assists sit first in Settings and apply the moment
+    // they change, mid-hunt included.
+    const settings = document.getElementById('field-settings');
+    if (settings && !settings.querySelector('.assists-panel')) {
+      const profile = resolveThreeHuntProfile(location.search);
+      const panel = createAssistsPanel({ title: 'Your kit', signal,
+        earnedTier: parseHuntLaunch(location.search)?.kind === 'career' ? profile.gearTier : null });
+      panel.classList.add('field-settings-group');
+      settings.prepend(panel);
+    }
     const sound = document.getElementById('sound-setting') as HTMLInputElement;
     const challenge = document.getElementById('challenge-setting') as HTMLSelectElement;
     const challengeHelp = document.getElementById('challenge-help')!;
@@ -351,7 +363,7 @@ export class FieldInterface {
   private updateGuide(dt: number): void {
     const line = document.getElementById('first-hunt-guide');
     if (!line) return;
-    if (!this.readyState || !this.entered || this.complete || this.capture || this.falconry || this.engine.ctx.paused) {
+    if (!this.readyState || !this.entered || this.complete || this.capture || this.falconry || this.engine.ctx.paused || !huntAssists().hints) {
       line.hidden = true; return;
     }
     this.guideElapsed += dt;

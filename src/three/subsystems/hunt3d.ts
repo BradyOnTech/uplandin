@@ -32,7 +32,9 @@ import { endFieldSession, endHuntEarly } from '../../game/state';
 import { windMults } from '../../game/wind';
 import { huntingDoctrine } from '../../game/huntDoctrine';
 import { getSpecies } from '../../game/species';
-import { DEFAULT_DOG_RANGE, DOG_RANGES, parseDogRange, type DogRange } from '../../game/dogRange';
+import { DEFAULT_DOG_RANGE, DOG_RANGES, type DogRange } from '../../game/dogRange';
+import { effectiveGearTier } from '../../game/huntAssists';
+import { huntAssists, onHuntAssists } from '../assistsRuntime';
 import type { Ctx, Subsystem } from '../engine';
 import { huntPaceMultiplier } from '../dogs/huntMotion';
 import type { BirdsSystem } from './birds';
@@ -207,6 +209,7 @@ export class Hunt3DSystem implements Subsystem {
   private careerSettled = false;
   private gearTier = 0;
   private dogRange: DogRange = DEFAULT_DOG_RANGE;
+  private assistsAbort: AbortController | null = null;
   private pointRevisions: number[] = [];
   private seedValue?: number;
   private activeChallenge: HuntChallenge = 'balanced';
@@ -230,8 +233,19 @@ export class Hunt3DSystem implements Subsystem {
     this.activeChallenge = setup.challenge;
     this.seedValue = setup.seed;
     this.flushRng = mulberry32(setup.seed === undefined ? FLUSH_SEED : huntStreamSeed(setup.seed, FLUSH_SEED));
-    this.gearTier = setup.gearTier;
-    this.dogRange = parseDogRange(search.get('range')) ?? DEFAULT_DOG_RANGE;
+    // Tracking gear and dog range are the hunter's assists; a career hunter
+    // can leave earned gear at home but not carry more than they have.
+    const earnedTier = setup.launch?.kind === 'career' ? setup.gearTier : null;
+    const assists = huntAssists();
+    this.gearTier = effectiveGearTier(assists, earnedTier);
+    this.dogRange = assists.dogRange;
+    this.assistsAbort?.abort();
+    this.assistsAbort = new AbortController();
+    onHuntAssists(next => {
+      this.gearTier = effectiveGearTier(next, earnedTier);
+      this.dogRange = next.dogRange;
+      for (const motion of this.liveDogMotions) motion.rangeRadius = DOG_RANGES[this.dogRange].radiusM / PROPERTY_PX_TO_M;
+    }, this.assistsAbort.signal);
     this.ctxRef = ctx;
     this.dogNames = [setup.kennelDog?.name ?? shortBreedName(setup.breed.id), ...(setup.brace ? [setup.brace.kennelDog?.name ?? shortBreedName(setup.brace.breedId)] : [])];
     this.careerDogIds = setup.launch?.kind === 'career'

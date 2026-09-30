@@ -211,7 +211,11 @@ export class HuntHudSystem implements Subsystem {
     }
     const shells = this.gun.shellsRemaining();
     const capacity = this.gun.shellCapacity();
-    const trackingGuidance = trackedDog?.state === 'tracking'
+    // What the hunter can know depends on the tracking gear: GPS reads out
+    // the dog's work and distance, a beeper only says it is on point, a bell
+    // says nothing the hunter cannot hear and see.
+    const tier = this.hunt.trackingGearTier();
+    const trackingGuidance = trackedDog?.state === 'tracking' && tier >= 2
       ? trackingApproachGuidance(dogRange, hunt.areaId, trackedDog.scentStage, trackedDog.waitingForHandler) : null;
     const trackingCue = trackingGuidance?.headline ?? null;
     const phase = hawk ? (hawk.phase === 'fist' ? (trackedDog?.state === 'pointing' ? 'DOG ON POINT · WALK IN FOR THE FLUSH' : trackedDog?.state === 'heel' ? 'HAWK ON FIST · Q SENDS DOG HUNTING' : 'HAWK ON FIST · WORKING COVER') : hawk.phase === 'on-quarry' || hawk.phase === 'settling' ? 'HAWK HAS QUARRY · WALK IN' : hawk.phase === 'picking-up' ? 'PICKING UP ONTO THE FIST' : hawk.phase === 'returning' ? 'HAWK RETURNING' : 'GOSHAWK IN PURSUIT') : this.gun.isReloading()
@@ -226,8 +230,8 @@ export class HuntHudSystem implements Subsystem {
         ? trackedDog.carryingBirdId !== null
           ? 'DOG RETURNING WITH BIRD'
           : 'DOG HUNTING DEAD'
-        : trackedDog?.state === 'pointing'
-          ? pointApproachCue(dogRange, this.player.isRunning(), hunt.areaId)
+        : trackedDog?.state === 'pointing' && tier >= 1
+          ? tier >= 2 ? pointApproachCue(dogRange, this.player.isRunning(), hunt.areaId) : 'BEEPER · DOG ON POINT'
           : trackingCue
             ? trackingCue
           : this.fieldTime < this.deliveryNoticeUntil
@@ -247,7 +251,13 @@ export class HuntHudSystem implements Subsystem {
     const dz = this.truck.z - ctx.camera.position.z;
     const yaw = ctx.camera.rotation.y;
     const bearing = dogRelativeBearing(dx, dz, yaw);
-    if (trackedDog && this.locator) {
+    if (this.locator) {
+      const pointing = trackedDog?.state === 'pointing';
+      const shown = tier >= 2 || (tier === 1 && pointing);
+      if (this.locator.hidden === shown) this.locator.hidden = !shown;
+      this.locator.classList.toggle('beeper-only', tier === 1);
+    }
+    if (trackedDog && this.locator && tier >= 2) {
       const dogBearing = dogRelativeBearing(dogDx, dogDz, yaw);
       const pointing = trackedDog.state === 'pointing';
       this.locator.classList.toggle('on-point', pointing);
@@ -263,6 +273,11 @@ export class HuntHudSystem implements Subsystem {
       }
       if (this.dogStatus && this.dogStatus.textContent !== status) this.dogStatus.textContent = status;
       if (this.dogDistance && this.dogDistance.textContent !== distance) this.dogDistance.textContent = distance;
+    }
+    else if (trackedDog && this.locator && tier === 1 && trackedDog.state === 'pointing') {
+      this.locator.classList.add('on-point');
+      if (this.dogStatus && this.dogStatus.textContent !== 'BEEPER · ON POINT') this.dogStatus.textContent = 'BEEPER · ON POINT';
+      if (this.dogDistance && this.dogDistance.textContent !== '') this.dogDistance.textContent = '';
     }
     const truckAngle = Math.round(bearing * 180 / Math.PI);
     const windBearing = dogRelativeBearing(Math.cos(hunt.wind), Math.sin(hunt.wind), yaw);

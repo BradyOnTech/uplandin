@@ -1,3 +1,4 @@
+import { huntAssists } from '../assistsRuntime';
 import type { WetBottomsSystem } from './wetBottoms';
 import * as THREE from 'three';
 import { playShot, unlockAudio, playActionClick } from '../../audio';
@@ -605,7 +606,8 @@ export class GunSystem implements Subsystem {
       const label = document.getElementById('touch-shot-status');
       if (label) label.textContent = status;
     }
-    if (this.reticle) this.reticle.hidden = this.frozen || ctx.paused || this.isReloading() || this.mountT < .35;
+    // With the aiming ring off the hunter shoots off the gun's own bead.
+    if (this.reticle) this.reticle.hidden = this.frozen || ctx.paused || this.isReloading() || this.mountT < .35 || !huntAssists().aimRing;
     if (this.pendingTrigger) {
       const pending = this.pendingTrigger;
       if (ctx.paused || !this.aim || this.isReloading() || ctx.time >= pending.until) this.pendingTrigger = null;

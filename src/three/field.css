@@ -400,3 +400,8 @@ body.falconry-hunt #touch-controls [data-action="whoa"],body.falconry-hunt #touc
 .dog-report-stats dd { margin:0; font-size:17px; font-variant-numeric:tabular-nums; }
 .dog-report-notes,.handler-notes { margin:0; padding-left:18px; display:grid; gap:4px; font-size:14px; line-height:1.45; color:#e4e6d6; }
 .handler-notes { color:#f0d9a8; }
+
+/* A beeper collar says the dog is on point, not where. */
+#dog-locator.beeper-only #dog-direction { visibility:hidden; }
+#dog-locator[hidden] { display:none !important; }
+#field-map-toggle.assist-off { display:none !important; }

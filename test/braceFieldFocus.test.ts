@@ -31,6 +31,7 @@ function render(dogs: Dog[]) {
   const hunt = { dogCount: () => dogs.length, dog: (slot: number) => dogs[slot], huntState: () => state,
     simToWorld: (x: number, y: number, out: { x: number; z: number }) => Object.assign(out, { x, z: y }),
     truckWorld: (out: { x: number; z: number }) => Object.assign(out, { x: 0, z: 0 }),
+    trackingGearTier: () => 3,
   };
   const gun = { shellsRemaining: () => 2, shellCapacity: () => 3, isReloading: () => false, mountProgress: () => 0 };
   const birds = { isRiseActive: () => false };

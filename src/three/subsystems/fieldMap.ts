@@ -1,3 +1,4 @@
+import { huntAssists, onHuntAssists } from '../assistsRuntime';
 import { huntingDoctrine } from '../../game/huntDoctrine';
 import type { Vec2 } from '../../game/types';
 import { dogWorkLabel, fieldCompassHeading } from '../dogLocator';
@@ -42,6 +43,13 @@ export class FieldMapSystem implements Subsystem {
     const signal=this.abort.signal;
     this.resize=new ResizeObserver(()=>this.queueDraw(ctx));this.resize.observe(this.canvas);
     this.toggleButton?.addEventListener('click',()=>this.setOpen(!this.open,ctx),{signal});
+    // Without a map in the kit there is no survey button, and an open map closes.
+    const applyAssists=()=>{
+      const available=huntAssists().surveyMap;
+      this.toggleButton?.classList.toggle('assist-off',!available);
+      if(!available&&this.open)this.setOpen(false,ctx);
+    };
+    applyAssists();onHuntAssists(applyAssists,signal);
     this.closeButton?.addEventListener('click',()=>this.setOpen(false,ctx),{signal});
     this.panel.querySelectorAll<HTMLButtonElement>('[data-map-action]').forEach(button=>button.addEventListener('click',()=>{
       const action=button.dataset.mapAction;
@@ -58,7 +66,7 @@ export class FieldMapSystem implements Subsystem {
       if(event.metaKey||event.ctrlKey||event.altKey)return;
       const target=event.target as HTMLElement|null;
       if(target&&/^(INPUT|SELECT|TEXTAREA)$/.test(target.tagName))return;
-      if(event.code==='KeyM'&&!event.repeat&&!document.querySelector('#field-overlay:not([hidden])')){
+      if(event.code==='KeyM'&&!event.repeat&&!document.querySelector('#field-overlay:not([hidden])')&&huntAssists().surveyMap){
         event.preventDefault();this.setOpen(!this.open,ctx);return;
       }
       if(!this.open)return;
@@ -171,7 +179,8 @@ export class FieldMapSystem implements Subsystem {
     g.strokeStyle='#6e77558a';g.lineWidth=1;g.strokeRect(corner.x,corner.y,mapW,mapH);
 
     const drop=this.hunt.dropPoint();
-    const dogPositions=Array.from({length:this.hunt.dogCount()},(_,i)=>this.hunt.dog(i).pos);
+    // Only a GPS collar with a mapping handheld puts the dog on the map.
+    const dogPositions=this.hunt.trackingGearTier()>=3?Array.from({length:this.hunt.dogCount()},(_,i)=>this.hunt.dog(i).pos):[];
     const live=[{id:'hunter',name:'You',pos:state.hunterPos},
       ...dogPositions.map((pos,i)=>({id:'dog-'+i,name:dogPositions.length>1?'Dog '+(i+1):'Dog',pos})),
       {id:'truck',name:'Truck',pos:drop.position}];
@@ -230,7 +239,7 @@ export class FieldMapSystem implements Subsystem {
     this.setText('field-map-zoom',Math.round(this.view.zoom*100)+'%');
     const hunter=state.hunterPos,dog=dogPositions[0];
     this.setText('field-map-position','Facing '+fieldCompassHeading(ctx.camera.rotation.y).cardinal);
-    this.setText('field-map-dog',dog?Math.round(Math.hypot(dog.x-hunter.x,dog.y-hunter.y))+' yd · '+dogWorkLabel(this.hunt.dog(),area.id).toLowerCase().replace(/^dog /,''):'');
+    this.setText('field-map-dog',!dog?'No GPS on the map':dog?Math.round(Math.hypot(dog.x-hunter.x,dog.y-hunter.y))+' yd · '+dogWorkLabel(this.hunt.dog(),area.id).toLowerCase().replace(/^dog /,''):'');
     this.setText('field-map-truck',Math.round(Math.hypot(drop.position.x-hunter.x,drop.position.y-hunter.y))+' yd · '+drop.name);
     for(const button of this.panel!.querySelectorAll<HTMLButtonElement>('[data-map-action]')){
       if(button.dataset.mapAction==='out')button.disabled=this.view.zoom<=1;
