@@ -1,3 +1,4 @@
+import { resolveCoatFor } from './dogCoats';
 import { AREAS, type AreaConfig } from './areas';
 import { BREEDS, type BreedConfig } from './breeds';
 import {
@@ -107,7 +108,7 @@ export function quickPreparation(config: Partial<QuickConfig>): QuickPreparation
   };
 }
 
-export interface PreparationDog { breedId: string; name: string }
+export interface PreparationDog { breedId: string; name: string; coatId?: string }
 export interface CareerLoadoutChoice { activeDogId?: string; braceDogId?: string | null; gunId?: string }
 export interface CareerLaunchChoice extends CareerLoadoutChoice { areaId: string; dropPointId?: string }
 
@@ -122,7 +123,7 @@ export function commitPreparationDog(career: Career, dog: PreparationDog): Prepa
   const invalid = validDog(dog);
   if (invalid) return invalid;
   if (career.kennel.length >= kennelSlots(career.hunter.level)) return failure('kennel-full', 'Your dog box is full. More kennel space comes with hunter levels.');
-  const added = addDogToKennel(career, dog.name.trim(), dog.breedId);
+  const added = addDogToKennel(career, dog.name.trim(), dog.breedId, dog.coatId ? resolveCoatFor(dog.breedId, dog.coatId) : undefined);
   return { ok: true, career: setActiveDog(added.career, added.dog.id), dog: added.dog };
 }
 
@@ -163,6 +164,16 @@ export function commitCareerLoadout(career: Career, choice: CareerLoadoutChoice)
     if (choice.gunId !== next.hunter.shotgunId) next = { ...next, hunter: { ...next.hunter, shotgunId: choice.gunId } };
   }
   return { ok: true, career: next };
+}
+
+/** Choose the coat a kennel dog is drawn with. Cosmetic: no XP or calendar effect. */
+export function commitDogCoat(career: Career, dogId: string, coatId: string): PreparationResult<{ career: Career }> {
+  const dog = career.kennel.find((candidate) => candidate.id === dogId);
+  if (!dog) return failure('unknown-dog', 'Choose a dog from your current kennel.');
+  const resolved = resolveCoatFor(dog.breedId, coatId);
+  if (resolved !== coatId) return failure('unknown-coat', 'Choose a coat for this breed.');
+  if (dog.coatId === coatId) return { ok: true, career };
+  return { ok: true, career: { ...career, kennel: career.kennel.map((d) => d.id === dogId ? { ...d, coatId } : d) } };
 }
 
 export function commitPreparationCalendar(career: Career, kind: PreparationCalendarKind): PreparationResult<{ career: Career }> {

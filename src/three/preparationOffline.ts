@@ -12,7 +12,7 @@ export interface PreparationView {
 }
 export interface PreparationDraft extends PreparationView {
   quick: QuickConfig; dogId: string; braceId: string; gunId: string; addingDog: boolean;
-  puppyDraft: { breedId: string; name: string; homeRegionId: string };
+  puppyDraft: { breedId: string; name: string; homeRegionId: string; coatId?: string };
   propertyDrafts: Record<'quick' | 'career', { areaId: string; dropPointId: string }>;
 }
 type DraftStorage = StorageLike & { removeItem(key: string): void };

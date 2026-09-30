@@ -25,6 +25,8 @@ export interface KennelDog {
   xp: number;
   /** The season this dog's career started — age derives from the calendar. */
   bornSeason: number;
+  /** Coat id for the breed's 3D model. Absent on older saves: the breed default. */
+  coatId?: string;
 }
 
 export interface HunterProfile {
@@ -100,6 +102,7 @@ export function addDogToKennel(
   career: Career,
   name: string,
   breedId: string,
+  coatId?: string,
 ): { career: Career; dog: KennelDog } {
   const dog: KennelDog = {
     id: `dog-${career.kennel.length + 1}`,
@@ -108,6 +111,7 @@ export function addDogToKennel(
     level: 1,
     xp: 0,
     bornSeason: career.date.season,
+    ...(coatId ? { coatId } : {}),
   };
   return {
     dog,

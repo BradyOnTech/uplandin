@@ -8,7 +8,7 @@ Uplandin has two dog presentations. The GSP uses the smooth, skinned single-mesh
 
 - **Pose bench:** `tools3d/dog-comparison.html` shows a 2×2 grid: GSP and English Setter, each in the smooth and faceted styles, on the same ground, light and camera. `layout=smooth|faceted|gsp|english-setter` narrows the grid, and `zoom=1.5` moves the camera closer. Each panel has a Play link into Quail Fields.
 - **In the field:** `index3d.html?dogstyle=smooth` or `?dogstyle=faceted` applies one style to every dog, including a brace. Without the parameter each breed keeps its current default (smooth GSP, faceted Setter).
-- **From the menus:** hunt preparation → Conditions → Equipment & display → **Dog style** (Breed default / Smooth / Faceted). The choice is remembered in `uplandin.3d.dogstyle`.
+- **From the menus:** hunt preparation → **Dog** step. The live turntable has **Smooth / Faceted / Compare both**; Compare shows your chosen breed and coat in both styles side by side. The same setting is under Settings on the home screen and in preparation. The choice is remembered in `uplandin.3d.dogstyle` and applies to every dog.
 
 ## Design pass 2: both styles redesigned
 
@@ -75,6 +75,16 @@ Measured with a handler walking a public trail at 1.5 m/s for three minutes, wit
 - **Visual review:** headless staged captures (bench and capture-mode field). They are not frame-rate or physical-device evidence.
 - **Bench options:** `tools3d/dog-comparison.html` also takes `layout=gsp-smooth|setter-smooth|gsp-faceted|setter-faceted`, `view=rear|rear-quarter` and `focus=head|feet` for close review.
 - **Menu thumbnails:** the dog pictures (`public/art/menus3d/dogs/*.webp`) still show the old models and should be re-rendered once a style is chosen.
+
+## Menus and dog selection (September 29, 2026)
+
+Hunt preparation is rebuilt as four steps — **Ground, Dog, Gear, Day** — with a rail that summarises each choice and a launch bar that always shows the whole outing.
+
+- **Dog step:** a live 3D turntable (`src/three/dogPreview.ts`) runs the real field renderers on a small sunlit stage. Drag to turn; Standing / On point / Trotting / Running. A second dog appears beside the first.
+- **Breeds in 3D:** only the GSP and English Setter have models, so only they are offered for 3D hunts. Existing career dogs of other breeds still hunt (with the setter body, labelled on their kennel card). The classic 2D view keeps all eleven breeds.
+- **Coats:** every modelled breed shows coat swatches drawn from the model palettes. Quick hunts save `coatId` / `coat2Id`; career dogs save `coatId` on the kennel dog (`commitDogCoat`). Launch links carry `coat` and `coat2`.
+- **Portraits:** `public/art/menus3d/dogs/<breed>-<style>[-<coat>].webp`, rendered from the same preview with `tools3d/dog-portrait.html`. They stand in while WebGL loads (or if it is unavailable) and appear on the home screen and the field arrival card.
+- **Picking the house style:** in `src/three/dogs/dogStyle.ts`, set both `DEFAULT_DOG_STYLE` entries to the chosen style and set `DOG_STYLE_SELECTABLE = false`. Every style control disappears and stored choices are ignored; the Compare button goes with it.
 
 ## Deciding
 

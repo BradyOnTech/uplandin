@@ -3,6 +3,7 @@ import { BREEDS, LEVEL_CAP } from './breeds';
 import type { StorageLike } from './career';
 import { CONDITIONS, type Condition } from './conditions';
 import { GUNS } from './guns';
+import { resolveCoatFor } from './dogCoats';
 import { clamp } from './math';
 import type { WindStrength } from './wind';
 
@@ -15,6 +16,8 @@ export interface QuickConfig {
   /** First falconry slice: one finished GSP on Cattail Coverts, in 3D. */
   huntingMethod?: 'shotgun' | 'goshawk';
   breedId: string;
+  /** Lead dog's coat for its 3D model. */
+  coatId?: string;
   level: number;
   areaId: string;
   wind: WindStrength | 'random';
@@ -23,6 +26,8 @@ export interface QuickConfig {
   gearTier: number;
   /** Second dog's breed for a brace, or 'none' to hunt solo. */
   breed2Id: string;
+  /** Second dog's coat for its 3D model. */
+  coat2Id?: string;
   /** The day's weather, or 'random' to roll it. */
   weather: Condition | 'random';
 }
@@ -54,7 +59,7 @@ export function cycleId<T>(list: T[], current: T, dir: 1 | -1): T {
 export function normalizeQuickConfig(cfg: Partial<QuickConfig>): QuickConfig {
   const base = defaultQuickConfig();
   if (cfg.huntingMethod === 'goshawk') cfg = { ...cfg, breedId: 'gsp', level: LEVEL_CAP, breed2Id: 'none', areaId: 'pheasant-coverts' };
-  return {
+  const normalized: QuickConfig = {
     ...(cfg.huntingMethod ? { huntingMethod: cfg.huntingMethod === 'goshawk' ? 'goshawk' as const : 'shotgun' as const } : {}),
     breedId: BREEDS.some((b) => b.id === cfg.breedId) ? cfg.breedId! : base.breedId,
     level: clamp(Math.round(cfg.level ?? base.level), 1, LEVEL_CAP),
@@ -67,6 +72,10 @@ export function normalizeQuickConfig(cfg: Partial<QuickConfig>): QuickConfig {
       ? (cfg.weather as QuickConfig['weather'])
       : 'random',
   };
+  // Coats are only meaningful for the chosen breed's model; keep them valid.
+  if (cfg.coatId !== undefined) normalized.coatId = resolveCoatFor(normalized.breedId, cfg.coatId);
+  if (cfg.coat2Id !== undefined && normalized.breed2Id !== 'none') normalized.coat2Id = resolveCoatFor(normalized.breed2Id, cfg.coat2Id);
+  return normalized;
 }
 
 export const QUICK_KEY = 'uplandin.quick.v1';

@@ -6,6 +6,12 @@ import { saveGameplayMode, type GameplayMode } from '../game/gameplayMode';
 import { openHuntJournal } from './huntJournalView';
 import { enableOfflineHunts, requestOfflineUpdate } from './offline';
 import { propertyMenuArt, titleMenuArt } from './menuArt';
+import { getArea } from '../game/areas';
+import { getBreed } from '../game/breeds';
+import { loadQuickConfig } from '../game/quick';
+import { coatLabel, isModeledBreed, modelForBreed, resolveCoatFor } from '../game/dogCoats';
+import { coatSwatch } from './dogs/coatSwatch';
+import { DEFAULT_DOG_STYLE, DOG_STYLE_KEY, DOG_STYLE_LABELS, DOG_STYLE_SELECTABLE, DOG_STYLES, effectiveDogStyle, preferredDogStyle, saveDogStyle, type DogStyle } from './dogs/dogStyle';
 
 const root = document.getElementById('home')!;
 let career = loadCareer();
@@ -32,10 +38,15 @@ introduction.append(node('p', 'THE COUNTRY IS CALLING', 'home-eyebrow'), node('h
 const actions = node('nav', '', 'home-actions'); actions.setAttribute('aria-label', 'Choose your hunt');
 const quick = link('', './prepare3d.html?mode=quick', 'home-action home-action-primary');
 quick.append(node('span', '01', 'home-action-index'), node('span', 'Quick Hunt', 'home-action-title'), node('span', 'Any ground. Your own pace.', 'home-action-detail'), node('span', '↗', 'home-action-arrow'));
+const quickDetail = quick.querySelector<HTMLElement>('.home-action-detail')!;
 const hasCareer = career.kennel.length > 0;
 const careerLink = link('', './prepare3d.html?mode=career', 'home-action');
 careerLink.append(node('span', '02', 'home-action-index'), node('span', hasCareer ? 'Continue your season' : 'Start a season', 'home-action-title'), node('span', hasCareer ? `${dateLabel(career.date)} · ${career.kennel.length} ${career.kennel.length === 1 ? 'dog' : 'dogs'} in the kennel` : 'Raise your dogs. Build a hunting life.', 'home-action-detail'), node('span', '↗', 'home-action-arrow'));
 actions.append(quick, careerLink); introduction.append(actions); main.append(introduction);
+const side = node('div', '', 'home-side');
+// Your dog, as it will walk out of the truck, one tap from the dog chooser.
+const dogCard = link('', './prepare3d.html?mode=quick&step=dog', 'home-dog');
+dogCard.setAttribute('aria-label', 'Your dog. Choose your dog');
 const grounds = node('aside', '', 'home-grounds'); grounds.setAttribute('aria-labelledby', 'home-grounds-title');
 const groundsHeading = node('div', '', 'home-grounds-heading'); const groundsTitle = node('h2', 'Find your ground'); groundsTitle.id = 'home-grounds-title';
 groundsHeading.append(groundsTitle, node('span', 'FOUR DISTINCT HUNTS')); grounds.append(groundsHeading);
@@ -49,7 +60,7 @@ for (const [id, title, description, number] of [
   const copy = node('div'); copy.append(node('span', number, 'home-ground-index'), node('h3', title), node('p', description));
   preview.append(image, copy, node('span', '↗', 'home-ground-arrow')); grounds.append(preview); previews.push(preview);
 }
-main.append(grounds);
+side.append(dogCard, grounds); main.append(side);
 const footer = node('footer', '', 'home-footer');
 const utilities = node('nav'); utilities.setAttribute('aria-label', 'Equipment and records');
 const journal = button('Field journal', () => openHuntJournal(loadCareer(), journal));
@@ -62,6 +73,33 @@ function syncLinks(): void {
   for (const [element, mode] of [[quick, 'quick'], [careerLink, 'career']] as const) element.href = `./prepare3d.html?mode=${mode}&renderer=${renderer}`;
   for (const preview of previews) preview.href = `./prepare3d.html?mode=quick&renderer=${renderer}&area=${preview.dataset.area}`;
   rendererNote.textContent = renderer === '3d' ? '3D field experience' : '2D classic experience';
+  syncDog();
+}
+function syncDog(): void {
+  const lead = career.kennel.find(d => d.id === career.activeDogId);
+  const quickSetup = loadQuickConfig();
+  const breedId = lead?.breedId ?? quickSetup.breedId, coatId = lead ? lead.coatId : quickSetup.coatId;
+  const threeD = renderer === '3d', breed = getBreed(breedId), model = modelForBreed(breedId);
+  const style: DogStyle = effectiveDogStyle(model, preferredDogStyle());
+  dogCard.href = `./prepare3d.html?mode=${lead ? 'career' : 'quick'}&renderer=${renderer}&step=dog`;
+  dogCard.replaceChildren();
+  const portrait = node('span', '', 'home-dog-portrait');
+  portrait.append(node('span', breed.name.split(' ').map(w => w[0]).join('').slice(0, 3), 'home-dog-monogram'));
+  if (threeD || isModeledBreed(breedId)) {
+    const image = node('img'); image.alt = ''; image.decoding = 'async';
+    image.addEventListener('load', () => { portrait.dataset.art = 'ready'; }, { once: true });
+    const base = `${import.meta.env.BASE_URL}art/menus3d/dogs/${model}-${style}`;
+    image.addEventListener('error', () => { if (image.src.endsWith(`${style}.webp`)) image.remove(); else image.src = `${base}.webp`; });
+    image.src = `${base}-${resolveCoatFor(breedId, coatId)}.webp`; portrait.prepend(image);
+  }
+  const copy = node('span', '', 'home-dog-copy');
+  copy.append(node('span', lead ? 'YOUR WORKING DOG' : 'YOUR QUICK HUNT DOG', 'home-dog-eyebrow'), node('strong', lead?.name ?? breed.name));
+  const detail = node('span', '', 'home-dog-detail');
+  if (threeD) { const chip = node('span', '', 'home-dog-swatch'); chip.style.background = coatSwatch(resolveCoatFor(breedId, coatId)); detail.append(chip); }
+  detail.append(document.createTextNode([lead ? breed.name : null, threeD ? coatLabel(breedId, coatId) : null, threeD && DOG_STYLE_SELECTABLE ? DOG_STYLE_LABELS[style].label : null].filter(Boolean).join(' · ')));
+  copy.append(detail, node('span', 'Choose your dog →', 'home-dog-action'));
+  dogCard.append(portrait, copy);
+  quickDetail.textContent = `Last out: ${getArea(quickSetup.areaId).name} · ${getBreed(quickSetup.breedId).name}`;
 }
 syncLinks();
 window.addEventListener('pageshow', event => {
@@ -89,6 +127,21 @@ for (const [id, label, detail] of [['3d', 'In the field', 'Immersive 3D landscap
   choice.dataset.renderer = id; choice.append(node('strong', label), node('span', detail)); rendererChoices.append(choice);
 }
 rendererField.append(rendererChoices, node('p', 'Your career and kennel are shared between both views.', 'home-settings-help')); dialogContent.append(rendererField);
+// One art style for every dog, while the house style is still being chosen.
+const styleField = node('fieldset'); styleField.append(node('legend', 'Dog art style'));
+const styleChoices = node('div', '', 'home-renderer-choices home-style-choices');
+const styleOptions: [DogStyle | 'breed', string, string][] = [['breed', 'Breed default', `${DEFAULT_DOG_STYLE.gsp} GSP · ${DEFAULT_DOG_STYLE['english-setter']} setter`], ...DOG_STYLES.map(s => [s, DOG_STYLE_LABELS[s].label, DOG_STYLE_LABELS[s].detail] as [DogStyle, string, string])];
+for (const [id, label, detail] of styleOptions) {
+  const choice = button('', () => {
+    if (id === 'breed') { try { localStorage.removeItem(DOG_STYLE_KEY); } catch { /* optional */ } } else saveDogStyle(id);
+    syncStyle(); syncDog();
+  }, 'home-renderer-choice');
+  choice.dataset.style = id; choice.append(node('strong', label), node('span', detail)); styleChoices.append(choice);
+}
+styleField.append(styleChoices, node('p', 'Compare both styles side by side on the Dog step of hunt preparation.', 'home-settings-help'));
+if (DOG_STYLE_SELECTABLE) dialogContent.append(styleField);
+function syncStyle(): void { const current = preferredDogStyle() ?? 'breed'; styleChoices.querySelectorAll('button').forEach(choice => choice.setAttribute('aria-pressed', String(choice.dataset.style === current))); }
+syncStyle();
 function syncRenderer(): void { rendererChoices.querySelectorAll('button').forEach(choice => choice.setAttribute('aria-pressed', String(choice.dataset.renderer === renderer))); }
 syncRenderer();
 const install = node('section', '', 'home-install'); install.append(node('h3', 'Take the whole game with you'), node('p', 'On iPhone or iPad, use Safari’s Share menu and Add to Home Screen. On Android or desktop, choose Install in your browser. The installed game opens without browser bars.'));

@@ -15,7 +15,9 @@ import { PlayerSystem } from './subsystems/player';
 import { DogSystem } from './subsystems/dog';
 import { GeneratedDogSystem } from './subsystems/generatedDog';
 import { RiggedDogSystem } from './subsystems/riggedDog';
-import { DEFAULT_DOG_STYLE, resolveDogStyle } from './dogs/dogStyle';
+import { DOG_STYLE_LABELS, DOG_STYLE_SELECTABLE, effectiveDogStyle, preferredDogStyle, resolveDogStyle } from './dogs/dogStyle';
+import { coatLabel as coatName, resolveCoatFor } from '../game/dogCoats';
+import { BREEDS } from '../game/breeds';
 import { BirdsSystem } from './subsystems/birds';
 import { FalconrySystem } from './subsystems/falconry';
 import './falconry.css';
@@ -34,6 +36,7 @@ import {
   resolveGspCoat,
 } from './dogs/germanShorthairedPointer';
 import {
+  build3DPreparationHref,
   parseDropPointId,
   parseHuntLaunch,
   resolveThreeHuntArea,
@@ -67,9 +70,10 @@ const landscape = new LandscapeModel(launchArea, parseDropPointId(location.searc
 const landscapeVisuals = createLandscapeVisuals(landscape);
 const visualBreedFor = (breedId: string) => breedId === 'gsp' ? 'gsp' : 'english-setter';
 const visualBreed = visualBreedFor(launchProfile.breedId);
-const coatId = visualBreed === 'gsp'
-  ? resolveGspCoat(params.get('coat') ?? 'liver-white')
-  : resolveEnglishSetterCoat(params.get('coat'));
+// A launch carries the chosen coat; the saved kennel dog or Quick setup is
+// the fallback for older links. The URL wins so review links stay exact.
+const coatId = resolveCoatFor(visualBreed, params.get('coat')
+  ?? launchProfile.kennelDog?.coatId ?? launchProfile.quick?.coatId);
 
 const canvas = document.getElementById('game3d') as HTMLCanvasElement;
 const engine = new Engine(canvas, quality);
@@ -88,9 +92,9 @@ engine.register(new LandmarksSystem());
 // faceted articulated sculpt. `dogstyle` chooses one for every dog in the hunt;
 // without it each breed keeps its established default. The rigged Blender GSP
 // stays available through an explicit review choice.
-const dogStyle = resolveDogStyle(params.get('dogstyle'));
+const dogStyle = resolveDogStyle(params.get('dogstyle')) ?? preferredDogStyle();
 const dogSystemFor = (breed: 'gsp' | 'english-setter', coat: string, slot = 0) => {
-  const style = dogStyle ?? DEFAULT_DOG_STYLE[breed];
+  const style = effectiveDogStyle(breed, dogStyle);
   if (breed === 'gsp' && slot === 0 && coat === 'liver-white' && params.get('dog') === 'rigged') return new RiggedDogSystem();
   if (style === 'smooth') return new GeneratedDogSystem(breed === 'gsp' ? resolveGspCoat(coat) : resolveEnglishSetterCoat(coat), slot);
   return new DogSystem(breed, coat, slot);
@@ -98,8 +102,28 @@ const dogSystemFor = (breed: 'gsp' | 'english-setter', coat: string, slot = 0) =
 engine.register(dogSystemFor(visualBreed, coatId));
 if (launchProfile.brace) {
   const braceVisualBreed = visualBreedFor(launchProfile.brace.breedId);
-  const braceCoat = braceVisualBreed === 'gsp' ? resolveGspCoat(null) : resolveEnglishSetterCoat(null);
+  const braceCoat = resolveCoatFor(braceVisualBreed, params.get('coat2')
+    ?? launchProfile.brace.kennelDog?.coatId ?? launchProfile.quick?.coat2Id);
   engine.register(dogSystemFor(braceVisualBreed, braceCoat, 1));
+}
+// The arrival and pause card names the dog (or brace) the player chose.
+{
+  const section = document.getElementById('field-dog');
+  if (section && !params.has('capture')) {
+    const lead = launchProfile.kennelDog, mate = launchProfile.brace;
+    const leadStyle = effectiveDogStyle(visualBreed, dogStyle);
+    const breedName = (id: string) => BREEDS.find(b => b.id === id)?.name ?? 'Bird dog';
+    document.getElementById('field-dog-name')!.textContent = lead?.name ?? breedName(launchProfile.breedId);
+    document.getElementById('field-dog-detail')!.textContent = [lead ? breedName(lead.breedId) : null, coatName(visualBreed, coatId),
+      DOG_STYLE_SELECTABLE ? `${DOG_STYLE_LABELS[leadStyle].label} style` : null,
+      mate ? `with ${mate.kennelDog?.name ?? breedName(mate.breedId)}` : null].filter(Boolean).join(' · ');
+    const art = document.getElementById('field-dog-art') as HTMLImageElement, base = `${import.meta.env.BASE_URL}art/menus3d/dogs/${visualBreed}-${leadStyle}`;
+    art.addEventListener('error', () => { if (!art.src.endsWith(`${leadStyle}.webp`)) art.src = `${base}.webp`; });
+    art.src = `${base}-${coatId}.webp`;
+    const change = document.getElementById('field-dog-change') as HTMLAnchorElement;
+    change.href = `${build3DPreparationHref(location.search, landscape.area.id, landscape.dropPoint.id)}&step=dog`;
+    section.hidden = false;
+  }
 }
 engine.register(new BirdsSystem());
 engine.register(new FalconrySystem());

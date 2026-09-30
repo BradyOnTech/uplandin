@@ -13,7 +13,7 @@ export default defineConfig({
       const directory = resolve(options.dir ?? 'dist');
       const files = [
         'index.html', 'home3d.html', 'classic.html', 'index3d.html', 'prepare3d.html', 'shotguns3d.html', 'manifest.webmanifest', 'manifest3d.webmanifest', 'icon-192.png', 'icon-512.png',
-        ...['title-landscape', 'quail-fields', 'pheasant-coverts', 'chukar-ridge', 'sharptail-prairie', 'dogs/gsp', 'dogs/english-setter', 'guns/remington-870', 'guns/semi-auto', 'guns/over-under', 'guns/side-by-side'].map(name => `art/menus3d/${name}.webp`),
+        ...['title-landscape', 'quail-fields', 'pheasant-coverts', 'chukar-ridge', 'sharptail-prairie', 'dogs/gsp', 'dogs/english-setter', 'dogs/gsp-smooth', 'dogs/gsp-faceted', 'dogs/english-setter-smooth', 'dogs/english-setter-faceted', 'guns/remington-870', 'guns/semi-auto', 'guns/over-under', 'guns/side-by-side'].map(name => `art/menus3d/${name}.webp`),
         'textures/terrain/prairie-painted.webp',
         'textures/terrain/sharptail-sward-v2.webp',
         'textures/terrain/sharptail-granite-v1.webp',
