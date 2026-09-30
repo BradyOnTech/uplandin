@@ -25,3 +25,14 @@ it('honors an explicit choice before preferences and safely defaults on every pr
   expect(resolveThreeHuntChallenge('?area=grouse-woods&challenge=wild',storage)).toBe('wild');
   expect(resolveThreeHuntChallenge('?area=quail-fields',{getItem:()=>{throw Error('Unavailable');},setItem:()=>{}})).toBe('balanced');
 });
+
+it('offers a Loaded field of close, steady coveys for quick hunts but never for a career',()=>{
+  const storage=null;
+  const loaded=createThreeHuntSetup('?area=sharptail-prairie&challenge=loaded&seed=5',mulberry32(3),storage);
+  const balanced=createThreeHuntSetup('?area=sharptail-prairie&challenge=balanced&seed=5',mulberry32(3),storage);
+  expect(loaded.challenge).toBe('loaded');
+  expect(loaded.hunt.birds.length).toBeGreaterThan(balanced.hunt.birds.length*3);
+  expect(new Set(loaded.hunt.birds.map(b=>b.coveyId)).size).toBeGreaterThan(new Set(balanced.hunt.birds.map(b=>b.coveyId)).size*2.5);
+  expect(resolveThreeHuntChallenge('?play=career&area=sharptail-prairie&challenge=loaded',null)).toBe('balanced');
+  expect(resolveThreeHuntChallenge('?play=quick&challenge=loaded',{getItem:()=>JSON.stringify({areaId:'quail-fields'}),setItem:()=>{}})).toBe('loaded');
+});

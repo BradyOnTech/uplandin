@@ -112,3 +112,11 @@ describe('encounter pacing on a balanced hunt', () => {
       expect(median(runs.flatMap(r => r.straightness))).toBeLessThan(.93);
     }, 120_000);
 });
+
+describe('encounter pacing in a Loaded field', () => {
+  it.each(['quail-fields', 'sharptail-prairie', 'chukar-ridge', 'pheasant-coverts'])('%s: a point or rise every minute or better', area => {
+    const runs = [23, 73].map(seed => hunt(area, seed * 1009, 240, 'loaded'));
+    const contactsPerFiveMinutes = runs.reduce((sum, r) => sum + r.points + r.wild, 0) / runs.length * 300 / 240;
+    expect(contactsPerFiveMinutes).toBeGreaterThanOrEqual(5);
+  }, 120_000);
+});

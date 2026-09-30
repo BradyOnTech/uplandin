@@ -187,8 +187,12 @@ export function resolveThreeHuntChallenge(search: string, storage: StorageLike |
   if (isFalconryPractice(search)) return 'balanced';
   if (!huntingDoctrine(resolveThreeHuntArea(search, storage).id).spatialEncounter) return 'balanced';
   const params = new URLSearchParams(search);
-  if (params.has('challenge')) return parseHuntChallenge(params.get('challenge'));
-  try { return parseHuntChallenge(storage?.getItem(HUNT_CHALLENGE_KEY)); } catch { return 'balanced'; }
+  let challenge: HuntChallenge;
+  if (params.has('challenge')) challenge = parseHuntChallenge(params.get('challenge'));
+  else try { challenge = parseHuntChallenge(storage?.getItem(HUNT_CHALLENGE_KEY)); } catch { challenge = 'balanced'; }
+  // A Loaded field is a quick-hunt preserve day, not a season's hunting:
+  // a career outing on it would be free experience.
+  return challenge === 'loaded' && parseHuntLaunch(search)?.kind === 'career' ? 'balanced' : challenge;
 }
 
 /** Resolve location identity without rolling weather, wind, or birds. */
@@ -248,11 +252,11 @@ export function createThreeHuntSetup(
           const species = getSpecies(entry.speciesId);
           return sum + entry.weight / ((species.coveyMin + species.coveyMax) / 2);
         }, 0))),
-      coveyAnchors: authoredEncounterAnchors(resolvedArea, dropPointId, authoredEncounterRng),
+      coveyAnchors: authoredEncounterAnchors(resolvedArea, dropPointId, authoredEncounterRng, tuning.spacing),
     } : {
       birdCount: QUAIL_FIELD_BIRD_COUNT,
       birdRng: mulberry32(huntStreamSeed(seed!, 0xb17d)),
-      coveyAnchors: quailEncounterAnchors(resolvedArea, dropPointId, mulberry32(huntStreamSeed(seed!, 0xc07e))),
+      coveyAnchors: quailEncounterAnchors(resolvedArea, dropPointId, mulberry32(huntStreamSeed(seed!, 0xc07e)), tuning.spacing),
     }),
   };
 

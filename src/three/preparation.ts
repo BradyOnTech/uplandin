@@ -627,7 +627,8 @@ function dayStep(panel: HTMLElement): void {
       options: WIND_CHOICES.map(id => ({ id, label: choiceLabel(id) })), onChange: value => updateQuick({ wind: value as QuickConfig['wind'] }) })));
   } else panel.append(node('p', 'Weather and bird behaviour follow your career season.', 'help'));
   panel.append(field('Challenge', radioGroup({ id: 'prep-challenge', label: 'Challenge', value: challenge, className: 'challenge-cards',
-    options: (Object.entries(HUNT_CHALLENGES) as [HuntChallenge, (typeof HUNT_CHALLENGES)[HuntChallenge]][]).map(([id, c]) => ({ id, label: `${c.label}. ${c.description}`,
+    options: (Object.entries(HUNT_CHALLENGES) as [HuntChallenge, (typeof HUNT_CHALLENGES)[HuntChallenge]][])
+      .filter(([id]) => mode !== 'career' || id !== 'loaded').map(([id, c]) => ({ id, label: `${c.label}. ${c.description}`,
       build: el => { const h = node('span', '', 'choice-head'); h.append(node('strong', c.label), node('small', c.description)); el.append(h); } })),
     onChange: value => { challenge = parseHuntChallenge(value); } })));
   if (mode === 'career') {

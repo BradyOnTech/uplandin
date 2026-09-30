@@ -108,6 +108,8 @@ export function authoredEncounterAnchors(
   area: AreaConfig,
   dropId: string | undefined,
   rng: RNG = Math.random,
+  /** Below 1 packs coveys closer together (a Loaded field). */
+  spacingScale = 1,
 ): Vec2[] {
   if (area.patches.length === 0 || area.trails.length === 0) return [];
 
@@ -143,14 +145,14 @@ export function authoredEncounterAnchors(
   const style = area.terrain.kind;
   // Close enough that a hunter working the routes meets birds every minute
   // or two; far enough that one flush never spills into the next covey.
-  const spacing = style === 'woods' || style === 'wetland' ? 56 : style === 'rimrock' || style === 'canyon' ? 64 : 72;
+  const spacing = (style === 'woods' || style === 'wetland' ? 56 : style === 'rimrock' || style === 'canyon' ? 64 : 72) * spacingScale;
   // Each visit leans the day a different way: an opening further out or
   // closer in, a favoured flank, and a pick among the good cover rather
   // than the single best spot, so the birds are not waiting in the same
   // place every hunt. Habitat and route still decide what "good" means.
-  const firstDistance = 72 + rng() * 108;
+  const firstDistance = (72 + rng() * 108) * Math.max(.6, spacingScale);
   const flank = rng() < .34 ? 0 : rng() < .5 ? 1 : -1;
-  for (let index = 0; index < MAX_ANCHORS; index++) {
+  for (let index = 0; index < Math.round(MAX_ANCHORS / spacingScale); index++) {
     const wantedDistance = firstDistance + index * (spacing + 8) + rng() * 80;
     const previousDistance = chosen.at(-1)?.distanceFromDrop ?? 0;
     const remaining = candidates.filter((candidate) =>
@@ -182,7 +184,23 @@ export function authoredEncounterAnchors(
   // Candidate availability can be sparse on a future hand-authored map. A
   // final distance sort preserves progression even if the loop had to stop
   // early, and keeps the result stable for a seeded RNG.
-  return chosen
-    .sort((a, b) => a.distanceFromDrop - b.distanceFromDrop)
-    .map((candidate) => candidate.point);
+  const ordered = chosen.sort((a, b) => a.distanceFromDrop - b.distanceFromDrop);
+  if (spacingScale >= 1) return ordered.map((candidate) => candidate.point);
+
+  // A packed field is not one covey per ring out from the truck: fill the
+  // rest of the good cover, best habitat and nearest the routes first.
+  const target = Math.round(MAX_ANCHORS / spacingScale);
+  const routeWeight = style === 'prairie' ? 0.62 : style === 'desert' ? 0.78 : 0.9;
+  const fill = candidates
+    .filter(candidate => !ordered.includes(candidate))
+    .map(candidate => ({ candidate, score: Math.min(candidate.routeDistance, 180) * routeWeight + (1 - candidate.habitat) * 74 + candidate.variation }))
+    .sort((a, b) => a.score - b.score);
+  const extra: Candidate[] = [];
+  for (const { candidate } of fill) {
+    if (ordered.length + extra.length >= target) break;
+    if ([...ordered, ...extra].some(picked => dist(picked.point, candidate.point) < spacing)) continue;
+    extra.push(candidate);
+  }
+  extra.sort((a, b) => a.distanceFromDrop - b.distanceFromDrop);
+  return [...ordered, ...extra].map((candidate) => candidate.point);
 }

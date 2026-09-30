@@ -282,6 +282,7 @@ export class FieldInterface {
     const challenge = document.getElementById('challenge-setting') as HTMLSelectElement;
     const challengeHelp = document.getElementById('challenge-help')!;
     document.getElementById('challenge-options')!.hidden = isFalconryPractice(location.search);
+    if (parseHuntLaunch(location.search)?.kind === 'career') challenge.querySelector('option[value="loaded"]')?.remove();
     challenge.value = resolveThreeHuntChallenge(location.search);
     challengeHelp.textContent = HUNT_CHALLENGES[parseHuntChallenge(challenge.value)].description;
     challenge.addEventListener('change', () => {

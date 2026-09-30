@@ -14,7 +14,7 @@ export const QUAIL_COVEY_SPACING = 72;
  * and later coveys move between hunts; a replayed seed is identical.
  * The player's actual route is never read and outcomes are not adapted live.
  */
-export function quailEncounterAnchors(area: AreaConfig, dropId: string | undefined, rng: RNG): Vec2[] {
+export function quailEncounterAnchors(area: AreaConfig, dropId: string | undefined, rng: RNG, spacingScale = 1): Vec2[] {
   const drop = getDropPoint(area, dropId);
   const forward = { x: Math.cos(drop.heading), y: Math.sin(drop.heading) };
   const candidates = area.patches.flatMap(patch => Array.from({ length: 10 }, (_, i) => ({
@@ -26,11 +26,11 @@ export function quailEncounterAnchors(area: AreaConfig, dropId: string | undefin
   }))).filter(point => area.dropPoints.every(entry => dist(point, entry.position) >= entry.safetyRadius + 16));
   const anchors: Vec2[] = [];
   const firstDistance = 76 + rng() * 96;
-  for (let index = 0; index < 20; index++) {
-    const wanted = index === 0 ? firstDistance : 140 + index * 72 + rng() * 70;
+  for (let index = 0; index < Math.round(20 / spacingScale); index++) {
+    const wanted = index === 0 ? firstDistance : (140 + index * 72) * spacingScale + rng() * 70;
     const scored: { candidate: typeof candidates[number]; score: number }[] = [];
     for (const candidate of candidates) {
-      if (anchors.some(anchor => dist(anchor, candidate) < QUAIL_COVEY_SPACING)) continue;
+      if (anchors.some(anchor => dist(anchor, candidate) < QUAIL_COVEY_SPACING * spacingScale)) continue;
       const dx = candidate.x - drop.position.x, dy = candidate.y - drop.position.y;
       const distance = Math.hypot(dx, dy);
       const ahead = dx * forward.x + dy * forward.y;
@@ -42,6 +42,16 @@ export function quailEncounterAnchors(area: AreaConfig, dropId: string | undefin
     const best = pickAmongBest(scored, rng);
     if (!best) break;
     anchors.push({ x: best.x, y: best.y });
+  }
+  if (spacingScale >= 1) return anchors;
+  // A packed field fills the rest of the cover, nearest the entry first.
+  const target = Math.round(20 / spacingScale);
+  const rest = [...candidates].sort((a, b) =>
+    Math.hypot(a.x - drop.position.x, a.y - drop.position.y) + a.variation - Math.hypot(b.x - drop.position.x, b.y - drop.position.y) - b.variation);
+  for (const candidate of rest) {
+    if (anchors.length >= target) break;
+    if (anchors.some(anchor => dist(anchor, candidate) < QUAIL_COVEY_SPACING * spacingScale)) continue;
+    anchors.push({ x: candidate.x, y: candidate.y });
   }
   return anchors;
 }
