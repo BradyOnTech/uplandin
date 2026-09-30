@@ -460,7 +460,9 @@ describe('mobile shot request provenance and resolution', () => {
       getElementById: () => null, querySelector: () => null,
     });
     vi.spyOn(inputMode, 'shotAssistancePreference').mockImplementation(() => settings.preference);
-    const target = { simId: 9, x: 1.5, y: 2, z: -30, status: 'flying' };
+    // Just outside the over/under's first, improved-cylinder barrel at 30 m:
+    // generous assistance reaches it, light does not.
+    const target = { simId: 9, x: 1.66, y: 2, z: -30, status: 'flying' };
     const hunt = {
       huntState: () => ({ gunId: 'over-under', birds: [] }),
       getActiveChallenge: () => settings.challenge,

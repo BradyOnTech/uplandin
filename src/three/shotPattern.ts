@@ -11,6 +11,10 @@ export const SHOT_RANGE_M = 55;
 export const WOUND_FRINGE = .78;
 export const WOUND_RANGE_M = 44;
 
+/** Where the pattern went relative to a bird it missed. */
+export type MissCall = 'behind' | 'ahead' | 'high' | 'low';
+export interface NearMiss { call: MissCall; /** Miss distance in pattern radii (1 = just outside). */ margin: number }
+
 export class TravellingShot {
   readonly origin: Point;
   private direction: Point;
@@ -20,19 +24,25 @@ export class TravellingShot {
   /** How squarely the pattern took the bird: 0 at the core, 1 at the fringe. */
   private hitOffset = 0;
   private hitRange = 0;
+  private closest: NearMiss | null = null;
   done = false;
 
   /**
    * A bird taken on the fringe of the pattern, or at the limit of range,
    * comes down wounded and runs. Deterministic: a centred shot kills clean.
    */
-  get wounding(): boolean { return this.hit !== null && (this.hitOffset > WOUND_FRINGE || this.hitRange > WOUND_RANGE_M); }
+  get wounding(): boolean { return this.hit !== null && (this.hitOffset > WOUND_FRINGE || this.hitRange > this.woundRangeM); }
+
+  /** The nearest a missed pattern came to a flying bird, and which way it was off. */
+  get nearMiss(): NearMiss | null { return this.hit === null ? this.closest : null; }
 
   /** Actual swept crossing point, available only after a successful hit. */
   get impact(): Readonly<ShotTarget> | null { return this.hit; }
 
   constructor(origin: Point, direction: Point, private spread: number, targets: readonly ShotTarget[],
-    private readonly assistance: Readonly<ShotAssistanceProfile> = NO_SHOT_ASSISTANCE) {
+    private readonly assistance: Readonly<ShotAssistanceProfile> = NO_SHOT_ASSISTANCE,
+    /** A tighter choke carries clean kills further. */
+    private readonly woundRangeM = WOUND_RANGE_M) {
     this.origin = { ...origin };
     const length = Math.hypot(direction.x, direction.y, direction.z);
     if (!Number.isFinite(length) || length === 0) this.done = true;
@@ -43,6 +53,25 @@ export class TravellingShot {
   private remember(targets: readonly ShotTarget[]): void {
     this.previous.clear();
     for (const t of targets) if (t.status === 'flying') this.previous.set(t.simId, { x: t.x, y: t.y, z: t.z });
+  }
+
+  /**
+   * A shooting coach's call on a miss: compare the bird's offset from the
+   * pattern centre with its own line of flight. A bird still ahead along its
+   * flight means the pattern went behind it; otherwise high or low.
+   */
+  private noteMiss(margin: number, ox: number, oy: number, oz: number, vx: number, vy: number, vz: number): void {
+    if (margin > 4 || (this.closest && this.closest.margin <= margin)) return;
+    const d = this.direction;
+    // Bird motion across the line of fire only.
+    const vAlong = vx * d.x + vy * d.y + vz * d.z;
+    const cx = vx - d.x * vAlong, cy = vy - d.y * vAlong, cz = vz - d.z * vAlong;
+    const speed = Math.hypot(cx, cy, cz);
+    const lead = speed > 1e-4 ? (ox * cx + oy * cy + oz * cz) / speed : 0;
+    const call: MissCall = Math.abs(lead) >= Math.abs(oy) * .8 && speed > 1e-4
+      ? lead > 0 ? 'behind' : 'ahead'
+      : oy > 0 ? 'low' : 'high';
+    this.closest = { call, margin };
   }
 
   advance(dt: number, targets: readonly ShotTarget[], visible: (target: ShotTarget) => boolean): number | null {
@@ -67,7 +96,10 @@ export class TravellingShot {
       const x = p.x+(t.x-p.x)*fraction, y = p.y+(t.y-p.y)*fraction, z = p.z+(t.z-p.z)*fraction;
       const perpendicular = Math.hypot(x-o.x-d.x*along, y-o.y-d.y*along, z-o.z-d.z*along);
       const radius = Math.max(.48, along*Math.tan(this.spread)) + shotAssistanceAllowance(along, this.assistance);
-      if (perpendicular > radius) continue;
+      if (perpendicular > radius) {
+        this.noteMiss(perpendicular / radius, x - o.x - d.x * along, y - o.y - d.y * along, z - o.z - d.z * along, t.x - p.x, t.y - p.y, t.z - p.z);
+        continue;
+      }
       const candidate = { simId: t.simId, status: t.status, x, y, z };
       if (visible(candidate)) { hit = candidate; first = fraction; this.hitOffset = perpendicular / radius; this.hitRange = along; }
     }

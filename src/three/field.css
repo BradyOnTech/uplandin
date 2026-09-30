@@ -63,7 +63,18 @@ select { border:0; border-radius:6px; padding:7px; background:#ffffff12; }
 #reticle { position:fixed; left:50%; top:50%; width:19px; height:19px; margin:-9px; border:1px solid #fff9; border-radius:50%; z-index:2; pointer-events:none; box-shadow:0 0 2px #0007; }
 #reticle::after { content:""; position:absolute; width:3px; height:3px; border-radius:50%; background:#ffeed0; left:7px; top:7px; }
 #shot-callout { position:fixed; top:43%; left:50%; transform:translateX(-50%); z-index:2; pointer-events:none; font-size:12px; letter-spacing:.14em; text-shadow:0 1px 4px #0009; }
-#shot-callout.miss { opacity:.65; }
+#shot-callout.miss { opacity:.72; }
+#shot-callout.wound { color:#f2c46b; }
+/* A brief four-tick hit marker around the point of aim. */
+#hit-marker { position:fixed; left:50%; top:50%; width:30px; height:30px; margin:-15px; z-index:2; pointer-events:none; }
+#hit-marker i { position:absolute; left:50%; top:50%; width:2px; height:7px; margin:-3.5px -1px; border-radius:1px; background:#fff6e4; box-shadow:0 0 2px #0009; }
+#hit-marker i:nth-child(1) { transform:rotate(45deg) translateY(-11px); }
+#hit-marker i:nth-child(2) { transform:rotate(135deg) translateY(-11px); }
+#hit-marker i:nth-child(3) { transform:rotate(225deg) translateY(-11px); }
+#hit-marker i:nth-child(4) { transform:rotate(315deg) translateY(-11px); }
+#hit-marker.pop { animation:hit-marker-pop .28s ease-out both; }
+@keyframes hit-marker-pop { from { opacity:1; scale:.7; } 30% { opacity:1; scale:1.08; } to { opacity:0; scale:1; } }
+@media (prefers-reduced-motion: reduce) { #hit-marker.pop { animation:none; } }
 #field-overlay { overflow-y:auto; overscroll-behavior:contain; position:fixed; z-index:10; inset:0; display:grid; align-items:center; justify-items:start; padding:5vw; background:linear-gradient(90deg,rgba(17,32,26,.91),rgba(17,32,26,.25)); }
 .field-card { width:min(440px,100%); padding:32px; border-radius:20px; background:rgba(26,42,32,.88); box-shadow:0 2px 4px #0001,0 24px 100px #0003,inset 0 1px #fff1; }
 .eyebrow { color:var(--gold); font-size:12px; letter-spacing:.20em; font-weight:650; }

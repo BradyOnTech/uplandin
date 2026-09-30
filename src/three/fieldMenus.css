@@ -1,6 +1,6 @@
 /* Field folios: fixed heading and actions, one scrollable working page. */
 /* The world frames arrival and pause; gameplay labels return on entry. */
-body:has(#field-overlay:not([hidden])) :is(#hunt-hud,#controls,#pause-hunt,#field-map-toggle,#touch-controls,#touch-move-guide,#touch-look-guide,#reticle,#shot-callout,#shot-cue,#bird-call-cue,#dog-appearance,#field-menu) { visibility:hidden; pointer-events:none; }
+body:has(#field-overlay:not([hidden])) :is(#hunt-hud,#controls,#pause-hunt,#field-map-toggle,#touch-controls,#touch-move-guide,#touch-look-guide,#reticle,#hit-marker,#shot-callout,#shot-cue,#bird-call-cue,#dog-appearance,#field-menu) { visibility:hidden; pointer-events:none; }
 #field-overlay {
   place-items:center; overflow:hidden;
   padding:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));

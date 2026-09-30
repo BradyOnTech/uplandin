@@ -2,7 +2,8 @@ import { huntAssists } from '../assistsRuntime';
 import type { WetBottomsSystem } from './wetBottoms';
 import * as THREE from 'three';
 import { playShot, unlockAudio, playActionClick } from '../../audio';
-import { GUNS, getGun, type GunConfig } from '../../game/guns';
+import { GUNS, chokeForShot, getGun, type GunConfig } from '../../game/guns';
+import { ShotFx, boresFor, shotCall } from '../shotFx';
 import type { Ctx, Subsystem } from '../engine';
 import type { BirdsSystem } from './birds';
 import type { Hunt3DSystem } from './hunt3d';
@@ -10,7 +11,7 @@ import type { TerrainSystem } from './terrain';
 import type { PropertyHabitatSystem } from './propertyHabitat';
 import type { LandmarksSystem } from './landmarks';
 import { terrainBlocksShot } from '../shotVisibility';
-import { SHOT_RANGE_M, TravellingShot } from '../shotPattern';
+import { SHOT_RANGE_M, TravellingShot, WOUND_RANGE_M } from '../shotPattern';
 import { shotSightPicture, mobileShotFov, shotAssistancePreference } from '../inputMode';
 import { resolveShotAssistance, type ShotAssistanceProfile, type ShotTriggerSource } from '../shotAssistance';
 import { createSportingShotgun, type SportingShotgun } from '../assets/shotgun';
@@ -125,6 +126,9 @@ export class GunSystem implements Subsystem {
   private keydownHandler?: (event: KeyboardEvent) => void;
   private inputAbort = new AbortController();
   private reticle: HTMLElement | null = null;
+  private hitMarker: HTMLElement | null = null;
+  private hitMarkerUntil = 0;
+  private fx: ShotFx | null = null;
   private shotCallout: HTMLElement | null = null;
   private shotCalloutUntil = 0;
   private shots: { pattern: TravellingShot; presentationPhase: number;
@@ -155,6 +159,8 @@ export class GunSystem implements Subsystem {
     this.rig.scale.setScalar(1);
     this.root.add(this.rig);
     ctx.scene.add(this.root);
+    this.hitMarker = document.getElementById('hit-marker');
+    if (!this.frozen) this.fx = new ShotFx(ctx.scene, this.sporting.root, this.sporting.bead);
 
     if (!this.frozen) {
       const signal = this.inputAbort.signal;
@@ -343,6 +349,7 @@ export class GunSystem implements Subsystem {
     this.rig.remove(this.sporting.root);
     this.sporting.dispose();
     this.sporting = model; this.rig.add(model.root);
+    this.fx?.attach(model.root, model.bead);
     this.gun = next;
     this.shells = this.stowedShells.get(next.id) ?? next.shells;
     this.hunt.huntState().gunId = next.id;
@@ -437,6 +444,9 @@ export class GunSystem implements Subsystem {
     const nowMs = ctx.time * 1000;
     if (nowMs - this.lastShotMs < this.gun.cooldownMs) return;
     this.lastShotMs = nowMs;
+    const choke = chokeForShot(this.gun, this.shells);
+    const bores = boresFor(this.gun.id);
+    const bore = bores[Math.min(this.gun.shells - this.shells, bores.length - 1)] ?? bores[0];
     this.shells--;
     if (this.shotCallout?.textContent === 'RAISING GUN') this.shotCallout.hidden = true;
     this.kick(1);
@@ -456,8 +466,10 @@ export class GunSystem implements Subsystem {
     try { quail = ctx.get('quail-environment'); } catch { /* other properties */ }
     try { chukar = ctx.get('chukar-environment'); } catch { /* other properties */ }
     const presentationPhase = this.frozen ? 1 : THREE.MathUtils.clamp(ctx.fixedAlpha ?? 1, 0, 1);
-    const pattern = new TravellingShot(ctx.camera.position, this.fwd, this.gun.spread / 400,
-      this.birds.shotTargets(presentationPhase), request.assistance);
+    const pattern = new TravellingShot(ctx.camera.position, this.fwd, this.gun.spread * choke.pattern / 400,
+      this.birds.shotTargets(presentationPhase), request.assistance, WOUND_RANGE_M / Math.sqrt(choke.pattern));
+    const wind = this.hunt.huntState().wind;
+    this.fx?.fire(bore, Math.cos(wind), Math.sin(wind), typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
     const origin = pattern.origin;
     this.judgeShotSafety(ctx);
     this.shots.push({ pattern, presentationPhase,
@@ -517,10 +529,19 @@ export class GunSystem implements Subsystem {
         ? this.hunt.resolveBird(birdId, 'downed', undefined, { wounded: true }) : this.hunt.resolveBird(birdId, 'downed'));
       if (hit && birdId !== null) this.birds.downBird(birdId, shot.pattern.impact ?? undefined);
       if (this.shotCallout) {
-        this.shotCallout.textContent = hit ? 'HIT!' : 'MISS';
-        this.shotCallout.classList.toggle('miss', !hit);
+        // A coach's word, not a scoreboard: where a close miss went, and
+        // whether a hit bird is down clean or running.
+        const call = shotCall(!!hit, !!hit && shot.pattern.wounding, shot.pattern.nearMiss);
+        this.shotCallout.textContent = call.text;
+        this.shotCallout.classList.toggle('miss', call.tone === 'miss');
+        this.shotCallout.classList.toggle('wound', call.tone === 'wound');
         this.shotCallout.hidden = false;
-        this.shotCalloutUntil = ctx.time + (hit ? .8 : .55);
+        this.shotCalloutUntil = ctx.time + (call.tone === 'miss' ? .9 : 1.1);
+      }
+      if (hit && this.hitMarker) {
+        this.hitMarker.hidden = false;
+        this.hitMarker.classList?.remove('pop'); void this.hitMarker.offsetWidth; this.hitMarker.classList?.add('pop');
+        this.hitMarkerUntil = ctx.time + .28;
       }
       return false;
     });
@@ -607,7 +628,11 @@ export class GunSystem implements Subsystem {
       if (label) label.textContent = status;
     }
     // With the aiming ring off the hunter shoots off the gun's own bead.
-    if (this.reticle) this.reticle.hidden = this.frozen || ctx.paused || this.isReloading() || this.mountT < .35 || !huntAssists().aimRing;
+    const ring = huntAssists().aimRing;
+    if (this.reticle) this.reticle.hidden = this.frozen || ctx.paused || this.isReloading() || this.mountT < .35 || !ring;
+    this.fx?.setHiVizBead(!ring);
+    this.fx?.update(dt);
+    if (this.hitMarker && !this.hitMarker.hidden && ctx.time >= this.hitMarkerUntil) this.hitMarker.hidden = true;
     if (this.pendingTrigger) {
       const pending = this.pendingTrigger;
       if (ctx.paused || !this.aim || this.isReloading() || ctx.time >= pending.until) this.pendingTrigger = null;
@@ -703,9 +728,12 @@ export class GunSystem implements Subsystem {
     ctx.scene.remove(this.root);
     if (this.keydownHandler) window.removeEventListener('keydown', this.keydownHandler);
     this.keydownHandler = undefined;
+    this.fx?.dispose();
+    this.fx = null;
     this.sporting?.dispose();
     this.sporting = undefined;
     if (this.reticle) this.reticle.hidden = true;
     if (this.shotCallout) this.shotCallout.hidden = true;
+    if (this.hitMarker) this.hitMarker.hidden = true;
   }
 }
