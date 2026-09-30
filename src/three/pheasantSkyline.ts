@@ -71,7 +71,9 @@ function contourHeight(contour: Contour, azimuth: number): number {
 
 export function samplePheasantSkyline(layer: number, theta: number): { ground: number; crest: number; crown: number } {
   const az = ((theta * 180 / Math.PI + 180) % 360 + 360) % 360 - 180;
-  const ground = contourHeight(CONTOURS[layer], az);
+  // Pothole country is nearly flat: the far swells stay low so the
+  // horizon never reads as a mountain range at dawn or dusk.
+  const ground = contourHeight(CONTOURS[layer], az) * ([1, .72, .5][layer] ?? 1);
   let crown = 0;
   for (const tree of CROWNS[layer]) {
     const offset = az - tree.center;

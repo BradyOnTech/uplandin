@@ -13,7 +13,7 @@ const ROW_SPACING: Record<PheasantCrop, number> = { corn: .762, beans: .762, whe
 const STEP_ALONG: Record<PheasantCrop, number> = { corn: 1.0, beans: .9, wheat: 1.2, hay: 1.45 };
 const KEEP: Record<PheasantCrop, number> = { corn: .74, beans: .62, wheat: .8, hay: .45 };
 const CHUNK = 24;
-const RESIDUE_LIFT: Record<string, number> = { dawn: .12, morning: .3, noon: .3, evening: .13, lastlight: .05 };
+const RESIDUE_LIFT: Record<string, number> = { dawn: .07, morning: .3, noon: .3, evening: .07, lastlight: .02 };
 
 type Builder = { positions: number[]; colors: number[] };
 
