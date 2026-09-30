@@ -21,6 +21,8 @@ interface Candidate {
   distanceFromDrop: number;
   ahead: number;
   lateral: number;
+  /** Signed lateral offset: positive to the left of the drop heading. */
+  side: number;
   variation: number;
   /** Terrain affinity keeps a route from becoming a species-blind scatter. */
   habitat: number;
@@ -73,9 +75,24 @@ function candidateFor(
     distanceFromDrop: Math.hypot(dx, dy),
     ahead: dx * forwardX + dy * forwardY,
     lateral: Math.abs(dx * forwardY - dy * forwardX),
-    variation: rng() * 34,
+    side: dx * forwardY - dy * forwardX,
+    variation: rng() * 70,
     habitat: huntHabitatAffinity(huntingDoctrine(area.id), surface),
   };
+}
+
+/** Weighted pick among the few best-scoring candidates. Close scores are
+ * near-equal choices; a clearly worse spot is rarely taken. */
+export function pickAmongBest<T>(scored: { candidate: T; score: number }[], rng: RNG, count = 5, softness = 28): T | undefined {
+  if (scored.length === 0) return undefined;
+  const top = [...scored].sort((a, b) => a.score - b.score).slice(0, count);
+  const weights = top.map(entry => Math.exp(-(entry.score - top[0].score) / softness));
+  let roll = rng() * weights.reduce((sum, weight) => sum + weight, 0);
+  for (let index = 0; index < top.length; index++) {
+    roll -= weights[index];
+    if (roll <= 0) return top[index].candidate;
+  }
+  return top[0].candidate;
 }
 
 /**
@@ -125,9 +142,14 @@ export function authoredEncounterAnchors(
   const chosen: Candidate[] = [];
   const style = area.terrain.kind;
   const spacing = style === 'woods' || style === 'wetland' ? 72 : style === 'rimrock' || style === 'canyon' ? 84 : 96;
-  const firstDistance = 82 + rng() * 54;
+  // Each visit leans the day a different way: an opening further out or
+  // closer in, a favoured flank, and a pick among the good cover rather
+  // than the single best spot, so the birds are not waiting in the same
+  // place every hunt. Habitat and route still decide what "good" means.
+  const firstDistance = 72 + rng() * 108;
+  const flank = rng() < .34 ? 0 : rng() < .5 ? 1 : -1;
   for (let index = 0; index < MAX_ANCHORS; index++) {
-    const wantedDistance = firstDistance + index * (spacing + 18) + rng() * 42;
+    const wantedDistance = firstDistance + index * (spacing + 18) + rng() * 80;
     const previousDistance = chosen.at(-1)?.distanceFromDrop ?? 0;
     const remaining = candidates.filter((candidate) =>
       !chosen.some((picked) => dist(picked.point, candidate.point) < spacing) &&
@@ -135,8 +157,7 @@ export function authoredEncounterAnchors(
     );
     if (remaining.length === 0) break;
 
-    let best: Candidate | undefined;
-    let bestScore = Infinity;
+    const scored: { candidate: Candidate; score: number }[] = [];
     for (const candidate of remaining) {
       const routeWeight = style === 'prairie' ? 0.62 : style === 'desert' ? 0.78 : 0.9;
       const routePenalty = Math.min(candidate.routeDistance, 180) * routeWeight;
@@ -144,15 +165,14 @@ export function authoredEncounterAnchors(
       // The opening needs to be ahead of the hunter. Later anchors may use a
       // flank, which is how loops and benches become useful hunting lines.
       const openingPenalty = index === 0
-        ? (candidate.ahead < 42 ? 220 : Math.max(0, candidate.lateral - 110) * 0.35)
+        ? (candidate.ahead < 42 ? 220 : Math.max(0, candidate.lateral - 150) * 0.35)
         : 0;
+      const flankPenalty = flank === 0 ? 0 : Math.max(0, -flank * candidate.side) * (index === 0 ? .35 : .2);
       const score = Math.abs(candidate.distanceFromDrop - wantedDistance) +
-        routePenalty + habitatPenalty + openingPenalty + candidate.variation;
-      if (score < bestScore) {
-        bestScore = score;
-        best = candidate;
-      }
+        routePenalty + habitatPenalty + openingPenalty + flankPenalty + candidate.variation;
+      scored.push({ candidate, score });
     }
+    const best = pickAmongBest(scored, rng);
     if (!best) break;
     chosen.push(best);
   }

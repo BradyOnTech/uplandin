@@ -105,6 +105,8 @@ export interface HuntOptions {
   youngShare?: number;
   /** Educated-survivor nerve multiplier (late season). */
   educatedMult?: number;
+  /** Plan covey species so a mixed property shows its whole mix. */
+  mixedCoveys?: boolean;
 }
 
 export function createHunt(area: AreaConfig, rng: RNG = Math.random, opts: HuntOptions = {}): HuntState {
@@ -142,6 +144,7 @@ export function createHunt(area: AreaConfig, rng: RNG = Math.random, opts: HuntO
         exclusionZones: area.dropPoints.map((point) => ({ center: point.position, radius: point.safetyRadius })),
         openingAnchor,
         coveyAnchors: opts.coveyAnchors,
+        mixedCoveys: opts.mixedCoveys,
       },
       opts.birdRng ?? rng,
     ),

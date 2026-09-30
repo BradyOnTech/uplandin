@@ -36,7 +36,11 @@ describe('gameplay mode and shared hunt launch', () => {
     expect(snapshot(first)).toEqual(snapshot(replay));
     expect(snapshot(first)).not.toEqual(snapshot(different));
     expect(first.hunt.birds).toHaveLength(original.hunt.birds.length);
-    expect(first.hunt.birds.every(bird => bird.speciesId === 'ringneck')).toBe(true);
+    // Cattail is a ringneck property with Huns on the edges: both appear,
+    // ringnecks still lead the stocking.
+    const species = first.hunt.birds.map(bird => bird.speciesId);
+    expect(new Set(species)).toEqual(new Set(['ringneck', 'hun']));
+    expect(species.filter(id => id === 'ringneck').length).toBeGreaterThan(species.length / 2);
     expect(first.area).toEqual(original.area);
     expect(snapshot(original)).not.toEqual(snapshot(setup(undefined, 999)));
   });

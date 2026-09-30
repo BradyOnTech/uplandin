@@ -89,6 +89,38 @@ export interface SpawnConfig {
   openingAnchor?: Vec2;
   /** Ordered physical cover locations for a continuous field hunt. */
   coveyAnchors?: readonly Vec2[];
+  /** Plan the covey species so a mixed property actually shows its mix:
+   * the opening is sometimes a secondary species, and every secondary
+   * species holds at least one of the first few coveys. */
+  mixedCoveys?: boolean;
+}
+
+/** Secondary species that make up less than this share are left to chance. */
+const MIXED_MIN_SHARE = .08;
+/** How often the opening covey is one of the secondary species. */
+const MIXED_OPENING_SECONDARY = .3;
+
+/** Covey species plan for a mixed property: covey index → species id. */
+function planMixedCoveys(mix: SpeciesShare[], rng: RNG): Map<number, string> {
+  const plan = new Map<number, string>();
+  const total = mix.reduce((sum, share) => sum + share.weight, 0);
+  const ordered = [...mix].sort((a, b) => b.weight - a.weight);
+  const secondaries = ordered.slice(1).filter(share => share.weight / total >= MIXED_MIN_SHARE);
+  // Always two draws, so the plan never shifts the rest of the bird stream.
+  const openingRoll = rng(), slotRoll = rng();
+  if (secondaries.length === 0) return plan;
+  plan.set(0, openingRoll < MIXED_OPENING_SECONDARY
+    ? rollSpecies(secondaries, openingRoll / MIXED_OPENING_SECONDARY).id
+    : ordered[0].speciesId);
+  // Remaining secondaries each take one of coveys 1-3, in a random order.
+  const slots = [1, 2, 3];
+  const offset = Math.floor(slotRoll * slots.length);
+  let next = 0;
+  for (const share of secondaries) {
+    if ([...plan.values()].includes(share.speciesId)) continue;
+    plan.set(slots[(offset + next++) % slots.length], share.speciesId);
+  }
+  return plan;
 }
 
 export const YOUNG_NERVE_MULT = 1.3; // a young bird sits longer
@@ -134,15 +166,32 @@ export function spawnBirds(cfg: SpawnConfig, rng: RNG = Math.random): Bird[] {
     }
     return result;
   };
+  const plan = cfg.mixedCoveys && cfg.speciesMix.length > 1 ? planMixedCoveys(cfg.speciesMix, rng) : undefined;
+  const primaryId = [...cfg.speciesMix].sort((a, b) => b.weight - a.weight)[0]?.speciesId;
+  // A big covey of a secondary species must not eat a small property's
+  // stocking: each secondary keeps to a bird budget and the primary species
+  // still leads the day.
+  const mixTotal = cfg.speciesMix.reduce((sum, share) => sum + share.weight, 0);
+  const secondaryBudget = (id: string) => Math.max(Math.max(3, Math.round(cfg.birdCount * .4)),
+    Math.round(cfg.birdCount * (cfg.speciesMix.find(share => share.speciesId === id)?.weight ?? 0) / mixTotal * 1.25));
+  const placed = new Map<string, number>();
   while (remaining > 0) {
-    const species = rollSpecies(coveyMix, rng());
+    const rolled = rollSpecies(coveyMix, rng());
+    const planned = plan?.get(coveyId);
+    let species = planned ? getSpecies(planned) : rolled;
+    let cap = Infinity;
+    if (plan && primaryId && species.id !== primaryId) {
+      cap = secondaryBudget(species.id) - (placed.get(species.id) ?? 0);
+      if (cap <= 0) { species = getSpecies(primaryId); cap = Infinity; }
+    }
     const size = Math.min(
       remaining,
+      cap,
       species.coveyMin + Math.floor(rng() * (species.coveyMax - species.coveyMin + 1)),
     );
     const patch = cfg.patches[Math.floor(rng() * cfg.patches.length)];
-    const planned = cfg.coveyAnchors?.[coveyId];
-    const anchor = planned && outsideExclusions(planned) ? planned
+    const plannedAnchor = cfg.coveyAnchors?.[coveyId];
+    const anchor = plannedAnchor && outsideExclusions(plannedAnchor) ? plannedAnchor
       : coveyId === 0 && cfg.openingAnchor && outsideExclusions(cfg.openingAnchor)
       ? cfg.openingAnchor
       : safeAnchor(patch);
@@ -192,6 +241,7 @@ export function spawnBirds(cfg: SpawnConfig, rng: RNG = Math.random): Bird[] {
           nerveMult,
       });
     }
+    placed.set(species.id, (placed.get(species.id) ?? 0) + size);
     coveyId++;
     remaining -= size;
   }

@@ -229,7 +229,7 @@ export function createThreeHuntSetup(
   const authoredEncounterRng = mulberry32(huntStreamSeed(seed, 0xa11c0a ^ dropSalt));
   const authoredBirdRng = mulberry32(huntStreamSeed(seed, 0xb17d7d ^ dropSalt));
   const challengeOptions = {
-    stockingMult: tuning.stocking, encounterNerveMult: tuning.nerve,
+    stockingMult: tuning.stocking, encounterNerveMult: tuning.nerve, mixedCoveys: true,
     ...(!isQuail ? {
       // Quail keeps its seeded calibration below. Other 3D properties use
       // their authored route network to place cover encounters; 2D callers
