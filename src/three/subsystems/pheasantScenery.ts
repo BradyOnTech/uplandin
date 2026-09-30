@@ -10,6 +10,7 @@ import type { Hunt3DSystem } from './hunt3d';
 import { pheasantPlantClear, pheasantPonds, pheasantShelterbelts, pheasantTrackDistance } from './pheasantLandscape';
 import { pheasantFarmFenceLines, pheasantFarmFields } from '../../game/pheasantFarm';
 import { createQuailWindmill } from './quailLandmarks';
+import { createPrairieWater } from '../prairieWater';
 
 function seeded(seed: number, salt: number): number {
   let h = seed ^ Math.imul(salt, 0x9e3779b1);
@@ -49,6 +50,51 @@ function irregularDisc(rx: number, rz: number, seed: number, y = 0): THREE.Buffe
   return geometry;
 }
 
+/** A muskrat lodge: a low, lumpy dome of heaped cattail stalks, faceted. */
+function muskratLodgeGeometry(seed: number, radius: number): THREE.BufferGeometry {
+  const rng = mulberry32(seed);
+  const geometry = new THREE.SphereGeometry(radius, 9, 5, 0, Math.PI * 2, 0, Math.PI / 2);
+  const position = geometry.getAttribute('position') as THREE.BufferAttribute;
+  const colors: number[] = [];
+  const straw = new THREE.Color(0x6d5b3e), dark = new THREE.Color(0x3d3325), wet = new THREE.Color(0x2c281d), color = new THREE.Color();
+  for (let i = 0; i < position.count; i++) {
+    const px = position.getX(i), py = position.getY(i), pz = position.getZ(i);
+    // Heaped stalks: ragged, with the odd tuft poking up out of the pile.
+    const lump = .78 + rng() * .38, tuft = py > radius * .3 && rng() < .3 ? 1.35 : 1;
+    position.setXYZ(i, px * lump, py * (.5 + rng() * .22) * tuft, pz * lump);
+    const height = py / radius;
+    color.copy(dark).lerp(straw, Math.min(1, height * 1.3 + rng() * .25)).lerp(wet, height < .18 ? .6 : 0);
+    colors.push(color.r, color.g, color.b);
+  }
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  const flat = geometry.toNonIndexed(); geometry.dispose();
+  flat.computeVertexNormals();
+  return flat;
+}
+
+/** A drift of duckweed and floating leaves: a flat, ragged low-poly patch. */
+function floatingMatGeometry(seed: number, radius: number): THREE.BufferGeometry {
+  const rng = mulberry32(seed);
+  const sides = 9, positions: number[] = [], colors: number[] = [];
+  const green = new THREE.Color(0x6f7a3a), brown = new THREE.Color(0x7a6a3c), color = new THREE.Color();
+  const rim: [number, number][] = [];
+  for (let i = 0; i < sides; i++) {
+    const angle = i / sides * Math.PI * 2, r = radius * (.55 + rng() * .45);
+    rim.push([Math.cos(angle) * r, Math.sin(angle) * r * (.6 + rng() * .3)]);
+  }
+  for (let i = 0; i < sides; i++) {
+    const a = rim[i], b = rim[(i + 1) % sides];
+    color.copy(green).lerp(brown, rng() * .7).multiplyScalar(.85 + rng() * .25);
+    positions.push(0, 0, 0, b[0], 0, b[1], a[0], 0, a[1]);
+    for (let k = 0; k < 3; k++) colors.push(color.r, color.g, color.b);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
 export class PheasantScenerySystem implements Subsystem {
   readonly id = 'flora';
   private objects: THREE.Object3D[] = [];
@@ -64,7 +110,13 @@ export class PheasantScenerySystem implements Subsystem {
   private shotOrigin = new THREE.Vector3();
   private shotDirection = new THREE.Vector3();
 
-  collisionCircles(): readonly { x: number; z: number; radius: number }[] { return this.obstacles; }
+  /** Trees and posts first, then the muskrat lodges out in the water. */
+  collisionCircles(): readonly { x: number; z: number; radius: number }[] {
+    if (this.lodgeObstacles.length && !this.lodgesMerged) { this.obstacles.push(...this.lodgeObstacles); this.lodgesMerged = true; }
+    return this.obstacles;
+  }
+  private lodgeObstacles: { x: number; z: number; radius: number }[] = [];
+  private lodgesMerged = false;
 
   blocksShot(origin: { x: number; y: number; z: number }, target: { x: number; y: number; z: number }): boolean {
     this.shotOrigin.set(origin.x, origin.y, origin.z);
@@ -83,17 +135,48 @@ export class PheasantScenerySystem implements Subsystem {
   constructor(private readonly landscape: LandscapeModel) {}
 
   private rotor?: THREE.Object3D;
-  private waterTime = { value: 0 };
-  private waterSky = { value: new THREE.Color(0x9fb3bd) };
+  private water = createPrairieWater();
 
   update(ctx: Ctx): void {
-    this.waterTime.value = ctx.time;
-    const fog = ctx.scene.fog as THREE.Fog | THREE.FogExp2 | null;
-    if (fog) this.waterSky.value.copy(fog.color);
+    this.water.update(ctx);
     const time = this.leafMaterial?.userData.time as { value: number } | undefined;
     if (time) time.value = ctx.time;
     if (this.rotor) this.rotor.rotation.z = -ctx.time * .32;
   }
+
+  /**
+   * What a real prairie pothole holds in late season: a muskrat lodge or two
+   * of heaped cattail out in the open water, and mats of duckweed and
+   * floating leaves drifted against the reeds.
+   */
+  private addSloughLife(ctx: Ctx, x: number, y: number, z: number, rx: number, rz: number, major: boolean, seed: number): void {
+    const rng = mulberry32(seed);
+    if (!this.lodgeMaterial) {
+      this.lodgeMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true });
+      this.matMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .9, flatShading: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      this.materials.push(this.lodgeMaterial, this.matMaterial);
+    }
+    const lodges = major ? 1 + Math.floor(rng() * 2) : rng() < .6 ? 1 : 0;
+    for (let i = 0; i < lodges; i++) {
+      const angle = rng() * Math.PI * 2, r = .45 + rng() * .25;
+      const lx = x + Math.cos(angle) * rx * r, lz = z + Math.sin(angle) * rz * r;
+      const lodge = new THREE.Mesh(muskratLodgeGeometry(seed + i * 17, 1.1 + rng() * .5), this.lodgeMaterial);
+      lodge.position.set(lx, y - .08, lz); lodge.rotation.y = rng() * Math.PI * 2;
+      lodge.castShadow = ctx.quality === 'high'; lodge.receiveShadow = true;
+      this.geometries.push(lodge.geometry); ctx.scene.add(lodge); this.objects.push(lodge);
+      this.lodgeObstacles.push({ x: lx, z: lz, radius: 1.3 });
+    }
+    const mats = major ? 5 + Math.floor(rng() * 4) : 3;
+    for (let i = 0; i < mats; i++) {
+      const angle = rng() * Math.PI * 2, r = .74 + rng() * .17;
+      const mat = new THREE.Mesh(floatingMatGeometry(seed + 91 + i * 13, 1.2 + rng() * 2.6), this.matMaterial);
+      mat.position.set(x + Math.cos(angle) * rx * r, y + .025, z + Math.sin(angle) * rz * r);
+      mat.rotation.y = rng() * Math.PI * 2; mat.receiveShadow = true;
+      this.geometries.push(mat.geometry); ctx.scene.add(mat); this.objects.push(mat);
+    }
+  }
+  private lodgeMaterial?: THREE.MeshStandardMaterial;
+  private matMaterial?: THREE.MeshStandardMaterial;
 
   init(ctx: Ctx): void {
     // The shared key light already supplies the field's major shadow shapes.
@@ -101,42 +184,8 @@ export class PheasantScenerySystem implements Subsystem {
     // shadow pass; they remain visible and receive light, while a phone avoids
     // re-rendering dozens of small casters into the shadow map every frame.
     const castShadow = ctx.quality === 'high';
-    // Prairie slough water: dark and peaty in the middle, lighter over the
-    // mud margin, faceted by a slow wind chop that catches the sun, and
-    // reflecting the sky toward the horizon.
-    const waterMaterial = new THREE.MeshStandardMaterial({
-      color: 0x51707a,
-      roughness: 0.22,
-      metalness: 0.1,
-      transparent: true,
-      opacity: 0.92,
-      depthWrite: false,
-      flatShading: true,
-      side: THREE.DoubleSide,
-    });
-    waterMaterial.customProgramCacheKey = () => 'pheasant-water-faceted-v2';
-    waterMaterial.onBeforeCompile = shader => {
-      shader.uniforms.uWaterTime = this.waterTime;
-      shader.uniforms.uWaterSky = this.waterSky;
-      shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nvarying vec2 vPondUV;\nuniform float uWaterTime;')
-        .replace('#include <begin_vertex>', `#include <begin_vertex>
-          vPondUV = uv;
-          vec3 pondWorld = (modelMatrix * vec4(position, 1.0)).xyz;
-          float calm = 1.0 - smoothstep(.72, 1.0, length(uv * 2.0 - 1.0));
-          transformed.y += (sin(pondWorld.x * .55 + uWaterTime * 1.1) * .5 + sin(pondWorld.z * .8 - uWaterTime * .8 + pondWorld.x * .3) * .5) * .045 * calm;`);
-      shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying vec2 vPondUV;\nuniform vec3 uWaterSky;')
-        .replace('#include <color_fragment>', `#include <color_fragment>
-          float shore = length(vPondUV * 2.0 - 1.0);
-          diffuseColor.a *= 1.0 - smoothstep(.965, 1.0, shore);
-          // Deep peat water in the middle, olive shallows over the mud.
-          diffuseColor.rgb = mix(diffuseColor.rgb * .62, diffuseColor.rgb * vec3(1.12, 1.12, .92), smoothstep(.45, .97, shore));
-        `)
-        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-          float waterFresnel = pow(1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0), 3.0);
-          totalEmissiveRadiance += uWaterSky * waterFresnel * .45;`);
-    };
+    // Prairie slough water: see prairieWater.ts.
+    const waterMaterial = this.water.material;
     const snowMaterial = new THREE.MeshStandardMaterial({
       color: 0xd9dcd4,
       roughness: 0.86,
@@ -205,8 +254,10 @@ export class PheasantScenerySystem implements Subsystem {
       const water = new THREE.Mesh(waterGeo, waterMaterial);
       water.position.set(pond.x, waterY, pond.z);
       water.receiveShadow = true;
+      water.renderOrder = -1;
       ctx.scene.add(water);
       this.objects.push(water);
+      this.addSloughLife(ctx, pond.x, waterY, pond.z, rx, rz, major, seeded(this.landscape.area.terrain.seed, 300 + i));
 
       // Cottonwoods claim the drier shoulder beside each huntable slough.
       if (major) {
@@ -601,7 +652,7 @@ export class PheasantScenerySystem implements Subsystem {
     this.objects.length = 0;
     this.geometries.length = 0;
     this.materials.length = 0;
-    this.obstacles.length = 0;
+    this.obstacles.length = 0; this.lodgeObstacles.length = 0; this.lodgesMerged = false;
     this.shotWood.length = 0;
     this.rotor = undefined;
   }
