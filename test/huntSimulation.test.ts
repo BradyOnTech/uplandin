@@ -187,7 +187,7 @@ describe('HuntSimulation shared orchestration', () => {
   it.each(['relaxed', 'balanced', 'wild'] as const)('uses the %s quiet approach distance for pointed pheasants', challenge => {
     const f = pointedSimulation(30, true, 'pheasant-coverts', 'ringneck', challenge);
     f.bird.approachRoll = .6;
-    const radius = 11 * HUNT_CHALLENGES[challenge].approach;
+    const radius = pheasantApproach(f.bird.id, 30, false, .6).flushRadius * HUNT_CHALLENGES[challenge].approach;
     expect(f.simulation.update(16, { hunterPos: { x: 300 - radius - .1, y: 300 } })
       .some(event => event.type === 'covey-flushed')).toBe(false);
     expect(f.simulation.update(16, { hunterPos: { x: 300 - radius + .1, y: 300 } }))
@@ -310,7 +310,8 @@ describe('HuntSimulation shared orchestration', () => {
     expect(events).toContainEqual(expect.objectContaining({type:'covey-flushed',cause:'spook',pointCredit:false}));
   });
   it('keeps nerve expiry as a risk during a quiet 3D approach', () => {
-    const f = pointedSimulation(40, true); f.bird.nerveMs=1;
+    // An ordinary covey (approach roll .5 is not one that sits tight).
+    const f = pointedSimulation(40, true); f.bird.nerveMs=1; f.bird.approachRoll=.5;
     const events=f.simulation.update(16,{hunterPos:f.hunt.hunterPos});
     expect(events).toContainEqual(expect.objectContaining({type:'covey-flushed',cause:'nerve'}));
   });

@@ -534,7 +534,9 @@ export class GunSystem implements Subsystem {
       if (this.shotCallout) {
         // A coach's word, not a scoreboard: where a close miss went, and
         // whether a hit bird is down clean or running.
-        const call = shotCall(!!hit, !!hit && shot.pattern.wounding, shot.pattern.nearMiss);
+        const impact = shot.pattern.impact, origin = shot.pattern.origin;
+        const range = impact ? Math.hypot(impact.x - origin.x, impact.y - origin.y, impact.z - origin.z) : Infinity;
+        const call = shotCall(!!hit, !!hit && shot.pattern.wounding, shot.pattern.nearMiss, range);
         this.shotCallout.textContent = call.text;
         this.shotCallout.classList.toggle('miss', call.tone === 'miss');
         this.shotCallout.classList.toggle('wound', call.tone === 'wound');

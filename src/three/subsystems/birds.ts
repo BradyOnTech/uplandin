@@ -25,6 +25,7 @@ import {
   type FlushBias,
 } from '../../game/shot';
 import { getSpecies, SPECIES, type SpeciesConfig } from '../../game/species';
+import { CLOSE_FLUSH_THRESHOLD, closeFlushIntensity } from '../../game/closeFlush';
 import { isSpatialEncounterArea } from '../../game/huntSimulation';
 import { evadeGoshawk, type QuarryTarget } from '../../game/falconry';
 import { huntingDoctrine } from '../../game/huntDoctrine';
@@ -182,6 +183,9 @@ export function birdVisualScale(species: SpeciesConfig): number {
 /** Minimum forward carry along the escape bearing (m/s). Species speed
  * envelopes take over once the first wingbeats have found their rhythm. */
 const FWD_MIN = 3.5;
+/** Extra climb, m/s, of a rooster flushed underfoot, fading over the first wingbeats. */
+const TOWER_CLIMB = 5.2;
+const TOWER_DECAY_MS = 280;
 const FWD_RAMP_MS = 1400;
 /** How hard the escape bearing bends downwind (0 = pure away). */
 const WIND_BIAS = 0.55;
@@ -275,6 +279,8 @@ interface Slot {
    * each species' flight data and map doctrine. */
   spatialFlight?: QuailFlight;
   launchSound?: PheasantFlushSound;
+  /** Close-flush intensity at launch, 0..1 (game/closeFlush.ts). */
+  closeness?: number;
   launchOriginX?: number;
   launchOriginY?: number;
   launchOriginZ?: number;
@@ -468,6 +474,7 @@ export class BirdsSystem implements Subsystem {
   private debrisMs = -1;
   private launchCover?: QuailFlushDebris;
   private coverEvents?: EventTarget;
+  private lastFlinchMs = -Infinity;
   /** World-space rises stay attached to their authored cover on all authored
    * properties. Solitary pheasant/Chukar paths retain their dedicated
    * screen-velocity rules because those profiles already encode level-out and
@@ -1073,7 +1080,10 @@ export class BirdsSystem implements Subsystem {
           glideStep(s.vel, s.exitDir, dt);
           s.gliding = true;
         }
-        if (fl.levelAfterMs !== undefined && s.airMs > fl.levelAfterMs) {
+        // A towering rooster tops out sooner, then drives away level.
+        const levelAt = fl.levelAfterMs === undefined ? undefined
+          : fl.levelAfterMs - (s.species.id === 'ringneck' ? 260 * (s.closeness ?? 0) : 0);
+        if (levelAt !== undefined && s.airMs > levelAt) {
           if (s.exitDir === 0) s.exitDir = exitDirFor(s.vel.x, s.sxPx);
           levelStep(s.vel, s.exitDir, dt);
         }
@@ -1089,11 +1099,15 @@ export class BirdsSystem implements Subsystem {
         // ramp, then let each species' glide/level beat shape the carry.
         const speedT = Math.min(1, s.airMs / FWD_RAMP_MS);
         const pheasantLaunch = s.species.id === 'ringneck';
-        const launchDrive = pheasantLaunch ? .45 + .55 * THREE.MathUtils.smoothstep(s.airMs, 0, 900) : 1;
+        // A rooster flushed underfoot towers: it claws nearly straight up out
+        // of the cover before it tips over and drives away.
+        const tower = pheasantLaunch ? s.closeness ?? 0 : 0;
+        const launchDrive = pheasantLaunch
+          ? (.45 - .27 * tower) + (.55 + .27 * tower) * THREE.MathUtils.smoothstep(s.airMs, 120 * tower, 900 + 300 * tower) : 1;
         const speciesFwd = (fl.speedMin + (fl.speedMax - fl.speedMin) * speedT) * .055;
         const glideK = fl.glideAfterMs !== undefined && s.airMs > fl.glideAfterMs ? .84 : 1;
-        const levelK = fl.levelAfterMs !== undefined && s.airMs > fl.levelAfterMs ? 1.1 : 1;
-        const fwd = Math.max(FWD_MIN, speciesFwd * launchDrive) * doctrine.flight.carry *
+        const levelK = levelAt !== undefined && s.airMs > levelAt ? 1.1 : 1;
+        const fwd = Math.max(FWD_MIN * (1 - .5 * tower), speciesFwd * launchDrive) * doctrine.flight.carry *
           (s.young ? YOUNG_FLIGHT_MULT : 1) * glideK * levelK;
         // Lateral ramp (iteration 3): the 2D fan speeds are instant-on —
         // honest on a flat screen, but in world space they tore the covey
@@ -1103,7 +1117,7 @@ export class BirdsSystem implements Subsystem {
         const latM = latPx * FLUSH_PX_TO_M * latK * doctrine.flight.lateral;
         s.vxW = flight.escX * fwd + flight.rightX * latM;
         s.vzW = flight.escZ * fwd + flight.rightZ * latM;
-        s.vyW = -s.vel.y * FLUSH_PX_TO_M_V * doctrine.flight.climb;
+        s.vyW = -s.vel.y * FLUSH_PX_TO_M_V * doctrine.flight.climb + tower * TOWER_CLIMB * Math.exp(-s.airMs / TOWER_DECAY_MS);
         // LOW BURST LAW (moment round, item 2): cap the climb under ~15 deg
         // for the first 1.5 s, unlocking over the next 1.3 — the covey
         // crosses COVER and HORIZON, then lifts away downwind. Surplus
@@ -1124,7 +1138,9 @@ export class BirdsSystem implements Subsystem {
           : doctrine.style === 'bottoms' ? Math.tan(28 * Math.PI / 180)
             : doctrine.style === 'canyon' ? Math.tan(24 * Math.PI / 180) : LOW_ELEV_TAN;
         const free = Math.min(1, Math.max(0, (s.airMs - lowMs) / climbRampMs));
-        const climbCap = horizV * (lowElevationTan + free * (downhillFlight ? 1.05 : 1.8));
+        // A covey sat on underfoot pops to head height before it lines out low.
+        const pop = (s.closeness ?? 0) * Math.max(0, 1 - s.airMs / 700);
+        const climbCap = horizV * (lowElevationTan + pop * .5 + free * (downhillFlight ? 1.05 : 1.8));
         // Pheasants punch upward out of standing cover; the authored
         // levelAfterMs controller then turns the burst into forward carry.
         // Applying the covey's low cap here buried the first wingbeats.
@@ -1514,6 +1530,8 @@ export class BirdsSystem implements Subsystem {
       slot.y = this.terrain.heightAt(slot.x, slot.z) + 0.2;
       slot.vxW = speciesFlight.escX * FWD_MIN;
       slot.vzW = speciesFlight.escZ * FWD_MIN;
+      slot.closeness = this.spatialEncounter
+        ? closeFlushIntensity(species.id, Math.hypot(slot.x - speciesFlight.hunterX, slot.z - speciesFlight.hunterZ)) : 0;
       if (this.spatialEncounter && species.id === 'ringneck') {
         const distance = Math.hypot(slot.x - speciesFlight.hunterX, slot.z - speciesFlight.hunterZ);
         // Close birds break upward; distant birds carry away sooner. Keep
@@ -1531,6 +1549,7 @@ export class BirdsSystem implements Subsystem {
         rng,
         !!sim.young,
       );
+      if (slot.spatialFlight) slot.spatialFlight.burst = slot.closeness;
       if (slot.spatialFlight && species.coveyApproach === true && !sim.single && rng() <= RELIGHT_CHANCE) {
         slot.spatialFlight.target = selectQuailEscapeCover(
           slot.x,
@@ -1553,6 +1572,8 @@ export class BirdsSystem implements Subsystem {
       slot.gliding = false;
       if (this.spatialEncounter) {
         slot.delayMs = species.id === 'sharptail' ? sharptailLaunchDelay(launched, waveN, rng) : quailLaunchDelay(launched, waveN, rng);
+        // A covey sat on underfoot erupts as one.
+        slot.delayMs *= 1 - .65 * (slot.closeness ?? 0);
       } else if (this.frozen) {
         // Capture covey stage: clustered staggered launch across ~0.8 s
         // — the first birds are 10 m out while the last still blow from
@@ -1582,10 +1603,18 @@ export class BirdsSystem implements Subsystem {
       else offset.sub(new THREE.Vector3(this.hunterX, 0, this.hunterZ));
       slot.launchSound?.stop();
       slot.launchOriginX = slot.x; slot.launchOriginY = slot.y; slot.launchOriginZ = slot.z;
+      const closeness = slot.closeness ?? 0;
       const voice = {
         seed: (slot.simId * 0x9e3779b9 + this.riseSeq * 0x85ebca6b) >>> 0,
         flapRate: slot.species.flight.flapRate ?? 9, phaseOffset: slot.wobblePh * .35,
+        // Every bird of a close covey adds its own clap; keep the sum sane.
+        burst: slot.species.id === 'ringneck' ? closeness : closeness * .7,
       };
+      if (closeness >= CLOSE_FLUSH_THRESHOLD && this.riseMs - this.lastFlinchMs > 450) {
+        this.lastFlinchMs = this.riseMs;
+        this.coverEvents?.dispatchEvent(new CustomEvent('close-flush', { detail: {
+          intensity: closeness, x: slot.x, z: slot.z, speciesId: slot.species.id } }));
+      }
       slot.launchSound = slot.species.id === 'ringneck'
         ? playPheasantFlush(offset.length(), slot.sex === 'rooster', offset, voice)
         : playBirdFlush(slot.species.id, offset.length(), offset, { ...voice,
@@ -1595,8 +1624,15 @@ export class BirdsSystem implements Subsystem {
     this.coverEvents?.dispatchEvent(new CustomEvent('bird-cover-disturbance', {
       detail: { x: slot.x, z: slot.z },
     }));
+    const closeness = slot.closeness ?? 0;
     this.launchCover?.launch(slot.x, slot.z, slot.flight?.escX ?? 0, slot.flight?.escZ ?? 0,
-      (slot.simId * 0x9e3779b9 + this.riseSeq * 0x85ebca6b) >>> 0);
+      (slot.simId * 0x9e3779b9 + this.riseSeq * 0x85ebca6b) >>> 0, {
+        intensity: closeness,
+        snow: this.hunt.condition?.() === 'snow',
+        // A rooster clawing up out of cover at your feet loses a feather or two.
+        feathers: slot.species.id === 'ringneck' && closeness > .5 ? 1 + Number(closeness > .85) : 0,
+        featherColor: slot.sex === 'hen' ? 0xb08b5c : 0x9a5328,
+      });
   }
 
   private burstDebris(x: number, z: number): void {

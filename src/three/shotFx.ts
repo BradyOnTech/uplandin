@@ -123,7 +123,13 @@ export class ShotFx {
 }
 
 /** A coach's word on the shot, for the callout under the sight. */
-export function shotCall(hit: boolean, wounded: boolean, miss: { call: 'behind' | 'ahead' | 'high' | 'low'; margin: number } | null): { text: string; tone: 'hit' | 'wound' | 'miss' } {
+/** Inside this range (metres) a clean hit puts the whole pattern in the bird. */
+export const TOO_CLOSE_M = 9;
+
+export function shotCall(hit: boolean, wounded: boolean, miss: { call: 'behind' | 'ahead' | 'high' | 'low'; margin: number } | null,
+  rangeM = Infinity): { text: string; tone: 'hit' | 'wound' | 'miss' } {
+  // A rooster shot at his feet is the hunter's lesson in patience: let it get out.
+  if (hit && !wounded && rangeM < TOO_CLOSE_M) return { text: 'BIRD DOWN · SHOT UP, TOO CLOSE', tone: 'hit' };
   if (hit) return wounded ? { text: 'HIT · BIRD DOWN RUNNING', tone: 'wound' } : { text: 'BIRD DOWN', tone: 'hit' };
   if (!miss || miss.margin > 3) return { text: 'MISS', tone: 'miss' };
   const where = { behind: 'BEHIND IT', ahead: 'IN FRONT OF IT', high: 'OVER IT', low: 'UNDER IT' }[miss.call];

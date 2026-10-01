@@ -15,6 +15,9 @@ export interface QuailFlight {
   /** Optional held departure and eased cover turn, in seconds. Profiles
    * without it retain the established steering law for other species. */
   coverTurn?: { startSeconds: number; durationSeconds: number };
+  /** Close-flush intensity, 0..1: a covey sat on underfoot pops to head
+   * height before it lines out (game/closeFlush.ts). */
+  burst?: number;
 }
 
 /** Select another patch ahead of the flush, leaving room for a short flight.
@@ -66,12 +69,14 @@ export function stepQuailFlight(flight:QuailFlight,body:{x:number;y:number;z:num
     heading+=Math.atan2(Math.sin(desiredHeading-heading),Math.cos(desiredHeading-heading))*blend;
     speed=Math.min(speed,Math.max(3,distance*1.8),distance/Math.max(dt,.0001));
   }
+  const burst=Math.max(0,Math.min(1,flight.burst??0)),pop=burst*Math.max(0,1-seconds/.7);
+  speed*=1-.35*pop;
   body.vxW=Math.cos(heading)*speed;body.vzW=Math.sin(heading)*speed;
   body.gliding=seconds>flight.glideAt;
-  const climb=1-Math.exp(-seconds*2.2);
+  const climb=1-Math.exp(-seconds*(2.2+3*burst));
   const settle=Math.max(0,1-(seconds-flight.glideAt)/4.5);
-  const clearance=.2+flight.clearance*climb*(flight.target ? Math.min(1,distance/22) : Math.min(1,settle));
+  const clearance=.2+flight.clearance*climb*(flight.target ? Math.min(1,distance/22) : Math.min(1,settle))+pop*1.6;
   const ground=heightAt(body.x+body.vxW*.3,body.z+body.vzW*.3);
-  const desired=Math.max(-3.5,Math.min(4.5,(ground+clearance-body.y)*3));
+  const desired=Math.max(-3.5,Math.min(4.5+3*pop,(ground+clearance-body.y)*3));
   body.vyW+=(desired-body.vyW)*(1-Math.exp(-dt*8));
 }

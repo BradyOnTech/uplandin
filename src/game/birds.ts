@@ -22,6 +22,8 @@ export interface Bird {
   single?: boolean;
   /** Hun circle-back already used — the next wild flush is for good. */
   circled?: boolean;
+  /** Held tight when the rest of its covey went up; flushes on its own. */
+  heldSingle?: boolean;
   /** Young-of-year: naive early-season bird — sits longer, flies slower. */
   young?: boolean;
   /** Runners (pheasant-types) flee the dog on foot instead of holding tight. */
@@ -260,7 +262,8 @@ export function flushCovey(birds: Bird[], birdId: number): Bird[] {
   const species = getSpecies(trigger.speciesId);
   const flushed: Bird[] = [];
   for (const b of birds) {
-    const sameGroup = species.flushAsCovey !== false && b.coveyId === trigger.coveyId;
+    // A held single goes up alone, not with a covey-mate still sitting.
+    const sameGroup = species.flushAsCovey !== false && !trigger.heldSingle && !b.heldSingle && b.coveyId === trigger.coveyId;
     if (b.state === 'hidden' && (b.id === trigger.id || sameGroup)) {
       b.state = 'flushed';
       flushed.push(b);

@@ -1,10 +1,13 @@
 import { mulberry32 } from '../game/math';
 import { pheasantPowerStrokes } from './pheasantWingMotion';
+import { addLaunchBurst } from './flushBurst';
 
 export interface PheasantLaunchVoice {
   seed?: number;
   flapRate?: number;
   phaseOffset?: number;
+  /** Close-flush intensity, 0..1: the clap, a harder first few strokes, a sure cackle. */
+  burst?: number;
 }
 
 export const PHEASANT_LAUNCH_SECONDS = 1.55;
@@ -26,7 +29,10 @@ export function synthesizePheasantLaunch(rooster: boolean, voice: PheasantLaunch
 } {
   const seed = voice.seed ?? 1;
   const rng = mulberry32(seed ^ 0x31f65bc);
-  const { calls, pitch } = pheasantLaunchVoice(seed, rooster);
+  const voiced = pheasantLaunchVoice(seed, rooster);
+  const burst = Math.max(0, Math.min(1, voice.burst ?? 0)), pitch = voiced.pitch;
+  // A rooster that goes up at your feet nearly always cackles.
+  const calls = rooster && burst > .5 ? Math.max(2, voiced.calls) : voiced.calls;
   const strokes = pheasantPowerStrokes(voice.flapRate ?? 9, voice.phaseOffset ?? 0, 1.45);
   const cover = new Float32Array(Math.ceil(PHEASANT_AUDIO_RATE * .34));
   const flight = new Float32Array(Math.ceil(PHEASANT_AUDIO_RATE * PHEASANT_LAUNCH_SECONDS));
@@ -43,7 +49,7 @@ export function synthesizePheasantLaunch(rooster: boolean, voice: PheasantLaunch
     const beat = Math.exp(-.5 * (offset / width) ** 2) * Math.exp(-t * 1.55);
     const tail = Math.min(1, (PHEASANT_LAUNCH_SECONDS - t) / .12);
     // Papery air over a deep chesty push; no pitched oscillator thump.
-    let sample = ((air - low) * .75 + low * 1.8) * beat;
+    let sample = ((air - low) * .75 + low * 1.8) * beat * (1 + burst * .8 * Math.exp(-t * 3));
     for (let call = 0; call < calls; call++) {
       const age = t - (.15 + call * .155);
       if (age < 0 || age > .125) continue;
@@ -64,5 +70,6 @@ export function synthesizePheasantLaunch(rooster: boolean, voice: PheasantLaunch
       cover[i] = ((white - coverLow) * .27 * release + coverLow * .9 * release + white * stems * .11) * settle;
     }
   }
+  addLaunchBurst(cover, rate, burst, seed);
   return { cover, flight, calls };
 }

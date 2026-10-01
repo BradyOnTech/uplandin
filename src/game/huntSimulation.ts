@@ -25,6 +25,7 @@ import type { HuntState } from './state';
 import type { RNG, Vec2 } from './types';
 import { windMults } from './wind';
 import { bobwhiteApproachNerveScale, quailPointApproach } from './quailApproach';
+import { coveyRoll, HELD_SINGLE_FLUSH_RADIUS, heldSingles, SECOND_BIRD, TIGHT_COVEY_NERVE_SCALE, tightCovey, tightCoveyRadius } from './closeFlush';
 import { pheasantApproach } from './pheasantApproach';
 import { openCountryPointRadius, pointWalkInAllowanceMs, usesOpenCountryWalkIn } from './openCountryApproach';
 import { HUNT_CHALLENGES, type HuntChallenge } from './huntChallenge';
@@ -47,7 +48,8 @@ export function isSpatialEncounterArea(areaId: string): boolean {
   return huntingDoctrine(areaId).spatialEncounter;
 }
 
-export type FlushCause = 'proximity' | 'nerve' | 'bump' | 'scent' | 'spook';
+/** `startle`: a second pheasant breaking a beat after the first went up. */
+export type FlushCause = 'proximity' | 'nerve' | 'bump' | 'scent' | 'spook' | 'startle';
 
 /** Wounded birds run at a walking pace, slower than any dog. */
 export const CRIPPLE_SPEED = 1.3 / PROPERTY_PX_TO_M;
@@ -145,6 +147,10 @@ export class HuntSimulation {
   /** Covey-owned and never replenished by a re-point or a second dog. */
   private readonly pointWalkIns = new Map<number, { remainingMs: number; revision: number; protectedMs: number }>();
   private pointWalkInRevision = 0;
+  /** Simulation clock, ms. */
+  private clockMs = 0;
+  /** Second pheasants that break a beat after the first (closeFlush.ts). */
+  private readonly startles: { birdId: number; atMs: number }[] = [];
 
   constructor(config: HuntSimulationConfig) {
     this.hunt = config.hunt;
@@ -162,6 +168,7 @@ export class HuntSimulation {
     const leadDog = this.dogs[0];
     if (!leadDog) return events;
     this.pointWalkInRevision++;
+    this.clockMs += Math.max(0, dtMs);
     // The input position is the hunter after this adapter's movement for the
     // tick. Keep this derived from the shared position seam so 2D tap-walk
     // and 3D camera locomotion get the same underfoot behavior without a new
@@ -293,6 +300,17 @@ export class HuntSimulation {
     this.hunt.hunterPos.x = input.hunterPos.x;
     this.hunt.hunterPos.y = input.hunterPos.y;
 
+    // A second pheasant breaks a beat after the first, while the gun is
+    // still on the first bird.
+    for (let i = 0; i < this.startles.length; i++) {
+      const startle = this.startles[i];
+      if (startle.atMs > this.clockMs) continue;
+      this.startles.splice(i, 1);
+      const event = this.flushBird(startle.birdId, 'startle', null);
+      if (event) { events.push(event); return events; }
+      i--;
+    }
+
     // Short-sighted timber birds can flush underfoot while the hunter is
     // walking, even when the dog has not yet made a point. A pointed bird is
     // left for the ordinary proximity/nerve path so the dog still earns the
@@ -312,6 +330,11 @@ export class HuntSimulation {
           && dist(bird.pos, this.hunt.hunterPos) <= Math.min(5.5,
             pheasantApproach(bird.id, 0, false, bird.approachRoll).flushRadius)
             * HUNT_CHALLENGES[this.challenge].approach));
+        // A covey bird that held when the rest went up sits until the hunter
+        // walks right up on it.
+        disturbed.push(...this.hunt.birds.filter(bird => bird.state === 'hidden' && bird.heldSingle
+          && !pointedIds.includes(bird.id)
+          && dist(bird.pos, this.hunt.hunterPos) <= HELD_SINGLE_FLUSH_RADIUS * HUNT_CHALLENGES[this.challenge].approach));
         disturbed.sort((a, b) => dist(a.pos, this.hunt.hunterPos) - dist(b.pos, this.hunt.hunterPos) || a.id - b.id);
       }
       if (disturbed.length > 0) {
@@ -347,6 +370,8 @@ export class HuntSimulation {
           nerveMult *= pheasantApproach(pointed.id, dist(this.hunt.hunterPos, pointed.pos), !!input.hunterRunning, pointed.approachRoll).nerveScale;
         }
         const coveyApproach = spatialEncounter && species.coveyApproach === true;
+        // A tight covey lets the hunter walk right in.
+        if (spatialEncounter && !input.hunterRunning && tightCovey(species.id, coveyRoll(this.hunt.birds, pointed.coveyId))) nerveMult *= TIGHT_COVEY_NERVE_SCALE;
         if (coveyApproach) {
           nerveMult *= quailPointApproach(pointed.coveyId, dog.pressure, !!input.hunterRunning).nerveScale;
           // Bobwhite's close covey walk-in must account for field-scale
@@ -391,7 +416,10 @@ export class HuntSimulation {
       const bird = this.hunt.birds.find((candidate) => candidate.id === dog.pointedBirdId);
       const species = bird ? getSpecies(bird.speciesId) : undefined;
       const coveyApproach = spatialEncounter && species?.coveyApproach === true;
-      const radius = bird && coveyApproach
+      const tight = !!bird && !!species && spatialEncounter && species.flushAsCovey !== false && !input.hunterRunning && tightCovey(species.id, coveyRoll(this.hunt.birds, bird.coveyId));
+      const radius = tight
+        ? tightCoveyRadius(species!.id, coveyRoll(this.hunt.birds, bird!.coveyId)) * HUNT_CHALLENGES[this.challenge].approach
+        : bird && coveyApproach
         ? quailPointApproach(bird.coveyId, dog.pressure, !!input.hunterRunning).flushRadius * HUNT_CHALLENGES[this.challenge].approach * (species?.pointRadiusMult ?? 1)
         : bird && spatialEncounter && species?.id === 'ringneck'
           ? pheasantApproach(bird.id, dist(this.hunt.hunterPos, bird.pos), !!input.hunterRunning, bird.approachRoll).flushRadius * HUNT_CHALLENGES[this.challenge].approach
@@ -449,6 +477,29 @@ export class HuntSimulation {
     if (pointCredit) this.hunt.dogWork[pointingSlot].pointFlushes++;
 
     const flushed = flushCovey(this.hunt.birds, bird.id);
+    const species = getSpecies(bird.speciesId);
+    if (spatialEncounter && species.flushAsCovey !== false && !bird.heldSingle && flushed.length > 1) {
+      // One or two birds of a covey may hold when the rest go up. They are
+      // the farthest from the bird that broke, and stay where they sat.
+      const roll = (Math.imul(bird.id + 1, 2246822519) >>> 0) / 0xffffffff;
+      const held = heldSingles(species.id, flushed.length, roll, tightCovey(species.id, coveyRoll(this.hunt.birds, bird.coveyId)));
+      const keep = flushed.filter(candidate => candidate.id !== bird.id)
+        .sort((a, b) => dist(b.pos, bird.pos) - dist(a.pos, bird.pos) || a.id - b.id).slice(0, held);
+      for (const single of keep) {
+        single.state = 'hidden'; single.heldSingle = true;
+        flushed.splice(flushed.indexOf(single), 1);
+      }
+    }
+    if (spatialEncounter && species.id === 'ringneck') {
+      // Another pheasant holding close by may break a beat later.
+      const neighbour = this.hunt.birds.filter(candidate => candidate.state === 'hidden' && candidate.speciesId === 'ringneck'
+        && !this.startles.some(startle => startle.birdId === candidate.id) && dist(candidate.pos, bird.pos) <= SECOND_BIRD.reach)
+        .sort((a, b) => dist(a.pos, bird.pos) - dist(b.pos, bird.pos) || a.id - b.id)[0];
+      const roll = (Math.imul(bird.id + 7, 3266489917) >>> 0) / 0xffffffff;
+      if (neighbour && roll < SECOND_BIRD.chance) {
+        this.startles.push({ birdId: neighbour.id, atMs: this.clockMs + SECOND_BIRD.minMs + roll / SECOND_BIRD.chance * (SECOND_BIRD.maxMs - SECOND_BIRD.minMs) });
+      }
+    }
     this.dogs.forEach((dog, index) => {
       dog.onFlush(this.rng, bird.pos, spatialEncounter ? flushed.map(b => b.id) : undefined);
       this.readDogLog(index);

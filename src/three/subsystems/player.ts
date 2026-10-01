@@ -15,6 +15,13 @@ const EYE = 1.62;
 const COLLISION_STEP_METERS = 0.09;
 
 /** Keyboard/mouse and touch express the same movement and recall intent. */
+/** The flinch: a 40 ms snap, then a quick settle; gone within half a second. */
+const FLINCH_SECONDS = .5;
+export function flinchEnvelope(age: number): number {
+  if (age < 0 || age >= FLINCH_SECONDS) return 0;
+  return age < .04 ? age / .04 : Math.exp(-(age - .04) / .1);
+}
+
 export class PlayerSystem implements Subsystem {
   readonly id = 'player';
   private keys = new Set<string>();
@@ -69,6 +76,14 @@ export class PlayerSystem implements Subsystem {
       if (!ctx.paused && ['whoa', 'release', 'cast', 'dead'].includes(event.detail)) this.commandQueue.push(event.detail);
     }) as EventListener, { signal });
     window.addEventListener('blur', clear, { signal });
+    // A bird erupting at the hunter's feet makes them flinch: a short jerk of
+    // the head, gone before the gun comes up. Real time, never slow motion.
+    ctx.events.addEventListener('close-flush', ((event: CustomEvent<{ intensity: number }>) => {
+      if (this.captureMode || ctx.paused) return;
+      if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+      const intensity = Math.max(0, Math.min(1, event.detail.intensity));
+      this.flinch = { age: 0, pitch: THREE.MathUtils.degToRad(2.6) * intensity, roll: THREE.MathUtils.degToRad(1.1) * intensity * (Math.random() < .5 ? -1 : 1) };
+    }) as EventListener, { signal });
     ctx.events.addEventListener('hunt-touch-look', ((event: CustomEvent<{dx:number;dy:number}>) => {
       if (ctx.paused || this.captureMode) return;
       const optics = opticalLookScale(ctx.camera.fov);
@@ -187,9 +202,15 @@ export class PlayerSystem implements Subsystem {
   private place(ctx: Ctx): void {
     const ground = ctx.get<TerrainSystem>('terrain').heightAt(this.pos.x, this.pos.z);
     ctx.camera.position.set(this.pos.x, ground + EYE + this.reviewLift + Math.sin(this.bobPhase) * 0.018, this.pos.z);
-    ctx.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+    const kick = this.flinch ? flinchEnvelope(this.flinch.age) : 0;
+    ctx.camera.rotation.set(this.pitch + (this.flinch?.pitch ?? 0) * kick, this.yaw, (this.flinch?.roll ?? 0) * kick, 'YXZ');
   }
+  private flinch?: { age: number; pitch: number; roll: number };
   update(ctx: Ctx, dt: number): void {
+    if (this.flinch && dt > 0) {
+      this.flinch.age += dt;
+      if (this.flinch.age > FLINCH_SECONDS) this.flinch = undefined;
+    }
     this.waterDepth = this.water?.depthAtWorld(this.pos.x, this.pos.z) ?? 0;
     this.hunt ??= ctx.get<Hunt3DSystem>('hunt3d');
     if (dt > 0 && !this.captureMode && !ctx.paused && this.hunt.falconry?.phase !== 'picking-up') {

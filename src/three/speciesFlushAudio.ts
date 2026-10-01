@@ -1,5 +1,6 @@
 import { mulberry32 } from '../game/math';
 import { sharptailWingPhase } from './sharptailPresentation';
+import { addLaunchBurst } from './flushBurst';
 
 export const BIRD_FLUSH_AUDIO_RATE = 22050;
 
@@ -8,6 +9,8 @@ export interface BirdLaunchVoice {
   flapRate?: number;
   phaseOffset?: number;
   glideAfterMs?: number;
+  /** Close-flush intensity, 0..1 (see flushBurst.ts). */
+  burst?: number;
 }
 
 /** Designed feather/air textures, not recorded animal calls. The actual
@@ -57,5 +60,8 @@ export function synthesizeBirdLaunch(species: string, voice: BirdLaunchVoice = {
       cover[i] = ((white - litter) * .14 + litter * .55) * release * Math.min(1, (.24 - t) / .035) * .55;
     }
   }
+  const burst = Math.max(0, Math.min(1, voice.burst ?? 0));
+  if (burst > 0) for (let i = 0; i < flight.length; i++) flight[i] *= 1 + burst * .7 * Math.exp(-i / rate * 3);
+  addLaunchBurst(cover, rate, burst, voice.seed ?? 1);
   return { cover, flight };
 }

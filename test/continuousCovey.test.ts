@@ -352,15 +352,27 @@ describe('continuous Quail coveys', () => {
     expect(close.runtime.slots[0].vyW).toBeGreaterThan(far.runtime.slots[0].vyW * 1.3);
     // Launch alone only checks the displayed velocity; the controller must
     // retain that impulse when the first real flight tick moves the bird.
+    // The underfoot bird also towers (closeFlush.ts): its climb never falls
+    // below the distance law, and the extra push fades over the first beats.
     for (let i = 0; i < 15; i++) {
       for (const f of [close, far]) f.runtime.tickBirds(1000 / 30);
-      expect(close.runtime.slots[0].vyW / far.runtime.slots[0].vyW).toBeCloseTo(1.25 / .85);
+      expect(close.runtime.slots[0].vyW / far.runtime.slots[0].vyW).toBeGreaterThan(1.25 / .85 - .01);
     }
-    expect((close.runtime.slots[0].y - .2) / (far.runtime.slots[0].y - .2)).toBeCloseTo(1.25 / .85);
+    expect((close.runtime.slots[0].y - .2) / (far.runtime.slots[0].y - .2)).toBeGreaterThan(1.25 / .85);
+    // Nearly straight up at first: little ground covered in the first half second.
+    expect(Math.hypot(close.runtime.slots[0].vxW, close.runtime.slots[0].vzW)).toBeLessThan(Math.hypot(far.runtime.slots[0].vxW, far.runtime.slots[0].vzW));
+  });
+  it('pops a covey sat on underfoot to head height, then lines it out like any other', () => {
+    const close = fixture(), far = fixture();
+    close.add(1, 1, 3, 0); far.add(1, 1, 40, 0);
+    for (const f of [close, far]) { f.birds[0].speciesId = 'bobwhite'; f.runtime.spatialEncounter = true; }
+    for (let i = 0; i < 12; i++) for (const f of [close, far]) f.runtime.tickBirds(1000 / 30);
+    expect(close.runtime.slots[0].y).toBeGreaterThan(far.runtime.slots[0].y + .4);
+    for (let i = 0; i < 60; i++) for (const f of [close, far]) f.runtime.tickBirds(1000 / 30);
+    expect(Math.abs(close.runtime.slots[0].y - far.runtime.slots[0].y)).toBeLessThan(1);
   });
   it.each([
     { species: 'ringneck', spatial: false },
-    { species: 'bobwhite', spatial: true },
   ])('keeps distance-independent climb for $species with spatial=$spatial', ({ species, spatial }) => {
     const close = fixture(), far = fixture();
     close.add(1, 1, 3, 0); far.add(1, 1, 40, 0);

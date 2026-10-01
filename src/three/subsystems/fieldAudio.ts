@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Hunt3DSystem } from './hunt3d';
-import { playDogCollar, playDogMovement, playFieldSong, startFieldAmbience, type DogCollarSound } from '../../audio';
+import { playDogCollar, playDogMovement, playFieldSong, playHeartbeat, setFieldTension, startFieldAmbience, type DogCollarSound } from '../../audio';
 import type { Ctx, Subsystem } from '../engine';
 import { fieldSoundscape } from '../fieldSoundscape';
 import { DogCollarCadence, dogBellInterval, dogCollarGain, dogCollarMode, type DogCollarCue } from '../dogCollarAudio';
@@ -27,6 +27,8 @@ export class FieldAudioSystem implements Subsystem {
   private forward = new THREE.Vector3();
   private collarOffset = new THREE.Vector3();
   private listenerInverse = new THREE.Quaternion();
+  /** Walking in on a point: 0 far off, 1 with the dog at your feet. */
+  private tension = 0;
   constructor(private readonly areaId?: string) {}
   init(ctx: Ctx): void {
     this.terrain = ctx.get<TerrainSystem>('terrain');
@@ -53,12 +55,36 @@ export class FieldAudioSystem implements Subsystem {
     }, { signal });
     const profile = fieldSoundscape(this.areaId);
     if (profile) this.nextSong = profile.songGain > 0 ? profile.songInterval : Infinity;
+    // A bird going up at the hunter's feet: the pulse jumps.
+    ctx.events.addEventListener('close-flush', ((e: CustomEvent<{ intensity: number }>) => {
+      if (!this.capture && !this.hidden && !ctx.paused) playHeartbeat(e.detail.intensity);
+      this.tension = 0; this.applyTension();
+    }) as EventListener, { signal });
+  }
+  private applyTension(): void {
+    this.ambience?.setTension?.(this.tension);
+    setFieldTension(this.tension);
+  }
+  /** How close the hunter is to a standing point, 0..1. */
+  private pointTension(ctx: Ctx, hunt: Hunt3DSystem): number {
+    let tension = 0;
+    for (let slot = 0; slot < hunt.dogCount(); slot++) {
+      if (hunt.dog(slot).state !== 'pointing') continue;
+      const dog = hunt.dogWorld(this.dogPosition, slot);
+      const distance = Math.hypot(dog.x - ctx.camera.position.x, dog.z - ctx.camera.position.z);
+      const t = Math.min(1, Math.max(0, (45 - distance) / 35));
+      tension = Math.max(tension, t * t * (3 - 2 * t));
+    }
+    return tension;
   }
   update(ctx: Ctx, dt = 1 / 60): void {
     if (this.capture || this.disposed || this.hidden || ctx.paused || !(dt > 0)) return;
     this.ambience ??= startFieldAmbience(this.areaId);
     const hunt = ctx.get<Hunt3DSystem>('hunt3d');
     this.ambience?.setWind?.(hunt.huntState().windStrength);
+    const target = this.pointTension(ctx, hunt);
+    this.tension += (target - this.tension) * Math.min(1, dt * (target > this.tension ? 1.5 : 4));
+    this.applyTension();
     ctx.camera.getWorldDirection(this.forward);
     ctx.camera.getWorldQuaternion(this.listenerInverse).invert();
     for (let slot = 0; slot < hunt.dogCount(); slot++) {
@@ -85,7 +111,7 @@ export class FieldAudioSystem implements Subsystem {
     for (const [slot, collar] of this.collars) if (slot >= hunt.dogCount()) {
       collar.sound?.stop(); this.collars.delete(slot);
     }
-    if (ctx.time > this.nextSong) {
+    if (ctx.time > this.nextSong && this.tension < .2) {
       const profile = fieldSoundscape(this.areaId);
       playFieldSong(profile?.songGain ?? 1);
       this.nextSong = ctx.time + (profile?.songInterval ?? 19) + (Math.sin(ctx.time * 0.3) + 1) * 6;
@@ -136,5 +162,6 @@ export class FieldAudioSystem implements Subsystem {
   dispose(): void {
     this.disposed = true; this.dogs.clear(); this.suspendCollars(); this.collars.clear();
     this.abort.abort(); this.ambience?.stop(); this.ambience = null;
+    setFieldTension(0);
   }
 }

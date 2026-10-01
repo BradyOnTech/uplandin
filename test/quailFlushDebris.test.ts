@@ -31,7 +31,8 @@ it('leaves the first burst alive when a delayed bird kicks cover at its own posi
   effect.advance(600);
   effect.launch(25, 12, 0, 1, 2);
   effect.render();
-  expect(effect.audit()).toEqual({ launches: 2, visible: 16, capacity: 112 });
+  // Room for close-flush blasts, which throw three times the cover.
+  expect(effect.audit()).toEqual({ launches: 2, visible: 16, capacity: 176 });
   const position = effect.mesh.geometry.attributes.position;
   for (let piece = 0; piece < 16; piece++) {
     const x = (position.getX(piece * 4) + position.getX(piece * 4 + 2)) / 2;

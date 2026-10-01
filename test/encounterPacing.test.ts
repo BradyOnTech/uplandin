@@ -48,7 +48,7 @@ function hunt(areaId: string, seed: number, seconds: number, challenge = 'balanc
     camera.position.z -= Math.cos(camera.rotation.y) * WALK / 30;
   };
 
-  const result = { points: 0, wild: 0, detections: [] as number[], straightness: [] as number[] };
+  const result = { points: 0, wild: 0, detections: [] as number[], straightness: [] as number[], flushes: [] as { yards: number; pointed: boolean }[] };
   const hidden = new Set(system.huntState().birds.filter(b => b.state === 'hidden').map(b => b.id));
   let stage = 'none', state = '', pathM = 0, from = { x: 0, z: 0 }, previous = system.dogWorld({ x: 0, z: 0 });
   for (let frame = 0; frame < seconds * 30; frame++) {
@@ -83,6 +83,8 @@ function hunt(areaId: string, seed: number, seconds: number, challenge = 'balanc
     const risen = system.huntState().birds.filter(b => hidden.has(b.id) && b.state !== 'hidden');
     if (risen.length) {
       if (state !== 'pointing' && next.state !== 'pointing') result.wild++;
+      const hunter = system.huntState().hunterPos;
+      result.flushes.push({ yards: Math.min(...risen.map(b => Math.hypot(b.pos.x - hunter.x, b.pos.y - hunter.y))), pointed: state === 'pointing' || next.state === 'pointing' });
       for (const bird of risen) { hidden.delete(bird.id); if (bird.state === 'flushed') system.resolveBird(bird.id, 'escaped'); }
       system.finishRise();
     }
@@ -121,4 +123,26 @@ describe('encounter pacing in a Loaded field', () => {
     const contactsPerFiveMinutes = runs.reduce((sum, r) => sum + r.points + r.wild, 0) / runs.length * 300 / 240;
     expect(contactsPerFiveMinutes).toBeGreaterThanOrEqual(5);
   }, 120_000);
+});
+
+describe('close flushes', () => {
+  // The rooster underfoot is why people hunt pheasants; a tight covey of
+  // quail or chukar does it now and then; sharptail only occasionally. Share
+  // of pointed flushes where the birds went up within about six yards.
+  const seeds = [23, 41, 73, 11, 37, 53, 5, 17, 29, 31, 43, 47];
+  const share = (area: string) => {
+    const pointed = seeds.flatMap(seed => hunt(area, seed * 1009, 360).flushes).filter(f => f.pointed);
+    return pointed.filter(f => f.yards <= 6.5).length / pointed.length;
+  };
+  it('puts roughly one pointed rooster in three up at the hunter\'s feet', () => {
+    const pheasant = share('pheasant-coverts');
+    expect(pheasant).toBeGreaterThan(.2); expect(pheasant).toBeLessThan(.5);
+  }, 120_000);
+  it('lets some coveys hold tight, more often quail and chukar than sharptail', () => {
+    for (const area of ['quail-fields', 'chukar-ridge']) {
+      const covey = share(area);
+      expect(covey, area).toBeGreaterThan(.1); expect(covey, area).toBeLessThan(.4);
+    }
+    expect(share('sharptail-prairie')).toBeLessThan(.15);
+  }, 240_000);
 });

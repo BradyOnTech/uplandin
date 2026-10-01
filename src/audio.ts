@@ -346,6 +346,8 @@ export function playWhistle(): void {
  * open ground is a drier click. Volume should already encode distance.
  */
 export function playFootstep(inCover: boolean, volume = 0.12, areaId?: string): void {
+  // Walking in on a point, every step sounds loud.
+  volume *= 1 + fieldTension * .8;
   if (volume <= 0.01) return;
   if (areaId === 'chukar-ridge') {
     // A low boot impact and two loose dry grains, not a gun-like crack.
@@ -368,6 +370,21 @@ export function playFootstep(inCover: boolean, volume = 0.12, areaId?: string): 
     noise(0, 0.03, 900, 400, volume * 0.4);
     tone(140, 0, 0.04, { type: 'square', volume: volume * 0.12, slideTo: 80 });
   }
+}
+
+let fieldTension = 0;
+/** 0..1: how close the hunter is to walking in on a standing point. The
+ * field quiets around them and their own steps carry (fieldAudio.ts). */
+export function setFieldTension(tension: number): void {
+  fieldTension = Number.isFinite(tension) ? Math.max(0, Math.min(1, tension)) : 0;
+}
+
+/** The hunter's own pulse after a bird erupts at their feet: one low lub-dub. */
+export function playHeartbeat(intensity = 1, delay = .16): void {
+  const amount = Math.max(0, Math.min(1, intensity));
+  if (amount <= 0) return;
+  tone(58, delay, .14, { volume: .2 * amount, slideTo: 38 });
+  tone(52, delay + .19, .12, { volume: .13 * amount, slideTo: 36 });
 }
 
 /** Dry stems brushing clothing; quieter than the launch burst. */
@@ -405,6 +422,8 @@ export function playScentCheck(): void {
 export interface FieldAmbience {
   setPaused(paused: boolean): void;
   setWind?(strength: WindStrength): void;
+  /** 0..1: the field hushes while the hunter walks in on a point. */
+  setTension?(tension: number): void;
   stop(): void;
 }
 export function startFieldAmbience(areaId?: string): FieldAmbience | null {
@@ -412,7 +431,7 @@ export function startFieldAmbience(areaId?: string): FieldAmbience | null {
   if (!c) return null;
   const profile = fieldSoundscape(areaId);
   if (profile) {
-    let paused = false, wind: WindStrength = 'breezy', windGain = .75;
+    let paused = false, wind: WindStrength = 'breezy', windGain = .75, hush = 1;
     const layers = profile.layers.map(layer => {
       const source = c.createBufferSource(), filter = c.createBiquadFilter(), gain = c.createGain();
       const samples = fieldWindSamples(c.sampleRate, layer);
@@ -429,12 +448,20 @@ export function startFieldAmbience(areaId?: string): FieldAmbience | null {
       setPaused(nextPaused) {
         if (stopped) return;
         paused = nextPaused;
-        for (const layer of layers) layer.gain.gain.setTargetAtTime(paused ? 0 : layer.volume * windGain, c.currentTime, paused ? .08 : .5);
+        for (const layer of layers) layer.gain.gain.setTargetAtTime(paused ? 0 : layer.volume * windGain * hush, c.currentTime, paused ? .08 : .5);
       },
       setWind(strength) {
         if (stopped || strength === wind) return;
         wind = strength; windGain = strength === 'calm' ? .45 : strength === 'strong' ? 1 : .75;
-        if (!paused) for (const layer of layers) layer.gain.gain.setTargetAtTime(layer.volume * windGain, c.currentTime, 1.2);
+        if (!paused) for (const layer of layers) layer.gain.gain.setTargetAtTime(layer.volume * windGain * hush, c.currentTime, 1.2);
+      },
+      setTension(tension) {
+        const next = 1 - Math.max(0, Math.min(1, tension)) * .6;
+        if (stopped || Math.abs(next - hush) < .01) return;
+        // Hush slowly as the hunter closes; let the field back in quickly.
+        const rising = next > hush;
+        hush = next;
+        if (!paused) for (const layer of layers) layer.gain.gain.setTargetAtTime(layer.volume * windGain * hush, c.currentTime, rising ? .35 : .9);
       },
       stop() {
         if (stopped) return;

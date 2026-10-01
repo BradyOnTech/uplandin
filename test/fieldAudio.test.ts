@@ -6,7 +6,8 @@ import type { Ctx } from '../src/three/engine';
 import { Hunt3DSystem } from '../src/three/subsystems/hunt3d';
 import { LandscapeModel } from '../src/game/landscape';
 import { parseDropPointId, resolveThreeHuntArea } from '../src/game/gameplayMode';
-vi.mock('../src/audio', () => ({ playDogCollar: vi.fn(), playDogMovement: vi.fn(), playFieldSong: vi.fn(), playWhistle: vi.fn(), startFieldAmbience: vi.fn(() => null) }));
+vi.mock('../src/audio', () => ({ playDogCollar: vi.fn(), playDogMovement: vi.fn(), playFieldSong: vi.fn(), playWhistle: vi.fn(), startFieldAmbience: vi.fn(() => null),
+  setFieldTension: vi.fn(), playHeartbeat: vi.fn() }));
 afterEach(() => { vi.unstubAllGlobals(); vi.resetAllMocks(); });
 it('locates nearby moving paws, with no stationary, distant, paused, or teleport cues', () => {
   vi.stubGlobal('location', { search: '' });
