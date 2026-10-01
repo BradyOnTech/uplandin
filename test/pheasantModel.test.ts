@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, it, expect } from 'vitest';
-import { buildPheasantBody, buildPheasantWing, buildPheasantTail, posePheasantFoldedWings, pheasantWingbeat } from '../src/three/assets/pheasant';
+import { buildPheasantBody, buildPheasantLegs, buildPheasantWing, buildPheasantTail, pheasantLegTuck, pheasantTailFan, posePheasantFoldedWings, pheasantWingbeat } from '../src/three/assets/pheasant';
 
 describe('shared pheasant geometry', () => {
   it('relaxes the neck below the body without moving the grip or adding topology', () => {
@@ -101,5 +101,49 @@ describe('shared pheasant geometry', () => {
     expect(left.boundingBox!.min.x).toBeCloseTo(-right.boundingBox!.max.x,5);
     expect(left.boundingBox!.max.z).toBeCloseTo(right.boundingBox!.max.z,5);
     for(const geo of [rooster,hen,left,right])geo.dispose();
+  });
+  it('lofts an outward-facing body that carries the rooster face and collar', () => {
+    const count = (geo: THREE.BufferGeometry, target: THREE.Color) => {
+      const c = geo.attributes.color; let n = 0;
+      for (let i = 0; i < c.count; i++) if (Math.abs(c.getX(i) - target.r) + Math.abs(c.getY(i) - target.g) + Math.abs(c.getZ(i) - target.b) < .02) n++;
+      return n;
+    };
+    const rooster = buildPheasantBody(), hen = buildPheasantBody(true);
+    const red = new THREE.Color(0xb3261e), white = new THREE.Color(0xece6d6);
+    expect(count(rooster, red)).toBeGreaterThan(30); expect(count(hen, red)).toBe(0);
+    expect(count(rooster, white)).toBeGreaterThan(30); expect(count(hen, white)).toBe(0);
+    // Facets of the lofted torso face away from the body's long axis.
+    const p = rooster.attributes.position; let outward = 0, faces = 0;
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3(), m = new THREE.Vector3();
+    for (let i = 0; i < p.count; i += 3) {
+      a.fromBufferAttribute(p, i); b.fromBufferAttribute(p, i + 1); c.fromBufferAttribute(p, i + 2);
+      m.copy(a).add(b).add(c).divideScalar(3);
+      if (m.z < -.08 || m.z > .05) continue;
+      n.subVectors(b, a).cross(c.clone().sub(a));
+      faces++; if (n.x * m.x + n.y * (m.y - .002) > 0) outward++;
+    }
+    expect(outward / faces).toBeGreaterThan(.9);
+    rooster.dispose(); hen.dispose();
+  });
+  it('hangs the legs on the jump and tucks them within the first strokes', () => {
+    const legs = buildPheasantLegs();
+    expect(legs.attributes.color.count).toBe(legs.attributes.position.count);
+    legs.computeBoundingBox();
+    expect(legs.boundingBox!.min.y).toBeLessThan(-.05);
+    expect(pheasantLegTuck(0)).toBeLessThan(.5);
+    expect(pheasantLegTuck(700)).toBeGreaterThan(1.4);
+    legs.dispose();
+  });
+  it('fans the tail on the climb and closes it as the bird levels', () => {
+    const tail = buildPheasantTail(), base = tail.attributes.position, fan = tail.morphAttributes.position![0];
+    expect(fan.name).toBe('fan');
+    expect(fan.count).toBe(base.count);
+    let closed = 0, open = 0;
+    for (let i = 0; i < base.count; i++) { closed = Math.max(closed, Math.abs(base.getX(i))); open = Math.max(open, Math.abs(fan.getX(i))); }
+    expect(open).toBeGreaterThan(closed * 1.5);
+    expect(pheasantTailFan(0, false)).toBeGreaterThan(.9);
+    expect(pheasantTailFan(3000, false)).toBeLessThan(.15);
+    expect(pheasantTailFan(3000, true)).toBeCloseTo(.3);
+    tail.dispose();
   });
 });

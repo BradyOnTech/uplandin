@@ -21,6 +21,7 @@ import { DOG_STYLE_LABELS, DOG_STYLE_SELECTABLE, effectiveDogStyle, preferredDog
 import { coatLabel as coatName, resolveCoatFor } from '../game/dogCoats';
 import { BREEDS } from '../game/breeds';
 import { BirdsSystem } from './subsystems/birds';
+import { resolveBirdSize } from './birdScale';
 import { FalconrySystem } from './subsystems/falconry';
 import './falconry.css';
 import { GunSystem } from './subsystems/gun';
@@ -158,7 +159,9 @@ if (launchProfile.brace) {
     section.hidden = false;
   }
 }
-engine.register(new BirdsSystem());
+// `?birds=life` (true size up close) or `?birds=true` (true size everywhere):
+// flying-bird sizes under evaluation, October 2026. See birdScale.ts.
+engine.register(new BirdsSystem({ size: resolveBirdSize(params.get('birds')) }));
 engine.register(new FalconrySystem());
 engine.register(new GunSystem());
 engine.register(new HuntHudSystem());
@@ -238,7 +241,7 @@ declare global {
       /** Walk the mapped hunter in and flush the pointed covey (sim law). */
       triggerFlush(): { ids: number[]; distPx: number } | null;
       /** Airborne rise birds, world meters — capture telemetry. */
-      birds(): { simId: number; x: number; y: number; z: number; airMs: number; status: string }[];
+      birds(): { simId: number; x: number; y: number; z: number; airMs: number; status: string; speciesId: string; sex?: 'hen' | 'rooster' }[];
       /** Capture/test hook: route a staged hit through sim and presentation. */
       downBird(simId: number): boolean;
       groundedBirds(): number[];

@@ -2,9 +2,10 @@ import { slopeFlightMult, type SlopeApproach } from '../../game/fieldcraft';
 import { isFalconryPractice, FALCONRY_PRACTICE } from '../../game/falconryPractice';
 import { huntStreamSeed, parseHuntSeed } from '../../game/huntSeed';
 import { birdFlightExpired } from '../../game/birdFlightLifetime';
-import { buildPheasantBody, buildPheasantWing, buildPheasantTail, posePheasantFoldedWings, pheasantWingbeat } from '../assets/pheasant';
+import { buildPheasantBody, buildPheasantLegs, buildPheasantWing, buildPheasantTail, pheasantLegTuck, pheasantTailFan, posePheasantFoldedWings, pheasantWingbeat } from '../assets/pheasant';
 import { createQuailFlight, selectQuailEscapeCover, stepQuailFlight, type QuailFlight } from '../quailFlight';
 import { QUAIL_WORLD_SCALE, quailLaunchDelay } from '../quailPresentation';
+import { flyingBirdScale, type BirdSizeMode } from '../birdScale';
 import { QuailFlushDebris } from '../quailFlushDebris';
 import * as THREE from 'three';
 import { buildBobwhiteBody, buildBobwhiteWing, poseBobwhiteFoldedWings } from '../assets/bobwhite';
@@ -329,12 +330,15 @@ interface Slot {
   wingL: THREE.Group;
   wingR: THREE.Group;
   tailMesh?: THREE.Mesh;
+  /** Pheasant legs: hanging on the jump, tucked aft in flight. */
+  legMesh?: THREE.Mesh;
   visualScale: number;
   spanM: number;
 }
 
 interface BirdGeometrySet {
   tail?: THREE.BufferGeometry;
+  legs?: THREE.BufferGeometry;
   body: THREE.BufferGeometry;
   wingL: THREE.BufferGeometry;
   wingR: THREE.BufferGeometry;
@@ -399,8 +403,16 @@ const BODY_SECTS: SectZ[] = [
   { y: 0.024, z: 0.092, hw: 0.021, hh: 0.021 },
 ];
 
+export interface BirdsOptions {
+  /** How flying birds are sized (see birdScale.ts). Quail Fields keeps its
+   * own world scale in every mode. */
+  size?: BirdSizeMode;
+}
+
 export class BirdsSystem implements Subsystem {
   readonly id = 'birds';
+  private readonly size: BirdSizeMode;
+  constructor(options: BirdsOptions = {}) { this.size = options.size ?? 'readable'; }
 
   private hunt!: Hunt3DSystem;
   private terrain!: TerrainSystem;
@@ -712,12 +724,14 @@ export class BirdsSystem implements Subsystem {
     const wingR = species.id === 'ringneck' ? buildPheasantWing(1,hen) : species.id === 'bobwhite' ? buildBobwhiteWing(1)
       : species.id === 'sharptail' ? buildSharptailWing(1) : species.id === 'chukar' ? buildChukarWing(1) : this.buildWingGeo(1, wingTop, wingTopDim, wingUnder, shape);
     const tailGeo = species.id === 'ringneck' ? buildPheasantTail(hen) : undefined;
+    const legsGeo = species.id === 'ringneck' ? buildPheasantLegs(hen) : undefined;
     addCarriedBirdPoses(body, wingL, wingR, species.id);
     if (tailGeo) this.geos.push(tailGeo);
+    if (legsGeo) this.geos.push(legsGeo);
     this.geos.push(body, wingL, wingR);
     wingR.computeBoundingBox();
     const spanM = 2 * (0.03 * shape.bodyWidth + wingR.boundingBox!.max.x);
-    this.speciesGeos.set(`${species.id}${hen ? ':hen' : ''}`, { body, wingL, wingR, tail: tailGeo, shape, spanM });
+    this.speciesGeos.set(`${species.id}${hen ? ':hen' : ''}`, { body, wingL, wingR, tail: tailGeo, legs: legsGeo, shape, spanM });
   }
 
   private applySpeciesAppearance(
@@ -734,9 +748,20 @@ export class BirdsSystem implements Subsystem {
         slot.root.add(slot.tailMesh);
       }
       slot.tailMesh.geometry = geometry.tail;
+      slot.tailMesh.updateMorphTargets();
       slot.tailMesh.visible = true;
       slot.tailMesh.rotation.set(0,0,0);
     } else if (slot.tailMesh) slot.tailMesh.visible = false;
+    if (geometry.legs) {
+      if (!slot.legMesh) {
+        slot.legMesh = new THREE.Mesh(geometry.legs, this.mat!);
+        slot.legMesh.position.set(0, -.021, -.012);
+        slot.root.add(slot.legMesh);
+      }
+      slot.legMesh.geometry = geometry.legs;
+      slot.legMesh.visible = true;
+      slot.legMesh.rotation.set(pheasantLegTuck(0), 0, 0);
+    } else if (slot.legMesh) slot.legMesh.visible = false;
     slot.species = species;
     slot.sex = sex;
     slot.body.geometry = geometry.body;
@@ -1653,6 +1678,14 @@ export class BirdsSystem implements Subsystem {
 
   /* ------------------------- read-only surface ----------------------- */
 
+  /** Model scale while airborne, before the species' own size factor. The
+   * `life` size mode reads the bird's distance from the camera. */
+  private flightScale(speciesId: string, at: { x: number; y: number; z: number }, camera = this.listener?.position): number {
+    if (this.refinedQuail) return QUAIL_WORLD_SCALE;
+    const distanceM = this.size === 'life' && camera ? Math.hypot(at.x - camera.x, at.y - camera.y, at.z - camera.z) : 0;
+    return flyingBirdScale(this.size, restingBirdScale(birdFamilyFor(speciesId)), RISE_SCALE, distanceM);
+  }
+
   /** Fold a bird out of the sky (the gun phase's hook — falling frame). */
   downBird(simId: number, impact?: { x: number; y: number; z: number }): boolean {
     for (let i = 0; i < POOL; i++) {
@@ -1739,11 +1772,11 @@ export class BirdsSystem implements Subsystem {
    *  sizeM is the SCALED wingspan: the harness projects it to pixels. */
   airborne(): {
     simId: number; x: number; y: number; z: number; airMs: number; status: string; sizeM: number;
-    slopeApproach: SlopeApproach | null; velocity: { x: number; y: number; z: number };
+    slopeApproach: SlopeApproach | null; velocity: { x: number; y: number; z: number }; speciesId: string; sex?: 'hen' | 'rooster';
   }[] {
     const out: {
       simId: number; x: number; y: number; z: number; airMs: number; status: string; sizeM: number;
-      slopeApproach: SlopeApproach | null; velocity: { x: number; y: number; z: number };
+      slopeApproach: SlopeApproach | null; velocity: { x: number; y: number; z: number }; speciesId: string; sex?: 'hen' | 'rooster';
     }[] = [];
     for (let i = 0; i < POOL; i++) {
       const s = this.slots[i];
@@ -1752,9 +1785,9 @@ export class BirdsSystem implements Subsystem {
         out.push({
           simId: s.simId, ...point,
           airMs: THREE.MathUtils.lerp(s.previousAirMs ?? s.airMs, s.airMs, this.renderedPhase), status: s.status,
-          sizeM: s.spanM * (this.refinedQuail ? QUAIL_WORLD_SCALE : RISE_SCALE) * s.visualScale,
+          sizeM: s.spanM * this.flightScale(s.species.id, point) * s.visualScale,
           slopeApproach: this.spatialEncounter && s.species.flightDirection === 'downhill' ? s.flight?.slopeApproach ?? null : null,
-          velocity: { x: s.vxW, y: s.vyW, z: s.vzW },
+          velocity: { x: s.vxW, y: s.vyW, z: s.vzW }, speciesId: s.species.id, sex: s.sex,
         });
       }
     }
@@ -1930,12 +1963,14 @@ export class BirdsSystem implements Subsystem {
           s.root.quaternion.slerp(s.carryPose.rotation, 1 - presence);
           this.foldWings(s);
           poseCarriedBird(s, presence, s.carryPose.elapsed, dog.gait !== 'still');
+          if (s.legMesh) s.legMesh.rotation.x = 1.3;
+          if (s.tailMesh?.morphTargetInfluences) s.tailMesh.morphTargetInfluences[0] = 0;
           continue;
         }
       }
       this.sampleFlightPosition(s, this.renderedPhase, s.root.position);
       let scale = s.status === 'grounded' ? restingBirdScale(birdFamilyFor(s.species.id))
-        : this.refinedQuail ? QUAIL_WORLD_SCALE : RISE_SCALE;
+        : this.flightScale(s.species.id, s.root.position, ctx.camera?.position ?? this.listener?.position);
       if (s.status === 'falling') {
         const height = s.y - this.terrain.heightAt(s.x, s.z);
         // Resolve the airborne readability enlargement before touchdown,
@@ -1948,6 +1983,14 @@ export class BirdsSystem implements Subsystem {
         const settle = Math.exp(-s.airMs / 650);
         s.tailMesh.rotation.x = flying ? -.13 * settle + .025 * Math.sin(s.airMs * .009) : .08;
         s.tailMesh.rotation.y = flying ? .045 * Math.sin(s.airMs * .005 + s.wobblePh) : 0;
+        if (s.tailMesh.morphTargetInfluences) s.tailMesh.morphTargetInfluences[0] =
+          flying ? pheasantTailFan(s.airMs, s.gliding) : s.status === 'falling' ? .6 : 0;
+      }
+      if (s.legMesh?.visible) {
+        // Legs hang as the bird jumps, tuck aft within the first strokes,
+        // trail loose in a fall and stand under a running cripple.
+        s.legMesh.rotation.x = s.status === 'flying' ? pheasantLegTuck(s.airMs)
+          : s.status === 'falling' ? .5 : s.status === 'grounded' && s.running ? 0 : 1.3;
       }
       if (s.status === 'grounded' && s.running) {
         // Head down, running low for the nearest cover.
