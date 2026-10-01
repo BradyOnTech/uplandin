@@ -15,7 +15,6 @@ import { Hunt3DSystem, type WorldPatch } from './subsystems/hunt3d';
 import { PlayerSystem } from './subsystems/player';
 import { DogSystem } from './subsystems/dog';
 import { GeneratedDogSystem } from './subsystems/generatedDog';
-import { RiggedDogSystem } from './subsystems/riggedDog';
 import { DOG_STYLE_LABELS, DOG_STYLE_SELECTABLE, effectiveDogStyle, preferredDogStyle, resolveDogStyle } from './dogs/dogStyle';
 import { coatLabel as coatName, resolveCoatFor } from '../game/dogCoats';
 import { BREEDS } from '../game/breeds';
@@ -90,13 +89,11 @@ engine.register(new FieldMapSystem());
 for (const system of landscapeVisuals.systems) engine.register(system);
 engine.register(new LandmarksSystem());
 // Both breeds exist in two art styles: the smooth skinned mesh and the
-// faceted articulated sculpt. `dogstyle` chooses one for every dog in the hunt;
-// without it each breed keeps its established default. The rigged Blender GSP
-// stays available through an explicit review choice.
+// faceted articulated sculpt. Each breed draws in its house style; `dogstyle`
+// applies only while the style switch is open (see dogs/dogStyle.ts).
 const dogStyle = resolveDogStyle(params.get('dogstyle')) ?? preferredDogStyle();
 const dogSystemFor = (breed: 'gsp' | 'english-setter', coat: string, slot = 0) => {
   const style = effectiveDogStyle(breed, dogStyle);
-  if (breed === 'gsp' && slot === 0 && coat === 'liver-white' && params.get('dog') === 'rigged') return new RiggedDogSystem();
   if (style === 'smooth') return new GeneratedDogSystem(breed === 'gsp' ? resolveGspCoat(coat) : resolveEnglishSetterCoat(coat), slot);
   return new DogSystem(breed, coat, slot);
 };

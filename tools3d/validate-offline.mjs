@@ -28,10 +28,10 @@ try {
     return { keys, urls };
   });
   report.cache = inventory;
-  for (const path of ['index3d.html', 'models/gsp/manifest.json', 'models/gsp/gsp-liver-white-lod0.glb', 'models/gsp/gsp-liver-white-lod1.glb', 'models/gsp/gsp-liver-white-lod2.glb']) {
+  for (const path of ['index3d.html', 'models/quail-kit/manifest.json', 'models/quail-kit/field-tree-upright-lite.glb']) {
     assert.ok(inventory.urls.some(url => url.endsWith(path)), `cache includes ${path}`);
   }
-  report.checks.push('Complete GSP and 3D shell physically present in the installed cache');
+  report.checks.push('Quail Fields kit and 3D shell physically present in the installed cache');
   await page.setOfflineMode(true);
   const loadedOffline = [];
   page.on('response', (response) => {
@@ -39,11 +39,10 @@ try {
   });
   await page.goto(`${base}/index3d.html?breed=gsp&coat=liver-white&area=quail-fields&drop=west-track&quality=lite`);
   await page.waitForFunction('window.__ready3d === true', { timeout: 60000 });
-  const ready = await page.evaluate(() => ({ telemetry: window.__api3d.telemetry(), asset: window.__dogAudit.state().asset }));
-  assert.equal(ready.asset, 'blender-gsp');
+  const ready = await page.evaluate(() => ({ telemetry: window.__api3d.telemetry() }));
   assert.equal(ready.telemetry.quality, 'lite');
-  assert.ok(loadedOffline.some(response => response.url.includes('gsp-liver-white-lod0.glb')));
-  report.checks.push('Different drop URL loads rigged GSP offline from service worker');
+  assert.ok(loadedOffline.some(response => response.url.includes('models/quail-kit/')));
+  report.checks.push('Different drop URL loads the Quail Fields kit offline from service worker');
   report.offlineReady = ready;
   await page.click('#enter-field');
   await page.keyboard.down('KeyW');

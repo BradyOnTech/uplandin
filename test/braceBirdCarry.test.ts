@@ -4,11 +4,10 @@ import { getSpecies } from '../src/game/species';
 import type { Ctx, Subsystem } from '../src/three/engine';
 import { BirdsSystem } from '../src/three/subsystems/birds';
 import { DogSystem } from '../src/three/subsystems/dog';
-import { RiggedDogSystem } from '../src/three/subsystems/riggedDog';
 import { englishSetterAppearance } from '../src/three/dogs/englishSetter';
 
 describe('bird retrieval by either member of a brace', () => {
-  it.each([[0, 'segmented'], [1, 'segmented'], [0, 'rigged'], [1, 'rigged']] as const)('uses the registered renderer and position for carrying dog %i (%s)', (carrier, renderer) => {
+  it.each([[0, 'segmented'], [1, 'segmented']] as const)('uses the registered renderer and position for carrying dog %i (%s)', (carrier, renderer) => {
     const dogs = [
       { carryingBirdId: carrier === 0 ? 12 : null, gait: 'trot', heading: 0 },
       { carryingBirdId: carrier === 1 ? 12 : null, gait: 'trot', heading: Math.PI / 2 },
@@ -16,15 +15,9 @@ describe('bird retrieval by either member of a brace', () => {
     const positions = [{ x: 70, z: 80 }, { x: 3, z: 4 }];
     // Keep the actual production subsystem identities; permissive get stubs
     // hide missing renderers, which used to crash only the second retrieval.
-    const visuals = renderer === 'segmented'
-      ? [new DogSystem('gsp', 'liver-white'), new DogSystem('english-setter', 'blue-belton', 1)]
-      : [new RiggedDogSystem(), new RiggedDogSystem(1)];
-    // Supply the loaded asset's mouth nodes without fetching GLBs; the real
-    // rigged mouthWorld method and subsystem registration still run below.
+    expect(renderer).toBe('segmented');
+    const visuals = [new DogSystem('gsp', 'liver-white'), new DogSystem('english-setter', 'blue-belton', 1)];
     const mouths = [new THREE.Object3D(), new THREE.Object3D()];
-    if (renderer === 'rigged') visuals.forEach((visual, i) => {
-      (visual as unknown as { mouth: THREE.Object3D }).mouth = mouths[i];
-    });
     const registry = new Map<string, Subsystem>(visuals.map(dog => [dog.id, dog]));
     const system = new BirdsSystem();
     const internal = system as unknown as {

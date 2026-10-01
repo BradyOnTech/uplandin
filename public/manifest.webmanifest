@@ -1,7 +1,7 @@
 {
   "name": "Uplandin",
   "short_name": "Uplandin",
-  "description": "A field, a good dog, and a day well spent. Upland hunting in 3D and classic 2D.",
+  "description": "A field, a good dog, and a day well spent. Upland bird hunting with your dog, in 3D.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

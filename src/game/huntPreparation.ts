@@ -1,5 +1,5 @@
 import { resolveCoatFor } from './dogCoats';
-import { AREAS, type AreaConfig } from './areas';
+import { OFFERED_AREAS, type AreaConfig } from './areas';
 import { BREEDS, type BreedConfig } from './breeds';
 import {
   activeDog, addDogToKennel, advanceCareerWeeks, braceDog, rollToNextSeason,
@@ -9,7 +9,7 @@ import { build3DHuntHref, type HuntLaunch } from './gameplayMode';
 import { GUNS, unlockedGuns, type GunConfig } from './guns';
 import { gearTierFor, kennelSlots, TRUCK_LEVEL, truckUnlocked, TWO_DOG_LEVEL, twoDogUnlocked } from './progression';
 import { normalizeQuickConfig, type QuickConfig } from './quick';
-import { REGIONS, regionAreas, regionOfArea } from './regions';
+import { offeredRegion, regionAreas, regionOfArea } from './regions';
 import { areaOpenerWeek, HOME_HUNT_WEEKS, openMix, seasonOver, TRIP_HUNT_WEEKS, weekLabel } from './season';
 
 export interface PreparationArea {
@@ -49,11 +49,12 @@ const copyDog = (dog: KennelDog | null): KennelDog | null => dog ? { ...dog } : 
 
 /** Read-only UI model. No save, calendar advance, hunt creation or RNG use. */
 export function careerPreparation(career: Career): CareerPreparation {
-  const home = REGIONS.find((region) => region.id === career.homeRegionId && region.built);
+  // Home must be an offered region; a save homed in a hidden one chooses again.
+  const home = offeredRegion(career.homeRegionId);
   const needsDog = career.kennel.length === 0, needsHome = !home;
   const lead = activeDog(career), mate = twoDogUnlocked(career.hunter.level) ? braceDog(career) : null;
   const over = seasonOver(career.date), truck = truckUnlocked(career.hunter.level);
-  const areas = AREAS.map((area): PreparationArea => {
+  const areas = OFFERED_AREAS.map((area): PreparationArea => {
     const region = regionOfArea(area.id), isHome = region.id === career.homeRegionId;
     const accessible = region.built && (isHome || truck);
     const opensWeek = areaOpenerWeek(area);
@@ -99,7 +100,7 @@ export function quickPreparation(config: Partial<QuickConfig>): QuickPreparation
   const normalized = normalizeQuickConfig(config), fixed = normalized.huntingMethod === 'goshawk';
   return {
     config: normalized, breeds: BREEDS, availableGuns: GUNS, fixedCompanions: fixed,
-    areas: AREAS.map((area) => {
+    areas: OFFERED_AREAS.map((area) => {
       const selectable = !fixed || area.id === normalized.areaId;
       return { area, regionId: regionOfArea(area.id).id, isHome: false, accessible: selectable, open: true,
         selectable, reason: selectable ? null : 'Goshawk hunts use Cattail Coverts.',
@@ -133,7 +134,7 @@ export function commitCareerSetup(career: Career, choice: {
 }): PreparationResult<{ career: Career }> {
   const snapshot = careerPreparation(career);
   if (!snapshot.needsDog && !snapshot.needsHome) return failure('setup-complete', 'This career is already set up.');
-  if (!REGIONS.some((region) => region.id === choice.homeRegionId && region.built)) return failure('unknown-home', 'Choose an available home region.');
+  if (!offeredRegion(choice.homeRegionId)) return failure('unknown-home', 'Choose an available home region.');
   if (!snapshot.needsHome && career.homeRegionId !== choice.homeRegionId) return failure('home-changed', 'Keep this career’s existing home ground.');
   if (!snapshot.needsDog && choice.dog) return failure('dog-already-chosen', 'Your career already has a dog. Choose from the kennel.');
   if (snapshot.needsDog && !choice.dog) return failure('needs-dog', 'Choose your first dog.');

@@ -1,5 +1,5 @@
 import './preparation.css';
-import { AREAS, getArea } from '../game/areas';
+import { OFFERED_AREAS, isOfferedArea, getArea } from '../game/areas';
 import { BREEDS, getBreed, type BreedConfig } from '../game/breeds';
 import { CAREER_KEY, loadCareer, saveCareer, type Career, type KennelDog } from '../game/career';
 import { dogCareerProgress, hunterCareerProgress, type ExperienceProgress } from '../game/careerProgress';
@@ -11,7 +11,7 @@ import { huntingDoctrine } from '../game/huntDoctrine';
 import { careerPreparation, commitCareerSetup, commitCareerLoadout, commitDogCoat, commitPreparationDog, commitPreparationCalendar, commitCareerLaunch, commitQuickLaunch } from '../game/huntPreparation';
 import { GEAR_NAMES } from '../game/progression';
 import { loadQuickConfig, saveQuickConfig, normalizeQuickConfig, QUICK_KEY, WIND_CHOICES, WEATHER_CHOICES, type QuickConfig } from '../game/quick';
-import { REGIONS, regionOfArea } from '../game/regions';
+import { OFFERED_REGIONS, regionOfArea } from '../game/regions';
 import { dateLabel } from '../game/season';
 import { getSpecies } from '../game/species';
 import { openHuntJournal } from './huntJournalView';
@@ -57,7 +57,8 @@ const root = document.getElementById('preparation')!;
 const installedEntry = preparationInstalledEntry(location.href, loadQuickConfig(), preferenceStorage());
 if (installedEntry.url.href !== location.href) history.replaceState(null, '', installedEntry.url);
 const params = installedEntry.url.searchParams;
-const requestedRenderer = params.get('renderer') === '2d' ? '2d' : '3d';
+// The classic 2D hunt is retired from the menus: preparation always opens the 3D field.
+const requestedRenderer = '3d';
 const threeD = requestedRenderer === '3d';
 let career = loadCareer(), quick = installedEntry.quick;
 let mode: 'quick' | 'career' = params.get('mode') === 'career' ? 'career' : 'quick';
@@ -467,7 +468,7 @@ function dogForm(container: HTMLElement, first: boolean): void {
   form.append(field('Breed', breedCards('puppy-breed', puppyDraft.breedId, value => { puppyDraft = { ...puppyDraft, breedId: value, coatId: undefined }; })));
   if (threeD) form.append(field('Coat', coatSwatches('puppy-coat', puppyDraft.breedId, puppyDraft.coatId, value => { puppyDraft = { ...puppyDraft, coatId: value }; })));
   if (first && !career.homeRegionId) {
-    const built = REGIONS.filter(r => r.built);
+    const built = OFFERED_REGIONS;
     form.append(field('Home ground', radioGroup({ id: 'home-region', label: 'Home ground', value: puppyDraft.homeRegionId, className: 'region-cards',
       options: built.map(r => ({ id: r.id, label: r.name, build: el => { const head = node('span', '', 'choice-head'); head.append(node('strong', r.name), node('small', r.blurb)); el.append(head); } })),
       onChange: value => { puppyDraft = { ...puppyDraft, homeRegionId: value }; } }),
@@ -500,7 +501,7 @@ function firstSeason(choices: HTMLElement, needsDog: boolean): void {
   choices.append(intro);
   if (needsDog) { dogForm(choices, true); return; }
   choices.append(field('Home ground', radioGroup({ id: 'home-region', label: 'Home ground', value: puppyDraft.homeRegionId, className: 'region-cards',
-    options: REGIONS.filter(r => r.built).map(r => ({ id: r.id, label: r.name, build: el => { const head = node('span', '', 'choice-head'); head.append(node('strong', r.name), node('small', r.blurb)); el.append(head); } })),
+    options: OFFERED_REGIONS.map(r => ({ id: r.id, label: r.name, build: el => { const head = node('span', '', 'choice-head'); head.append(node('strong', r.name), node('small', r.blurb)); el.append(head); } })),
     onChange: value => { puppyDraft = { ...puppyDraft, homeRegionId: value }; } })));
   const save = button('Set home ground', () => {
     const result = commitCareerSetup(loadCareer(), { homeRegionId: puppyDraft.homeRegionId });
@@ -512,7 +513,7 @@ function firstSeason(choices: HTMLElement, needsDog: boolean): void {
 
 function groundStep(panel: HTMLElement): void {
   const preparation = careerPreparation(career);
-  const rows = mode === 'career' ? preparation.areas : AREAS.map(area => ({ area, selectable: !goshawk() || area.id === 'pheasant-coverts', reason: goshawk() ? 'Goshawk hunts use Cattail Coverts.' : null, isHome: false }));
+  const rows = mode === 'career' ? preparation.areas : OFFERED_AREAS.map(area => ({ area, selectable: !goshawk() || area.id === 'pheasant-coverts', reason: goshawk() ? 'Goshawk hunts use Cattail Coverts.' : null, isHome: false }));
   // The hand-built properties lead with their art; the rest follow as a list.
   const groundOptions = (subset: typeof rows, featured: boolean) => subset.map(row => ({ id: row.area.id,
     label: `${row.area.name}, ${regionOfArea(row.area.id).name}${row.selectable ? '' : `. ${row.reason ?? ''}`}`,
@@ -728,10 +729,6 @@ function openSettings(opener: HTMLElement): void {
     v => { dogStyle = v === 'breed' ? null : v as DogStyle; if (dogStyle) saveDogStyle(dogStyle); else try { localStorage.removeItem(DOG_STYLE_KEY); } catch { /* optional */ } }),
     'The same choice is on the Dog step, where you can compare both styles.'));
   }
-  const view = node('div', '', 'settings-view');
-  const other = threeD ? '2d' : '3d';
-  view.append(link(other === '2d' ? 'Switch to the classic 2D hunt' : 'Switch to the 3D field', `./prepare3d.html?renderer=${other}&mode=${mode}&area=${encodeURIComponent(areaId)}&drop=${encodeURIComponent(dropPointId)}`, 'text-link'));
-  body.append(field('Game view', view, 'Your career and kennel are shared between both views.'));
   body.append(offlinePanel);
   const dialogPager = node('div', '', 'dialog-pager');
   settingsDialog.append(header, body, dialogPager);
@@ -765,7 +762,7 @@ function render(focusId?: string): void {
   const projected = commitCareerLoadout(career, { activeDogId: dogId || undefined, braceDogId: braceId || null, gunId });
   const preparation = careerPreparation(projected.ok ? projected.career : career);
   const onboarding = mode === 'career' && (preparation.needsDog || preparation.needsHome);
-  if (!AREAS.some(a => a.id === areaId)) areaId = 'quail-fields';
+  if (!isOfferedArea(areaId)) areaId = 'quail-fields';
   if (goshawk()) areaId = 'pheasant-coverts';
   const area = getArea(areaId), entry = preparation.areas.find(a => a.area.id === areaId)!;
   if (!area.dropPoints.some(drop => drop.id === dropPointId)) dropPointId = area.dropPoints[0].id;
@@ -886,11 +883,9 @@ function launch(): void {
     saveQuickConfig(result.config);
     if (readPreference(QUICK_KEY) !== JSON.stringify(result.config)) { error('Your browser could not save this setup. Allow site storage, then try again.'); return; }
   }
-  const renderer = goshawk() ? '3d' : requestedRenderer;
-  saveGameplayMode(renderer);
+  saveGameplayMode('3d');
   try { localStorage.setItem(HUNT_CHALLENGE_KEY, challenge); } catch { /* The URL also carries this choice. */ }
   const url = new URL(result.href, location.href);
-  if (renderer === '2d') url.pathname = url.pathname.replace(/index3d\.html$/, 'classic.html');
   url.searchParams.set('challenge', challenge); url.searchParams.set('tod', light); url.searchParams.set('dog', 'generated');
   // Keep Auto distinct from the effective tier chosen by device preference.
   url.searchParams.set('quality', quality);

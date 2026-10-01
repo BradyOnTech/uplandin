@@ -729,6 +729,17 @@ export function areaBirdCount(area: AreaConfig): number {
   if (sharptail) registerSharptailEntrances(sharptailEntrances(sharptail.world, sharptail.dropPoints));
 }
 
+/**
+ * The grounds the game offers: the four core properties. The other seven stay
+ * in the data and open from a direct field link for development, but no menu
+ * or career route offers them until their maps reach the production bar.
+ */
+export const OFFERED_AREA_IDS: readonly string[] = ['quail-fields', 'pheasant-coverts', 'sharptail-prairie', 'chukar-ridge'];
+export function isOfferedArea(id: string | null | undefined): boolean {
+  return typeof id === 'string' && OFFERED_AREA_IDS.includes(id);
+}
+export const OFFERED_AREAS: readonly AreaConfig[] = AREAS.filter((area) => isOfferedArea(area.id));
+
 export function getArea(id: string): AreaConfig {
   return AREAS.find((a) => a.id === id) ?? AREAS[0];
 }

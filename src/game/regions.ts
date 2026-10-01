@@ -1,4 +1,4 @@
-import { AREAS, type AreaConfig } from './areas';
+import { AREAS, isOfferedArea, type AreaConfig } from './areas';
 
 /**
  * The continental-US travel map: seven regions, each holding its areas.
@@ -74,6 +74,16 @@ export const REGIONS: RegionConfig[] = [
     built: true,
   },
 ];
+
+/** Regions holding an offered ground, each listing only its offered grounds.
+ * Career home choice and travel use these; REGIONS keeps the full map. */
+export const OFFERED_REGIONS: readonly RegionConfig[] = REGIONS
+  .filter((region) => region.built && region.areaIds.some(isOfferedArea))
+  .map((region) => ({ ...region, areaIds: region.areaIds.filter(isOfferedArea) }));
+
+export function offeredRegion(id: string | null | undefined): RegionConfig | undefined {
+  return OFFERED_REGIONS.find((region) => region.id === id);
+}
 
 export function getRegion(id: string): RegionConfig {
   return REGIONS.find((r) => r.id === id) ?? REGIONS[0];

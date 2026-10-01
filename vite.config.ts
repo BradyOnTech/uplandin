@@ -12,7 +12,7 @@ export default defineConfig({
     writeBundle(options, bundle) {
       const directory = resolve(options.dir ?? 'dist');
       const files = [
-        'index.html', 'home3d.html', 'classic.html', 'index3d.html', 'prepare3d.html', 'shotguns3d.html', 'manifest.webmanifest', 'manifest3d.webmanifest', 'icon-192.png', 'icon-512.png',
+        'index.html', 'home3d.html', 'index3d.html', 'prepare3d.html', 'shotguns3d.html', 'manifest.webmanifest', 'manifest3d.webmanifest', 'icon-192.png', 'icon-512.png',
         ...['title-landscape', 'quail-fields', 'pheasant-coverts', 'chukar-ridge', 'sharptail-prairie', 'dogs/gsp', 'dogs/english-setter', 'dogs/gsp-smooth', 'dogs/gsp-faceted', 'dogs/english-setter-smooth', 'dogs/english-setter-faceted', 'guns/remington-870', 'guns/semi-auto', 'guns/over-under', 'guns/side-by-side'].map(name => `art/menus3d/${name}.webp`),
         'textures/terrain/prairie-painted.webp',
         'textures/terrain/sharptail-sward-v2.webp',
@@ -29,8 +29,6 @@ export default defineConfig({
         ...['upright', 'spreading', 'leaning'].flatMap(habit => ['high', 'lite'].map(detail => `models/quail-kit/field-tree-${habit}-${detail}.glb`)),
         'models/quail-kit/manifest.json',
         ...['open', 'low', 'tall'].flatMap(habit => ['high', 'lite'].map(detail => `models/quail-kit/sand-plum-${habit}-${detail}.glb`)),
-        'models/gsp/manifest.json',
-        'models/gsp/gsp-liver-white-lod0.glb', 'models/gsp/gsp-liver-white-lod1.glb', 'models/gsp/gsp-liver-white-lod2.glb',
       ];
       const workerSource = readFileSync(resolve(__dirname, 'public/sw.js'), 'utf8');
       // Worker-only fixes need their own cache too; failed staging must never
@@ -48,7 +46,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         home: resolve(__dirname, 'home3d.html'),
-        classic: resolve(__dirname, 'classic.html'),
+        // classic.html (the retired 2D hunt) stays in the repo but is no longer built.
         three: resolve(__dirname, 'index3d.html'),
         preparation: resolve(__dirname, 'prepare3d.html'),
         shotguns: resolve(__dirname, 'shotguns3d.html'),

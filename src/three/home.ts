@@ -27,16 +27,16 @@ function link(text: string, href: string, className = ''): HTMLAnchorElement { c
 function button(text: string, action: () => void, className = ''): HTMLButtonElement {
   const element = node('button', text, className); element.type = 'button'; element.addEventListener('click', action); return element;
 }
-let renderer: GameplayMode = '3d';
-try { if (localStorage.getItem('uplandin.gameplay-mode.v1') === '2d') renderer = '2d'; } catch { /* Browsing without storage still supports Quick Hunt. */ }
-const requestedRenderer = new URLSearchParams(location.search).get('renderer');
-if (requestedRenderer === '2d' || requestedRenderer === '3d') renderer = requestedRenderer;
+// The classic 2D hunt is retired from the menus: every link opens the 3D field.
+const renderer: GameplayMode = '3d';
 const art = node('img', '', 'home-landscape'); art.src = titleMenuArt; art.alt = ''; art.decoding = 'async';
 root.append(art, node('div', '', 'home-shade'));
 const frame = node('div', '', 'home-frame');
 const header = node('header', '', 'home-masthead');
 header.append(node('span', 'UPLANDIN', 'home-wordmark'), node('span', 'A FIELD. A GOOD DOG. A DAY WELL SPENT.', 'home-motto'));
 const settings = button('Play settings', () => showSettings(settings), 'home-settings'); header.append(settings);
+// The dog art style was the last play setting here; install help stays in the footer.
+settings.hidden = !DOG_STYLE_SELECTABLE;
 const main = node('main', '', 'home-main');
 const introduction = node('div', '', 'home-introduction');
 introduction.append(node('p', 'THE COUNTRY IS CALLING', 'home-eyebrow'), node('h1', 'Follow the dog.\nFind your country.'), node('p', 'From the plum thickets to the high rimrock. Pick your ground, take a good dog, and see what the day brings.', 'home-description'));
@@ -89,13 +89,11 @@ const utilities = node('nav'); utilities.setAttribute('aria-label', 'Equipment a
 const journal = button('Field journal', () => openHuntJournal(loadCareer(), journal));
 utilities.append(link('Gun rack', './shotguns3d.html'), journal, button('Install & offline', () => showSettings(installButton)));
 const installButton = utilities.lastElementChild as HTMLButtonElement;
-const rendererNote = button('', () => showSettings(rendererNote), 'home-renderer-note');
-footer.append(utilities, rendererNote);
+footer.append(utilities);
 frame.append(header, main, footer); root.append(frame);
 function syncLinks(): void {
   for (const [element, mode] of [[quick, 'quick'], [careerLink, 'career']] as const) element.href = `./prepare3d.html?mode=${mode}&renderer=${renderer}`;
   for (const preview of previews) preview.href = `./prepare3d.html?mode=quick&renderer=${renderer}&area=${preview.dataset.area}`;
-  rendererNote.textContent = renderer === '3d' ? '3D field experience' : '2D classic experience';
   syncDog();
 }
 function syncDog(): void {
@@ -128,28 +126,18 @@ syncLinks();
 window.addEventListener('pageshow', event => {
   if (!event.persisted) return;
   career = loadCareer();
-  if (requestedRenderer !== '2d' && requestedRenderer !== '3d') {
-    try { renderer = localStorage.getItem('uplandin.gameplay-mode.v1') === '2d' ? '2d' : '3d'; } catch { /* Keep the current choice without storage. */ }
-  }
   careerLink.querySelector('.home-action-title')!.textContent = career.kennel.length ? 'Continue your season' : 'Start a season';
   careerLink.querySelector('.home-action-detail')!.textContent = career.kennel.length
     ? `${dateLabel(career.date)} · ${career.kennel.length} ${career.kennel.length === 1 ? 'dog' : 'dogs'} in the kennel`
     : 'Raise your dogs. Build a hunting life.';
-  syncLinks(); syncRenderer();
+  syncLinks();
 });
 
 const dialog = node('dialog', '', 'home-dialog'); dialog.setAttribute('aria-labelledby', 'home-settings-title');
 const dialogHeader = node('header'); const titleWrap = node('div'); titleWrap.append(node('p', 'MAKE YOURSELF AT HOME', 'home-eyebrow'));
-const title = node('h2', 'Play your way'); title.id = 'home-settings-title'; titleWrap.append(title);
+const title = node('h2', DOG_STYLE_SELECTABLE ? 'Play your way' : 'Install & offline'); title.id = 'home-settings-title'; titleWrap.append(title);
 const close = button('Close', () => dialog.close(), 'home-dialog-close'); dialogHeader.append(titleWrap, close);
 const dialogContent = node('div', '', 'home-dialog-content');
-const rendererField = node('fieldset'); rendererField.append(node('legend', 'Game view'));
-const rendererChoices = node('div', '', 'home-renderer-choices');
-for (const [id, label, detail] of [['3d', 'In the field', 'Immersive 3D landscapes'], ['2d', 'The classic', 'Top-down 2D hunting']] as const) {
-  const choice = button('', () => { renderer = id; saveGameplayMode(renderer); syncLinks(); syncRenderer(); }, 'home-renderer-choice');
-  choice.dataset.renderer = id; choice.append(node('strong', label), node('span', detail)); rendererChoices.append(choice);
-}
-rendererField.append(rendererChoices, node('p', 'Your career and kennel are shared between both views.', 'home-settings-help')); dialogContent.append(rendererField);
 // One art style for every dog, while the house style is still being chosen.
 const styleField = node('fieldset'); styleField.append(node('legend', 'Dog art style'));
 const styleChoices = node('div', '', 'home-renderer-choices home-style-choices');
@@ -165,8 +153,6 @@ styleField.append(styleChoices, node('p', 'Compare both styles side by side on t
 if (DOG_STYLE_SELECTABLE) dialogContent.append(styleField);
 function syncStyle(): void { const current = preferredDogStyle() ?? 'breed'; styleChoices.querySelectorAll('button').forEach(choice => choice.setAttribute('aria-pressed', String(choice.dataset.style === current))); }
 syncStyle();
-function syncRenderer(): void { rendererChoices.querySelectorAll('button').forEach(choice => choice.setAttribute('aria-pressed', String(choice.dataset.renderer === renderer))); }
-syncRenderer();
 const install = node('section', '', 'home-install'); install.append(node('h3', 'Take the whole game with you'), node('p', 'On iPhone or iPad, use Safari’s Share menu and Add to Home Screen. On Android or desktop, choose Install in your browser. The installed game opens without browser bars.'));
 const offline = node('p', '', 'home-offline-status'); offline.id = 'offline-status'; offline.setAttribute('role', 'status');
 const updateStatus = node('p', '', 'home-offline-status'); updateStatus.setAttribute('role', 'status');

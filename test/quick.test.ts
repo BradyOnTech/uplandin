@@ -55,7 +55,7 @@ describe('quick hunt config', () => {
     const cfg = {
       breedId: 'irish-setter',
       level: 3,
-      areaId: 'grouse-woods',
+      areaId: 'chukar-ridge',
       wind: 'strong' as const,
       gunId: 'over-under',
       gearTier: 3,
@@ -64,6 +64,11 @@ describe('quick hunt config', () => {
     };
     saveQuickConfig(cfg, storage);
     expect(loadQuickConfig(storage)).toEqual(cfg);
+  });
+
+  it('returns a setup saved on a hidden ground to the default ground', () => {
+    expect(normalizeQuickConfig({ areaId: 'grouse-woods' }).areaId).toBe('quail-fields');
+    expect(normalizeQuickConfig({ areaId: 'sharptail-prairie' }).areaId).toBe('sharptail-prairie');
   });
 
   it('older saved setups gain gun, gear, second-dog, and weather defaults', () => {

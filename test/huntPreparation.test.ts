@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AREAS, getArea } from '../src/game/areas';
+import { getArea, isOfferedArea, OFFERED_AREAS } from '../src/game/areas';
 import { BREEDS } from '../src/game/breeds';
 import { addDogToKennel, CAREER_KEY, emptyCareer, type Career, type StorageLike } from '../src/game/career';
 import { createThreeHuntSetup, loadGameplayMode, parseHuntLaunch } from '../src/game/gameplayMode';
@@ -10,7 +10,7 @@ import {
 } from '../src/game/huntPreparation';
 import { mulberry32 } from '../src/game/math';
 import { defaultQuickConfig, QUICK_KEY } from '../src/game/quick';
-import { REGIONS } from '../src/game/regions';
+import { OFFERED_REGIONS, REGIONS } from '../src/game/regions';
 
 function careerAt(level = 1, week = 9): Career {
   const base = addDogToKennel(emptyCareer(), 'Millie', 'gsp').career;
@@ -32,7 +32,9 @@ describe('read-only preparation snapshots', () => {
     expect(prep.gearTier).toBe(0);
     const home = prep.areas.find((row) => row.area.id === 'quail-fields')!;
     expect(home).toMatchObject({ accessible: true, open: false, selectable: false, opensWeek: 9, weeks: 1 });
-    expect(prep.areas.find((row) => row.area.id === 'grouse-woods')).toMatchObject({ accessible: false, open: true, selectable: false, weeks: 2 });
+    // Only the four core properties are offered; the rest of the map stays hidden.
+    expect(prep.areas.map((row) => row.area.id)).toEqual(['quail-fields', 'pheasant-coverts', 'sharptail-prairie', 'chukar-ridge']);
+    expect(prep.areas.find((row) => row.area.id === 'chukar-ridge')).toMatchObject({ accessible: false, selectable: false, weeks: 2 });
     expect(prep.calendarAction).toMatchObject({ kind: 'opener', weeks: 9 });
     prep.activeDog!.name = 'Only a display snapshot';
     expect(career).toEqual(before);
@@ -86,11 +88,21 @@ describe('explicit career preparation transactions', () => {
 
   it('adds home to a legacy save without altering its dog or inventing history', () => {
     const career = { ...careerAt(), homeRegionId: null, hunts: 12 };
-    const result = commitCareerSetup(career, { homeRegionId: 'north-woods' });
+    const result = commitCareerSetup(career, { homeRegionId: 'prairie-pothole' });
     expect(result.ok).toBe(true); if (!result.ok) return;
-    expect(result.career).toEqual({ ...career, homeRegionId: 'north-woods' });
+    expect(result.career).toEqual({ ...career, homeRegionId: 'prairie-pothole' });
     expect(result.career.recentHunts).toBeUndefined();
-    expect(commitCareerSetup(career, { homeRegionId: 'north-woods', dog: { name: 'Duplicate', breedId: 'gsp' } }).ok).toBe(false);
+    expect(commitCareerSetup(career, { homeRegionId: 'prairie-pothole', dog: { name: 'Duplicate', breedId: 'gsp' } }).ok).toBe(false);
+  });
+
+  it('asks a save homed in a hidden region to choose an offered home, keeping its dogs and history', () => {
+    const career = { ...careerAt(), homeRegionId: 'north-woods', hunts: 7 };
+    expect(careerPreparation(career).needsHome).toBe(true);
+    expect(commitCareerSetup(career, { homeRegionId: 'north-woods' })).toMatchObject({ ok: false, code: 'unknown-home' });
+    const result = commitCareerSetup(career, { homeRegionId: 'great-basin' });
+    expect(result.ok).toBe(true); if (!result.ok) return;
+    expect(result.career).toEqual({ ...career, homeRegionId: 'great-basin' });
+    expect(careerPreparation(result.career).areas.find((row) => row.isHome)!.area.id).toBe('chukar-ridge');
   });
 
   it('revalidates earned kennel capacity and makes an added puppy active without changing home', () => {
@@ -161,7 +173,7 @@ describe('validated preparation launch handoff', () => {
   });
 
   it('defaults to each authored first drop and keeps Quick independent of career locks', () => {
-    for (const area of AREAS) {
+    for (const area of OFFERED_AREAS) {
       const launch = commitQuickLaunch({ ...defaultQuickConfig(), areaId: area.id });
       expect(launch.ok).toBe(true); if (!launch.ok) continue;
       expect(launch.dropPointId).toBe(area.dropPoints[0].id);
@@ -184,5 +196,15 @@ describe('validated preparation launch handoff', () => {
     expect(launch.config).toMatchObject({ breedId: 'gsp', level: 10, breed2Id: 'none', areaId: 'pheasant-coverts' });
     const setup = createThreeHuntSetup(search(launch.href), mulberry32(2), store(emptyCareer(), launch.config));
     expect(setup.hunt.huntingMethod).toBe('goshawk');
+  });
+});
+
+describe('offered grounds', () => {
+  it('keeps the career travel map to the regions that hold a core property', () => {
+    expect(OFFERED_REGIONS.map((region) => region.id)).toEqual(['southern-plains', 'prairie-pothole', 'great-basin']);
+    expect(OFFERED_REGIONS.find((region) => region.id === 'great-basin')!.areaIds).toEqual(['chukar-ridge']);
+    expect(REGIONS.find((region) => region.id === 'great-basin')!.areaIds).toContain('hun-benches');
+    expect(isOfferedArea('grouse-woods')).toBe(false);
+    expect(quickPreparation({ areaId: 'grouse-woods' }).config.areaId).toBe('quail-fields');
   });
 });

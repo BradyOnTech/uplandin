@@ -1,19 +1,20 @@
 /**
- * The two dog art styles under evaluation. Both are complete presentations
- * over the same shared hunt simulation:
+ * The two dog art styles. Both are complete presentations over the same
+ * shared hunt simulation:
  * - smooth: one skinned, softly shaded mesh with contact-solved limbs;
  * - faceted: the articulated low-poly sculpt with flat-shaded planes.
  *
- * Choosing the house style later is a two-line change here:
- * set both `DEFAULT_DOG_STYLE` entries to the chosen style and set
- * `DOG_STYLE_SELECTABLE` to false. Every menu control for the style then
- * disappears and stored choices are ignored.
+ * October 1, 2026: each breed keeps the look Brady chose (a smooth GSP and a
+ * faceted English Setter) and the player-facing style switch is closed. The
+ * skinned rig is the long-term foundation; the faceted setter is to be
+ * rebuilt on it, after which the articulated system retires. The comparison
+ * bench (tools3d/dog-comparison.html) still shows all four pairings.
  */
 export const DOG_STYLES = ['smooth', 'faceted'] as const;
 export type DogStyle = (typeof DOG_STYLES)[number];
 
-/** While the house style is undecided, players may pick a style for every dog. */
-export const DOG_STYLE_SELECTABLE = true;
+/** Players no longer pick a style; each breed draws in its house style. */
+export const DOG_STYLE_SELECTABLE: boolean = false;
 
 /** Remembered player choice; one style applies to every breed. */
 export const DOG_STYLE_KEY = 'uplandin.3d.dogstyle';

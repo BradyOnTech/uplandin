@@ -1,4 +1,4 @@
-import { AREAS } from './areas';
+import { isOfferedArea, OFFERED_AREA_IDS } from './areas';
 import { BREEDS, LEVEL_CAP } from './breeds';
 import type { StorageLike } from './career';
 import { CONDITIONS, type Condition } from './conditions';
@@ -40,7 +40,7 @@ export function defaultQuickConfig(): QuickConfig {
   return {
     breedId: BREEDS[0].id,
     level: 5,
-    areaId: AREAS[0].id,
+    areaId: OFFERED_AREA_IDS[0],
     wind: 'random',
     gunId: GUNS[0].id,
     gearTier: 1,
@@ -63,7 +63,8 @@ export function normalizeQuickConfig(cfg: Partial<QuickConfig>): QuickConfig {
     ...(cfg.huntingMethod ? { huntingMethod: cfg.huntingMethod === 'goshawk' ? 'goshawk' as const : 'shotgun' as const } : {}),
     breedId: BREEDS.some((b) => b.id === cfg.breedId) ? cfg.breedId! : base.breedId,
     level: clamp(Math.round(cfg.level ?? base.level), 1, LEVEL_CAP),
-    areaId: AREAS.some((a) => a.id === cfg.areaId) ? cfg.areaId! : base.areaId,
+    // Only offered grounds survive; a setup saved on a hidden one returns to the default.
+    areaId: isOfferedArea(cfg.areaId) ? cfg.areaId! : base.areaId,
     wind: WIND_CHOICES.includes(cfg.wind as WindStrength | 'random') ? (cfg.wind as QuickConfig['wind']) : base.wind,
     gunId: GUNS.some((g) => g.id === cfg.gunId) ? cfg.gunId! : base.gunId,
     gearTier: clamp(Math.round(cfg.gearTier ?? base.gearTier), 0, 3),
