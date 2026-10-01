@@ -15,12 +15,15 @@ import { CHUKAR_GROUND_DETAIL } from './chukarTerrain';
 import { groundQuailTrackGeometry, applyQuailTrackGroundLod, sampleQuailGroundHeights } from './quailGroundGeometry';
 import { applyQuailGrassGroundLod, createQuailGrassGroundGeometry } from './quailGrassGround';
 import { SolidShotGeometry } from '../solidShotGeometry';
+import { CHUKAR_TALUS_FANS, chukarFanCoordinates, chukarFeatureOccupies, chukarSeepAt, chukarTalusFanAt } from '../../game/chukarFeatures';
+import { buildChukarHistory } from './chukarHistory';
 
 const TILE = 80;
 const TRACK_HALF_WIDTH_M = .8;
 const STONE = [0x878073, 0x6e716b, 0x968a76, 0x75766d];
 const SAGE = [0x82957d, 0x94a28a, 0xa3ac92];
 const STRAW = [0xa79a77, 0xbba273, 0xc7b084, 0xd1bd93];
+const SEEP_GREEN = [0x6f8c4c, 0x7f9a55, 0x8ea65e];
 const SAMPLE: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
 function seed(x: number, y: number, salt = 0): number {
@@ -95,6 +98,7 @@ export class ChukarEnvironmentSystem implements Subsystem {
     if (area.dropPoints.some(d => Math.hypot(x - d.position.x, y - d.position.y) * PROPERTY_PX_TO_M < 10 + radius)) return false;
     if (area.landmarks.some(l => !['lower-sage-bench','split-shoulder','rim-overlook'].includes(l.id)&&Math.hypot(x - l.position.x, y - l.position.y) * PROPERTY_PX_TO_M < 14 + radius)) return false;
     if (this.landmarkClearance.some(l => Math.hypot(x - l.x, y - l.y) * PROPERTY_PX_TO_M < l.radius + radius)) return false;
+    if (chukarFeatureOccupies(x, y, radius)) return false;
     return !keepHabitat || !coverAt(area, x, y, margin + 3);
   }
 
@@ -248,6 +252,29 @@ export class ChukarEnvironmentSystem implements Subsystem {
       this.batch(stones[formation.variant],rockMat,fragments,420,!lite,true);
     }
 
+    // Talus fans spilling from chutes in the big rims: blocks at the chute,
+    // finer scree spreading toward the toe (see chukarFeatures).
+    for(const [index,fan] of CHUKAR_TALUS_FANS.entries()){
+      const rng=mulberry32(seed(Math.round(fan.apex.x),Math.round(fan.apex.y),31)),scree:Plant[]=[],blocks:Plant[]=[];
+      const dx=fan.toe.x-fan.apex.x,dy=fan.toe.y-fan.apex.y,length=Math.hypot(dx,dy),nx=-dy/length,ny=dx/length;
+      const count=Math.round(fan.width*length*(lite?1.1:1.8));
+      for(let i=0;i<count;i++){
+        const along=Math.pow(rng(),.8),half=fan.width*(.25+.75*along),across=(rng()+rng()-1)*half;
+        const px=fan.apex.x+dx*along+nx*across,py=fan.apex.y+dy*along+ny*across;
+        if(chukarFanCoordinates(fan,px,py).across>1)continue;
+        const size=(.16+rng()*.38)*(1.25-along*.6);
+        if(this.clear(px,py,size*.5))scree.push({x:px,y:py,sx:size*1.6,sy:size*.5,sz:size,yaw:rng()*Math.PI*2,color:STONE[i%STONE.length]});
+      }
+      for(let i=0;i<9;i++){
+        // The biggest blocks rolled farthest and lie at the toe.
+        const along=i<4?rng()*.3:.75+rng()*.35,px=fan.apex.x+dx*along+nx*(rng()-.5)*fan.width*1.2,py=fan.apex.y+dy*along+ny*(rng()-.5)*fan.width*1.2;
+        const size=i<4?.6+rng()*.5:.8+rng()*1.1;
+        if(this.clear(px,py,size*1.05))blocks.push({x:px,y:py,sx:size*1.45,sy:size*.7,sz:size,yaw:rng()*Math.PI*2,color:STONE[(i+index)%STONE.length]});
+      }
+      this.batch(gravel,rockMat,scree,lite?150:230,false,true);
+      this.batch(stones[index%3],rockMat,blocks,420,!lite,true);
+    }
+
     const spacing = 2.65;
     const zones={talus:0,shelter:0},stand={grass:0,sage:0},composition={sage:0,grass:0,open:0,wash:0};
     const rockDensityScale = (spacing / 5.4) ** 2;
@@ -272,16 +299,20 @@ export class ChukarEnvironmentSystem implements Subsystem {
         const grassColor=STRAW[Math.min(STRAW.length-1,Math.floor(tone*STRAW.length))];
         const sageColor=SAGE[Math.min(SAGE.length-1,Math.floor(tone*SAGE.length))];
         const grassYaw=-.65+(yaw-Math.PI)*.22+Math.sin(x*.025+y*.015)*.28;
-        const sageChance=(.01+stand.sage*.75)*(1-rockiness*.48);
-        const grassChance=(.035+stand.grass*.82+vegetation*.07)*(1-zones.talus*.7)*(1-Math.max(composition.open*.8,composition.wash*.95));
+        // The seep greens a dense tongue of grass; scree carries almost none.
+        const seep=chukarSeepAt(x,y),scree=chukarTalusFanAt(x,y);
+        const sageChance=(.01+stand.sage*.75)*(1-rockiness*.48)*(1-seep*.85)*(1-scree*.9);
+        const grassChance=((.035+stand.grass*.82+vegetation*.07)*(1-zones.talus*.7)*(1-Math.max(composition.open*.8,composition.wash*.95))*(1-scree*.88))
+          +seep*.75;
         let planted=false;
         if(choice<sageChance&&slope<.9){
           const size=.58+sizeRoll*.58+composition.sage*.24;
           if((!lite||qualityKeep>.18)&&this.clear(x,y,size*.90)){bushes.push({x,y,sx:size*1.16,sy:size*.84,sz:size*1.08,yaw,color:sageColor});planted=true;}
         }else if(choice<sageChance+grassChance&&slope<1.05){
-          const size=.72+sizeRoll*.69+stand.grass*.25;
+          const size=.72+sizeRoll*.69+stand.grass*.25+seep*.3;
           if(!lite||qualityKeep>.27){
-            bunches.push({x,y,sx:size*1.12,sy:size*(patch?1.08:1),sz:size*1.12,yaw:grassYaw,color:grassColor});planted=true;
+            const color=seep>.25?SEEP_GREEN[Math.min(SEEP_GREEN.length-1,Math.floor(tone*SEEP_GREEN.length))]:grassColor;
+            bunches.push({x,y,sx:size*1.12,sy:size*(patch?1.08:1),sz:size*1.12,yaw:grassYaw,color});planted=true;
             // Smaller neighboring bunches create a stand with a shared root
             // bed, without raising density on every exposed hillside.
             for(let companion=0;companion<2;companion++){
@@ -293,7 +324,7 @@ export class ChukarEnvironmentSystem implements Subsystem {
         }
         // Low talus needs a continuous scattering, not the sparse density
         // reserved for large outcrops. Keep the trail clearance above.
-        if (rng() < (.14 + rockiness * .35+zones.talus*.2+composition.wash*.82) * (1 - band * .32)) {
+        if (rng() < (.14 + rockiness * .35+zones.talus*.2+composition.wash*.82+scree*.7) * (1 - band * .32) * (1 - seep * .9)) {
           const size = .18 + rng() * .44;
           if ((!lite || qualityKeep > .40)&&!planted) chips.push({ x, y, sx: size * 1.5, sy: size * .43, sz: size, yaw: rng() * Math.PI * 2, color: STONE[Math.floor(rng() * STONE.length)] });
         }
@@ -307,7 +338,11 @@ export class ChukarEnvironmentSystem implements Subsystem {
       this.batch(gravel, rockMat, chips, lite ? 100 : 170, false, true);
       this.batch(stones[seed(tx, ty) % 3], rockMat, outcrops, 800, true, true);
     }
-    this.buildTrack(ctx); this.update(ctx);
+    this.buildTrack(ctx);
+    buildChukarHistory({ landscape: this.landscape, quality: ctx.quality, castShadow: ctx.quality === 'high', obstacles: this.obstacles,
+      addSolid: mesh => this.shotSolids.add(mesh), keep: object => this.root.add(object),
+      own: resource => { if (resource instanceof THREE.BufferGeometry) this.geometries.add(resource); else this.materials.add(resource); } });
+    this.update(ctx);
   }
 
   private buildTrack(ctx:Ctx): void {

@@ -2,6 +2,7 @@ import { chukarCompositionAt, chukarWashAt } from './chukarComposition';
 import type { AreaConfig } from './areas';
 import type { Rect } from './field';
 import { PROPERTY_PX_TO_M } from './worldUnits';
+import { CHUKAR_SEEP_COVER } from './chukarFeatures';
 
 /** Authored property coordinates. These brows, shelves and aprons survive a
  * different truck drop, renderer quality or encounter seed. */
@@ -37,7 +38,9 @@ export function chukarBrowBlockers(area:Pick<AreaConfig,'world'>):{x:number;y:nu
  * from both stocking and the survey. Existing outlying pockets remain. */
 export function chukarCoverPatches(world:Rect,existing:Rect[]):Rect[]{
   const shelves=[[593,658,61,24],[660,545,113,26],[744,518,104,28],
-    [863,384,116,26],[970,224,120,28],[1060,344,94,25]];
+    [863,384,116,26],[970,224,120,28],[1060,344,94,25],
+    // Chukar come to the green below the seep (chukarFeatures).
+    [CHUKAR_SEEP_COVER.x,CHUKAR_SEEP_COVER.y,CHUKAR_SEEP_COVER.w,CHUKAR_SEEP_COVER.h]];
   let patches=[...existing,...shelves.map(([x,y,w,h])=>({x:world.x+x,y:world.y+y,w,h}))];
   for(const b of chukarBrows({world})){
     const rx=Math.abs(Math.cos(b.angle))*b.length*.5+Math.abs(Math.sin(b.angle))*b.depth/PROPERTY_PX_TO_M*.5+2;
