@@ -12,6 +12,7 @@ vi.mock('three', async (original) => {
     constructor(options: { canvas: HTMLCanvasElement }) { this.domElement = options.canvas; }
     setPixelRatio() {}
     setSize() {}
+    getDrawingBufferSize(target: { set(x: number, y: number): unknown }) { return target.set(1920, 1080); }
   } };
 });
 
@@ -52,6 +53,26 @@ describe('engine loading lifetime', () => {
     expect(calls).toEqual([1, 1]);
     expect(engine.ctx.renderer.info.render.calls).toBe(2);
     engine.dispose();
+  });
+
+  it('renders through an attached effects pipeline and plainly once it is detached', () => {
+    const engine = new Engine({} as HTMLCanvasElement, 'high');
+    const pipeline = { render: vi.fn(), setSize: vi.fn(), dispose: vi.fn() };
+    engine.setPipeline(pipeline);
+    expect(pipeline.setSize).toHaveBeenCalledWith(1920, 1080);
+    const renderer = engine.ctx.renderer;
+    vi.mocked(renderer.render).mockClear();
+    engine.renderOnce();
+    expect(pipeline.render).toHaveBeenCalledOnce();
+    expect(renderer.render).not.toHaveBeenCalled();
+    engine.setPipeline(null);
+    engine.renderOnce();
+    expect(renderer.render).toHaveBeenCalledOnce();
+    // A detached pipeline stays with its owner; the engine disposes the active one.
+    expect(pipeline.dispose).not.toHaveBeenCalled();
+    engine.setPipeline(pipeline);
+    engine.dispose();
+    expect(pipeline.dispose).toHaveBeenCalledOnce();
   });
 
   it('releases late assets without restarting after leaving during loading', async () => {

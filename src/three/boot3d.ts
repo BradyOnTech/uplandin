@@ -8,6 +8,8 @@ import { prepareHuntUrl } from '../game/huntSeed';
 import { FieldInterface, preferredQuality } from './fieldInterface';
 import { FieldAudioSystem } from './subsystems/fieldAudio';
 import { Engine } from './engine';
+import { PostEffects } from './postEffects';
+import { LOOK_IDS, LOOKS, resolveLook, type LookId } from './looks';
 import type { TimeOfDay } from './palette';
 import { SkySystem } from './subsystems/sky';
 import { TerrainSystem } from './subsystems/terrain';
@@ -77,6 +79,39 @@ const coatId = resolveCoatFor(visualBreed, params.get('coat')
 
 const canvas = document.getElementById('game3d') as HTMLCanvasElement;
 const engine = new Engine(canvas, quality);
+// Look development: `?look=crisp|golden|natural` renders the High tier through
+// the screen-effects pipeline, and L cycles the looks (and today's plain
+// render) so they can be compared in motion. Without the parameter, or on
+// Lightweight, the field renders exactly as before.
+{
+  const requested = resolveLook(params.get('look'));
+  if (requested && quality === 'high') {
+    const effects = new PostEffects(LOOKS[requested]);
+    effects.setDebug(Number(params.get('lookdebug')) || 0);
+    engine.setPipeline(effects);
+    const order: (LookId | 'today')[] = [...LOOK_IDS, 'today'];
+    let current: LookId | 'today' = requested;
+    const label = document.createElement('div');
+    label.className = 'look-label';
+    Object.assign(label.style, { position: 'fixed', left: '50%', top: '14px', transform: 'translateX(-50%)', zIndex: '40',
+      padding: '6px 12px', borderRadius: '6px', background: 'rgba(16,26,22,.78)', color: '#ece5d2',
+      font: '600 13px system-ui, sans-serif', pointerEvents: 'none', transition: 'opacity .4s', opacity: '0' });
+    document.body.append(label);
+    let hide = 0;
+    window.addEventListener('keydown', event => {
+      if (event.code !== 'KeyL' || event.repeat || (event.target as HTMLElement | null)?.closest?.('input, textarea, select')) return;
+      current = order[(order.indexOf(current) + 1) % order.length];
+      if (current === 'today') engine.setPipeline(null);
+      else {
+        effects.setLook(LOOKS[current]);
+        engine.setPipeline(effects);
+      }
+      label.textContent = current === 'today' ? 'Look: today (no screen effects) · L to cycle' : `Look: ${LOOKS[current].label} · L to cycle`;
+      label.style.opacity = '1';
+      clearTimeout(hide); hide = window.setTimeout(() => { label.style.opacity = '0'; }, 1800);
+    });
+  }
+}
 const fieldInterface = new FieldInterface(engine, landscape);
 
 engine.register(new SkySystem(landscape));

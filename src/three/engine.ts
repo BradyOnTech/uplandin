@@ -28,6 +28,14 @@ export interface Subsystem {
 }
 const FIXED_MS = 1000 / 30;
 
+/** An optional screen-effects pipeline that replaces the plain scene render. */
+export interface RenderPipeline {
+  render(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void;
+  /** Drawing-buffer size in pixels. */
+  setSize(width: number, height: number): void;
+  dispose(): void;
+}
+
 /** Finite backing resolution, independent of a Retina display's native DPR. */
 export function renderPixelRatio(width: number, height: number, deviceRatio: number, quality: Quality): number {
   const pixelBudget = quality === 'lite' ? 1280 * 720 : 1920 * 1080;
@@ -47,6 +55,8 @@ export class Engine {
   private abort = new AbortController();
   private frameTelemetry = new FrameTelemetry();
   private systemsReadyAtMs: number | null = null;
+  private pipeline: RenderPipeline | null = null;
+  private readonly drawingSize = new THREE.Vector2();
 
   constructor(canvas: HTMLCanvasElement, quality: Quality, seed = 1971) {
     // Preserve thin vegetation edges even at the lightweight pixel budget.
@@ -80,6 +90,10 @@ export class Engine {
       previousWidth = w; previousHeight = h; previousRatio = ratio;
       renderer.setPixelRatio(ratio);
       renderer.setSize(w, h, false);
+      if (this.pipeline) {
+        renderer.getDrawingBufferSize(this.drawingSize);
+        this.pipeline.setSize(this.drawingSize.x, this.drawingSize.y);
+      }
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       // Resizing clears the drawing buffer. A rotated, paused phone must
@@ -94,6 +108,15 @@ export class Engine {
     resize();
   }
   register(sys: Subsystem): void { this.systems.push(sys); this.byId.set(sys.id, sys); }
+  /** Render through a screen-effects pipeline, or directly when null. The
+   * caller keeps a detached pipeline; the engine disposes the active one. */
+  setPipeline(pipeline: RenderPipeline | null): void {
+    if (pipeline === this.pipeline) return;
+    this.pipeline = pipeline;
+    if (!pipeline) return;
+    this.ctx.renderer.getDrawingBufferSize(this.drawingSize);
+    pipeline.setSize(this.drawingSize.x, this.drawingSize.y);
+  }
   async start(progress?: (id: string, current: number, total: number) => void): Promise<boolean> {
     if (this.disposed) return false;
     for (let i = 0; i < this.systems.length; i++) {
@@ -165,7 +188,8 @@ export class Engine {
     renderer.info.autoReset = false;
     renderer.info.reset();
     try {
-      renderer.render(scene, camera);
+      if (this.pipeline) this.pipeline.render(renderer, scene, camera);
+      else renderer.render(scene, camera);
       for (const sys of this.systems) sys.renderOverlay?.(this.ctx);
     } finally {
       renderer.info.autoReset = autoReset;
@@ -198,6 +222,8 @@ export class Engine {
     this.abort.abort();
     for (let i = this.initialized.length - 1; i >= 0; i--) this.initialized[i].dispose?.(this.ctx);
     this.initialized.length = 0;
+    this.pipeline?.dispose();
+    this.pipeline = null;
     this.ctx.renderer.dispose();
   }
 }
