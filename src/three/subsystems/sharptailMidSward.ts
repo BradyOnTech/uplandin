@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { OCCLUSION_WEIGHT, writeOcclusionWeight } from '../foliageMask';
 import { sharptailCommunityAt, tintSharptailCommunity, type SharptailCommunitySample } from './sharptailCommunities';
 import { sharptailGroundZones } from '../../game/sharptailLandscape';
 import { sharptailAccentGroundAt } from './sharptailAccents';
@@ -84,6 +85,7 @@ export class SharptailMidSward {
     surface?.material.dispose();
     this.material = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
     this.material.onBeforeCompile = shader => {
+      writeOcclusionWeight(shader, OCCLUSION_WEIGHT.grass);
       shader.uniforms.uPrairieTime = this.clock;
       shader.uniforms.uPrairieWind = wind.direction;
       shader.uniforms.uPrairieWindStrength = wind.strength;

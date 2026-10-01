@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { OCCLUSION_WEIGHT, writeOcclusionWeight } from '../foliageMask';
 import type { LandscapeModel } from '../../game/landscape';
 import { PROPERTY_PX_TO_M } from '../../game/landscape';
 import { mulberry32 } from '../../game/math';
@@ -56,6 +57,7 @@ function turfMaterial(): THREE.MeshLambertMaterial {
   material.onBeforeCompile = shader => {
     shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_begin>',
       'vec3 normal = normalize( vNormal );\nvec3 nonPerturbedNormal = normal;');
+    writeOcclusionWeight(shader, OCCLUSION_WEIGHT.grass);
   };
   return material;
 }

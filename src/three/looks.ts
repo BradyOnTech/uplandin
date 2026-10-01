@@ -1,17 +1,34 @@
 /**
- * Screen-effects looks under evaluation for the desktop High tier (October
- * 2026 look development). Each look is one set of numbers for the same
- * pipeline in postEffects.ts: ambient occlusion, ground haze, bloom and a
- * colour grade. A field link opts in with `?look=crisp|golden|natural`;
- * without it, or on Lightweight, the field renders exactly as before.
+ * Screen-effects looks for the desktop High tier. Each look is one set of
+ * numbers for the same pipeline in postEffects.ts: ambient occlusion, ground
+ * haze, bloom and a colour grade. Crisp autumn was chosen in October 2026 and
+ * is what High renders with. A field link can ask for `?look=off` (no screen
+ * effects) or another look (`golden`, `natural`) to compare; Lightweight
+ * never renders screen effects.
  */
+import type { TimeOfDay } from './palette';
+
 export const LOOK_IDS = ['crisp', 'golden', 'natural'] as const;
 export type LookId = (typeof LOOK_IDS)[number];
 export type Rgb = readonly [number, number, number];
 
+/** A look's values that change with the time of day; each replaces the
+ * look's own value at that time. */
+export interface LookTimeTweak {
+  aoStrength?: number;
+  contrast?: number;
+  saturation?: number;
+  offset?: Rgb;
+  vignette?: number;
+}
+
 export interface LookSettings {
   label: string;
   detail: string;
+  /** Changes by time of day: low light needs a gentler grade (the S-curve
+   * and black offset would crush an evening field to black), and a high sun
+   * needs less saturation. */
+  byTime?: Partial<Record<TimeOfDay, LookTimeTweak>>;
   /** Screen-space ambient occlusion. Radius and fade distance in metres. */
   ao: { radius: number; intensity: number; strength: number; maxDistance: number };
   /**
@@ -53,6 +70,12 @@ export const LOOKS: Record<LookId, LookSettings> = {
       slope: [1.02, 1.01, 1], offset: [-.008, -.008, -.006], power: [1, 1, 1],
       shadowTint: [0, .004, .012], highlightTint: [.012, .006, -.004], vignette: .16,
     },
+    byTime: {
+      // A high sun already saturates the dry ground; keep it from going orange.
+      noon: { saturation: 1.08 },
+      evening: { contrast: 1.06, offset: [-.003, -.003, -.002] },
+      lastlight: { aoStrength: .6, contrast: 1, offset: [.004, .004, .008], vignette: .1 },
+    },
   },
   golden: {
     label: 'Golden haze',
@@ -80,7 +103,34 @@ export const LOOKS: Record<LookId, LookSettings> = {
   },
 };
 
-/** The look a field link asks for, or null for today's rendering. */
+/** A look as it applies at a time of day. */
+export function lookAt(look: LookSettings, tod: TimeOfDay): LookSettings {
+  const tweak = look.byTime?.[tod];
+  if (!tweak) return look;
+  return {
+    ...look,
+    ao: { ...look.ao, strength: tweak.aoStrength ?? look.ao.strength },
+    grade: {
+      ...look.grade,
+      contrast: tweak.contrast ?? look.grade.contrast,
+      saturation: tweak.saturation ?? look.grade.saturation,
+      offset: tweak.offset ?? look.grade.offset,
+      vignette: tweak.vignette ?? look.grade.vignette,
+    },
+  };
+}
+
+/** The look a field link names, or null when it names none. */
 export function resolveLook(value: string | null | undefined): LookId | null {
   return LOOK_IDS.includes(value as LookId) ? value as LookId : null;
+}
+
+/** High's look, chosen October 2026. */
+export const DEFAULT_LOOK: LookId = 'crisp';
+
+/** The look a field renders with: the link's look, `off` for none, or
+ * Crisp autumn; Lightweight never renders screen effects. */
+export function fieldLook(value: string | null | undefined, quality: 'high' | 'lite'): LookId | null {
+  if (quality !== 'high' || value === 'off') return null;
+  return resolveLook(value) ?? DEFAULT_LOOK;
 }

@@ -18,6 +18,7 @@ import { sharptailStoneClearance } from '../../game/sharptailFeatures';
 import { SHARPTAIL_MEADOW_COLORS, sharptailGrassOpening } from './sharptailMeadow';
 import { sharptailCommunityAt, tintSharptailCommunity, type SharptailCommunitySample } from './sharptailCommunities';
 import { VegetationWind, VEGETATION_GUST_GLSL } from './vegetationWind';
+import { OCCLUSION_WEIGHT, writeOcclusionWeight } from '../foliageMask';
 
 /*
  * GRASS subsystem: the field itself — the single system a walking-through-
@@ -1019,8 +1020,8 @@ export class GrassSystem implements Subsystem {
 
     this.openUniforms = this.makeUniforms(0.09, this.cfg.openFadeNear, this.cfg.openFadeFar);
     this.coverUniforms = this.makeUniforms(0.13, this.cfg.coverFadeNear, this.cfg.coverFadeFar);
-    this.openMat = this.makeMaterial(this.openUniforms);
-    this.coverMat = this.makeMaterial(this.coverUniforms);
+    this.openMat = this.makeMaterial(this.openUniforms, OCCLUSION_WEIGHT.grass);
+    this.coverMat = this.makeMaterial(this.coverUniforms, OCCLUSION_WEIGHT.cover);
 
     this.buildPatches(ctx);
     if (this.prairieLandscape) this.prairieMidSward = new SharptailMidSward(this.prairieLandscape, ctx,
@@ -1457,8 +1458,10 @@ export class GrassSystem implements Subsystem {
    * displacement, and a fragment override that pins the shading normal to
    * straight-up (DoubleSide would otherwise flip backfaces dark — grass must
    * shade exactly like the ground it grows from, that is the whole trick).
+   * The blades bake their own root shade, so screen-space occlusion only
+   * takes its `occlusion` share (foliageMask.ts).
    */
-  private makeMaterial(uniforms: GrassUniforms): THREE.MeshLambertMaterial {
+  private makeMaterial(uniforms: GrassUniforms, occlusion: number): THREE.MeshLambertMaterial {
     const mat = new THREE.MeshLambertMaterial({
       vertexColors: true,
       side: THREE.DoubleSide,
@@ -1478,6 +1481,7 @@ export class GrassSystem implements Subsystem {
           '#include <emissivemap_fragment>',
           '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += uRimColor * ( vRim * uRimGlow );',
         );
+      writeOcclusionWeight(shader, occlusion);
     };
     return mat;
   }

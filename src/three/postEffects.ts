@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import type { LookSettings } from './looks';
+import { lookAt, type LookSettings } from './looks';
+import type { TimeOfDay } from './palette';
+import { OCCLUSION_WEIGHT_ACTIVE } from './foliageMask';
 
 /**
  * Screen effects for the desktop High tier: the scene renders once into a
@@ -14,8 +16,11 @@ import type { LookSettings } from './looks';
  *      exposure, matching today's look), grades, vignettes, dithers and
  *      writes sRGB to the screen.
  * The gun and hands, inside a metre, take no occlusion, and the falloff
- * keeps them from casting halos on the field behind. `?lookdebug=1..5`
- * shows occlusion, depth, haze, raw occlusion or its stored depth.
+ * keeps them from casting halos on the field behind. The scene's alpha is an
+ * occlusion weight (foliageMask.ts): grass and other foliage write less than
+ * 1, so they take and cast only part of the occlusion. `?lookdebug=1..6`
+ * shows occlusion, depth, haze, raw occlusion, its stored depth or the
+ * occlusion weight.
  */
 
 const VERTEX = /* glsl */`
@@ -36,6 +41,7 @@ vec3 viewPosition(vec2 uv, float depth) {
 const AO_FRAGMENT = /* glsl */`
 ${VIEW_POSITION}
 uniform sampler2D tDepth;
+uniform sampler2D tColor;
 uniform vec2 uFullSize;
 uniform float uProjScale;
 uniform float uRadius;
@@ -87,7 +93,9 @@ void main() {
     vec3 v = viewPosition(uv, depthAt(uv)) - p;
     float vv = dot(v, v);
     float f = max(r2 - vv, 0.0);
-    sum += f * f * f * max((dot(v, n) - bias) / (.01 + vv), 0.0);
+    // Foliage casts only its share of occlusion (the scene's alpha).
+    float occluder = clamp(texture2D(tColor, uv).a, 0.0, 1.0);
+    sum += occluder * f * f * f * max((dot(v, n) - bias) / (.01 + vv), 0.0);
   }
   float ao = max(0.0, 1.0 - sum * uIntensity * 5.0 / (r2 * r2 * r2 * float(SAMPLES)));
   ao = mix(ao, 1.0, smoothstep(uMaxDistance * .6, uMaxDistance, dist));
@@ -159,10 +167,13 @@ void main() {
     vec4 near = exp(-abs(vec4(a00.g, a10.g, a01.g, a11.g) - z) / (.04 * z + .05));
     vec4 w = bilinear * near + 1e-4;
     float ao = dot(w, vec4(a00.r, a10.r, a01.r, a11.r)) / dot(w, vec4(1.0));
+    // Foliage takes only its share of occlusion (the scene's alpha).
+    ao = mix(1.0, ao, clamp(color.a, 0.0, 1.0));
     color.rgb *= mix(1.0, ao, uAOStrength);
     if (uDebug == 1) { gl_FragColor = vec4(vec3(ao), 1.0); return; }
   }
   if (uDebug == 4) { gl_FragColor = vec4(vec3(texture2D(tAO, vUv).r), 1.0); return; }
+  if (uDebug == 6) { gl_FragColor = vec4(vec3(clamp(color.a, 0.0, 1.0)), 1.0); return; }
   if (uDebug == 5) { gl_FragColor = vec4(vec3(texture2D(tAO, vUv).g / 8.0), 1.0); return; }
   if (uDebug == 2) { gl_FragColor = vec4(z / 8.0, fract(z * 4.0), sky ? 1.0 : 0.0, 1.0); return; }
   // Exponential height haze integrated along the view ray (Quilez).
@@ -228,6 +239,12 @@ void main() {
   gl_FragColor = vec4(clamp(s, 0.0, 1.0), 1.0);
 }`;
 
+/** The scene renders into half-float colour; without a renderable half-float
+ * format the field keeps the plain render. */
+export function supportsScreenEffects(renderer: Pick<THREE.WebGLRenderer, 'extensions'>): boolean {
+  return renderer.extensions.has('EXT_color_buffer_float') || renderer.extensions.has('EXT_color_buffer_half_float');
+}
+
 const rgb = (value: readonly [number, number, number]) => new THREE.Vector3(...value);
 const screenMaterial = (fragmentShader: string, uniforms: Record<string, THREE.IUniform>) =>
   new THREE.ShaderMaterial({ vertexShader: VERTEX, fragmentShader, uniforms, depthTest: false, depthWrite: false, toneMapped: false });
@@ -246,6 +263,7 @@ export class PostEffects {
   private readonly final: THREE.ShaderMaterial;
   private readonly bloom: UnrealBloomPass;
   private sun: THREE.DirectionalLight | null = null;
+  private tod: TimeOfDay = 'morning';
   private readonly sunDirection = new THREE.Vector3();
   private readonly hazeColor = new THREE.Color();
   private readonly sunColor = new THREE.Color();
@@ -260,7 +278,7 @@ export class PostEffects {
     this.hdrTarget = new THREE.WebGLRenderTarget(1, 1, hdr);
     const view = () => ({ uNear: { value: .05 }, uFar: { value: 1600 }, uTanHalf: { value: new THREE.Vector2(1, 1) } });
     this.ao = screenMaterial(AO_FRAGMENT, {
-      ...view(), tDepth: { value: this.sceneTarget.depthTexture }, uFullSize: { value: new THREE.Vector2(1, 1) },
+      ...view(), tDepth: { value: this.sceneTarget.depthTexture }, tColor: { value: this.sceneTarget.texture }, uFullSize: { value: new THREE.Vector2(1, 1) },
       uProjScale: { value: 1 }, uRadius: { value: 1 }, uIntensity: { value: 1 }, uMaxDistance: { value: 100 },
     });
     this.blur = screenMaterial(BLUR_FRAGMENT, { tAO: { value: null }, uStep: { value: new THREE.Vector2() } });
@@ -283,11 +301,19 @@ export class PostEffects {
     this.setLook(look);
   }
 
-  /** Look-development views: 0 the image, 1 occlusion, 2 depth bands, 3 haze. */
+  /** Look-development views: 0 the image, 1 occlusion, 2 depth bands, 3 haze,
+   * 4 raw occlusion, 5 its stored depth, 6 the occlusion weight. */
   setDebug(mode: number): void { this.composite.uniforms.uDebug.value = mode; this.final.uniforms.uRaw.value = mode ? 1 : 0; }
 
-  setLook(look: LookSettings): void {
-    this.look = look;
+  /** The look follows the field's time of day (see LookSettings.byTime). */
+  setTimeOfDay(tod: TimeOfDay): void {
+    this.tod = tod;
+    this.setLook(this.look);
+  }
+
+  setLook(base: LookSettings): void {
+    this.look = base;
+    const look = lookAt(base, this.tod);
     const a = this.ao.uniforms, c = this.composite.uniforms, f = this.final.uniforms;
     a.uRadius.value = look.ao.radius; a.uIntensity.value = look.ao.intensity; a.uMaxDistance.value = look.ao.maxDistance;
     c.uAOStrength.value = look.ao.strength;
@@ -320,7 +346,9 @@ export class PostEffects {
   render(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
     const previous = renderer.getRenderTarget();
     renderer.setRenderTarget(this.sceneTarget);
-    renderer.render(scene, camera);
+    // Foliage writes its occlusion weight only into this target.
+    OCCLUSION_WEIGHT_ACTIVE.value = 1;
+    try { renderer.render(scene, camera); } finally { OCCLUSION_WEIGHT_ACTIVE.value = 0; }
     this.syncView(scene, camera);
     this.quad.material = this.ao; renderer.setRenderTarget(this.aoTarget); this.quad.render(renderer);
     const step = this.blur.uniforms.uStep.value as THREE.Vector2;

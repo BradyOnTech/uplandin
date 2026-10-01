@@ -210,5 +210,8 @@ describe('broken western prairie brush colonies', () => {
       }
       expect(ctx.scene.children).toHaveLength(0);
     },
+    // Building the full habitat batch and raycasting every colony takes
+    // about 5 s on a slow machine, right at the default limit.
+    20_000,
   );
 });

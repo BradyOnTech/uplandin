@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { OCCLUSION_WEIGHT, writeOcclusionWeight } from '../foliageMask';
 import { PHEASANT_MATERIALS } from '../palette';
 import type { GroundSample, LandscapeModel } from '../../game/landscape';
 import { PROPERTY_PX_TO_M } from '../../game/landscape';
@@ -329,6 +330,7 @@ export class PheasantCoverSystem implements Subsystem {
     this.geometries.push(...Object.values(geometries), ...Object.values(middle), ...Object.values(distant));
     const material = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x8d8061, emissiveIntensity: .085, vertexColors: true, side: THREE.DoubleSide });
     material.onBeforeCompile = shader => {
+      writeOcclusionWeight(shader, OCCLUSION_WEIGHT.cover);
       shader.uniforms.uPheasantWind = this.wind;
       shader.uniforms.uCoverDisturbance = this.disturbances;
       shader.uniforms.uCoverHunter = this.hunterPosition;
