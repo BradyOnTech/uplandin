@@ -77,7 +77,8 @@ describe('Sharptail ranch furniture', () => {
       for (const drop of area.dropPoints) expect(Math.hypot(property.x - drop.position.x, property.y - drop.position.y)).toBeGreaterThan(14);
     }
     const mill = landscape.propertyToWorld(SHARPTAIL_WINDMILL.x, SHARPTAIL_WINDMILL.y, { x: 0, z: 0 });
-    expect(ranch.collisionCircles()).toHaveLength(2);
+    // The windmill's tower and tank come first; the history pieces follow.
+    expect(ranch.collisionCircles().length).toBeGreaterThan(2);
     expect(Math.hypot(ranch.collisionCircles()[0].x - mill.x, ranch.collisionCircles()[0].z - mill.z)).toBeLessThan(.01);
     // Well clear of every authored route.
     for (const trail of area.trails) for (const p of trail.points) {

@@ -6,6 +6,7 @@ import type { Vec2 } from './types';
 import { pheasantDryCover, pheasantShoreCover, pheasantWestFence } from './pheasantHabitat';
 import { pheasantFarmCover } from './pheasantFarm';
 import { pheasantOldFarmsteadCover } from './pheasantFeatures';
+import { registerSharptailEntrances, sharptailEntrances } from './sharptailFeatures';
 import { chukarCoverPatches } from './chukarLandscape';
 import { quailCoverPatches } from './quailComposition';
 import { SHARPTAIL_COVER_PATCHES } from './sharptailLandscape';
@@ -719,6 +720,13 @@ export const AREAS: AreaConfig[] = [
 /** Stocking is a density; the actual head count scales with world size. */
 export function areaBirdCount(area: AreaConfig): number {
   return Math.max(3, Math.round((area.world.w * area.world.h) / 100_000 * area.stocking));
+}
+
+// Sharptail's fence openings follow its parking places; grass keeps off the
+// cattle guard and the two-track ruts.
+{
+  const sharptail = AREAS.find(area => area.id === 'sharptail-prairie');
+  if (sharptail) registerSharptailEntrances(sharptailEntrances(sharptail.world, sharptail.dropPoints));
 }
 
 export function getArea(id: string): AreaConfig {

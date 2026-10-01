@@ -1,5 +1,5 @@
 import type { AreaConfig } from '../src/game/areas';
-import { SHARPTAIL_ERRATICS, SHARPTAIL_LANDFORM_DETAILS } from '../src/game/sharptailFeatures';
+import { SHARPTAIL_BADGER_KNOLL, SHARPTAIL_ERRATICS, SHARPTAIL_HOMESTEAD, SHARPTAIL_LANDFORM_DETAILS, SHARPTAIL_STOCK_POND, SHARPTAIL_TIPI_RINGS } from '../src/game/sharptailFeatures';
 import type { MapReviewView } from './cattailCovertsViews';
 
 /**
@@ -32,6 +32,13 @@ export function sharptailPrairieViews(area: AreaConfig): MapReviewView[] {
     v('swale', 'Swale bottom', { x: 800, y: 440 }, { x: 1000, y: 395 }, -2),
     v('cover-close', 'Native stand underfoot', { x: 700, y: 620 }, { x: 740, y: 600 }, -22),
     v('windmill', 'Swale windmill', { x: 560, y: 520 }, { x: 600, y: 470 }, 4),
+    v('cattle-guard', 'Cattle guard', { x: south.x - 16, y: south.y - 14 }, { x: south.x, y: 790 }, -24, 5),
+    v('west-gate', 'West wire gate', { x: 14, y: west.y - 9 }, { x: 4, y: west.y }, -16, 1),
+    v('stock-pond', 'Stock pond', { x: SHARPTAIL_STOCK_POND.x + 50, y: SHARPTAIL_STOCK_POND.y + 36 }, SHARPTAIL_STOCK_POND, -14, 6),
+    v('stock-dam', 'Stock dam', { x: SHARPTAIL_STOCK_POND.dam.x - 34, y: SHARPTAIL_STOCK_POND.dam.y + 30 }, { x: SHARPTAIL_STOCK_POND.dam.x + 10, y: SHARPTAIL_STOCK_POND.dam.y }, -8, 4),
+    v('homestead-ruin', 'Homestead ruin', { x: SHARPTAIL_HOMESTEAD.x + 18, y: SHARPTAIL_HOMESTEAD.y - 16 }, SHARPTAIL_HOMESTEAD, -4),
+    v('tipi-rings', 'Tipi rings', { x: SHARPTAIL_TIPI_RINGS[0].x - 9, y: SHARPTAIL_TIPI_RINGS[0].y + 12 }, SHARPTAIL_TIPI_RINGS[0], -30, 2.5),
+    v('badger-knoll', 'Badger knoll', { x: SHARPTAIL_BADGER_KNOLL.x + 11, y: SHARPTAIL_BADGER_KNOLL.y + 9 }, SHARPTAIL_BADGER_KNOLL, -22, 1),
     v('fence', 'Boundary fence', { x: 640, y: 786 }, { x: 540, y: 796 }, -3),
     v('overview-south', 'Overview from the south', { x: south.x, y: area.world.h - 4 }, { x: south.x, y: area.world.h * .4 }, -18, 60),
     v('overview-west', 'Overview from the west', { x: 6, y: area.world.h * .5 }, { x: area.world.w * .6, y: area.world.h * .45 }, -18, 60),

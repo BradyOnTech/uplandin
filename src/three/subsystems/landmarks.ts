@@ -107,7 +107,9 @@ export class LandmarksSystem implements Subsystem {
         }
       }
       if ((areaId === 'pheasant-coverts' && (landmark.kind === 'pond' || landmark.kind === 'fence'))
-        || (areaId === 'woodcock-bottoms' && landmark.kind === 'pond')) continue;
+        || (areaId === 'woodcock-bottoms' && landmark.kind === 'pond')
+        // Sharptail's gates are real openings in its boundary fence (ranch).
+        || (areaId === 'sharptail-prairie' && landmark.kind === 'gate')) continue;
       const world = hunt.simToWorld(landmark.position.x, landmark.position.y, { x: 0, z: 0 });
       if (this.quail && landmark.kind === 'gate') {
         this.addQuailGate(ctx, terrain, world, landmark.id === 'west-gate', false);

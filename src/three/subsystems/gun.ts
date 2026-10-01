@@ -465,6 +465,8 @@ export class GunSystem implements Subsystem {
     let quail: typeof flora, chukar: typeof flora;
     try { quail = ctx.get('quail-environment'); } catch { /* other properties */ }
     try { chukar = ctx.get('chukar-environment'); } catch { /* other properties */ }
+    let ranch: typeof flora;
+    try { ranch = ctx.get('sharptail-ranch'); } catch { /* other properties */ }
     const presentationPhase = this.frozen ? 1 : THREE.MathUtils.clamp(ctx.fixedAlpha ?? 1, 0, 1);
     const pattern = new TravellingShot(ctx.camera.position, this.fwd, this.gun.spread * choke.pattern / 400,
       this.birds.shotTargets(presentationPhase), request.assistance, WOUND_RANGE_M / Math.sqrt(choke.pattern));
@@ -479,7 +481,8 @@ export class GunSystem implements Subsystem {
         && !landmarks?.blocksShot?.(origin, target)
         && !flora?.blocksShot?.(origin, target)
         && !quail?.blocksShot?.(origin, target)
-        && !chukar?.blocksShot?.(origin, target),
+        && !chukar?.blocksShot?.(origin, target)
+        && !ranch?.blocksShot?.(origin, target),
     });
   }
 

@@ -6,6 +6,10 @@ import {
   pheasantBaleRows, pheasantBaleSpacing, pheasantDuckBlind, pheasantOldFarmstead, pheasantRockPiles, pheasantSheetWater,
 } from '../../game/pheasantFeatures';
 import type { Ctx } from '../engine';
+import { createPondedWater } from '../pondedWater';
+import { Kit, place, stone } from '../lowPolyKit';
+
+const p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
 
 /**
  * Cattail Coverts' working-farm details (see game/pheasantFeatures.ts):
@@ -23,58 +27,6 @@ export interface CattailFeatureHost {
   keep(object: THREE.Object3D): void;
   own(resource: THREE.BufferGeometry | THREE.Material): void;
   tree(species: PlainsTreeSpecies, seed: number, height: number): THREE.Object3D;
-}
-
-/** Flat-shaded, vertex-coloured triangle soup built from primitive pieces. */
-class Kit {
-  private positions: number[] = [];
-  private colors: number[] = [];
-  private color = new THREE.Color();
-  private v = new THREE.Vector3();
-  add(geometry: THREE.BufferGeometry, color: number | THREE.Color, matrix?: THREE.Matrix4, jitter = 0, rng?: () => number): this {
-    const flat = geometry.index ? geometry.toNonIndexed() : geometry;
-    const position = flat.getAttribute('position');
-    const tint = typeof color === 'number' ? this.color.setHex(color) : this.color.copy(color);
-    // Per-face tint noise keeps big planes from reading as one flat colour.
-    let shade = 1;
-    for (let i = 0; i < position.count; i++) {
-      this.v.fromBufferAttribute(position, i);
-      if (matrix) this.v.applyMatrix4(matrix);
-      this.positions.push(this.v.x, this.v.y, this.v.z);
-      if (i % 3 === 0) shade = jitter && rng ? 1 + (rng() - .5) * jitter : 1;
-      this.colors.push(tint.r * shade, tint.g * shade, tint.b * shade);
-    }
-    if (flat !== geometry) flat.dispose();
-    geometry.dispose();
-    return this;
-  }
-  get empty(): boolean { return !this.positions.length; }
-  build(): THREE.BufferGeometry {
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3));
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(this.colors, 3));
-    geometry.computeVertexNormals();
-    geometry.computeBoundingSphere();
-    return geometry;
-  }
-}
-
-const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), s = new THREE.Vector3();
-const place = (x: number, y: number, z: number, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) =>
-  m4.compose(p.set(x, y, z), q.setFromEuler(e.set(rx, ry, rz, 'YXZ')), s.set(sx, sy, sz));
-
-/** A fieldstone: a dodecahedron knocked out of round. */
-function stone(rng: () => number): THREE.BufferGeometry {
-  const geometry = rng() < .5 ? new THREE.DodecahedronGeometry(1, 0) : new THREE.IcosahedronGeometry(1, 0);
-  const position = geometry.getAttribute('position');
-  const seen = new Map<string, number>();
-  for (let i = 0; i < position.count; i++) {
-    const key = `${position.getX(i).toFixed(3)},${position.getY(i).toFixed(3)},${position.getZ(i).toFixed(3)}`;
-    let k = seen.get(key);
-    if (k === undefined) { k = .78 + rng() * .36; seen.set(key, k); }
-    position.setXYZ(i, position.getX(i) * k, position.getY(i) * k, position.getZ(i) * k);
-  }
-  return geometry;
 }
 
 const GRANITE = [0xa6a298, 0xb09385, 0x87847e, 0xbab3a2, 0x9d9281, 0x75716a];
@@ -320,60 +272,12 @@ function buildDuckBlind(ctx: Ctx, host: CattailFeatureHost): void {
 function buildSheetWater(ctx: Ctx, host: CattailFeatureHost): void {
   const { landscape } = host, sheet = pheasantSheetWater(landscape.area.world);
   const centre = landscape.propertyToWorld(sheet.x, sheet.y, { x: 0, z: 0 });
-  const cos = Math.cos(sheet.angle), sin = Math.sin(sheet.angle);
-  const cell = .7, nu = Math.ceil(sheet.rx * 2.5 / cell), nv = Math.ceil(sheet.ry * 2.5 / cell);
-  const grid: { x: number; z: number; ground: number; edge: number }[] = [];
-  const heights: number[] = [];
-  for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) {
-    const u = (i / nu - .5) * sheet.rx * 2.5, v = (j / nv - .5) * sheet.ry * 2.5;
-    const x = centre.x + u * cos - v * sin, z = centre.z + u * sin + v * cos;
-    const angle = Math.atan2(v / sheet.ry, u / sheet.rx);
-    // A ragged outline: water follows the rows and the low spots.
-    const edge = Math.hypot(u / sheet.rx, v / sheet.ry) / (1 + Math.sin(angle * 3 + 1.1) * .12 + Math.sin(angle * 7) * .06);
-    const ground = landscape.heightAtWorld(x, z);
-    grid.push({ x, z, ground, edge });
-    if (edge < 1) heights.push(ground);
-  }
-  heights.sort((a, b) => a - b);
   // Deep enough to cover about half the swale; never floating over a rise.
-  const level = heights[Math.floor(heights.length * .55)] + .02;
-  const index = (i: number, j: number) => j * (nu + 1) + i;
-  const water: number[] = [], waterUv: number[] = [], mud: number[] = [], mudColor: number[] = [];
-  const wet = new THREE.Color(0x4a4130);
-  for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
-    const quad = [index(i, j), index(i + 1, j), index(i + 1, j + 1), index(i, j + 1)];
-    for (const tri of [[0, 2, 1], [0, 3, 2]]) {
-      const points = tri.map(k => grid[quad[k]]);
-      if (points.every(g => g.edge > 1.25)) continue;
-      if (points.some(g => g.edge < 1.1 && g.ground < level + .01)) for (const g of points) {
-        const shore = Math.max(1 - THREE.MathUtils.smoothstep(level - g.ground, 0, .1), THREE.MathUtils.smoothstep(g.edge, .8, 1.1));
-        water.push(g.x - centre.x, 0, g.z - centre.z);
-        waterUv.push(.5 + .5 * (.55 + .45 * shore), .5);
-      }
-      for (const g of points) {
-        const damp = (1 - THREE.MathUtils.smoothstep(g.ground - level, -.02, .3)) * (1 - THREE.MathUtils.smoothstep(g.edge, .95, 1.25));
-        mud.push(g.x - centre.x, g.ground + .025 - level, g.z - centre.z);
-        mudColor.push(wet.r, wet.g, wet.b, damp * .62);
-      }
-    }
-  }
-  if (!water.length) return;
-  const waterGeometry = new THREE.BufferGeometry();
-  waterGeometry.setAttribute('position', new THREE.Float32BufferAttribute(water, 3));
-  waterGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(waterUv, 2));
-  waterGeometry.computeVertexNormals();
-  const surface = new THREE.Mesh(waterGeometry, host.waterMaterial);
-  surface.name = 'East corn sheet water';
-  surface.position.set(centre.x, level, centre.z); surface.receiveShadow = true; surface.renderOrder = -1;
-  const mudGeometry = new THREE.BufferGeometry();
-  mudGeometry.setAttribute('position', new THREE.Float32BufferAttribute(mud, 3));
-  mudGeometry.setAttribute('color', new THREE.Float32BufferAttribute(mudColor, 4));
-  mudGeometry.computeVertexNormals();
-  const mudMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, transparent: true, depthWrite: false, roughness: .45,
-    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-  const margin = new THREE.Mesh(mudGeometry, mudMaterial);
-  margin.name = 'East corn wet margin';
-  margin.position.set(centre.x, level, centre.z); margin.receiveShadow = true; margin.renderOrder = -2;
-  host.own(waterGeometry); host.own(mudGeometry); host.own(mudMaterial);
-  host.keep(margin); host.keep(surface);
+  const water = createPondedWater(host.waterMaterial, { x: centre.x, z: centre.z, rx: sheet.rx, rz: sheet.ry, angle: sheet.angle,
+    heightAt: (x, z) => landscape.heightAtWorld(x, z), fill: .55, ragged: true });
+  if (!water) return;
+  water.surface.name = 'East corn sheet water';
+  water.margin.name = 'East corn wet margin';
+  for (const resource of water.resources) host.own(resource);
+  host.keep(water.margin); host.keep(water.surface);
 }

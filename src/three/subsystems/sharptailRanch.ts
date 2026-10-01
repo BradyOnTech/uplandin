@@ -4,6 +4,9 @@ import { PROPERTY_PX_TO_M } from '../../game/landscape';
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
 import { createQuailWindmill } from './quailLandmarks';
+import { buildSharptailHistory } from './sharptailHistory';
+import { createPrairieWater } from '../prairieWater';
+import { SHARPTAIL_ENTRANCE_POSTS, sharptailEntrances } from '../../game/sharptailFeatures';
 
 /**
  * Ranch furniture for the pasture. The boundary fence: weathered cedar
@@ -31,6 +34,21 @@ export class SharptailRanchSystem implements Subsystem {
   private mill?: THREE.Group;
 
   collisionCircles(): readonly { x: number; z: number; radius: number }[] { return this.obstacles; }
+  private water = createPrairieWater();
+  private extras: THREE.Object3D[] = [];
+  private shotSolids: THREE.Object3D[] = [];
+  private shotRay = new THREE.Raycaster();
+
+  /** The homestead's walls stop shot; so do the windmill's tank and tower legs only by collision. */
+  blocksShot(origin: { x: number; y: number; z: number }, target: { x: number; y: number; z: number }): boolean {
+    if (!this.shotSolids.length) return false;
+    const direction = new THREE.Vector3(target.x - origin.x, target.y - origin.y, target.z - origin.z);
+    const distance = direction.length();
+    if (distance < .001) return false;
+    this.shotRay.set(new THREE.Vector3(origin.x, origin.y, origin.z), direction.divideScalar(distance));
+    this.shotRay.far = distance - .001;
+    return this.shotRay.intersectObjects(this.shotSolids, false).length > 0;
+  }
   private objects: THREE.InstancedMesh[] = [];
   private geometries: THREE.BufferGeometry[] = [];
   private materials: THREE.Material[] = [];
@@ -64,32 +82,37 @@ export class SharptailRanchSystem implements Subsystem {
       q.setFromUnitVectors(xAxis, direction.clone().normalize());
       out.push(matrix.compose(mid, q, new THREE.Vector3(direction.length(), 1, 1)).clone());
     };
-    const gates = area.dropPoints.map(d => d.position);
+    // Openings where the two-tracks come in: gateposts either side and an
+    // H-brace post beyond each, with regular line posts kept clear of them.
+    const entrances = sharptailEntrances(area.world, area.dropPoints);
     const line = sharptailFenceLine(this.landscape), spacing = 5.2 / PROPERTY_PX_TO_M;
+    const gate = SHARPTAIL_ENTRANCE_POSTS.gatepost / PROPERTY_PX_TO_M, brace = SHARPTAIL_ENTRANCE_POSTS.brace / PROPERTY_PX_TO_M;
     for (let s = 1; s < line.length; s++) {
       const a = line[s - 1], b = line[s], length = Math.hypot(b.x - a.x, b.y - a.y);
+      const dx = (b.x - a.x) / length, dy = (b.y - a.y) / length;
+      // Distances along this side of each opening's centre.
+      const openings = entrances.map(e => ({ at: (e.x - a.x) * dx + (e.y - a.y) * dy, off: Math.abs((e.x - a.x) * dy - (e.y - a.y) * dx) }))
+        .filter(o => o.off < 1 && o.at > 0 && o.at < length).map(o => o.at);
       const count = Math.ceil(length / spacing);
-      let previous: THREE.Vector3 | undefined;
+      const stations: { t: number; heavy: boolean; after?: 'gap' }[] = [];
       for (let i = 0; i <= count; i++) {
-        const t = i / count, px = a.x + (b.x - a.x) * t, py = a.y + (b.y - a.y) * t;
-        const gate = gates.some(g => Math.hypot(g.x - px, g.y - py) < 16);
-        const corner = i === 0 || i === count;
-        if (gate) {
-          // Braced gate posts either side of an open wire gate.
-          if (previous) { braces.push(matrix.compose(previous, q.identity(), new THREE.Vector3(1, 1, 1)).clone()); }
-          previous = undefined; continue;
-        }
-        const p = at(px, py);
+        const t = i / count * length;
+        if (openings.some(o => Math.abs(t - o) < brace + spacing * .45)) continue;
+        stations.push({ t, heavy: i === 0 || i === count || i % 7 === 0 });
+      }
+      for (const o of openings) stations.push({ t: o - brace, heavy: true }, { t: o - gate, heavy: true, after: 'gap' }, { t: o + gate, heavy: true }, { t: o + brace, heavy: true });
+      stations.sort((m, n) => m.t - n.t);
+      let previous: THREE.Vector3 | undefined;
+      for (const station of stations) {
+        const p = at(a.x + dx * station.t, a.y + dy * station.t);
         // Cedar posts lean a little and vary in height; every seventh one
         // is a heavier line post.
-        e.set((rng() - .5) * .08, rng() * Math.PI, (rng() - .5) * .08);
-        const heavy = corner || i % 7 === 0;
-        (heavy ? braces : posts).push(matrix.compose(p, q.setFromEuler(e), new THREE.Vector3(1, .9 + rng() * .2, 1)).clone());
-        if (!previous && !corner) braces.push(matrix.compose(p, q.identity(), new THREE.Vector3(1, 1, 1)).clone());
+        e.set((rng() - .5) * (station.heavy ? .02 : .08), rng() * Math.PI, (rng() - .5) * (station.heavy ? .02 : .08));
+        (station.heavy ? braces : posts).push(matrix.compose(p, q.setFromEuler(e), new THREE.Vector3(1, station.heavy ? 1.12 : .9 + rng() * .2, 1)).clone());
         if (previous) {
           for (const [height, sag] of [[.38, .03], [.64, .04], [.9, .05], [1.14, .06]] as const) span(previous, p, height, sag, wires);
         }
-        previous = p;
+        previous = station.after === 'gap' ? undefined : p;
       }
     }
     const add = (geometry: THREE.BufferGeometry, material: THREE.Material, list: THREE.Matrix4[], name: string, shadow: boolean) => {
@@ -117,9 +140,17 @@ export class SharptailRanchSystem implements Subsystem {
       { x: millWorld.x + 3.35 * c + .35 * s, z: millWorld.z - 3.35 * s + .35 * c, radius: 1.3 });
     ctx.scene.add(mill);
     this.mill = mill;
+    buildSharptailHistory({
+      landscape: this.landscape, castShadow: ctx.quality === 'high', obstacles: this.obstacles, shotSolids: this.shotSolids,
+      waterMaterial: this.water.material,
+      keep: object => { ctx.scene.add(object); this.extras.push(object); object.updateMatrixWorld(true); },
+      own: resource => { if (resource instanceof THREE.BufferGeometry) this.geometries.push(resource); else this.materials.push(resource); },
+    });
+    this.materials.push(this.water.material);
   }
 
   update(ctx: Ctx): void {
+    this.water.update(ctx);
     if (this.rotor) this.rotor.rotation.z = -ctx.time * .32;
   }
 
@@ -132,6 +163,8 @@ export class SharptailRanchSystem implements Subsystem {
       this.mill = undefined; this.rotor = undefined;
     }
     this.obstacles.length = 0;
+    for (const object of this.extras) ctx.scene.remove(object);
+    this.extras.length = 0; this.shotSolids.length = 0;
     for (const mesh of this.objects) { ctx.scene.remove(mesh); mesh.dispose(); }
     for (const geometry of this.geometries) geometry.dispose();
     for (const material of this.materials) material.dispose();
