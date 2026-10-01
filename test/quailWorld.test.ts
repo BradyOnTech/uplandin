@@ -84,7 +84,8 @@ describe('Quail Fields physical property', () => {
       expect(quailCoverAt(area, patch.x + patch.w / 2, patch.y + patch.h / 2)).toBe(1);
       expect(quailCoverAt(area, patch.x, patch.y)).toBe(1);
     }
-    expect(area.patches).toHaveLength(28);
+    // Twenty-five covert runs (including the old fence line) and the two entry stands.
+    expect(area.patches).toHaveLength(31);
     expect(area.dropPoints[0].position).toEqual({ x: 504, y: 658 });
     expect(area.dropPoints[1].position.x).toBe(42);
     expect(area.dropPoints[1].position.y).toBeCloseTo(406);

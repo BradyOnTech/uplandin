@@ -41,7 +41,8 @@ describe('Quail survey map', () => {
     for (const cell of cool) {
       const px = (cell.x + (cell.width - 0.45) / 2 - map.x) / map.w * area.world.w;
       const py = (cell.y + (cell.height - 0.45) / 2 - map.y) / map.h * area.world.h;
-      expect(distanceToLine(px, py, QUAIL_DRAINAGE)).toBeLessThan(23);
+      // The draw, and the dry creek meandering a few yards either side of its line.
+      expect(distanceToLine(px, py, QUAIL_DRAINAGE)).toBeLessThan(26);
     }
     expect(Math.min(...cool.map(cell => cell.x))).toBe(map.x);
     expect(Math.max(...cool.map(cell => cell.x))).toBeGreaterThan(map.x + map.w * 0.98);

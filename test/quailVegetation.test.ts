@@ -42,7 +42,8 @@ describe('Quail grass groups', () => {
       }
       a[group].dispose(); b[group].dispose();
     }
-    expect(triangles).toBeLessThan(5000);
+    // Grouped far grass, including the old fence line's covert.
+    expect(triangles).toBeLessThan(5600);
     expect(JSON.stringify(area)).toBe(before);
   });
 

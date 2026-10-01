@@ -20,6 +20,8 @@ import { applyQuailGrassGroundLod, createQuailGrassGroundGeometry } from './quai
 import { buildQuailDistantCover, quailGrassClearingAt, quailGrassMassAt, quailGrassStockingAt, quailSouthRouteAt } from './quailVegetation';
 import { VegetationWind, VEGETATION_GUST_GLSL, VEGETATION_INSTANCE_WIND_GLSL } from './vegetationWind';
 import { SolidShotGeometry } from '../solidShotGeometry';
+import { quailBurnAt, quailCreekDistance, quailFeatureBare } from '../../game/quailFeatures';
+import { buildQuailHistory } from './quailHistory';
 
 const TILE = 40; // yards; local batches remain independently culled.
 const COLOR = { straw: 0xb6a574, dry: 0x919273, sage: 0x435f43, sageLight: 0x64794b, bark: 0x615343, leaf: 0x506c4e, leafLight: 0x748158 };
@@ -33,6 +35,7 @@ const ROUTE_CROWN_ENVELOPES = {
 interface Instance { px: number; py: number; angle: number; sx: number; sy: number; sz: number; color: number }
 interface Batch { mesh: THREE.Mesh; range: number; x: number; z: number; minRange: number; padding?: number; shadows?: boolean }
 interface CircleObstacle { x: number; z: number; radius: number }
+const BURN_CHAR = new THREE.Color(0x2c2823), BURN_REGROWTH = new THREE.Color(0x6f8a4a);
 const EMPTY_SURFACE = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
 
 /** Fine branching sprays, kept open so sand sage does not read as broad paper leaves.
@@ -264,7 +267,7 @@ export class QuailEnvironmentSystem implements Subsystem {
             void closeDetail;
             if (vigorous) rng();
             const plum = quailPlumAt(px, py) * cover, opening = quailOpeningAt(px, py);
-            if (road > 5 && opening < .3 && !quailGroundPropOccupies(px,py,1.6) && !quailKitOccupies(this.landscape.area,px,py) && rng() < (0.0014 + plum * .115 + drain * .0015) * patch) {
+            if (road > 5 && opening < .3 && !quailGroundPropOccupies(px,py,1.6) && !quailKitOccupies(this.landscape.area,px,py) && rng() < (0.0014 + plum * .115 + drain * .0015) * patch * (1 - quailFeatureBare(px, py))) {
               const s = 0.85 + rng() * 1.15 + plum * .30;
               if (plum < .15 && drain < 0.3 && rng() < 0.72) sages.push({ ...v, sy: s * 0.85, sx: s, sz: s, color: rng() < 0.5 ? 0x88967c : 0x969b7b });
               else shrubs.push({ ...v, sy: s * 0.88, sx: s * 1.4, sz: s * 1.15, color: rng() < 0.55 ? COLOR.sage : COLOR.sageLight });
@@ -290,8 +293,10 @@ export class QuailEnvironmentSystem implements Subsystem {
             const stocking = quailGrassStockingAt(px, py);
             quailSouthRouteAt(px, py, routeSurface);
             const opening = quailOpeningAt(px, py), plum = quailPlumAt(px, py) * cover;
+            // The creek bed and firebreak are bare; the burn keeps a black stubble.
+            const burnt = quailBurnAt(px, py), bare = Math.max(0, quailFeatureBare(px, py) - burnt * .92);
             const density = (.025 + sward * .12 + cover * .10 + mass * 1.15 + drain * .13)
-              * (.22 + stocking * .80) * (1 - Math.max(routeSurface.dry, opening) * .72) * (1 - plum * .82);
+              * (.22 + stocking * .80) * (1 - Math.max(routeSurface.dry, opening) * .72) * (1 - plum * .82) * (1 - bare);
             if (rng() > density) continue;
             const vigorous = rng() < mass * 1.15 + cover * .14;
             const scale = (.94 + rng() * .42 + mass * .08) * (.82 + stocking * .23) * (1 - Math.max(routeSurface.dry, opening) * .38) * (1 - plum * .22);
@@ -299,7 +304,8 @@ export class QuailEnvironmentSystem implements Subsystem {
             if (vigorous) this.color.lerp(dryStem, rng() * .3);
             else this.color.lerp(dampLeaf, drain * .48);
             const spread = scale * (vigorous ? 1 + mass * .24 : 1.28);
-            const v: Instance = { px, py, angle: rng() * Math.PI * 2, sx: spread, sy: scale * (.85 + rng() * .3), sz: spread * (.8 + rng() * .35), color: this.color.getHex() };
+            if (burnt > .05) this.color.lerp(burnt > .5 && rng() < .16 ? BURN_REGROWTH : BURN_CHAR, Math.min(1, burnt * .9));
+            const v: Instance = { px, py, angle: rng() * Math.PI * 2, sx: spread, sy: scale * (.85 + rng() * .3) * (1 - burnt * .8), sz: spread * (.8 + rng() * .35), color: this.color.getHex() };
             const detail = rng();
             if (ctx.quality === 'high' || detail > .25) {
               (vigorous ? talls : shorts).push(v);
@@ -324,7 +330,7 @@ export class QuailEnvironmentSystem implements Subsystem {
       for (let i = 0; i < stand.count; i++) {
         const angle = i * 2.399 + rng() * 0.4; const radius = Math.sqrt((i + 0.4) / stand.count) * stand.radius;
         const px = stand.x + Math.sin(angle) * radius; const py = stand.y + Math.cos(angle) * radius;
-        if (quailTrackDistanceAt(this.landscape.area, px, py, 16) < 8) continue;
+        if (quailTrackDistanceAt(this.landscape.area, px, py, 16) < 8 || quailCreekDistance(px, py) < 3.4) continue;
         const size = stand.height * (0.75 + rng() * 0.45);
         trees.push({ px, py, angle: rng() * Math.PI * 2, sx: size * (0.92 + rng() * 0.24), sy: size, sz: size, color: rng() < 0.58 ? COLOR.leaf : COLOR.leafLight });
         this.landscape.propertyToWorld(px, py, this.world); this.obstacles.push({ x: this.world.x, z: this.world.z, radius: size * 0.036 });
@@ -334,7 +340,11 @@ export class QuailEnvironmentSystem implements Subsystem {
         || (stand.x === 881 && stand.y === 242);
       this.treeStand(trees, stand, barkMat, canopyMat, n === 0 || routeGrove, routeGrove);
     }
-    this.buildTracks(ctx); this.buildFence(); this.update(ctx);
+    this.buildTracks(ctx); this.buildFence();
+    buildQuailHistory({ landscape: this.landscape, quality: ctx.quality, castShadow: ctx.quality === 'high', obstacles: this.obstacles,
+      addSolid: mesh => this.shotSolids.add(mesh), keep: object => this.root.add(object),
+      own: resource => { if (resource instanceof THREE.BufferGeometry) this.geometries.add(resource); else this.materials.add(resource); } });
+    this.update(ctx);
   }
 
   private buildTracks(ctx: Ctx): void {

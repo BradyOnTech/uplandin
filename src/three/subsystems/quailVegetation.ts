@@ -1,3 +1,4 @@
+import { quailBurnAt } from '../../game/quailFeatures';
 import * as THREE from 'three';
 import { QUAIL_COVERTS } from '../../game/quailComposition';
 import type { AreaConfig } from '../../game/areas';
@@ -165,6 +166,8 @@ export function buildQuailDistantCover(landscape: LandscapeModel): THREE.BufferG
   const groups = new Map<string, { position: number[]; color: number[]; index: number[] }>();
   const color = new THREE.Color(), straw = new THREE.Color(0xb4a274), fringe = new THREE.Color(0x89916c), damp = new THREE.Color(0x7e916d);
   for (const drift of quailGrassDrifts(landscape.area)) {
+    // No standing grass mass over the burn.
+    if (quailBurnAt(drift.x, drift.y) > .3) continue;
     const key = `${Math.floor(drift.x / 300)},${Math.floor(drift.y / 350)}`;
     const data = groups.get(key) ?? { position: [], color: [], index: [] }; groups.set(key, data);
     const start = data.position.length / 3, c = Math.cos(drift.angle), s = Math.sin(drift.angle);

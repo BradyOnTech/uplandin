@@ -35,6 +35,11 @@ export const QUAIL_COVERTS: readonly QuailCovert[] = [
   { id: 'north-field-plum', shoulder: 27, plumWidth: 8, points: [
     { x: 260, y: 179 }, { x: 354, y: 172 }, { x: 434, y: 190 }, { x: 541, y: 162 },
   ] },
+  // The old line fence east of the return, long since swallowed by plums.
+  // Shares its posts with QUAIL_OLD_FENCE in quailFeatures.
+  { id: 'old-fence-plum', shoulder: 20, plumWidth: 5.5, points: [
+    { x: 1000, y: 236 }, { x: 1004, y: 330 }, { x: 1008, y: 430 }, { x: 1012, y: 520 },
+  ] },
 ];
 
 /** The two established first coverts remain last for existing entry dressing. */

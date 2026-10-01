@@ -29,6 +29,8 @@ export function quailKitPlacements(area: AreaConfig) {
     if (covert.id === 'south-plum-edge') continue;
     // Give the main working loop the larger refuge masses. Two remote
     // northern groups fund the windmill end-cap within the same root budget.
+    // The old fence line gets one small group; its plums are mostly procedural.
+    if (covert.id === 'old-fence-plum') { centers.push([covert.points[1].x - 2, covert.points[1].y, 2]); continue; }
     const points = covert.id === 'north-field-plum' ? covert.points.slice(1, 2)
       : covert.id === 'windmill-plum' ? covert.points : covert.points.slice(0, -1);
     for (const [i, point] of points.entries()) {

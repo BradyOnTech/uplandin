@@ -7,6 +7,7 @@ import {
 } from './areas';
 import type { Vec2 } from './types';
 import { quailDrainageAt } from './quailLandscape';
+import { QUAIL_CREEK_BED, quailCreekAt } from './quailFeatures';
 import { pheasantPondRadii } from './pheasantHabitat';
 import { createPheasantHomesteadGround } from './pheasantHomesteadGround';
 import { PROPERTY_PX_TO_M } from './worldUnits';
@@ -402,7 +403,9 @@ function quailLandform(area: AreaConfig): LandformAdapter {
         + rise(propertyX, propertyY, 255, 335, 95, 55, 6);
       const rolls = (noise(propertyX * 0.006 + 80, propertyY * 0.006 + 80) - 0.5) * 3.2;
       const softGround = (noise(propertyX * 0.024 + 340, propertyY * 0.024 + 340) - 0.5) * 0.28;
-      return profile.baseHeight + broad + rolls + softGround - quailDrainageAt(propertyX, propertyY) * 2.7;
+      // The dry creek is cut into the floor of the draw.
+      return profile.baseHeight + broad + rolls + softGround - quailDrainageAt(propertyX, propertyY) * 2.7
+        - quailCreekAt(propertyX, propertyY) * QUAIL_CREEK_BED.depth;
     },
     surfaceAt(x, z, _height, slope, _gradeX, _gradeZ, noise, out) {
       const propertyX = px(x); const propertyY = py(z);
