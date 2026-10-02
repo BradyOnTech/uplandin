@@ -680,6 +680,9 @@ export class Hunt3DSystem implements Subsystem {
     return resolved;
   }
 
+  /** A second shot anchors a hit bird still in the air (it won't run). */
+  anchorBird(birdId: number): boolean { return this.simulation.anchorBird(birdId); }
+
   bindQuarryWorld(id: number, x: number, z: number): boolean {
     return this.simulation.bindQuarry(id, this.worldToSim(x,z,{x:0,y:0}));
   }

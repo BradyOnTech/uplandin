@@ -141,6 +141,12 @@ export function shotCall(hit: boolean, wounded: boolean, miss: { call: 'behind' 
   return { text: `MISS · ${where}`, tone: 'miss' };
 }
 
+/** The call when a second shot anchors a bird already hit and still in the
+ * air; a wounded one, that would have run on landing, now won't. */
+export function anchorCall(runner: boolean): { text: string; tone: 'hit' } {
+  return { text: runner ? 'ANCHORED · HE WON\'T RUN' : 'ANCHORED', tone: 'hit' };
+}
+
 /** Rig-local bore centres per action in firing order, matching the viewmodels. */
 export function boresFor(gunId: string): { x: number; y: number }[] {
   return sportingBores(gunId === 'side-by-side' || gunId === 'over-under' || gunId === 'semi-auto' ? gunId : 'pump');

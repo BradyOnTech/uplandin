@@ -1,6 +1,13 @@
 import { NO_SHOT_ASSISTANCE, shotAssistanceAllowance, type ShotAssistanceProfile } from './shotAssistance';
 
-export interface ShotTarget { simId: number; x: number; y: number; z: number; status: string }
+export interface ShotTarget {
+  simId: number; x: number; y: number; z: number; status: string;
+  /** A hit bird still in the air (towering, sailing or wing-tipped) that a
+   * second shot can anchor. */
+  anchorable?: boolean;
+}
+/** A bird the pattern can take: flying, or hit and still coming down under its own power. */
+export const shootable = (t: Readonly<ShotTarget>): boolean => t.status === 'flying' || t.anchorable === true;
 interface Point { x: number; y: number; z: number }
 
 // Gameplay tuning, not a full pellet/drag simulation. A travelling pattern
@@ -55,7 +62,7 @@ export class TravellingShot {
 
   private remember(targets: readonly ShotTarget[]): void {
     this.previous.clear();
-    for (const t of targets) if (t.status === 'flying') this.previous.set(t.simId, { x: t.x, y: t.y, z: t.z });
+    for (const t of targets) if (shootable(t)) this.previous.set(t.simId, { x: t.x, y: t.y, z: t.z });
   }
 
   /**
@@ -85,7 +92,7 @@ export class TravellingShot {
     let hit: ShotTarget | null = null, first = Infinity;
     for (const t of targets) {
       const p = this.previous.get(t.simId);
-      if (!p || t.status !== 'flying') continue;
+      if (!p || !shootable(t)) continue;
       const a = (p.x-o.x)*d.x + (p.y-o.y)*d.y + (p.z-o.z)*d.z;
       const b = (t.x-o.x)*d.x + (t.y-o.y)*d.y + (t.z-o.z)*d.z;
       // Sweep both bird and pattern across the frame, so a low frame rate
@@ -103,7 +110,7 @@ export class TravellingShot {
         this.noteMiss(perpendicular / radius, x - o.x - d.x * along, y - o.y - d.y * along, z - o.z - d.z * along, t.x - p.x, t.y - p.y, t.z - p.z);
         continue;
       }
-      const candidate = { simId: t.simId, status: t.status, x, y, z };
+      const candidate = { simId: t.simId, status: t.status, anchorable: t.anchorable, x, y, z };
       if (visible(candidate)) { hit = candidate; first = fraction; this.hitOffset = perpendicular / radius; this.hitRange = along; }
     }
     this.age += dt;

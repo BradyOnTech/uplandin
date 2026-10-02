@@ -147,7 +147,8 @@ describe('Sharptail live presentation integration', () => {
     for (const bird of birds) {
       const slot = internal.slots.find(candidate => candidate.simId === bird.id)!;
       expect(slot.x).toBe(bird.pos.x); expect(slot.z).toBe(bird.pos.y); expect(slot.y).toBe(.2);
-      expect(slot.root.children.filter(child => child instanceof THREE.Mesh || child instanceof THREE.Group)).toHaveLength(3);
+      // Body, two wings and the legs it drops on a body hit.
+      expect(slot.root.children.filter(child => child instanceof THREE.Mesh || child instanceof THREE.Group)).toHaveLength(4);
     }
     const waiting = internal.slots.find(slot => slot.status === 'waiting')!;
     expect(waiting).toBeDefined();

@@ -253,7 +253,11 @@ declare global {
       /** Capture/test hook: route a staged hit through sim and presentation,
        * optionally as a particular hit reaction (a spiral comes down wounded). */
       downBird(simId: number, reaction?: 'fold' | 'tower' | 'sail' | 'spiral'): boolean;
+      /** Capture/test hook: a second shot into a hit bird still in the air. */
+      anchorBird(simId: number): boolean;
       groundedBirds(): number[];
+      /** A bird on the ground, world metres, and whether it is running. */
+      groundedAt(simId: number): { x: number; y: number; z: number; running: boolean } | null;
       /** Sim snapshot in world meters — capture poses shots off this. */
       hunt(): {
         seed?: number;
@@ -319,7 +323,10 @@ engine.start(fieldInterface.loading).then((started) => {
       return hunt.resolveBird(simId, 'downed', undefined, reaction === 'spiral' ? { wounded: true } : {})
         && birds.downBird(simId, undefined, undefined, reaction);
     },
+    anchorBird: (simId) => engine.ctx.get<BirdsSystem>('birds').anchorBird(simId)
+      && engine.ctx.get<Hunt3DSystem>('hunt3d').anchorBird(simId),
     groundedBirds: () => engine.ctx.get<BirdsSystem>('birds').groundedIds(),
+    groundedAt: (simId) => engine.ctx.get<BirdsSystem>('birds').groundedAt(simId),
     effects: () => fieldEffects,
     gun: () => {
       const gun = engine.ctx.get<GunSystem>('gun');

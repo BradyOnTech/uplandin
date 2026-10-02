@@ -3,6 +3,7 @@ import { isFalconryPractice, FALCONRY_PRACTICE } from '../../game/falconryPracti
 import { huntStreamSeed, parseHuntSeed } from '../../game/huntSeed';
 import { birdFlightExpired } from '../../game/birdFlightLifetime';
 import { buildPheasantBody, buildPheasantLegs, buildPheasantWing, buildPheasantTail, pheasantLegTuck, pheasantTailFan, posePheasantFoldedWings, pheasantWingbeat } from '../assets/pheasant';
+import { buildBirdLegs } from '../assets/birdLegs';
 import { createQuailFlight, selectQuailEscapeCover, stepQuailFlight, type QuailFlight } from '../quailFlight';
 import { QUAIL_WORLD_SCALE, quailLaunchDelay } from '../quailPresentation';
 import { flyingBirdScale, type BirdSizeMode } from '../birdScale';
@@ -139,6 +140,15 @@ export const BIRD_SHAPES: Record<BirdFamily, BirdShape> = {
   chukar: { family: 'chukar', bodyLength: 1.02, bodyWidth: 1.16, bodyDepth: 1.12, wingSpan: 1.28, wingChord: 1.18, tailLength: 1.28, tailWidth: 1.18, billLength: 1.24 },
 };
 
+/** Hip height and fore-aft place of the legs, model metres, by family. */
+const LEG_HIPS: Readonly<Record<string, readonly [number, number]>> = {
+  ringneck: [-.021, -.012], pheasant: [-.021, -.012], quail: [-.018, -.008], partridge: [-.02, -.01],
+  chukar: [-.02, -.01], grouse: [-.022, -.012], woodcock: [-.016, -.006],
+};
+/** Every species but the ringneck keeps its legs tucked out of sight from
+ * here on in flight (the jump's hang has tucked by then). */
+const LEGS_TUCKED_MS = 700;
+
 export function birdFamilyFor(speciesId: string): BirdFamily {
   if (speciesId === 'ringneck') return 'pheasant';
   if (speciesId === 'hun') return 'partridge';
@@ -235,6 +245,14 @@ export interface RayBirdTarget {
   y: number;
   z: number;
   status: string;
+  /** Hit, and still coming down under its own power: a second shot anchors it. */
+  anchorable?: boolean;
+}
+
+/** A towering, sailing or wing-tipped bird is still in the air on its own
+ * wings until it folds or lands; until then a second barrel can anchor it. */
+function anchorable(slot: { status: string; reaction?: HitReaction }): boolean {
+  return slot.status === 'falling' && !!slot.reaction && slot.reaction.kind !== 'fold' && !slot.reaction.collapsed;
 }
 
 /** Pure center-pattern hit selection used by the live gun and tests. */
@@ -321,6 +339,8 @@ interface Slot {
   fallPose?: { startMs: number; rotation: THREE.Euler; groundedMs?: number };
   /** How the bird came down when it was hit (hitReactions.ts). */
   reaction?: HitReaction;
+  /** Set for shot sampling: hit, and still coming down under its own power. */
+  anchorable?: boolean;
   /** A wounded bird on the ground, running from the dog. */
   running?: boolean;
   runYaw?: number;
@@ -742,7 +762,7 @@ export class BirdsSystem implements Subsystem {
           : this.buildWingGeo(side, wingTop, wingTopDim, wingUnder, shape);
     const wingL = wing(-1), wingR = wing(1);
     const tailGeo = species.id === 'ringneck' ? buildPheasantTail(hen) : undefined;
-    const legsGeo = species.id === 'ringneck' ? buildPheasantLegs(hen) : undefined;
+    const legsGeo = species.id === 'ringneck' ? buildPheasantLegs(hen) : buildBirdLegs(species.id);
     addCarriedBirdPoses(body, wingL, wingR, species.id);
     if (tailGeo) this.geos.push(tailGeo);
     if (legsGeo) this.geos.push(legsGeo);
@@ -773,9 +793,11 @@ export class BirdsSystem implements Subsystem {
     if (geometry.legs) {
       if (!slot.legMesh) {
         slot.legMesh = new THREE.Mesh(geometry.legs, this.mat!);
-        slot.legMesh.position.set(0, -.021, -.012);
         slot.root.add(slot.legMesh);
       }
+      // Hips just inside the belly, a little aft of the middle.
+      const hips = LEG_HIPS[species.id === 'ringneck' ? 'ringneck' : birdFamilyFor(species.id)] ?? LEG_HIPS.quail;
+      slot.legMesh.position.set(0, hips[0], hips[1]);
       slot.legMesh.geometry = geometry.legs;
       slot.legMesh.visible = true;
       slot.legMesh.rotation.set(pheasantLegTuck(0), 0, 0);
@@ -1779,14 +1801,39 @@ export class BirdsSystem implements Subsystem {
    * The sample buffer is reused; callers must copy retained positions. */
   shotTargets(presentationPhase = 1): readonly RayBirdTarget[] {
     const phase = this.flightPresentationPhase(presentationPhase);
-    if (phase === 1) return this.slots;
+    if (phase === 1) {
+      for (const slot of this.slots) slot.anchorable = anchorable(slot);
+      return this.slots;
+    }
     for (let i = 0; i < this.slots.length; i++) {
       const slot = this.slots[i];
       const target = this.shotSamples[i] ??= { simId: slot.simId, status: slot.status, x: 0, y: 0, z: 0 };
-      target.simId = slot.simId; target.status = slot.status;
+      target.simId = slot.simId; target.status = slot.status; target.anchorable = anchorable(slot);
       this.sampleFlightPosition(slot, phase, target);
     }
     return this.shotSamples;
+  }
+
+  /** A hit bird a second shot can still take (see anchorable()). */
+  isAnchorable(simId: number): boolean {
+    return this.slots.some(slot => slot.simId === simId && anchorable(slot));
+  }
+
+  /**
+   * Anchor a towering, sailing or wing-tipped bird with a second shot: it
+   * folds where it is and drops on its own momentum, throwing feathers. The
+   * hunt already counted it down; whether it lands alive is the hunt's call.
+   */
+  anchorBird(simId: number, shot?: HitShot): boolean {
+    const s = this.slots.find(slot => slot.simId === simId && anchorable(slot));
+    if (!s?.reaction) return false;
+    s.reaction.collapsed = true;
+    s.gliding = false;
+    s.fallPose = { startMs: s.airMs, rotation: s.root.rotation.clone() };
+    const rng = mulberry32((this.riseSeed ^ Math.imul(s.simId + 7, 0x9e3779b1) ^ Math.imul(this.riseSeq + 3, 0x85ebca6b)) >>> 0);
+    this.loose?.emit(s, { x: s.vxW, y: s.vyW, z: s.vzW }, featherCount('fold', shot?.offset ?? 0), featherTones(s.species.id, s.sex), rng);
+    this.burstFeathers(s);
+    return true;
   }
 
   /** Select the first live target inside the camera-centered shot pattern. */
@@ -1848,6 +1895,12 @@ export class BirdsSystem implements Subsystem {
   }
 
   /** Tooling/HUD telemetry: shot birds still lying in the cover. */
+  /** Capture: where a bird on the ground lies or runs, world metres. */
+  groundedAt(simId: number): { x: number; y: number; z: number; running: boolean } | null {
+    const s = this.slots.find(slot => slot.simId === simId && slot.status === 'grounded');
+    return s ? { x: s.root.position.x, y: s.root.position.y, z: s.root.position.z, running: !!s.running } : null;
+  }
+
   groundedIds(): number[] {
     const ids: number[] = [];
     for (let i = 0; i < POOL; i++) {
@@ -2048,7 +2101,7 @@ export class BirdsSystem implements Subsystem {
         s.root.scale.setScalar(restingBirdScale(birdFamilyFor(s.species.id)) * s.visualScale);
         this.foldWings(s);
         poseCarriedBird(s, 1, s.carryPose?.elapsed ?? 1, false);
-        if (s.legMesh) s.legMesh.rotation.x = 1.45;
+        if (s.legMesh) { s.legMesh.rotation.x = 1.45; s.legMesh.visible = s.species.id === 'ringneck'; }
         if (s.tailMesh?.morphTargetInfluences) s.tailMesh.morphTargetInfluences[0] = 0;
         continue;
       }
@@ -2087,7 +2140,7 @@ export class BirdsSystem implements Subsystem {
           s.root.quaternion.slerp(s.carryPose.rotation, 1 - presence);
           this.foldWings(s);
           poseCarriedBird(s, presence, s.carryPose.elapsed, dog.gait !== 'still');
-          if (s.legMesh) s.legMesh.rotation.x = 1.3;
+          if (s.legMesh) { s.legMesh.rotation.x = 1.3; s.legMesh.visible = s.species.id === 'ringneck'; }
           if (s.tailMesh?.morphTargetInfluences) s.tailMesh.morphTargetInfluences[0] = 0;
           continue;
         }
@@ -2113,6 +2166,13 @@ export class BirdsSystem implements Subsystem {
         if (s.tailMesh.morphTargetInfluences) s.tailMesh.morphTargetInfluences[0] =
           flying ? pheasantTailFan(s.airMs, s.gliding) : s.status === 'falling' ? .6 : 0;
       }
+      if (s.legMesh && s.species.id !== 'ringneck') {
+        // Other species fly with their legs tucked in the body's own shape:
+        // the legs show on the jump, dropped on a body hit, trailing in a
+        // fall and under a running cripple.
+        s.legMesh.visible = s.status === 'flying' ? s.airMs < LEGS_TUCKED_MS
+          : holding || s.status === 'falling' || (s.status === 'grounded' && !!s.running);
+      }
       if (s.legMesh?.visible) {
         // Legs hang as the bird jumps, tuck aft within the first strokes,
         // drop on a body hit (the tower and the sail), trail loose in a fall
@@ -2137,7 +2197,7 @@ export class BirdsSystem implements Subsystem {
         this.foldWings(s);
         continue;
       }
-      if (s.status === 'falling' && s.reaction?.kind === 'spiral') {
+      if (s.status === 'falling' && s.reaction?.kind === 'spiral' && !s.reaction.collapsed) {
         this.poseSpiral(s, s.reaction, this.frozen ? s.airMs : THREE.MathUtils.lerp(s.previousAirMs ?? s.airMs, s.airMs, ctx.fixedAlpha ?? 1));
         continue;
       }

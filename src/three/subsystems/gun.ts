@@ -3,7 +3,7 @@ import type { WetBottomsSystem } from './wetBottoms';
 import * as THREE from 'three';
 import { playShot, unlockAudio, playActionClick } from '../../audio';
 import { GUNS, chokeForShot, getGun, type GunConfig } from '../../game/guns';
-import { ShotFx, boresFor, shotCall } from '../shotFx';
+import { ShotFx, anchorCall, boresFor, shotCall } from '../shotFx';
 import type { Ctx, Subsystem } from '../engine';
 import type { BirdsSystem } from './birds';
 import type { Hunt3DSystem } from './hunt3d';
@@ -736,6 +736,15 @@ export class GunSystem implements Subsystem {
       const targets = this.birds.shotTargets(shot.presentationPhase);
       const birdId = shot.pattern.advance(dtMs / 1000, targets, shot.visible);
       if (!shot.pattern.done) return true;
+      if (birdId !== null && this.birds.isAnchorable?.(birdId)) {
+        // The second barrel into a towering, sailing or wing-tipped bird:
+        // it folds where it is, and a wounded one won't run when it lands.
+        const runner = !!this.hunt.huntState().birds.find(candidate => candidate.id === birdId)?.wounded;
+        this.birds.anchorBird(birdId, { offset: shot.pattern.hitOffsetShare ?? 0, wounded: false, rangeM: 0 });
+        (this.hunt as Partial<Hunt3DSystem>).anchorBird?.(birdId);
+        this.showShotCall(ctx, anchorCall(runner), true);
+        return false;
+      }
       const hit = birdId !== null && (shot.pattern.wounding
         ? this.hunt.resolveBird(birdId, 'downed', undefined, { wounded: true }) : this.hunt.resolveBird(birdId, 'downed'));
       const impact = shot.pattern.impact, origin = shot.pattern.origin;
@@ -743,24 +752,27 @@ export class GunSystem implements Subsystem {
       // How squarely the pattern took the bird picks how it comes down.
       if (hit && birdId !== null) this.birds.downBird(birdId, impact ?? undefined,
         { offset: shot.pattern.hitOffsetShare ?? 0, wounded: shot.pattern.wounding, rangeM: range });
-      if (this.shotCallout) {
-        // A coach's word, not a scoreboard: where a close miss went, and
-        // how a hit bird is coming down.
-        const reaction = hit && birdId !== null ? this.birds.hitReaction?.(birdId) : undefined;
-        const call = shotCall(!!hit, !!hit && shot.pattern.wounding, shot.pattern.nearMiss, range, reaction);
-        this.shotCallout.textContent = call.text;
-        this.shotCallout.classList.toggle('miss', call.tone === 'miss');
-        this.shotCallout.classList.toggle('wound', call.tone === 'wound');
-        this.shotCallout.hidden = false;
-        this.shotCalloutUntil = ctx.time + (call.tone === 'miss' ? .9 : 1.1);
-      }
-      if (hit && this.hitMarker) {
-        this.hitMarker.hidden = false;
-        this.hitMarker.classList?.remove('pop'); void this.hitMarker.offsetWidth; this.hitMarker.classList?.add('pop');
-        this.hitMarkerUntil = ctx.time + .28;
-      }
+      // A coach's word, not a scoreboard: where a close miss went, and how a
+      // hit bird is coming down.
+      const reaction = hit && birdId !== null ? this.birds.hitReaction?.(birdId) : undefined;
+      this.showShotCall(ctx, shotCall(!!hit, !!hit && shot.pattern.wounding, shot.pattern.nearMiss, range, reaction), !!hit);
       return false;
     });
+  }
+
+  private showShotCall(ctx: Ctx, call: { text: string; tone: 'hit' | 'wound' | 'miss' }, hit: boolean): void {
+    if (this.shotCallout) {
+      this.shotCallout.textContent = call.text;
+      this.shotCallout.classList.toggle('miss', call.tone === 'miss');
+      this.shotCallout.classList.toggle('wound', call.tone === 'wound');
+      this.shotCallout.hidden = false;
+      this.shotCalloutUntil = ctx.time + (call.tone === 'miss' ? .9 : 1.1);
+    }
+    if (hit && this.hitMarker) {
+      this.hitMarker.hidden = false;
+      this.hitMarker.classList?.remove('pop'); void this.hitMarker.offsetWidth; this.hitMarker.classList?.add('pop');
+      this.hitMarkerUntil = ctx.time + .28;
+    }
   }
 
   /* ------------------------------ motion ------------------------------- */

@@ -566,6 +566,18 @@ export class HuntSimulation {
   }
 
   /**
+   * A second shot into a bird already counted down, while it is still coming
+   * down: a wing-tipped bird is anchored dead and will not run on landing.
+   */
+  anchorBird(birdId: number): boolean {
+    const bird = this.hunt.birds.find((candidate) => candidate.id === birdId);
+    if (!bird || bird.state !== 'downed' || !bird.fallPending) return false;
+    bird.wounded = false;
+    bird.woundRunMs = 0;
+    return true;
+  }
+
+  /**
    * Record the authoritative place where a downed bird came to rest.
    *
    * Shooting adapters own flight and collision presentation, but the shared
