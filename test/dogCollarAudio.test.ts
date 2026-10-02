@@ -53,6 +53,11 @@ it('follows listener-relative direction and releases both beeps on stop, mute an
     createDynamicsCompressor() { return Object.assign(node('limiter'), { threshold: param(), knee: param(), ratio: param(), attack: param(), release: param() }); }
     createPanner() { return node('pan'); }
     createOscillator() { return node('osc'); }
+    createBufferSource() { return node('source'); }
+    createBuffer(channels: number, length: number, rate: number) {
+      const data = Array.from({ length: channels }, () => new Float32Array(length));
+      return { sampleRate: rate, duration: length / rate, getChannelData: (i: number) => data[i] };
+    }
   });
   const audio = await import('../src/audio');
   const first = audio.playDogCollar('beeper', .3, { x: 60, y: 0, z: 0 })!;
@@ -68,12 +73,21 @@ it('follows listener-relative direction and releases both beeps on stop, mute an
     expect(oscillator.stop).toHaveBeenLastCalledWith(2);
     expect(oscillator.disconnect).toHaveBeenCalledOnce();
   }
+  // The bell is the dog's own brass bell, rung from a synthesized buffer.
   const bell = audio.playDogCollar('bell', .1, { x: 0, y: 0, z: -1 })!;
+  const ring = nodes.filter(n => n.kind === 'source').at(-1);
+  expect(ring.buffer.duration).toBeGreaterThan(.5);
   audio.setAudioEnabled(false); expect(bell.active).toBe(false);
+  // Damped rather than cut: it stops a moment later, and lets its route go once it has.
+  expect(ring.stop).toHaveBeenLastCalledWith(expect.closeTo(2.06));
+  ring.onended();
   expect(audio.playDogCollar('bell', .1, { x: 0, y: 0, z: 1 })).toBeUndefined();
   audio.setAudioEnabled(true);
-  const end = audio.playDogCollar('bell', .1, { x: 0, y: 0, z: -1 })!;
-  for (const oscillator of nodes.filter(n => n.kind === 'osc').slice(-2)) oscillator.onended();
+  // A second dog's bell has its own voice.
+  const end = audio.playDogCollar('bell', .1, { x: 0, y: 0, z: -1 }, 1)!;
+  const second = nodes.filter(n => n.kind === 'source').at(-1);
+  expect(Array.from(second.buffer.getChannelData(0))).not.toEqual(Array.from(ring.buffer.getChannelData(0)));
+  second.onended();
   expect(end.active).toBe(false);
   expect(nodes.filter(n => n.kind === 'pan').every(n => n.disconnect.mock.calls.length === 1)).toBe(true);
 });

@@ -492,8 +492,11 @@ export class Hunt3DSystem implements Subsystem {
     }
     const player = ctx.get<PlayerSystem>('player');
     const recall = player.consumeRecall();
-    if (recall) playWhistle();
-    const commands = this.falconry ? [] : (player.consumeCommands?.() ?? []).map(kind => this.commandFor(ctx, kind));
+    if (recall) playWhistle('recall');
+    // Every command goes out on the whistle, whether or not the dog is in its carry.
+    const given = this.falconry ? [] : (player.consumeCommands?.() ?? []);
+    for (const kind of given) playWhistle(kind);
+    const commands = given.map(kind => this.commandFor(ctx, kind));
     const guard = this.falconry?.guardPoint();
     const events = this.simulation.update(dtMs, {
       hunterPos: hunterPos,

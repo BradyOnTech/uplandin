@@ -1,5 +1,7 @@
-import { audioReady, playActionClick, playBirdCall, playBirdFlock, playHullDrop, playShot, prepareBirdSounds, prepareGunSounds,
-  type BirdPlacement } from './audio';
+import { audioReady, playActionClick, playBirdCall, playBirdFlock, playDogBreath, playDogCollar, playHullDrop, playShot, playWhistle,
+  prepareBirdSounds, prepareDogSounds, prepareGunSounds, type BirdPlacement } from './audio';
+import { dogCollarGain } from './three/dogCollarAudio';
+import type { WhistleCall } from './three/sound/dogSounds';
 import { mulberry32 } from './game/math';
 import { AMBIENT_BIRD_GAIN, GROUND_BIRDS, nextGroundBird, QUARRY_CALL_GAIN, QUARRY_VOICES, type GroundBird } from './three/sound/fieldBirds';
 import type { BirdCallId } from './three/sound/birdCalls';
@@ -178,8 +180,32 @@ function quarryCall(areaId: string, call: BirdCallId, distance: number): void {
   }
 }
 
+// The dog close by, and the handler's whistle.
+{
+  const part = section('The dog', 'Each dog’s bell has its own voice. A running dog keeps it going; on point it goes silent. Breath quickens with work and stops on point. The whistle: one long blast to whoa, a pip to release, two to cast, three for a dead bird, the trill to come in.');
+  const ring = (slot: number, distance: number) => playDogCollar('bell', dogCollarGain('bell', distance), { x: .4, y: -.1, z: -1 }, slot);
+  const rings = (slot: number, every: number, seconds: number) => { for (let t = 0; t < seconds; t += every) later(t, () => ring(slot, 25)); };
+  row(part, 'Bells', [
+    button('First dog', () => ring(0, 15)), button('Second dog', () => ring(1, 15)),
+    button('Running, 25 m', () => rings(0, .62, 4)),
+    button('Running, then a point', () => rings(0, .62, 2.6)),
+    button('A brace, both running', () => { rings(0, .62, 4); for (let t = .3; t < 4; t += .58) later(t, () => ring(1, 40)); }),
+  ]);
+  const calls: [WhistleCall, string][] = [['whoa', 'Whoa'], ['release', 'Release'], ['cast', 'Cast'], ['dead', 'Dead bird'], ['recall', 'Come in']];
+  row(part, 'Whistle', calls.map(([call, label]) => button(label, () => playWhistle(call))));
+  const breathe = (cue: 'pant' | 'sniff', every: number, seconds: number, level: number) => {
+    for (let t = 0; t < seconds; t += every) later(t, () => playDogBreath(cue, level, { x: .5, y: -.3, z: -1 }));
+  };
+  row(part, 'Breath, 3 m', [
+    button('Blown, after a hard cast', () => breathe('pant', 1 / 3.8, 4, .85)),
+    button('Easing off', () => breathe('pant', 1 / 2.3, 4, .5)),
+    button('Working scent', () => breathe('sniff', 1.1, 4.5, .7)),
+  ]);
+}
+
 // Made ahead in idle moments, as the game does, so no click waits on a sound.
 for (const [, areaId] of GROUNDS) {
   for (const gun of GUNS) prepareGunSounds(gun.id, areaId);
   if (areaId) prepareBirdSounds(areaId, getArea(areaId).speciesMix.map(share => share.speciesId));
 }
+prepareDogSounds(2);

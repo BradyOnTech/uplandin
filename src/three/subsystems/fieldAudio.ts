@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import type { Hunt3DSystem } from './hunt3d';
-import { playBirdCall, playBirdFlock, playDogCollar, playDogMovement, playHeartbeat, playHullDrop, prepareBirdSounds, setFieldTension,
-  startFieldAmbience, type BirdSound, type DogCollarSound, type SoundDirection } from '../../audio';
+import { playBirdCall, playBirdFlock, playDogBreath, playDogCollar, playDogMovement, playHeartbeat, playHullDrop, prepareBirdSounds,
+  prepareDogSounds, setFieldTension, startFieldAmbience, type BirdSound, type DogCollarSound, type SoundDirection } from '../../audio';
+import { DogBreathing } from '../sound/dogSounds';
 import { hullSurface } from '../sound/gunFoley';
 import { AMBIENT_BIRD_GAIN, CoveyCalls, CoveyGathering, groundBirdWait, groundSpace, nextGroundBird, QUARRY_CALL_GAIN, QUARRY_VOICES,
   type HeardBird } from '../sound/fieldBirds';
@@ -27,6 +28,9 @@ export class FieldAudioSystem implements Subsystem {
   private birdSounds = new Set<BirdSound>();
   private birdPosition = { x: 0, z: 0 };
   private birdOffset = new THREE.Vector3();
+  /** Each dog's breathing, heard close by. */
+  private breathing = new Map<number, DogBreathing>();
+  private breathOffset = new THREE.Vector3();
   private abort = new AbortController();
   private capture = false;
   private disposed = false;
@@ -74,7 +78,10 @@ export class FieldAudioSystem implements Subsystem {
     }, { signal });
     // The first bird calls a little sooner than the rest.
     this.nextBird = ctx.time + groundBirdWait(this.areaId, ctx.timeOfDay, this.random) * .5;
-    if (!this.capture) prepareBirdSounds(this.areaId, this.areaId ? getArea(this.areaId).speciesMix.map(share => share.speciesId) : []);
+    if (!this.capture) {
+      prepareBirdSounds(this.areaId, this.areaId ? getArea(this.areaId).speciesMix.map(share => share.speciesId) : []);
+      prepareDogSounds(this.hunt.dogCount());
+    }
     ctx.events.addEventListener('hull-landed', ((e: CustomEvent<{ x: number; y: number; z: number; speed: number }>) =>
       this.hullLanded(ctx, e.detail)) as EventListener, { signal });
     // A bird going up at the hunter's feet: the pulse jumps.
@@ -123,6 +130,7 @@ export class FieldAudioSystem implements Subsystem {
     for (let slot = 0; slot < hunt.dogCount(); slot++) {
       const position = hunt.dogWorld(this.dogPosition, slot);
       this.updateCollar(ctx, hunt, slot, position, dt);
+      this.updateBreath(ctx, hunt, slot, position, dt);
       const previous = this.dogs.get(slot);
       if (!previous) { this.dogs.set(slot, { ...position, distance: 0 }); continue; }
       const moved = Math.hypot(position.x-previous.x, position.z-previous.z);
@@ -190,6 +198,16 @@ export class FieldAudioSystem implements Subsystem {
     this.keep(playBirdCall(call.call, { distance: call.distance, direction: { x: this.birdOffset.x, y: this.birdOffset.y, z: this.birdOffset.z },
       space: groundSpace(this.areaId), gain: QUARRY_CALL_GAIN }));
   }
+  /** Panting that quickens with work, a nose on scent, a held breath on point. */
+  private updateBreath(ctx: Ctx, hunt: Hunt3DSystem, slot: number, position: { x: number; z: number }, dt: number): void {
+    let breath = this.breathing.get(slot);
+    if (!breath) { breath = new DogBreathing(); this.breathing.set(slot, breath); }
+    this.breathOffset.set(position.x, this.terrain.heightAt(position.x, position.z) + .5, position.z).sub(ctx.camera.position);
+    const heard = breath.advance(dt, hunt.dog(slot), this.breathOffset.length());
+    if (!heard) return;
+    this.breathOffset.applyQuaternion(this.listenerInverse);
+    playDogBreath(heard.cue, heard.level, { x: this.breathOffset.x, y: this.breathOffset.y, z: this.breathOffset.z });
+  }
   private silenceBirds(): void {
     for (const sound of this.birdSounds) sound.stop();
     this.birdSounds.clear();
@@ -222,7 +240,7 @@ export class FieldAudioSystem implements Subsystem {
     const cue = collar.cadence.advance(dt, kind, gearTier >= 1 && pointed, dogBellInterval(dog.state, dog.gait, dog.scentStage));
     if (cue) {
       collar.sound?.stop();
-      collar.sound = playDogCollar(cue, dogCollarGain(cue, distance), this.collarOffset);
+      collar.sound = playDogCollar(cue, dogCollarGain(cue, distance), this.collarOffset, slot);
       collar.soundKind = cue;
     }
   }

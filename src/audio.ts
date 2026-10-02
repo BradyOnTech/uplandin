@@ -9,6 +9,8 @@ import type { DogCollarCue } from './three/dogCollarAudio';
 import { airCutoff, BIRD_RATE, type BirdSpace } from './three/sound/birdVoice';
 import { flockCalls, FLOCKS, synthesizeBirdCall, type BirdCallId, type FlockId } from './three/sound/birdCalls';
 import { callsOnFlush, groundCalls, groundSpace, QUARRY_VOICES } from './three/sound/fieldBirds';
+import { bellPitch, BREATH_RATE, DOG_SOUND_RATE, synthesizeBell, synthesizePant, synthesizeSniffs, synthesizeWhistle, WHISTLES,
+  type BreathCue, type WhistleCall } from './three/sound/dogSounds';
 /**
  * Procedural sound effects — no audio assets, everything is synthesized,
  * with WebAudio nodes or once into sample buffers (three/sound/). Mobile browsers require a user gesture before audio can
@@ -471,6 +473,35 @@ export function playBell(volume: number): void {
   for (const note of COLLAR_NOTES.bell) tone(note.frequency, note.start, note.duration, { type: note.type, volume: volume * note.volume });
 }
 
+/** One ring of a dog's own brass bell (sound/dogSounds.ts). Stopped, it is
+ * damped in a few hundredths of a second rather than cut off. */
+function ringBell(c: AudioContext, level: GainNode, direction: PannerNode,
+  position: (gain: number, offset: SoundDirection, smooth: boolean) => void, slot: number): DogCollarSound {
+  const pitch = bellPitch(slot), damp = c.createGain();
+  damp.connect(level);
+  let active = true, released = false;
+  // The route is let go once the ring has ended, whether it rang out or was damped.
+  const release = () => {
+    active = false;
+    if (released) return;
+    released = true;
+    damp.disconnect(); level.disconnect(); direction.disconnect(); dogCollarVoices.delete(handle);
+  };
+  const ring = playSamples(c, variant(`bell|${pitch}`, FOLEY_VARIANTS, makeBell(pitch)), DOG_SOUND_RATE, 1, damp, release);
+  const handle: DogCollarSound = {
+    get active() { return active; },
+    updateSpatial(gain, offset) { if (active) position(gain, offset, true); },
+    stop() {
+      if (!active) return;
+      active = false;
+      damp.gain.setTargetAtTime(0, c.currentTime, .012);
+      ring.stop(c.currentTime + .06);
+    },
+  };
+  dogCollarVoices.add(handle);
+  return handle;
+}
+
 const COLLAR_NOTES: Record<DogCollarCue, readonly { frequency: number; start: number; duration: number; volume: number; type: OscillatorType }[]> = {
   bell: [
     { frequency: 2350, start: 0, duration: .09, volume: .7, type: 'sine' },
@@ -490,7 +521,7 @@ export interface DogCollarSound {
 
 /** Short, cancellable versions of the existing collar sounds. The direction
  * is listener-relative and updated while the player turns, even mid-beep. */
-export function playDogCollar(kind: DogCollarCue, volume: number, source: SoundDirection): DogCollarSound | undefined {
+export function playDogCollar(kind: DogCollarCue, volume: number, source: SoundDirection, slot = 0): DogCollarSound | undefined {
   const c = ready();
   if (!c || !Number.isFinite(volume) || volume <= .001) return;
   const direction = c.createPanner(), level = c.createGain();
@@ -509,6 +540,7 @@ export function playDogCollar(kind: DogCollarCue, volume: number, source: SoundD
     else level.gain.value = safeGain;
   };
   position(volume, source, false);
+  if (kind === 'bell') return ringBell(c, level, direction, position, slot);
   let active = true, remaining = COLLAR_NOTES[kind].length;
   const notes: { source: OscillatorNode; envelope: GainNode }[] = [];
   const handle: DogCollarSound = {
@@ -539,9 +571,42 @@ export function playDogCollar(kind: DogCollarCue, volume: number, source: SoundD
 }
 
 /** Handler's whistle: two sliding notes. */
-export function playWhistle(): void {
-  tone(700, 0, 0.16, { volume: 0.22, slideTo: 1250 });
-  tone(1250, 0.18, 0.22, { volume: 0.22, slideTo: 850 });
+/** The handler's whistle: one long blast to stop, a pip to carry on, two to
+ * turn, three for a dead bird, the trill and two pips to come in. */
+export function playWhistle(call: WhistleCall = 'recall'): void {
+  const c = ready();
+  if (!c) return;
+  playSamples(c, cached(`whistle|${call}`, 0, seed => [synthesizeWhistle(call, seed)]), DOG_SOUND_RATE, .3);
+}
+
+const BREATH_VARIANTS = 6;
+const makeBell = (pitch: number): Make => seed => [synthesizeBell(pitch, seed)];
+const makeBreath = (cue: BreathCue): Make => seed => [cue === 'pant' ? synthesizePant(seed) : synthesizeSniffs(seed)];
+
+/** Make the dogs' bells, breath and the whistle before they are needed. */
+export function prepareDogSounds(dogCount: number): void {
+  if (typeof AudioContext === 'undefined') return;
+  for (let slot = 0; slot < Math.max(1, dogCount); slot++) {
+    const pitch = bellPitch(slot);
+    for (let i = 0; i < FOLEY_VARIANTS; i++) warming.push(() => cached(`bell|${pitch}`, i, makeBell(pitch)));
+  }
+  for (const cue of ['pant', 'sniff'] as const) for (let i = 0; i < BREATH_VARIANTS; i++) warming.push(() => cached(`breath|${cue}`, i, makeBreath(cue)));
+  for (const call of Object.keys(WHISTLES) as WhistleCall[]) warming.push(() => cached(`whistle|${call}`, 0, seed => [synthesizeWhistle(call, seed)]));
+  if (!warmingScheduled) { warmingScheduled = true; whenIdle(warmSome); }
+}
+
+/** A dog's breath close by, from where its head is (fieldAudio.ts). */
+export function playDogBreath(cue: BreathCue, volume: number, source: SoundDirection): void {
+  const c = ready();
+  if (!c || !(volume > .002)) return;
+  const direction = c.createPanner();
+  direction.panningModel = 'HRTF'; direction.rolloffFactor = 0;
+  const length = Math.hypot(source.x, source.y, source.z), valid = Number.isFinite(length) && length > .001;
+  direction.positionX.value = valid ? source.x / length : 0; direction.positionY.value = valid ? source.y / length : 0;
+  direction.positionZ.value = valid ? source.z / length : -1;
+  direction.connect(output(c));
+  playSamples(c, variant(`breath|${cue}`, BREATH_VARIANTS, makeBreath(cue)), BREATH_RATE, Math.min(1, volume) * .12, direction,
+    () => direction.disconnect());
 }
 
 /**
