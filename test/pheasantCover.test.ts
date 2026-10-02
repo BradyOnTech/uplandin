@@ -4,7 +4,7 @@ import { getArea } from '../src/game/areas';
 import { LandscapeModel } from '../src/game/landscape';
 import type { Ctx } from '../src/three/engine';
 import { pheasantCoverAt, pheasantFields, pheasantHarvestAt, pheasantCoverFringeAt, pheasantTrackDistance } from '../src/three/subsystems/pheasantLandscape';
-import { PheasantCoverSystem } from '../src/three/subsystems/pheasantCover';
+import { PheasantCoverSystem, HUNTER_LEAN, hunterLean } from '../src/three/subsystems/pheasantCover';
 import { pheasantWestFence } from '../src/game/pheasantHabitat';
 
 describe('Pheasant launch vegetation', () => {
@@ -171,4 +171,33 @@ describe('Pheasant cover around the dog', () => {
     expect(inner.dogReach.value[0]).toBeGreaterThan(1.2);
     cover.dispose(ctx);
   }, 15000);
+});
+
+describe('Pheasant cover round the hunter', () => {
+  const EYE = 1.62;
+  /** Tip of a stem `height` tall at `distance`, leaning away from the hunter. */
+  const tip = (height: number, distance: number) => {
+    const lean = hunterLean(height, distance);
+    return { y: height * Math.cos(lean), out: distance + height * Math.sin(lean) };
+  };
+
+  it('presses the tall stems at his eye down out of the sky over the stand', () => {
+    // Every stem a stand grows, inside two metres, ends below his eye.
+    for (const height of [1.4, 1.6, 1.8, 2.0]) for (const distance of [.5, 1, 1.5, 2, 2.2]) {
+      expect(tip(height, distance).y).toBeLessThan(EYE);
+    }
+    // Through the edge of the press a stalk eases back up, never standing
+    // higher in his view than it grows; just past two paces it is still low.
+    const elevation = ({ y, out }: { y: number; out: number }) => Math.atan2(y - EYE, out) * 180 / Math.PI;
+    for (const distance of [2.4, 2.8, 3.2, 3.6]) {
+      expect(elevation(tip(2, distance))).toBeLessThanOrEqual(elevation({ y: 2, out: distance }) + 1e-9);
+    }
+    expect(elevation(tip(2, 2.6))).toBeLessThan(2);
+  });
+
+  it('leaves the cover below the leaf mass and beyond a few paces as it grows', () => {
+    for (const distance of [.5, 1.5, 2.5]) expect(hunterLean(.7, distance)).toBe(0);
+    for (const height of [1, 1.5, 2]) expect(hunterLean(height, HUNTER_LEAN.far)).toBe(0);
+    expect(hunterLean(2, 1)).toBeCloseTo(HUNTER_LEAN.max, 6);
+  });
 });

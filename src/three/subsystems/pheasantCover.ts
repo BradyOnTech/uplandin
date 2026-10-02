@@ -276,6 +276,19 @@ function habitatGeometry(kind: 'prairie' | 'cattail' | 'stubble' | 'litter', lit
   return geometry;
 }
 
+/** Stems round a hunter wading a stand: full lean inside `near`, none past
+ * `far` (m from his eye); only stem parts above `from`..`to` (m) lean, up to
+ * `max` radians away from him. */
+export const HUNTER_LEAN = { near: 2.2, far: 3.6, from: .75, to: 1.35, max: .7 } as const;
+
+/** How far (radians) a stem part this high (m) leans at this distance (m). */
+export function hunterLean(height: number, distance: number): number {
+  const { near, far, from, to, max } = HUNTER_LEAN;
+  return (1 - THREE.MathUtils.smoothstep(distance, near, far)) * THREE.MathUtils.smoothstep(height, from, to) * max;
+}
+
+const glsl = (value: number) => value.toFixed(3);
+
 /** Full-property grain stubble, protective grass and dense rooted wet margins. */
 export class PheasantCoverSystem implements Subsystem {
   readonly id = 'grass';
@@ -356,15 +369,23 @@ export class PheasantCoverSystem implements Subsystem {
           float gust = .045 + sin(uPheasantWind * 1.35 + phase) * .024
             + sin(uPheasantWind * .60 + phase * .32) * .016;
           transformed.xz += localWind * gust * uPheasantWindStrength * position.y * position.y;
-          // Only vegetation touching the hunter bends aside. Roots stay
-          // planted; no fade, shrinking or corridor toward the target.
+          // Vegetation touching the hunter bends aside. Roots stay planted;
+          // no fade, shrinking or corridor toward the target.
           vec2 bodyAway = (instanceMatrix * vec4(bladeRoot, 1.0)).xz - uCoverHunter;
           float bodyDistance = length(bodyAway);
           float bodyPart = 1.0 - smoothstep(.35, 1.4, bodyDistance);
           vec2 bodyDirection = bodyAway / max(bodyDistance, .10);
           vec2 bodyLocal = vec2(dot(normalize(instanceMatrix[0].xz), bodyDirection),
             dot(normalize(instanceMatrix[2].xz), bodyDirection));
-          float bodyBend = bodyPart * 1.2;
+          // Wading a stand presses the tall stems round the hunter back and
+          // out above the leaf mass, so stalks right at his eye do not cut
+          // the sky a bird gets up into, or cross the gun he carries. Only
+          // the stems' upper parts lean; the cover below stays as it grows.
+          float stemHeight = position.y * length(instanceMatrix[1].xyz);
+          float lean = (1.0 - smoothstep(${glsl(HUNTER_LEAN.near)}, ${glsl(HUNTER_LEAN.far)}, bodyDistance))
+            * smoothstep(${glsl(HUNTER_LEAN.from)}, ${glsl(HUNTER_LEAN.to)}, stemHeight) * ${glsl(HUNTER_LEAN.max)};
+          float hunterPress = max(bodyPart, lean / ${glsl(HUNTER_LEAN.max)});
+          float bodyBend = max(bodyPart * 1.2, lean);
           transformed.xz += bodyLocal * position.y * sin(bodyBend);
           transformed.y -= position.y * (1.0 - cos(bodyBend));
           // Capsule contact follows the visible dog body, never its scent target.
@@ -386,7 +407,7 @@ export class PheasantCoverSystem implements Subsystem {
           vec2 dogLocal = vec2(dot(normalize(instanceMatrix[0].xz), dogDirection),
             dot(normalize(instanceMatrix[2].xz), dogDirection));
           // Overlapping bodies must not add bends and fold stems below ground.
-          float dogBend = dogContact * .95 * (1.0 - bodyPart);
+          float dogBend = dogContact * .95 * (1.0 - hunterPress);
           transformed.xz += dogLocal * position.y * sin(dogBend);
           transformed.y -= position.y * (1.0 - cos(dogBend));
           // The dog's wake: stems it shoved aside rock back upright behind
@@ -403,7 +424,7 @@ export class PheasantCoverSystem implements Subsystem {
             vec2 direction = away / max(reach, .15);
             vec2 localDirection = vec2(dot(normalize(instanceMatrix[0].xz), direction),
               dot(normalize(instanceMatrix[2].xz), direction));
-            transformed.xz += localDirection * influence * rock * .32 * position.y * position.y * (1.0 - bodyPart);
+            transformed.xz += localDirection * influence * rock * .32 * position.y * position.y * (1.0 - hunterPress);
           }
           for (int i = 0; i < 4; i++) {
             vec4 disturbance = uCoverDisturbance[i];
@@ -420,7 +441,7 @@ export class PheasantCoverSystem implements Subsystem {
           }
           #endif`);
     };
-    material.customProgramCacheKey = () => 'pheasant-rooted-cover-wind-v7'; this.materials.push(material);
+    material.customProgramCacheKey = () => 'pheasant-rooted-cover-wind-v8'; this.materials.push(material);
     // Keep the same habitat footprint in both tiers. Distance changes blade
     // complexity, not the height or presence of protective cover.
     const fields = pheasantFields(area), ponds = pheasantPonds(this.landscape);
