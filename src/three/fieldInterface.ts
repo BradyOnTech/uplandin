@@ -16,6 +16,7 @@ import { attachHuntPhoto } from '../game/huntJournal';
 import { stageTailgate, takeTailgatePhoto } from './tailgatePhoto';
 import { loadQuickConfig, saveQuickConfig } from '../game/quick';
 import { setAudioEnabled, unlockAudio } from '../audio';
+import { huntSting, menuMusicOnFirstGesture, type MenuMusic } from './menuMusic';
 import type { LandscapeModel } from '../game/landscape';
 import type { Engine, Quality } from './engine';
 import type { TimeOfDay } from './palette';
@@ -49,6 +50,8 @@ export class FieldInterface {
   private activeChallenge = resolveThreeHuntChallenge(location.search);
   private updateState: OfflineUpdateState = 'none';
   private falconry = resolveThreeHuntProfile(location.search).quick?.huntingMethod === 'goshawk';
+  /** The menu theme plays over the arrival menu, until the hunter walks out. */
+  private music: MenuMusic | null = null;
   private guide = new FieldGuide(readFieldGuide((() => { try { return localStorage; } catch { return null; } })()));
   private guideSaved = JSON.stringify(this.guide.snapshot());
   private guideElapsed = 0;
@@ -56,6 +59,7 @@ export class FieldInterface {
   private menuSelects?: ReturnType<typeof enhanceMenuSelects>;
   constructor(private engine: Engine, landscape: LandscapeModel) {
     const signal = this.abort.signal;
+    if (!this.capture) this.music = menuMusicOnFirstGesture();
     const tabs = Array.from(this.overlay.querySelectorAll<HTMLButtonElement>('[data-field-tab]'));
     // Each tab fits the card; what does not fit pages instead of scrolling.
     const pagerNav = document.getElementById('field-menu-pager');
@@ -247,6 +251,11 @@ export class FieldInterface {
       }
       // Once this frame is done, stage the day at the truck and take the picture.
       if (!this.capture && !this.falconry && !isFalconryPractice(location.search)) setTimeout(() => this.tailgatePhoto(), 0);
+      // A few bars on the guitar as the day's report comes up.
+      if (!this.capture) {
+        const bagged = this.engine.ctx.get<Hunt3DSystem>('hunt3d').huntState().birds.some(bird => bird.state === 'retrieved');
+        setTimeout(() => huntSting(bagged ? 'full' : 'quiet'), 900);
+      }
     }, { signal });
     const quality = document.getElementById('quality-setting') as HTMLSelectElement;
     quality.value = this.engine.ctx.quality;
@@ -570,6 +579,8 @@ export class FieldInterface {
     if (!this.readyState || this.complete || this.lostContext) return;
     const firstEntry = !this.entered;
     this.entered = true; unlockAudio();
+    // Walking out: the music gives way to the field.
+    this.music?.stop(2.5); this.music = null;
     this.offlineUpdateState(this.updateState);
     this.overlay.classList.add('field-has-entered');
     this.syncArrivalMenu();

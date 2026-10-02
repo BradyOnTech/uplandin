@@ -17,6 +17,7 @@ import { huntingDoctrine } from '../game/huntDoctrine';
 import { coatLabel, isModeledBreed, modelForBreed, resolveCoatFor } from '../game/dogCoats';
 import { coatSwatch } from './dogs/coatSwatch';
 import { DEFAULT_DOG_STYLE, DOG_STYLE_KEY, DOG_STYLE_LABELS, DOG_STYLE_SELECTABLE, DOG_STYLES, effectiveDogStyle, preferredDogStyle, saveDogStyle, type DogStyle } from './dogs/dogStyle';
+import { menuMusicOnFirstGesture } from './menuMusic';
 
 const root = document.getElementById('home')!;
 let career = loadCareer();
@@ -173,3 +174,4 @@ enableOfflineHunts({ canReload: () => true, onUpdateState: state => {
   update.textContent = state === 'applying' ? 'Updating…' : 'Update game';
   updateStatus.textContent = ({ none: '', ready: 'An update is ready.', applying: 'Applying the latest game update…', 'other-tabs': 'Close your other game windows, then try the update again.', unsafe: 'Finish your hunt before updating.', failed: 'The update could not finish. Reconnect and try again.' })[state];
 } });
+menuMusicOnFirstGesture();

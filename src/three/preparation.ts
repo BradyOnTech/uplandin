@@ -28,6 +28,7 @@ import { coatSwatch } from './dogs/coatSwatch';
 import { DEFAULT_DOG_STYLE, DOG_STYLE_KEY, DOG_STYLE_LABELS, DOG_STYLE_SELECTABLE, DOG_STYLES, effectiveDogStyle, preferredDogStyle, resolveDogStyle, saveDogStyle, type DogStyle } from './dogs/dogStyle';
 import type { DogPreview, PreviewDog, PreviewPose } from './dogPreview';
 import { fitPages, type FitPager } from './fitPager';
+import { menuMusicOnFirstGesture } from './menuMusic';
 import { createAssistsPanel } from './assistsPanel';
 import { huntAssists, onHuntAssists } from './assistsRuntime';
 import { ASSIST_PRESETS, matchingPreset } from '../game/huntAssists';
@@ -953,3 +954,4 @@ window.addEventListener('pageshow', event => { if (event.persisted) { launching 
 render();
 enableOfflineHunts({ canReload: () => !launching && updateRequested && preservePreparationDraft(location.href, currentDraft(), draftStorage()),
   onUpdateState: offlineUpdateState });
+menuMusicOnFirstGesture();

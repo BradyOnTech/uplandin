@@ -1,6 +1,6 @@
-import { audioReady, playActionClick, playBirdCall, playBirdFlock, playDogBreath, playDogCollar, playFootstep, playHullDrop, playShot,
-  playWhistle, prepareBirdSounds, prepareDogSounds, prepareGunSounds, prepareStepSounds, startFieldAmbience, type BirdPlacement,
-  type FieldAmbience } from './audio';
+import { audioReady, playActionClick, playBirdCall, playBirdFlock, playDogBreath, playDogCollar, playFootstep, playHullDrop, playReportSting,
+  playShot, playWhistle, prepareBirdSounds, prepareDogSounds, prepareGunSounds, prepareMusic, prepareStepSounds, startFieldAmbience,
+  startMenuTheme, type BirdPlacement, type FieldAmbience, type MusicPlayer } from './audio';
 import { STEP_SURFACES } from './three/sound/stepSounds';
 import type { TimeOfDay } from './three/palette';
 import { dogCollarGain } from './three/dogCollarAudio';
@@ -232,6 +232,14 @@ function quarryCall(areaId: string, call: BirdCallId, distance: number): void {
   }
 }
 
+// The score: the menus' theme on the guitar, and the hunt's last bars.
+{
+  const part = section('Music', 'The menu theme, a slow fingerpicked guitar piece in D that comes round again; moving between menu pages it goes on rather than starting over. Then the few bars as a hunt’s report comes up.');
+  let theme: MusicPlayer | null = null;
+  row(part, 'Menu theme', [button('Play', () => { theme = startMenuTheme(); }), button('Fade out', () => { theme?.stop(2); theme = null; })]);
+  row(part, 'End of the hunt', [button('A full day', () => playReportSting('full')), button('A quiet day', () => playReportSting('quiet'))]);
+}
+
 // Made ahead in idle moments, as the game does, so no click waits on a sound.
 for (const [, areaId] of GROUNDS) {
   for (const gun of GUNS) prepareGunSounds(gun.id, areaId);
@@ -239,3 +247,4 @@ for (const [, areaId] of GROUNDS) {
 }
 prepareDogSounds(2);
 prepareStepSounds();
+prepareMusic();

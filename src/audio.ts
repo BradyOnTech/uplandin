@@ -13,6 +13,9 @@ import { callsOnFlush, groundCalls, groundSpace, QUARRY_VOICES } from './three/s
 import { bellPitch, BREATH_RATE, DOG_SOUND_RATE, synthesizeBell, synthesizePant, synthesizeSniffs, synthesizeWhistle, WHISTLES,
   type BreathCue, type WhistleCall } from './three/sound/dogSounds';
 import { STEP_RATE, STEP_SURFACES, synthesizeStep, type StepSurface } from './three/sound/stepSounds';
+import { GUITAR_RATE, midiHz, synthesizePluck } from './three/sound/guitar';
+import { STINGS, THEME_SECONDS, themeNotes, themePitches, type ScoreNote, type StingKind } from './three/sound/score';
+import { noiseSource, normalize, OnePole } from './three/sound/dsp';
 /**
  * Procedural sound effects — no audio assets, everything is synthesized,
  * with WebAudio nodes or once into sample buffers (three/sound/). Mobile browsers require a user gesture before audio can
@@ -792,4 +795,146 @@ export function playHullDrop(surface: HullSurface, volume: number, pan = 0): voi
 /** Close wing pressure, kept quiet enough to hear the quarry flush. */
 export function playHawkWingbeat(volume = .08): void {
   noise(0, .14, 700, 180, volume);
+}
+
+/* ------------------------------- the score ------------------------------- */
+
+const noteKey = (midi: number, harmonic = false) => `guitar|${midi}|${harmonic ? 'harmonic' : 'open'}`;
+const makeNote = (midi: number, harmonic: boolean): Make => () =>
+  [normalize(synthesizePluck(midiHz(midi), midi * 7 + 1, { velocity: .7, length: midi < 52 ? 3.2 : 2.4, harmonic }), .5)];
+const SCORE_NOTES = () => [...themeNotes(), ...STINGS.full, ...STINGS.quiet];
+
+/** Make the guitar's notes before the music is wanted. */
+export function prepareMusic(): void {
+  if (typeof AudioContext === 'undefined') return;
+  const wanted = new Map<string, () => void>();
+  for (const note of SCORE_NOTES()) {
+    const harmonic = !!note.harmonic;
+    wanted.set(noteKey(note.midi, harmonic), () => cached(noteKey(note.midi, harmonic), 0, makeNote(note.midi, harmonic)));
+  }
+  warming.push(...wanted.values());
+  if (!warmingScheduled) { warmingScheduled = true; whenIdle(warmSome); }
+}
+
+/** A small wooden room for the guitar: a short, darkening tail. */
+function roomImpulse(c: AudioContext): AudioBuffer {
+  const seconds = 1.7, length = Math.round(c.sampleRate * seconds), impulse = c.createBuffer(2, length, c.sampleRate);
+  for (let channel = 0; channel < 2; channel++) {
+    const data = impulse.getChannelData(channel), noise = noiseSource(0x5eed + channel * 977), dark = new OnePole(6000, c.sampleRate);
+    for (let i = 0; i < length; i++) {
+      const t = i / c.sampleRate;
+      if (i % 64 === 0) dark.cutoff = 900 + 5100 * Math.exp(-t * 1.6);
+      data[i] = dark.low(noise()) * Math.exp(-t * 6.9 / seconds) * Math.min(1, t / .012);
+    }
+  }
+  return impulse;
+}
+
+let musicIn: GainNode | null = null;
+/** The music's way out: dry, and through the room; past the field's dip under a shot. */
+function musicBus(c: AudioContext): GainNode {
+  if (!musicIn) {
+    musicIn = c.createGain();
+    const room = c.createConvolver(), wet = c.createGain();
+    room.buffer = roomImpulse(c); wet.gain.value = .25;
+    musicIn.connect(gunBus(c));
+    musicIn.connect(room).connect(wet).connect(gunBus(c));
+  }
+  return musicIn;
+}
+
+const guitarBuffers = new Map<string, AudioBuffer>();
+/** One note of the guitar; a string struck again stops the note it was ringing. */
+function pluck(c: AudioContext, note: ScoreNote, when: number, destination: AudioNode, ringing: Map<number, GainNode>, ended: () => void): AudioBufferSourceNode {
+  const key = noteKey(note.midi, note.harmonic);
+  let buffer = guitarBuffers.get(key);
+  if (!buffer) {
+    const [samples] = cached(key, 0, makeNote(note.midi, !!note.harmonic));
+    buffer = c.createBuffer(1, samples.length, GUITAR_RATE);
+    buffer.getChannelData(0).set(samples);
+    guitarBuffers.set(key, buffer);
+  }
+  const source = c.createBufferSource(), level = c.createGain();
+  source.buffer = buffer; level.gain.value = note.velocity;
+  ringing.get(note.string)?.gain.setTargetAtTime(0, when, .025);
+  ringing.set(note.string, level);
+  source.connect(level).connect(destination);
+  source.onended = () => {
+    source.disconnect(); level.disconnect();
+    if (ringing.get(note.string) === level) ringing.delete(note.string);
+    ended();
+  };
+  source.start(when);
+  return source;
+}
+
+export interface MusicPlayer { readonly playing: boolean; stop(fadeSeconds?: number): void }
+/** Where the menu theme is, carried from page to page within a visit. */
+export const THEME_STARTED_KEY = 'uplandin.theme.started';
+const THEME_LEVEL = .45, STING_LEVEL = .42, LOOKAHEAD_S = .6;
+let theme: MusicPlayer | null = null;
+
+/**
+ * The menu theme (sound/score.ts), played a little ahead of time and round
+ * again for as long as the menus are open. Moving between menu pages it goes
+ * on from where it was, fading in, rather than starting over.
+ */
+export function startMenuTheme(): MusicPlayer | null {
+  const c = ready();
+  if (!c) return null;
+  if (theme?.playing) return theme;
+  const notes = themeNotes(), performance = c.createGain(), now = c.currentTime;
+  performance.gain.setValueAtTime(0, now);
+  performance.gain.linearRampToValueAtTime(THEME_LEVEL, now + 2);
+  performance.connect(musicBus(c));
+  let begun = Date.now();
+  try {
+    const stored = Number(sessionStorage.getItem(THEME_STARTED_KEY));
+    if (stored > 0 && stored <= begun && begun - stored < 6 * 3600_000) begun = stored;
+    else sessionStorage.setItem(THEME_STARTED_KEY, String(begun));
+  } catch { /* storage optional */ }
+  const offset = ((Date.now() - begun) / 1000) % THEME_SECONDS, passStart = now + .1 - offset;
+  const ringing = new Map<number, GainNode>(), sources = new Set<AudioBufferSourceNode>();
+  let pass = 0, index = notes.findIndex(note => note.at >= offset), playing = true;
+  if (index < 0) { index = 0; pass = 1; }
+  const tick = () => {
+    if (!playing) return;
+    for (;;) {
+      if (index >= notes.length) { index = 0; pass++; }
+      const note = notes[index], when = passStart + pass * THEME_SECONDS + note.at;
+      if (when > c.currentTime + LOOKAHEAD_S) break;
+      index++;
+      if (when < c.currentTime) continue;
+      const source = pluck(c, note, when, performance, ringing, () => sources.delete(source));
+      sources.add(source);
+    }
+  };
+  tick();
+  const timer = setInterval(tick, 150);
+  theme = {
+    get playing() { return playing; },
+    stop(fadeSeconds = 1.5) {
+      if (!playing) return;
+      playing = false; theme = null;
+      clearInterval(timer);
+      const at = c.currentTime, fade = Math.max(.05, fadeSeconds);
+      performance.gain.cancelScheduledValues(at);
+      performance.gain.setValueAtTime(performance.gain.value, at);
+      performance.gain.linearRampToValueAtTime(0, at + fade);
+      for (const source of sources) source.stop(at + fade + .05);
+      setTimeout(() => performance.disconnect(), (fade + .3) * 1000);
+    },
+  };
+  return theme;
+}
+
+/** The hunt is over: a few bars on the guitar, warm for a full day, gentle for a quiet one. */
+export function playReportSting(kind: StingKind): void {
+  const c = ready();
+  if (!c) return;
+  const performance = c.createGain(), ringing = new Map<number, GainNode>(), notes = STINGS[kind];
+  performance.gain.value = STING_LEVEL;
+  performance.connect(musicBus(c));
+  let open = notes.length;
+  for (const note of notes) pluck(c, note, c.currentTime + .05 + note.at, performance, ringing, () => { if (--open === 0) performance.disconnect(); });
 }
