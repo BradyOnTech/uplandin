@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { sportingBores } from './assets/shotgun';
 
 /**
  * Presentation of the shot at the gun: a one-frame muzzle flash at the
@@ -140,8 +141,7 @@ export function shotCall(hit: boolean, wounded: boolean, miss: { call: 'behind' 
   return { text: `MISS · ${where}`, tone: 'miss' };
 }
 
-/** Rig-local bore centres per action, matching the viewmodels. */
+/** Rig-local bore centres per action in firing order, matching the viewmodels. */
 export function boresFor(gunId: string): { x: number; y: number }[] {
-  return gunId === 'side-by-side' ? [{ x: -.0124, y: .007 }, { x: .0124, y: .007 }]
-    : gunId === 'over-under' ? [{ x: 0, y: .007 }, { x: 0, y: -.0185 }] : [{ x: 0, y: .007 }];
+  return sportingBores(gunId === 'side-by-side' || gunId === 'over-under' || gunId === 'semi-auto' ? gunId : 'pump');
 }

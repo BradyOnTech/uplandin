@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { doubleLoading, SHOTGUN_CYCLE, TUBE_LOADING } from '../shotgunActionTiming';
+import { DOUBLE_EJECT_S, doubleLoading, SHOTGUN_CYCLE, TUBE_LOADING } from '../shotgunActionTiming';
 
 /** Low-poly sporting shotgun viewmodels with one shared field sight line.
  * Metres, +Y up, muzzle down -Z. Cosmetic parts never own ammunition or input.
@@ -11,8 +11,36 @@ export interface SportingShotgun {
   bead: THREE.Vector3;
   /** Cosmetic action clock starts on the shot, independently of frame rate. */
   fire(): void;
-  update(reloadElapsed: number, reloadDuration: number, missingShells: number, recoil: number, dt: number): void;
+  update(reloadElapsed: number, reloadDuration: number, missingShells: number, recoil: number, dt: number, plan?: ReloadPlan): void;
+  /** Safety catch: 0 is on (safe), 1 is off (ready to fire). */
+  setSafety(off: number): void;
+  /**
+   * Where a fired hull leaves the action, in the gun's own space for its
+   * current pose: the ejection port for a repeater, or a fired chamber's
+   * mouth for a double. `outward` is the direction the hull is thrown.
+   */
+  ejection(index: number, out: HullExit): HullExit;
   dispose(): void;
+}
+
+export type ChamberState = 'fired' | 'loaded' | 'empty';
+/** What a reload does, when it is not simply "replace every missing shell". */
+export interface ReloadPlan {
+  /** A double's barrels in firing order as the action opens. */
+  chambers?: readonly ChamberState[];
+  /** Rounds this reload inserts; a reload cut short by a flush inserts fewer. */
+  loading?: number;
+}
+export interface HullExit { position: THREE.Vector3; quaternion: THREE.Quaternion; outward: THREE.Vector3 }
+
+/**
+ * Bore centres in firing order, in the gun's own space. The 686 fires its
+ * under barrel first; a side-by-side's first (front) trigger fires the right
+ * barrel. The open choke is in the first barrel of both doubles.
+ */
+export function sportingBores(action: SportingAction): { x: number; y: number }[] {
+  return action === 'side-by-side' ? [{ x: .0124, y: .007 }, { x: -.0124, y: .007 }]
+    : action === 'over-under' ? [{ x: 0, y: -.0185 }, { x: 0, y: .007 }] : [{ x: 0, y: .007 }];
 }
 
 type V3 = readonly [number, number, number];
@@ -134,11 +162,13 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
       roughness: sideBySide ? .67 : .86, flatShading: true }),
     grain: new THREE.MeshStandardMaterial({ name: 'Walnut grain', color: sideBySide ? 0x30251f : 0x49382b,
       roughness: sideBySide ? .76 : .9 }),
-    glove: new THREE.MeshStandardMaterial({ color: 0xa28f69, roughness: .96 }),
-    seam: new THREE.MeshStandardMaterial({ color: 0x766747, roughness: .94 }),
+    glove: new THREE.MeshStandardMaterial({ color: 0xa28f69, roughness: .96, flatShading: true }),
+    seam: new THREE.MeshStandardMaterial({ color: 0x766747, roughness: .94, flatShading: true }),
     cuff: new THREE.MeshStandardMaterial({ color: 0x414b3d, roughness: 1, flatShading: true }),
     brass: new THREE.MeshStandardMaterial({ color: 0xb89c55, metalness: .48, roughness: .4 }),
     shell: new THREE.MeshStandardMaterial({ color: 0x9e382b, roughness: .61 }),
+    // The safety catch: one small painted part (blued steel, a red band).
+    safety: new THREE.MeshStandardMaterial({ vertexColors: true, metalness: .25, roughness: .6, flatShading: true }),
     ...(double ? { receiver: new THREE.MeshStandardMaterial({
       color: sideBySide ? 0x969d98 : 0xb4bcb9, metalness: .48, roughness: .51, flatShading: true,
     }) } : {}),
@@ -146,8 +176,7 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
   const actionMetal = materials.receiver ?? materials.edge;
   const b = new Batch();
   const barrelBatch = double ? new Batch() : b;
-  const bores = sideBySide ? [{ x: -.0124, y: .007 }, { x: .0124, y: .007 }]
-    : double ? [{ x: 0, y: .007 }, { x: 0, y: -.0185 }] : [{ x: 0, y: .007 }];
+  const bores = sportingBores(action);
   const muzzleBatch = new Batch();
   for (const bore of bores) {
     barrelBatch.cylinder(.0118, .65, [bore.x, bore.y, -.448], materials.steel, 14);
@@ -391,8 +420,42 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
 
   const boltBatch = new Batch();
   boltBatch.box([.0015, .015, .048], [.0255, .006, -.052], materials.edge);
-  boltBatch.add(new THREE.CylinderGeometry(.0038, .005, .016, 8), materials.black, [.034, .005, -.065], [0, 0, Math.PI / 2]);
+  // The Auto-5 is cocked by a handle on its bolt. The 870's action bars work
+  // the bolt from the forend, so its port shows only the sliding bolt.
+  if (action === 'semi-auto') boltBatch.add(new THREE.CylinderGeometry(.0038, .005, .016, 8), materials.edge, [.034, .005, -.065], [0, 0, Math.PI / 2]);
   const bolt = boltBatch.build('Bolt and handle'); root.add(bolt); bolt.visible = !double;
+
+  // Safety catch. A double's tang safety slides on the top strap behind the
+  // lever, under the thumb; the repeaters' cross-bolt runs through the trigger
+  // guard (behind the trigger on the 870, ahead of it on the Auto-5) and
+  // shows a red band on the left side when it is off.
+  const safety = new THREE.Group(); safety.name = 'Safety catch'; root.add(safety);
+  const safetyBatch = new Batch();
+  const painted = (geometry: THREE.BufferGeometry, color: number) => {
+    const colour = new THREE.Color(color), count = geometry.getAttribute('position').count, data = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) colour.toArray(data, i * 3);
+    geometry.setAttribute('color', new THREE.BufferAttribute(data, 3));
+    return geometry;
+  };
+  const safetyAt = new THREE.Vector3();
+  if (double) {
+    safetyAt.set(0, sideBySide ? .0195 : .0255, .034);
+    safetyBatch.add(painted(new THREE.BoxGeometry(.0068, .0032, .0105), 0x2b3235), materials.safety);
+    for (let i = 0; i < 3; i++) safetyBatch.add(painted(new THREE.BoxGeometry(.0072, .0008, .0011), 0x51585a), materials.safety, [0, .0018, -.003 + i * .003]);
+  } else {
+    safetyAt.set(0, action === 'pump' ? -.0265 : -.0325, action === 'pump' ? .061 : .021);
+    safetyBatch.add(painted(new THREE.CylinderGeometry(.0034, .0034, .036, 8), 0x161b1c), materials.safety, [0, 0, 0], [0, 0, Math.PI / 2]);
+    safetyBatch.add(painted(new THREE.CylinderGeometry(.00355, .00355, .0028, 8), 0xb3261c), materials.safety, [-.0155, 0, 0], [0, 0, Math.PI / 2]);
+  }
+  safety.add(safetyBatch.build('Safety')); safety.position.copy(safetyAt);
+  let safetyOff = 0;
+  const placeSafety = () => {
+    // Tang: back is safe, a thumb-width forward fires. Cross-bolt: pushed
+    // through to the right is safe; to the left it shows its red band.
+    if (double) safety.position.set(safetyAt.x, safetyAt.y, safetyAt.z - .0055 * safetyOff);
+    else safety.position.set(safetyAt.x + .0045 - .009 * safetyOff, safetyAt.y, safetyAt.z);
+  };
+  placeSafety();
 
   function supportHand(): THREE.Group {
     const h = new Batch();
@@ -424,7 +487,12 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
   h.add(tube([[.020, -.026, .134], [.005, -.015, .119], [-.015, -.018, .103], [-.019, -.025, .090]], [.010, .009, .008, .0065], 8), materials.glove);
   h.add(tube([[.046, -.039, .098], [.050, -.043, .117], [.044, -.054, .139]], [.0008, .0009, .0008], 4), materials.seam);
   h.add(loft([{ z: .15, y: -.053, width: .023, height: .023, x: .028 }, { z: .177, y: -.065, width: .029, height: .026, x: .028 }], 10), materials.seam);
-  h.add(loft([{ z: .18, y: -.067, width: .032, height: .029, x: .028 }, { z: .28, y: -.108, width: .048, height: .039, x: .044 }], 10), materials.cuff);
+  // The sleeve continues past the cuff to the elbow, out to the right and
+  // down, so no capped stump can hang in view at any pose or aspect.
+  h.add(loft([{ z: .18, y: -.067, width: .032, height: .029, x: .028 },
+    { z: .28, y: -.108, width: .048, height: .039, x: .044 },
+    { z: .46, y: -.19, width: .056, height: .048, x: .10 },
+    { z: .70, y: -.30, width: .062, height: .054, x: .19 }], 10), materials.cuff);
   const right = h.build('Right glove and canvas cuff'); right.visible = hands; root.add(right);
 
   // A separate pinching grip holds a horizontal shell beneath the loading
@@ -489,17 +557,41 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
   updateForearms();
   let pumpAge = 10;
   const smooth = (n: number) => { const t = THREE.MathUtils.clamp(n, 0, 1); return t * t * (3 - 2 * t); };
+  const fullChambers = (missing: number): ChamberState[] => bores.map((_, i) => i < missing ? 'fired' : 'loaded');
+  const exitMatrix = new THREE.Matrix4();
   return {
     root, bead,
     fire() { pumpAge = 0; },
-    update(elapsed, duration, missing, recoil, dt) {
+    setSafety(off) { safetyOff = THREE.MathUtils.clamp(off, 0, 1); placeSafety(); },
+    ejection(index, out) {
+      if (!double) {
+        // The port on the receiver's right side; the bolt face sits in it.
+        out.position.set(.031, .007, -.036);
+        out.quaternion.identity();
+        out.outward.set(1, 0, 0);
+        return out;
+      }
+      hinge.updateMatrix(); barrelAssembly.updateMatrix();
+      exitMatrix.multiplyMatrices(hinge.matrix, barrelAssembly.matrix);
+      const bore = bores[Math.min(bores.length - 1, Math.max(0, index))];
+      out.position.set(bore.x, bore.y, -.138).applyMatrix4(exitMatrix);
+      out.quaternion.copy(hinge.quaternion).multiply(barrelAssembly.quaternion);
+      // Ejectors throw straight back out of the chamber.
+      out.outward.set(0, 0, 1).applyQuaternion(out.quaternion);
+      return out;
+    },
+    update(elapsed, duration, missing, recoil, dt, plan) {
       pumpAge += dt;
       if (double) {
-        // The authoritative reload budget owns this complete sequence. A
-        // partial reload ejects/replaces only its missing round; cosmetics
-        // never refill ammunition or extend the gameplay clock.
-        const { count, closeStart, loadStart, perShell } = doubleLoading(duration, missing);
-        const reloading = duration > 0 && elapsed >= 0 && elapsed < duration && count > 0;
+        // The authoritative reload budget owns this complete sequence. The
+        // ejectors throw the fired hulls clear as the gun opens; the hunter
+        // fills the empty barrels in firing order, or as many as a reload
+        // cut short by a flush allows. Cosmetics never refill ammunition.
+        const chambers = plan?.chambers ?? fullChambers(missing);
+        const fillOrder = chambers.map((state, i) => state === 'loaded' ? -1 : i).filter(i => i >= 0);
+        const count = Math.min(fillOrder.length, plan?.loading ?? fillOrder.length);
+        const { closeStart, loadStart, perShell } = doubleLoading(duration, count);
+        const reloading = duration > 0 && elapsed >= 0 && elapsed < duration;
         const closing = smooth((elapsed - closeStart) / Math.max(.01, duration - closeStart));
         const open = reloading ? smooth(elapsed / .30) * (1 - closing) : 0;
         hinge.rotation.x = -.78 * open;
@@ -507,9 +599,9 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
         const shellTime = (elapsed - loadStart) / perShell;
         const index = Math.min(count - 1, Math.max(0, Math.floor(shellTime)));
         const phase = shellTime - Math.floor(shellTime);
-        const loadingShell = reloading && elapsed >= loadStart && elapsed < closeStart;
+        const loadingShell = reloading && count > 0 && elapsed >= loadStart && elapsed < closeStart;
         const insert = smooth(phase / .68), withdraw = smooth((phase - .80) / .20);
-        const bore = bores[index] ?? bores[0];
+        const bore = bores[fillOrder[index] ?? 0] ?? bores[0];
         const lastShell = index === count - 1;
         loading.visible = loadingShell;
         // The last empty grip reaches forward to support the barrels before
@@ -526,17 +618,15 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
         left.position.set(-.06 * reaching, .025 * reaching, .14 * reaching);
         forend.position.set(0, 0, 0);
         for (const [i, round] of chamberRounds.entries()) {
-          const loaded = elapsed >= loadStart + (i + .80) * perShell;
-          const eject = smooth((elapsed - .18) / .18);
-          const ejecting = i < count && elapsed < .36;
-          round.visible = open > .04 && (i >= count || ejecting || loaded);
+          const slot = fillOrder.indexOf(i);
+          const loaded = slot >= 0 && slot < count && elapsed >= loadStart + (slot + .80) * perShell;
+          // The extractor lifts a fired hull clear of the chamber; then the
+          // ejector throws it, and the world takes it (see `ejection`).
+          const extracting = chambers[i] === 'fired' && elapsed < DOUBLE_EJECT_S;
+          round.visible = open > .04 && (chambers[i] === 'loaded' || extracting || loaded);
           round.position.set(bores[i].x, bores[i].y, -.15);
           round.rotation.set(0, 0, 0);
-          if (ejecting) {
-            round.position.z += eject * .18;
-            round.position.y += eject * .04;
-            round.rotation.x = eject * .38;
-          }
+          if (extracting) round.position.z += .012 * smooth((elapsed - .12) / .14);
         }
         updateForearms();
         return;
@@ -545,15 +635,16 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
         - smooth((pumpAge - SHOTGUN_CYCLE.pumpBack) / (SHOTGUN_CYCLE.pumpClosed - SHOTGUN_CYCLE.pumpBack))) : 0;
       forend.position.z = pump;
       const reloading = duration > 0;
-      const progress = reloading ? Math.min(1, elapsed / duration) : 0;
-      const lift = reloading ? Math.min(1, progress / .20, (1 - progress) / .15) : 0;
+      const count = plan?.loading ?? missing;
+      // Time-based ramps: a reload cut short by a flush keeps its pace.
+      const lift = reloading ? Math.max(0, Math.min(1, elapsed / .3, (duration - elapsed) / .2)) : 0;
       const shellPhase = (elapsed - TUBE_LOADING.start) / TUBE_LOADING.perShell;
-      const loadingShell = reloading && shellPhase >= 0 && shellPhase < missing;
+      const loadingShell = reloading && shellPhase >= 0 && shellPhase < count;
       const phase = shellPhase - Math.floor(shellPhase);
       const insert = smooth(phase / TUBE_LOADING.inserted);
       const withdraw = smooth((phase - TUBE_LOADING.withdraw) / (1 - TUBE_LOADING.withdraw));
-      const returning = reloading && shellPhase >= missing - .22;
-      const returnMix = smooth((shellPhase - missing + .22) / .22);
+      const returning = reloading && count > 0 && shellPhase >= count - .22;
+      const returnMix = smooth((shellPhase - count + .22) / .22);
       left.visible = hands && (!loadingShell || returning);
       left.position.set(-.055 * lift, -.13 * lift, .15 * lift + (reloading ? 0 : pump));
       left.rotation.z = -.22 * lift;

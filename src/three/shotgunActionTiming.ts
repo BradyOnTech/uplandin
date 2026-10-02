@@ -8,6 +8,21 @@ export const SHOTGUN_CYCLE = {
   semiBack: .035, semiClosed: .10,
 } as const;
 export const TUBE_LOADING = { start: .55, perShell: .38, inserted: .66, withdraw: .78 } as const;
+/** A double's ejectors throw the fired hulls this far into opening it. */
+export const DOUBLE_EJECT_S = .27;
+/** A double's shell clicks home this far into its loading beat. */
+export const DOUBLE_SEATED = .68;
+
+/**
+ * How far the gun is brought down into the loading position: it comes down
+ * over a third of a second and back up in the last quarter second, by time
+ * rather than by share of the reload, so a reload cut short keeps its pace.
+ */
+export function reloadPose(elapsed: number, duration: number): number {
+  if (duration <= 0) return 0;
+  const t = Math.min(1, Math.max(0, Math.min(elapsed / .3, (duration - elapsed) / .25)));
+  return t * t * (3 - 2 * t);
+}
 export function doubleLoading(duration: number, missing: number) {
   const count = Math.min(2, Math.max(0, Math.ceil(missing)));
   const closeStart = Math.max(.4, duration - .24), loadStart = .34;
@@ -34,14 +49,16 @@ export function shotgunCycleCues(action: ShotgunMechanism, previous: number, cur
 
 export function shotgunReloadCues(action: ShotgunMechanism, previous: number, current: number,
   duration: number, missing: number, emit: Emit): void {
-  if (duration <= 0 || missing <= 0) return;
+  if (duration <= 0) return;
   if (action === 'over-under' || action === 'side-by-side') {
+    // A double opened and closed again without a shell still clicks and ejects.
     const { count, closeStart, loadStart, perShell } = doubleLoading(duration, missing);
     if (crossed(previous, current, .09)) emit('latch');
-    if (crossed(previous, current, .27)) emit('eject');
-    for (let i = 0; i < count; i++) if (crossed(previous, current, loadStart + (i + .68) * perShell)) emit('shell');
+    if (crossed(previous, current, DOUBLE_EJECT_S)) emit('eject');
+    for (let i = 0; i < count; i++) if (crossed(previous, current, loadStart + (i + DOUBLE_SEATED) * perShell)) emit('shell');
     if (crossed(previous, current, closeStart + (duration - closeStart) * .9)) emit('lock');
   } else {
+    if (missing <= 0) return;
     for (let i = 0; i < missing; i++) if (crossed(previous, current,
       TUBE_LOADING.start + (i + TUBE_LOADING.inserted) * TUBE_LOADING.perShell)) emit('shell');
   }

@@ -21,6 +21,13 @@ export interface GunConfig {
    * and carries clean kills further.
    */
   chokes: readonly { name: string; pattern: number }[];
+  /**
+   * How the gun carries and swings. Weight slows the mount, softens the kick
+   * and gives the carried gun inertia; balance ahead of the hands (metres
+   * from the front hand's pivot, + toward the muzzle) adds swing weight.
+   * Neither ever lags the sight picture: the mounted bead stays on the shot.
+   */
+  handling: { weightKg: number; balanceM: number; swing: string };
 }
 
 export const IMPROVED_CYLINDER = { name: 'Improved cylinder', pattern: 1.12 } as const;
@@ -36,6 +43,8 @@ export const GUNS: GunConfig[] = [
     unlockLevel: 1,
     blurb: 'three shells, work the action',
     chokes: [{ name: 'Modified', pattern: 1 }],
+    // A 28-inch Wingmaster: 7½ lb, a touch forward with the magazine tube.
+    handling: { weightKg: 3.4, balanceM: .02, swing: 'Steady, a touch forward' },
   },
   {
     id: 'semi-auto',
@@ -46,6 +55,8 @@ export const GUNS: GunConfig[] = [
     unlockLevel: 3,
     blurb: 'humpback semi-auto, quick cycling',
     chokes: [{ name: 'Modified', pattern: 1 }],
+    // The long-recoil Auto-5 carries its weight in the receiver: 8⅜ lb.
+    handling: { weightKg: 3.8, balanceM: 0, swing: 'Weight between the hands' },
   },
   {
     id: 'over-under',
@@ -56,6 +67,8 @@ export const GUNS: GunConfig[] = [
     unlockLevel: 5,
     blurb: 'two barrels, no waiting',
     chokes: [IMPROVED_CYLINDER, MODIFIED],
+    // A field 686: 7¼ lb, balanced on the hinge pin.
+    handling: { weightKg: 3.3, balanceM: .01, swing: 'Balanced on the hinge pin' },
   },
   {
     id: 'side-by-side',
@@ -66,6 +79,8 @@ export const GUNS: GunConfig[] = [
     unlockLevel: 8,
     blurb: 'two barrels, forgiving pattern',
     chokes: [IMPROVED_CYLINDER, MODIFIED],
+    // A round-body boxlock with a straight hand: 6½ lb and lively.
+    handling: { weightKg: 2.9, balanceM: -.01, swing: 'Quick and lively' },
   },
 ];
 

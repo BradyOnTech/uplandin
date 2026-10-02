@@ -14,8 +14,11 @@ import { terrainBlocksShot } from '../shotVisibility';
 import { SHOT_RANGE_M, TravellingShot, WOUND_RANGE_M } from '../shotPattern';
 import { shotSightPicture, mobileShotFov, shotAssistancePreference } from '../inputMode';
 import { resolveShotAssistance, type ShotAssistanceProfile, type ShotTriggerSource } from '../shotAssistance';
-import { createSportingShotgun, type SportingShotgun } from '../assets/shotgun';
-import { shotgunCycleCues, shotgunReloadCues, type ShotgunMechanism } from '../shotgunActionTiming';
+import { createSportingShotgun, type ChamberState, type HullExit, type SportingShotgun } from '../assets/shotgun';
+import { DOUBLE_EJECT_S, DOUBLE_SEATED, doubleLoading, reloadPose, shotgunCycleCues, shotgunReloadCues, TUBE_LOADING,
+  type ShotgunActionCue, type ShotgunMechanism } from '../shotgunActionTiming';
+import { gunFeel, type GunFeel } from '../../game/gunFeel';
+import { SpentHulls } from '../spentHulls';
 
 /** First-person sporting gun and hands. Every equipped action uses its own
  * articulated viewmodel, with a common bead position and mount.
@@ -27,8 +30,8 @@ import { shotgunCycleCues, shotgunReloadCues, type ShotgunMechanism } from '../s
  * settled sporting mount, the front bead lies on the camera's shot ray.
  */
 
-/** Mount time (s): cheek-weld rise, inside the 150-250 ms law. */
-const MOUNT_S = 0.18;
+// Mount time comes from each gun's weight and balance (`gunFeel`): the
+// cheek-weld rise stays inside the 150-250 ms law for every gun.
 /** Opening the action plus loading each missing shell. */
 const RELOAD_OPEN_S = 0.55;
 const RELOAD_PER_SHELL_S = 0.38;
@@ -48,6 +51,17 @@ const SPORT_CARRY_POS = new THREE.Vector3(.19, -.285, -.50);
 const SPORT_CARRY_ROT = new THREE.Vector3(-.08, -.12, -.10);
 const SPORT_MOUNT_ROT = new THREE.Vector3(.085, 0, 0);
 const SPORT_MOUNT_POS = new THREE.Vector3(0, -(.030 * Math.cos(.085) + .766 * Math.sin(.085)), -.34);
+// Ready: walking in on a point, the gun comes up to port arms, across the
+// chest with the muzzle high and to the left, clear of the dog and the
+// cover ahead; the mount is a short swing of the muzzle to the bird.
+const SPORT_READY_POS = new THREE.Vector3(.10, -.25, -.42);
+const SPORT_READY_ROT = new THREE.Vector3(.30, .45, -.55);
+/** A dog on point this close (m) brings the gun to the ready. */
+const READY_POINT_M = 45;
+/** So does a bird in the air this close (m). */
+const READY_FLIGHT_M = 70;
+/** From the ready the mount is this much shorter. */
+const READY_MOUNT = .3;
 
 interface ShotRequest {
   readonly source: ShotTriggerSource;
@@ -128,6 +142,31 @@ export class GunSystem implements Subsystem {
   private reticle: HTMLElement | null = null;
   private hitMarker: HTMLElement | null = null;
   private hitMarkerUntil = 0;
+  /** How this gun's weight and balance move it. Never delays the aim. */
+  private feel: GunFeel = gunFeel(GUNS[0]);
+  private hulls: SpentHulls | null = null;
+  private hullExit: HullExit = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), outward: new THREE.Vector3() };
+  private groundAt = (x: number, z: number) => this.terrain.heightAt(x, z);
+  /** Ready carry 0..1: the gun comes up while the hunter walks in on a point. */
+  private readyK = 0;
+  /** Capture staging only: holds the ready instead of reading the hunt. */
+  private readyOverride: number | null = null;
+  /** Safety catch, 0 on .. 1 off. */
+  private safetyOff = 0;
+  /** Shells missing when this reload began, and how many it will insert. */
+  private reloadCount = 0;
+  private reloadLoading = 0;
+  private reloadCredited = 0;
+  /** A double's barrels in firing order, and as they stood when it opened. */
+  private barrels: ChamberState[] = [];
+  private reloadChambers: ChamberState[] | null = null;
+  /** Seconds until the Auto-5's barrel runs home after a shot. */
+  private shuffleIn = Infinity;
+  private reducedMotion = false;
+  private camVelocity = new THREE.Vector3();
+  /** Hulls leave the action on the same beat as its sound. */
+  private ejectPending = false;
+  private onCue = (event: ShotgunActionCue) => { playActionClick(event); if (event === 'eject') this.ejectPending = true; };
   private fx: ShotFx | null = null;
   private shotCallout: HTMLElement | null = null;
   private shotCalloutUntil = 0;
@@ -149,8 +188,11 @@ export class GunSystem implements Subsystem {
     this.birds = ctx.get<BirdsSystem>('birds');
     this.terrain = ctx.get<TerrainSystem>('terrain');
     this.gun = getGun(this.hunt.huntState().gunId);
+    this.feel = gunFeel(this.gun);
     this.shells = this.gun.shells;
+    this.syncBarrels();
     if (this.hunt.falconry) return;
+    this.reducedMotion = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     this.reticle = document.getElementById('reticle');
     this.shotCallout = document.getElementById('shot-callout');
 
@@ -159,6 +201,8 @@ export class GunSystem implements Subsystem {
     this.rig.scale.setScalar(1);
     this.root.add(this.rig);
     ctx.scene.add(this.root);
+    this.hulls = new SpentHulls();
+    ctx.scene.add(this.hulls.mesh);
     this.hitMarker = document.getElementById('hit-marker');
     if (!this.frozen) this.fx = new ShotFx(ctx.scene, this.sporting.root, this.sporting.bead);
 
@@ -169,7 +213,7 @@ export class GunSystem implements Subsystem {
       window.addEventListener('mousedown', (e) => {
         if (document.body?.classList.contains('touch-controls-active')) return;
         if (ctx.paused || (e.target !== ctx.renderer.domElement && document.pointerLockElement !== ctx.renderer.domElement)) return;
-        if (e.button === 2) this.aim = true;
+        if (e.button === 2) { this.aim = true; this.cutReload(); }
         // In trackpad drag-look mode, a latched keyboard aim leaves the
         // primary button free for looking. Space is the trigger.
         else if (e.button === 0 && this.mountT > 0.7
@@ -186,7 +230,11 @@ export class GunSystem implements Subsystem {
           || target?.closest?.('button, input, select, textarea, [contenteditable="true"]')) return;
         if (event.code === 'KeyF' || event.key.toLowerCase() === 'f') {
           event.preventDefault();
-          if (this.isReloading()) return;
+          if (this.isReloading()) {
+            // A flush mid-reload: finish the shell in hand and come up.
+            this.cutReload(); this.keyboardAim = this.aim = true;
+            return;
+          }
           this.keyboardAim = !this.keyboardAim;
           this.aim = this.keyboardAim;
           if (!this.aim) this.pendingTrigger = null;
@@ -205,14 +253,14 @@ export class GunSystem implements Subsystem {
         const source: ShotTriggerSource = suppliedSource === 'touch' || suppliedSource === 'mouse'
           || suppliedSource === 'keyboard' ? suppliedSource : 'other';
         if (action === 'touch-mount') {
-          if (this.isReloading()) return;
-          if (this.shells <= 0) { this.beginReload(); return; }
+          if (this.isReloading()) this.cutReload();
+          else if (this.shells <= 0) { this.beginReload(); return; }
           this.touchHeld = true; this.touchLowerAt = null; this.aim = true;
         } else if (action === 'touch-fire') {
           if (!this.touchHeld) return;
           this.touchHeld = false; this.touchLowerAt = ctx.time + 2.5;
           this.requestFire(ctx, source);
-        } else if (action === 'mount') { this.touchLowerAt = null; this.aim = true; }
+        } else if (action === 'mount') { this.touchLowerAt = null; this.aim = true; this.cutReload(); }
         else if (action === 'lower') {
           this.touchHeld = false; this.touchLowerAt = null;
           this.aim = this.keyboardAim = false; this.pendingTrigger = null;
@@ -234,14 +282,36 @@ export class GunSystem implements Subsystem {
       // CAPTURE HARNESS HANDLE (dog pattern: tooling only, never gameplay):
       // stage states, measure the mount clock and the recoil spring with
       // the SAME integrator update() runs — numbers, not claims.
+      const stepHulls = (seconds: number) => {
+        for (let t = 0; t < seconds - 1e-9; t += 1 / 120) this.hulls?.step(Math.min(1 / 120, seconds - t), this.groundAt);
+        const out = [];
+        for (let i = 0; i < (this.hulls?.capacity ?? 0); i++) { const hull = this.hulls?.hull(i); if (hull) out.push(hull); }
+        return out;
+      };
       (window as unknown as { __gunAudit?: unknown }).__gunAudit = {
-        setState: (mode: 'carry' | 'mount') => {
+        setState: (mode: 'carry' | 'mount' | 'ready') => {
           this.aim = mode === 'mount';
+          this.readyOverride = mode === 'ready' ? 1 : 0;
           this.visualReloadPreview = null;
           this.mountT = this.aim ? 1 : 0;
           this.settleAge = 10;
           this.recZ = this.recVZ = this.recP = this.recVP = 0;
         },
+        /** Pose the action this long after a shot (the pump or bolt stroke). */
+        setCycle: (seconds: number) => {
+          this.sporting?.fire();
+          this.sporting?.update(0, 0, 0, 0, Math.max(0, seconds));
+        },
+        /** Throw this gun's hull(s) from the current pose and fly them for
+         *  `seconds` against the real ground. Returns where they are. */
+        ejectHulls: (seconds = 0) => {
+          this.update(ctx, 0);
+          const double = this.isDouble();
+          for (let i = 0; i < (double ? this.gun.shells : 1); i++) this.ejectHull(i);
+          return stepHulls(seconds);
+        },
+        stepHulls: (seconds: number) => stepHulls(seconds),
+        clearHulls: () => this.hulls?.clear(),
         setReloadPreview: (progress: number | null) => {
           this.visualReloadPreview = progress === null ? null : THREE.MathUtils.clamp(progress, 0, 1);
           this.aim = false;
@@ -267,6 +337,8 @@ export class GunSystem implements Subsystem {
         state: () => ({
           aim: this.aim,
           mountT: this.mountT,
+          ready: this.readyK,
+          safetyOff: this.safetyOff,
           recoil: { z: this.recZ, pitch: this.recP },
         }),
         /** Run the real mount integrator from rest: ms to 99% of the rise. */
@@ -309,10 +381,11 @@ export class GunSystem implements Subsystem {
 
   /* --------------------------- public surface --------------------------- */
 
-  /** RECOIL HOOK — the fx round calls this on the shot. Motion only. */
-  kick(strength: number): void {
+  /** RECOIL HOOK — the fx round calls this on the shot. Motion only.
+   *  `lift` scales the muzzle flip separately (a double's two barrels). */
+  kick(strength: number, lift = strength): void {
     this.recVZ += KICK_Z * strength;
-    this.recVP += KICK_PITCH * strength;
+    this.recVP += KICK_PITCH * lift;
     this.sporting?.fire();
     this.cycleElapsed = 0;
   }
@@ -338,6 +411,97 @@ export class GunSystem implements Subsystem {
 
   equippedGunId(): string { return this.gun.id; }
 
+  private isDouble(): boolean {
+    return this.gun?.id === 'over-under' || this.gun?.id === 'side-by-side';
+  }
+
+  /** A double's barrels must agree with the shell count. Anything else (a
+   *  fresh gun, a restored count) reads as the first barrels fired. */
+  private syncBarrels(): ChamberState[] {
+    if (!this.isDouble()) { this.barrels = []; return this.barrels; }
+    const loaded = this.barrels.filter(state => state === 'loaded').length;
+    if (this.barrels.length !== this.gun.shells || loaded !== this.shells) {
+      const fired = this.gun.shells - this.shells;
+      this.barrels = Array.from({ length: this.gun.shells }, (_, i) => i < fired ? 'fired' : 'loaded');
+    }
+    return this.barrels;
+  }
+
+  /** The barrels this reload fills, in the order the hunter fills them. */
+  private fillOrder(): number[] {
+    return (this.reloadChambers ?? []).map((state, i) => state === 'loaded' ? -1 : i).filter(i => i >= 0);
+  }
+
+  /** Count shells home as each one seats, so a reload cut short keeps them. */
+  private creditShells(upTo: number): void {
+    const order = this.fillOrder();
+    while (this.reloadCredited < Math.min(upTo, this.reloadLoading)) {
+      if (this.isDouble()) { const barrel = order[this.reloadCredited]; if (barrel !== undefined) this.barrels[barrel] = 'loaded'; }
+      this.reloadCredited++;
+      this.shells = Math.min(this.gun.shells, this.shells + 1);
+    }
+  }
+
+  /** Shells seated by this point of the reload clock. */
+  private seatedBy(elapsed: number): number {
+    if (this.isDouble()) {
+      const { loadStart, perShell } = doubleLoading(this.reloadDuration, this.reloadLoading);
+      return Math.max(0, Math.floor((elapsed - loadStart) / perShell - DOUBLE_SEATED + 1));
+    }
+    return Math.max(0, Math.floor((elapsed - TUBE_LOADING.start) / TUBE_LOADING.perShell - TUBE_LOADING.inserted + 1));
+  }
+
+  /**
+   * A bird gets up mid-reload. The hunter pushes home the shell already in
+   * his fingers, closes the action and comes up with what is loaded. Still
+   * opening the gun with a live round aboard, he simply closes it again.
+   */
+  private cutReload(): void {
+    if (!this.isReloading()) return;
+    const elapsed = this.reloadElapsed;
+    if (this.isDouble()) {
+      const { loadStart, perShell } = doubleLoading(this.reloadDuration, this.reloadLoading);
+      const inHand = elapsed < loadStart ? (this.shells > 0 ? 0 : 1)
+        : Math.min(this.reloadLoading, Math.floor((elapsed - loadStart) / perShell) + 1);
+      this.reloadLoading = Math.min(this.reloadLoading, inHand);
+      this.reloadDuration = this.reloadLoading > 0 ? loadStart + this.reloadLoading * perShell + .24 : Math.max(.4, elapsed) + .24;
+    } else {
+      const { start, perShell } = TUBE_LOADING;
+      const inHand = elapsed < start ? (this.shells > 0 ? 0 : 1)
+        : Math.min(this.reloadLoading, Math.floor((elapsed - start) / perShell) + 1);
+      this.reloadLoading = Math.min(this.reloadLoading, inHand);
+      this.reloadDuration = this.reloadLoading > 0 ? start + this.reloadLoading * perShell : elapsed + .2;
+    }
+  }
+
+  /** Throw one fired hull clear of the action, into the world. */
+  private ejectHull(index: number): void {
+    if (!this.sporting || !this.hulls) return;
+    const exit = this.sporting.ejection(index, this.hullExit);
+    const root = this.sporting.root;
+    root.updateWorldMatrix(true, false);
+    const quaternion = root.getWorldQuaternion(new THREE.Quaternion());
+    const position = exit.position.clone().applyMatrix4(root.matrixWorld);
+    const r = () => Math.random();
+    const velocity = new THREE.Vector3(), spin = new THREE.Vector3();
+    if (this.isDouble()) {
+      // Ejector springs kick the hulls straight out of the chambers, back
+      // over the shoulder; tipped right so they clear the hunter's face.
+      velocity.copy(exit.outward).multiplyScalar(3 + r() * .8).add(new THREE.Vector3(.9 + r() * .4, .5 + r() * .3, 0));
+      spin.set((r() < .5 ? -1 : 1) * (16 + r() * 8), (r() - .5) * 6, (r() - .5) * 4);
+    } else {
+      // Out of the right-hand port: the Auto-5 throws harder than a pump
+      // stroke flicks, tumbling end over end.
+      const throwSpeed = this.gun.id === 'semi-auto' ? 2.9 + r() * .8 : 2.1 + r() * .6;
+      velocity.copy(exit.outward).multiplyScalar(throwSpeed).add(new THREE.Vector3(0, 1 + r() * .5, this.gun.id === 'semi-auto' ? -.1 + r() * .3 : .2 + r() * .3));
+      spin.set((r() - .5) * 8, (r() < .5 ? -1 : 1) * (14 + r() * 8), (r() - .5) * 6);
+    }
+    velocity.applyQuaternion(quaternion).add(this.camVelocity);
+    spin.applyQuaternion(quaternion);
+    this.hulls.emit({ position, velocity, spin, orientation: quaternion.multiply(exit.quaternion) });
+    if (this.isDouble() && this.barrels[index] === 'fired') this.barrels[index] = 'empty';
+  }
+
   /** Change equipment on the paused field, retaining the hunt and each gun's shells. */
   equipGun(ctx: Ctx, gunId: string): boolean {
     if (this.hunt.falconry) return false;
@@ -351,7 +515,12 @@ export class GunSystem implements Subsystem {
     this.sporting = model; this.rig.add(model.root);
     this.fx?.attach(model.root, model.bead);
     this.gun = next;
+    this.feel = gunFeel(next);
     this.shells = this.stowedShells.get(next.id) ?? next.shells;
+    this.barrels = [];
+    this.syncBarrels();
+    this.reloadChambers = null; this.reloadCount = this.reloadLoading = this.reloadCredited = 0;
+    this.shuffleIn = Infinity;
     this.hunt.huntState().gunId = next.id;
     this.aim = this.keyboardAim = false;
     this.pendingTrigger = null; this.mountT = 0;
@@ -403,7 +572,10 @@ export class GunSystem implements Subsystem {
     this.keyboardAim = false;
     document.querySelector?.('[data-action="aim"]')?.setAttribute('aria-pressed', 'false');
     this.reloadElapsed = 0;
-    this.reloadDuration = RELOAD_OPEN_S + (this.gun.shells - this.shells) * RELOAD_PER_SHELL_S;
+    this.reloadCount = this.reloadLoading = this.gun.shells - this.shells;
+    this.reloadCredited = 0;
+    this.reloadChambers = this.isDouble() ? this.syncBarrels().slice() : null;
+    this.reloadDuration = RELOAD_OPEN_S + this.reloadCount * RELOAD_PER_SHELL_S;
     if (this.shotCallout) {
       this.shotCallout.textContent = 'RELOADING';
       this.shotCallout.classList.add('miss');
@@ -414,7 +586,8 @@ export class GunSystem implements Subsystem {
   }
 
   private requestFire(ctx: Ctx, source: ShotTriggerSource): void {
-    if (ctx.paused || this.isReloading()) return;
+    if (ctx.paused) return;
+    if (this.isReloading()) { this.cutReload(); return; }
     const request: ShotRequest = Object.freeze({ source, assistance: resolveShotAssistance(
       source === 'touch' ? this.hunt.getActiveChallenge() : 'balanced', shotAssistancePreference(), source,
     ) });
@@ -444,12 +617,19 @@ export class GunSystem implements Subsystem {
     const nowMs = ctx.time * 1000;
     if (nowMs - this.lastShotMs < this.gun.cooldownMs) return;
     this.lastShotMs = nowMs;
-    const choke = chokeForShot(this.gun, this.shells);
+    // A double fires its first loaded barrel in firing order: the under (or
+    // right) barrel with the open choke, then the tighter one.
+    const barrel = this.isDouble() ? Math.max(0, this.syncBarrels().indexOf('loaded')) : 0;
+    const choke = this.isDouble() ? this.gun.chokes[barrel] ?? chokeForShot(this.gun, this.shells) : chokeForShot(this.gun, this.shells);
     const bores = boresFor(this.gun.id);
-    const bore = bores[Math.min(this.gun.shells - this.shells, bores.length - 1)] ?? bores[0];
+    const bore = bores[Math.min(barrel, bores.length - 1)] ?? bores[0];
+    if (this.isDouble()) this.barrels[barrel] = 'fired';
     this.shells--;
     if (this.shotCallout?.textContent === 'RAISING GUN') this.shotCallout.hidden = true;
-    this.kick(1);
+    // Weight sets the kick; reduced motion halves what the eye sees of it.
+    const motion = this.reducedMotion ? .5 : 1;
+    this.kick(this.feel.kick * motion, this.feel.kick * motion * (this.feel.flip[Math.min(barrel, this.feel.flip.length - 1)] ?? 1));
+    this.shuffleIn = this.feel.shuffle ? this.feel.shuffle.delayS : Infinity;
     unlockAudio();
     playShot();
 
@@ -564,10 +744,12 @@ export class GunSystem implements Subsystem {
    */
   private advance(dt: number): void {
     const before = this.mountT;
-    const target = this.aim ? 1 : 0;
+    // The gun cannot come up while the action is open.
+    const target = this.aim && !this.isReloading() ? 1 : 0;
     if (this.mountT !== target) {
-      const step = dt / MOUNT_S;
-      this.mountT = THREE.MathUtils.clamp(this.mountT + (target > before ? step : -step), 0, 1);
+      const rising = target > before;
+      const step = dt / (this.feel.mountS * (rising ? 1 - READY_MOUNT * this.readyK : 1));
+      this.mountT = THREE.MathUtils.clamp(this.mountT + (rising ? step : -step), 0, 1);
     }
     // Arm the sight-picture settle the instant the rise completes.
     if (this.mountT >= 1 && before < 1) {
@@ -599,15 +781,19 @@ export class GunSystem implements Subsystem {
     // Use the same render intervals as the visible mechanism. The completion
     // frame still emits its final latch before clearing the reload clock.
     const mechanism: ShotgunMechanism = this.gun.id === 'remington-870' ? 'pump' : this.gun.id as ShotgunMechanism;
-    const audible = !snap && !ctx.paused && this.visualReloadPreview === null && dt > 0;
+    const live = !snap && !ctx.paused && this.visualReloadPreview === null && dt > 0;
+    this.ejectPending = false;
     if (this.isReloading()) {
-      if (audible) shotgunReloadCues(mechanism, this.reloadElapsed, this.reloadElapsed + dt,
-        this.reloadDuration, this.gun.shells - this.shells, playActionClick);
+      if (live) shotgunReloadCues(mechanism, this.reloadElapsed, this.reloadElapsed + dt,
+        this.reloadDuration, this.reloadLoading, this.onCue);
       this.reloadElapsed += dt;
+      this.creditShells(this.seatedBy(this.reloadElapsed));
       if (this.reloadElapsed >= this.reloadDuration) {
-        this.shells = this.gun.shells;
+        this.creditShells(this.reloadLoading);
         this.reloadElapsed = 0;
         this.reloadDuration = 0;
+        this.reloadChambers = null;
+        this.reloadCount = this.reloadLoading = this.reloadCredited = 0;
         this.lastShotMs = -Infinity;
         if (this.shotCallout) {
           this.shotCallout.textContent = 'LOADED';
@@ -621,6 +807,9 @@ export class GunSystem implements Subsystem {
       this.shotCallout.hidden = true;
     }
 
+    // Walking in on a point, or with birds in the air, the gun comes up.
+    const readyTarget = this.readyOverride ?? this.walkInReady(ctx);
+    this.readyK = approach(this.readyK, readyTarget, readyTarget > this.readyK ? 4.5 : 2.2, dt, snap);
     this.advance(dt);
     const touch = !!document.body?.classList.contains('touch-controls-active');
     document.body?.classList.toggle('touch-gun-raised', touch && this.aim && !ctx.paused);
@@ -649,9 +838,20 @@ export class GunSystem implements Subsystem {
         this.fire(ctx, pending.request);
       }
     }
+    // The Auto-5's barrel runs home after the kick and jolts the stock.
+    if (Number.isFinite(this.shuffleIn)) {
+      this.shuffleIn -= dt;
+      if (this.shuffleIn <= 0) {
+        const shuffle = this.feel.shuffle, motion = this.reducedMotion ? .5 : 1;
+        if (shuffle) { this.recVZ += KICK_Z * shuffle.z * this.feel.kick * motion; this.recVP += KICK_PITCH * shuffle.pitch * this.feel.kick * motion; }
+        this.shuffleIn = Infinity;
+      }
+    }
     const m = ease(this.mountT);
-    const reloadP = this.visualReloadPreview ?? this.reloadProgress();
-    const reloadArc = Math.sin(reloadP * Math.PI);
+    const previewDuration = RELOAD_OPEN_S + this.gun.shells * RELOAD_PER_SHELL_S;
+    const reloadArc = this.visualReloadPreview !== null
+      ? reloadPose(this.visualReloadPreview * previewDuration, previewDuration)
+      : reloadPose(this.reloadElapsed, this.reloadDuration);
 
     // Distance-driven walk bob (never per-second): stride phase advances
     // per meter of camera travel; teleports (capture setPose) are ignored.
@@ -661,6 +861,9 @@ export class GunSystem implements Subsystem {
       const dz = cam.position.z - this.prevCam.z;
       moved = Math.hypot(dx, dz);
       if (moved > 0.5) moved = 0;
+      // The hunter's own pace, for a hull thrown from a moving gun.
+      if (moved > 0 && dt > 0) this.camVelocity.subVectors(cam.position, this.prevCam).divideScalar(dt);
+      else if (dt > 0) this.camVelocity.set(0, 0, 0);
     }
     this.prevCam.copy(cam.position);
     this.hasPrev = true;
@@ -674,59 +877,103 @@ export class GunSystem implements Subsystem {
     }
 
     // View-lag sway — SWAY NEVER SWING: smoothed, hard-clamped, no spring.
+    // A heavier gun, or one heavier toward the muzzle, lags further and
+    // catches up more slowly as the hunter turns with it carried.
     this.fwd.set(0, 0, -1).applyQuaternion(cam.quaternion);
     const camYaw = Math.atan2(this.fwd.x, this.fwd.z);
     let dYaw = 0;
     if (this.hasLastYaw) dYaw = wrapAngle(camYaw - this.lastCamYaw);
     this.lastCamYaw = camYaw;
     this.hasLastYaw = true;
-    const swayTarget = snap ? 0 : THREE.MathUtils.clamp((dt > 0 ? -dYaw / dt : 0) * 0.011, -SWAY_MAX, SWAY_MAX);
-    this.swayYaw = approach(this.swayYaw, swayTarget, 7, dt, snap);
+    const swayMax = this.feel.swayMax;
+    const swayTarget = snap ? 0 : THREE.MathUtils.clamp((dt > 0 ? -dYaw / dt : 0) * 0.011 * (swayMax / SWAY_MAX) ** 2, -swayMax, swayMax);
+    this.swayYaw = approach(this.swayYaw, swayTarget, this.feel.swayRate, dt, snap);
     this.swayPitch = approach(this.swayPitch, snap ? 0 : this.fwd.y * -0.015, 6, dt, snap);
 
     // ---- compose the camera-space pose (root rides the camera exactly).
     this.root.position.copy(cam.position);
     this.root.quaternion.copy(cam.quaternion);
 
-    const breakAction = this.gun.id === 'over-under' || this.gun.id === 'side-by-side';
+    const breakAction = this.isDouble();
+    const ready = this.readyK;
     const carryK = 1 - m;
-    const bobAmp = this.speedK * (1 - m);
-    const carryPos = SPORT_CARRY_POS;
+    // Reduced motion keeps the gun steadier in the hands.
+    const calm = this.reducedMotion ? .4 : 1;
+    // Walking in on a point the hunter steps softly: less bob at the ready.
+    const bobAmp = this.speedK * (1 - m) * (1 - .55 * ready) * calm;
+    const carryPos = SPORT_CARRY_POS, readyPos = SPORT_READY_POS;
     const mountPos = SPORT_MOUNT_POS;
-    const carryRot = SPORT_CARRY_ROT;
+    const carryRot = SPORT_CARRY_ROT, readyRot = SPORT_READY_ROT;
     const mountRot = SPORT_MOUNT_ROT;
+    const lowX = carryPos.x + (readyPos.x - carryPos.x) * ready, lowY = carryPos.y + (readyPos.y - carryPos.y) * ready;
+    const lowZ = carryPos.z + (readyPos.z - carryPos.z) * ready;
+    const lowRx = carryRot.x + (readyRot.x - carryRot.x) * ready, lowRy = carryRot.y + (readyRot.y - carryRot.y) * ready;
+    const lowRz = carryRot.z + (readyRot.z - carryRot.z) * ready;
     const carryMotion = carryK;
     const time = snap ? 0 : ctx.time;
-    const breath = Math.sin(time * 1.8);
-    // Sight-picture settle: one quick decaying nod after the rise lands.
-    const settle = this.wasMounted ? 0.016 * Math.exp(-9 * this.settleAge) * Math.sin(26 * this.settleAge) : 0;
+    const breath = Math.sin(time * 1.8) * calm;
+    // Sight-picture settle: one quick decaying nod after the rise lands; a
+    // light gun quivers a little more than a heavy one.
+    const settle = this.wasMounted ? 0.016 * this.feel.settle * calm * Math.exp(-9 * this.settleAge) * Math.sin(26 * this.settleAge) : 0;
 
     this.rig.position.set(
-      carryPos.x * carryK + mountPos.x * m + Math.sin(this.stridePhase) * 0.005 * bobAmp + reloadArc * .045,
-      carryPos.y * carryK + mountPos.y * m +
+      lowX * carryK + mountPos.x * m + Math.sin(this.stridePhase) * 0.005 * bobAmp + reloadArc * .045,
+      lowY * carryK + mountPos.y * m +
         Math.sin(this.stridePhase * 2) * 0.007 * bobAmp +
         breath * 0.0025 * (1 - 0.6 * m) * carryMotion + reloadArc * (breakAction ? .13 : .075),
-      carryPos.z * carryK + mountPos.z * m + this.recZ,
+      lowZ * carryK + mountPos.z * m + this.recZ,
     );
     this.rig.rotation.order = 'YXZ';
     this.rig.rotation.set(
-      carryRot.x * carryK + mountRot.x * m +
+      lowRx * carryK + mountRot.x * m +
         this.swayPitch * carryMotion + breath * .0012 * carryMotion + settle + this.recP +
         reloadArc * (breakAction ? -.18 : .08),
-      carryRot.y * carryK + mountRot.y * m + this.swayYaw * carryMotion,
-      carryRot.z * carryK + mountRot.z * m +
+      lowRy * carryK + mountRot.y * m + this.swayYaw * carryMotion,
+      lowRz * carryK + mountRot.z * m +
         Math.sin(this.stridePhase) * .012 * bobAmp + reloadArc * (breakAction ? .28 : -1.05),
     );
     if (Number.isFinite(this.cycleElapsed)) {
-      if (audible) shotgunCycleCues(mechanism, this.cycleElapsed, this.cycleElapsed + dt, playActionClick);
+      if (live) shotgunCycleCues(mechanism, this.cycleElapsed, this.cycleElapsed + dt, this.onCue);
       this.cycleElapsed += dt;
       if (this.cycleElapsed > .5) this.cycleElapsed = Infinity;
     }
+    // The thumb pushes the safety off as the gun comes up, and back on once
+    // it is down again.
+    const safetyTarget = this.aim || this.mountT > .3 ? 1 : 0;
+    this.safetyOff = snap ? safetyTarget : THREE.MathUtils.clamp(this.safetyOff + Math.sign(safetyTarget - this.safetyOff) * dt / .08, 0, 1);
+    this.sporting?.setSafety(this.safetyOff);
+    const previewing = this.visualReloadPreview !== null;
     this.sporting?.update(
-      this.visualReloadPreview === null ? this.reloadElapsed : this.visualReloadPreview * (RELOAD_OPEN_S + this.gun.shells * RELOAD_PER_SHELL_S),
-      this.visualReloadPreview === null ? this.reloadDuration : RELOAD_OPEN_S + this.gun.shells * RELOAD_PER_SHELL_S,
-      this.visualReloadPreview === null ? this.gun.shells - this.shells : this.gun.shells, this.recZ, dt,
+      previewing ? this.visualReloadPreview! * previewDuration : this.reloadElapsed,
+      previewing ? previewDuration : this.reloadDuration,
+      previewing ? this.gun.shells : this.reloadCount, this.recZ, dt,
+      previewing ? undefined : { chambers: this.reloadChambers ?? undefined, loading: this.reloadLoading },
     );
+    if (this.ejectPending && live) {
+      if (breakAction) {
+        // Both barrels' ejectors trip as the gun opens: only fired hulls fly.
+        (this.reloadChambers ?? []).forEach((state, i) => { if (state === 'fired') this.ejectHull(i); });
+      } else this.ejectHull(0);
+    }
+    if (!ctx.paused && dt > 0) this.hulls?.step(dt, this.groundAt);
+  }
+
+  /** The walk-in: a dog on point near the hunter, or birds in the air. */
+  private walkInReady(ctx: Ctx): number {
+    if (this.isReloading()) return 0;
+    const cam = ctx.camera.position;
+    const hunt = this.hunt as Partial<Hunt3DSystem>;
+    const dogs = hunt.dogCount?.() ?? 0;
+    if (hunt.dog && hunt.dogWorld) for (let slot = 0; slot < dogs; slot++) {
+      if (hunt.dog(slot)?.state !== 'pointing') continue;
+      const at = hunt.dogWorld(this.dogProbe, slot);
+      if (Math.hypot(at.x - cam.x, at.z - cam.z) < READY_POINT_M) return 1;
+    }
+    const birds = (this.birds as Partial<BirdsSystem>).shotTargets?.(1);
+    if (birds) for (const bird of birds) {
+      if (bird.status === 'flying' && Math.hypot(bird.x - cam.x, bird.z - cam.z) < READY_FLIGHT_M) return 1;
+    }
+    return 0;
   }
 
   dispose(ctx: Ctx): void {
@@ -738,6 +985,8 @@ export class GunSystem implements Subsystem {
     this.keydownHandler = undefined;
     this.fx?.dispose();
     this.fx = null;
+    this.hulls?.dispose();
+    this.hulls = null;
     this.sporting?.dispose();
     this.sporting = undefined;
     if (this.reticle) this.reticle.hidden = true;

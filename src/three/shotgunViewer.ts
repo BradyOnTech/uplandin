@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GUNS, getGun } from '../game/guns';
-import { createSportingShotgun, type SportingShotgun } from './assets/shotgun';
+import { createSportingShotgun, type HullExit, type SportingAction, type SportingShotgun } from './assets/shotgun';
+import { weightLabel } from '../game/gunFeel';
+import { SpentHulls } from './spentHulls';
+import { shotgunCycleCues, shotgunReloadCues } from './shotgunActionTiming';
 import './shotgunViewer.css';
 
 const descriptions: Record<string, { action: string; copy: string }> = {
@@ -31,6 +34,21 @@ controls.minDistance = .48; controls.maxDistance = 5;
 controls.target.set(0, -.035, -.15);
 let selected = getGun(new URLSearchParams(location.search).get('gun') ?? 'remington-870');
 let model: SportingShotgun;
+// Fired hulls leave the action and fall past the stand, as they do in the field.
+const hulls = new SpentHulls(6); scene.add(hulls.mesh);
+const exit: HullExit = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), outward: new THREE.Vector3() };
+let hullsUntil = 0;
+const action = (): SportingAction => selected.id === 'remington-870' ? 'pump' : selected.id as SportingAction;
+function ejectHulls() {
+  const double = action() === 'over-under' || action() === 'side-by-side';
+  for (let i = 0; i < (double ? selected.shells : 1); i++) {
+    model.ejection(i, exit);
+    const velocity = exit.outward.clone().multiplyScalar(double ? 3.1 : 2.4).add(new THREE.Vector3(double ? .9 : 0, double ? .5 : 1.1, double ? 0 : .2));
+    hulls.emit({ position: exit.position.clone(), velocity, orientation: exit.quaternion.clone(),
+      spin: double ? new THREE.Vector3(i ? -18 : 20, 2, 1) : new THREE.Vector3(2, 18, 3) });
+  }
+  hullsUntil = performance.now() + 1600;
+}
 let motion: 'ready' | 'reload' | 'cycle' = 'ready';
 let elapsed = 0, reloadProgress = 0, last = 0, raf = 0;
 let activeView = 'three-quarter';
@@ -47,19 +65,23 @@ const presetDirections: Record<string, THREE.Vector3> = {
 function render(now: number) {
   raf = 0;
   const dt = last ? Math.min((now - last) / 1000, .05) : 0; last = now;
+  const before = elapsed;
   if (motion === 'reload') {
     elapsed = Math.min(duration(), elapsed + dt);
+    shotgunReloadCues(action(), before, elapsed, duration(), selected.shells, cue => { if (cue === 'eject') ejectHulls(); });
     reloadProgress = elapsed / duration();
     if (reloadProgress >= 1) { motion = 'ready'; reloadProgress = 0; status.textContent = 'Reload complete'; }
     phase.value = String(reloadProgress);
   } else if (motion === 'cycle') {
     elapsed += dt;
+    shotgunCycleCues(action(), before, elapsed, cue => { if (cue === 'eject') ejectHulls(); });
     if (elapsed >= .65) { motion = 'ready'; status.textContent = 'Ready'; }
   }
   model.update(reloadProgress * duration(), reloadProgress > 0 && reloadProgress < 1 ? duration() : 0,
     selected.shells, 0, dt);
+  hulls.step(dt, () => -.42);
   renderer.render(scene, camera);
-  if (motion !== 'ready') invalidate();
+  if (motion !== 'ready' || now < hullsUntil) invalidate();
 }
 function invalidate() { if (!raf) raf = requestAnimationFrame(render); }
 function setView(name: string) {
@@ -85,6 +107,9 @@ function chooseGun(id: string) {
   el('action-label').textContent = descriptions[selected.id].action;
   el('capacity').textContent = `${selected.shells} shells`;
   el('unlock').textContent = `Level ${selected.unlockLevel}`;
+  el('weight').textContent = weightLabel(selected.handling.weightKg);
+  el('swing').textContent = selected.handling.swing;
+  hulls.clear();
   el<HTMLAnchorElement>('try-gun').href = `./index3d.html?area=pheasant-coverts&drop=west-track&quality=high&tod=morning&breed=gsp&coat=liver-white&dog=generated&gun=${selected.id}`;
   el<HTMLButtonElement>('cycle-action').hidden = selected.cooldownMs === 0;
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-gun]')) button.setAttribute('aria-pressed', String(button.dataset.gun === selected.id));

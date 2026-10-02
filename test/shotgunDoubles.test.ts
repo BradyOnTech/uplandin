@@ -62,6 +62,37 @@ describe('distinct sporting doubles', () => {
     model.dispose();
   });
 
+  it.each(['pump', 'semi-auto', ...doubles] as const)('%s runs both sleeves past the camera at carry, port arms and mount', action => {
+    const model = createSportingShotgun(action);
+    // Carry, the walk-in ready (port arms) and the settled mount, as gun.ts poses them.
+    const poses = [
+      { position: [.19, -.285, -.50], rotation: [-.08, -.12, -.10] },
+      { position: [.10, -.25, -.42], rotation: [.30, .45, -.55] },
+      { position: [0, -(.030 * Math.cos(.085) + .766 * Math.sin(.085)), -.34], rotation: [.085, 0, 0] },
+    ] as const;
+    for (const pose of poses) {
+      model.root.position.fromArray(pose.position);
+      model.root.rotation.order = 'YXZ'; model.root.rotation.set(pose.rotation[0], pose.rotation[1], pose.rotation[2]);
+      model.update(0, 0, 0, 0, 0); model.root.updateMatrixWorld(true);
+      const support = model.root.getObjectByName('Support forearm') as THREE.Mesh;
+      const positions = support.geometry.attributes.position;
+      for (let i = 10; i < 20; i++) expect(support.localToWorld(new THREE.Vector3().fromBufferAttribute(positions, i)).z).toBeGreaterThan(.02);
+      // The trigger hand's sleeve runs on to an elbow behind the camera.
+      const right = model.root.getObjectByName('Right glove and canvas cuff')!;
+      const cuff = right.children.find(child => child instanceof THREE.Mesh && (child.material as THREE.MeshStandardMaterial).color.getHex() === 0x414b3d) as THREE.Mesh;
+      const sleeve = cuff.geometry.attributes.position;
+      let far = 0;
+      for (let i = 0; i < sleeve.count; i++) {
+        const local = new THREE.Vector3().fromBufferAttribute(sleeve, i);
+        if (local.z < .69) continue;
+        far++;
+        expect(cuff.localToWorld(local).z).toBeGreaterThan(.02);
+      }
+      expect(far).toBeGreaterThan(9);
+    }
+    model.dispose();
+  });
+
   it.each(doubles)('%s has the correct two muzzle axes and the shared ready sight line', action => {
     const model = createSportingShotgun(action);
     model.update(0, 0, 0, 0, 0); model.root.updateMatrixWorld(true);
@@ -91,9 +122,21 @@ describe('distinct sporting doubles', () => {
     for (const missing of [1, 2]) {
       const model = createSportingShotgun(action), duration = durationFor(missing);
       const rounds = [1, 2].map(i => model.root.getObjectByName(`Chamber round ${i}`)!);
-      model.update(.31, duration, missing, 0, 0);
-      expect(rounds.filter(round => round.visible && round.position.z > -.13)).toHaveLength(missing);
+      // The extractor lifts the fired hulls; an unfired round stays seated.
+      model.update(.25, duration, missing, 0, 0);
+      expect(rounds.filter(round => round.visible && round.position.z > -.15)).toHaveLength(missing);
       if (missing === 1) expect(rounds[1].position.z).toBe(-.15);
+      // Then the ejectors throw them: the world takes the fired hulls, out of
+      // their own open chambers, back toward the hunter and upward.
+      model.update(.31, duration, missing, 0, 0);
+      expect(rounds.filter(round => round.visible)).toHaveLength(2 - missing);
+      for (let i = 0; i < missing; i++) {
+        const exit = model.ejection(i, { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), outward: new THREE.Vector3() });
+        model.root.updateMatrixWorld(true);
+        const chamber = rounds[i].parent!.localToWorld(rounds[i].position.clone());
+        expect(exit.position.distanceTo(model.root.worldToLocal(chamber))).toBeLessThan(.02);
+        expect(exit.outward.z).toBeGreaterThan(.4); expect(exit.outward.y).toBeGreaterThan(.4);
+      }
       const closeStart = duration - .24, interval = (closeStart - .34) / missing;
       const loading = model.root.getObjectByName('Loading grip')!;
       const shell = model.root.getObjectByName('Visible loading shell')!;
