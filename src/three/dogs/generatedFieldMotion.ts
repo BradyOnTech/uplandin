@@ -50,6 +50,7 @@ export class GeneratedFieldMotion {
   private pickupHeadPitch=.30;
   private carryPresence=0;
   private deliverPresence=0;
+  private presentClock=0;
   private wasMoving=false;
   private lastYaw=0;
   private transitionTime=.24;
@@ -240,8 +241,14 @@ export class GeneratedFieldMotion {
     // authoritative below; entering a pickup never slides the planted paws.
     const { neck, head } = this.asset.joints;
     neck.position.y -= .17 * this.pickupPresence;
-    neck.rotation.x += 1.25 * this.pickupPresence + .10 * this.carryPresence - .08 * this.deliverPresence;
-    head.rotation.x += this.pickupHeadPitch * this.pickupPresence - .10 * this.carryPresence - .12 * this.deliverPresence;
+    // Presenting lifts the head to the handler's hand, the tail going.
+    neck.rotation.x += 1.25 * this.pickupPresence + .10 * this.carryPresence - .26 * this.deliverPresence;
+    head.rotation.x += this.pickupHeadPitch * this.pickupPresence - .10 * this.carryPresence - .22 * this.deliverPresence;
+    if (this.deliverPresence > .001) {
+      this.presentClock += Math.max(0, dt);
+      this.asset.joints.tail.rotation.y += Math.sin(this.presentClock * 9) * .30 * this.deliverPresence;
+      this.asset.joints.tail.rotation.x -= .12 * this.deliverPresence;
+    } else this.presentClock = 0;
     this.mouthMotion.update(this.asset.joints.jaw,point?undefined:retrieve,dt,reset);
     this.pickupReach.update(neck,head,this.mouthMotion.grip,
       action==='pickup'?retrieve?.target:undefined,retrieve?.holdMs??0,dt,reset);

@@ -88,6 +88,8 @@ export interface HuntDogMotion {
 export interface HuntSimulationInput {
   /** Hunter position after this tick's adapter-specific movement. */
   hunterPos: Vec2;
+  /** Where a dog presents a retrieved bird: just in front of the hunter. */
+  deliveryPos?: Vec2;
   hunterRunning?: boolean;
   recall?: boolean;
   whistleRange?: number;
@@ -219,8 +221,11 @@ export class HuntSimulation {
         // The mouth sits forward of the dog root; leave room to settle at
         // the fall and beside the handler without demanding center overlap.
         pickupRange: spatialEncounter ? .65 / PROPERTY_PX_TO_M : undefined,
-        deliveryRange: spatialEncounter ? 1 / PROPERTY_PX_TO_M : undefined,
+        // Presented in front of the hunter, the dog arrives on its spot; it
+        // otherwise delivers anywhere within a metre of him.
+        deliveryRange: spatialEncounter ? (input.deliveryPos ? .22 : 1) / PROPERTY_PX_TO_M : undefined,
         deliveryHoldMs: spatialEncounter ? 900 : undefined,
+        deliveryPos: spatialEncounter ? input.deliveryPos : undefined,
         recallArriveRange: spatialEncounter ? 1.5 / PROPERTY_PX_TO_M : undefined,
         heelFollowRange: spatialEncounter ? 2 / PROPERTY_PX_TO_M : undefined,
         hunterPos: this.hunt.hunterPos,

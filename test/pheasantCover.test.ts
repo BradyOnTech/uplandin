@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { getArea } from '../src/game/areas';
 import { LandscapeModel } from '../src/game/landscape';
 import type { Ctx } from '../src/three/engine';
-import { pheasantFields, pheasantHarvestAt, pheasantCoverFringeAt, pheasantTrackDistance } from '../src/three/subsystems/pheasantLandscape';
+import { pheasantCoverAt, pheasantFields, pheasantHarvestAt, pheasantCoverFringeAt, pheasantTrackDistance } from '../src/three/subsystems/pheasantLandscape';
 import { PheasantCoverSystem } from '../src/three/subsystems/pheasantCover';
 import { pheasantWestFence } from '../src/game/pheasantHabitat';
 
@@ -136,4 +136,39 @@ describe('Pheasant standing habitat', () => {
     }
     expect(stands[1] === stands[0], 'Both tiers must retain identical tall habitat roots and heights').toBe(true);
   }, 15000); // Builds both full-property tiers; allow for concurrent suite workers.
+});
+
+describe('Pheasant cover around the dog', () => {
+  it('leaves a rocking wake where the dog pushes through standing cover, and lies back around a point', () => {
+    const area = getArea('pheasant-coverts');
+    const landscape = new LandscapeModel(area);
+    // Find a run of core stand to send the dog through.
+    let start: { x: number; z: number } | null = null;
+    for (let y = area.world.y + 40; y < area.world.y + area.world.h - 40 && !start; y += 6) {
+      for (let x = area.world.x + 40; x < area.world.x + area.world.w - 40 && !start; x += 6) {
+        if ([0, 2, 4, 6].every(step => pheasantCoverAt(area, x + step, y))) start = landscape.propertyToWorld(x, y, { x: 0, z: 0 });
+      }
+    }
+    expect(start).not.toBeNull();
+    const dog = { state: 'quartering', at: { x: start!.x, z: start!.z } };
+    const hunt = { dogCount: () => 1, dog: () => dog, huntState: () => ({ wind: 0, windStrength: 'breezy' }),
+      dogRenderWorld: (_alpha: number, out: { x: number; z: number }) => Object.assign(out, dog.at), dogRenderHeading: () => 0 };
+    const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), quality: 'lite', time: 0, fixedAlpha: 1,
+      events: new EventTarget(), get: () => hunt } as unknown as Ctx;
+    const cover = new PheasantCoverSystem(landscape);
+    cover.init(ctx);
+    const inner = cover as unknown as { wake: { value: THREE.Vector4[] }; dogReach: { value: number[] } };
+    const live = () => inner.wake.value.filter(wake => ctx.time - wake.z < 2.6 && wake.w > 0);
+    // A running dog, 4 m/s, for a second and a half.
+    for (let i = 0; i < 90; i++) { ctx.time += 1 / 60; dog.at.x += 4 / 60; cover.update(ctx); }
+    expect(live().length).toBeGreaterThanOrEqual(6);
+    expect(Math.max(...live().map(wake => wake.w))).toBeGreaterThan(.8);
+    // Stopped: the wake dies away; on point the stems lie back further.
+    expect(inner.dogReach.value[0]).toBeCloseTo(.85, 2);
+    dog.state = 'pointing';
+    for (let i = 0; i < 240; i++) { ctx.time += 1 / 60; cover.update(ctx); }
+    expect(live()).toHaveLength(0);
+    expect(inner.dogReach.value[0]).toBeGreaterThan(1.2);
+    cover.dispose(ctx);
+  }, 15000);
 });

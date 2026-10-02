@@ -2115,9 +2115,12 @@ export class DogSystem implements Subsystem {
       } else if (state === 'retrieving') {
         // Mouthing the fall: head buried, tail level, hind end high.
         const pickup = sd.carryingBirdId === null && sd.retrieveHoldTimeMs() > 0;
-        tNeck = pickup ? 1.05 : .08;
-        tHeadP = pickup ? 0.35 - 1.05 * 0.55 : .02;
-        tTailP = 0.2;
+        // Presenting: head up to the handler's hand, the tail going.
+        const present = sd.carryingBirdId !== null && sd.retrieveHoldTimeMs() > 0;
+        tNeck = pickup ? 1.05 : present ? -.22 : .08;
+        tHeadP = pickup ? 0.35 - 1.05 * 0.55 : present ? -.18 : .02;
+        tTailP = present ? .3 : 0.2;
+        tTailY = present && !snap ? Math.sin(time * 9) * .32 : 0;
         tBob = -0.01;
         tPitch = pickup ? .09 : 0;
       } else {

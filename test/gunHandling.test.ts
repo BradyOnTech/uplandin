@@ -236,3 +236,98 @@ describe('viewmodel details', () => {
     }
   });
 });
+
+describe('delivery to hand', () => {
+  function delivery(gunId = 'remington-870') {
+    vi.stubGlobal('window', new EventTarget()); vi.stubGlobal('location', { search: '' });
+    vi.stubGlobal('document', { getElementById: () => null, querySelector: () => null });
+    const bird = { id: 7, state: 'carried' };
+    const dog = { state: 'retrieving', carryingBirdId: 7 as number | null, gait: 'still', hold: 1, retrieveHoldTimeMs: () => dog.hold };
+    const hunt = { huntState: () => ({ gunId, birds: [bird] }), dogCount: () => 1, dog: () => dog,
+      dogWorld: (out: { x: number; z: number }) => Object.assign(out, { x: 0, z: -1 }) };
+    const held: { position: THREE.Vector3; blend: number }[] = [];
+    const birds = { shotTargets: () => [], holdInHand: vi.fn((_id: number, position: THREE.Vector3, _q: THREE.Quaternion, blend: number) => { held.push({ position: position.clone(), blend }); return true; }),
+      releaseFromHand: vi.fn() };
+    const mouth = new THREE.Vector3(.02, .55, -.72);
+    const ctx = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(70, 16 / 9, .05, 1000), renderer: { domElement: new EventTarget() },
+      events: new EventTarget(), quality: 'high', timeOfDay: 'morning', time: 1, paused: false,
+      get: (id: string) => ({ hunt3d: hunt, birds, terrain: { heightAt: () => 0 },
+        dog: { mouthWorld: (out: THREE.Vector3) => { out.copy(mouth); return true; } } } as Record<string, unknown>)[id],
+    } as unknown as Ctx;
+    ctx.camera.position.set(0, 1.62, 0); ctx.camera.rotation.order = 'YXZ'; ctx.camera.updateMatrixWorld();
+    const looks: (number | null)[] = [];
+    ctx.events.addEventListener('look-assist', (event) => looks.push((event as CustomEvent).detail.pitch));
+    const gun = new GunSystem(); gun.init(ctx);
+    const step = (dt: number) => { ctx.time += dt; gun.update(ctx, dt); };
+    const inner = gun as unknown as { handoff: { t: number } | null; sporting: { root: THREE.Group }; rig: THREE.Group };
+    const hand = () => {
+      const left = inner.sporting.root.getObjectByName('Left glove and canvas cuff')!;
+      inner.sporting.root.updateMatrixWorld(true);
+      return left.localToWorld(new THREE.Vector3(0, -.03, -.245));
+    };
+    return { ctx, gun, step, bird, dog, birds, held, mouth, looks, inner, hand };
+  }
+
+  it('bends to the dog, takes the bird from its mouth, looks it over and bags it', () => {
+    const { ctx, gun, step, bird, birds, held, mouth, looks, inner, hand } = delivery();
+    step(1 / 60);
+    expect(inner.handoff).not.toBeNull();
+    // Bend and look down at the bird in the dog's mouth.
+    expect(looks[0]).toBeLessThan(-.6);
+    for (let t = 0; t < HANDOFF_REACH; t += 1 / 60) step(1 / 60);
+    expect(hand().distanceTo(mouth)).toBeLessThan(.06);
+    expect(birds.holdInHand).not.toHaveBeenCalled();
+    // The dog gives: the bird comes up in the hand, into view.
+    bird.state = 'retrieved';
+    for (let i = 0; i < 50; i++) step(1 / 60);
+    expect(birds.holdInHand).toHaveBeenCalled();
+    expect(looks.at(-1)).toBeGreaterThan(-.2);
+    ctx.camera.updateMatrixWorld();
+    const ndc = held.at(-1)!.position.clone().project(ctx.camera);
+    expect(Math.abs(ndc.x)).toBeLessThan(.5); expect(Math.abs(ndc.y)).toBeLessThan(.7);
+    for (let i = 0; i < 4 * 60 && inner.handoff; i++) step(1 / 60);
+    expect(birds.releaseFromHand).toHaveBeenCalledWith(7);
+    expect(inner.handoff).toBeNull();
+    expect(looks.at(-1)).toBeNull();
+    gun.dispose(ctx);
+  });
+
+  it('keeps the muzzle off the dog while the hand is away', () => {
+    const { ctx, gun, step, inner, mouth } = delivery('over-under');
+    ctx.camera.rotation.x = -.75; ctx.camera.updateMatrixWorld();
+    for (let i = 0; i < 40; i++) step(1 / 60);
+    inner.rig.updateMatrixWorld(true);
+    const muzzle = new THREE.Vector3(0, 0, -1).applyQuaternion(inner.rig.getWorldQuaternion(new THREE.Quaternion()));
+    const breech = inner.rig.getWorldPosition(new THREE.Vector3());
+    const toDog = mouth.clone().sub(breech).normalize();
+    expect(muzzle.dot(toDog)).toBeLessThan(.2);
+    expect(muzzle.y).toBeGreaterThan(.3);
+    gun.dispose(ctx);
+  });
+
+  it('drops it all for a mount: the bird into the bag, the hand back on the gun', () => {
+    const { ctx, gun, step, bird, birds, inner, looks } = delivery();
+    for (let i = 0; i < 40; i++) step(1 / 60);
+    bird.state = 'retrieved';
+    for (let i = 0; i < 30; i++) step(1 / 60);
+    ctx.events.dispatchEvent(Object.assign(new Event('hunt-action'), { detail: 'mount' }));
+    step(1 / 60);
+    expect(inner.handoff).toBeNull();
+    expect(birds.releaseFromHand).toHaveBeenCalledWith(7);
+    expect(looks.at(-1)).toBeNull();
+    for (let i = 0; i < 20; i++) step(1 / 60);
+    expect(gun.mountProgress()).toBeGreaterThan(.99);
+    gun.dispose(ctx);
+  });
+
+  it('lets the dog be if it moves off before giving', () => {
+    const { ctx, gun, step, dog, birds, inner } = delivery();
+    for (let i = 0; i < 20; i++) step(1 / 60);
+    dog.carryingBirdId = null;
+    step(1 / 60);
+    expect(inner.handoff).toBeNull();
+    expect(birds.releaseFromHand).not.toHaveBeenCalled();
+    gun.dispose(ctx);
+  });
+});
+const HANDOFF_REACH = .6;

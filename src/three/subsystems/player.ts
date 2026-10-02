@@ -27,6 +27,14 @@ export class PlayerSystem implements Subsystem {
   private keys = new Set<string>();
   private yaw = Math.PI;
   private pitch = -0.16;
+  /**
+   * A gentle look the game asks for (bending to take a bird from the dog):
+   * the view eases toward `pitch` and the eye lowers by `stoop`. Any look
+   * input of the player's own releases the pitch at once.
+   */
+  private assist: { pitch: number | null; stoop: number } = { pitch: null, stoop: 0 };
+  private assistOverridden = false;
+  private stoop = 0;
   private pos = new THREE.Vector3(0, 0, 40);
   private vel = new THREE.Vector3();
   private bobPhase = 0;
@@ -84,8 +92,15 @@ export class PlayerSystem implements Subsystem {
       const intensity = Math.max(0, Math.min(1, event.detail.intensity));
       this.flinch = { age: 0, pitch: THREE.MathUtils.degToRad(2.6) * intensity, roll: THREE.MathUtils.degToRad(1.1) * intensity * (Math.random() < .5 ? -1 : 1) };
     }) as EventListener, { signal });
+    ctx.events.addEventListener('look-assist', ((event: CustomEvent<{ pitch?: number | null; stoop?: number }>) => {
+      if (this.captureMode) return;
+      this.assist.pitch = typeof event.detail?.pitch === 'number' ? THREE.MathUtils.clamp(event.detail.pitch, -1.2, 1.2) : null;
+      this.assist.stoop = Math.max(0, Math.min(.5, event.detail?.stoop ?? 0));
+      this.assistOverridden = false;
+    }) as EventListener, { signal });
     ctx.events.addEventListener('hunt-touch-look', ((event: CustomEvent<{dx:number;dy:number}>) => {
       if (ctx.paused || this.captureMode) return;
+      this.assistOverridden = true;
       const optics = opticalLookScale(ctx.camera.fov);
       this.yaw -= event.detail.dx * .004 * swingSensitivity * optics;
       this.pitch = THREE.MathUtils.clamp(this.pitch - event.detail.dy * .004 * swingSensitivity * optics, -1.4, 1.4);
@@ -100,6 +115,7 @@ export class PlayerSystem implements Subsystem {
       const look = bindMouseLook(canvas, {
         signal, paused: () => ctx.paused || !!document.body?.classList.contains('touch-controls-active'),
         turn: (dx, dy) => {
+          this.assistOverridden = true;
           const optics = opticalLookScale(ctx.camera.fov);
           this.yaw -= dx * .0022 * optics;
           this.pitch = THREE.MathUtils.clamp(this.pitch - dy * .0022 * optics, -1.4, 1.4);
@@ -148,6 +164,7 @@ export class PlayerSystem implements Subsystem {
           Object.assign(this.touchMove, touchMovement(event.clientX - this.touchMove.x, event.clientY - this.touchMove.y));
           this.showStick();
         } else if (this.touchLook?.id === event.pointerId) {
+          this.assistOverridden = true;
           this.yaw -= (event.clientX - this.touchLook.x) * 0.004 * lookSensitivity;
           this.pitch = THREE.MathUtils.clamp(this.pitch - (event.clientY - this.touchLook.y) * 0.004 * lookSensitivity, -1.4, 1.4);
           this.touchLook.x = event.clientX; this.touchLook.y = event.clientY;
@@ -187,7 +204,8 @@ export class PlayerSystem implements Subsystem {
    * height for map-review overviews; ordinary play always passes zero. */
   setPose(ctx: Ctx, x: number, z: number, yawDeg: number, pitchDeg = 0, lift = 0): void {
     this.waterDepth = this.water?.depthAtWorld(x, z) ?? 0;
-    this.reviewLift = Math.max(0, lift);
+    // Capture review may also lower the eye, as a hunter bending to his dog.
+    this.reviewLift = Math.max(-.5, lift);
     this.pos.set(x, 0, z); this.yaw = THREE.MathUtils.degToRad(yawDeg); this.pitch = THREE.MathUtils.degToRad(pitchDeg); this.place(ctx);
   }
   /** Optional handler-view tracking; movement and mouse look remain grounded. */
@@ -201,7 +219,7 @@ export class PlayerSystem implements Subsystem {
   }
   private place(ctx: Ctx): void {
     const ground = ctx.get<TerrainSystem>('terrain').heightAt(this.pos.x, this.pos.z);
-    ctx.camera.position.set(this.pos.x, ground + EYE + this.reviewLift + Math.sin(this.bobPhase) * 0.018, this.pos.z);
+    ctx.camera.position.set(this.pos.x, ground + EYE - this.stoop + this.reviewLift + Math.sin(this.bobPhase) * 0.018, this.pos.z);
     const kick = this.flinch ? flinchEnvelope(this.flinch.age) : 0;
     ctx.camera.rotation.set(this.pitch + (this.flinch?.pitch ?? 0) * kick, this.yaw, (this.flinch?.roll ?? 0) * kick, 'YXZ');
   }
@@ -213,6 +231,10 @@ export class PlayerSystem implements Subsystem {
     }
     this.waterDepth = this.water?.depthAtWorld(this.pos.x, this.pos.z) ?? 0;
     this.hunt ??= ctx.get<Hunt3DSystem>('hunt3d');
+    if (dt > 0 && !ctx.paused) {
+      if (this.assist.pitch !== null && !this.assistOverridden) this.pitch += (this.assist.pitch - this.pitch) * (1 - Math.exp(-dt * 5.5));
+      this.stoop += (this.assist.stoop - this.stoop) * (1 - Math.exp(-dt * 6.5));
+    }
     if (dt > 0 && !this.captureMode && !ctx.paused && this.hunt.falconry?.phase !== 'picking-up') {
       const f = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0) - (this.touchMove?.dy ?? 0);
       const s = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0) + (this.touchMove?.dx ?? 0);

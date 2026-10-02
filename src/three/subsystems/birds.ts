@@ -323,6 +323,10 @@ interface Slot {
   running?: boolean;
   runYaw?: number;
   carryPose?: { elapsed: number; rotation: THREE.Quaternion };
+  /** Taken from the dog: the bird follows the hunter's grip until stowed. */
+  inHand?: { position: THREE.Vector3; quaternion: THREE.Quaternion; blend: number };
+  /** The hunter's hand is on its way to take it: keep it through the give. */
+  handClaim?: boolean;
   delayMs: number;
   wobblePh: number;
   wobbleMult: number;
@@ -792,6 +796,8 @@ export class BirdsSystem implements Subsystem {
     slot.visualScale = birdVisualScale(species);
     slot.spanM = geometry.spanM;
     slot.carryPose = undefined;
+    slot.inHand = undefined;
+    slot.handClaim = undefined;
   }
 
   /** Hex-lofted body + stub tail fan, one geometry (one draw call). */
@@ -1046,7 +1052,9 @@ export class BirdsSystem implements Subsystem {
       if (s.status === 'grounded') {
         if (s.fallPose?.groundedMs !== undefined) s.fallPose.groundedMs += dtMs;
         const bird = simBirds.find((candidate) => candidate.id === s.simId);
-        if (!bird || bird.state === 'retrieved' || bird.state === 'escaped') {
+        if (s.inHand || s.handClaim) {
+          // Being taken, or in the hunter's hand: the hand-off owns it.
+        } else if (!bird || bird.state === 'retrieved' || bird.state === 'escaped') {
           s.status = 'done';
           s.root.visible = false;
         } else if (bird.state === 'downed' && bird.wounded && !bird.fallPending) {
@@ -1844,6 +1852,39 @@ export class BirdsSystem implements Subsystem {
   }
 
   /** Actual visible fall centre for the reserved dog's pickup reach. */
+  /**
+   * The hunter takes this bird from the dog: from now until `releaseFromHand`
+   * it is drawn at the given world grip, whatever the hunt says about it.
+   * `blend` eases its orientation from the mouth's grip into the hand's.
+   */
+  holdInHand(simId: number, position: THREE.Vector3, quaternion: THREE.Quaternion, blend: number): boolean {
+    const slot = this.slots.find(candidate => candidate.simId === simId && candidate.status === 'grounded');
+    if (!slot) return false;
+    slot.inHand ??= { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), blend: 0 };
+    slot.inHand.position.copy(position); slot.inHand.quaternion.copy(quaternion);
+    slot.inHand.blend = THREE.MathUtils.clamp(blend, 0, 1);
+    return true;
+  }
+
+  /**
+   * The hunter's hand is reaching for this bird in the dog's mouth. A claimed
+   * bird survives the dog's give until the hand has it; dropping the claim
+   * before then leaves it with the dog.
+   */
+  claimForHand(simId: number, claimed: boolean): void {
+    for (const slot of this.slots) if (slot.simId === simId && slot.status === 'grounded') slot.handClaim = claimed || undefined;
+  }
+
+  /** Stowed in the game bag: the bird leaves the scene. */
+  releaseFromHand(simId: number): void {
+    for (const slot of this.slots) {
+      if (slot.simId !== simId || (!slot.inHand && !slot.handClaim)) continue;
+      slot.inHand = undefined; slot.handClaim = undefined;
+      slot.status = 'done';
+      slot.root.visible = false;
+    }
+  }
+
   groundedTarget(simId: number, out: THREE.Vector3): boolean {
     const slot = this.slots.find(candidate => candidate.simId === simId && candidate.status === 'grounded');
     if (!slot) return false;
@@ -1990,9 +2031,23 @@ export class BirdsSystem implements Subsystem {
         s.body.morphTargetInfluences[0] = s.status === 'grounded' ? s.running ? 0 : 1
           : s.status === 'falling' ? THREE.MathUtils.smoothstep(s.airMs - (s.fallPose?.startMs ?? s.airMs), 0, 300) : 0;
       }
+      if (s.status === 'grounded' && s.inHand) {
+        // Taken from the dog's mouth: cradled in the glove, wings folded,
+        // legs hanging, easing from the mouth's grip into the hand's.
+        s.root.position.copy(s.inHand.position);
+        s.root.quaternion.slerp(s.inHand.quaternion, s.inHand.blend);
+        s.root.scale.setScalar(restingBirdScale(birdFamilyFor(s.species.id)) * s.visualScale);
+        this.foldWings(s);
+        poseCarriedBird(s, 1, s.carryPose?.elapsed ?? 1, false);
+        if (s.legMesh) s.legMesh.rotation.x = 1.45;
+        if (s.tailMesh?.morphTargetInfluences) s.tailMesh.morphTargetInfluences[0] = 0;
+        continue;
+      }
       const simBird = s.status === 'grounded'
         ? simBirds.find((candidate) => candidate.id === s.simId)
         : undefined;
+      // Given to the hunter this frame, before his hand has it: hold still.
+      if (s.handClaim && simBird?.state !== 'carried') continue;
       if (simBird?.state === 'carried') {
         let carrierSlot = -1;
         for (let slot = 0; slot < this.hunt.dogCount(); slot++) {

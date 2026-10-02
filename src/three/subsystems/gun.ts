@@ -19,6 +19,8 @@ import { DOUBLE_EJECT_S, DOUBLE_SEATED, doubleLoading, reloadPose, shotgunCycleC
   type ShotgunActionCue, type ShotgunMechanism } from '../shotgunActionTiming';
 import { gunFeel, type GunFeel } from '../../game/gunFeel';
 import { SpentHulls } from '../spentHulls';
+import { ADMIRE_HAND, HANDOFF, handoffBeat, oneHanded, ONE_HAND_GUN, STOW_HAND, type HandoffPhase } from '../handoff';
+import { dogRendererId } from '../dogs/rendererId';
 
 /** First-person sporting gun and hands. Every equipped action uses its own
  * articulated viewmodel, with a common bead position and mount.
@@ -62,6 +64,9 @@ const READY_POINT_M = 45;
 const READY_FLIGHT_M = 70;
 /** From the ready the mount is this much shorter. */
 const READY_MOUNT = .3;
+
+const X_AXIS = new THREE.Vector3(1, 0, 0);
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
 
 interface ShotRequest {
   readonly source: ShotTriggerSource;
@@ -166,6 +171,25 @@ export class GunSystem implements Subsystem {
   private camVelocity = new THREE.Vector3();
   /** Hulls leave the action on the same beat as its sound. */
   private ejectPending = false;
+  /** Delivery to hand: a dog presenting a bird, the free hand taking it. */
+  private handoff: { simId: number; slot: number; t: number; releasedAt: number | null; startPitch: number;
+    lookedUp: boolean; stowed: boolean } | null = null;
+  private handBeat: { phase: HandoffPhase; k: number } = { phase: 'done', k: 1 };
+  /** Capture staging only: holds the hand-off clock at a chosen time. */
+  private handoffClock: number | null = null;
+  private handPose = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
+  private handMouth = new THREE.Vector3();
+  private handA = new THREE.Vector3();
+  private handB = new THREE.Vector3();
+  private handQ = new THREE.Quaternion();
+  private handQ2 = new THREE.Quaternion();
+  private handM = new THREE.Matrix4();
+  private handKeys = {
+    restPosition: new THREE.Vector3(), restQuaternion: new THREE.Quaternion(),
+    mouthPosition: new THREE.Vector3(), mouthQuaternion: new THREE.Quaternion(),
+    admirePosition: new THREE.Vector3(), admireQuaternion: new THREE.Quaternion(),
+    stowPosition: new THREE.Vector3(), stowQuaternion: new THREE.Quaternion(),
+  };
   private onCue = (event: ShotgunActionCue) => { playActionClick(event); if (event === 'eject') this.ejectPending = true; };
   private fx: ShotFx | null = null;
   private shotCallout: HTMLElement | null = null;
@@ -311,6 +335,9 @@ export class GunSystem implements Subsystem {
           return stepHulls(seconds);
         },
         stepHulls: (seconds: number) => stepHulls(seconds),
+        /** Hold the delivery hand-off at this many seconds in (null releases). */
+        handoffClock: (seconds: number | null) => { this.handoffClock = seconds; },
+        handoff: () => this.handoff && { ...this.handoff, phase: this.handBeat.phase, k: this.handBeat.k },
         clearHulls: () => this.hulls?.clear(),
         setReloadPreview: (progress: number | null) => {
           this.visualReloadPreview = progress === null ? null : THREE.MathUtils.clamp(progress, 0, 1);
@@ -847,6 +874,7 @@ export class GunSystem implements Subsystem {
         this.shuffleIn = Infinity;
       }
     }
+    const oneHand = this.advanceHandoff(ctx, dt);
     const m = ease(this.mountT);
     const previewDuration = RELOAD_OPEN_S + this.gun.shells * RELOAD_PER_SHELL_S;
     const reloadArc = this.visualReloadPreview !== null
@@ -932,6 +960,17 @@ export class GunSystem implements Subsystem {
       lowRz * carryK + mountRot.z * m +
         Math.sin(this.stridePhase) * .012 * bobAmp + reloadArc * (breakAction ? .28 : -1.05),
     );
+    if (oneHand > 0) {
+      // Right hand alone: the gun hangs in the hunter's body frame, not his
+      // head's, so bending to the dog never swings its muzzle at the dog.
+      this.handQ.setFromAxisAngle(X_AXIS, -cam.rotation.x);
+      this.handA.copy(ONE_HAND_GUN.position).applyQuaternion(this.handQ);
+      this.handQ2.setFromEuler(ONE_HAND_GUN.rotation).premultiply(this.handQ);
+      this.rig.position.lerp(this.handA, oneHand);
+      this.rig.quaternion.slerp(this.handQ2, oneHand);
+    }
+    if (this.handoff) { this.root.updateMatrixWorld(true); this.poseHandoff(ctx); }
+    else this.sporting?.holdHand(null);
     if (Number.isFinite(this.cycleElapsed)) {
       if (live) shotgunCycleCues(mechanism, this.cycleElapsed, this.cycleElapsed + dt, this.onCue);
       this.cycleElapsed += dt;
@@ -956,6 +995,124 @@ export class GunSystem implements Subsystem {
       } else this.ejectHull(0);
     }
     if (!ctx.paused && dt > 0) this.hulls?.step(dt, this.groundAt);
+  }
+
+  /** The renderer's mouth point for a dog slot, in world space. */
+  private dogMouth(ctx: Ctx, slot: number, out: THREE.Vector3): boolean {
+    try {
+      return ctx.get<Subsystem & { mouthWorld?: (out: THREE.Vector3) => boolean }>(dogRendererId(slot)).mouthWorld?.(out) ?? false;
+    } catch { return false; }
+  }
+
+  /**
+   * Delivery to hand. A dog presenting a bird close in front starts it; a
+   * mount, a reload, or the dog moving off before it gives ends it. Returns
+   * how fully the gun is carried in the right hand alone.
+   */
+  private advanceHandoff(ctx: Ctx, dt: number): number {
+    if (!this.sporting) return 0;
+    const hunt = this.hunt as Partial<Hunt3DSystem>;
+    if (!this.handoff && !this.aim && !this.isReloading() && this.mountT <= .02 && hunt.dog && hunt.dogCount) {
+      for (let slot = 0; slot < hunt.dogCount(); slot++) {
+        const dog = hunt.dog(slot);
+        if (dog.state !== 'retrieving' || dog.carryingBirdId === null || dog.gait !== 'still'
+          || !((dog.retrieveHoldTimeMs?.() ?? 0) > 0)) continue;
+        const eye = ctx.camera.position;
+        if (!this.dogMouth(ctx, slot, this.handMouth) || this.handMouth.distanceTo(eye) > HANDOFF.reachM) continue;
+        this.handoff = { simId: dog.carryingBirdId, slot, t: 0, releasedAt: null, startPitch: ctx.camera.rotation.x,
+          lookedUp: false, stowed: false };
+        (this.birds as Partial<BirdsSystem>).claimForHand?.(dog.carryingBirdId, true);
+        // Bend to the dog and look down at the bird in its mouth.
+        const look = Math.atan2(this.handMouth.y - (eye.y - HANDOFF.stoopM),
+          Math.hypot(this.handMouth.x - eye.x, this.handMouth.z - eye.z)) + .16;
+        if (!this.frozen) ctx.events.dispatchEvent(new CustomEvent('look-assist', { detail: { pitch: look, stoop: HANDOFF.stoopM } }));
+        break;
+      }
+    }
+    const h = this.handoff;
+    if (!h) return 0;
+    if (this.aim || this.isReloading()) { this.endHandoff(ctx); return 0; }
+    h.t = this.handoffClock ?? h.t + Math.max(0, dt);
+    const bird = this.hunt.huntState().birds.find(candidate => candidate.id === h.simId);
+    if (h.releasedAt === null && bird?.state === 'retrieved') h.releasedAt = Math.max(h.t, HANDOFF.reachS);
+    if (h.releasedAt === null && (hunt.dog?.(h.slot)?.carryingBirdId !== h.simId || h.t > HANDOFF.waitMaxS)) {
+      this.endHandoff(ctx); return 0;
+    }
+    this.handBeat = handoffBeat(h.t, h.releasedAt);
+    if (this.handBeat.phase === 'done') { this.endHandoff(ctx); return 0; }
+    if (this.handBeat.phase !== 'reach' && this.handBeat.phase !== 'wait' && !h.lookedUp) {
+      // Straighten up with the bird and look it over.
+      h.lookedUp = true;
+      if (!this.frozen) ctx.events.dispatchEvent(new CustomEvent('look-assist', { detail: { pitch: Math.max(h.startPitch, -.12), stoop: 0 } }));
+    }
+    return oneHanded(this.handBeat);
+  }
+
+  private endHandoff(ctx: Ctx): void {
+    const h = this.handoff;
+    if (!h) return;
+    // A bird already in hand goes straight into the bag; one still in the
+    // dog's mouth stays with the dog.
+    if (h.releasedAt !== null && !h.stowed) (this.birds as Partial<BirdsSystem>).releaseFromHand?.(h.simId);
+    else if (h.releasedAt === null) (this.birds as Partial<BirdsSystem>).claimForHand?.(h.simId, false);
+    this.handoff = null;
+    this.handBeat = { phase: 'done', k: 1 };
+    this.sporting?.holdHand(null);
+    if (!this.frozen) ctx.events.dispatchEvent(new CustomEvent('look-assist', { detail: { pitch: null, stoop: 0 } }));
+  }
+
+  /** Place the free hand for this beat, and the bird in it once given. */
+  private poseHandoff(ctx: Ctx): void {
+    const h = this.handoff, sporting = this.sporting;
+    if (!h || !sporting) return;
+    const root = sporting.root, beat = this.handBeat, smooth = (x: number) => THREE.MathUtils.smoothstep(x, 0, 1);
+    const k = this.handKeys, rootInverse = this.handQ.copy(root.getWorldQuaternion(this.handQ)).invert();
+    // Rest: the grip on the forend, in the gun's own space.
+    k.restPosition.copy(sporting.handGrip); k.restQuaternion.identity();
+    // Mouth: under the bird in the dog's jaws, fingers along the eye's line
+    // to it, palm up. It follows the dog until the bird is given.
+    if (h.releasedAt === null || beat.phase === 'reach' || beat.phase === 'wait' || beat.phase === 'lift') {
+      if (this.dogMouth(ctx, h.slot, this.handA)) this.handMouth.copy(this.handA);
+    }
+    root.worldToLocal(k.mouthPosition.copy(this.handMouth).add(this.handB.set(0, -.035, 0)));
+    const eye = root.worldToLocal(this.handA.copy(ctx.camera.position));
+    const up = this.handB.set(0, 1, 0).applyQuaternion(rootInverse);
+    k.mouthQuaternion.setFromRotationMatrix(this.handM.lookAt(eye, k.mouthPosition, up));
+    // Looking it over and stowing it are set in the head's frame, so they
+    // hold their place on screen whatever the gun is doing.
+    const rigInverse = this.handM.copy(this.rig.matrix).invert(), rigTurn = this.handQ2.copy(this.rig.quaternion).invert();
+    k.admirePosition.copy(ADMIRE_HAND.position).applyMatrix4(rigInverse);
+    k.admireQuaternion.setFromEuler(ADMIRE_HAND.rotation).premultiply(rigTurn);
+    k.stowPosition.copy(STOW_HAND.position).applyMatrix4(rigInverse);
+    k.stowQuaternion.setFromEuler(STOW_HAND.rotation).premultiply(rigTurn);
+    // A slow turn of the wrist while he looks it over.
+    if (beat.phase === 'admire') k.admireQuaternion.multiply(this.handQ2.setFromAxisAngle(Y_AXIS, Math.sin(beat.k * Math.PI) * .22));
+    const pose = this.handPose;
+    const blend = (fromP: THREE.Vector3, fromQ: THREE.Quaternion, toP: THREE.Vector3, toQ: THREE.Quaternion, t: number) => {
+      pose.position.lerpVectors(fromP, toP, smooth(t)); pose.quaternion.slerpQuaternions(fromQ, toQ, smooth(t));
+    };
+    if (beat.phase === 'reach') blend(k.restPosition, k.restQuaternion, k.mouthPosition, k.mouthQuaternion, beat.k);
+    else if (beat.phase === 'wait') blend(k.mouthPosition, k.mouthQuaternion, k.mouthPosition, k.mouthQuaternion, 1);
+    else if (beat.phase === 'lift') blend(k.mouthPosition, k.mouthQuaternion, k.admirePosition, k.admireQuaternion, beat.k);
+    else if (beat.phase === 'admire') blend(k.admirePosition, k.admireQuaternion, k.admirePosition, k.admireQuaternion, 1);
+    else if (beat.phase === 'stow') blend(k.admirePosition, k.admireQuaternion, k.stowPosition, k.stowQuaternion, beat.k);
+    else blend(k.stowPosition, k.stowQuaternion, k.restPosition, k.restQuaternion, beat.k);
+    sporting.holdHand(pose);
+    if (h.releasedAt === null || h.stowed) return;
+    if (beat.phase === 'return' || (beat.phase === 'stow' && beat.k > .8)) {
+      // Into the game bag.
+      (this.birds as Partial<BirdsSystem>).releaseFromHand?.(h.simId);
+      h.stowed = true;
+      return;
+    }
+    // Cradled across the palm, head to the right: its side faces the eye.
+    root.updateMatrixWorld(true);
+    const grip = this.handA.copy(pose.position).applyMatrix4(root.matrixWorld);
+    const handWorld = this.handQ2.copy(root.getWorldQuaternion(this.handQ2)).multiply(pose.quaternion);
+    grip.add(this.handB.set(0, .04, 0).applyQuaternion(handWorld));
+    const birdQuaternion = handWorld.multiply(this.handQ.setFromAxisAngle(Y_AXIS, Math.PI / 2));
+    (this.birds as Partial<BirdsSystem>).holdInHand?.(h.simId, grip, birdQuaternion,
+      beat.phase === 'lift' ? smooth(beat.k / .45) : 1);
   }
 
   /** The walk-in: a dog on point near the hunter, or birds in the air. */

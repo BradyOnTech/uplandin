@@ -20,6 +20,14 @@ export interface SportingShotgun {
    * mouth for a double. `outward` is the direction the hull is thrown.
    */
   ejection(index: number, out: HullExit): HullExit;
+  /**
+   * Take the support hand off the gun to hold something (taking a bird from
+   * the dog): `pose` places the hand's grip in the gun's own space. Null
+   * returns it to the forend.
+   */
+  holdHand(pose: { position: THREE.Vector3; quaternion: THREE.Quaternion } | null): void;
+  /** Where the support hand grips, in its own space: the forend's axis. */
+  readonly handGrip: THREE.Vector3;
   dispose(): void;
 }
 
@@ -559,10 +567,32 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
   const smooth = (n: number) => { const t = THREE.MathUtils.clamp(n, 0, 1); return t * t * (3 - 2 * t); };
   const fullChambers = (missing: number): ChamberState[] => bores.map((_, i) => i < missing ? 'fired' : 'loaded');
   const exitMatrix = new THREE.Matrix4();
+  // The support hand can leave the gun to take a bird from the dog.
+  const handGrip = new THREE.Vector3(0, -.03, -.245);
+  let handPose: { position: THREE.Vector3; quaternion: THREE.Quaternion } | null = null;
+  const handMatrix = new THREE.Matrix4(), parentInverse = new THREE.Matrix4(), gripShift = new THREE.Matrix4();
+  const unit = new THREE.Vector3(1, 1, 1), handScale = new THREE.Vector3();
+  const applyHandPose = () => {
+    if (!handPose) return;
+    left.visible = hands; loading.visible = false;
+    handMatrix.compose(handPose.position, handPose.quaternion, unit)
+      .multiply(gripShift.makeTranslation(-handGrip.x, -handGrip.y, -handGrip.z));
+    if (double) {
+      hinge.updateMatrix(); barrelAssembly.updateMatrix();
+      handMatrix.premultiply(parentInverse.multiplyMatrices(hinge.matrix, barrelAssembly.matrix).invert());
+    }
+    handMatrix.decompose(left.position, left.quaternion, handScale);
+  };
   return {
     root, bead,
     fire() { pumpAge = 0; },
     setSafety(off) { safetyOff = THREE.MathUtils.clamp(off, 0, 1); placeSafety(); },
+    handGrip,
+    holdHand(pose) {
+      if (!pose) { handPose = null; return; }
+      handPose ??= { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
+      handPose.position.copy(pose.position); handPose.quaternion.copy(pose.quaternion);
+    },
     ejection(index, out) {
       if (!double) {
         // The port on the receiver's right side; the bolt face sits in it.
@@ -628,6 +658,7 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
           round.rotation.set(0, 0, 0);
           if (extracting) round.position.z += .012 * smooth((elapsed - .12) / .14);
         }
+        applyHandPose();
         updateForearms();
         return;
       }
@@ -647,13 +678,13 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
       const returnMix = smooth((shellPhase - count + .22) / .22);
       left.visible = hands && (!loadingShell || returning);
       left.position.set(-.055 * lift, -.13 * lift, .15 * lift + (reloading ? 0 : pump));
-      left.rotation.z = -.22 * lift;
+      left.rotation.set(0, 0, -.22 * lift);
       // After the final insertion the open support grip returns from the
       // port to the forend, finishing at the exact ready pose before the
       // gameplay reload clock clears. There is no last-frame hand teleport.
       if (returning) {
         left.position.set(-.025 * (1 - returnMix), 0, .23 * (1 - returnMix));
-        left.rotation.z = 0;
+        left.rotation.set(0, 0, 0);
       }
       loading.visible = loadingShell && !returning;
       loading.position.set(-.065 * (1 - insert + withdraw), -.14 + .106 * insert - .10 * withdraw,
@@ -664,6 +695,7 @@ export function createSportingShotgun(action: SportingAction, options: { hands?:
       bolt.position.z = reloading ? .03 * Math.max(0, 1 - elapsed / .4) : action === 'pump' ? pump * .65
         : .055 * (smooth(pumpAge / SHOTGUN_CYCLE.semiBack)
           - smooth((pumpAge - SHOTGUN_CYCLE.semiBack) / (SHOTGUN_CYCLE.semiClosed - SHOTGUN_CYCLE.semiBack)));
+      applyHandPose();
       updateForearms();
     },
     dispose() {

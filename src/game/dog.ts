@@ -102,6 +102,8 @@ const FIELD_FOOT_SCENT = 1.8;
 const RETRIEVE_RANGE = 6; // close enough to pick a downed bird up
 const RETRIEVE_HOLD_MS = 700; // mouthing the bird takes a moment
 const RETRIEVE_DELIVERY_HOLD_MS = 350; // settle at hand before casting off
+/** A delivering dog keeps this far (property yards) from the handler's legs. */
+const DELIVERY_CLEARANCE = .85 / PROPERTY_PX_TO_M;
 const SEARCH_HOLD_MS = 2200; // extra time hunting for a fall it didn't mark
 const RECALL_SPEED = 115; // px/s coming back to the whistle
 const RECALL_ARRIVE = 10; // close enough to the hunter to count as arrived
@@ -345,6 +347,12 @@ export interface DogEnv {
   pickupRange?: number;
   deliveryRange?: number;
   deliveryHoldMs?: number;
+  /**
+   * Where a carrying dog presents the bird: just in front of the handler,
+   * where he can bend and take it. The dog comes round him to get there and
+   * squares up to face him. Without it the dog delivers anywhere in range.
+   */
+  deliveryPos?: Vec2;
   recallArriveRange?: number;
   heelFollowRange?: number;
   obstacles?: readonly DogObstacle[];
@@ -463,6 +471,7 @@ export class Dog {
   /** Bird reserved by this dog and visibly carried back to the handler. */
   carryingBirdId: number | null = null;
   private retrieveHoldMs = 0;
+  private deliveryWaypoint: Vec2 = { x: 0, y: 0 };
   private creepPlanned = false;
   private creepStepsLeft = 0;
   private creepTimerMs = 0;
@@ -867,9 +876,18 @@ export class Dog {
       // its shared position lets both renderers put the fall in the mouth.
       target.pos.x = this.pos.x;
       target.pos.y = this.pos.y;
-      if (!env.hunterPos || dist(this.pos, env.hunterPos) <= (env.deliveryRange ?? RETRIEVE_RANGE)) {
+      const spot = env.deliveryPos ?? env.hunterPos;
+      if (!env.hunterPos || !spot || dist(this.pos, spot) <= (env.deliveryRange ?? RETRIEVE_RANGE)) {
         this.gait = 'still';
-        this.retrieveHoldMs += dtMs;
+        // Presenting: square up to the handler first, then hold the bird up
+        // for him to take.
+        let squared = true;
+        if (env.hunterPos && env.deliveryPos) {
+          const face = Math.atan2(env.hunterPos.y - this.pos.y, env.hunterPos.x - this.pos.x);
+          this.heading = turnToward(this.heading, face, 7 * dt);
+          squared = Math.cos(this.heading - face) > .94;
+        }
+        this.retrieveHoldMs = squared ? this.retrieveHoldMs + dtMs : 0;
         if (this.retrieveHoldMs >= (env.deliveryHoldMs ?? RETRIEVE_DELIVERY_HOLD_MS)) {
           target.state = 'retrieved';
           target.pos.x = env.hunterPos?.x ?? this.pos.x;
@@ -882,7 +900,9 @@ export class Dog {
       } else {
         this.gait = 'trot';
         this.retrieveHoldMs = 0;
-        this.advanceRetrieve(env.hunterPos, env.deliveryRange ?? RETRIEVE_RANGE, this.trackSpeed * 0.85 * movementDt, dt, env);
+        const approach = env.deliveryPos ? this.deliveryApproach(spot, env.hunterPos) : spot;
+        this.advanceRetrieve(approach, approach === spot ? env.deliveryRange ?? RETRIEVE_RANGE : DELIVERY_CLEARANCE * .5,
+          this.trackSpeed * 0.85 * movementDt, dt, env);
         target.pos.x = this.pos.x;
         target.pos.y = this.pos.y;
       }
@@ -1531,6 +1551,26 @@ export class Dog {
     this.scentSample = this.scentCloseOrigin = null;
     this.scentCastPhase = this.scentLocatedMs = this.scentLostMs = this.scentHandlerHoldMs = 0;
     this.scentCheck = false;
+  }
+
+  /**
+   * Come round the handler, never through him, to the spot in front of him:
+   * if the straight line passes close by his legs, make for his side first,
+   * on whichever side the dog already is.
+   */
+  private deliveryApproach(spot: Vec2, hunter: Vec2): Vec2 {
+    const sx = spot.x - this.pos.x, sy = spot.y - this.pos.y, length2 = sx * sx + sy * sy;
+    if (length2 < 1e-6) return spot;
+    const t = clamp(((hunter.x - this.pos.x) * sx + (hunter.y - this.pos.y) * sy) / length2, 0, 1);
+    const cx = this.pos.x + sx * t - hunter.x, cy = this.pos.y + sy * t - hunter.y;
+    if (t <= 0 || t >= 1 || cx * cx + cy * cy >= DELIVERY_CLEARANCE * DELIVERY_CLEARANCE) return spot;
+    const fx = spot.x - hunter.x, fy = spot.y - hunter.y, length = Math.hypot(fx, fy) || 1;
+    const px = -fy / length, py = fx / length;
+    const side = Math.sign((this.pos.x - hunter.x) * px + (this.pos.y - hunter.y) * py) || 1;
+    // Beside him and a little ahead: from there the line to the spot is clear.
+    this.deliveryWaypoint.x = hunter.x + (px * side * 1.3 + fx / length * .9) * DELIVERY_CLEARANCE;
+    this.deliveryWaypoint.y = hunter.y + (py * side * 1.3 + fy / length * .9) * DELIVERY_CLEARANCE;
+    return this.deliveryWaypoint;
   }
 
   /** Advance without crossing the distance where the dog must settle. */

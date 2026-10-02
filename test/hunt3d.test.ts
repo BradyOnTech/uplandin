@@ -418,6 +418,11 @@ describe('Hunt3DSystem live start', () => {
       if (prior === 'carried' && birdState() === 'retrieved') {
         deliveryGapM = Math.hypot(dog.pos.x - hunt.huntState().hunterPos.x,
           dog.pos.y - hunt.huntState().hunterPos.y) * .9144;
+        // Presented a step in front of the hunter, facing him, where he looks.
+        const yaw = ctx.camera.rotation.y, forward = { x: -Math.sin(yaw), y: -Math.cos(yaw) };
+        const toDog = { x: dog.pos.x - hunt.huntState().hunterPos.x, y: dog.pos.y - hunt.huntState().hunterPos.y };
+        expect((toDog.x * forward.x + toDog.y * forward.y) / Math.hypot(toDog.x, toDog.y)).toBeGreaterThan(.8);
+        expect(Math.cos(dog.heading - Math.atan2(-toDog.y, -toDog.x))).toBeGreaterThan(.9);
       }
       sawRetrieving ||= dogState() === 'retrieving';
       sawCarrying ||= birdState() === 'carried' && hunt.dog().carryingBirdId === bird.id;
@@ -425,7 +430,7 @@ describe('Hunt3DSystem live start', () => {
     expect(sawRetrieving).toBe(true);
     expect(sawCarrying).toBe(true);
     expect(pickupGapM).toBeLessThanOrEqual(.65);
-    expect(deliveryGapM).toBeLessThanOrEqual(1);
+    expect(deliveryGapM).toBeGreaterThan(.75); expect(deliveryGapM).toBeLessThan(1.35);
     expect(birdState()).toBe('retrieved');
     expect(Math.hypot(
       hunt.dog().pos.x - hunt.huntState().hunterPos.x,

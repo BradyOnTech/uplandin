@@ -292,6 +292,14 @@ export class PheasantCoverSystem implements Subsystem {
   private abort = new AbortController();
   private disturbanceCursor = 0;
   private disturbances = { value: Array.from({ length: 4 }, () => new THREE.Vector4(0, 0, -100, 0)) };
+  /** A dog pushing through standing cover: where, when and how hard. */
+  private wake = { value: Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, -100, 0)) };
+  private wakeCursor = 0;
+  private wakeFrom = [{ x: NaN, z: NaN, time: 0 }, { x: NaN, z: NaN, time: 0 }];
+  /** How far each dog's body presses the stems aside: wider once it stands on point. */
+  private dogReach = { value: [.85, .85] };
+  private property = { x: 0, y: 0 };
+  private lastTime = 0;
   private windDirection = { value: new THREE.Vector2(1, 0) };
   private windStrength = { value: 1 };
   constructor(private readonly landscape: LandscapeModel) {}
@@ -335,9 +343,11 @@ export class PheasantCoverSystem implements Subsystem {
       shader.uniforms.uCoverDisturbance = this.disturbances;
       shader.uniforms.uCoverHunter = this.hunterPosition;
       shader.uniforms.uCoverDogs = this.dogBodies;
+      shader.uniforms.uCoverDogReach = this.dogReach;
+      shader.uniforms.uCoverWake = this.wake;
       shader.uniforms.uPheasantWindDirection = this.windDirection;
       shader.uniforms.uPheasantWindStrength = this.windStrength;
-      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uPheasantWind;\nuniform vec2 uPheasantWindDirection;\nuniform float uPheasantWindStrength;\nuniform vec4 uCoverDisturbance[4];\nuniform vec2 uCoverHunter;\nuniform vec4 uCoverDogs[2];\nattribute vec3 bladeRoot;')
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uPheasantWind;\nuniform vec2 uPheasantWindDirection;\nuniform float uPheasantWindStrength;\nuniform vec4 uCoverDisturbance[4];\nuniform vec2 uCoverHunter;\nuniform vec4 uCoverDogs[2];\nuniform float uCoverDogReach[2];\nuniform vec4 uCoverWake[8];\nattribute vec3 bladeRoot;')
         .replace('#include <begin_vertex>', `#include <begin_vertex>
           #ifdef USE_INSTANCING
           float phase = instanceMatrix[3].x * .15 + instanceMatrix[3].z * .11;
@@ -367,7 +377,7 @@ export class PheasantCoverSystem implements Subsystem {
             if (dot(dog.zw, dog.zw) < .5) continue;
             vec2 relative = rootWorld - dog.xy;
             vec2 away = relative - dog.zw * clamp(dot(relative, dog.zw), -.45, .45);
-            float contact = 1.0 - smoothstep(.18, .85, length(away));
+            float contact = 1.0 - smoothstep(.18, uCoverDogReach[dogIndex], length(away));
             if (contact > dogContact) {
               dogContact = contact;
               dogDirection = away / max(length(away), .08);
@@ -379,6 +389,22 @@ export class PheasantCoverSystem implements Subsystem {
           float dogBend = dogContact * .95 * (1.0 - bodyPart);
           transformed.xz += dogLocal * position.y * sin(dogBend);
           transformed.y -= position.y * (1.0 - cos(dogBend));
+          // The dog's wake: stems it shoved aside rock back upright behind
+          // it, so the tops show where it is working from far across a field.
+          for (int i = 0; i < 8; i++) {
+            vec4 wake = uCoverWake[i];
+            float age = uPheasantWind - wake.z;
+            if (age < 0.0 || age >= 2.6) continue;
+            vec2 away = rootWorld - wake.xy;
+            float reach = length(away);
+            float influence = (1.0 - smoothstep(.2, 1.3, reach)) * wake.w;
+            if (influence <= 0.0) continue;
+            float rock = sin(age * 6.5 + .5) * exp(-age * 1.8);
+            vec2 direction = away / max(reach, .15);
+            vec2 localDirection = vec2(dot(normalize(instanceMatrix[0].xz), direction),
+              dot(normalize(instanceMatrix[2].xz), direction));
+            transformed.xz += localDirection * influence * rock * .32 * position.y * position.y * (1.0 - bodyPart);
+          }
           for (int i = 0; i < 4; i++) {
             vec4 disturbance = uCoverDisturbance[i];
             float age = uPheasantWind - disturbance.z;
@@ -394,7 +420,7 @@ export class PheasantCoverSystem implements Subsystem {
           }
           #endif`);
     };
-    material.customProgramCacheKey = () => 'pheasant-rooted-cover-wind-v6'; this.materials.push(material);
+    material.customProgramCacheKey = () => 'pheasant-rooted-cover-wind-v7'; this.materials.push(material);
     // Keep the same habitat footprint in both tiers. Distance changes blade
     // complexity, not the height or presence of protective cover.
     const fields = pheasantFields(area), ponds = pheasantPonds(this.landscape);
@@ -552,6 +578,9 @@ export class PheasantCoverSystem implements Subsystem {
   }
 
   update(ctx: Ctx): void {
+    // The field clock, not the frame's dt: capture stepping moves it too.
+    const dt = Math.max(0, Math.min(.25, ctx.time - this.lastTime));
+    this.lastTime = ctx.time;
     this.wind.value = ctx.time;
     this.hunterPosition.value.set(ctx.camera.position.x, ctx.camera.position.z);
     for (let slot = 0; slot < this.dogBodies.value.length; slot++) {
@@ -560,6 +589,12 @@ export class PheasantCoverSystem implements Subsystem {
       this.hunt.dogRenderWorld(ctx.fixedAlpha, this.world, slot);
       const heading = this.hunt.dogRenderHeading(ctx.fixedAlpha, slot);
       body.set(this.world.x, this.world.z, Math.cos(heading), Math.sin(heading));
+      this.trackWake(ctx, slot);
+      // On point the dog has pressed into the stand: the stems around it lie
+      // back a little further, so a hunter walking in sees it sooner.
+      const state = this.hunt.dog(slot).state, still = state === 'pointing' || state === 'honoring';
+      const reach = this.dogReach.value[slot];
+      this.dogReach.value[slot] = reach + ((still ? 1.3 : .85) - reach) * Math.min(1, Math.max(0, dt) * (still ? 1.2 : 3));
     }
     for (const batch of this.batches) {
       // Distance to the actual parcel footprint avoids keeping an entire
@@ -579,6 +614,23 @@ export class PheasantCoverSystem implements Subsystem {
         else if (current === batch.far && distance < batch.middleRange - 3) batch.mesh.geometry = batch.middle;
       }
     }
+  }
+
+  /** Each half metre a dog moves through standing cover leaves a wake. */
+  private trackWake(ctx: Ctx, slot: number): void {
+    const from = this.wakeFrom[slot], x = this.world.x, z = this.world.z;
+    const moved = Number.isNaN(from.x) ? Infinity : Math.hypot(x - from.x, z - from.z);
+    if (moved > 4) { from.x = x; from.z = z; from.time = ctx.time; return; }
+    if (moved < .5) return;
+    const speed = moved / Math.max(.05, ctx.time - from.time);
+    from.x = x; from.z = z; from.time = ctx.time;
+    this.landscape.worldToProperty(x, z, this.property);
+    const stand = pheasantCoverAt(this.landscape.area, this.property.x, this.property.y) ? 1
+      : pheasantCoverFringeAt(this.landscape.area, this.property.x, this.property.y);
+    if (stand < .2) return;
+    // A running dog thrashes the stand; a dog creeping in on scent barely stirs it.
+    this.wake.value[this.wakeCursor].set(x, z, ctx.time, stand * THREE.MathUtils.clamp(speed / 4, .3, 1));
+    this.wakeCursor = (this.wakeCursor + 1) % this.wake.value.length;
   }
 
   dispose(ctx: Ctx): void {

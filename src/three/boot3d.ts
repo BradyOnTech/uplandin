@@ -246,6 +246,7 @@ declare global {
        * the pointing dog stands under the exploding birds).
        */
       stepRise(ticks: number): void;
+      advanceClock(seconds: number): void;
       /** Walk the mapped hunter in and flush the pointed covey (sim law). */
       triggerFlush(): { ids: number[]; distPx: number } | null;
       /** Airborne rise birds, world meters — capture telemetry. */
@@ -309,6 +310,8 @@ engine.start(fieldInterface.loading).then((started) => {
       }
     },
     stepRise: (ticks) => engine.ctx.get<BirdsSystem>('birds').step(engine.ctx, ticks),
+    // Capture tooling: move the field clock (wind, cover wakes) between renders.
+    advanceClock: (seconds) => { engine.ctx.time += Math.max(0, seconds); },
     triggerFlush: () => engine.ctx.get<Hunt3DSystem>('hunt3d').triggerFlush(engine.ctx),
     birds: () => engine.ctx.get<BirdsSystem>('birds').airborne(),
     downBird: (simId, reaction) => {

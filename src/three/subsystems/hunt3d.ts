@@ -76,6 +76,8 @@ const DEFAULT_DOG_BREED = 'english-setter';
 const LIVE_DOG_AHEAD_M = 5;
 const LIVE_DOG_LEFT_M = 2;
 const LIVE_DOG_RELEASE_MOVE_PX = 1;
+/** A retrieving dog presents the bird this far (m) in front of the hunter. */
+const DELIVERY_AHEAD_M = 1.05;
 /** 2D's 75 px/s reads as 69 m/s under the 3D yard mapping. */
 const LIVE_DOG_MOVEMENT_SCALE = 0.05;
 // The short 2D work clock must make the same transition as field travel.
@@ -173,6 +175,7 @@ export class Hunt3DSystem implements Subsystem {
   private liveIntroHolding = false;
   private liveIntroHunter: Vec2 = { x: 0, y: 0 };
   private liveDogAnchor: Vec2 = { x: 0, y: 0 };
+  private deliverySpot: Vec2 = { x: 0, y: 0 };
   private simulation!: HuntSimulation;
   private lookDirection = new THREE.Vector3();
   /** Adapter-only pace/range mapping passed through the shared sim seam. */
@@ -394,6 +397,9 @@ export class Hunt3DSystem implements Subsystem {
       hunterPos.x + (forwardX * DOG_RANGES[this.dogRange].aheadM) / PROPERTY_PX_TO_M;
     this.liveDogAnchor.y =
       hunterPos.y + (forwardZ * DOG_RANGES[this.dogRange].aheadM) / PROPERTY_PX_TO_M;
+    // A retrieve is presented a step in front of the hunter, where he looks.
+    this.deliverySpot.x = hunterPos.x + (forwardX * DELIVERY_AHEAD_M) / PROPERTY_PX_TO_M;
+    this.deliverySpot.y = hunterPos.y + (forwardZ * DELIVERY_AHEAD_M) / PROPERTY_PX_TO_M;
 
     // The 2D area's hunter/dog spawn lives near its bottom edge, while the
     // 3D player deliberately starts near the field center. Without this
@@ -476,6 +482,7 @@ export class Hunt3DSystem implements Subsystem {
     const guard = this.falconry?.guardPoint();
     const events = this.simulation.update(dtMs, {
       hunterPos: hunterPos,
+      deliveryPos: this.falconry ? undefined : this.deliverySpot,
       hunterRunning: player.isRunning(),
       recall,
       holdDogs: this.falconry?.holdsDog,
