@@ -93,12 +93,15 @@ describe('visible flight and shot sampling', () => {
     const f = field(); f.birds.downBird(1, { x: .31, y: .061, z: -12 });
     f.birds.fixedUpdate(f.ctx, 1000 / 30);
     expect(f.slot.status).toBe('grounded');
+    // The folded chukar keeps a little of its 18 m/s crossing speed into the grass.
+    const landing = [f.slot.x, .06, -12];
+    expect(f.slot.x).toBeGreaterThan(.31); expect(f.slot.x).toBeLessThan(1.2);
     for (const alpha of [0, .5, 1]) {
       f.ctx.fixedAlpha = alpha; f.birds.update(f.ctx, 0);
-      expect(f.slot.root.position.toArray()).toEqual([.31, .06, -12]);
+      expect(f.slot.root.position.toArray()).toEqual(landing);
     }
     f.birds.fixedUpdate(f.ctx, 1000 / 30);
-    expect(f.hunt.recordFallWorld).toHaveBeenCalledExactlyOnceWith(1, .31, -12);
+    expect(f.hunt.recordFallWorld).toHaveBeenCalledExactlyOnceWith(1, landing[0], -12);
     f.birds.dispose(f.ctx);
   });
 

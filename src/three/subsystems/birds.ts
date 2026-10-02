@@ -6,6 +6,8 @@ import { buildPheasantBody, buildPheasantLegs, buildPheasantWing, buildPheasantT
 import { createQuailFlight, selectQuailEscapeCover, stepQuailFlight, type QuailFlight } from '../quailFlight';
 import { QUAIL_WORLD_SCALE, quailLaunchDelay } from '../quailPresentation';
 import { flyingBirdScale, type BirdSizeMode } from '../birdScale';
+import { chooseHitReaction, createHitReaction, featherCount, stepHitReaction, tumbleRate, type HitReaction, type HitReactionKind, type HitShot } from '../hitReactions';
+import { FeatherDrift, featherTones } from '../featherDrift';
 import { QuailFlushDebris } from '../quailFlushDebris';
 import * as THREE from 'three';
 import { buildBobwhiteBody, buildBobwhiteWing, poseBobwhiteFoldedWings } from '../assets/bobwhite';
@@ -315,6 +317,8 @@ interface Slot {
   bank?: number;
   bankYaw?: number;
   fallPose?: { startMs: number; rotation: THREE.Euler; groundedMs?: number };
+  /** How the bird came down when it was hit (hitReactions.ts). */
+  reaction?: HitReaction;
   /** A wounded bird on the ground, running from the dog. */
   running?: boolean;
   runYaw?: number;
@@ -501,6 +505,9 @@ export class BirdsSystem implements Subsystem {
   private featherPos = new Float32Array(14 * 3);
   private featherVel = new Float32Array(14 * 3);
   private featherMs = -1;
+  /** Body feathers that drift down after a hit and lie where they land. */
+  private loose?: FeatherDrift;
+  private readonly windDrift = { x: 0, z: 0 };
 
   // Preallocated scratch.
   private w2 = { x: 0, z: 0 };
@@ -577,6 +584,7 @@ export class BirdsSystem implements Subsystem {
       ctx.scene.add(this.launchCover.mesh);
     } else this.buildDebris(ctx);
     this.buildFeathers(ctx);
+    if (this.spatialEncounter) { this.loose = new FeatherDrift(); ctx.scene.add(this.loose.points); }
 
     // Tooling-only family gallery: a frozen, live-material bird at honest
     // shooting distance. Useful for silhouette review without needing a
@@ -948,7 +956,7 @@ export class BirdsSystem implements Subsystem {
       opacity: 0.95,
       depthWrite: false,
     });
-    if (this.refinedQuail) this.featherMat.onBeforeCompile = shader => {
+    this.featherMat.onBeforeCompile = shader => {
       // Small tapered down feathers instead of untextured square point sprites.
       shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
         vec2 featherUV = gl_PointCoord * 2.0 - 1.0;
@@ -1062,17 +1070,18 @@ export class BirdsSystem implements Subsystem {
         continue;
       }
       if (s.status === 'falling') {
-        if (this.spatialEncounter && s.species.id === 'ringneck') {
-          // Retain launch/crossing momentum at impact. Drag bleeds forward
-          // carry while gravity turns even an upward hit into a falling arc.
-          const drag = .65, decay = Math.exp(-drag * dt);
-          s.x += s.vxW * (1 - decay) / drag;
-          s.z += s.vzW * (1 - decay) / drag;
-          s.vxW *= decay; s.vzW *= decay;
-          s.y += s.vyW * dt - .5 * 9.81 * dt * dt;
-          s.vyW -= 9.81 * dt;
+        if (this.spatialEncounter && s.reaction) {
+          // The hit's reaction carries the bird: a fold keeps its launch or
+          // crossing momentum, bled by drag and bent down by gravity; a tower
+          // or a sail plays out first, then folds where it ends.
+          const reaction = s.reaction, held = !reaction.collapsed;
+          stepHitReaction(s, reaction, (s.airMs - reaction.startMs) / 1000, dt, birdFamilyFor(s.species.id));
+          if (held && reaction.collapsed) {
+            s.gliding = false;
+            s.fallPose = { startMs: s.airMs + dtMs, rotation: s.root.rotation.clone() };
+          }
         } else {
-          // Legacy screen-space falling remains unchanged for other birds.
+          // Legacy screen-space falling for the non-spatial hunts.
           s.vyW = -FALL_PX_PER_S * FLUSH_PX_TO_M_V;
           s.y += s.vyW * dt;
         }
@@ -1081,8 +1090,11 @@ export class BirdsSystem implements Subsystem {
         if (s.y <= g + 0.06) {
           s.y = g + 0.06;
           s.status = 'grounded';
+          s.gliding = false;
           this.rememberFlightPosition(s);
-          if (s.fallPose) s.fallPose.groundedMs = 0;
+          // A sailing or spiralling bird lands as it flew; it rests from there.
+          s.fallPose ??= { startMs: s.airMs, rotation: s.root.rotation.clone() };
+          s.fallPose.groundedMs = 0;
           this.hunt.recordFallWorld(s.simId, s.x, s.z);
           playThud();
         }
@@ -1264,6 +1276,13 @@ export class BirdsSystem implements Subsystem {
     if (this.debrisMs >= 0) {
       this.debrisMs += dtMs;
       if (this.debrisMs > DEBRIS_LIFE_MS) this.debrisMs = -1;
+    }
+    if (this.loose && this.loose.count > 0) {
+      // Loose feathers drift with the hunt's wind (blowing toward `wind`).
+      const hunt = this.hunt.huntState();
+      const drift = hunt.windStrength === 'strong' ? .55 : hunt.windStrength === 'breezy' ? .28 : .08;
+      this.windDrift.x = Math.cos(hunt.wind) * drift; this.windDrift.z = Math.sin(hunt.wind) * drift;
+      this.loose.step(dt, (x, z) => this.terrain.heightAt(x, z), this.windDrift);
     }
     if (this.featherMs >= 0) {
       this.featherMs += dtMs;
@@ -1687,8 +1706,12 @@ export class BirdsSystem implements Subsystem {
     return flyingBirdScale(this.size, restingBirdScale(birdFamilyFor(speciesId)), RISE_SCALE, distanceM);
   }
 
-  /** Fold a bird out of the sky (the gun phase's hook — falling frame). */
-  downBird(simId: number, impact?: { x: number; y: number; z: number }): boolean {
+  /**
+   * Bring a hit bird down (the gun's hook). `shot` says how squarely the
+   * pattern took it, which picks the reaction: a fold, a tower, a sail or a
+   * wing-tipped spiral (hitReactions.ts). Without it the bird folds.
+   */
+  downBird(simId: number, impact?: { x: number; y: number; z: number }, shot?: HitShot, force?: HitReactionKind): boolean {
     for (let i = 0; i < POOL; i++) {
       const s = this.slots[i];
       if (s.simId === simId && s.status === 'flying') {
@@ -1699,14 +1722,30 @@ export class BirdsSystem implements Subsystem {
         this.rememberFlightPosition(s);
         s.launchSound?.stop();
         s.launchSound = undefined;
-        if (this.spatialEncounter && s.species.id === 'ringneck') {
-          s.fallPose = { startMs: s.airMs, rotation: s.root.rotation.clone() };
+        if (this.spatialEncounter) {
+          // Its own stream per bird and rise: the rise's dice stay untouched.
+          const rng = mulberry32((this.riseSeed ^ Math.imul(s.simId + 1, 0x9e3779b1) ^ Math.imul(this.riseSeq + 1, 0x85ebca6b)) >>> 0);
+          const chosen = chooseHitReaction(birdFamilyFor(s.species.id), shot, {
+            heightM: s.y - this.terrain.heightAt(s.x, s.z), speedMps: Math.hypot(s.vxW, s.vzW),
+          }, rng);
+          // Capture tooling may ask for a particular reaction to review it.
+          const kind = force ?? chosen;
+          s.reaction = createHitReaction(kind, s.airMs, Math.atan2(s.vxW, s.vzW), s.vyW, rng);
+          s.gliding = kind === 'sail';
+          if (kind === 'fold') s.fallPose = { startMs: s.airMs, rotation: s.root.rotation.clone() };
+          this.loose?.emit(s, { x: s.vxW, y: s.vyW, z: s.vzW }, featherCount(kind, shot?.offset ?? 0),
+            featherTones(s.species.id, s.sex), rng);
         }
         this.burstFeathers(s);
         return true;
       }
     }
     return false;
+  }
+
+  /** How a hit bird is coming down, while it is falling or after. */
+  hitReaction(simId: number): HitReaction['kind'] | undefined {
+    return this.slots.find(s => s.simId === simId && s.reaction)?.reaction?.kind;
   }
 
   quarryTargets(): QuarryTarget[] {
@@ -1873,12 +1912,32 @@ export class BirdsSystem implements Subsystem {
     slot.bankYaw = yaw;
   }
 
-  private poseFallingPheasant(slot: Slot): void {
+  /** Dead weight tumbling from the pose it folded in. */
+  private poseFalling(slot: Slot): void {
     const fall = slot.fallPose!;
     const t = Math.max(0, slot.airMs - fall.startMs) / 1000;
     slot.root.rotation.copy(fall.rotation);
-    slot.root.rotation.x += t * 4.2;
+    slot.root.rotation.x += t * tumbleRate(birdFamilyFor(slot.species.id));
     slot.root.rotation.z += t * .65;
+  }
+
+  /**
+   * A wing-tipped bird: the broken wing folds on the inside of the turn,
+   * the other still beats, and the body rolls toward the broken side as it
+   * corkscrews down.
+   */
+  private poseSpiral(slot: Slot, reaction: HitReaction, wingMs: number): void {
+    const t = Math.max(0, wingMs - reaction.startMs) / 1000;
+    const turn = Math.sign(reaction.spin) || 1;
+    slot.root.rotation.order = 'YXZ';
+    slot.root.rotation.set(.22, reaction.yaw + reaction.spin * t, -turn * .7);
+    this.foldWings(slot);
+    // The model's +X wing (wingR) is the bird's left: inside a left turn.
+    const beating = turn > 0 ? slot.wingL : slot.wingR, mesh = turn > 0 ? slot.wingLMesh : slot.wingRMesh;
+    const hz = (slot.species.flight.flapRate ?? 14) * 1.15;
+    const angle = .2 + Math.sin(t * hz * Math.PI * 2 + slot.wobblePh) * .62;
+    beating.rotation.set(0, 0, turn > 0 ? -angle : angle);
+    if (mesh.morphTargetInfluences) mesh.morphTargetInfluences[0] = 0;
   }
 
   private foldWings(slot: Slot): void {
@@ -1970,6 +2029,9 @@ export class BirdsSystem implements Subsystem {
         }
       }
       this.sampleFlightPosition(s, this.renderedPhase, s.root.position);
+      // A towering or sailing hit bird still flies until it folds.
+      const holding = s.status === 'falling' && !!s.reaction && !s.reaction.collapsed
+        && (s.reaction.kind === 'tower' || s.reaction.kind === 'sail');
       let scale = s.status === 'grounded' ? restingBirdScale(birdFamilyFor(s.species.id))
         : this.flightScale(s.species.id, s.root.position, ctx.camera?.position ?? this.listener?.position);
       if (s.status === 'falling') {
@@ -1989,9 +2051,10 @@ export class BirdsSystem implements Subsystem {
       }
       if (s.legMesh?.visible) {
         // Legs hang as the bird jumps, tuck aft within the first strokes,
-        // trail loose in a fall and stand under a running cripple.
+        // drop on a body hit (the tower and the sail), trail loose in a fall
+        // and stand under a running cripple.
         s.legMesh.rotation.x = s.status === 'flying' ? pheasantLegTuck(s.airMs)
-          : s.status === 'falling' ? .5 : s.status === 'grounded' && s.running ? 0 : 1.3;
+          : holding ? .12 : s.status === 'falling' ? .5 : s.status === 'grounded' && s.running ? 0 : 1.3;
       }
       if (s.status === 'grounded' && s.running) {
         // Head down, running low for the nearest cover.
@@ -2003,20 +2066,26 @@ export class BirdsSystem implements Subsystem {
       if (s.status === 'grounded') {
         // Folded bird remains marked in the grass until the dog picks it up.
         if (s.fallPose) {
-          this.poseFallingPheasant(s);
+          this.poseFalling(s);
           this.restRotation.setFromEuler(this.fallEuler.set(0, s.fallPose.rotation.y, 1.2, 'YXZ'));
           s.root.quaternion.slerp(this.restRotation, THREE.MathUtils.smoothstep(s.fallPose.groundedMs ?? 0, 0, 260));
         } else s.root.rotation.set(0, s.root.rotation.y, 1.2);
         this.foldWings(s);
         continue;
       }
-      if (s.status === 'falling') {
+      if (s.status === 'falling' && s.reaction?.kind === 'spiral') {
+        this.poseSpiral(s, s.reaction, this.frozen ? s.airMs : THREE.MathUtils.lerp(s.previousAirMs ?? s.airMs, s.airMs, ctx.fixedAlpha ?? 1));
+        continue;
+      }
+      if (s.status === 'falling' && !holding) {
         // Folded frame: wings pinned to the body, tumbling — dead weight.
-        if (s.fallPose) this.poseFallingPheasant(s);
+        if (s.fallPose) this.poseFalling(s);
         else s.root.rotation.set(s.airMs * 0.001 * TUMBLE_RAD_PER_S, s.root.rotation.y, 0.5);
         this.foldWings(s);
         continue;
       }
+      // A towering or sailing bird still flies: it takes the flight pose
+      // below, beating up the tower or with its wings set for the sail.
       // Nose along the world velocity; pitch climbs with the burst and
       // flattens into the glide. The profile controls how much each species
       // climbs before it settles or leaves the readable envelope.
@@ -2025,7 +2094,7 @@ export class BirdsSystem implements Subsystem {
       const pitch = THREE.MathUtils.clamp(Math.atan2(s.vyW, Math.max(hSpeed, 0.3)), -0.5, 1.1);
       s.root.rotation.order = 'YXZ';
       s.root.rotation.set(-pitch * 0.85, yaw, this.spatialEncounter && s.species.id === 'ringneck' ? (s.bank ?? 0) : 0);
-      if (s.species.id === 'sharptail') {
+      if (s.species.id === 'sharptail' && !(holding && s.reaction?.kind === 'sail')) {
         // Render on the interpolated clock, not held 30Hz simulation poses.
         // Beat/glide phrasing changes only this species' mesh and morphs;
         // spatial velocities, clearance, glide state and hit center stay live.
@@ -2144,6 +2213,8 @@ export class BirdsSystem implements Subsystem {
     this.shotSamples.length = 0;
     if (this.debrisMesh) ctx.scene.remove(this.debrisMesh);
     if (this.featherPoints) ctx.scene.remove(this.featherPoints);
+    this.loose?.dispose();
+    this.loose = undefined;
     this.debrisGeo?.dispose();
     this.debrisMat?.dispose();
     this.featherGeo?.dispose();

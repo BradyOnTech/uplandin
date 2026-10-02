@@ -127,9 +127,13 @@ export class ShotFx {
 export const TOO_CLOSE_M = 9;
 
 export function shotCall(hit: boolean, wounded: boolean, miss: { call: 'behind' | 'ahead' | 'high' | 'low'; margin: number } | null,
-  rangeM = Infinity): { text: string; tone: 'hit' | 'wound' | 'miss' } {
+  rangeM = Infinity, reaction?: 'fold' | 'tower' | 'sail' | 'spiral'): { text: string; tone: 'hit' | 'wound' | 'miss' } {
   // A rooster shot at his feet is the hunter's lesson in patience: let it get out.
   if (hit && !wounded && rangeM < TOO_CLOSE_M) return { text: 'BIRD DOWN · SHOT UP, TOO CLOSE', tone: 'hit' };
+  // What a hunter calls as he watches the bird: each one asks something of him.
+  if (hit && reaction === 'tower') return { text: 'HIT · HE\'S TOWERING', tone: 'hit' };
+  if (hit && reaction === 'sail') return { text: 'HIT · LEGS DOWN · MARK HIM', tone: wounded ? 'wound' : 'hit' };
+  if (hit && reaction === 'spiral') return { text: 'WING-TIPPED · HE\'LL RUN', tone: 'wound' };
   if (hit) return wounded ? { text: 'HIT · BIRD DOWN RUNNING', tone: 'wound' } : { text: 'BIRD DOWN', tone: 'hit' };
   if (!miss || miss.margin > 3) return { text: 'MISS', tone: 'miss' };
   const where = { behind: 'BEHIND IT', ahead: 'IN FRONT OF IT', high: 'OVER IT', low: 'UNDER IT' }[miss.call];

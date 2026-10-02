@@ -8,6 +8,8 @@ import type { Bird } from '../src/game/birds';
 import { getSpecies } from '../src/game/species';
 import { getArea } from '../src/game/areas';
 import { QuailFlushDebris } from '../src/three/quailFlushDebris';
+import { createHitReaction } from '../src/three/hitReactions';
+import { mulberry32 } from '../src/game/math';
 
 // Exercise the actual fixed flight loop without allocating renderer geometry.
 function fixture(areaId = 'quail-fields') {
@@ -188,15 +190,94 @@ describe('continuous Quail coveys', () => {
     expect(slot.body.morphTargetInfluences[0]).toBe(1);slot.body.geometry.dispose();
   });
 
-  it.each([{species:'bobwhite',spatial:true},{species:'ringneck',spatial:false}])(
-    'preserves legacy falling for $species (spatial: $spatial)', ({species,spatial}) => {
-      const f=fixture();f.add(1,1,4,0);f.birds[0].speciesId=species;
-      f.runtime.tickBirds(1000/30);f.runtime.spatialEncounter=spatial;
+  it('preserves legacy falling for a non-spatial hunt', () => {
+    const f=fixture();f.add(1,1,4,0);f.birds[0].speciesId='ringneck';
+    f.runtime.tickBirds(1000/30);f.runtime.spatialEncounter=false;
+    const slot=f.runtime.slots[0];Object.assign(slot,{x:4,y:10,z:2,vxW:10,vyW:3,vzW:2});
+    f.birds[0].state='downed';f.runtime.downBird(1);f.runtime.tickBirds(1000/30);
+    expect(slot.x).toBe(4);expect(slot.z).toBe(2);expect(slot.vyW).toBeLessThan(0);
+    const velocity=slot.vyW;f.runtime.tickBirds(1000/30);expect(slot.vyW).toBe(velocity);
+  });
+
+  it('picks a hit reaction from the shot, and folds a bird hit without one', () => {
+    const f=fixture('pheasant-coverts');f.add(1,1,4,0);f.add(2,1,6,0);
+    for(const b of f.birds)b.speciesId='ringneck';
+    f.runtime.tickBirds(1000/30);
+    const [first,second]=f.runtime.slots;
+    for(const slot of [first,second])Object.assign(slot,{status:'flying',y:6,vxW:12,vyW:2,vzW:1});
+    const runtime=f.runtime as unknown as {downBird(id:number,impact?:unknown,shot?:unknown):boolean;hitReaction(id:number):string|undefined};
+    for(const b of f.birds)b.state='downed';
+    expect(runtime.downBird(1)).toBe(true);expect(runtime.hitReaction(1)).toBe('fold');
+    expect(runtime.downBird(2,undefined,{offset:.95,wounded:true,rangeM:30})).toBe(true);
+    expect(['spiral','sail']).toContain(runtime.hitReaction(2));
+    expect(runtime.hitReaction(3)).toBeUndefined();
+  });
+
+  it('towers a rooster, folds it at the top and records the fall once', () => {
+    const f=fixture('pheasant-coverts');f.add(1,1,4,0);f.birds[0].speciesId='ringneck';
+    f.runtime.tickBirds(1000/30);
+    const slot=f.runtime.slots[0];Object.assign(slot,{x:4,y:6,z:2,vxW:12,vyW:2,vzW:1});
+    f.birds[0].state='downed';f.runtime.downBird(1);
+    slot.reaction=createHitReaction('tower',slot.airMs,0,2,mulberry32(8));slot.fallPose=undefined;
+    let top=slot.y,folded=false;
+    for(let i=0;i<300&&slot.status!=='grounded';i++){
+      f.runtime.tickBirds(1000/30);top=Math.max(top,slot.y);
+      if(slot.reaction.collapsed&&!folded){folded=true;expect(slot.fallPose).toBeDefined();expect(slot.y).toBeGreaterThan(8.5);}
+    }
+    expect(folded).toBe(true);expect(top).toBeGreaterThan(9);
+    expect(slot.status).toBe('grounded');expect(Math.hypot(slot.x-4,slot.z-2)).toBeLessThan(9);
+    const record=(f.runtime.hunt as {recordFallWorld:ReturnType<typeof vi.fn>}).recordFallWorld;
+    expect(record).toHaveBeenCalledExactlyOnceWith(1,slot.x,slot.z);
+  });
+
+  it('sails a hit bird on with its wings set before it comes down', () => {
+    const fall=(kind:'sail'|'fold')=>{
+      const f=fixture('pheasant-coverts');f.add(1,1,4,0);f.birds[0].speciesId='ringneck';
+      f.runtime.tickBirds(1000/30);
+      const slot=f.runtime.slots[0];Object.assign(slot,{x:4,y:6,z:2,vxW:12,vyW:0,vzW:1});
+      f.birds[0].state='downed';f.runtime.downBird(1);
+      slot.reaction=createHitReaction(kind,slot.airMs,0,0,mulberry32(8));slot.gliding=kind==='sail';
+      let glided=0;
+      for(let i=0;i<400&&slot.status!=='grounded';i++){f.runtime.tickBirds(1000/30);if(slot.gliding)glided++;}
+      return {carry:Math.hypot(slot.x-4,slot.z-2),glided,gliding:slot.gliding};
+    };
+    const sail=fall('sail'),fold=fall('fold');
+    expect(sail.carry).toBeGreaterThan(fold.carry+8);expect(sail.glided).toBeGreaterThan(20);
+    expect(sail.gliding).toBe(false);expect(fold.glided).toBe(0);
+  });
+
+  it('spins a wing-tipped bird down with only its outside wing beating', () => {
+    const f=fixture('pheasant-coverts');f.add(1,1,4,0);f.birds[0].speciesId='ringneck';
+    f.runtime.tickBirds(1000/30);
+    const slot=f.runtime.slots[0];
+    Object.assign(slot,{body:new THREE.Mesh(buildPheasantBody()),wingL:new THREE.Group(),wingR:new THREE.Group(),visualScale:1,x:4,y:8,z:2,vxW:10,vyW:0,vzW:0});
+    f.birds[0].state='downed';f.runtime.downBird(1);
+    slot.reaction=createHitReaction('spiral',slot.airMs,0,0,mulberry32(8));
+    const render=()=> (f.runtime as unknown as {update(ctx:unknown,dt:number):void}).update({},0);
+    const turn=Math.sign(slot.reaction.spin);
+    render();const yaw0=slot.root.rotation.y;
+    expect(slot.root.rotation.z).toBeCloseTo(-turn*.7);
+    const folded=(turn>0?slot.wingR:slot.wingL).rotation.clone(),beating=turn>0?slot.wingL:slot.wingR;
+    const angles=new Set<number>();
+    for(let i=0;i<6;i++){f.runtime.tickBirds(1000/30);render();angles.add(Math.round(beating.rotation.z*100));
+      expect((turn>0?slot.wingR:slot.wingL).rotation.equals(folded)).toBe(true);}
+    expect(angles.size).toBeGreaterThan(2);
+    expect(Math.abs(slot.root.rotation.y-yaw0)).toBeGreaterThan(.8);
+    expect(slot.status).toBe('falling');
+  });
+
+  it('folds a quail along its line, shedding speed faster than a pheasant', () => {
+    const carry = (species: string) => {
+      const f=fixture();f.add(1,1,4,0);f.birds[0].speciesId=species;f.runtime.tickBirds(1000/30);
       const slot=f.runtime.slots[0];Object.assign(slot,{x:4,y:10,z:2,vxW:10,vyW:3,vzW:2});
-      f.birds[0].state='downed';f.runtime.downBird(1);f.runtime.tickBirds(1000/30);
-      expect(slot.x).toBe(4);expect(slot.z).toBe(2);expect(slot.vyW).toBeLessThan(0);
-      const velocity=slot.vyW;f.runtime.tickBirds(1000/30);expect(slot.vyW).toBe(velocity);
-    });
+      f.birds[0].state='downed';f.runtime.downBird(1);
+      for(let i=0;i<20;i++)f.runtime.tickBirds(1000/30);
+      return { x: slot.x - 4, z: slot.z - 2, vx: slot.vxW };
+    };
+    const quail = carry('bobwhite'), pheasant = carry('ringneck');
+    expect(quail.x).toBeGreaterThan(1); expect(quail.z).toBeGreaterThan(.2);
+    expect(quail.x).toBeLessThan(pheasant.x); expect(quail.vx).toBeLessThan(pheasant.vx);
+  });
 
   it('sounds each pheasant only on its actual launch and keeps hens silent of cackles', () => {
     const sound = vi.spyOn(audio, 'playPheasantFlush').mockImplementation(() => {});

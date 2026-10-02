@@ -202,6 +202,12 @@ describe('3D shotgun action', () => {
     expect(habitat.blocksShot).toHaveBeenCalledTimes(obstruction === 'terrain' ? 0 : 1);
     expect(hunt.resolveBird).toHaveBeenCalledTimes(blocked ? 0 : 1);
     expect(birds.downBird).toHaveBeenCalledTimes(blocked ? 0 : 1);
+    if (!blocked) {
+      // The bird learns how squarely the pattern took it, to choose how it falls.
+      const shot = birds.downBird.mock.calls[0][2] as { offset: number; wounded: boolean; rangeM: number };
+      expect(shot.offset).toBeGreaterThanOrEqual(0); expect(shot.offset).toBeLessThan(.78);
+      expect(shot.wounded).toBe(false); expect(shot.rangeM).toBeCloseTo(12, 0);
+    }
     gun.dispose(ctx);
   });
 

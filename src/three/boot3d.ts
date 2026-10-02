@@ -250,8 +250,9 @@ declare global {
       triggerFlush(): { ids: number[]; distPx: number } | null;
       /** Airborne rise birds, world meters — capture telemetry. */
       birds(): { simId: number; x: number; y: number; z: number; airMs: number; status: string; speciesId: string; sex?: 'hen' | 'rooster' }[];
-      /** Capture/test hook: route a staged hit through sim and presentation. */
-      downBird(simId: number): boolean;
+      /** Capture/test hook: route a staged hit through sim and presentation,
+       * optionally as a particular hit reaction (a spiral comes down wounded). */
+      downBird(simId: number, reaction?: 'fold' | 'tower' | 'sail' | 'spiral'): boolean;
       groundedBirds(): number[];
       /** Sim snapshot in world meters — capture poses shots off this. */
       hunt(): {
@@ -310,10 +311,11 @@ engine.start(fieldInterface.loading).then((started) => {
     stepRise: (ticks) => engine.ctx.get<BirdsSystem>('birds').step(engine.ctx, ticks),
     triggerFlush: () => engine.ctx.get<Hunt3DSystem>('hunt3d').triggerFlush(engine.ctx),
     birds: () => engine.ctx.get<BirdsSystem>('birds').airborne(),
-    downBird: (simId) => {
+    downBird: (simId, reaction) => {
       const hunt = engine.ctx.get<Hunt3DSystem>('hunt3d');
       const birds = engine.ctx.get<BirdsSystem>('birds');
-      return hunt.resolveBird(simId, 'downed') && birds.downBird(simId);
+      return hunt.resolveBird(simId, 'downed', undefined, reaction === 'spiral' ? { wounded: true } : {})
+        && birds.downBird(simId, undefined, undefined, reaction);
     },
     groundedBirds: () => engine.ctx.get<BirdsSystem>('birds').groundedIds(),
     effects: () => fieldEffects,

@@ -39,6 +39,9 @@ export class TravellingShot {
   /** Actual swept crossing point, available only after a successful hit. */
   get impact(): Readonly<ShotTarget> | null { return this.hit; }
 
+  /** How far from the pattern's core the hit bird was: 0 at the core, 1 at its edge; null without a hit. */
+  get hitOffsetShare(): number | null { return this.hit === null ? null : this.hitOffset; }
+
   constructor(origin: Point, direction: Point, private spread: number, targets: readonly ShotTarget[],
     private readonly assistance: Readonly<ShotAssistanceProfile> = NO_SHOT_ASSISTANCE,
     /** A tighter choke carries clean kills further. */

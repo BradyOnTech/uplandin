@@ -29,6 +29,16 @@ describe('shot coaching', () => {
     expect(shotCall(false, false, { call: 'behind', margin: 3.5 }).text).toBe('MISS');
   });
 
+  it('calls how a hit bird is coming down, so the hunter knows what to watch for', () => {
+    expect(shotCall(true, false, null, 25, 'fold').text).toBe('BIRD DOWN');
+    expect(shotCall(true, false, null, 25, 'tower')).toEqual({ text: 'HIT · HE\'S TOWERING', tone: 'hit' });
+    expect(shotCall(true, false, null, 25, 'sail')).toEqual({ text: 'HIT · LEGS DOWN · MARK HIM', tone: 'hit' });
+    expect(shotCall(true, true, null, 25, 'sail').tone).toBe('wound');
+    expect(shotCall(true, true, null, 25, 'spiral')).toEqual({ text: 'WING-TIPPED · HE\'LL RUN', tone: 'wound' });
+    // A rooster shot at his feet is still the lesson, whatever it does.
+    expect(shotCall(true, false, null, 6, 'tower').text).toBe('BIRD DOWN · SHOT UP, TOO CLOSE');
+  });
+
   it('doubles fire an open barrel first and a tighter one second; repeaters keep one choke', () => {
     for (const gun of GUNS) {
       const first = chokeForShot(gun, gun.shells), second = chokeForShot(gun, gun.shells - 1);
