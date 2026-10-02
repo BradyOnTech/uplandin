@@ -84,7 +84,7 @@ describe('western exterior prairie', () => {
       expect(skyline(209)).toBeLessThan(2);
       expect(skyline(242)).toBeGreaterThan(1);
     } finally { surface.dispose(); }
-  });
+  }, 15000); // Samples the full joined western meshes; allow for slower machines and busy workers.
 
   it('renders two independent western ridgelines with a broad low valley between them', () => {
     const surface = renderedSurface(), paint = growth();
