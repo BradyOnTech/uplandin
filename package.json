@@ -14,7 +14,8 @@
     "test": "vitest run",
     "dev:3d": "vite --port 4517",
     "build:3d": "tsc && vite build",
-    "capture:3d": "node tools3d/capture.mjs"
+    "capture:3d": "node tools3d/capture.mjs",
+    "art:menus": "node tools3d/render-menu-art.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0",
