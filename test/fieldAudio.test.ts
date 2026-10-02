@@ -1,18 +1,20 @@
 import * as THREE from 'three';
 import { afterEach, expect, it, vi } from 'vitest';
 import { FieldAudioSystem } from '../src/three/subsystems/fieldAudio';
-import { playDogCollar, playDogMovement, playFieldSong, playHullDrop, startFieldAmbience } from '../src/audio';
+import { playBirdCall, playBirdFlock, playDogCollar, playDogMovement, playHullDrop, prepareBirdSounds, startFieldAmbience } from '../src/audio';
+import { GROUND_BIRDS } from '../src/three/sound/fieldBirds';
+import { getArea } from '../src/game/areas';
 import type { Ctx } from '../src/three/engine';
 import { Hunt3DSystem } from '../src/three/subsystems/hunt3d';
 import { LandscapeModel } from '../src/game/landscape';
 import { parseDropPointId, resolveThreeHuntArea } from '../src/game/gameplayMode';
-vi.mock('../src/audio', () => ({ playDogCollar: vi.fn(), playDogMovement: vi.fn(), playFieldSong: vi.fn(), playWhistle: vi.fn(), startFieldAmbience: vi.fn(() => null),
-  setFieldTension: vi.fn(), playHeartbeat: vi.fn(), playHullDrop: vi.fn() }));
+vi.mock('../src/audio', () => ({ playDogCollar: vi.fn(), playDogMovement: vi.fn(), playWhistle: vi.fn(), startFieldAmbience: vi.fn(() => null),
+  setFieldTension: vi.fn(), playHeartbeat: vi.fn(), playHullDrop: vi.fn(), playBirdCall: vi.fn(), playBirdFlock: vi.fn(), prepareBirdSounds: vi.fn() }));
 afterEach(() => { vi.unstubAllGlobals(); vi.resetAllMocks(); });
 it('locates nearby moving paws, with no stationary, distant, paused, or teleport cues', () => {
   vi.stubGlobal('location', { search: '' });
   const dog = { x: 3, z: 0, gait: 'trot' };
-  const hunt = { dogPointRevision: () => 0, trackingGearTier: () => 0, dogCount: () => 1, dog: () => dog,
+  const hunt = { huntState: () => ({ birds: [] }), dogPointRevision: () => 0, trackingGearTier: () => 0, dogCount: () => 1, dog: () => dog,
     dogWorld: (out: {x:number;z:number}) => Object.assign(out, {x:dog.x,z:dog.z}),
     coverPatches: () => [{cx:0,cz:0,hx:30,hz:30}] };
   const ctx = { camera: new THREE.PerspectiveCamera(), events: new EventTarget(), time: 0, paused: false, get: (id: string) => id === 'terrain' ? { heightAt: () => 0 } : hunt } as unknown as Ctx;
@@ -36,7 +38,7 @@ it('locates nearby moving paws, with no stationary, distant, paused, or teleport
 
 it('plays a landing hull where it fell: a clink on the rimrock, a tick in the grass, softer farther off', () => {
   vi.stubGlobal('location', { search: '' });
-  const hunt = { dogPointRevision: () => 0, trackingGearTier: () => 0, dogCount: () => 0 };
+  const hunt = { huntState: () => ({ birds: [] }), dogPointRevision: () => 0, trackingGearTier: () => 0, dogCount: () => 0 };
   const land = (areaId: string, x: number, z: number, speed = 4.5, paused = false) => {
     const ctx = { camera: new THREE.PerspectiveCamera(), events: new EventTarget(), time: 0, paused, get: (id: string) => id === 'terrain' ? { heightAt: () => 0 } : hunt } as unknown as Ctx;
     ctx.camera.position.set(0, 1.6, 0); ctx.camera.updateMatrixWorld();
@@ -66,7 +68,7 @@ it('keeps one regional bed across pause, mute-style unlock retries and hidden/re
   const win = new EventTarget(); vi.stubGlobal('document', doc); vi.stubGlobal('window', win);
   const bed = { setPaused: vi.fn(), stop: vi.fn() };
   vi.mocked(startFieldAmbience).mockReturnValueOnce(null).mockReturnValue(bed);
-  const hunt = { dogPointRevision: () => 0, trackingGearTier: () => 0, dogCount: () => 0 };
+  const hunt = { huntState: () => ({ birds: [] }), dogPointRevision: () => 0, trackingGearTier: () => 0, dogCount: () => 0 };
   const ctx = { camera: new THREE.PerspectiveCamera(), events: new EventTarget(), time: 0, paused: false, get: (id: string) => id === 'terrain' ? { heightAt: () => 0 } : hunt } as unknown as Ctx;
   const audio = new FieldAudioSystem('chukar-ridge'); audio.init(ctx);
   audio.update(ctx, 0); expect(startFieldAmbience).not.toHaveBeenCalled();
@@ -93,27 +95,92 @@ it('keeps one regional bed across pause, mute-style unlock retries and hidden/re
   expect(startFieldAmbience).toHaveBeenCalledTimes(3);
 });
 
-it('omits birdlike ambience on exposed properties and suppresses zero-delta dog footfalls', () => {
+it("gives each ground its own birds for the hour, never the quarry, and suppresses zero-delta dog footfalls", () => {
   vi.stubGlobal('location', { search: '' });
   const dog = { x: 3, z: 0, gait: 'trot' };
-  const hunt = { dogPointRevision: () => 0, trackingGearTier: () => 0, dogCount: () => 1, dog: () => dog,
+  const hunt = { huntState: () => ({ birds: [] }), dogPointRevision: () => 0, trackingGearTier: () => 0, dogCount: () => 1, dog: () => dog,
     dogWorld: (out: {x:number;z:number}) => Object.assign(out, {x:dog.x,z:dog.z}), coverPatches: () => [] };
-  const ctx = { camera: new THREE.PerspectiveCamera(), events: new EventTarget(), time: 120, paused: false, get: (id: string) => id === 'terrain' ? { heightAt: () => 0 } : hunt } as unknown as Ctx;
+  const ctx = { camera: new THREE.PerspectiveCamera(), events: new EventTarget(), time: 120, timeOfDay: 'dawn', paused: false,
+    get: (id: string) => id === 'terrain' ? { heightAt: () => 0 } : hunt } as unknown as Ctx;
   for (const area of ['chukar-ridge', 'sharptail-prairie']) {
     const audio = new FieldAudioSystem(area); audio.init(ctx); audio.update(ctx, .016);
     dog.x += 1; audio.update(ctx, 0); audio.dispose();
   }
-  expect(playFieldSong).not.toHaveBeenCalled(); expect(playDogMovement).not.toHaveBeenCalled();
-  const quail = new FieldAudioSystem('quail-fields'); quail.init(ctx); quail.update(ctx, .016); quail.dispose();
-  expect(playFieldSong).toHaveBeenLastCalledWith(.65);
-  const cattail = new FieldAudioSystem('pheasant-coverts'); cattail.init(ctx); cattail.update(ctx, .016); cattail.dispose();
-  expect(playFieldSong).toHaveBeenLastCalledWith(1);
+  expect(playDogMovement).not.toHaveBeenCalled();
+  const heard = (hour: Ctx['timeOfDay'], area: string) => {
+    vi.mocked(playBirdCall).mockClear(); vi.mocked(playBirdFlock).mockClear();
+    ctx.time = 0; ctx.timeOfDay = hour;
+    const audio = new FieldAudioSystem(area); audio.init(ctx);
+    for (let t = 0; t < 900; t++) { ctx.time = t; audio.update(ctx, .016); }
+    audio.dispose();
+    return [...vi.mocked(playBirdCall).mock.calls, ...vi.mocked(playBirdFlock).mock.calls];
+  };
+  for (const area of ['pheasant-coverts', 'sharptail-prairie', 'quail-fields', 'chukar-ridge']) {
+    const ground = GROUND_BIRDS[area], own = ground.birds.map(bird => 'flock' in bird ? bird.flock : bird.call);
+    const dawn = heard('dawn', area);
+    expect(prepareBirdSounds).toHaveBeenLastCalledWith(area, getArea(area).speciesMix.map(share => share.speciesId));
+    expect(dawn.length, area).toBeGreaterThan(25);
+    for (const [call, placement] of dawn) {
+      expect(own).toContain(call);
+      expect(placement.space).toBe(ground.space);
+      expect(placement.distance).toBeGreaterThanOrEqual(20);
+    }
+    // First light is busy; midday is not.
+    expect(heard('noon', area).length, area).toBeLessThan(dawn.length * .6);
+  }
+});
+
+it('hears the quarry only from real birds: a scattered covey gathering, an unfound covey at first light', () => {
+  vi.stubGlobal('location', { search: '' });
+  const birds = [
+    { id: 1, coveyId: 7, speciesId: 'bobwhite', state: 'hidden', single: true, pos: { x: 100, y: -20 } },
+    { id: 2, coveyId: 7, speciesId: 'bobwhite', state: 'hidden', single: true, pos: { x: 130, y: -40 } },
+    { id: 3, coveyId: 9, speciesId: 'bobwhite', state: 'hidden', pos: { x: -220, y: -10 } },
+    { id: 4, coveyId: 9, speciesId: 'bobwhite', state: 'hidden', pos: { x: -230, y: -12 } },
+    { id: 5, coveyId: 12, speciesId: 'bobwhite', state: 'retrieved', single: true, pos: { x: 10, y: 0 } },
+  ];
+  const hunt = { huntState: () => ({ birds }), dogPointRevision: () => 0, trackingGearTier: () => 0, dogCount: () => 0,
+    simToWorld: (x: number, y: number, out: { x: number; z: number }) => Object.assign(out, { x: x * .5, z: y * .5 }) };
+  const ctx = { camera: new THREE.PerspectiveCamera(), events: new EventTarget(), time: 0, timeOfDay: 'dawn', paused: false,
+    get: (id: string) => id === 'terrain' ? { heightAt: () => 0 } : hunt } as unknown as Ctx;
+  const field = new FieldAudioSystem('quail-fields'); field.init(ctx);
+  const when: number[] = [];
+  vi.mocked(playBirdCall).mockImplementation(() => { when.push(ctx.time); return undefined; });
+  for (let t = 0; t < 400; t++) { ctx.time = t; field.update(ctx, .016); }
+  const calls = vi.mocked(playBirdCall).mock.calls;
+  const gathering = calls.filter(([call]) => call === 'bobwhite-assembly'), covey = calls.filter(([call]) => call === 'bobwhite-covey');
+  // Singles call from where they went down, off to the right; the unfound covey from the left.
+  expect(gathering.length).toBeGreaterThan(3);
+  for (const [, placement] of gathering) {
+    expect(placement.direction.x).toBeGreaterThan(40);
+    expect(placement.distance).toBeGreaterThan(40); expect(placement.distance).toBeLessThan(80);
+  }
+  // Not at once: a little while after the flush, and not past a few minutes.
+  const times = gathering.map(call => when[calls.indexOf(call)]);
+  expect(Math.min(...times)).toBeGreaterThanOrEqual(30); expect(Math.max(...times)).toBeLessThanOrEqual(240);
+  expect(covey.length).toBeGreaterThan(0);
+  for (const [, placement] of covey) expect(placement.direction.x).toBeLessThan(-100);
+  // Gathering is done a few minutes on; at noon a covey keeps quiet.
+  vi.mocked(playBirdCall).mockClear();
+  ctx.timeOfDay = 'noon';
+  for (let t = 400; t < 900; t++) { ctx.time = t; field.update(ctx, .016); }
+  expect(vi.mocked(playBirdCall).mock.calls.filter(([call]) => call.startsWith('bobwhite'))).toEqual([]);
+  // Paused, nothing calls, and what was calling stops.
+  const stop = vi.fn();
+  vi.mocked(playBirdCall).mockReturnValue({ active: true, stop });
+  for (let t = 900; t < 1000; t++) { ctx.time = t; field.update(ctx, .016); }
+  ctx.paused = true; ctx.events.dispatchEvent(new CustomEvent('pause', { detail: true }));
+  expect(stop).toHaveBeenCalled();
+  const before = vi.mocked(playBirdCall).mock.calls.length;
+  for (let t = 1000; t < 1200; t++) { ctx.time = t; field.update(ctx, .016); }
+  expect(vi.mocked(playBirdCall).mock.calls).toHaveLength(before);
+  field.dispose();
 });
 
 it('sounds separate long-cast dogs from their actual positions and turns the sound with the camera', () => {
   vi.stubGlobal('location', { search: '' });
   const dogs = [{ x: -30, z: -10, gait: 'still', state: 'pointing' }, { x: 50, z: -20, gait: 'still', state: 'pointing' }];
-  const hunt = { dogPointRevision: () => 0, trackingGearTier: () => 1, dogCount: () => 2, dog: (slot: number) => dogs[slot],
+  const hunt = { huntState: () => ({ birds: [] }), dogPointRevision: () => 0, trackingGearTier: () => 1, dogCount: () => 2, dog: (slot: number) => dogs[slot],
     dogWorld: (out: object, slot: number) => Object.assign(out, dogs[slot]), coverPatches: () => [] };
   const ctx = { camera: new THREE.PerspectiveCamera(), events: new EventTarget(), time: 0, paused: false,
     get: (id: string) => id === 'terrain' ? { heightAt: () => 4 } : hunt } as unknown as Ctx;
@@ -145,7 +212,7 @@ it('keeps the bell across repeated 30Hz positions, goes silent on a basic-collar
   vi.stubGlobal('location', { search: '' });
   const doc = Object.assign(new EventTarget(), { hidden: false }); vi.stubGlobal('document', doc);
   const dog = { x: 30, z: 0, gait: 'run', state: 'quartering' };
-  const hunt = { dogPointRevision: () => 0, trackingGearTier: () => 0, dogCount: () => 1, dog: () => dog,
+  const hunt = { huntState: () => ({ birds: [] }), dogPointRevision: () => 0, trackingGearTier: () => 0, dogCount: () => 1, dog: () => dog,
     dogWorld: (out: object) => Object.assign(out, dog), coverPatches: () => [] };
   const ctx = { camera: new THREE.PerspectiveCamera(), events: new EventTarget(), time: 0, paused: false,
     get: (id: string) => id === 'terrain' ? { heightAt: () => 0 } : hunt } as unknown as Ctx;

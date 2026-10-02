@@ -1,4 +1,8 @@
-import { audioReady, playActionClick, playHullDrop, playShot, prepareGunSounds } from './audio';
+import { audioReady, playActionClick, playBirdCall, playBirdFlock, playHullDrop, playShot, prepareBirdSounds, prepareGunSounds,
+  type BirdPlacement } from './audio';
+import { mulberry32 } from './game/math';
+import { AMBIENT_BIRD_GAIN, GROUND_BIRDS, nextGroundBird, QUARRY_CALL_GAIN, QUARRY_VOICES, type GroundBird } from './three/sound/fieldBirds';
+import type { BirdCallId } from './three/sound/birdCalls';
 import { getArea, OFFERED_AREA_IDS } from './game/areas';
 import { GUNS, type GunConfig } from './game/guns';
 import { gunMechanism, shotgunCycleCues, shotgunReloadCues, type ShotgunActionCue, type ShotgunMechanism } from './three/shotgunActionTiming';
@@ -125,5 +129,57 @@ function row(parent: HTMLElement, label: string, buttons: HTMLButtonElement[]): 
   row(part, 'Grass and dirt', [button('Lands', () => playHullDrop('soft', .55, 0)), button('Bounces', () => playHullDrop('soft', .18, 0))]);
 }
 
+// The birds of each ground, and its quarry's voices.
+const BIRD_NAMES: Record<string, string> = {
+  meadowlark: 'Meadowlark', 'canyon-wren': 'Canyon wren', raven: 'Ravens', mallard: 'Mallard hen', chickadee: 'Chickadee', cardinal: 'Cardinal',
+  'mourning-dove': 'Mourning dove', 'rooster-crow': 'A rooster crowing, far off', redtail: 'Red-tailed hawk', 'horned-lark': 'Horned larks',
+  geese: 'Geese going over', cranes: 'Sandhill cranes going over', blackbirds: 'Blackbirds in the cattails',
+};
+const SPECIES_NAMES: Record<string, string> = { bobwhite: 'Bobwhite', chukar: 'Chukar', hun: 'Huns', sharptail: 'Sharptail', 'prairie-chicken': 'Prairie chicken' };
+const random = mulberry32(71);
+
+function groundBirdSound(areaId: string, bird: GroundBird, side = 1): void {
+  const ground = GROUND_BIRDS[areaId], distance = (bird.distance[0] + bird.distance[1]) / 2;
+  const placement: BirdPlacement = bird.overhead
+    ? { distance, direction: { x: -side, y: 1.2, z: -1 }, to: { x: side, y: 1, z: -.4 }, space: ground.space, gain: bird.gain * AMBIENT_BIRD_GAIN }
+    : { distance, direction: { x: side * .6, y: .02, z: -1 }, space: ground.space, gain: bird.gain * AMBIENT_BIRD_GAIN };
+  if ('flock' in bird) playBirdFlock(bird.flock, placement, 1 + Math.floor(random() * 1e5));
+  else playBirdCall(bird.call, placement);
+}
+
+function quarryCall(areaId: string, call: BirdCallId, distance: number): void {
+  playBirdCall(call, { distance, direction: { x: .7, y: .02, z: -1 }, space: GROUND_BIRDS[areaId].space, gain: QUARRY_CALL_GAIN });
+}
+
+{
+  const part = section('The birds of each ground',
+    'The land’s own birds at their usual distance, in their country: the canyon answers, the prairie barely does. Then the quarry, heard only from real birds in the game: a covey calling at first light, scattered singles calling it back together.');
+  for (const [name, areaId] of GROUNDS) {
+    if (!areaId) continue;
+    const ground = GROUND_BIRDS[areaId];
+    row(part, name, [
+      ...ground.birds.map(bird => button(BIRD_NAMES['flock' in bird ? bird.flock : bird.call] ?? ('flock' in bird ? bird.flock : bird.call), () => groundBirdSound(areaId, bird))),
+      button('First light, sped up', () => {
+        for (let i = 0, at = 0; i < 6; i++, at += 2.5 + random() * 2.5) {
+          const pick = nextGroundBird(areaId, 'dawn', random);
+          if (pick) later(at, () => groundBirdSound(areaId, pick.bird, Math.sin(pick.bearing) < 0 ? -1 : 1));
+        }
+      }),
+    ]);
+    for (const share of getArea(areaId).speciesMix) {
+      const voice = QUARRY_VOICES[share.speciesId];
+      if (!voice) continue;
+      const buttons: HTMLButtonElement[] = [];
+      if (voice.covey) buttons.push(button('Covey calling, 200 m', () => quarryCall(areaId, voice.covey!.call, 200)));
+      if (voice.gather) buttons.push(button('Singles gathering, 80 m', () => quarryCall(areaId, voice.gather!, 80)));
+      if (voice.flush) buttons.push(button('Going up', () => playBirdCall(voice.flush!.call, { distance: 15, direction: { x: .3, y: .2, z: -1 }, space: 'open', gain: .45 })));
+      row(part, `${SPECIES_NAMES[share.speciesId] ?? share.speciesId}, the quarry`, buttons);
+    }
+  }
+}
+
 // Made ahead in idle moments, as the game does, so no click waits on a sound.
-for (const [, areaId] of GROUNDS) for (const gun of GUNS) prepareGunSounds(gun.id, areaId);
+for (const [, areaId] of GROUNDS) {
+  for (const gun of GUNS) prepareGunSounds(gun.id, areaId);
+  if (areaId) prepareBirdSounds(areaId, getArea(areaId).speciesMix.map(share => share.speciesId));
+}

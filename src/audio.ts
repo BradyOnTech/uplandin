@@ -6,6 +6,9 @@ import { gunMechanism, type ShotgunActionCue, type ShotgunMechanism } from './th
 import { REPORT_RATE, synthesizeReport } from './three/sound/gunReport';
 import { FOLEY_RATE, foleyCueNames, hullSurface, synthesizeActionCue, synthesizeHullDrop, type HullSurface } from './three/sound/gunFoley';
 import type { DogCollarCue } from './three/dogCollarAudio';
+import { airCutoff, BIRD_RATE, type BirdSpace } from './three/sound/birdVoice';
+import { flockCalls, FLOCKS, synthesizeBirdCall, type BirdCallId, type FlockId } from './three/sound/birdCalls';
+import { callsOnFlush, groundCalls, groundSpace, QUARRY_VOICES } from './three/sound/fieldBirds';
 /**
  * Procedural sound effects — no audio assets, everything is synthesized,
  * with WebAudio nodes or once into sample buffers (three/sound/). Mobile browsers require a user gesture before audio can
@@ -57,14 +60,15 @@ function gunBus(c: AudioContext): AudioNode {
 
 /** Play pre-synthesized samples (mono, or left and right) once. */
 function playSamples(c: AudioContext, channels: readonly Float32Array[], rate: number, gain: number,
-  destination?: AudioNode, ended?: () => void): void {
+  destination?: AudioNode, ended?: () => void, delay = 0): AudioBufferSourceNode {
   const buffer = c.createBuffer(channels.length, channels[0].length, rate);
   channels.forEach((data, index) => buffer.getChannelData(index).set(data));
   const source = c.createBufferSource(), level = c.createGain();
   source.buffer = buffer; level.gain.value = gain;
   source.connect(level).connect(destination ?? output(c));
   source.onended = () => { source.disconnect(); level.disconnect(); ended?.(); };
-  source.start();
+  source.start(delay > 0 ? c.currentTime + delay : undefined);
+  return source;
 }
 
 /** Synthesized once and reused: a few variants of each sound, taken in turn. */
@@ -105,6 +109,27 @@ const makeReport = (gunId: string, areaId?: string): Make => seed => {
 const foleyKey = (mechanism: ShotgunMechanism, cue: ShotgunActionCue) => `foley|${mechanism}|${cue}`;
 const makeFoley = (mechanism: ShotgunMechanism, cue: ShotgunActionCue): Make => seed => [synthesizeActionCue(mechanism, cue, seed)];
 const makeHull = (surface: HullSurface): Make => seed => [synthesizeHullDrop(surface, seed)];
+
+const BIRD_VARIANTS = 3;
+const birdKey = (call: BirdCallId, space: BirdSpace) => `bird|${call}|${space}`;
+const makeBird = (call: BirdCallId, space: BirdSpace): Make => seed => [synthesizeBirdCall(call, seed, space)];
+
+/** Make a ground's birds before they call: the land's own birds in its
+ * country, and the quarry's voices (sound/fieldBirds.ts). */
+export function prepareBirdSounds(areaId: string | undefined, speciesIds: readonly string[]): void {
+  if (typeof AudioContext === 'undefined') return;
+  const space = groundSpace(areaId), { calls, flocks } = groundCalls(areaId, speciesIds);
+  const flushCalls = new Set(speciesIds.map(id => QUARRY_VOICES[id]?.flush?.call));
+  for (const call of calls) {
+    const at: BirdSpace = flushCalls.has(call) ? 'open' : space, variants = flushCalls.has(call) ? FOLEY_VARIANTS : BIRD_VARIANTS;
+    for (let i = 0; i < variants; i++) warming.push(() => cached(birdKey(call, at), i, makeBird(call, at)));
+  }
+  for (const id of flocks) {
+    const flock: (typeof FLOCKS)[FlockId] = FLOCKS[id], units: BirdCallId[] = [flock.unit, ...('also' in flock ? [flock.also.unit] : [])];
+    for (const unit of units) for (let i = 0; i < FOLEY_VARIANTS; i++) warming.push(() => cached(birdKey(unit, space), i, makeBird(unit, space)));
+  }
+  if (!warmingScheduled) { warmingScheduled = true; whenIdle(warmSome); }
+}
 
 /** Make a gun's sounds before its first shot: its reports on this ground,
  * its action's cues and its hulls landing, one by one when the page is idle. */
@@ -269,8 +294,13 @@ export function playBirdFlush(species: string, distanceM: number,
     farthest.sound.stop();
   }
   const entry = { distance, sound: undefined as unknown as PheasantFlushSound };
+  // Some birds call as they go up: the call rides with the wings.
+  const seed = voice.seed ?? 1, flush = QUARRY_VOICES[species]?.flush;
+  const call = flush && callsOnFlush(species, seed)
+    ? { samples: cached(birdKey(flush.call, 'open'), seed % FOLEY_VARIANTS, makeBird(flush.call, 'open'))[0], rate: BIRD_RATE, gain: .45, delay: .04 }
+    : undefined;
   const handle = playSpatialLaunch(c, synthesizeBirdLaunch(species, voice), BIRD_FLUSH_AUDIO_RATE,
-    distance, source, () => coveyVoices.delete(entry));
+    distance, source, () => coveyVoices.delete(entry), call);
   entry.sound = handle;
   const update = handle.updateSpatial;
   handle.updateSpatial = (nextDistance, nextDirection) => {
@@ -281,8 +311,9 @@ export function playBirdFlush(species: string, distanceM: number,
   return handle;
 }
 
+interface LaunchCall { samples: Float32Array; rate: number; gain: number; delay: number }
 function playSpatialLaunch(c: AudioContext, samples: { cover: Float32Array; flight: Float32Array },
-  rate: number, distanceM: number, source: SoundDirection, onStop?: () => void): PheasantFlushSound {
+  rate: number, distanceM: number, source: SoundDirection, onStop?: () => void, call?: LaunchCall): PheasantFlushSound {
   const proximity = (distance: number) => 1 / (1 + (Number.isFinite(distance) ? Math.max(0, distance) : 0) / 18);
   const route = () => {
     const direction = c.createPanner(), distanceGain = c.createGain();
@@ -337,7 +368,78 @@ function playSpatialLaunch(c: AudioContext, samples: { cover: Float32Array; flig
   };
   play(samples.cover, cover.distanceGain, releaseCover);
   play(samples.flight, wings.distanceGain, () => handle.stop());
+  if (call) sources.push(playSamples(c, [call.samples], call.rate, call.gain, wings.distanceGain, undefined, call.delay));
   return handle;
+}
+
+/** How a bird's loudness falls away with distance. */
+export function birdFalloff(distanceM: number): number {
+  return 1 / (1 + Math.max(0, Number.isFinite(distanceM) ? distanceM : 0) / 45);
+}
+
+/** Where a bird is heard from. */
+export interface BirdPlacement {
+  distance: number;
+  /** Listener-relative direction to the bird, any length. */
+  direction: SoundDirection;
+  /** Where a bird crossing the sky has got to by the time it is done calling. */
+  to?: SoundDirection;
+  space: BirdSpace;
+  /** Loudness before the distance falloff. */
+  gain: number;
+}
+export interface BirdSound { readonly active: boolean; stop(): void }
+
+/** A bird's route: the air dulls it with distance, then it is placed around the hunter. */
+function birdRoute(c: AudioContext, placement: BirdPlacement, seconds: number) {
+  const air = c.createBiquadFilter(), level = c.createGain(), direction = c.createPanner();
+  air.type = 'lowpass'; air.frequency.value = airCutoff(placement.distance); air.Q.value = .5;
+  level.gain.value = placement.gain * birdFalloff(placement.distance);
+  direction.panningModel = 'HRTF'; direction.rolloffFactor = 0;
+  const unit = (d: SoundDirection) => {
+    const length = Math.hypot(d.x, d.y, d.z);
+    return Number.isFinite(length) && length > 1e-6 ? { x: d.x / length, y: d.y / length, z: d.z / length } : { x: 0, y: 0, z: -1 };
+  };
+  const from = unit(placement.direction), now = c.currentTime;
+  direction.positionX.setValueAtTime(from.x, now); direction.positionY.setValueAtTime(from.y, now); direction.positionZ.setValueAtTime(from.z, now);
+  if (placement.to) {
+    const to = unit(placement.to), end = now + Math.max(.1, seconds);
+    direction.positionX.linearRampToValueAtTime(to.x, end); direction.positionY.linearRampToValueAtTime(to.y, end);
+    direction.positionZ.linearRampToValueAtTime(to.z, end);
+  }
+  air.connect(level).connect(direction).connect(output(c));
+  return { input: air, release: () => { air.disconnect(); level.disconnect(); direction.disconnect(); } };
+}
+
+function birdSound(c: AudioContext, placement: BirdPlacement, seconds: number,
+  parts: readonly { samples: Float32Array; level: number; delay: number }[]): BirdSound {
+  const route = birdRoute(c, placement, seconds), sources: AudioBufferSourceNode[] = [];
+  let open = parts.length, active = true;
+  const finish = () => { if (!active) return; active = false; route.release(); };
+  const sound: BirdSound = {
+    get active() { return active; },
+    stop() { if (!active) return; for (const source of sources) { source.onended = null; source.stop(); source.disconnect(); } finish(); },
+  };
+  for (const part of parts) sources.push(playSamples(c, [part.samples], BIRD_RATE, part.level, route.input, () => { if (--open === 0) finish(); }, part.delay));
+  return sound;
+}
+
+/** One bird calling, from where it is (fieldAudio.ts places it). */
+export function playBirdCall(call: BirdCallId, placement: BirdPlacement): BirdSound | undefined {
+  const c = ready();
+  if (!c || !(placement.gain > 0)) return;
+  const [samples] = variant(birdKey(call, placement.space), BIRD_VARIANTS, makeBird(call, placement.space));
+  return birdSound(c, placement, samples.length / BIRD_RATE, [{ samples, level: 1, delay: 0 }]);
+}
+
+/** A flock: each bird calling on its own, all from the flock's place in the sky. */
+export function playBirdFlock(id: FlockId, placement: BirdPlacement, seed: number): BirdSound | undefined {
+  const c = ready();
+  if (!c || !(placement.gain > 0)) return;
+  const parts = flockCalls(id, seed, FOLEY_VARIANTS).map(call => ({
+    samples: cached(birdKey(call.unit, placement.space), call.variant, makeBird(call.unit, placement.space))[0], level: call.level * .55, delay: call.at,
+  }));
+  return birdSound(c, placement, FLOCKS[id].seconds + 1, parts);
 }
 
 /** Woodcock wing twitter: rapid high chirps as it towers. */
@@ -583,13 +685,6 @@ export function startFieldAmbience(areaId?: string): FieldAmbience | null {
     setPaused(paused) { if (!stopped) gain.gain.setTargetAtTime(paused ? 0 : 0.018, c.currentTime, 0.4); },
     stop() { if (stopped) return; stopped = true; source.stop(); source.disconnect(); low.disconnect(); gain.disconnect(); },
   };
-}
-
-/** Distant, unlocated ambience. Never announces a hidden game bird. */
-export function playFieldSong(volume = 1): void {
-  if (volume <= 0) return;
-  tone(1900, 0, 0.13, { volume: 0.012 * volume, slideTo: 2600 });
-  tone(2300, 0.24, 0.10, { volume: 0.009 * volume, slideTo: 1700 });
 }
 
 /** Close mechanical foley; each cue follows the visible action, below the

@@ -1,4 +1,5 @@
-/** Presentation only. These beds describe the land, never nearby quarry. */
+/** Presentation only. These beds describe the land, never nearby quarry; the
+ * land's birds are sound/fieldBirds.ts. */
 export type FieldRegion = 'chukar-ridge' | 'quail-fields' | 'sharptail-prairie';
 export interface FieldSoundLayer {
   readonly seconds: number;
@@ -10,24 +11,21 @@ export interface FieldSoundLayer {
 }
 export interface FieldSoundscape {
   readonly layers: readonly FieldSoundLayer[];
-  /** Existing non-spatial song only, well below action cues. Zero omits it. */
-  readonly songGain: number;
-  readonly songInterval: number;
 }
 
 const soundscapes: Record<FieldRegion, FieldSoundscape> = {
   'chukar-ridge': { layers: [
     { seconds: 11, frequency: 330, q: .48, gain: .019, swell: .62, seed: 391 },
     { seconds: 7, frequency: 2100, q: .55, gain: .0038, swell: .85, seed: 907 },
-  ], songGain: 0, songInterval: 0 },
+  ] },
   'quail-fields': { layers: [
     { seconds: 13, frequency: 480, q: .42, gain: .010, swell: .30, seed: 661 },
     { seconds: 9, frequency: 1250, q: .68, gain: .0048, swell: .62, seed: 2027 },
-  ], songGain: .65, songInterval: 39 },
+  ] },
   'sharptail-prairie': { layers: [
     { seconds: 17, frequency: 230, q: .42, gain: .018, swell: .48, seed: 817 },
     { seconds: 11, frequency: 970, q: .48, gain: .007, swell: .72, seed: 3011 },
-  ], songGain: 0, songInterval: 0 },
+  ] },
 };
 
 export function fieldSoundscape(areaId?: string): FieldSoundscape | undefined {

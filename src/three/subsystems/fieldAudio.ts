@@ -1,9 +1,13 @@
 import * as THREE from 'three';
 import type { Hunt3DSystem } from './hunt3d';
-import { playDogCollar, playDogMovement, playFieldSong, playHeartbeat, playHullDrop, setFieldTension, startFieldAmbience, type DogCollarSound } from '../../audio';
+import { playBirdCall, playBirdFlock, playDogCollar, playDogMovement, playHeartbeat, playHullDrop, prepareBirdSounds, setFieldTension,
+  startFieldAmbience, type BirdSound, type DogCollarSound, type SoundDirection } from '../../audio';
 import { hullSurface } from '../sound/gunFoley';
+import { AMBIENT_BIRD_GAIN, CoveyCalls, CoveyGathering, groundBirdWait, groundSpace, nextGroundBird, QUARRY_CALL_GAIN, QUARRY_VOICES,
+  type HeardBird } from '../sound/fieldBirds';
+import { getArea } from '../../game/areas';
+import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
-import { fieldSoundscape } from '../fieldSoundscape';
 import { DogCollarCadence, dogBellInterval, dogCollarGain, dogCollarMode, type DogCollarCue } from '../dogCollarAudio';
 import type { TerrainSystem } from './terrain';
 interface Collar {
@@ -14,7 +18,15 @@ interface Collar {
 export class FieldAudioSystem implements Subsystem {
   readonly id = 'field-audio';
   private ambience: ReturnType<typeof startFieldAmbience> = null;
-  private nextSong = 13;
+  /** The land's own birds, and the quarry's voices (sound/fieldBirds.ts). */
+  private readonly random: () => number;
+  private nextBird = Infinity;
+  private listenAgain = 0;
+  private readonly gathering: CoveyGathering;
+  private readonly coveyCalls: CoveyCalls;
+  private birdSounds = new Set<BirdSound>();
+  private birdPosition = { x: 0, z: 0 };
+  private birdOffset = new THREE.Vector3();
   private abort = new AbortController();
   private capture = false;
   private disposed = false;
@@ -30,7 +42,13 @@ export class FieldAudioSystem implements Subsystem {
   private listenerInverse = new THREE.Quaternion();
   /** Walking in on a point: 0 far off, 1 with the dog at your feet. */
   private tension = 0;
-  constructor(private readonly areaId?: string) {}
+  constructor(private readonly areaId?: string) {
+    let seed = 0x7f4a7c15;
+    for (const char of areaId ?? '') seed = Math.imul(seed ^ char.charCodeAt(0), 0x01000193) >>> 0;
+    this.random = mulberry32(seed);
+    this.gathering = new CoveyGathering(this.random);
+    this.coveyCalls = new CoveyCalls(this.random);
+  }
   init(ctx: Ctx): void {
     this.terrain = ctx.get<TerrainSystem>('terrain');
     this.hunt = ctx.get<Hunt3DSystem>('hunt3d');
@@ -39,26 +57,27 @@ export class FieldAudioSystem implements Subsystem {
     const signal = this.abort.signal;
     ctx.events.addEventListener('pause', ((e: CustomEvent) => {
       this.dogs.clear();
-      this.suspendCollars();
+      this.suspendCollars(); this.silenceBirds();
       this.ambience?.setPaused(e.detail || this.hidden);
     }) as EventListener, { signal });
     if (typeof document !== 'undefined') {
       this.hidden = document.hidden;
       document.addEventListener('visibilitychange', () => {
-        this.hidden = document.hidden; this.dogs.clear(); this.suspendCollars();
+        this.hidden = document.hidden; this.dogs.clear(); this.suspendCollars(); this.silenceBirds();
         this.ambience?.setPaused(this.hidden || ctx.paused);
       }, { signal });
     }
     // Release the buffers when leaving, but keep listeners alive for a
     // browser back/forward-cache restore; the next active frame restarts once.
     if (typeof window !== 'undefined') window.addEventListener('pagehide', () => {
-      this.dogs.clear(); this.suspendCollars(); this.ambience?.stop(); this.ambience = null;
+      this.dogs.clear(); this.suspendCollars(); this.silenceBirds(); this.ambience?.stop(); this.ambience = null;
     }, { signal });
-    const profile = fieldSoundscape(this.areaId);
-    if (profile) this.nextSong = profile.songGain > 0 ? profile.songInterval : Infinity;
-    // A bird going up at the hunter's feet: the pulse jumps.
+    // The first bird calls a little sooner than the rest.
+    this.nextBird = ctx.time + groundBirdWait(this.areaId, ctx.timeOfDay, this.random) * .5;
+    if (!this.capture) prepareBirdSounds(this.areaId, this.areaId ? getArea(this.areaId).speciesMix.map(share => share.speciesId) : []);
     ctx.events.addEventListener('hull-landed', ((e: CustomEvent<{ x: number; y: number; z: number; speed: number }>) =>
       this.hullLanded(ctx, e.detail)) as EventListener, { signal });
+    // A bird going up at the hunter's feet: the pulse jumps.
     ctx.events.addEventListener('close-flush', ((e: CustomEvent<{ intensity: number }>) => {
       if (!this.capture && !this.hidden && !ctx.paused) playHeartbeat(e.detail.intensity);
       this.tension = 0; this.applyTension();
@@ -125,11 +144,55 @@ export class FieldAudioSystem implements Subsystem {
     for (const [slot, collar] of this.collars) if (slot >= hunt.dogCount()) {
       collar.sound?.stop(); this.collars.delete(slot);
     }
-    if (ctx.time > this.nextSong && this.tension < .2) {
-      const profile = fieldSoundscape(this.areaId);
-      playFieldSong(profile?.songGain ?? 1);
-      this.nextSong = ctx.time + (profile?.songInterval ?? 19) + (Math.sin(ctx.time * 0.3) + 1) * 6;
+    // The land's birds hush while the hunter walks in on a point.
+    if (ctx.time > this.nextBird) {
+      if (this.tension < .2) this.groundBird(ctx);
+      this.nextBird = ctx.time + groundBirdWait(this.areaId, ctx.timeOfDay, this.random);
     }
+    if (ctx.time >= this.listenAgain) { this.listenAgain = ctx.time + 1; this.quarryCall(ctx, hunt); }
+  }
+
+  /** Listener-relative direction to a bearing (clockwise from -Z) and elevation. */
+  private bearingDirection(bearing: number, elevation: number): SoundDirection {
+    const flat = Math.cos(elevation);
+    this.birdOffset.set(Math.sin(bearing) * flat, Math.sin(elevation), -Math.cos(bearing) * flat).applyQuaternion(this.listenerInverse);
+    return { x: this.birdOffset.x, y: this.birdOffset.y, z: this.birdOffset.z };
+  }
+  private keep(sound: BirdSound | undefined): void {
+    for (const old of this.birdSounds) if (!old.active) this.birdSounds.delete(old);
+    if (sound) this.birdSounds.add(sound);
+  }
+  /** One of the land's own birds: from the cover around, or crossing the sky. */
+  private groundBird(ctx: Ctx): void {
+    const pick = nextGroundBird(this.areaId, ctx.timeOfDay, this.random);
+    if (!pick) return;
+    const { bird } = pick, height = bird.overhead ? .45 + this.random() * .45 : .03;
+    const turn = (this.random() < .5 ? -1 : 1) * (.7 + this.random() * .6);
+    const placement = { distance: pick.distance, direction: this.bearingDirection(pick.bearing, height),
+      to: bird.overhead ? this.bearingDirection(pick.bearing + turn, height * .8) : undefined,
+      space: groundSpace(this.areaId), gain: bird.gain * AMBIENT_BIRD_GAIN };
+    this.keep('flock' in bird ? playBirdFlock(bird.flock, placement, pick.seed) : playBirdCall(bird.call, placement));
+  }
+  /** The quarry, heard only from real birds: a scattered covey gathering, an unfound covey calling. */
+  private quarryCall(ctx: Ctx, hunt: Hunt3DSystem): void {
+    const singles: HeardBird[] = [], coveys = new Map<number, HeardBird>(), camera = ctx.camera.position;
+    for (const bird of hunt.huntState().birds) {
+      if (bird.state !== 'hidden' || !QUARRY_VOICES[bird.speciesId]) continue;
+      hunt.simToWorld(bird.pos.x, bird.pos.y, this.birdPosition);
+      const heard = { id: bird.id, coveyId: bird.coveyId, speciesId: bird.speciesId, x: this.birdPosition.x, z: this.birdPosition.z,
+        distance: Math.hypot(this.birdPosition.x - camera.x, this.birdPosition.z - camera.z) };
+      if (bird.single || bird.heldSingle) singles.push(heard);
+      else if (!coveys.has(bird.coveyId)) coveys.set(bird.coveyId, heard);
+    }
+    const call = this.gathering.update(ctx.time, singles) ?? this.coveyCalls.update(ctx.time, ctx.timeOfDay, [...coveys.values()]);
+    if (!call || this.tension >= .2) return;
+    this.birdOffset.set(call.x, this.terrain.heightAt(call.x, call.z) + .2, call.z).sub(camera).applyQuaternion(this.listenerInverse);
+    this.keep(playBirdCall(call.call, { distance: call.distance, direction: { x: this.birdOffset.x, y: this.birdOffset.y, z: this.birdOffset.z },
+      space: groundSpace(this.areaId), gain: QUARRY_CALL_GAIN }));
+  }
+  private silenceBirds(): void {
+    for (const sound of this.birdSounds) sound.stop();
+    this.birdSounds.clear();
   }
   private updateCollar(ctx: Ctx, hunt: Hunt3DSystem, slot: number, position: { x: number; z: number }, dt: number): void {
     let collar = this.collars.get(slot);
@@ -174,7 +237,7 @@ export class FieldAudioSystem implements Subsystem {
     for (let slot = 0; slot < this.hunt.dogCount(); slot++) this.pointRevisions.set(slot, this.hunt.dogPointRevision(slot));
   }
   dispose(): void {
-    this.disposed = true; this.dogs.clear(); this.suspendCollars(); this.collars.clear();
+    this.disposed = true; this.dogs.clear(); this.suspendCollars(); this.silenceBirds(); this.collars.clear();
     this.abort.abort(); this.ambience?.stop(); this.ambience = null;
     setFieldTension(0);
   }
