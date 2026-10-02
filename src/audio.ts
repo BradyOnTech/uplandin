@@ -2,16 +2,20 @@ import { synthesizePheasantLaunch, PHEASANT_AUDIO_RATE, type PheasantLaunchVoice
 import { synthesizeBirdLaunch, BIRD_FLUSH_AUDIO_RATE, type BirdLaunchVoice } from './three/speciesFlushAudio';
 import { fieldSoundscape, fieldWindSamples } from './three/fieldSoundscape';
 import type { WindStrength } from './game/wind';
-import type { ShotgunActionCue } from './three/shotgunActionTiming';
+import { gunMechanism, type ShotgunActionCue, type ShotgunMechanism } from './three/shotgunActionTiming';
+import { REPORT_RATE, synthesizeReport } from './three/sound/gunReport';
+import { FOLEY_RATE, foleyCueNames, hullSurface, synthesizeActionCue, synthesizeHullDrop, type HullSurface } from './three/sound/gunFoley';
 import type { DogCollarCue } from './three/dogCollarAudio';
 /**
- * Procedural sound effects — no audio assets, everything is synthesized
- * with WebAudio. Mobile browsers require a user gesture before audio can
+ * Procedural sound effects — no audio assets, everything is synthesized,
+ * with WebAudio nodes or once into sample buffers (three/sound/). Mobile browsers require a user gesture before audio can
  * play, so call unlockAudio() from a pointer handler.
  */
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
+/** Everything but the shooter's own gun: it dips under the report, as the ear does. */
+let world: GainNode | null = null;
 let audioEnabled = true;
 const dogCollarVoices = new Set<DogCollarSound>();
 
@@ -21,8 +25,96 @@ export function setAudioEnabled(enabled: boolean): void {
   if (master && ctx) master.gain.setTargetAtTime(enabled ? 1 : 0, ctx.currentTime, 0.08);
 }
 function output(c: AudioContext): GainNode {
-  if (!master) { master = c.createGain(); master.gain.value = audioEnabled ? 1 : 0; master.connect(c.destination); }
-  return master;
+  if (!master || !world) {
+    master = c.createGain(); master.gain.value = audioEnabled ? 1 : 0;
+    // A transparent limiter: the shot's peak and a busy moment never clip.
+    const limiter = c.createDynamicsCompressor();
+    limiter.threshold.value = -4; limiter.knee.value = 3; limiter.ratio.value = 18;
+    limiter.attack.value = .0015; limiter.release.value = .16;
+    master.connect(limiter).connect(c.destination);
+    world = c.createGain(); world.connect(master);
+  }
+  return world;
+}
+
+/** The report goes past the world bus, and the world dips under it for a
+ * moment: wings, bell and wind come back over a second, so the shot reads
+ * as the loudest thing in the field without pinning everything else. */
+export const SHOT_DUCK = { depth: .5, attack: .006, hold: .14, recovery: .42 } as const;
+function shotBus(c: AudioContext): AudioNode {
+  const bus = output(c), now = c.currentTime;
+  bus.gain.cancelScheduledValues(now);
+  bus.gain.setValueAtTime(bus.gain.value, now);
+  bus.gain.setTargetAtTime(SHOT_DUCK.depth, now, SHOT_DUCK.attack);
+  bus.gain.setTargetAtTime(1, now + SHOT_DUCK.hold, SHOT_DUCK.recovery);
+  return gunBus(c);
+}
+/** The shooter's own gun, the report and the action in the hands: never ducked. */
+function gunBus(c: AudioContext): AudioNode {
+  output(c);
+  return master!;
+}
+
+/** Play pre-synthesized samples (mono, or left and right) once. */
+function playSamples(c: AudioContext, channels: readonly Float32Array[], rate: number, gain: number,
+  destination?: AudioNode, ended?: () => void): void {
+  const buffer = c.createBuffer(channels.length, channels[0].length, rate);
+  channels.forEach((data, index) => buffer.getChannelData(index).set(data));
+  const source = c.createBufferSource(), level = c.createGain();
+  source.buffer = buffer; level.gain.value = gain;
+  source.connect(level).connect(destination ?? output(c));
+  source.onended = () => { source.disconnect(); level.disconnect(); ended?.(); };
+  source.start();
+}
+
+/** Synthesized once and reused: a few variants of each sound, taken in turn. */
+type Make = (seed: number) => readonly Float32Array[];
+const sampleCache = new Map<string, { variants: (readonly Float32Array[])[]; next: number }>();
+function cacheEntry(key: string) {
+  let entry = sampleCache.get(key);
+  if (!entry) { entry = { variants: [], next: 0 }; sampleCache.set(key, entry); }
+  return entry;
+}
+function cached(key: string, index: number, make: Make): readonly Float32Array[] {
+  return cacheEntry(key).variants[index] ??= make(index + 1);
+}
+function variant(key: string, count: number, make: Make): readonly Float32Array[] {
+  return cached(key, cacheEntry(key).next++ % count, make);
+}
+
+/** Sounds made ahead of need, a few milliseconds at a time in idle moments. */
+const warming: (() => void)[] = [];
+let warmingScheduled = false;
+function whenIdle(work: (deadline?: IdleDeadline) => void): void {
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(work, { timeout: 1500 });
+  else setTimeout(work, 40);
+}
+function warmSome(deadline?: IdleDeadline): void {
+  warmingScheduled = false;
+  const started = Date.now(), left = () => deadline ? deadline.timeRemaining() : 8 - (Date.now() - started);
+  do warming.shift()?.(); while (warming.length && left() > 6);
+  if (warming.length) { warmingScheduled = true; whenIdle(warmSome); }
+}
+
+const REPORT_VARIANTS = 3, FOLEY_VARIANTS = 4;
+const reportKey = (gunId: string, areaId?: string) => `shot|${gunId}|${areaId ?? ''}`;
+const makeReport = (gunId: string, areaId?: string): Make => seed => {
+  const report = synthesizeReport(gunId, areaId, seed);
+  return [report.left, report.right];
+};
+const foleyKey = (mechanism: ShotgunMechanism, cue: ShotgunActionCue) => `foley|${mechanism}|${cue}`;
+const makeFoley = (mechanism: ShotgunMechanism, cue: ShotgunActionCue): Make => seed => [synthesizeActionCue(mechanism, cue, seed)];
+const makeHull = (surface: HullSurface): Make => seed => [synthesizeHullDrop(surface, seed)];
+
+/** Make a gun's sounds before its first shot: its reports on this ground,
+ * its action's cues and its hulls landing, one by one when the page is idle. */
+export function prepareGunSounds(gunId: string, areaId?: string): void {
+  if (typeof AudioContext === 'undefined') return;
+  const mechanism = gunMechanism(gunId), surface = hullSurface(areaId);
+  for (let i = 0; i < REPORT_VARIANTS; i++) warming.push(() => cached(reportKey(gunId, areaId), i, makeReport(gunId, areaId)));
+  for (const cue of foleyCueNames(mechanism)) for (let i = 0; i < FOLEY_VARIANTS; i++) warming.push(() => cached(foleyKey(mechanism, cue), i, makeFoley(mechanism, cue)));
+  for (let i = 0; i < FOLEY_VARIANTS; i++) warming.push(() => cached(`hull|${surface}`, i, makeHull(surface)));
+  if (!warmingScheduled) { warmingScheduled = true; whenIdle(warmSome); }
 }
 
 function ac(): AudioContext {
@@ -35,6 +127,14 @@ export function unlockAudio(): void {
   if (typeof AudioContext === 'undefined' || !audioEnabled) return;
   const c = ac();
   if (c.state === 'suspended') void c.resume();
+}
+
+/** Resolves once sound can play, for pages that play on a click (sounds.html). */
+export async function audioReady(): Promise<boolean> {
+  if (typeof AudioContext === 'undefined' || !audioEnabled) return false;
+  const c = ac();
+  if (c.state === 'suspended') await c.resume().catch(() => undefined);
+  return c.state === 'running';
 }
 
 /** Returns the context only if it's actually allowed to play right now. */
@@ -94,10 +194,11 @@ function noise(startIn: number, duration: number, fromFreq: number, toFreq: numb
   src.stop(t + duration + 0.05);
 }
 
-/** Shotgun blast. */
-export function playShot(): void {
-  noise(0, 0.28, 3200, 240, 0.9);
-  tone(110, 0, 0.2, { type: 'triangle', volume: 0.5, slideTo: 45 });
+/** The shotgun report, and the land answering it (sound/gunReport.ts). */
+export function playShot(gunId = 'remington-870', areaId?: string): void {
+  const c = ready();
+  if (!c) return;
+  playSamples(c, variant(reportKey(gunId, areaId), REPORT_VARIANTS, makeReport(gunId, areaId)), REPORT_RATE, .95, shotBus(c));
 }
 
 /** Covey flush: a flutter of wings. */
@@ -492,24 +593,23 @@ export function playFieldSong(volume = 1): void {
 }
 
 /** Close mechanical foley; each cue follows the visible action, below the
- * gun report and foreground launch. No queued reload sequence survives pause. */
-export function playActionClick(cue: ShotgunActionCue = 'latch'): void {
-  if (cue === 'shell') {
-    noise(0, .035, 1550, 490, .052);
-    tone(470, 0, .027, { type: 'triangle', volume: .018, slideTo: 310 });
-  } else if (cue === 'rack') {
-    noise(0, .105, 2450, 720, .065);
-    noise(.024, .072, 1150, 320, .035);
-  } else if (cue === 'eject') {
-    noise(0, .039, 3200, 1050, .060);
-    tone(780, 0, .030, { type: 'triangle', volume: .014, slideTo: 510 });
-  } else if (cue === 'lock') {
-    noise(0, .047, 2200, 430, .095);
-    tone(185, 0, .048, { type: 'triangle', volume: .043, slideTo: 115 });
-  } else {
-    noise(0, .034, 2600, 680, .055);
-    tone(340, 0, .025, { type: 'triangle', volume: .023 });
-  }
+ * gun report and foreground launch. No queued reload sequence survives pause.
+ * Each mechanism has its own steel, walnut and plastic (sound/gunFoley.ts). */
+export function playActionClick(cue: ShotgunActionCue = 'latch', mechanism: ShotgunMechanism = 'over-under'): void {
+  const c = ready();
+  if (!c) return;
+  playSamples(c, variant(foleyKey(mechanism, cue), FOLEY_VARIANTS, makeFoley(mechanism, cue)), FOLEY_RATE, 1, gunBus(c));
+}
+
+/** A fired hull touching down near the hunter, placed left or right (fieldAudio.ts). */
+export function playHullDrop(surface: HullSurface, volume: number, pan = 0): void {
+  const c = ready();
+  if (!c || !(volume > .003)) return;
+  const routing = c.createStereoPanner();
+  routing.pan.value = Math.max(-1, Math.min(1, pan));
+  routing.connect(output(c));
+  playSamples(c, variant(`hull|${surface}`, FOLEY_VARIANTS, makeHull(surface)), FOLEY_RATE, Math.min(1, volume),
+    routing, () => routing.disconnect());
 }
 
 /** Close wing pressure, kept quiet enough to hear the quarry flush. */

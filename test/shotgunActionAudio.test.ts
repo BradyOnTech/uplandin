@@ -5,7 +5,7 @@ import type { Ctx } from '../src/three/engine';
 import { playActionClick } from '../src/audio';
 import { shotgunCycleCues, shotgunReloadCues, type ShotgunMechanism } from '../src/three/shotgunActionTiming';
 
-vi.mock('../src/audio', () => ({ playActionClick: vi.fn(), playShot: vi.fn(), unlockAudio: vi.fn() }));
+vi.mock('../src/audio', () => ({ playActionClick: vi.fn(), playShot: vi.fn(), prepareGunSounds: vi.fn(), unlockAudio: vi.fn() }));
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 function field(gunId: string) {
@@ -47,7 +47,7 @@ it.each(['over-under', 'side-by-side', 'remington-870', 'semi-auto'])('%s seats 
 it('never schedules future mechanics through pause or gun replacement', () => {
   const { ctx, gun, step, action } = field('remington-870');
   action('touch-mount'); step(.2); action('touch-fire');
-  step(.1); expect(playActionClick).toHaveBeenLastCalledWith('rack');
+  step(.1); expect(playActionClick).toHaveBeenLastCalledWith('rack', 'pump');
   const before = vi.mocked(playActionClick).mock.calls.length;
   ctx.paused = true; ctx.events.dispatchEvent(new Event('pause'));
   for (let i = 0; i < 30; i++) gun.update(ctx, 0);

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BirdsSystem } from '../src/three/subsystems/birds';
 import type { Ctx } from '../src/three/engine';
 
-vi.mock('../src/audio', () => ({ playShot: vi.fn(), unlockAudio: vi.fn(), playActionClick: vi.fn(), playThud: vi.fn(), playFlush: vi.fn(),
+vi.mock('../src/audio', () => ({ playShot: vi.fn(), prepareGunSounds: vi.fn(), unlockAudio: vi.fn(), playActionClick: vi.fn(), playThud: vi.fn(), playFlush: vi.fn(),
   playPheasantFlush: vi.fn(), playBirdFlush: vi.fn() }));
 afterEach(() => vi.unstubAllGlobals());
 

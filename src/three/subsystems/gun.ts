@@ -1,7 +1,7 @@
 import { huntAssists } from '../assistsRuntime';
 import type { WetBottomsSystem } from './wetBottoms';
 import * as THREE from 'three';
-import { playShot, unlockAudio, playActionClick } from '../../audio';
+import { playShot, unlockAudio, playActionClick, prepareGunSounds } from '../../audio';
 import { GUNS, chokeForShot, getGun, type GunConfig } from '../../game/guns';
 import { ShotFx, anchorCall, boresFor, shotCall } from '../shotFx';
 import type { Ctx, Subsystem } from '../engine';
@@ -15,7 +15,7 @@ import { SHOT_RANGE_M, TravellingShot, WOUND_RANGE_M } from '../shotPattern';
 import { shotSightPicture, mobileShotFov, shotAssistancePreference } from '../inputMode';
 import { resolveShotAssistance, type ShotAssistanceProfile, type ShotTriggerSource } from '../shotAssistance';
 import { createSportingShotgun, type ChamberState, type HullExit, type SportingShotgun } from '../assets/shotgun';
-import { DOUBLE_EJECT_S, DOUBLE_SEATED, doubleLoading, reloadPose, shotgunCycleCues, shotgunReloadCues, TUBE_LOADING,
+import { DOUBLE_EJECT_S, DOUBLE_SEATED, doubleLoading, gunMechanism, reloadPose, shotgunCycleCues, shotgunReloadCues, TUBE_LOADING,
   type ShotgunActionCue, type ShotgunMechanism } from '../shotgunActionTiming';
 import { gunFeel, type GunFeel } from '../../game/gunFeel';
 import { SpentHulls } from '../spentHulls';
@@ -35,8 +35,8 @@ import { dogRendererId } from '../dogs/rendererId';
 // Mount time comes from each gun's weight and balance (`gunFeel`): the
 // cheek-weld rise stays inside the 150-250 ms law for every gun.
 /** Opening the action plus loading each missing shell. */
-const RELOAD_OPEN_S = 0.55;
-const RELOAD_PER_SHELL_S = 0.38;
+export const RELOAD_OPEN_S = 0.55;
+export const RELOAD_PER_SHELL_S = 0.38;
 /** Recoil spring: stiffness/damping (underdamped — kick then recover). */
 const RECOIL_K = 180;
 const RECOIL_C = 16;
@@ -153,6 +153,10 @@ export class GunSystem implements Subsystem {
   private hulls: SpentHulls | null = null;
   private hullExit: HullExit = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), outward: new THREE.Vector3() };
   private groundAt = (x: number, z: number) => this.terrain.heightAt(x, z);
+  private events: EventTarget | null = null;
+  /** A hull hitting the ground is the field's sound to make (fieldAudio.ts). */
+  private hullLanded = (x: number, y: number, z: number, speed: number) =>
+    this.events?.dispatchEvent(new CustomEvent('hull-landed', { detail: { x, y, z, speed } }));
   /** Ready carry 0..1: the gun comes up while the hunter walks in on a point. */
   private readyK = 0;
   /** Capture staging only: holds the ready instead of reading the hunt. */
@@ -191,7 +195,8 @@ export class GunSystem implements Subsystem {
     admirePosition: new THREE.Vector3(), admireQuaternion: new THREE.Quaternion(),
     stowPosition: new THREE.Vector3(), stowQuaternion: new THREE.Quaternion(),
   };
-  private onCue = (event: ShotgunActionCue) => { playActionClick(event); if (event === 'eject') this.ejectPending = true; };
+  private onCue = (event: ShotgunActionCue) => { playActionClick(event, this.mechanism()); if (event === 'eject') this.ejectPending = true; };
+  private mechanism(): ShotgunMechanism { return gunMechanism(this.gun.id); }
   private fx: ShotFx | null = null;
   private shotCallout: HTMLElement | null = null;
   private shotCalloutUntil = 0;
@@ -228,6 +233,9 @@ export class GunSystem implements Subsystem {
     ctx.scene.add(this.root);
     this.hulls = new SpentHulls();
     ctx.scene.add(this.hulls.mesh);
+    this.events = ctx.events;
+    // Made in idle moments now, so the first shot never waits on its sound.
+    if (!this.frozen) prepareGunSounds(this.gun.id, this.hunt.areaConfig?.().id);
     this.hitMarker = document.getElementById('hit-marker');
     if (!this.frozen) this.fx = new ShotFx(ctx.scene, this.sporting.root, this.sporting.bead);
 
@@ -550,6 +558,7 @@ export class GunSystem implements Subsystem {
     this.reloadChambers = null; this.reloadCount = this.reloadLoading = this.reloadCredited = 0;
     this.shuffleIn = Infinity;
     this.hunt.huntState().gunId = next.id;
+    if (!this.frozen) prepareGunSounds(next.id, this.hunt.areaConfig?.().id);
     this.aim = this.keyboardAim = false;
     this.pendingTrigger = null; this.mountT = 0;
     this.reloadElapsed = this.reloadDuration = 0;
@@ -659,7 +668,7 @@ export class GunSystem implements Subsystem {
     this.kick(this.feel.kick * motion, this.feel.kick * motion * (this.feel.flip[Math.min(barrel, this.feel.flip.length - 1)] ?? 1));
     this.shuffleIn = this.feel.shuffle ? this.feel.shuffle.delayS : Infinity;
     unlockAudio();
-    playShot();
+    playShot(this.gun.id, this.hunt.areaConfig?.().id);
 
     ctx.camera.getWorldDirection(this.fwd);
     let habitat: PropertyHabitatSystem | undefined;
@@ -820,7 +829,7 @@ export class GunSystem implements Subsystem {
 
     // Use the same render intervals as the visible mechanism. The completion
     // frame still emits its final latch before clearing the reload clock.
-    const mechanism: ShotgunMechanism = this.gun.id === 'remington-870' ? 'pump' : this.gun.id as ShotgunMechanism;
+    const mechanism = this.mechanism();
     const live = !snap && !ctx.paused && this.visualReloadPreview === null && dt > 0;
     this.ejectPending = false;
     if (this.isReloading()) {
@@ -1007,7 +1016,7 @@ export class GunSystem implements Subsystem {
         (this.reloadChambers ?? []).forEach((state, i) => { if (state === 'fired') this.ejectHull(i); });
       } else this.ejectHull(0);
     }
-    if (!ctx.paused && dt > 0) this.hulls?.step(dt, this.groundAt);
+    if (!ctx.paused && dt > 0) this.hulls?.step(dt, this.groundAt, this.hullLanded);
   }
 
   /** The renderer's mouth point for a dog slot, in world space. */
@@ -1157,6 +1166,7 @@ export class GunSystem implements Subsystem {
     this.fx = null;
     this.hulls?.dispose();
     this.hulls = null;
+    this.events = null;
     this.sporting?.dispose();
     this.sporting = undefined;
     if (this.reticle) this.reticle.hidden = true;

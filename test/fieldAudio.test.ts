@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { afterEach, expect, it, vi } from 'vitest';
 import { FieldAudioSystem } from '../src/three/subsystems/fieldAudio';
-import { playDogCollar, playDogMovement, playFieldSong, startFieldAmbience } from '../src/audio';
+import { playDogCollar, playDogMovement, playFieldSong, playHullDrop, startFieldAmbience } from '../src/audio';
 import type { Ctx } from '../src/three/engine';
 import { Hunt3DSystem } from '../src/three/subsystems/hunt3d';
 import { LandscapeModel } from '../src/game/landscape';
 import { parseDropPointId, resolveThreeHuntArea } from '../src/game/gameplayMode';
 vi.mock('../src/audio', () => ({ playDogCollar: vi.fn(), playDogMovement: vi.fn(), playFieldSong: vi.fn(), playWhistle: vi.fn(), startFieldAmbience: vi.fn(() => null),
-  setFieldTension: vi.fn(), playHeartbeat: vi.fn() }));
+  setFieldTension: vi.fn(), playHeartbeat: vi.fn(), playHullDrop: vi.fn() }));
 afterEach(() => { vi.unstubAllGlobals(); vi.resetAllMocks(); });
 it('locates nearby moving paws, with no stationary, distant, paused, or teleport cues', () => {
   vi.stubGlobal('location', { search: '' });
@@ -32,6 +32,32 @@ it('locates nearby moving paws, with no stationary, distant, paused, or teleport
   expect(playDogMovement).toHaveBeenLastCalledWith(true, expect.any(Number), -1);
   expect(vi.mocked(playDogMovement).mock.calls[1][1]).toBeLessThan(volume);
   audio.dispose();
+});
+
+it('plays a landing hull where it fell: a clink on the rimrock, a tick in the grass, softer farther off', () => {
+  vi.stubGlobal('location', { search: '' });
+  const hunt = { dogPointRevision: () => 0, trackingGearTier: () => 0, dogCount: () => 0 };
+  const land = (areaId: string, x: number, z: number, speed = 4.5, paused = false) => {
+    const ctx = { camera: new THREE.PerspectiveCamera(), events: new EventTarget(), time: 0, paused, get: (id: string) => id === 'terrain' ? { heightAt: () => 0 } : hunt } as unknown as Ctx;
+    ctx.camera.position.set(0, 1.6, 0); ctx.camera.updateMatrixWorld();
+    const audio = new FieldAudioSystem(areaId); audio.init(ctx);
+    ctx.events.dispatchEvent(new CustomEvent('hull-landed', { detail: { x, y: 0, z, speed } }));
+    audio.dispose();
+  };
+  // The camera looks down -Z: +X is the hunter's right.
+  land('chukar-ridge', 1.2, -.4);
+  expect(playHullDrop).toHaveBeenLastCalledWith('rock', expect.any(Number), expect.any(Number));
+  const [, near, right] = vi.mocked(playHullDrop).mock.calls[0];
+  expect(right).toBeGreaterThan(.5);
+  land('quail-fields', -1.2, .6);
+  expect(playHullDrop).toHaveBeenLastCalledWith('soft', expect.any(Number), expect.any(Number));
+  expect(vi.mocked(playHullDrop).mock.calls[1][2]).toBeLessThan(-.5);
+  land('chukar-ridge', 6, -4);
+  expect(vi.mocked(playHullDrop).mock.calls[2][1]).toBeLessThan(near * .6);
+  land('chukar-ridge', 1.2, -.4, 1.2);
+  expect(vi.mocked(playHullDrop).mock.calls[3][1]).toBeLessThan(near * .4);
+  land('chukar-ridge', 1.2, -.4, 4.5, true); land('chukar-ridge', 40, 0);
+  expect(playHullDrop).toHaveBeenCalledTimes(4);
 });
 
 it('keeps one regional bed across pause, mute-style unlock retries and hidden/resumed frames, then releases it on replay', () => {

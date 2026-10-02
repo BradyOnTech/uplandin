@@ -11,7 +11,7 @@ import { ChukarEnvironmentSystem } from '../src/three/subsystems/chukarEnvironme
 import { PropertyHabitatSystem } from '../src/three/subsystems/propertyHabitat';
 import { GunSystem } from '../src/three/subsystems/gun';
 
-vi.mock('../src/audio', () => ({ playShot: vi.fn(), unlockAudio: vi.fn(), playActionClick: vi.fn() }));
+vi.mock('../src/audio', () => ({ playShot: vi.fn(), prepareGunSounds: vi.fn(), unlockAudio: vi.fn(), playActionClick: vi.fn() }));
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 // Cross an actual rendered triangle, rather than a broad movement circle.

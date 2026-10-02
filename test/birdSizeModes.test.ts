@@ -7,7 +7,7 @@ import { BirdsSystem, type BirdsOptions } from '../src/three/subsystems/birds';
 import { flyingBirdScale, LIFE_SIZE_FAR_M, LIFE_SIZE_NEAR_M, resolveBirdSize } from '../src/three/birdScale';
 import type { Ctx } from '../src/three/engine';
 
-vi.mock('../src/audio', () => ({ playShot: vi.fn(), unlockAudio: vi.fn(), playActionClick: vi.fn(), playThud: vi.fn() }));
+vi.mock('../src/audio', () => ({ playShot: vi.fn(), prepareGunSounds: vi.fn(), unlockAudio: vi.fn(), playActionClick: vi.fn(), playThud: vi.fn() }));
 
 type FlightSlot = { simId: number; status: string; x: number; y: number; z: number; visualScale: number;
   vxW: number; vyW: number; vzW: number; airMs: number; previousAirMs: number; root: THREE.Group;

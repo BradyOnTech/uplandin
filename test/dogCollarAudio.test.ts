@@ -50,6 +50,7 @@ it('follows listener-relative direction and releases both beeps on stop, mute an
   vi.stubGlobal('AudioContext', class {
     state = 'running'; currentTime = 2; destination = {};
     createGain() { return node('gain'); }
+    createDynamicsCompressor() { return Object.assign(node('limiter'), { threshold: param(), knee: param(), ratio: param(), attack: param(), release: param() }); }
     createPanner() { return node('pan'); }
     createOscillator() { return node('osc'); }
   });

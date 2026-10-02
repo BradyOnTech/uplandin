@@ -45,6 +45,7 @@ it('bounds covey panners, favors nearer actual launches and releases voices on f
   vi.stubGlobal('AudioContext', class {
     state = 'running'; currentTime = 0; destination = {};
     createGain() { return node('gain'); } createPanner() { return node('pan'); }
+    createDynamicsCompressor() { return Object.assign(node('limiter'), { threshold: param(), knee: param(), ratio: param(), attack: param(), release: param() }); }
     createBufferSource() { return node('source'); }
     createBuffer(_channels: number, length: number, rate: number) {
       const data = new Float32Array(length); return { duration: length / rate, getChannelData: () => data };

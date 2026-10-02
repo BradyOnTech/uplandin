@@ -38,6 +38,7 @@ function fakeAudio() {
   vi.stubGlobal('AudioContext', class {
     state = 'running'; currentTime = 0; sampleRate = 8000; destination = {};
     createGain() { return node('gain'); }
+    createDynamicsCompressor() { return Object.assign(node('limiter'), { threshold: param(), knee: param(), ratio: param(), attack: param(), release: param() }); }
     createBiquadFilter() { return node('filter'); }
     createBufferSource() { return node('source'); }
     createOscillator() { return node('oscillator'); }
@@ -53,7 +54,8 @@ it('bounds regional audio nodes, pauses without new loops and cleans each source
   const audio = await import('../src/audio');
   const bed = audio.startFieldAmbience('chukar-ridge')!;
   const sources = nodes.filter(n => n.kind === 'source');
-  expect(sources).toHaveLength(2); expect(nodes).toHaveLength(7);
+  // Two looping layers with their filters and gains, then the master, world bus and limiter.
+  expect(sources).toHaveLength(2); expect(nodes).toHaveLength(9);
   expect(sources.every(source => source.loop)).toBe(true);
   const layerGain = nodes.find(n => n.kind === 'gain');
   bed.setWind!('calm'); expect(layerGain.gain.setTargetAtTime).toHaveBeenLastCalledWith(.019 * .45, 0, 1.2);
@@ -63,9 +65,9 @@ it('bounds regional audio nodes, pauses without new loops and cleans each source
   expect(layerGain.gain.setTargetAtTime).toHaveBeenLastCalledWith(0, 0, .08);
   bed.setPaused(false); expect(layerGain.gain.setTargetAtTime).toHaveBeenLastCalledWith(.019, 0, .5);
   for (let i = 0; i < 5; i++) { bed.setPaused(true); bed.setPaused(false); }
-  expect(nodes).toHaveLength(7);
+  expect(nodes).toHaveLength(9);
   audio.setAudioEnabled(false); expect(audio.startFieldAmbience('quail-fields')).toBeNull();
-  expect(nodes).toHaveLength(7);
+  expect(nodes).toHaveLength(9);
   audio.setAudioEnabled(true); bed.stop(); bed.stop(); bed.setPaused(false);
   for (const source of sources) { expect(source.stop).toHaveBeenCalledOnce(); expect(source.disconnect).toHaveBeenCalledOnce(); }
   for (const filter of nodes.filter(n => n.kind === 'filter')) expect(filter.disconnect).toHaveBeenCalledOnce();

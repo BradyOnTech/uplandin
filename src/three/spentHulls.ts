@@ -14,6 +14,8 @@ export const HULL_LENGTH_M = .064;
 /** How long a hull lies on the ground before it is tidied away. */
 export const HULL_REST_S = 90;
 const SHRINK_S = .5;
+/** A hull touching down slower than this makes no sound worth playing. */
+const HULL_SILENT_MS = .35;
 const GRAVITY = 9.81;
 
 export interface HullLaunch {
@@ -125,7 +127,8 @@ export class SpentHulls {
     return { x: hull.position.x, y: hull.position.y, z: hull.position.z, resting: hull.resting, axisY: scratchAxis.y };
   }
 
-  step(dt: number, groundAt: (x: number, z: number) => number): void {
+  /** `landed` hears each touchdown hard enough to make a sound: where, and how fast, m/s. */
+  step(dt: number, groundAt: (x: number, z: number) => number, landed?: (x: number, y: number, z: number, speed: number) => void): void {
     if (dt <= 0 || !this.mesh.visible) { if (this.dirty) this.write(); return; }
     let any = false;
     for (const hull of this.hulls) {
@@ -145,6 +148,8 @@ export class SpentHulls {
         const ground = groundAt(hull.position.x, hull.position.z) + HULL_RADIUS_M;
         if (hull.position.y <= ground) {
           hull.position.y = ground;
+          const impact = -hull.velocity.y;
+          if (impact > HULL_SILENT_MS) landed?.(hull.position.x, hull.position.y, hull.position.z, impact);
           if (hull.velocity.y < -1.1 && hull.bounces < 3) {
             // A hollow plastic tube bounces low and skitters on.
             hull.bounces++;

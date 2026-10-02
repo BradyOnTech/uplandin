@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Hunt3DSystem } from './hunt3d';
-import { playDogCollar, playDogMovement, playFieldSong, playHeartbeat, setFieldTension, startFieldAmbience, type DogCollarSound } from '../../audio';
+import { playDogCollar, playDogMovement, playFieldSong, playHeartbeat, playHullDrop, setFieldTension, startFieldAmbience, type DogCollarSound } from '../../audio';
+import { hullSurface } from '../sound/gunFoley';
 import type { Ctx, Subsystem } from '../engine';
 import { fieldSoundscape } from '../fieldSoundscape';
 import { DogCollarCadence, dogBellInterval, dogCollarGain, dogCollarMode, type DogCollarCue } from '../dogCollarAudio';
@@ -56,10 +57,23 @@ export class FieldAudioSystem implements Subsystem {
     const profile = fieldSoundscape(this.areaId);
     if (profile) this.nextSong = profile.songGain > 0 ? profile.songInterval : Infinity;
     // A bird going up at the hunter's feet: the pulse jumps.
+    ctx.events.addEventListener('hull-landed', ((e: CustomEvent<{ x: number; y: number; z: number; speed: number }>) =>
+      this.hullLanded(ctx, e.detail)) as EventListener, { signal });
     ctx.events.addEventListener('close-flush', ((e: CustomEvent<{ intensity: number }>) => {
       if (!this.capture && !this.hidden && !ctx.paused) playHeartbeat(e.detail.intensity);
       this.tension = 0; this.applyTension();
     }) as EventListener, { signal });
+  }
+  /** A fired hull touching down: a clink on the rimrock, a tick in the grass. */
+  private hullLanded(ctx: Ctx, landing: { x: number; y: number; z: number; speed: number }): void {
+    if (this.capture || this.hidden || ctx.paused) return;
+    const dx = landing.x - ctx.camera.position.x, dz = landing.z - ctx.camera.position.z;
+    const flat = Math.hypot(dx, dz), distance = Math.hypot(flat, landing.y - ctx.camera.position.y);
+    if (!(distance < 25)) return;
+    ctx.camera.getWorldDirection(this.forward);
+    const horizontal = Math.hypot(this.forward.x, this.forward.z);
+    const pan = flat > .05 && horizontal > .01 ? (-this.forward.z * dx + this.forward.x * dz) / (flat * horizontal) : 0;
+    playHullDrop(hullSurface(this.areaId), Math.min(1, landing.speed / 4.5) / (1 + distance / 3), pan * .8);
   }
   private applyTension(): void {
     this.ambience?.setTension?.(this.tension);

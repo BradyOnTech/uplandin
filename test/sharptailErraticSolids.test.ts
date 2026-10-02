@@ -11,7 +11,7 @@ import { PlayerSystem } from '../src/three/subsystems/player';
 
 vi.mock('../src/audio', () => ({
   unlockAudio: vi.fn(), playFootstep: vi.fn(), playCoverBrush: vi.fn(), playWhistle: vi.fn(),
-  playShot: vi.fn(), playActionClick: vi.fn(),
+  playShot: vi.fn(), prepareGunSounds: vi.fn(), playActionClick: vi.fn(),
 }));
 const cleanup: (() => void)[] = [];
 beforeEach(() => {

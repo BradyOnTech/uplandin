@@ -3,6 +3,14 @@
 export type ShotgunMechanism = 'pump' | 'semi-auto' | 'over-under' | 'side-by-side';
 export type ShotgunActionCue = 'latch' | 'eject' | 'shell' | 'rack' | 'lock';
 
+const MECHANISMS: Readonly<Record<string, ShotgunMechanism>> = {
+  'remington-870': 'pump', 'semi-auto': 'semi-auto', 'over-under': 'over-under', 'side-by-side': 'side-by-side',
+};
+/** The action a gun works by. */
+export function gunMechanism(gunId: string): ShotgunMechanism {
+  return MECHANISMS[gunId] ?? 'pump';
+}
+
 export const SHOTGUN_CYCLE = {
   pumpStart: .08, pumpBack: .22, pumpClosed: .44,
   semiBack: .035, semiClosed: .10,

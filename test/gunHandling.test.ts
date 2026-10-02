@@ -8,7 +8,7 @@ import { HULL_RADIUS_M, HULL_REST_S, SpentHulls } from '../src/three/spentHulls'
 import { boresFor } from '../src/three/shotFx';
 import { createSportingShotgun } from '../src/three/assets/shotgun';
 
-vi.mock('../src/audio', () => ({ playShot: vi.fn(), unlockAudio: vi.fn(), playActionClick: vi.fn() }));
+vi.mock('../src/audio', () => ({ playShot: vi.fn(), prepareGunSounds: vi.fn(), unlockAudio: vi.fn(), playActionClick: vi.fn() }));
 afterEach(() => vi.unstubAllGlobals());
 
 interface FieldOptions { dog?: { state: string; x: number; z: number }; birds?: { status: string; x: number; y: number; z: number }[] }
@@ -230,6 +230,21 @@ describe('spent hulls', () => {
       expect(hull.x).toBeGreaterThan(.15);
       gun.dispose(ctx);
     }
+  });
+
+  it('reports each touchdown, the hardest first, for the field to play', () => {
+    const { ctx, gun, step, action, key } = field('remington-870');
+    const landings: { x: number; y: number; z: number; speed: number }[] = [];
+    ctx.events.addEventListener('hull-landed', (event => landings.push((event as CustomEvent).detail)) as EventListener);
+    action('mount'); step(.3); key(' ');
+    for (let i = 0; i < 180; i++) step(1 / 60);
+    expect(landings.length).toBeGreaterThanOrEqual(1);
+    expect(landings.length).toBeLessThanOrEqual(4);
+    expect(landings[0].speed).toBeGreaterThan(2);
+    for (let i = 1; i < landings.length; i++) expect(landings[i].speed).toBeLessThan(landings[i - 1].speed);
+    expect(landings[0].x).toBeGreaterThan(.15);
+    expect(landings[0].y).toBeCloseTo(HULL_RADIUS_M, 3);
+    gun.dispose(ctx);
   });
 
   it("kicks a double's fired hulls clear as it opens, never a live round", () => {

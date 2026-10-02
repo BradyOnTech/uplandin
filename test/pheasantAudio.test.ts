@@ -14,6 +14,7 @@ it('separates fixed cover release from moving wings, bounds nodes, and releases 
   vi.stubGlobal('AudioContext',class {
     state='running';currentTime=0;destination={};
     createGain(){return node('gain');} createPanner(){return node('pan');}
+    createDynamicsCompressor(){return Object.assign(node('limiter'),{threshold:param(),knee:param(),ratio:param(),attack:param(),release:param()});}
     createBufferSource(){return node('source');}
     createBuffer(_channels:number,length:number,rate:number){const data=new Float32Array(length);return {duration:length/rate,getChannelData:()=>data};}
   });
@@ -29,7 +30,7 @@ it('separates fixed cover release from moving wings, bounds nodes, and releases 
   sound.updateCoverSpatial!(6,{x:-6,y:0,z:0});
   expect(pans[1].positionX.setTargetAtTime).toHaveBeenLastCalledWith(-1,0,.025);
   const sources=nodes.filter(n=>n.kind==='source').sort((a,b)=>a.buffer.duration-b.buffer.duration);
-  expect(sources).toHaveLength(2);expect(nodes).toHaveLength(7); // Two mono sources, two HRTFs, three gains including master.
+  expect(sources).toHaveLength(2);expect(nodes).toHaveLength(9); // Two mono sources, two HRTFs, two distance gains, and the master, world bus and limiter.
   sources[0].onended();expect(pans[1].disconnect).toHaveBeenCalledOnce();expect(sound.active).toBe(true);
   sound.updateCoverSpatial!(9,{x:0,y:0,z:1});expect(pans[1].positionX.setTargetAtTime).toHaveBeenCalledOnce();
   sources[1].onended();expect(pans[0].disconnect).toHaveBeenCalledOnce();expect(sound.active).toBe(false);

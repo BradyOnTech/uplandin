@@ -6,7 +6,7 @@ import * as inputMode from '../src/three/inputMode';
 import type { HuntChallenge } from '../src/game/huntChallenge';
 import type { ShotAssistancePreference, ShotTriggerSource } from '../src/three/shotAssistance';
 
-vi.mock('../src/audio', () => ({ playShot: vi.fn(), unlockAudio: vi.fn(), playActionClick: vi.fn() }));
+vi.mock('../src/audio', () => ({ playShot: vi.fn(), prepareGunSounds: vi.fn(), unlockAudio: vi.fn(), playActionClick: vi.fn() }));
 
 describe('3D shotgun action', () => {
   afterEach(() => vi.unstubAllGlobals());
