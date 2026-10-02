@@ -343,6 +343,19 @@ function migrate(parsed: Record<string, unknown>): Career {
   };
 }
 
+/** A career read from outside this browser (a save file): the same
+ * migration and checks as a load, or null when it is not a career at all. */
+export function readCareer(value: unknown): Career | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const parsed = value as Record<string, unknown>;
+  if (parsed.version !== 2 && typeof parsed.hunts !== 'number') return null;
+  try {
+    return migrate(parsed);
+  } catch {
+    return null;
+  }
+}
+
 export function loadCareer(storage: StorageLike | null = defaultStorage()): Career {
   if (!storage) return emptyCareer();
   try {

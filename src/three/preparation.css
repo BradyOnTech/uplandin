@@ -232,6 +232,13 @@ progress::-moz-progress-bar { background:var(--gold); }
 .kennel-porch { display:grid; gap:4px; padding:10px 14px; border-radius:12px; border:1px dashed #eee4c833; }
 .kennel-porch ul { margin:0; padding:0; list-style:none; display:grid; gap:3px; font-size:13px; color:var(--muted); }
 .kennel-porch strong { font:400 15px Georgia,serif; color:#eee8d5; }
+.save-transfer { display:grid; gap:10px; }
+.save-actions { display:flex; flex-wrap:wrap; gap:10px; }
+.save-status:empty { display:none; }
+.save-status { margin:0; font-size:13px; color:var(--gold); }
+.save-confirm { display:grid; gap:10px; padding:12px 14px; border-radius:12px; border:1px solid #e3c38a55; background:#3a2e1726; }
+.save-confirm p { margin:0; font-size:14px; line-height:1.4; }
+.save-confirm[hidden] { display:none; }
 .first-season { display:grid; gap:6px; }
 .first-season h3 { font:400 26px/1.15 var(--menu-serif); }
 .puppy-form { display:grid; gap:20px; padding:18px; border-radius:16px; background:#0e201840; box-shadow:inset 0 0 0 1px #ffffff12; }

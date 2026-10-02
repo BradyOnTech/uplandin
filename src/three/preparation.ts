@@ -19,6 +19,7 @@ import { dateLabel } from '../game/season';
 import { getSpecies } from '../game/species';
 import { limitsLabel } from '../game/bagLimits';
 import { openHuntJournal } from './huntJournalView';
+import { saveTransferSection } from './saveTransfer';
 import { createPreparationMap } from './maps/preparationMap';
 import { enableOfflineHunts, requestOfflineUpdate, type OfflineUpdateState } from './offline';
 import { preparationInstalledEntry, rememberPreparationLaunch, preservePreparationDraft, consumePreparationDraft, discardPreparationDraft, type PreparationDraft } from './preparationOffline';
@@ -771,6 +772,7 @@ function openSettings(opener: HTMLElement): void {
     v => { dogStyle = v === 'breed' ? null : v as DogStyle; if (dogStyle) saveDogStyle(dogStyle); else try { localStorage.removeItem(DOG_STYLE_KEY); } catch { /* optional */ } }),
     'The same choice is on the Dog step, where you can compare both styles.'));
   }
+  body.append(field('Your save', saveTransferSection()));
   body.append(offlinePanel);
   const dialogPager = node('div', '', 'dialog-pager');
   settingsDialog.append(header, body, dialogPager);
