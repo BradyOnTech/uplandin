@@ -4,7 +4,7 @@ import { PlayerSystem } from '../src/three/subsystems/player';
 import type { Ctx } from '../src/three/engine';
 import { opticalLookScale } from '../src/three/inputMode';
 
-vi.mock('../src/audio', () => ({ unlockAudio: vi.fn(), playFootstep: vi.fn(), playCoverBrush: vi.fn() }));
+vi.mock('../src/audio', () => ({ unlockAudio: vi.fn(), playFootstep: vi.fn() }));
 afterEach(() => vi.unstubAllGlobals());
 
 describe('camera direction available to a shot before the next animation frame', () => {

@@ -1,6 +1,8 @@
 import { ShallowWater, wadingSpeedMultiplier } from '../../game/shallowWater';
 import * as THREE from 'three';
-import { unlockAudio, playFootstep, playCoverBrush } from '../../audio';
+import { unlockAudio, playFootstep } from '../../audio';
+import { onRoute, stepSurface } from '../sound/stepSounds';
+import { PROPERTY_PX_TO_M, type GroundSample } from '../../game/landscape';
 import type { LandscapeModel } from '../../game/landscape';
 import type { Ctx, Subsystem } from '../engine';
 import type { TerrainSystem } from './terrain';
@@ -54,6 +56,12 @@ export class PlayerSystem implements Subsystem {
   private obstacleIndex?: ObstacleIndex;
   private readonly water?: ShallowWater;
   private waterDepth = 0;
+  private groundSample: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
+  private propertyPoint = { x: 0, y: 0 };
+  private propertyAt(land: LandscapeModel): [number, number] {
+    land.worldToProperty(this.pos.x, this.pos.z, this.propertyPoint);
+    return [this.propertyPoint.x, this.propertyPoint.y];
+  }
   constructor(private readonly landscape?: LandscapeModel) {
     if (landscape) this.water = new ShallowWater(landscape);
   }
@@ -291,8 +299,12 @@ export class PlayerSystem implements Subsystem {
           this.stepDistance %= 0.86;
           this.hunt ??= ctx.get<Hunt3DSystem>('hunt3d');
           const inCover = this.hunt.coverPatches().some((patch) => Math.abs(this.pos.x - patch.cx) < patch.hx && Math.abs(this.pos.z - patch.cz) < patch.hz);
-          playFootstep(inCover, 0.10, this.landscape?.area.id);
-          if (inCover) playCoverBrush(undefined, this.landscape?.area.id);
+          // The ground underfoot: the land's own rock, plant and wet, cover and water,
+          // and the bare dirt of a farm lane (a prairie two-track is grass).
+          const land = this.landscape, ground = land?.surfaceAtWorld(this.pos.x, this.pos.z, this.groundSample);
+          const lane = !!land && land.area.id !== 'sharptail-prairie'
+            && onRoute(land.area.trails, ...this.propertyAt(land), 1 / PROPERTY_PX_TO_M);
+          playFootstep(ground ? stepSurface(ground, inCover, this.waterDepth, lane) : inCover ? 'cover' : 'grass', 0.10, this.isRunning());
         }
       }
     }

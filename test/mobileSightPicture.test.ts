@@ -4,7 +4,7 @@ import { mobileShotFov, shotSightPicture } from '../src/three/inputMode';
 import { PlayerSystem } from '../src/three/subsystems/player';
 import type { Ctx } from '../src/three/engine';
 
-vi.mock('../src/audio', () => ({ unlockAudio:vi.fn(), playFootstep:vi.fn(), playCoverBrush:vi.fn() }));
+vi.mock('../src/audio', () => ({ unlockAudio:vi.fn(), playFootstep:vi.fn() }));
 afterEach(() => vi.unstubAllGlobals());
 
 const projectedSpan = (width: number, height: number, fov: number, distance: number) => {

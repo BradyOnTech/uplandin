@@ -1,12 +1,13 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { fieldSoundscape, fieldWindSamples } from '../src/three/fieldSoundscape';
+import { fieldInsectSamples, fieldSoundscape, fieldWindSamples, HOUR_INSECTS, HOUR_WIND } from '../src/three/fieldSoundscape';
+import { STEP_SURFACES } from '../src/three/sound/stepSounds';
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.resetModules(); });
 
 it('builds quiet distinct regional beds without consuming gameplay randomness or unbounded buffers', () => {
   vi.spyOn(Math, 'random').mockImplementation(() => { throw Error('No shared randomness'); });
   const signatures: number[] = [];
-  for (const area of ['chukar-ridge', 'quail-fields', 'sharptail-prairie']) {
+  for (const area of ['chukar-ridge', 'quail-fields', 'sharptail-prairie', 'pheasant-coverts']) {
     const profile = fieldSoundscape(area)!;
     expect(profile.layers).toHaveLength(2);
     expect(profile.layers.reduce((sum, layer) => sum + layer.gain, 0)).toBeLessThan(.027);
@@ -22,16 +23,35 @@ it('builds quiet distinct regional beds without consuming gameplay randomness or
     }
     signatures.push(profile.layers[0].frequency);
   }
-  expect(new Set(signatures).size).toBe(3);
-  expect(fieldSoundscape('pheasant-coverts')).toBeUndefined();
+  expect(new Set(signatures).size).toBe(4);
+  expect(fieldSoundscape('north-woods')).toBeUndefined();
   expect(fieldSoundscape()).toBeUndefined();
+});
+
+it('lays the wind down at the ends of the day and brings the crickets out in the evening', () => {
+  expect(HOUR_WIND.dawn).toBeLessThan(HOUR_WIND.morning);
+  expect(HOUR_WIND.noon).toBeGreaterThan(HOUR_WIND.morning);
+  expect(HOUR_WIND.lastlight).toBeLessThan(HOUR_WIND.evening);
+  expect([HOUR_INSECTS.dawn, HOUR_INSECTS.morning, HOUR_INSECTS.noon]).toEqual([0, 0, 0]);
+  expect(HOUR_INSECTS.lastlight).toBeGreaterThan(HOUR_INSECTS.evening);
+  // Every cricket's chirp falls on the loop exactly, so it repeats without a seam.
+  const rate = 8000, loop = fieldInsectSamples(rate, 3, 12);
+  expect(loop).toEqual(fieldInsectSamples(rate, 3, 12));
+  expect(loop.length).toBe(rate * 12);
+  expect(Math.max(...loop.map(Math.abs))).toBeCloseTo(1, 5);
+  const level = (from: number, to: number) => Math.sqrt(loop.slice(from, to).reduce((sum, value) => sum + value * value, 0) / (to - from));
+  expect(level(0, rate)).toBeGreaterThan(.05);
+  // Pulses, not a steady tone: many quiet stretches between chirps.
+  let quiet = 0;
+  for (let i = 0; i < loop.length; i += rate / 100) if (level(i, i + rate / 100) < .03) quiet++;
+  expect(quiet).toBeGreaterThan(200);
 });
 
 function fakeAudio() {
   const nodes: any[] = [];
   const param = () => ({ value: 0, setValueAtTime: vi.fn(), setTargetAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() });
   const node = (kind: string) => {
-    const n: any = { kind, gain: param(), frequency: param(), Q: param(), onended: null,
+    const n: any = { kind, gain: param(), frequency: param(), Q: param(), pan: param(), onended: null,
       connect: vi.fn((to: any) => to), disconnect: vi.fn(), start: vi.fn(), stop: vi.fn() };
     nodes.push(n); return n;
   };
@@ -42,6 +62,7 @@ function fakeAudio() {
     createBiquadFilter() { return node('filter'); }
     createBufferSource() { return node('source'); }
     createOscillator() { return node('oscillator'); }
+    createStereoPanner() { return node('stereo'); }
     createBuffer(_channels: number, length: number, rate: number) {
       const data = new Float32Array(length); return { duration: length / rate, getChannelData: () => data };
     }
@@ -75,21 +96,43 @@ it('bounds regional audio nodes, pauses without new loops and cleans each source
   expect(nodes.filter(n => n.kind === 'source' && n.stop.mock.calls.length === 0)).toHaveLength(0);
 });
 
-it('preserves the legacy Cattail bed and footfall while regional footsteps clean short-lived nodes', async () => {
+it('gives Cattail Coverts its own bed, and every footfall one short-lived source', async () => {
   const nodes = fakeAudio(), audio = await import('../src/audio');
-  const legacy = audio.startFieldAmbience('pheasant-coverts')!;
-  expect(nodes.filter(n => n.kind === 'source')).toHaveLength(1);
-  expect(nodes.find(n => n.kind === 'filter').frequency.value).toBe(650);
-  expect(nodes.find(n => n.kind === 'gain').gain.value).toBe(.018);
-  legacy.stop();
-  nodes.length = 0; audio.playFootstep(false, .1);
-  expect(nodes.filter(n => n.kind === 'source')).toHaveLength(1);
-  expect(nodes.find(n => n.kind === 'oscillator').type).toBe('square');
-  for (const area of ['chukar-ridge', 'quail-fields', 'sharptail-prairie']) {
-    nodes.length = 0; audio.playFootstep(true, .1, area);
-    expect(nodes.filter(n => n.kind === 'source')).toHaveLength(2);
-    expect(nodes.find(n => n.kind === 'oscillator').type).toBe('triangle');
+  const coverts = audio.startFieldAmbience('pheasant-coverts')!;
+  expect(nodes.filter(n => n.kind === 'source')).toHaveLength(2);
+  expect(nodes.filter(n => n.kind === 'filter').map(n => n.frequency.value)).toEqual([290, 2300]);
+  coverts.stop();
+  for (const surface of STEP_SURFACES) {
+    nodes.length = 0; audio.playFootstep(surface, .1, surface === 'rock');
+    const sources = nodes.filter(n => n.kind === 'source');
+    expect(sources, surface).toHaveLength(1);
+    expect(sources[0].buffer.duration).toBeLessThan(.5);
     for (const node of nodes) node.onended?.();
     expect(nodes.every(n => n.disconnect.mock.calls.length === 1)).toBe(true);
   }
+  // The retired two-dimensional hunt still asks by cover or not.
+  nodes.length = 0; audio.playFootstep(true, .1);
+  expect(nodes.filter(n => n.kind === 'source')).toHaveLength(1);
+});
+
+it('follows the hour: the wind lays down at dusk, and the crickets start, made only when they are wanted', async () => {
+  const nodes = fakeAudio(), audio = await import('../src/audio');
+  const bed = audio.startFieldAmbience('quail-fields')!;
+  const windGains = nodes.filter(n => n.kind === 'gain');
+  bed.setHour!('morning');
+  expect(nodes.filter(n => n.kind === 'source')).toHaveLength(2);
+  const morning = windGains[0].gain.setTargetAtTime.mock.lastCall[0];
+  bed.setHour!('lastlight');
+  expect(windGains[0].gain.setTargetAtTime.mock.lastCall[0]).toBeCloseTo(morning * HOUR_WIND.lastlight / HOUR_WIND.morning);
+  const crickets = nodes.filter(n => n.kind === 'source').slice(2);
+  expect(crickets).toHaveLength(2);
+  expect(crickets.every(source => source.loop)).toBe(true);
+  expect(nodes.filter(n => n.kind === 'stereo').map(n => n.pan.value)).toEqual([-.6, .6]);
+  const cricketGain = crickets[0].connect.mock.results[0].value;
+  expect(cricketGain.gain.setTargetAtTime.mock.lastCall[0]).toBeGreaterThan(0);
+  bed.setPaused(true); expect(cricketGain.gain.setTargetAtTime.mock.lastCall[0]).toBe(0);
+  bed.setPaused(false); bed.setHour!('evening'); bed.setHour!('evening');
+  expect(nodes.filter(n => n.kind === 'source')).toHaveLength(4);
+  bed.stop(); bed.stop();
+  for (const source of nodes.filter(n => n.kind === 'source')) expect(source.stop).toHaveBeenCalledOnce();
 });

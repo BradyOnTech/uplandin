@@ -11,7 +11,7 @@ import { LandscapeModel } from '../src/game/landscape';
 import { parseDropPointId, resolveThreeHuntArea } from '../src/game/gameplayMode';
 vi.mock('../src/audio', () => ({ playDogCollar: vi.fn(), playDogMovement: vi.fn(), playWhistle: vi.fn(), startFieldAmbience: vi.fn(() => null),
   setFieldTension: vi.fn(), playHeartbeat: vi.fn(), playHullDrop: vi.fn(), playBirdCall: vi.fn(), playBirdFlock: vi.fn(), prepareBirdSounds: vi.fn(),
-  playDogBreath: vi.fn(), prepareDogSounds: vi.fn() }));
+  playDogBreath: vi.fn(), prepareDogSounds: vi.fn(), prepareStepSounds: vi.fn() }));
 afterEach(() => { vi.unstubAllGlobals(); vi.resetAllMocks(); });
 it('locates nearby moving paws, with no stationary, distant, paused, or teleport cues', () => {
   vi.stubGlobal('location', { search: '' });

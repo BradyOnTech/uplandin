@@ -7,7 +7,7 @@ import { PheasantScenerySystem } from '../src/three/subsystems/pheasantScenery';
 import { PlayerSystem } from '../src/three/subsystems/player';
 import { pheasantWestFence } from '../src/game/pheasantHabitat';
 
-vi.mock('../src/audio', () => ({ unlockAudio: vi.fn(), playFootstep: vi.fn(), playCoverBrush: vi.fn() }));
+vi.mock('../src/audio', () => ({ unlockAudio: vi.fn(), playFootstep: vi.fn() }));
 describe('solid Pheasant trees', () => {
   afterEach(() => vi.unstubAllGlobals());
   it.each(['south-gate', 'west-track'])('blocks movement and shots at %s without making foliage an invisible wall', drop => {

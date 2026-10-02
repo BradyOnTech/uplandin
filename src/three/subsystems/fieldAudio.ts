@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Hunt3DSystem } from './hunt3d';
 import { playBirdCall, playBirdFlock, playDogBreath, playDogCollar, playDogMovement, playHeartbeat, playHullDrop, prepareBirdSounds,
-  prepareDogSounds, setFieldTension, startFieldAmbience, type BirdSound, type DogCollarSound, type SoundDirection } from '../../audio';
+  prepareDogSounds, prepareStepSounds, setFieldTension, startFieldAmbience, type BirdSound, type DogCollarSound, type SoundDirection } from '../../audio';
 import { DogBreathing } from '../sound/dogSounds';
 import { hullSurface } from '../sound/gunFoley';
 import { AMBIENT_BIRD_GAIN, CoveyCalls, CoveyGathering, groundBirdWait, groundSpace, nextGroundBird, QUARRY_CALL_GAIN, QUARRY_VOICES,
@@ -81,6 +81,7 @@ export class FieldAudioSystem implements Subsystem {
     if (!this.capture) {
       prepareBirdSounds(this.areaId, this.areaId ? getArea(this.areaId).speciesMix.map(share => share.speciesId) : []);
       prepareDogSounds(this.hunt.dogCount());
+      prepareStepSounds();
     }
     ctx.events.addEventListener('hull-landed', ((e: CustomEvent<{ x: number; y: number; z: number; speed: number }>) =>
       this.hullLanded(ctx, e.detail)) as EventListener, { signal });
@@ -122,6 +123,7 @@ export class FieldAudioSystem implements Subsystem {
     this.ambience ??= startFieldAmbience(this.areaId);
     const hunt = ctx.get<Hunt3DSystem>('hunt3d');
     this.ambience?.setWind?.(hunt.huntState().windStrength);
+    this.ambience?.setHour?.(ctx.timeOfDay);
     const target = this.pointTension(ctx, hunt);
     this.tension += (target - this.tension) * Math.min(1, dt * (target > this.tension ? 1.5 : 4));
     this.applyTension();

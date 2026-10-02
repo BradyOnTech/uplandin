@@ -1,5 +1,6 @@
 import { wetPondLayout } from '../src/game/wetPonds';
 import { QUAIL_GROUND_PROPS, quailGroundPropObstacles } from '../src/three/subsystems/quailGroundProps';
+import { STEP_SURFACES } from '../src/three/sound/stepSounds';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { getArea } from '../src/game/areas';
@@ -11,7 +12,7 @@ import { deriveQuailEntrances } from '../src/three/subsystems/quailEntrances';
 import { PropertyHabitatSystem } from '../src/three/subsystems/propertyHabitat';
 import { playFootstep } from '../src/audio';
 
-vi.mock('../src/audio', () => ({ unlockAudio: vi.fn(), playFootstep: vi.fn(), playCoverBrush: vi.fn() }));
+vi.mock('../src/audio', () => ({ unlockAudio: vi.fn(), playFootstep: vi.fn() }));
 
 const cleanup: (() => void)[] = [];
 beforeEach(() => {
@@ -63,10 +64,34 @@ describe('Quail hunter movement against actual lane fences', () => {
     expect(playFootstep).not.toHaveBeenCalled();
     f.player.setPose(f.ctx, 0, 40, 0);
     f.player.update(f.ctx, .4);
-    expect(playFootstep).toHaveBeenCalledExactlyOnceWith(false, .10, 'quail-fields');
+    // The ground underfoot, at a walk.
+    expect(playFootstep).toHaveBeenCalledOnce();
+    const [surface, ...rest] = vi.mocked(playFootstep).mock.calls[0];
+    expect(STEP_SURFACES).toContain(surface);
+    expect(rest).toEqual([.10, false]);
     f.ctx.paused = true;
     f.player.update(f.ctx, 1);
     expect(playFootstep).toHaveBeenCalledTimes(1);
+  });
+
+  it('sounds the farm lane as bare dirt underfoot, and the field beside it as grass', () => {
+    const f = fixture('south-gate', 'quail-fields', false);
+    const trail = f.landscape.area.trails[0].points, [a, b] = [trail[1], trail[2]];
+    const along = (t: number, side = 0) => {
+      const length = Math.hypot(b.x - a.x, b.y - a.y), nx = -(b.y - a.y) / length, ny = (b.x - a.x) / length;
+      return f.landscape.propertyToWorld(a.x + (b.x - a.x) * t + nx * side, a.y + (b.y - a.y) * t + ny * side, { x: 0, z: 0 });
+    };
+    const heading = THREE.MathUtils.radToDeg(Math.atan2(-(along(.6).x - along(.4).x), -(along(.6).z - along(.4).z)));
+    const step = (side: number) => {
+      vi.mocked(playFootstep).mockClear();
+      const start = along(.4, side);
+      f.player.setPose(f.ctx, start.x, start.z, heading);
+      f.press('KeyW');
+      for (let i = 0; i < 20 && !vi.mocked(playFootstep).mock.calls.length; i++) f.player.update(f.ctx, .1);
+      return vi.mocked(playFootstep).mock.calls[0]?.[0];
+    };
+    expect(step(0)).toBe('dirt');
+    expect(step(12 / PROPERTY_PX_TO_M)).toBe('grass');
   });
 
   it('blocks a sprint through an actual Grouse Woods trunk', () => {

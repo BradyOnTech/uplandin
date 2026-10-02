@@ -1,6 +1,7 @@
 import { synthesizePheasantLaunch, PHEASANT_AUDIO_RATE, type PheasantLaunchVoice } from './three/pheasantFlushAudio';
 import { synthesizeBirdLaunch, BIRD_FLUSH_AUDIO_RATE, type BirdLaunchVoice } from './three/speciesFlushAudio';
-import { fieldSoundscape, fieldWindSamples } from './three/fieldSoundscape';
+import { fieldInsectSamples, fieldSoundscape, fieldWindSamples, HOUR_INSECTS, HOUR_WIND } from './three/fieldSoundscape';
+import type { TimeOfDay } from './three/palette';
 import type { WindStrength } from './game/wind';
 import { gunMechanism, type ShotgunActionCue, type ShotgunMechanism } from './three/shotgunActionTiming';
 import { REPORT_RATE, synthesizeReport } from './three/sound/gunReport';
@@ -11,6 +12,7 @@ import { flockCalls, FLOCKS, synthesizeBirdCall, type BirdCallId, type FlockId }
 import { callsOnFlush, groundCalls, groundSpace, QUARRY_VOICES } from './three/sound/fieldBirds';
 import { bellPitch, BREATH_RATE, DOG_SOUND_RATE, synthesizeBell, synthesizePant, synthesizeSniffs, synthesizeWhistle, WHISTLES,
   type BreathCue, type WhistleCall } from './three/sound/dogSounds';
+import { STEP_RATE, STEP_SURFACES, synthesizeStep, type StepSurface } from './three/sound/stepSounds';
 /**
  * Procedural sound effects — no audio assets, everything is synthesized,
  * with WebAudio nodes or once into sample buffers (three/sound/). Mobile browsers require a user gesture before audio can
@@ -609,35 +611,33 @@ export function playDogBreath(cue: BreathCue, volume: number, source: SoundDirec
     () => direction.disconnect());
 }
 
+/** Each kind of ground has its own loudness under a boot. */
+const STEP_LEVEL: Readonly<Record<StepSurface, number>> = { dirt: .5, grass: .45, cover: .55, rock: .62, scree: .62, wet: .5, water: .6 };
+const STEP_VARIANTS = 4;
+const stepKey = (surface: StepSurface, running: boolean) => `step|${surface}|${running ? 'run' : 'walk'}`;
+const makeStep = (surface: StepSurface, running: boolean): Make => seed => [synthesizeStep(surface, seed, running)];
+
+/** Make every kind of footfall before the first step. */
+export function prepareStepSounds(): void {
+  if (typeof AudioContext === 'undefined') return;
+  for (const surface of STEP_SURFACES) for (const running of [false, true]) {
+    for (let i = 0; i < STEP_VARIANTS; i++) warming.push(() => cached(stepKey(surface, running), i, makeStep(surface, running)));
+  }
+  if (!warmingScheduled) { warmingScheduled = true; whenIdle(warmSome); }
+}
+
 /**
- * Hunter footfall. `inCover` uses a duller, softer thump (grass/ragweed);
- * open ground is a drier click. Volume should already encode distance.
+ * The hunter's own footfall on the ground underfoot (sound/stepSounds.ts):
+ * dirt, grass, tall cover, rock, scree, slough mud or shallow water. Volume
+ * already holds distance; `true`/`false` stand for cover or open grass.
  */
-export function playFootstep(inCover: boolean, volume = 0.12, areaId?: string): void {
+export function playFootstep(surface: StepSurface | boolean = 'grass', volume = 0.1, running = false): void {
   // Walking in on a point, every step sounds loud.
   volume *= 1 + fieldTension * .8;
-  if (volume <= 0.01) return;
-  if (areaId === 'chukar-ridge') {
-    // A low boot impact and two loose dry grains, not a gun-like crack.
-    noise(0, .052, inCover ? 1050 : 1950, 360, volume * .38);
-    noise(.027, .07, inCover ? 1750 : 2700, 680, volume * .19);
-    tone(105, 0, .052, { type: 'triangle', volume: volume * .22, slideTo: 54 });
-    return;
-  }
-  if (areaId === 'quail-fields' || areaId === 'sharptail-prairie') {
-    const prairie = areaId === 'sharptail-prairie';
-    noise(0, .065, inCover ? 420 : 780, 140, volume * .42);
-    noise(.018, prairie ? .12 : .085, prairie ? 1750 : 1150, 470, volume * (inCover ? .25 : .12));
-    tone(prairie ? 85 : 100, 0, .06, { type: 'triangle', volume: volume * .24, slideTo: 48 });
-    return;
-  }
-  if (inCover) {
-    noise(0, 0.05, 380, 120, volume * 0.55);
-    tone(90, 0, 0.06, { type: 'triangle', volume: volume * 0.35, slideTo: 50 });
-  } else {
-    noise(0, 0.03, 900, 400, volume * 0.4);
-    tone(140, 0, 0.04, { type: 'square', volume: volume * 0.12, slideTo: 80 });
-  }
+  const c = ready();
+  if (!c || volume <= 0.01) return;
+  const ground: StepSurface = typeof surface === 'boolean' ? (surface ? 'cover' : 'grass') : surface;
+  playSamples(c, variant(stepKey(ground, running), STEP_VARIANTS, makeStep(ground, running)), STEP_RATE, volume * STEP_LEVEL[ground]);
 }
 
 let fieldTension = 0;
@@ -653,18 +653,6 @@ export function playHeartbeat(intensity = 1, delay = .16): void {
   if (amount <= 0) return;
   tone(58, delay, .14, { volume: .2 * amount, slideTo: 38 });
   tone(52, delay + .19, .12, { volume: .13 * amount, slideTo: 36 });
-}
-
-/** Dry stems brushing clothing; quieter than the launch burst. */
-export function playCoverBrush(volume = .035, areaId?: string): void {
-  if (volume <= .001) return;
-  if (fieldSoundscape(areaId)) {
-    const quail = areaId === 'quail-fields', chukar = areaId === 'chukar-ridge';
-    noise(0, quail ? .16 : .11, quail ? 1450 : chukar ? 2400 : 1900, 550, volume * .65);
-    return;
-  }
-  noise(0, .13, 2100, 650, volume);
-  noise(.055, .09, 1250, 420, volume * .65);
 }
 
 /** Nearby paws and stems, located at the dog rather than a UI cue. */
@@ -692,14 +680,19 @@ export interface FieldAmbience {
   setWind?(strength: WindStrength): void;
   /** 0..1: the field hushes while the hunter walks in on a point. */
   setTension?(tension: number): void;
+  /** The wind and the evening's crickets follow the hour. */
+  setHour?(hour: TimeOfDay): void;
   stop(): void;
 }
+
+const INSECT_GAIN = .012, INSECT_RATE = 22050;
 export function startFieldAmbience(areaId?: string): FieldAmbience | null {
   const c = ready();
   if (!c) return null;
   const profile = fieldSoundscape(areaId);
   if (profile) {
-    let paused = false, wind: WindStrength = 'breezy', windGain = .75, hush = 1;
+    let paused = false, wind: WindStrength = 'breezy', windGain = .75, hush = 1, hour: TimeOfDay | null = null, hourWind = 1;
+    const windLevel = (volume: number) => volume * windGain * hourWind * hush;
     const layers = profile.layers.map(layer => {
       const source = c.createBufferSource(), filter = c.createBiquadFilter(), gain = c.createGain();
       const samples = fieldWindSamples(c.sampleRate, layer);
@@ -707,21 +700,26 @@ export function startFieldAmbience(areaId?: string): FieldAmbience | null {
       source.buffer.getChannelData(0).set(samples); source.loop = true;
       filter.type = 'bandpass'; filter.frequency.value = layer.frequency; filter.Q.value = layer.q;
       gain.gain.setValueAtTime(0, c.currentTime);
-      gain.gain.setTargetAtTime(layer.gain * windGain, c.currentTime, .7);
+      gain.gain.setTargetAtTime(windLevel(layer.gain), c.currentTime, .7);
       source.connect(filter).connect(gain).connect(output(c)); source.start();
       return { source, filter, gain, volume: layer.gain };
     });
+    // The evening's crickets, left and right, made only when the hour calls for them.
+    let insects: { source: AudioBufferSourceNode; gain: GainNode; side: StereoPannerNode }[] = [];
+    const insectLevel = () => paused || hour === null ? 0 : INSECT_GAIN * profile.insects * HOUR_INSECTS[hour] * hush;
+    const setInsects = (seconds: number) => { for (const layer of insects) layer.gain.gain.setTargetAtTime(insectLevel(), c.currentTime, seconds); };
     let stopped = false;
     return {
       setPaused(nextPaused) {
         if (stopped) return;
         paused = nextPaused;
-        for (const layer of layers) layer.gain.gain.setTargetAtTime(paused ? 0 : layer.volume * windGain * hush, c.currentTime, paused ? .08 : .5);
+        for (const layer of layers) layer.gain.gain.setTargetAtTime(paused ? 0 : windLevel(layer.volume), c.currentTime, paused ? .08 : .5);
+        setInsects(paused ? .08 : .5);
       },
       setWind(strength) {
         if (stopped || strength === wind) return;
         wind = strength; windGain = strength === 'calm' ? .45 : strength === 'strong' ? 1 : .75;
-        if (!paused) for (const layer of layers) layer.gain.gain.setTargetAtTime(layer.volume * windGain * hush, c.currentTime, 1.2);
+        if (!paused) for (const layer of layers) layer.gain.gain.setTargetAtTime(windLevel(layer.volume), c.currentTime, 1.2);
       },
       setTension(tension) {
         const next = 1 - Math.max(0, Math.min(1, tension)) * .6;
@@ -729,12 +727,31 @@ export function startFieldAmbience(areaId?: string): FieldAmbience | null {
         // Hush slowly as the hunter closes; let the field back in quickly.
         const rising = next > hush;
         hush = next;
-        if (!paused) for (const layer of layers) layer.gain.gain.setTargetAtTime(layer.volume * windGain * hush, c.currentTime, rising ? .35 : .9);
+        if (!paused) for (const layer of layers) layer.gain.gain.setTargetAtTime(windLevel(layer.volume), c.currentTime, rising ? .35 : .9);
+        if (!paused) setInsects(rising ? .35 : .9);
+      },
+      setHour(next) {
+        if (stopped || next === hour) return;
+        hour = next; hourWind = HOUR_WIND[next] ?? 1;
+        if (!paused) for (const layer of layers) layer.gain.gain.setTargetAtTime(windLevel(layer.volume), c.currentTime, 2);
+        if (!insects.length && profile.insects > 0 && (HOUR_INSECTS[next] ?? 0) > 0) {
+          insects = [-.6, .6].map((pan, i) => {
+            const source = c.createBufferSource(), gain = c.createGain(), side = c.createStereoPanner();
+            const samples = fieldInsectSamples(INSECT_RATE, 7919 + i * 104729);
+            source.buffer = c.createBuffer(1, samples.length, INSECT_RATE);
+            source.buffer.getChannelData(0).set(samples); source.loop = true;
+            side.pan.value = pan; gain.gain.setValueAtTime(0, c.currentTime);
+            source.connect(gain).connect(side).connect(output(c)); source.start();
+            return { source, gain, side };
+          });
+        }
+        setInsects(1.5);
       },
       stop() {
         if (stopped) return;
         stopped = true;
         for (const layer of layers) { layer.source.stop(); layer.source.disconnect(); layer.filter.disconnect(); layer.gain.disconnect(); }
+        for (const layer of insects) { layer.source.stop(); layer.source.disconnect(); layer.gain.disconnect(); layer.side.disconnect(); }
       },
     };
   }

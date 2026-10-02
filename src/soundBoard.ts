@@ -1,5 +1,8 @@
-import { audioReady, playActionClick, playBirdCall, playBirdFlock, playDogBreath, playDogCollar, playHullDrop, playShot, playWhistle,
-  prepareBirdSounds, prepareDogSounds, prepareGunSounds, type BirdPlacement } from './audio';
+import { audioReady, playActionClick, playBirdCall, playBirdFlock, playDogBreath, playDogCollar, playFootstep, playHullDrop, playShot,
+  playWhistle, prepareBirdSounds, prepareDogSounds, prepareGunSounds, prepareStepSounds, startFieldAmbience, type BirdPlacement,
+  type FieldAmbience } from './audio';
+import { STEP_SURFACES } from './three/sound/stepSounds';
+import type { TimeOfDay } from './three/palette';
 import { dogCollarGain } from './three/dogCollarAudio';
 import type { WhistleCall } from './three/sound/dogSounds';
 import { mulberry32 } from './game/math';
@@ -203,9 +206,36 @@ function quarryCall(areaId: string, call: BirdCallId, distance: number): void {
   ]);
 }
 
+// Footsteps on each ground, at a walk and at a run.
+{
+  const part = section('Footsteps', 'Six steps on each kind of ground, as the hunter’s own feet sound: walking, then running.');
+  const names: Record<string, string> = { dirt: 'Farm lane, dirt', grass: 'Grass and stubble', cover: 'Tall cover', rock: 'Rimrock', scree: 'Scree', wet: 'Slough mud', water: 'Wading' };
+  for (const surface of STEP_SURFACES) {
+    const walk = (running: boolean) => { for (let i = 0; i < 6; i++) later(i * (running ? .34 : .56), () => playFootstep(surface, .1, running)); };
+    row(part, names[surface], [button('Walking', () => walk(false)), button('Running', () => walk(true))]);
+  }
+}
+
+// The field itself through the day: the wind by the hour, the evening's crickets.
+{
+  const part = section('The field by the hour', 'The wind bed of each ground for fifteen seconds at each hour: still at first light, up at midday, laying down at dusk, with crickets in the evening. The birds are above.');
+  let bed: FieldAmbience | null = null, bedTimer = 0;
+  const hours: [TimeOfDay, string][] = [['dawn', 'Dawn'], ['morning', 'Morning'], ['noon', 'Noon'], ['evening', 'Evening'], ['lastlight', 'Last light']];
+  for (const [name, areaId] of GROUNDS) {
+    if (!areaId) continue;
+    row(part, name, [...hours.map(([hour, label]) => button(label, () => {
+      bed?.stop(); window.clearTimeout(bedTimer);
+      bed = startFieldAmbience(areaId);
+      bed?.setHour?.(hour);
+      bedTimer = window.setTimeout(() => { bed?.stop(); bed = null; }, 15000);
+    })), button('Stop', () => { bed?.stop(); bed = null; })]);
+  }
+}
+
 // Made ahead in idle moments, as the game does, so no click waits on a sound.
 for (const [, areaId] of GROUNDS) {
   for (const gun of GUNS) prepareGunSounds(gun.id, areaId);
   if (areaId) prepareBirdSounds(areaId, getArea(areaId).speciesMix.map(share => share.speciesId));
 }
 prepareDogSounds(2);
+prepareStepSounds();
