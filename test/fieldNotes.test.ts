@@ -15,14 +15,17 @@ describe('Property field notes', () => {
     hunt.dogWork[0].pointFlushes = 4; hunt.dogWork[1].pointFlushes = 8;
     const notes = fieldNotes(hunt, 1, 245);
     expect(notes.retrieved).toBe(1);
-    expect(notes.rows).toEqual([{ label: 'Point flushes', value: '4' }, { label: 'Birds escaped', value: '2' }, { label: 'Time afield', value: '4 min' }]);
+    // The day's bag against its limits leads; unseen birds never count.
+    expect(notes.rows[0].label).toBe('Bag');
+    expect(notes.rows.slice(1)).toEqual([{ label: 'Point flushes', value: '4' }, { label: 'Birds escaped', value: '2' }, { label: 'Time afield', value: '4 min' }]);
     hunt.birds.push({ ...hunt.birds[3], id: 99999, state: 'hidden' });
     expect(fieldNotes(hunt, 1, 245)).toEqual(notes);
   });
   it('reports an empty short hunt and preserves the protected-hen consequence', () => {
     const hunt = createHunt(getArea('pheasant-coverts'), mulberry32(1));
     expect(fieldNotes(hunt, 1, 5)).toMatchObject({ retrieved: 0, note: 'No birds in the bag this time.' });
-    expect(fieldNotes(hunt, 1, 5).rows[2].value).toBe('<1 min');
+    expect(fieldNotes(hunt, 1, 5).rows[0]).toEqual({ label: 'Bag', value: '0 of 3 roosters' });
+    expect(fieldNotes(hunt, 1, 5).rows[3].value).toBe('<1 min');
     hunt.henDowns = 1;
     expect(fieldNotes(hunt, 1, 5).note).toContain('1 protected hen was downed');
     hunt.doubles = 1;

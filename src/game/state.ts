@@ -82,6 +82,10 @@ export interface HuntState {
   safety?: ShotSafety;
   /** Downed birds never brought to hand when the field session ended. */
   lostBirds?: number;
+  /** Birds downed past the day's limit (bagLimits.ts). */
+  overLimit?: number;
+  /** A preserve day on released birds (the Loaded field): no daily limit. */
+  preserve?: boolean;
   /** Set on Quick Hunt runs: the picked setup. Career is never touched. */
   quick?: QuickConfig;
 }

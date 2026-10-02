@@ -14,6 +14,7 @@ import { loadQuickConfig, saveQuickConfig, normalizeQuickConfig, QUICK_KEY, WIND
 import { OFFERED_REGIONS, regionOfArea } from '../game/regions';
 import { dateLabel } from '../game/season';
 import { getSpecies } from '../game/species';
+import { limitsLabel } from '../game/bagLimits';
 import { openHuntJournal } from './huntJournalView';
 import { createPreparationMap } from './maps/preparationMap';
 import { enableOfflineHunts, requestOfflineUpdate, type OfflineUpdateState } from './offline';
@@ -550,6 +551,9 @@ function groundStep(panel: HTMLElement): void {
   const top = node('div', '', 'ground-detail-top');
   const title = node('div');
   title.append(node('p', doctrine.region.toUpperCase(), 'eyebrow'), node('h3', area.name), node('p', speciesIds.length ? speciesIds.map(id => getSpecies(id).name).join(' · ') : 'Season currently closed', 'property-species'));
+  const limits = limitsLabel(area.id, speciesIds);
+  if (challenge === 'loaded') title.append(node('p', 'Preserve day · no daily limit', 'property-limit'));
+  else if (limits) title.append(node('p', `Daily limit · ${limits}`, 'property-limit'));
   const tabs = radioGroup({ id: 'prep-show', label: 'Property view', value: groundView, className: 'segmented',
     options: [{ id: 'scene', label: 'The ground' }, { id: 'atlas', label: 'Atlas' }], onChange: value => { groundView = value; } });
   top.append(title, tabs); detail.append(top);

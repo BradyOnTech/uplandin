@@ -1,3 +1,4 @@
+import { bagCount, bagRuleFor, limitedOut, limitFilled, limitsApply } from '../../game/bagLimits';
 import * as THREE from 'three';
 import type { SlopeApproach } from '../../game/fieldcraft';
 import { isFalconryPractice, FALCONRY_PRACTICE } from '../../game/falconryPractice';
@@ -574,7 +575,7 @@ export class Hunt3DSystem implements Subsystem {
   }
 
   private say(text: string): void {
-    this.ctxRef?.events.dispatchEvent(new CustomEvent('dog-feedback', { detail: text }));
+    this.ctxRef?.events?.dispatchEvent(new CustomEvent('dog-feedback', { detail: text }));
   }
 
   private recordEvents(events: readonly HuntSimulationEvent[]): void {
@@ -677,7 +678,20 @@ export class Hunt3DSystem implements Subsystem {
     const position = landing ? this.worldToSim(landing.x, landing.z, { x: 0, y: 0 }) : undefined;
     const resolved = this.simulation.resolveBird(birdId, outcome, position, options);
     if (resolved && outcome === 'downed' && isSpatialEncounterArea(this.area.id)) this.simulation.bird(birdId)!.fallPending = true;
+    if (resolved && outcome === 'downed') this.announceBag(birdId);
     return resolved;
+  }
+
+  /** A bird that fills a limit, or goes over it, is the hunter's to know about. */
+  private announceBag(birdId: number): void {
+    const bird = this.simulation.bird(birdId);
+    if (!bird || bird.sex === 'hen' || !limitsApply(this.hunt)) return;
+    const limit = bagRuleFor(this.hunt.areaId, bird.speciesId);
+    if (!limit) return;
+    const count = bagCount(this.hunt, limit);
+    if (count > limit.limit) this.say(`Over the limit · ${count} ${limit.label} on a limit of ${limit.limit}`);
+    else if (limitedOut(this.hunt)) this.say('Limited out · unload and walk back to the truck');
+    else if (count === limit.limit) this.say(`That's your limit of ${limit.label} · hold fire on the next`);
   }
 
   /** A second shot anchors a hit bird still in the air (it won't run). */
@@ -772,9 +786,15 @@ export class Hunt3DSystem implements Subsystem {
     const shortName = species.id === 'ringneck'
       ? bird.sex === 'hen' ? 'HEN' : 'ROOSTER'
       : species.name.toUpperCase();
-    return species.flushAsCovey && info.ids.length > 1
+    const label = species.flushAsCovey && info.ids.length > 1
       ? `${shortName} COVEY RISE`
       : `${shortName} FLUSH`;
+    // Nothing in this rise can legally go in the bag today.
+    const filled = info.ids.every(id => {
+      const candidate = this.hunt.birds.find(entry => entry.id === id);
+      return !candidate || (candidate.speciesId === 'ringneck' && candidate.sex === 'hen') || limitFilled(this.hunt, candidate.speciesId);
+    });
+    return filled ? `${label} · LIMIT FILLED` : label;
   }
 
   /* ------------------------- read-only surface ------------------------- */

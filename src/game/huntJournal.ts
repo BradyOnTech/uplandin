@@ -21,6 +21,10 @@ export interface CareerJournalEntry {
   /** Downed birds never recovered, and unsafe shots. Absent on older entries. */
   lost?: number;
   unsafe?: number;
+  /** Birds downed past the daily limit. */
+  overLimit?: number;
+  /** Limits filled that day, by label ("roosters"). */
+  limits?: string[];
 }
 
 export const HUNT_JOURNAL_LIMIT = 30;
@@ -52,6 +56,9 @@ function readEntry(value: unknown): CareerJournalEntry | null {
     dogs,
     ...(count(value.lost) && value.lost > 0 ? { lost: value.lost } : {}),
     ...(count(value.unsafe) && value.unsafe > 0 ? { unsafe: value.unsafe } : {}),
+    ...(count(value.overLimit) && value.overLimit > 0 ? { overLimit: value.overLimit } : {}),
+    ...(Array.isArray(value.limits) && value.limits.length && value.limits.length <= 4 && value.limits.every(text)
+      ? { limits: value.limits as string[] } : {}),
   };
 }
 
@@ -75,10 +82,10 @@ export function readHuntJournal(career: Pick<Career, 'recentHunts'>): CareerJour
 
 /** Plain display text, never HTML. Unknown legacy IDs must not name another area. */
 export function formatHuntJournalEntry(entry: CareerJournalEntry): {
-  areaName: string; dateLabel: string; dogsLabel: string; resultLabel: string;
+  areaName: string; dateLabel: string; dogsLabel: string; resultLabel: string; bagLabel: string;
 } {
   const safe = readEntry(entry);
-  if (!safe) return { areaName: 'Hunt unavailable', dateLabel: 'Date unavailable', dogsLabel: '', resultLabel: 'Record unavailable' };
+  if (!safe) return { areaName: 'Hunt unavailable', dateLabel: 'Date unavailable', dogsLabel: '', resultLabel: 'Record unavailable', bagLabel: '' };
   return {
     areaName: AREAS.find((area) => area.id === safe.areaId)?.name ?? 'Unlisted hunting ground',
     dateLabel: dateLabel(safe.date),
@@ -88,6 +95,8 @@ export function formatHuntJournalEntry(entry: CareerJournalEntry): {
       return dog.note ? `${label}: ${dog.note}` : label;
     }).join(' · '),
     resultLabel: `${safe.retrieved} retrieved · ${safe.downed} down · ${safe.escaped} escaped`
-      + (safe.lost ? ` · ${safe.lost} lost` : '') + (safe.unsafe ? ` · ${safe.unsafe} unsafe shot${safe.unsafe === 1 ? '' : 's'}` : ''),
+      + (safe.lost ? ` · ${safe.lost} lost` : '') + (safe.unsafe ? ` · ${safe.unsafe} unsafe shot${safe.unsafe === 1 ? '' : 's'}` : '')
+      + (safe.overLimit ? ` · ${safe.overLimit} over the limit` : ''),
+    bagLabel: safe.limits?.length ? `Limit of ${safe.limits.join(' and ')}` : '',
   };
 }

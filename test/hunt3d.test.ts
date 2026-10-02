@@ -377,6 +377,33 @@ describe('Hunt3DSystem live start', () => {
     expect(hunt.riseLabel()).toBe(sex === 'hen' ? 'HEN FLUSH · HOLD FIRE' : 'ROOSTER FLUSH');
   });
 
+  it('calls a rise the hunter can no longer shoot once the limit is in the bag', () => {
+    vi.stubGlobal('location', { search: '?breed=gsp&area=pheasant-coverts' });
+    const ctx = liveCtx(), said: string[] = [];
+    (ctx as unknown as { events: EventTarget }).events = new EventTarget();
+    ctx.events.addEventListener('dog-feedback', event => said.push((event as CustomEvent<string>).detail));
+    const hunt = liveHunt();
+    hunt.init(ctx);
+    const dog = hunt.dog(), birds = hunt.huntState().birds;
+    // Four roosters and a Hun still out there: the roosters fill first.
+    birds.splice(5);
+    birds.forEach((bird, i) => { bird.speciesId = i < 4 ? 'ringneck' : 'hun'; bird.sex = i < 4 ? 'rooster' : undefined; bird.state = i < 3 ? 'flushed' : 'hidden'; });
+    expect(hunt.resolveBird(birds[0].id, 'downed')).toBe(true);
+    expect(hunt.resolveBird(birds[1].id, 'downed')).toBe(true);
+    expect(said).toEqual([]);
+    expect(hunt.resolveBird(birds[2].id, 'downed')).toBe(true);
+    expect(said.at(-1)).toBe('That\'s your limit of roosters · hold fire on the next');
+    const last = birds[3];
+    last.pos = { ...dog.pos, x: dog.pos.x + 10 };
+    dog.state = 'pointing';
+    dog.pointedBirdId = last.id;
+    expect(hunt.triggerFlush(ctx)?.ids).toContain(last.id);
+    expect(hunt.riseLabel()).toBe('ROOSTER FLUSH · LIMIT FILLED');
+    expect(hunt.resolveBird(last.id, 'downed')).toBe(true);
+    expect(said.at(-1)).toBe('Over the limit · 4 roosters on a limit of 3');
+    expect(hunt.huntState().overLimit).toBe(1);
+  });
+
   it('retrieves from the rendered landing point and credits the dog', () => {
     vi.stubGlobal('location', { search: '?breed=english-setter&area=pheasant-coverts' });
     const ctx = liveCtx();

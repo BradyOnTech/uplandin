@@ -60,6 +60,8 @@ export function openHuntJournal(career: Career, opener?: HTMLElement): void {
       const detail = [`+${entry.hunterXp} hunter XP`];
       if (entry.doubles) detail.push(`${entry.doubles} double${entry.doubles === 1 ? '' : 's'}`);
       if (entry.henDowns) detail.push(`${entry.henDowns} protected hen${entry.henDowns === 1 ? '' : 's'} downed`);
+      if (notes.bagLabel) detail.push(notes.bagLabel);
+      if (entry.overLimit) detail.push(`${entry.overLimit} over the limit`);
       results.append(text('p', detail.join(' · '), 'hunt-journal-detail'));
       item.append(number, identity, results);
       list.append(item);

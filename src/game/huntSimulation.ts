@@ -1,3 +1,4 @@
+import { bagCount, bagRuleFor, limitsApply } from './bagLimits';
 import type { AreaConfig } from './areas';
 import {
   birdsScentingDog,
@@ -161,6 +162,8 @@ export class HuntSimulation {
     this.rng = config.rng ?? Math.random;
     this.continuousEncounter = config.continuousEncounter ?? false;
     this.challenge = config.challenge ?? 'balanced';
+    // A Loaded field is a preserve day on released birds: no daily limit.
+    if (this.challenge === 'loaded') this.hunt.preserve = true;
     this.landscape = new LandscapeModel(this.area);
     this.previousDogStates = this.dogs.map((dog) => dog.state);
   }
@@ -556,6 +559,11 @@ export class HuntSimulation {
       if (options.wounded) { bird.wounded = true; bird.woundRunMs = CRIPPLE_RUN_MS; }
       this.hunt.downed++;
       if (bird.sex === 'hen') this.hunt.henDowns++;
+      else if (limitsApply(this.hunt)) {
+        // Past the limit is a violation, whatever happens to the bird next.
+        const limit = bagRuleFor(this.hunt.areaId, bird.speciesId);
+        if (limit && bagCount(this.hunt, limit) > limit.limit) this.hunt.overLimit = (this.hunt.overLimit ?? 0) + 1;
+      }
     } else {
       this.hunt.escaped++;
       if (landing && this.continuousEncounter && huntingDoctrine(this.area.id).spatialEncounter) {

@@ -131,6 +131,7 @@ progress::-moz-progress-bar { background:var(--gold); }
 .ground-detail-top { grid-column:1 / -1; display:flex; justify-content:space-between; align-items:start; gap:16px; flex-wrap:wrap; }
 .ground-detail-top h3 { margin:4px 0 2px; font:400 clamp(28px,3vw,40px)/1.05 var(--menu-serif); letter-spacing:-.03em; }
 .property-species { font-size:14px; color:#d9dcc6; }
+.property-limit { margin-top:2px; font-size:12px; letter-spacing:.04em; color:#d9bf88; }
 .ground-view { min-width:0; min-height:0; display:grid; }
 .ground-notes { display:grid; gap:14px; align-content:start; min-height:0; overflow:hidden; }
 .property-approach>p:not(.eyebrow):not(.field-advice) { display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; }
@@ -420,7 +421,7 @@ progress::-moz-progress-bar { background:var(--gold); }
   .ground-more .choice-head small { display:none; }
   .ground-detail { grid-template-columns:minmax(0,1fr) minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); }
   .ground-detail-top h3 { font-size:22px; }
-  .property-species { display:none; }
+  .property-species,.property-limit { display:none; }
   .property-hero,.map-stage { min-height:0; }
   .breed-cards { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .gun-cards { grid-template-columns:repeat(4,minmax(0,1fr)) !important; }

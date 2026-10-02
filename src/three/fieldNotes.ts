@@ -3,6 +3,17 @@ import type { CareerHuntResult } from '../game/huntResults';
 import { dogCareerProgress, hunterCareerProgress } from '../game/careerProgress';
 import { dateLabel } from '../game/season';
 import { dogReport, handlerNotes } from '../game/dogReport';
+import { bagLines, limitedOut, limitsApply } from '../game/bagLimits';
+
+/** The day's bag against its limits: "2 of 3 roosters · 1 of 5 partridge". */
+function bagRow(hunt: HuntState): { label: string; value: string } | null {
+  if (hunt.preserve) return { label: 'Daily limit', value: 'None on a preserve day' };
+  if (!limitsApply(hunt)) return null;
+  // What came down, and the ground's main quarry when nothing did.
+  const lines = bagLines(hunt), shown = lines.filter(line => line.count > 0);
+  const listed = shown.length ? shown : lines.slice(0, 1);
+  return listed.length ? { label: 'Bag', value: listed.map(line => `${line.count} of ${line.rule.limit} ${line.rule.label}`).join(' · ') } : null;
+}
 
 /** Observed field outcomes only; hidden stocking is not a completion target. */
 export function fieldNotes(hunt: HuntState, dogCount: number, seconds: number) {
@@ -10,9 +21,11 @@ export function fieldNotes(hunt: HuntState, dogCount: number, seconds: number) {
   const points = hunt.dogWork.slice(0, dogCount).reduce((sum, work) => sum + work.pointFlushes, 0);
   const minutes = Math.max(0, Math.floor(seconds / 60));
   const duration = minutes < 1 ? '<1 min' : `${minutes} min`;
+  const over = hunt.overLimit ?? 0, bag = bagRow(hunt);
   return {
     retrieved,
     rows: [
+      ...(bag ? [bag] : []),
       { label: 'Point flushes', value: String(points) },
       { label: 'Birds escaped', value: String(hunt.escaped) },
       ...(hunt.doubles > 0 ? [{ label: 'Doubles', value: String(hunt.doubles) }] : []),
@@ -20,9 +33,13 @@ export function fieldNotes(hunt: HuntState, dogCount: number, seconds: number) {
     ],
     note: hunt.henDowns > 0
       ? `${hunt.henDowns} protected hen${hunt.henDowns === 1 ? ' was' : 's were'} downed. Identify the rooster before firing.`
-      : retrieved > 0
-        ? 'Retrieved and brought to hand.'
-        : 'No birds in the bag this time.',
+      : over > 0
+        ? `${over} bird${over === 1 ? '' : 's'} over the limit. Once the limit is in the bag, unload.`
+        : limitedOut(hunt)
+          ? 'Limited out. Every bird the day allows, in the bag.'
+          : retrieved > 0
+            ? 'Retrieved and brought to hand.'
+            : 'No birds in the bag this time.',
   };
 }
 
@@ -34,7 +51,8 @@ export function careerFieldNotes(result: CareerHuntResult) {
     heading: result.hunterLevelsGained > 0 ? `Hunter level ${level} reached` : `Hunter level ${level}`,
     hunterAward: `+${result.hunterGained} XP${result.henFine > 0 ? ` · protected-hen penalty applied (${result.henFine} XP)` : ''}`
       + ((result.lostFine ?? 0) > 0 ? ` · lost-bird penalty (${result.lostFine} XP)` : '')
-      + ((result.safetyFine ?? 0) > 0 ? ` · unsafe-shot penalty (${result.safetyFine} XP)` : ''),
+      + ((result.safetyFine ?? 0) > 0 ? ` · unsafe-shot penalty (${result.safetyFine} XP)` : '')
+      + ((result.limitFine ?? 0) > 0 ? ` · over-limit penalty (${result.limitFine} XP)` : ''),
     progress: outlook.progress,
     dogs: result.dogAwards.map(award => {
       const dog = result.career.kennel.find(candidate => candidate.id === award.dogId);
