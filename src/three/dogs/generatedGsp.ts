@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { createGeneratedGspHead, createGeneratedSetterHead } from './generatedGspHead';
-import { createLocomotionPose, writeLocomotionPose, type LocomotionGait, type FootTuple } from './locomotion';
+import { BOUND_STRIDE, createLocomotionPose, writeLocomotionPose, type LocomotionGait, type FootTuple } from './locomotion';
 import { createTwoBoneSolution, solveTwoBone } from './legIk';
 import { germanShorthairedPointerAppearance, isGspCoatId, type GspCoatId } from './germanShorthairedPointer';
 import { englishSetterAppearance, isEnglishSetterCoatId, type EnglishSetterCoatId } from './englishSetter';
@@ -18,8 +18,9 @@ export function isGeneratedCoatId(value: string | null | undefined): value is Ge
 /** Authored in metres, +Z nose. Geometry is generated once, never per frame. */
 type Ring = readonly [x: number, y: number, z: number, width: number, height: number, underside?: number];
 type Point = readonly [number, number, number];
-export const GENERATED_STRIDE_SCALE: Record<LocomotionGait,number> = {walk:.72,trot:.95,canter:.95,gallop:1};
-export const GENERATED_STRIDE: Record<LocomotionGait,number> = {walk:.72*.72,trot:.94*.95,canter:1.38*.95,gallop:1.9};
+export const GENERATED_STRIDE_SCALE: Record<LocomotionGait,number> = {walk:.72,trot:.95,canter:.95,gallop:1,bound:1};
+/** Metres per cycle; a bound's stride is set per leap (this is its reference). */
+export const GENERATED_STRIDE: Record<LocomotionGait,number> = {walk:.72*.72,trot:.94*.95,canter:1.38*.95,gallop:1.9,bound:BOUND_STRIDE};
 const GENERATED_GALLOP_TOUCHDOWN: FootTuple<number> = [.58,.50,.08,0];
 const WHITE = 0xd1cdc1, LIVER = 0x51382e;
 /** Head-relative grip: the mandible moves around it, never drives the bird. */
@@ -439,6 +440,18 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
   // on the CPU merely to update culling bounds each animation frame.
   if(live){skin.boundingBox=new THREE.Box3(new THREE.Vector3(-.8,-.4,-1),new THREE.Vector3(.8,1.3,1));skin.boundingSphere=new THREE.Sphere(new THREE.Vector3(0,.4,0),1.6);}
   const rest = Object.values(joints).map(node => ({ node, position: node.position.clone(), rotation: node.quaternion.clone() }));
+  // Keep the elbow bend on the same side as the gait/ground solver. The
+  // former positive lower-arm fold forced a reversal during release.
+  const liftPaw = (t: number) => {
+    joints['front-left'].rotation.x = .40 * t;
+    joints['front-left-lower'].rotation.x = -1.60 * t;
+    joints['front-left-distal'].rotation.x = 1.90 * t;
+  };
+  /** Over the current pose, raise only the pointing forefoot this far (0..1). */
+  const liftPointingPaw = (t: number) => {
+    liftPaw(THREE.MathUtils.clamp(t, 0, 1));
+    root.updateMatrixWorld(true); skeleton.update();
+  };
   const setPose = (pose: 'stand' | 'point', presence = 1) => {
     for (const {node,position,rotation} of rest) { node.position.copy(position); node.quaternion.copy(rotation); }
     if (pose === 'point') {
@@ -450,11 +463,7 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
       neck.rotation.x = (setter ? .02 : .16) * t;
       head.rotation.x = (setter ? -.06 : -.16) * t;
       neck.position.z += .045 * t;
-      // Keep the elbow bend on the same side as the gait/ground solver.
-      // The former positive lower-arm fold forced a reversal during release.
-      joints['front-left'].rotation.x = .40 * t;
-      joints['front-left-lower'].rotation.x = -1.60 * t;
-      joints['front-left-distal'].rotation.x = 1.90 * t;
+      liftPaw(t);
       // Reference stance: the hind legs brace behind the pelvis rather
       // than stacking both paws under it. Slight asymmetry avoids a pose stamp.
       joints['hind-left'].rotation.x = .32 * t;
@@ -474,12 +483,13 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
       footZ:lower.position.z+distal.position.z+paw.position.z,
     };
   });
-  /** Ground-relative targets; travel must advance by the returned stride per cycle. */
-  const setLocomotion = (gait: LocomotionGait, cycle: number) => {
+  /** Ground-relative targets; travel must advance by the returned stride per
+   * cycle. A bound may carry its own stride (m), set by the leap it makes. */
+  const setLocomotion = (gait: LocomotionGait, cycle: number, boundStride = BOUND_STRIDE) => {
     for (const {node,position,rotation} of rest) { node.position.copy(position); node.quaternion.copy(rotation); }
-    writeLocomotionPose(gait,cycle,'left',locomotion,1,gait==='gallop'?GENERATED_GALLOP_TOUCHDOWN:undefined);
-    const strideScale=GENERATED_STRIDE_SCALE[gait];
-    body.position.y = (gait==='walk'?-.035:gait==='gallop'?-.09:-.06) + locomotion.bodyY*.25;
+    writeLocomotionPose(gait,cycle,'left',locomotion,gait==='bound'?boundStride/BOUND_STRIDE:1,gait==='gallop'?GENERATED_GALLOP_TOUCHDOWN:undefined);
+    const strideScale=gait==='bound'?1:GENERATED_STRIDE_SCALE[gait];
+    body.position.y = (gait==='walk'?-.035:gait==='gallop'||gait==='bound'?-.09:-.06) + locomotion.bodyY*.25;
     let clamped = 0;
     chains.forEach((leg,i) => {
       const foot=locomotion.feet[i], footY=.023+foot.lift;
@@ -493,9 +503,10 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
       leg.paw.rotation.x=-leg.upper.rotation.x-leg.lower.rotation.x-leg.distal.rotation.x;
     });
     // The raised standing carriage lowers into a working reach with speed.
-    neck.rotation.x=gait==='gallop'?.36:gait==='canter'?.29:gait==='trot'?.22:.18;head.rotation.x=-.1;
+    // A bounding dog carries its head up to see over the cover it leaps.
+    neck.rotation.x=gait==='gallop'?.36:gait==='canter'?.29:gait==='trot'?.22:gait==='bound'?.12:.18;head.rotation.x=gait==='bound'?-.16:-.1;
     root.updateMatrixWorld(true);skeleton.update();if(!live){skin.computeBoundingBox();skin.computeBoundingSphere();}
-    return {stride:locomotion.stride*strideScale,feet:locomotion.feet,clamped};
+    return {stride:locomotion.stride*strideScale,feet:locomotion.feet,clamped,rise:locomotion.rise,pitch:gait==='bound'?locomotion.chestPitch:0};
   };
   /** Submerged paddling targets: no stance phase or planted ground plane. */
   const setSwimming = (cycle: number) => {
@@ -569,7 +580,7 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
     body.position.y=Math.max(-.14,allowed);root.updateMatrixWorld(true);return body.position.y;
   };
   setPose('stand');
-  return { root, joints, paws, setPose, setLocomotion, setSwimming, solveWorldFeet, fitBodyToFeet, material, skin, skeleton,
+  return { root, joints, paws, setPose, liftPointingPaw, setLocomotion, setSwimming, solveWorldFeet, fitBodyToFeet, material, skin, skeleton,
     stats: { triangles: geometries.reduce((n,g) => n + g.getAttribute('position').count / 3,0), meshes: geometries.length, materials: 1, geometryBytes: geometries.reduce((n,g) => n + Object.values(g.attributes).reduce((s,a) => s + a.array.byteLength,0),0) },
     dispose() { geometries.forEach(g => g.dispose()); material.dispose(); skeleton.dispose(); root.removeFromParent(); },
   };

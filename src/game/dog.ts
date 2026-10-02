@@ -117,6 +117,15 @@ const BREAKING_MS = 2500;
 const BREAK_BUMP_RADIUS = 12;
 const ANCHOR_TURN_RATE = 2.2; // rad/s pulled back toward the hunter past quartering range
 const POINT_SETTLE_RANGE = POINT_RANGE + 1.5;
+/** A running dog that first winds its bird within this many yards of its
+ * point range slams into point instead of working up the cone. */
+const SLAM_REACH = 5;
+/** The skid out of a slam: momentum carries the dog on, decelerating, this long (ms). */
+export const SLAM_SKID_MS = 340;
+/** A dog travelling slower than 2.6 m/s can simply stop (yd/s). */
+const SLAM_MIN_SPEED = 2.6 / PROPERTY_PX_TO_M;
+/** Faster than 9 m/s is a relocation, not running (yd/s). */
+const SLAM_MAX_SPEED = 9 / PROPERTY_PX_TO_M;
 const SCENT_MEMORY_MULT = 1.35;
 /** A dead or wounded bird gives far less scent than a live one sitting tight. */
 export const DEAD_SCENT_MULT = 0.3;
@@ -507,6 +516,15 @@ export class Dog {
   private scentLocatedMs = 0;
   private scentLostMs = 0;
   private scentHandlerHoldMs = 0;
+  /** The slam's skid: time left, its length, the carried speed and line. */
+  private slamMs = 0;
+  private slamTotalMs = 0;
+  private slamSpeed = 0;
+  private slamHeading = 0;
+  /** Actual travel over the last tick, measured from position (yd/s). */
+  private travelSample: Vec2 | null = null;
+  private recentSpeed = 0;
+  private recentHeading = 0;
   private markingBirdIds: number[] = [];
   /** Actual field-search travel direction; lags `heading` through a turn. */
   private travelDir: number | null = null;
@@ -553,6 +571,13 @@ export class Dog {
 
   /** Read-only pickup/delivery hold clock for pose presentation. */
   retrieveHoldTimeMs(): number { return this.retrieveHoldMs; }
+
+  /** Through a slam into point: the skid's progress (0..1, then 1 while it
+   * settles), or null when this lock was not a slam. */
+  slamProgress(): number | null {
+    if (this.scentStage !== 'locking' || this.slamTotalMs <= 0) return null;
+    return 1 - this.slamMs / this.slamTotalMs;
+  }
 
   /** Out of stamina: slower, duller nose, sloppier. */
   get winded(): boolean {
@@ -627,6 +652,7 @@ export class Dog {
 
   update(dtMs: number, birds: Bird[], env: DogEnv = {}): void {
     this.scentClockMs += dtMs;
+    this.sampleTravel(dtMs);
     const wasWaitingForHandler = this.waitingForHandler;
     if (this.state !== 'quartering') {
       this.localSearchWeave = 0;
@@ -989,7 +1015,8 @@ export class Dog {
       && this.checkLostFieldScent(dtMs, movementDt, env, wasWaitingForHandler)) return;
     if (bird) {
       if (this.state !== 'tracking' || this.scentTargetId !== bird.id || this.scentStage === 'none') {
-        this.beginScentApproach(bird, 'checking');
+        if (fieldScent && this.slamsInto(bird, env, wasWaitingForHandler)) this.beginSlam(bird);
+        else this.beginScentApproach(bird, 'checking');
       }
       this.state = 'tracking';
       this.work(dtMs * (env.drainMult ?? 1));
@@ -1109,7 +1136,10 @@ export class Dog {
       if (this.scentStage === 'locking') {
         // Settle the body and lift the pointing forefoot before declaring the
         // point. Bird nerve does not begin draining until this finishes.
-        this.heading = turnToward(this.heading, direct, 7 * dt);
+        // Out of a slam the dog first skids on along its line of travel,
+        // whipping round to the scent as it slides to a stop.
+        if (this.slamMs > 0) this.skid(dtMs, bird);
+        this.heading = turnToward(this.heading, direct, (this.slamMs > 0 ? 11 : 7) * dt);
         this.tickTimedScentStage(dtMs);
         this.gait = 'still';
         if (this.scentStageMs <= 0) {
@@ -1470,6 +1500,48 @@ export class Dog {
     this.beatSide = Math.abs(lateral) > size * .5 ? Math.sign(lateral) : 0;
   }
 
+  /** Measure the last tick's actual travel; a relocation is not running. */
+  private sampleTravel(dtMs: number): void {
+    const sample = this.travelSample;
+    if (sample && dtMs > 0) {
+      const dx = this.pos.x - sample.x, dy = this.pos.y - sample.y, moved = Math.hypot(dx, dy);
+      const speed = moved / (dtMs / 1000);
+      this.recentSpeed = speed > SLAM_MAX_SPEED ? 0 : speed;
+      if (moved > 1e-6) this.recentHeading = Math.atan2(dy, dx);
+      sample.x = this.pos.x; sample.y = this.pos.y;
+    } else this.travelSample = { x: this.pos.x, y: this.pos.y };
+  }
+
+  /** A running dog hitting strong scent close to its bird stops dead,
+   * unless it is so far out that it must first wait for its handler. */
+  private slamsInto(bird: Bird, env: DogEnv, wasWaiting: boolean): boolean {
+    return this.state === 'quartering' && this.recentSpeed >= SLAM_MIN_SPEED
+      && dist(this.pos, bird.pos) <= POINT_SETTLE_RANGE + SLAM_REACH
+      && !(env.hunterPos && dist(this.pos, env.hunterPos) > this.scentHandlerLimit(env, wasWaiting));
+  }
+
+  private beginSlam(bird: Bird): void {
+    const style = scentApproachStyle(this.profile.breed, this.profile.level);
+    this.beginScentApproach(bird, 'locking');
+    // The lock is the skid plus the usual settle before the point is made.
+    this.startScentStage('locking', SLAM_SKID_MS + style.lockMs);
+    this.slamMs = this.slamTotalMs = SLAM_SKID_MS;
+    this.slamSpeed = this.recentSpeed;
+    this.slamHeading = this.recentHeading;
+  }
+
+  /** Slide on, decelerating evenly to a stop, never onto the bird. */
+  private skid(dtMs: number, bird: Bird): void {
+    const before = this.slamMs;
+    this.slamMs = Math.max(0, this.slamMs - dtMs);
+    const mean = (before + this.slamMs) / 2 / this.slamTotalMs;
+    let step = this.slamSpeed * mean * dtMs / 1000;
+    const ahead = { x: this.pos.x + Math.cos(this.slamHeading) * step, y: this.pos.y + Math.sin(this.slamHeading) * step };
+    const floor = Math.min(dist(this.pos, bird.pos), POINT_SETTLE_RANGE - 1.5);
+    if (dist(ahead, bird.pos) < floor) step = 0;
+    if (step > 0) this.advance(this.slamHeading, step);
+  }
+
   private beginScentApproach(bird: Bird, stage: Exclude<DogScentStage, 'none'>): void {
     const style = scentApproachStyle(this.profile.breed, this.profile.level);
     this.scentTargetId = bird.id;
@@ -1492,6 +1564,7 @@ export class Dog {
   }
 
   private startScentStage(stage: Exclude<DogScentStage, 'none'>, durationMs: number): void {
+    this.slamMs = this.slamTotalMs = 0;
     this.scentStage = stage;
     this.scentStageMs = durationMs;
     this.scentStageTotalMs = durationMs;
@@ -1543,6 +1616,7 @@ export class Dog {
   }
 
   private resetScentApproach(): void {
+    this.slamMs = this.slamTotalMs = 0;
     this.scentStage = 'none';
     this.scentProgress = 0;
     this.scentStageMs = 0;

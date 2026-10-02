@@ -1,12 +1,17 @@
 import * as THREE from 'three';
 import { GeneratedEarGravity } from './generatedEarGravity';
-import { selectLocomotionGait, type LocomotionGait, type LocomotionSpeedThresholds } from './locomotion';
+import { BOUND_STRIDE, boundStride, selectLocomotionGait, type LocomotionGait, type LocomotionSpeedThresholds } from './locomotion';
 import { createGeneratedGsp, GENERATED_STRIDE, type GeneratedCoatId, type GeneratedLook } from './generatedGsp';
 import { GeneratedScentMotion, fieldPerformance, type GeneratedFieldIntent } from './generatedScentMotion';
 import { GeneratedBodySupport } from './generatedBodySupport';
 import { GeneratedMouthMotion } from './generatedMouth';
 import { GeneratedPickupReach } from './generatedPickupReach';
 import { GeneratedPivotSteps } from './generatedPivotSteps';
+
+/** Standing cover at least this tall (m) has a running dog leap through it. */
+const BOUND_COVER_M = .9;
+/** Below this pace (m/s) a dog pushes through cover rather than leaping it. */
+const BOUND_SPEED = 2.3;
 
 // Retain the generated dog's established pace centers, but require a real
 // acceleration/deceleration through a band before changing footfall law.
@@ -39,6 +44,12 @@ export class GeneratedFieldMotion {
   private pivotSteps=new GeneratedPivotSteps();
   private bodyHeight=0;
   private pointPresence=0;
+  /** How far the pointing forefoot is up; held down through a slam's skid. */
+  private pawLift=0;
+  private slammed=false;
+  /** Height and stride (m) of the current bound's leap, set at each take-off. */
+  private boundHeight=0;
+  private boundStride=BOUND_STRIDE;
   readonly scentMotion=new GeneratedScentMotion();
   private bodySupport=new GeneratedBodySupport();
   private earGravity=new GeneratedEarGravity();
@@ -79,7 +90,7 @@ export class GeneratedFieldMotion {
       root.position.set(x,ground+Math.max(0,depth-.4),z);root.rotation.set(0,yaw,0);
       root.updateMatrixWorld(true);
       this.feet.forEach((foot,i)=>{foot.locked=false;foot.initialized=false;this.asset.paws[i].getWorldPosition(foot.target);});
-      this.pointPresence=0;this.pickupPresence=0;this.carryPresence=0;this.deliverPresence=0;this.wasMoving=true;
+      this.pointPresence=0;this.pawLift=0;this.pickupPresence=0;this.carryPresence=0;this.deliverPresence=0;this.wasMoving=true;
       this.scentMotion.reset();
       this.pickupReach.reset();
       this.pivotSteps.reset();
@@ -94,13 +105,24 @@ export class GeneratedFieldMotion {
     const signedTurnRate=reset||dt<=0?0:Math.atan2(Math.sin(yaw-this.lastYaw),Math.cos(yaw-this.lastYaw))/dt;
     const turnRate=Math.abs(signedTurnRate);
     const pivoting=turnRate>1;
-    const wasRaised=!this.wasMoving&&this.pointPresence>0;
+    const wasRaised=!this.wasMoving&&this.pawLift>0;
     const locking=!retrieve&&fieldPerformance(field)==='locking';
-    const pointTarget=moving?0:point?1:locking?THREE.MathUtils.clamp(field!.scentProgress,0,1):0;
+    // A slam: the dog came off a run straight into the lock. Head, neck and
+    // flag snap into the point while it skids; the forefoot waits until it
+    // has stopped.
+    const slam=locking&&field?.slam!=null?THREE.MathUtils.clamp(field.slam,0,1):null;
+    const skidding=slam!==null&&slam<1&&!moving;
+    const pointTarget=moving?0:point||slam!==null?1:locking?THREE.MathUtils.clamp(field!.scentProgress,0,1):0;
     // Locking already has a shared, finite clock. Lift during that beat and
     // carry its progress into point instead of starting a second point entry.
-    const pointStep=Math.max(0,dt)/(locking?.18:.28);
+    const pointStep=Math.max(0,dt)/(slam!==null?.12:locking?.18:.28);
     this.pointPresence=reset?pointTarget:moving?0:this.pointPresence+THREE.MathUtils.clamp(pointTarget-this.pointPresence,-pointStep,pointStep);
+    if(slam!==null)this.slammed=true;else if(!point)this.slammed=false;
+    // The paw normally rises with the point; after a slam it lifts in its
+    // own time once the dog has stopped.
+    const pawTarget=skidding?0:this.pointPresence;
+    if(reset||!this.slammed||pawTarget<=this.pawLift)this.pawLift=pawTarget;
+    else this.pawLift=Math.min(pawTarget,this.pawLift+Math.max(0,dt)/.3);
     if(reset){this.feet.forEach(f=>{f.locked=false;f.initialized=false;f.step=0;});this.pivotSteps.reset();this.cycle=0;}
     root.position.set(x,ground,z);root.rotation.y=yaw;
     const speed=!reset&&dt>0?distance/dt:0;
@@ -120,26 +142,39 @@ export class GeneratedFieldMotion {
     } else if(this.pickupPresence<.001){this.pickupLean=0;this.pickupHeadPitch=.30;}
     const previousGait=this.gait;
     let contacts: ReturnType<GeneratedFieldMotion['asset']['setLocomotion']>|undefined;
+    // Running in standing cover taller than its back, a searching dog leaps
+    // it: the bound shows its head and back over the tops.
+    const cover=field?.coverHeight??0;
+    const bounding=moving&&!retrieve&&field?.state==='quartering'&&cover>=BOUND_COVER_M&&(presentationSpeed??speed)>BOUND_SPEED;
     if(moving) {
       if(!this.wasMoving){this.gait=speed>4.3?'gallop':speed>2.5?'canter':speed>1.15?'trot':'walk';this.cycle=0;}
-      const previous=this.cycle,stride=GENERATED_STRIDE[this.gait];
+      const previous=this.cycle,stride=this.gait==='bound'?this.boundStride:GENERATED_STRIDE[this.gait];
       this.cycle=(this.cycle+(reset?0:distance)/stride)%1;
       // Distance still advances the stride exactly. Only classification
       // uses the subsystem's filtered physical speed, at a stride boundary.
       if(reset||this.cycle<previous) {
-        // Preserve the generated controller's ability to respond directly
-        // to a large pace change, rather than inserting entire walk/trot
-        // strides at running speed. Small variations settle in the band.
-        for(let pass=0;pass<3;pass++) {
-          const next=selectLocomotionGait(presentationSpeed??speed,this.gait,GENERATED_GAIT_SPEEDS);
-          if(next===this.gait)break;
-          this.gait=next;
+        if(bounding){
+          // Into or on with the bound, at a take-off. Taller cover, higher
+          // leaps; each leap is ballistic, so a higher or faster one is longer.
+          this.gait='bound';
+          this.boundHeight=THREE.MathUtils.clamp((cover-.55)*.55,.2,.6);
+          this.boundStride=boundStride(this.boundHeight,presentationSpeed??speed);
+        } else {
+          // Preserve the generated controller's ability to respond directly
+          // to a large pace change, rather than inserting entire walk/trot
+          // strides at running speed. Small variations settle in the band.
+          for(let pass=0;pass<3;pass++) {
+            const next=selectLocomotionGait(presentationSpeed??speed,this.gait,GENERATED_GAIT_SPEEDS);
+            if(next===this.gait)break;
+            this.gait=next;
+          }
         }
       }
-      contacts=this.asset.setLocomotion(this.gait,this.cycle);
+      contacts=this.asset.setLocomotion(this.gait,this.cycle,this.boundStride);
     } else {
       const t=this.pointPresence;
       this.asset.setPose(t>0?'point':'stand',t*t*(3-2*t));
+      if(this.pawLift<t)this.asset.liftPointingPaw(this.pawLift*this.pawLift*(3-2*this.pawLift));
     }
     if(reset)this.transitionTime=.24;
     else if(moving!==this.wasMoving||(moving&&this.gait!==previousGait)) {
@@ -155,12 +190,20 @@ export class GeneratedFieldMotion {
     }
     const desiredBody=this.asset.joints.body.position.y;
     this.bodyHeight=reset?desiredBody:THREE.MathUtils.lerp(this.bodyHeight,desiredBody,1-Math.exp(-dt*12));
-    this.asset.joints.body.position.y=this.bodyHeight;
-    const supportOffset=this.bodySupport.update(this.asset,this.ground,x,z,yaw,speed,signedTurnRate,dt,moving,reset);
+    // A bound's leap is ballistic and exact, never smoothed into a lag.
+    const leap=moving&&this.gait==='bound'&&contacts?contacts.rise*this.boundHeight:0;
+    this.asset.joints.body.position.y=this.bodyHeight+leap;
+    // The skid throws the dog's weight onto its forehand: the chest drops and
+    // the body tips nose-down, then rocks back as it stops.
+    const kick=skidding?Math.sin(Math.PI*Math.min(1,slam!/.7)):0;
+    const leapPitch=moving&&this.gait==='bound'&&contacts?contacts.pitch*this.boundHeight/.45:0;
+    const supportOffset=this.bodySupport.update(this.asset,this.ground,x,z,yaw,speed,signedTurnRate,dt,moving,reset,.12*kick+leapPitch);
+    const crouch=.035*kick;
+    this.asset.joints.body.position.y-=crouch;
     root.updateMatrixWorld(true);
     // An airborne pointing paw carries the authored bend through entry and
     // release. Ground IK would otherwise unfold it and force its sole level.
-    let posedFoot=(!moving&&this.pointPresence>0)||(blending&&this.transitionRaised)?0:-1;
+    let posedFoot=(!moving&&this.pawLift>0)||(blending&&this.transitionRaised)?0:-1;
     if(posedFoot>=0&&(moving||pointTarget<this.pointPresence)) {
       this.asset.paws[posedFoot].getWorldPosition(this.nominal);
       // The release can touch down before the upper-body crossfade finishes.
@@ -170,19 +213,30 @@ export class GeneratedFieldMotion {
         this.transitionRaised=false;posedFoot=-1;
       }
     }
-    const pivotEligible=!reset&&!moving&&!blending&&posedFoot<0&&action!=='pickup';
+    const pivotEligible=!reset&&!moving&&!skidding&&!blending&&posedFoot<0&&action!=='pickup';
     if(pivotEligible)this.asset.paws.forEach((paw,i)=>paw.getWorldPosition(this.pivotNominal[i]));
     const plannedPivot=this.pivotSteps.update(this.feet,this.pivotNominal,x,z,yaw,signedTurnRate,dt,
       pivotEligible,this.ground,()=>this.nextPlantId++);
     this.feet.forEach((foot,i)=>{
       if(plannedPivot){this.groundNormal(foot.target.x,foot.target.z,foot.normal);return;}
       this.asset.paws[i].getWorldPosition(this.nominal);
+      if(skidding){
+        // Sliding to a stop: each paw rides the ground with the body, the
+        // forelegs braced out ahead. The brace is gone as the skid ends, so
+        // the paws plant where they come to rest.
+        const brace=(i<2?.12:.05)*Math.sin(Math.PI*slam!);
+        foot.target.set(this.nominal.x+Math.sin(yaw)*brace,0,this.nominal.z+Math.cos(yaw)*brace);
+        foot.target.y=this.ground(foot.target.x,foot.target.z)+.023;
+        if(!foot.locked){foot.locked=true;foot.plantId=this.nextPlantId++;}
+        foot.step=0;foot.initialized=true;
+        this.groundNormal(foot.target.x,foot.target.z,foot.normal);return;
+      }
       const raised=i===posedFoot;
       if(raised) {
         foot.target.copy(this.nominal);foot.locked=false;foot.step=0;foot.initialized=true;foot.plantId=0;
         this.groundNormal(foot.target.x,foot.target.z,foot.normal);return;
       }
-      const lift=.023+(contacts?.feet[i].lift??0);
+      const lift=.023+(contacts?.feet[i].lift??0)+leap;
       const floor=this.ground(this.nominal.x,this.nominal.z)+.023;
       // A blended pose can still have an airborne paw when the new clip asks
       // for stance. Wait for touchdown before creating a world-space plant.
@@ -219,7 +273,8 @@ export class GeneratedFieldMotion {
     // instead of stretching the entire neck into a long rigid stalk.
     this.asset.joints.body.position.z+=this.pickupLean*this.pickupPresence;
     this.asset.joints.body.rotation.x+=.10*(this.pickupLean/.16)*this.pickupPresence;
-    this.bodyHeight=this.asset.fitBodyToFeet(this.targets,this.normals,posedFoot)-supportOffset;
+    // Store the smoothed carriage only: the leap and crouch are re-applied.
+    this.bodyHeight=this.asset.fitBodyToFeet(this.targets,this.normals,posedFoot)-supportOffset-leap+crouch;
     this.clamped=this.asset.solveWorldFeet(this.targets,this.normals,posedFoot);
     if(posedFoot>=0)this.asset.paws[posedFoot].getWorldPosition(this.feet[posedFoot].target);
     this.pose.forEach(p=>{p.previousPosition.copy(p.node.position);p.previousRotation.copy(p.node.quaternion);});
@@ -232,7 +287,7 @@ export class GeneratedFieldMotion {
     this.tailStride=THREE.MathUtils.lerp(this.tailStride,strideWeight,reset?1:1-Math.exp(-Math.max(0,dt)*6));
     if(this.tailStride>.001){
       const setter=this.asset.root.userData.breedId==='english-setter';
-      const sway={walk:.13,trot:.09,canter:.07,gallop:.045}[this.gait]*(setter?1.25:1);
+      const sway={walk:.13,trot:.09,canter:.07,gallop:.045,bound:.05}[this.gait]*(setter?1.25:1);
       const phase=this.cycle*Math.PI*2;
       this.asset.joints.tail.rotation.y+=Math.sin(phase)*sway*this.tailStride;
       this.asset.joints.tail.rotation.x+=Math.cos(phase*2)*sway*.35*this.tailStride;

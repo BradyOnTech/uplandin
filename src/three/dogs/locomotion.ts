@@ -8,7 +8,9 @@
 
 const TAU = Math.PI * 2;
 
-export type LocomotionGait = 'walk' | 'trot' | 'canter' | 'gallop';
+/** 'bound' is chosen by the renderer, not by speed: the leaping gait of a
+ * dog porpoising through cover taller than its back. */
+export type LocomotionGait = 'walk' | 'trot' | 'canter' | 'gallop' | 'bound';
 export type GallopLead = 'left' | 'right';
 export type FootContact = 'swing' | 'touchdown' | 'stance' | 'toeoff';
 
@@ -40,6 +42,8 @@ export interface LocomotionPose {
   feet: FootTuple<FootPose>;
   /** 0 when any foot supports the dog; 1 in a suspension interval. */
   flight: number;
+  /** A bound's leap: 0 on the ground rising to 1 at the top of the arc. */
+  rise: number;
   bodyY: number;
   chestPitch: number;
   pelvisPitch: number;
@@ -56,6 +60,8 @@ interface GaitSpec {
   duty: FootTuple<number>;
   reachFront: FootTuple<number>;
   lift: FootTuple<number>;
+  /** Share of each swing a paw stays trailing before it comes forward. */
+  trail?: FootTuple<number>;
 }
 
 const WALK: GaitSpec = {
@@ -111,6 +117,41 @@ const GALLOP_RIGHT: GaitSpec = {
   touchdown: [0.5, 0.59, 0, 0.26],
 };
 
+/** Ground a bound covers on its feet (m): the fores sweep, then the hinds. */
+const BOUND_GROUND_M = 0.9;
+/** The reference bound: a 2.8 m stride, two thirds of it in the air. */
+export const BOUND_STRIDE = 2.8;
+
+/** Porpoising through tall cover: both hinds drive off together, a long leap
+ * with the forelegs tucked, the fores land almost as a pair and the hinds land
+ * under them as they lift, to drive again. The cycle starts at take-off. Each
+ * pair sweeps no further than a gallop stance however long the leap, so a
+ * longer stride is all flight. */
+function boundSpec(stride: number): GaitSpec {
+  const flight = stride - BOUND_GROUND_M;
+  return {
+    stride,
+    touchdown: [flight / stride, (flight + 0.056) / stride, (flight + 0.42) / stride, (flight + 0.45) / stride],
+    duty: [0.42 / stride, 0.42 / stride, 0.45 / stride, 0.45 / stride],
+    reachFront: [0.3, 0.3, 0.26, 0.26],
+    lift: [0.14, 0.14, 0.1, 0.1],
+    // The hinds stream out behind off the drive and only swing under the
+    // body as the fores land.
+    trail: [0, 0, 0.45, 0.45],
+  };
+}
+
+/** Share of a bound of this stride spent in the air, from the push-off. */
+export function boundFlight(stride: number): number {
+  return 1 - BOUND_GROUND_M / stride;
+}
+
+/** The stride of a ballistic leap of this height at this speed (m, m/s). */
+export function boundStride(height: number, speed: number): number {
+  const airborne = 2 * Math.sqrt(2 * Math.max(0, height) / 9.81);
+  return Math.min(5.5, Math.max(2.1, speed * airborne + BOUND_GROUND_M));
+}
+
 function foot(): FootPose {
   return { phase: 0, contact: 'swing', load: 0, stance: 0, swing: 0, z: 0, lift: 0, solePitch: 0 };
 }
@@ -122,6 +163,7 @@ export function createLocomotionPose(): LocomotionPose {
     stride: WALK.stride,
     feet: [foot(), foot(), foot(), foot()],
     flight: 0,
+    rise: 0,
     bodyY: 0,
     chestPitch: 0,
     pelvisPitch: 0,
@@ -158,7 +200,8 @@ export function selectLocomotionGait(
   thresholds: LocomotionSpeedThresholds = DEFAULT_SPEED_THRESHOLDS,
 ): LocomotionGait {
   // Hysteresis keeps noisy render-speed estimates from switching gait at a
-  // threshold every other frame.
+  // threshold every other frame. Out of a bound, speed alone decides.
+  if (current === 'bound') current = 'canter';
   if (current === 'gallop') {
     return speedMps >= thresholds.gallopToCanter ? 'gallop' : 'canter';
   }
@@ -179,6 +222,7 @@ export function strideLength(gait: LocomotionGait, strideScale = 1): number {
   if (gait === 'walk') return WALK.stride * strideScale;
   if (gait === 'trot') return TROT.stride * strideScale;
   if (gait === 'canter') return CANTER_LEFT.stride * strideScale;
+  if (gait === 'bound') return BOUND_STRIDE * strideScale;
   return GALLOP_LEFT.stride * strideScale;
 }
 
@@ -207,7 +251,7 @@ export function crossedStrideBoundary(previousCycle: number, nextCycle: number, 
 export function foreCarpusPitch(gait: LocomotionGait, footPose: FootPose): number {
   const supportPitch = -0.055;
   if (footPose.contact !== 'swing') return supportPitch;
-  const peakFold = gait === 'gallop' ? 0.5 : gait === 'canter' ? 0.42 : gait === 'trot' ? 0.34 : 0.24;
+  const peakFold = gait === 'gallop' || gait === 'bound' ? 0.5 : gait === 'canter' ? 0.42 : gait === 'trot' ? 0.34 : 0.24;
   return supportPitch - peakFold * Math.pow(Math.sin(Math.PI * footPose.swing), 1.4);
 }
 
@@ -247,7 +291,8 @@ function writeFoot(cycle: number, i: number, spec: GaitSpec, stride: number, out
   }
 
   const p = (phase - duty) / (1 - duty);
-  const travel = smooth01(p);
+  const trail = spec.trail?.[i] ?? 0;
+  const travel = smooth01(trail > 0 ? Math.max(0, (p - trail) / (1 - trail)) : p);
   out.contact = 'swing';
   out.load = 0;
   out.stance = 0;
@@ -307,10 +352,12 @@ export function writeLocomotionPose(
       ? TROT
       : gait === 'canter'
         ? lead === 'left' ? CANTER_LEFT : CANTER_RIGHT
-        : lead === 'left' ? GALLOP_LEFT : GALLOP_RIGHT;
+        : gait === 'bound' ? boundSpec(BOUND_STRIDE * strideScale)
+          : lead === 'left' ? GALLOP_LEFT : GALLOP_RIGHT;
   out.gait = gait;
   out.cycle = c;
-  const stride = spec.stride * strideScale;
+  // A bound's spec is already built at its stride.
+  const stride = gait === 'bound' ? spec.stride : spec.stride * strideScale;
   out.stride = stride;
 
   let supported = false;
@@ -319,6 +366,10 @@ export function writeLocomotionPose(
     if (out.feet[i].contact !== 'swing') supported = true;
   }
   out.flight = supported ? 0 : 1;
+  // The leap is a ballistic arc from push-off to the fore landing.
+  const flight = gait === 'bound' ? boundFlight(stride) : 0;
+  const leap = gait === 'bound' && c < flight ? c / flight : -1;
+  out.rise = leap < 0 ? 0 : 4 * leap * (1 - leap);
 
   if (gait === 'walk') {
     // Two restrained COM rises per stride. Pelvis/scapula carry most of
@@ -342,6 +393,16 @@ export function writeLocomotionPose(
     out.pelvisPitch = -0.055 * gathered + 0.04 * extended;
     out.pelvisRoll = (lead === 'left' ? 1 : -1) * 0.016 * Math.sin(c * TAU);
     out.loinPitch = 0.12 * gathered - 0.085 * extended;
+  } else if (gait === 'bound') {
+    // Nose up off the drive, level over the top, nose down onto the fores,
+    // then the hinds gather under for the next drive.
+    const air = leap;
+    const ground = air < 0 ? (c - flight) / (1 - flight) : 0;
+    out.bodyY = 0;
+    out.chestPitch = air >= 0 ? -0.2 * Math.cos(Math.PI * air) : 0.2 * Math.cos(Math.PI * ground);
+    out.pelvisPitch = 0;
+    out.pelvisRoll = 0;
+    out.loinPitch = air >= 0 ? -0.12 * Math.sin(Math.PI * air) : 0.2 * Math.sin(Math.PI * ground);
   } else {
     // One caudal-lumbar gather/extend wave. The ribcage pitch is restrained;
     // most of the action belongs to the loin and pelvis.

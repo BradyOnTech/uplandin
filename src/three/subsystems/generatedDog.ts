@@ -71,7 +71,7 @@ export class GeneratedDogSystem implements Subsystem {
     if(this.slot===0)scope.__generatedDogAudit=this.audit;
     if(this.capture&&this.slot===0){
       const motion=this.motion;
-      this.uninstallReview=installDogReview(ctx,{root:motion.asset.root,heightAt:(x,z)=>terrain.heightAt(x,z),state:()=>{
+      this.uninstallReview=installDogReview(ctx,{root:motion.asset.root,heightAt:(x,z)=>terrain.heightAt(x,z),coverAt:(x,z)=>this.coverHeightAt(ctx,x,z),state:()=>{
         const dog=this.hunt.dog(this.slot);
         return {state:dog.state,gait:dog.gait,breed:generatedBreedForCoat(this.coatId),scent:{stage:dog.scentStage,progress:dog.scentProgress},
           paws:motion.contactSnapshot().map(foot=>({i:foot.i,x:foot.actual[0],y:foot.actual[1],z:foot.actual[2],gap:foot.groundGap}))};
@@ -100,7 +100,9 @@ export class GeneratedDogSystem implements Subsystem {
     this.heading=dogTorsoHeading(dog,this.speed,this.hunt.dogRenderTravelHeading(ctx.fixedAlpha,this.slot),intentHeading,this.heading,dt,!this.placed||distance>3);
     this.field.state=dog.state;this.field.scentStage=dog.scentStage;this.field.scentProgress=dog.scentProgress??0;
     this.field.waitingForHandler=dog.waitingForHandler??false;
+    this.field.slam=dog.slamProgress?.()??null;
     this.field.inCover=dog.state==='quartering'&&this.inCoverPatch();
+    this.field.coverHeight=this.coverHeightAt(ctx,this.position.x,this.position.z);
     // Model yaw is pi/2 minus the simulation heading, so intent relative to
     // the torso has the opposite sign. Wrap before clamping in the pose layer.
     this.field.intentYaw=Math.atan2(Math.sin(this.heading-intentHeading),Math.cos(this.heading-intentHeading));
@@ -168,6 +170,12 @@ export class GeneratedDogSystem implements Subsystem {
     this.auditFrame++;
   }
   partingPoint(out:{x:number;z:number;r:number}){out.x=this.position.x;out.z=this.position.z;out.r=this.parting;}
+  /** Standing cover that reports its crown height (Cattail's stands); else none. */
+  private cover?:{launchHeightAt?(x:number,z:number):number}|null;
+  private coverHeightAt(ctx:Ctx,x:number,z:number):number{
+    if(this.cover===undefined){try{this.cover=ctx.get<Subsystem&{launchHeightAt?(x:number,z:number):number}>('grass');}catch{this.cover=null;}}
+    return this.cover?.launchHeightAt?.(x,z)??0;
+  }
   private inCoverPatch():boolean{
     const patches=this.hunt.coverPatches?.()??[];
     for(const p of patches)if(Math.abs(this.position.x-p.cx)<p.hx&&Math.abs(this.position.z-p.cz)<p.hz)return true;

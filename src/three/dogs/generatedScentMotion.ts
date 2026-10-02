@@ -12,6 +12,10 @@ export interface GeneratedFieldIntent {
   intentYaw: number;
   /** Working inside a cover patch, where the handler tracks the dog by its tail. */
   inCover?: boolean;
+  /** A slam into point: the skid's progress (0..1, then 1 while it settles). */
+  slam?: number | null;
+  /** Crown height (m) of the standing cover the dog is in; 0 in the open. */
+  coverHeight?: number;
 }
 
 export type GeneratedFieldPerformance = 'neutral' | 'search' | 'checking' | 'locating' | 'stalking' | 'locking' | 'point' | 'waiting';

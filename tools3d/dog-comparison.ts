@@ -12,9 +12,20 @@ import { GeneratedDogSystem } from '../src/three/subsystems/generatedDog';
 import { GSP_COATS, type GspCoatId } from '../src/three/dogs/germanShorthairedPointer';
 import { ENGLISH_SETTER_COATS, type EnglishSetterCoatId } from '../src/three/dogs/englishSetter';
 
-const poses = ['stand', 'point', 'walk', 'trot', 'canter', 'run', 'paces'] as const;
+const poses = ['stand', 'point', 'walk', 'trot', 'canter', 'run', 'paces', 'slam', 'bound'] as const;
 type Pose = typeof poses[number];
-const paceSpeeds = { walk: .8, trot: 2, canter: 3.6, run: 5.5 } as const;
+const paceSpeeds = { walk: .8, trot: 2, canter: 3.6, run: 5.5, bound: 4 } as const;
+/** Tall standing cover for the bound review (m), as Cattail's stands report it. */
+const BOUND_COVER = 1.6;
+/** The slam review loop: a gallop, the skid out of it, the settle, then the point. */
+const SLAM = { run: 1.6, skid: .34, settle: .26, point: 1.2, speed: 5 } as const;
+function slamBeat(seconds: number): { phase: 'run' | 'skid' | 'settle' | 'point'; slam: number | null; speed: number } {
+  const t = seconds % (SLAM.run + SLAM.skid + SLAM.settle + SLAM.point);
+  if (t < SLAM.run) return { phase: 'run', slam: null, speed: SLAM.speed };
+  if (t < SLAM.run + SLAM.skid) { const k = (t - SLAM.run) / SLAM.skid; return { phase: 'skid', slam: k, speed: SLAM.speed * (1 - k) }; }
+  if (t < SLAM.run + SLAM.skid + SLAM.settle) return { phase: 'settle', slam: 1, speed: 0 };
+  return { phase: 'point', slam: null, speed: 0 };
+}
 const isTravel = (value: Pose): boolean => value !== 'stand' && value !== 'point';
 // A repeating, staged speed ramp exercises normal runtime gait selection.
 // These are travel inputs; the viewer never overrides rendered footfalls.
@@ -89,12 +100,17 @@ function makePanel(kind: Breed, style: Style, elementId: string): Panel {
   };
   const terrain = { heightAt: () => 0 };
   const birds = { markingTarget: () => false, groundedTarget: () => false };
+  // Standing cover reports its crown height only for the bound review.
+  const grass = { launchHeightAt: () => pose === 'bound' ? BOUND_COVER : 0 };
+  // The slam review drives the skid's progress the way the hunt would.
+  Object.assign(dog, { slamProgress: () => pose === 'slam' ? slamBeat(paceTime).slam : null });
   const ctx = { scene, camera: panelCamera, renderer, quality, timeOfDay: light, time: 0, fixedAlpha: 1,
     paused: false, rng: mulberry32(31), events: new EventTarget(),
     get: (id: string) => {
       if (id === 'hunt3d') return hunt;
       if (id === 'terrain') return terrain;
       if (id === 'birds') return birds;
+      if (id === 'grass') return grass;
       throw new Error(`Comparison fixture has no subsystem: ${id}`);
     },
   } as unknown as Ctx;
@@ -157,11 +173,16 @@ function rebuild(): void {
   updateLinks(); updateControls();
 }
 function applyPose(): void {
+  const beat = pose === 'slam' ? slamBeat(paceTime) : null;
   for (const p of panels) {
-    p.dog.state = pose === 'point' ? 'pointing' : isTravel(pose) && speed > .03 ? 'quartering' : 'heel';
-    p.dog.gait = !isTravel(pose) || speed <= .03 ? 'still' : speed < 1.4 ? 'track' : speed >= 4.8 ? 'run' : 'trot';
-    p.dog.pointedBirdId = pose === 'point' ? 1 : null;
-    p.dog.scentStage = 'none'; p.dog.scentProgress = 0;
+    p.dog.state = pose === 'point' || beat?.phase === 'point' ? 'pointing'
+      : beat?.phase === 'skid' || beat?.phase === 'settle' ? 'tracking'
+        : isTravel(pose) && speed > .03 ? 'quartering' : 'heel';
+    p.dog.gait = beat && beat.phase !== 'run' ? 'still'
+      : !isTravel(pose) || speed <= .03 ? 'still' : speed < 1.4 ? 'track' : speed >= 4.8 ? 'run' : 'trot';
+    p.dog.pointedBirdId = pose === 'point' || beat?.phase === 'point' ? 1 : null;
+    p.dog.scentStage = beat?.phase === 'skid' || beat?.phase === 'settle' ? 'locking' : 'none';
+    p.dog.scentProgress = beat?.phase === 'skid' ? (beat.slam ?? 0) * .6 : beat?.phase === 'settle' ? .8 : 0;
   }
 }
 function settlePausedSelection(): void {
@@ -171,7 +192,8 @@ function settlePausedSelection(): void {
 }
 function advance(dt: number, move = true): void {
   if (move) paceTime += dt;
-  speed = !move || !isTravel(pose) ? 0 : pose === 'paces' ? sequenceSpeed(paceTime) : paceSpeeds[pose as keyof typeof paceSpeeds];
+  speed = !move || !isTravel(pose) ? 0 : pose === 'paces' ? sequenceSpeed(paceTime)
+    : pose === 'slam' ? slamBeat(paceTime).speed : paceSpeeds[pose as keyof typeof paceSpeeds];
   if (move) applyPose();
   const delta = speed * dt;
   time += dt; travel += delta;
@@ -213,7 +235,8 @@ function updateLinks(): void {
   }
 }
 function updateStatus(): void {
-  const labels: Record<Pose, string> = { stand: 'Standing at heel', point: 'Steady point · target 3 m ahead', walk: 'Walking pace', trot: 'Working trot', canter: 'Canter pace', run: 'Running pace', paces: 'Changes of pace' };
+  const labels: Record<Pose, string> = { stand: 'Standing at heel', point: 'Steady point · target 3 m ahead', walk: 'Walking pace', trot: 'Working trot', canter: 'Canter pace', run: 'Running pace', paces: 'Changes of pace',
+    slam: 'Slam into point · gallop, skid, point', bound: `Bounding through ${BOUND_COVER} m cover` };
   const text = `${labels[pose]}${isTravel(pose) ? ` · shared ${speed.toFixed(1)} m/s travel` : ''} · ${quality === 'lite' ? 'Lightweight' : 'High'} · ${light} light`;
   const status = document.querySelector('#status')!;
   if (status.textContent !== text) status.textContent = text;

@@ -11,7 +11,7 @@ export class GeneratedBodySupport {
 
   update(asset: ReturnType<typeof createGeneratedGsp>, ground: (x: number, z: number) => number,
     x: number, z: number, yaw: number, speed: number, turnRate: number, dt: number,
-    moving: boolean, reset: boolean) {
+    moving: boolean, reset: boolean, pitchOffset = 0) {
     const sin = Math.sin(yaw), cos = Math.cos(yaw);
     // Sample the footprint, not individual paw flight. A swinging leg must
     // never tip the back or make a dog bob up and down on a smooth hillside.
@@ -34,7 +34,8 @@ export class GeneratedBodySupport {
     this.pitch = THREE.MathUtils.lerp(this.pitch, pitchTarget, blend);
     this.roll = THREE.MathUtils.lerp(this.roll, rollTarget, blend);
     const { body } = asset.joints;
-    body.rotation.set(this.pitch, 0, this.roll);
+    // A pose's own pitch (a skid onto the forehand) rides on the support.
+    body.rotation.set(this.pitch + pitchOffset, 0, this.roll);
     // Rotate around the ribcage, rather than swinging the whole dog around
     // a pivot at ground level. The foot solver then preserves actual support.
     this.offset.copy(this.pivot).applyQuaternion(body.quaternion).negate().add(this.pivot);

@@ -5,6 +5,8 @@ import type { Ctx } from '../engine';
 export interface DogReviewSource {
   root: THREE.Object3D;
   heightAt(x: number, z: number): number;
+  /** Crown height of standing cover at a point (0 in the open). */
+  coverAt?(x: number, z: number): number;
   state(): {
     state: string; gait: string; breed: string;
     scent: { stage: string; progress: number };
@@ -23,6 +25,8 @@ export interface DogReviewHooks {
   /** World point to screen pixels through the live camera. */
   project(x: number, y: number, z: number): { x: number; y: number };
   heightAt(x: number, z: number): number;
+  /** Crown height of standing cover at a point, as the dog meets it. */
+  coverAt(x: number, z: number): number;
   /** Ground grade (rise over run) round a point. */
   slopeAt(x: number, z: number): number;
   modelStats(): { drawCalls: number; triangles: number };
@@ -61,6 +65,7 @@ export function installDogReview(ctx: Ctx, source: DogReviewSource): () => void 
       return { x: (point.x * .5 + .5) * canvas.clientWidth, y: (.5 - point.y * .5) * canvas.clientHeight };
     },
     heightAt: (x, z) => source.heightAt(x, z),
+    coverAt: (x, z) => source.coverAt?.(x, z) ?? 0,
     slopeAt(x, z) {
       const s = .6;
       const dx = source.heightAt(x + s, z) - source.heightAt(x - s, z), dz = source.heightAt(x, z + s) - source.heightAt(x, z - s);
