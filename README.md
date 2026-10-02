@@ -24,6 +24,8 @@ npm test        # Vitest suite over the pure sim
 npm run build   # production build
 ```
 
+For public hosting and future releases, see [deployment and updates](docs/deployment.md).
+
 Open `/` for the shared home and preparation flow. Choose the 3D or Classic 2D
 hunting view through Play settings. `npm run dev:3d` also serves this flow;
 `/index3d.html` remains the standalone 3D field entry.
