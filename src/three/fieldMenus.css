@@ -182,6 +182,21 @@ body:has(#field-overlay:not([hidden])) :is(#hunt-hud,#controls,#pause-hunt,#fiel
 .field-notes-bag { padding:0 0 20px; border-radius:0; margin:0; background:none; gap:18px; align-items:baseline; }
 .field-notes-bag strong { color:#566343; font:400 72px/.95 var(--menu-serif); letter-spacing:-.055em; }
 .field-notes-bag span { color:#727d60; font-size:13px; }
+/* The tailgate photo leads the report as a print beside the day's bag. */
+.field-notes-hero { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:22px; align-items:end; margin-bottom:6px; }
+.field-notes-hero-text .field-notes-bag { padding-bottom:12px; }
+.tailgate-photo { margin:0; display:grid; gap:6px; }
+.tailgate-print { display:block; padding:0; border:0; border-radius:3px; background:#fff; padding:5px 5px 6px; cursor:zoom-in; box-shadow:0 1px 2px #0002,0 8px 22px #3a301a26; transform:rotate(-.8deg); }
+.tailgate-print img { display:block; width:100%; aspect-ratio:16 / 9; object-fit:cover; border-radius:1px; }
+.tailgate-print:focus-visible { outline:2px solid #8a6d36; outline-offset:3px; }
+.tailgate-photo figcaption { color:#806237; font:italic 400 13px/1.3 var(--menu-serif); }
+.tailgate-save { color:#566343; font:600 12px/1 system-ui,sans-serif; letter-spacing:.02em; }
+.tailgate-view { padding:0; border:0; background:transparent; max-width:min(1200px,calc(100vw - 32px)); }
+.tailgate-view::backdrop { background:#0d1410e0; }
+.tailgate-view img { display:block; width:100%; max-height:calc(100dvh - 120px); object-fit:contain; border:6px solid #fff; border-radius:3px; box-shadow:0 24px 80px #000a; }
+.tailgate-view-actions { display:flex; justify-content:flex-end; gap:16px; align-items:center; padding:12px 2px 0; }
+.tailgate-view-actions .tailgate-save { color:#f1e9d5; font-size:14px; }
+.tailgate-close { min-height:40px; padding:8px 18px; border-radius:5px; border:1px solid #f1e9d566; background:transparent; color:#f1e9d5; font-size:13px; }
 .field-notes-stats { gap:16px; padding:20px 0; box-shadow:0 -1px #aa997538,0 1px #aa997538; }
 .field-notes-stats dt { font-size:13px; color:#737d62; }
 .field-notes-stats dd { font:400 25px/1.2 var(--menu-serif); color:#536141; }
@@ -271,6 +286,7 @@ body #hunt-arrival button:active { transform:scale(.96); }
   #summary-journal-open span { display:none; }
   #hunt-summary-content { padding:22px 20px; }
   .field-notes-bag strong { font-size:65px; }
+  .field-notes-hero { grid-template-columns:minmax(0,1fr); gap:12px; }
   .hunt-summary-actions { padding:12px 18px; }
   .hunt-summary-actions button { flex:1; padding-inline:12px; font-size:13px; }
   .field-map-card { padding:14px; gap:10px; border-radius:6px 12px 12px 6px; }

@@ -1,3 +1,4 @@
+import { frameTailgate, stageTailgate } from './tailgatePhoto';
 import { huntAssists, onHuntAssists } from './assistsRuntime';
 import { isFalconryPractice, FALCONRY_PRACTICE } from '../game/falconryPractice';
 import { bindFieldPageLifecycle } from './pageLifecycle';
@@ -258,6 +259,8 @@ declare global {
       groundedBirds(): number[];
       /** A bird on the ground, world metres, and whether it is running. */
       groundedAt(simId: number): { x: number; y: number; z: number; running: boolean } | null;
+      /** Capture: stage and frame the tailgate photo, with the hunt's bag or a staged one. */
+      tailgate(bag?: { speciesId: string; sex?: 'hen' | 'rooster' }[]): boolean;
       /** Sim snapshot in world meters — capture poses shots off this. */
       hunt(): {
         seed?: number;
@@ -327,6 +330,7 @@ engine.start(fieldInterface.loading).then((started) => {
       && engine.ctx.get<Hunt3DSystem>('hunt3d').anchorBird(simId),
     groundedBirds: () => engine.ctx.get<BirdsSystem>('birds').groundedIds(),
     groundedAt: (simId) => engine.ctx.get<BirdsSystem>('birds').groundedAt(simId),
+    tailgate: (bag) => !!stageTailgate(engine, bag) && frameTailgate(engine),
     effects: () => fieldEffects,
     gun: () => {
       const gun = engine.ctx.get<GunSystem>('gun');

@@ -51,6 +51,12 @@ export function openHuntJournal(career: Career, opener?: HTMLElement): void {
       const date = text('p', notes.dateLabel, 'hunt-journal-date');
       if (index === 0) { date.prepend(text('span', 'Latest', 'hunt-journal-latest')); item.className = 'latest-entry'; }
       identity.append(date, text('h3', notes.areaName), text('p', notes.dogsLabel, 'hunt-journal-dogs'));
+      if (entry.photo) {
+        // The day's tailgate print, kept with the newest entries.
+        const print = document.createElement('img'); print.className = 'hunt-journal-photo';
+        print.src = entry.photo; print.alt = `The tailgate after hunt ${entry.huntNumber}`; print.loading = 'lazy';
+        identity.append(print);
+      }
       const results = document.createElement('div'); results.className = 'hunt-journal-results';
       const outcomes = document.createElement('dl'); outcomes.className = 'hunt-journal-outcomes';
       for (const [label, value] of [['Retrieved', entry.retrieved], ['Downed', entry.downed], ['Escaped', entry.escaped], ['Point flushes', entry.pointFlushes]] as const) {

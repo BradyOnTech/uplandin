@@ -27,6 +27,7 @@
 #hunt-journal .hunt-journal-list li:last-child { border-bottom:0; }
 #hunt-journal .hunt-journal-number { display:block; padding-top:25px; font:400 27px/1 Georgia,serif; color:#7c653f; font-variant-numeric:tabular-nums; }
 #hunt-journal .hunt-journal-identity,#hunt-journal .hunt-journal-results { min-width:0; }
+#hunt-journal .hunt-journal-photo { display:block; width:144px; aspect-ratio:16 / 9; object-fit:cover; margin-top:10px; padding:3px 3px 4px; background:#fff; border-radius:2px; box-shadow:0 1px 2px #0002,0 6px 14px #3a301a1f; transform:rotate(-.6deg); }
 #hunt-journal .hunt-journal-date { display:flex; align-items:center; flex-wrap:wrap; gap:5px 8px; margin:0 0 7px; font-size:12px; font-weight:500; line-height:1.5; color:#806237; font-variant-numeric:tabular-nums; }
 #hunt-journal .hunt-journal-latest { display:inline-block; padding:2px 5px; color:#f5ead0; background:#5c684a; border-radius:2px; font-size:11px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; }
 #hunt-journal .hunt-journal-list h3,#hunt-journal .hunt-journal-empty h3 { margin:0; color:#3e4534; font:400 25px/1.2 Georgia,serif; letter-spacing:-.025em; text-wrap:balance; }

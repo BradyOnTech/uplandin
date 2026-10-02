@@ -1,3 +1,4 @@
+import { renderTailgatePhoto, tailgateFileName } from '../tailgatePhotoView';
 import { fitPages, type FitPager } from '../fitPager';
 import { isFalconryPractice } from '../../game/falconryPractice';
 import { build3DPreparationHref } from '../../game/gameplayMode';
@@ -153,6 +154,12 @@ export class HuntHudSystem implements Subsystem {
       this.dogCallout.classList.remove('milestone');
       this.dogCallout.hidden = false;
       this.dogCalloutUntil = this.fieldTime + 2.8;
+    }) as EventListener, options);
+    // The tailgate photo arrives once the report is up.
+    ctx.events.addEventListener('tailgate-photo', ((event: CustomEvent<{ full: string }>) => {
+      if (!this.summaryCopy) return;
+      renderTailgatePhoto(this.summaryCopy, event.detail.full, tailgateFileName(this.hunt.areaConfig().id));
+      this.summaryPager?.refresh();
     }) as EventListener, options);
     ctx.events.addEventListener('hunt-milestone', ((event: CustomEvent<string>) => {
       if (!this.dogCallout || this.frozen) return;

@@ -25,6 +25,8 @@ export interface CareerJournalEntry {
   overLimit?: number;
   /** Limits filled that day, by label ("roosters"). */
   limits?: string[];
+  /** A small print of the tailgate photo, as a data URL. */
+  photo?: string;
 }
 
 /** A moment in a dog's life worth its own line in the journal. */
@@ -32,6 +34,12 @@ export type DogMilestone = 'first-point' | 'last-hunt';
 const MILESTONES: Readonly<Record<DogMilestone, string>> = { 'first-point': 'first point', 'last-hunt': 'last hunt' };
 
 export const HUNT_JOURNAL_LIMIT = 30;
+/** The newest entries keep their tailgate prints; older ones keep the record. */
+export const JOURNAL_PHOTOS_KEPT = 12;
+/** A print is a small image: anything larger is not one of ours. */
+const PHOTO_MAX_CHARS = 60_000;
+const photo = (value: unknown): value is string => typeof value === 'string' && value.length <= PHOTO_MAX_CHARS
+  && /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/]+={0,2}$/.test(value);
 const COUNTS = ['retrieved', 'downed', 'escaped', 'pointFlushes', 'doubles', 'henDowns', 'hunterXp'] as const;
 const count = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -64,6 +72,7 @@ function readEntry(value: unknown): CareerJournalEntry | null {
     ...(count(value.overLimit) && value.overLimit > 0 ? { overLimit: value.overLimit } : {}),
     ...(Array.isArray(value.limits) && value.limits.length && value.limits.length <= 4 && value.limits.every(text)
       ? { limits: value.limits as string[] } : {}),
+    ...(photo(value.photo) ? { photo: value.photo } : {}),
   };
 }
 
@@ -77,7 +86,18 @@ export function sanitizeHuntJournal(value: unknown): CareerJournalEntry[] {
       if (seen.has(entry.huntNumber)) return false;
       seen.add(entry.huntNumber);
       return true;
-    }).slice(0, HUNT_JOURNAL_LIMIT);
+    }).slice(0, HUNT_JOURNAL_LIMIT)
+    .map((entry, index) => {
+      if (index < JOURNAL_PHOTOS_KEPT || !entry.photo) return entry;
+      const { photo: _print, ...kept } = entry;
+      return kept;
+    });
+}
+
+/** Keep the tailgate print with its hunt's entry. Pure; an unknown hunt or a bad print leaves the career as-is. */
+export function attachHuntPhoto<T extends Pick<Career, 'recentHunts'>>(career: T, huntNumber: number, print: string): T {
+  if (!photo(print) || !career.recentHunts?.some((entry) => entry.huntNumber === huntNumber)) return career;
+  return { ...career, recentHunts: sanitizeHuntJournal(career.recentHunts.map((entry) => entry.huntNumber === huntNumber ? { ...entry, photo: print } : entry)) };
 }
 
 /** Newest first, detached from the save so displaying a journal cannot edit it. */

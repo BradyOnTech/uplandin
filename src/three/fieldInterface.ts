@@ -12,6 +12,8 @@ import { HUNT_CHALLENGES, HUNT_CHALLENGE_KEY, parseHuntChallenge } from '../game
 import { build3DPreparationHref, parseHuntLaunch, resolveThreeHuntChallenge, resolveThreeHuntProfile } from '../game/gameplayMode';
 import { GUNS, getGun, unlockedGuns } from '../game/guns';
 import { loadCareer, saveCareer } from '../game/career';
+import { attachHuntPhoto } from '../game/huntJournal';
+import { stageTailgate, takeTailgatePhoto } from './tailgatePhoto';
 import { loadQuickConfig, saveQuickConfig } from '../game/quick';
 import { setAudioEnabled, unlockAudio } from '../audio';
 import type { LandscapeModel } from '../game/landscape';
@@ -243,6 +245,8 @@ export class FieldInterface {
         (document.getElementById('performance-route') as HTMLInputElement).readOnly = true;
         document.getElementById('performance-status')!.textContent = 'Hunt finished. Save the report before starting another hunt.';
       }
+      // Once this frame is done, stage the day at the truck and take the picture.
+      if (!this.capture && !this.falconry && !isFalconryPractice(location.search)) setTimeout(() => this.tailgatePhoto(), 0);
     }, { signal });
     const quality = document.getElementById('quality-setting') as HTMLSelectElement;
     quality.value = this.engine.ctx.quality;
@@ -431,6 +435,18 @@ export class FieldInterface {
     };
     document.getElementById('shot-assistance-help')!.textContent = lead + descriptions[profile.level];
   }
+  /** The tailgate photo for the field report, and its print for the journal. */
+  private tailgatePhoto(): void {
+    const hunt = this.engine.ctx.get<Hunt3DSystem>('hunt3d');
+    if (hunt.huntState().huntingMethod === 'goshawk' || !stageTailgate(this.engine)) return;
+    const photo = takeTailgatePhoto(this.engine);
+    if (!photo) return;
+    // Settlement is already done; this returns the settled career hunt.
+    const settled = hunt.settleCareer();
+    if (settled) saveCareer(attachHuntPhoto(loadCareer(), settled.career.hunts, photo.thumb));
+    this.engine.ctx.events.dispatchEvent(new CustomEvent('tailgate-photo', { detail: photo }));
+  }
+
   private refreshShotgunMenu(): void {
     if (!this.readyState || this.falconry) return;
     const gun = getGun(this.engine.ctx.get<GunSystem>('gun').equippedGunId());

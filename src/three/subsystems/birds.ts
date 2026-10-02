@@ -1895,6 +1895,38 @@ export class BirdsSystem implements Subsystem {
   }
 
   /** Tooling/HUD telemetry: shot birds still lying in the cover. */
+  /**
+   * A bird of the day's bag for the tailgate photo: limp, wings folded, at
+   * the size it lies in the grass. Shares the species' geometry and the
+   * flock's material; the caller removes the group and disposes nothing.
+   */
+  trophyBird(speciesId: string, sex?: 'hen' | 'rooster'): THREE.Group {
+    const species = getSpecies(speciesId);
+    const geometry = this.speciesGeos.get(`${species.id}${sex === 'hen' ? ':hen' : ''}`) ?? this.speciesGeos.get(species.id)!;
+    const root = new THREE.Group(); root.name = `Tailgate ${species.id}`;
+    const body = new THREE.Mesh(geometry.body, this.mat!);
+    const wingLMesh = new THREE.Mesh(geometry.wingL, this.mat!), wingRMesh = new THREE.Mesh(geometry.wingR, this.mat!);
+    const wingL = new THREE.Group(), wingR = new THREE.Group();
+    wingL.add(wingLMesh); wingR.add(wingRMesh);
+    const shape = geometry.shape;
+    wingL.position.set(-0.03 * shape.bodyWidth, 0.016 * shape.bodyDepth, 0.028 * shape.bodyLength);
+    wingR.position.set(0.03 * shape.bodyWidth, 0.016 * shape.bodyDepth, 0.028 * shape.bodyLength);
+    root.add(body, wingL, wingR);
+    let tailMesh: THREE.Mesh | undefined;
+    if (geometry.tail) {
+      tailMesh = new THREE.Mesh(geometry.tail, this.mat!); tailMesh.position.set(0, .004, -.085);
+      tailMesh.updateMorphTargets(); root.add(tailMesh);
+    }
+    for (const mesh of [body, wingLMesh, wingRMesh]) mesh.updateMorphTargets();
+    // As a downed bird lies in the grass: the limp shape, wings folded.
+    this.foldWings({ species, wingL, wingR, wingLMesh, wingRMesh } as unknown as Slot);
+    if (body.morphTargetInfluences) body.morphTargetInfluences[0] = 1;
+    if (tailMesh?.morphTargetInfluences) tailMesh.morphTargetInfluences[0] = 0;
+    root.scale.setScalar(restingBirdScale(birdFamilyFor(species.id)) * birdVisualScale(species));
+    root.traverse(object => { if (object instanceof THREE.Mesh) { object.castShadow = true; object.receiveShadow = true; } });
+    return root;
+  }
+
   /** Capture: where a bird on the ground lies or runs, world metres. */
   groundedAt(simId: number): { x: number; y: number; z: number; running: boolean } | null {
     const s = this.slots.find(slot => slot.simId === simId && slot.status === 'grounded');
