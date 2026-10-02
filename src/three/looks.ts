@@ -22,6 +22,19 @@ export interface LookTimeTweak {
   vignette?: number;
 }
 
+/** A ground's own grade on top of a look, applied after the time of day:
+ * multipliers on white balance and saturation, a scale on contrast's
+ * departure from neutral (so a flat last light stays flat), added shadow and
+ * highlight tints, and a scale on the haze density. */
+export interface LookGroundTweak {
+  whiteBalance?: Rgb;
+  saturation?: number;
+  contrast?: number;
+  shadowTint?: Rgb;
+  highlightTint?: Rgb;
+  haze?: number;
+}
+
 export interface LookSettings {
   label: string;
   detail: string;
@@ -29,6 +42,8 @@ export interface LookSettings {
    * and black offset would crush an evening field to black), and a high sun
    * needs less saturation. */
   byTime?: Partial<Record<TimeOfDay, LookTimeTweak>>;
+  /** Each ground's own light, by area id (see LookGroundTweak). */
+  byGround?: Partial<Record<string, LookGroundTweak>>;
   /** Screen-space ambient occlusion. Radius and fade distance in metres. */
   ao: { radius: number; intensity: number; strength: number; maxDistance: number };
   /**
@@ -76,6 +91,19 @@ export const LOOKS: Record<LookId, LookSettings> = {
       evening: { contrast: 1.06, offset: [-.003, -.003, -.002] },
       lastlight: { aoStrength: .6, contrast: 1, offset: [.004, .004, .008], vignette: .1 },
     },
+    byGround: {
+      // A prairie-pothole farm in late October: warm, low light on the
+      // stubble and cooler shade under the shelterbelts.
+      'pheasant-coverts': { whiteBalance: [1.055, 1, .935], saturation: 1.07, contrast: 1.2,
+        highlightTint: [.012, .006, -.006], shadowTint: [-.004, .002, .012] },
+      // Northern mixed grass under a big sky: the clearest air and a firmer
+      // contrast, so the cured grass doesn't wash pale.
+      'sharptail-prairie': { whiteBalance: [1.02, 1, .975], contrast: 1.4, haze: .5, shadowTint: [0, .003, .01] },
+      // Southern quail woods: soft, humid light, the red soil kept from orange.
+      'quail-fields': { whiteBalance: [1.01, 1, .99], saturation: .88, contrast: .7, haze: 2.4, highlightTint: [.006, .006, .002] },
+      // High desert: dry clarity, and blue shade off the rock.
+      'chukar-ridge': { whiteBalance: [.985, 1, 1.02], saturation: .92, contrast: 1.5, haze: .6, shadowTint: [-.006, 0, .014] },
+    },
   },
   golden: {
     label: 'Golden haze',
@@ -103,11 +131,13 @@ export const LOOKS: Record<LookId, LookSettings> = {
   },
 };
 
-/** A look as it applies at a time of day. */
-export function lookAt(look: LookSettings, tod: TimeOfDay): LookSettings {
-  const tweak = look.byTime?.[tod];
-  if (!tweak) return look;
-  return {
+const times = (a: Rgb, b: Rgb): Rgb => [a[0] * b[0], a[1] * b[1], a[2] * b[2]];
+const plus = (a: Rgb, b: Rgb): Rgb => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+
+/** A look as it applies at a time of day, on a ground (an area id). */
+export function lookAt(look: LookSettings, tod: TimeOfDay, ground?: string): LookSettings {
+  const tweak = look.byTime?.[tod], local = ground === undefined ? undefined : look.byGround?.[ground];
+  const timed: LookSettings = !tweak ? look : {
     ...look,
     ao: { ...look.ao, strength: tweak.aoStrength ?? look.ao.strength },
     grade: {
@@ -116,6 +146,20 @@ export function lookAt(look: LookSettings, tod: TimeOfDay): LookSettings {
       saturation: tweak.saturation ?? look.grade.saturation,
       offset: tweak.offset ?? look.grade.offset,
       vignette: tweak.vignette ?? look.grade.vignette,
+    },
+  };
+  if (!local) return timed;
+  const g = timed.grade;
+  return {
+    ...timed,
+    haze: local.haze === undefined ? timed.haze : { ...timed.haze, density: timed.haze.density * local.haze },
+    grade: {
+      ...g,
+      whiteBalance: local.whiteBalance ? times(g.whiteBalance, local.whiteBalance) : g.whiteBalance,
+      saturation: g.saturation * (local.saturation ?? 1),
+      contrast: 1 + (g.contrast - 1) * (local.contrast ?? 1),
+      shadowTint: local.shadowTint ? plus(g.shadowTint, local.shadowTint) : g.shadowTint,
+      highlightTint: local.highlightTint ? plus(g.highlightTint, local.highlightTint) : g.highlightTint,
     },
   };
 }

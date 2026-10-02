@@ -264,6 +264,7 @@ export class PostEffects {
   private readonly bloom: UnrealBloomPass;
   private sun: THREE.DirectionalLight | null = null;
   private tod: TimeOfDay = 'morning';
+  private ground?: string;
   private readonly sunDirection = new THREE.Vector3();
   private readonly hazeColor = new THREE.Color();
   private readonly sunColor = new THREE.Color();
@@ -311,9 +312,15 @@ export class PostEffects {
     this.setLook(this.look);
   }
 
+  /** And the ground's own light (see LookSettings.byGround), by area id. */
+  setGround(areaId: string): void {
+    this.ground = areaId;
+    this.setLook(this.look);
+  }
+
   setLook(base: LookSettings): void {
     this.look = base;
-    const look = lookAt(base, this.tod);
+    const look = lookAt(base, this.tod, this.ground);
     const a = this.ao.uniforms, c = this.composite.uniforms, f = this.final.uniforms;
     a.uRadius.value = look.ao.radius; a.uIntensity.value = look.ao.intensity; a.uMaxDistance.value = look.ao.maxDistance;
     c.uAOStrength.value = look.ao.strength;

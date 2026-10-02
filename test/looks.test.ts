@@ -38,6 +38,31 @@ describe('screen-effects looks', () => {
     expect(crisp.grade.contrast).toBe(1.12);
   });
 
+  it('gives each core ground its own light on top of the time of day', () => {
+    const crisp = LOOKS.crisp, grounds = ['pheasant-coverts', 'sharptail-prairie', 'quail-fields', 'chukar-ridge'];
+    // No ground, or one without its own light, is the look as it was.
+    expect(lookAt(crisp, 'dawn', 'grouse-woods')).toBe(crisp);
+    for (const ground of grounds) {
+      const own = lookAt(crisp, 'morning', ground);
+      expect(own).not.toBe(crisp);
+      expect(JSON.stringify(own.grade)).not.toBe(JSON.stringify(crisp.grade));
+      // Still the time of day underneath: the noon sun is less saturated here too.
+      expect(lookAt(crisp, 'noon', ground).grade.saturation).toBeLessThan(own.grade.saturation);
+      // Contrast scales its departure from neutral, so last light stays flat.
+      expect(lookAt(crisp, 'lastlight', ground).grade.contrast).toBe(1);
+      for (const tod of ['dawn', 'morning', 'noon', 'evening', 'lastlight'] as const) {
+        const g = lookAt(crisp, tod, ground).grade;
+        expect(g.saturation).toBeGreaterThan(.85); expect(g.saturation).toBeLessThan(1.3);
+        expect(g.contrast).toBeGreaterThanOrEqual(1); expect(g.contrast).toBeLessThan(1.25);
+        for (const value of [...g.shadowTint, ...g.highlightTint]) expect(Math.abs(value)).toBeLessThan(.03);
+        for (const value of g.whiteBalance) { expect(value).toBeGreaterThan(.9); expect(value).toBeLessThan(1.1); }
+      }
+    }
+    // The base look is never written to.
+    expect(crisp.grade.saturation).toBe(1.16);
+    expect(crisp.haze.density).toBe(.0004);
+  });
+
   it('needs a renderable half-float format', () => {
     const renderer = (names: string[]) => ({ extensions: { has: (name: string) => names.includes(name) } }) as unknown as Parameters<typeof supportsScreenEffects>[0];
     expect(supportsScreenEffects(renderer(['EXT_color_buffer_float']))).toBe(true);

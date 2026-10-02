@@ -93,6 +93,7 @@ let fieldEffects: PostEffects | null = null;
     const effects = fieldEffects = new PostEffects(LOOKS[look ?? DEFAULT_LOOK]);
     effects.setDebug(Number(params.get('lookdebug')) || 0);
     effects.setTimeOfDay(engine.ctx.timeOfDay);
+    effects.setGround(launchArea.id);
     engine.ctx.events.addEventListener('tod', event => effects.setTimeOfDay((event as CustomEvent<TimeOfDay>).detail));
     engine.setPipeline(look ? effects : null);
     if (comparing) {
