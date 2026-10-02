@@ -62,12 +62,12 @@ describe('distinct sporting doubles', () => {
     model.dispose();
   });
 
-  it.each(['pump', 'semi-auto', ...doubles] as const)('%s runs both sleeves past the camera at carry, port arms and mount', action => {
+  it.each(['pump', 'semi-auto', ...doubles] as const)('%s runs both sleeves past the camera at carry, the ready and mount', action => {
     const model = createSportingShotgun(action);
-    // Carry, the walk-in ready (port arms) and the settled mount, as gun.ts poses them.
+    // Carry, the walk-in ready and the settled mount, as gun.ts poses them.
     const poses = [
       { position: [.19, -.285, -.50], rotation: [-.08, -.12, -.10] },
-      { position: [.10, -.25, -.42], rotation: [.30, .45, -.55] },
+      { position: [.25, -.31, -.34], rotation: [.50, .08, -.18] },
       { position: [0, -(.030 * Math.cos(.085) + .766 * Math.sin(.085)), -.34], rotation: [.085, 0, 0] },
     ] as const;
     for (const pose of poses) {

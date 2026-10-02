@@ -1,14 +1,14 @@
 /**
- * The two dog art styles. Both are complete presentations over the same
- * shared hunt simulation:
- * - smooth: one skinned, softly shaded mesh with contact-solved limbs;
- * - faceted: the articulated low-poly sculpt with flat-shaded planes.
+ * The two dog art styles. Both are looks of the one skinned rig, its
+ * contact-solved limbs and its motion, over the shared hunt simulation:
+ * - smooth: softly shaded, finer rings;
+ * - faceted: broad flat-shaded planes in the low-poly house style.
  *
  * October 1, 2026: each breed keeps the look Brady chose (a smooth GSP and a
- * faceted English Setter) and the player-facing style switch is closed. The
- * skinned rig is the long-term foundation; the faceted setter is to be
- * rebuilt on it, after which the articulated system retires. The comparison
- * bench (tools3d/dog-comparison.html) still shows all four pairings.
+ * faceted English Setter) and the player-facing style switch is closed.
+ * October 2, 2026: the faceted setter now draws on the skinned rig and the
+ * articulated sculpt is retired. The comparison bench
+ * (tools3d/dog-comparison.html) still shows all four pairings.
  */
 export const DOG_STYLES = ['smooth', 'faceted'] as const;
 export type DogStyle = (typeof DOG_STYLES)[number];

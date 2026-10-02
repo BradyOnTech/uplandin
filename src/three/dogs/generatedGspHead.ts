@@ -41,15 +41,18 @@ export function setterHeadVertex(v: GspHeadVertex): GspHeadVertex {
 type HeadBreed = { breed: 'gsp'; coatId: GspCoatId } | { breed: 'english-setter'; coatId: EnglishSetterCoatId };
 
 /** Authored head surface in the generated head bone's local coordinates. */
-export function createGeneratedGspHead(detail: 'high' | 'lite', coatId: GspCoatId): THREE.BufferGeometry {
-  return createGeneratedHead(detail, { breed: 'gsp', coatId });
+export function createGeneratedGspHead(detail: 'high' | 'lite', coatId: GspCoatId, faceted = false): THREE.BufferGeometry {
+  return createGeneratedHead(detail, { breed: 'gsp', coatId }, faceted);
 }
 
-export function createGeneratedSetterHead(detail: 'high' | 'lite', coatId: EnglishSetterCoatId): THREE.BufferGeometry {
-  return createGeneratedHead(detail, { breed: 'english-setter', coatId });
+export function createGeneratedSetterHead(detail: 'high' | 'lite', coatId: EnglishSetterCoatId, faceted = false): THREE.BufferGeometry {
+  return createGeneratedHead(detail, { breed: 'english-setter', coatId }, faceted);
 }
 
-function createGeneratedHead(detail: 'high' | 'lite', choice: HeadBreed): THREE.BufferGeometry {
+/** The faceted look keeps each triangle's own plane; the smooth look blends
+ * most of the way to the shared vertex normal. */
+function createGeneratedHead(detail: 'high' | 'lite', choice: HeadBreed, faceted = false): THREE.BufferGeometry {
+  const soften = faceted ? .12 : .88;
   const source = detail === 'high' ? GSP_HEAD_HIGH : GSP_HEAD_LITE;
   const setter = choice.breed === 'english-setter';
   const table = setter ? { ...source, vertices: source.vertices.map(setterHeadVertex) } : source;
@@ -118,7 +121,7 @@ function createGeneratedHead(detail: 'high' | 'lite', choice: HeadBreed): THREE.
     for (const i of face.slice(0, 3)) {
       const vertex = table.vertices[i];
       positions.push(...vertices[i].toArray());
-      normalsOut.push(...normals[faceIndex].clone().lerp(sums[i], .88).normalize().toArray());
+      normalsOut.push(...normals[faceIndex].clone().lerp(sums[i], soften).normalize().toArray());
       const color = face[3] === 1 ? eye : face[3] === 2 ? pupil : faceCoat.clone().lerp(nose, vertex[5]);
       colors.push(color.r, color.g, color.b); owners.push(vertex[3]); blends.push(vertex[4]);
     }

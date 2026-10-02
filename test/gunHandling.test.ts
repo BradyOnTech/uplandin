@@ -34,6 +34,46 @@ function field(gunId: string, options: FieldOptions = {}) {
   return { ctx, gun, step, action, key, inner };
 }
 
+/** Share of an NDC box the object's triangles cover, sampled on a fine grid. */
+function screenCover(camera: THREE.PerspectiveCamera, object: THREE.Object3D, box: { x0: number; x1: number; y0: number; y1: number }): number {
+  const W = 96, H = 96, grid = new Uint8Array(W * H), near = -camera.near * 1.2;
+  const cell = (x: number, y: number) => [(x - box.x0) / (box.x1 - box.x0) * W, (y - box.y0) / (box.y1 - box.y0) * H];
+  const v = new THREE.Vector3();
+  object.traverseVisible(node => {
+    const mesh = node as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const position = mesh.geometry.getAttribute('position'), index = mesh.geometry.index;
+    const count = index ? index.count : position.count;
+    const view = (k: number) => new THREE.Vector3().fromBufferAttribute(position, index ? index.getX(k) : k)
+      .applyMatrix4(mesh.matrixWorld).applyMatrix4(camera.matrixWorldInverse);
+    for (let t = 0; t + 2 < count; t += 3) {
+      // Clip at the near plane, then fill the triangle fan.
+      const corners = [view(t), view(t + 1), view(t + 2)], polygon: THREE.Vector3[] = [];
+      corners.forEach((a, i) => {
+        const b = corners[(i + 1) % 3];
+        if (a.z < near) polygon.push(a);
+        if ((a.z < near) !== (b.z < near)) polygon.push(a.clone().lerp(b, (near - a.z) / (b.z - a.z)));
+      });
+      const points = polygon.map(p => { v.copy(p).applyMatrix4(camera.projectionMatrix); return cell(v.x, v.y); });
+      for (let f = 1; f + 1 < points.length; f++) {
+        const [a, b, c] = [points[0], points[f], points[f + 1]];
+        const area = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
+        if (Math.abs(area) < 1e-12) continue;
+        const xs = [a[0], b[0], c[0]], ys = [a[1], b[1], c[1]];
+        for (let y = Math.max(0, Math.floor(Math.min(...ys))); y <= Math.min(H - 1, Math.ceil(Math.max(...ys))); y++) {
+          for (let x = Math.max(0, Math.floor(Math.min(...xs))); x <= Math.min(W - 1, Math.ceil(Math.max(...xs))); x++) {
+            const px = x + .5, py = y + .5;
+            const w0 = ((b[0] - px) * (c[1] - py) - (c[0] - px) * (b[1] - py)) / area;
+            const w1 = ((c[0] - px) * (a[1] - py) - (a[0] - px) * (c[1] - py)) / area;
+            if (w0 >= 0 && w1 >= 0 && 1 - w0 - w1 >= 0) grid[y * W + x] = 1;
+          }
+        }
+      }
+    }
+  });
+  return grid.reduce((sum, value) => sum + value, 0) / grid.length;
+}
+
 describe('gun weight and balance', () => {
   it('keeps the 870 as the reference and orders the guns by swing weight', () => {
     const feel = Object.fromEntries(GUNS.map(gun => [gun.id, gunFeel(gun)]));
@@ -88,6 +128,19 @@ describe('ready carry for the walk-in', () => {
     for (let i = 0; i < 60; i++) flush.step(1 / 60);
     expect(flush.inner.readyK).toBeGreaterThan(.95);
     flush.gun.dispose(flush.ctx);
+  });
+
+  it('keeps the middle of the view clear for the dog on point', () => {
+    // Where a pointing dog sits when looked at, or below the horizon line.
+    const zone = { x0: -.25, x1: .25, y0: -.6, y1: .33 };
+    for (const gunId of ['remington-870', 'semi-auto', 'over-under', 'side-by-side']) {
+      const near = field(gunId, { dog: { state: 'pointing', x: 4, z: -14 } });
+      for (let i = 0; i < 90; i++) near.step(1 / 60);
+      expect(near.inner.readyK).toBeGreaterThan(.99);
+      near.ctx.scene.updateMatrixWorld(true);
+      expect(screenCover(near.ctx.camera, near.inner.sporting.root, zone)).toBeLessThan(.06);
+      near.gun.dispose(near.ctx);
+    }
   });
 
   it('pushes the safety off as the gun comes up and on again once it is down', () => {

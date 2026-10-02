@@ -3,7 +3,6 @@ import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
 import { P, fieldTimeOfDay, type TimeOfDay } from '../palette';
 import type { BirdsSystem } from './birds';
-import type { DogSystem } from './dog';
 import type { Hunt3DSystem } from './hunt3d';
 import type { TerrainSystem } from './terrain';
 import type { LandscapeModel } from '../../game/landscape';
@@ -68,6 +67,11 @@ const TILE = 20; // meters — tile grid cell for the roaming open field
 const WORLD_LIMIT = 235; // stay on the 480 m terrain plate
 // One shared drill direction for the whole farm's stubble rows (radians).
 const ROW_YAW = 0.42;
+
+/** What grass needs from the dog presentation: where the cover parts round it. */
+interface DogParting extends Subsystem {
+  partingPoint(out: { x: number; z: number; r: number }): void;
+}
 
 /**
  * Open country is not one universal grass material. Sharptail prairie has a
@@ -958,7 +962,7 @@ export class GrassSystem implements Subsystem {
   private lastCellX = Number.NaN;
   private lastCellZ = Number.NaN;
   /** Lazily-resolved dog system (undefined = not looked up yet). */
-  private dogRef: DogSystem | null | undefined;
+  private dogRef: DogParting | null | undefined;
   private dogPart = { x: 0, z: 0, r: 1e-4 };
   private birdsRef: BirdsSystem | null | undefined;
   private burstPart = { x: 0, z: 0, r: 1e-4 };
@@ -1123,7 +1127,7 @@ export class GrassSystem implements Subsystem {
     // lazily via ctx.get (never an import; null if the dog isn't running).
     if (this.dogRef === undefined) {
       try {
-        this.dogRef = ctx.get<DogSystem>('dog');
+        this.dogRef = ctx.get<DogParting>('dog');
       } catch {
         this.dogRef = null;
       }

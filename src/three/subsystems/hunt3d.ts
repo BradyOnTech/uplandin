@@ -354,6 +354,9 @@ export class Hunt3DSystem implements Subsystem {
     this.tick(ctx, dtMs);
   }
 
+  /** Simulation ticks run so far: lets a renderer measure frozen capture time. */
+  tickCount(): number { return this.simTicks; }
+
   /** Capture harness: advance the frozen sim by exact 30 Hz ticks. */
   step(ctx: Ctx, ticks: number): void {
     for (let i = 0; i < ticks; i++) this.advance(ctx, 1000 / 30);

@@ -15,7 +15,6 @@ import { SkySystem } from './subsystems/sky';
 import { TerrainSystem } from './subsystems/terrain';
 import { Hunt3DSystem, type WorldPatch } from './subsystems/hunt3d';
 import { PlayerSystem } from './subsystems/player';
-import { DogSystem } from './subsystems/dog';
 import { GeneratedDogSystem } from './subsystems/generatedDog';
 import { DOG_STYLE_LABELS, DOG_STYLE_SELECTABLE, effectiveDogStyle, preferredDogStyle, resolveDogStyle } from './dogs/dogStyle';
 import { coatLabel as coatName, resolveCoatFor } from '../game/dogCoats';
@@ -132,14 +131,13 @@ engine.register(new Hunt3DSystem(landscape));
 engine.register(new FieldMapSystem());
 for (const system of landscapeVisuals.systems) engine.register(system);
 engine.register(new LandmarksSystem());
-// Both breeds exist in two art styles: the smooth skinned mesh and the
-// faceted articulated sculpt. Each breed draws in its house style; `dogstyle`
-// applies only while the style switch is open (see dogs/dogStyle.ts).
+// Both breeds draw on the one skinned rig and its motion, in two looks:
+// smooth and faceted. Each breed draws in its house look (a smooth GSP, a
+// faceted setter); `dogstyle` applies only while the style switch is open.
 const dogStyle = resolveDogStyle(params.get('dogstyle')) ?? preferredDogStyle();
 const dogSystemFor = (breed: 'gsp' | 'english-setter', coat: string, slot = 0) => {
   const style = effectiveDogStyle(breed, dogStyle);
-  if (style === 'smooth') return new GeneratedDogSystem(breed === 'gsp' ? resolveGspCoat(coat) : resolveEnglishSetterCoat(coat), slot);
-  return new DogSystem(breed, coat, slot);
+  return new GeneratedDogSystem(breed === 'gsp' ? resolveGspCoat(coat) : resolveEnglishSetterCoat(coat), slot, style);
 };
 engine.register(dogSystemFor(visualBreed, coatId));
 if (launchProfile.brace) {

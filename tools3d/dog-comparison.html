@@ -9,7 +9,7 @@
 <body>
   <header>
     <div><p class="eyebrow">Uplandin · Dog art style study</p><h1>Smooth vs faceted · GSP & English Setter</h1></div>
-    <p class="intro">Both breeds in both art styles on the same ground, light, camera, and travel speed. Each style keeps its own animation system.</p>
+    <p class="intro">Both breeds in both looks on the same ground, light, camera, and travel speed, all on the one skinned rig and its motion.</p>
   </header>
   <main>
     <nav aria-label="Comparison controls">
@@ -18,15 +18,15 @@
       <label>View<select id="view"><option value="quarter">Three-quarter</option><option value="side">Side</option><option value="front">Front</option><option value="rear">Rear</option><option value="rear-quarter">Rear three-quarter</option><option value="field">Field distance</option></select></label>
       <label>Light<select id="light"><option value="noon">Noon</option><option value="morning">Morning</option><option value="evening">Evening</option></select></label>
       <label>Detail<select id="quality"><option value="high">High</option><option value="lite">Lightweight</option></select></label>
-      <label>Show<select id="layout"><option value="grid">Both styles</option><option value="smooth">Smooth only</option><option value="faceted">Faceted only</option><option value="gsp">GSP only</option><option value="english-setter">Setter only</option><option value="gsp-smooth">GSP · smooth</option><option value="setter-smooth">Setter · smooth</option><option value="gsp-faceted">GSP · faceted</option><option value="setter-faceted">Setter · faceted</option></select></label>
+      <label>Show<select id="layout"><option value="grid">Both looks</option><option value="smooth">Smooth only</option><option value="faceted">Faceted only</option><option value="gsp">GSP only</option><option value="english-setter">Setter only</option><option value="gsp-smooth">GSP · smooth</option><option value="setter-smooth">Setter · smooth</option><option value="gsp-faceted">GSP · faceted</option><option value="setter-faceted">Setter · faceted</option></select></label>
     </nav>
     <div id="stage">
       <canvas id="comparison" aria-label="Side-by-side current GSP and English Setter models"></canvas>
       <div id="panels">
-        <section class="panel" id="gsp-smooth"><div class="breed-label"><h2>GSP · Smooth</h2><p>Skinned single-mesh style</p><a class="play" target="_blank" rel="noopener">Play ↗</a></div></section>
-        <section class="panel" id="setter-smooth"><div class="breed-label"><h2>English Setter · Smooth</h2><p>Skinned single-mesh style</p><a class="play" target="_blank" rel="noopener">Play ↗</a></div></section>
-        <section class="panel" id="gsp-faceted"><div class="breed-label"><h2>GSP · Faceted</h2><p>Articulated low-poly style</p><a class="play" target="_blank" rel="noopener">Play ↗</a></div></section>
-        <section class="panel" id="setter-faceted"><div class="breed-label"><h2>English Setter · Faceted</h2><p>Articulated low-poly style</p><a class="play" target="_blank" rel="noopener">Play ↗</a></div></section>
+        <section class="panel" id="gsp-smooth"><div class="breed-label"><h2>GSP · Smooth</h2><p>Skinned rig · soft shading</p><a class="play" target="_blank" rel="noopener">Play ↗</a></div></section>
+        <section class="panel" id="setter-smooth"><div class="breed-label"><h2>English Setter · Smooth</h2><p>Skinned rig · soft shading</p><a class="play" target="_blank" rel="noopener">Play ↗</a></div></section>
+        <section class="panel" id="gsp-faceted"><div class="breed-label"><h2>GSP · Faceted</h2><p>Skinned rig · flat planes</p><a class="play" target="_blank" rel="noopener">Play ↗</a></div></section>
+        <section class="panel" id="setter-faceted"><div class="breed-label"><h2>English Setter · Faceted</h2><p>Skinned rig · flat planes</p><a class="play" target="_blank" rel="noopener">Play ↗</a></div></section>
       </div>
       <div class="stage-note">Drag either view to orbit both · Scroll to zoom · Grid squares: 0.5 m</div>
     </div>

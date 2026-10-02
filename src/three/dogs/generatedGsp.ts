@@ -82,7 +82,7 @@ if (vGspWhiteSurface > 0.5) {
  * dense flecking that resolves to an even tint at field distance rather than
  * shimmering, plus a few soft patches and optional tricolour tan points.
  */
-function applySetterCoat(material: THREE.MeshLambertMaterial, coatId: EnglishSetterCoatId): void {
+function applySetterCoat(material: THREE.MeshLambertMaterial, coatId: EnglishSetterCoatId, faceted = false): void {
   const a = englishSetterAppearance(coatId);
   material.onBeforeCompile = shader => {
     withCoatLighting(shader);
@@ -117,14 +117,20 @@ if (vSetterCoatSurface > 0.5) {
   // A soft patch behind the ears, continuous with the coloured hood.
   float markPatch = setterIsland(p, vec3(0.0, 0.665, 0.425), vec3(0.07, 0.055, 0.055));
   // Belton flecking: many small ticks, denser down the legs and muzzle.
-  vec3 cell = floor(p * 118.0);
+  vec3 cell = floor(p * SETTER_FLECK_SCALE);
   float choice = setterHash(cell);
   vec3 center = vec3(setterHash(cell + 3.1), setterHash(cell + 7.7), setterHash(cell + 11.3)) * 0.7 + 0.15;
   float legs = 1.0 - smoothstep(0.18, 0.34, p.y);
   // Low-frequency clustering: belton ticking gathers in drifts, not an even grid.
   float drift = 0.5 + 0.5 * sin(p.z * 23.0 + sin(p.y * 17.0) * 2.0) * sin(p.y * 29.0 - p.x * 21.0);
-  float density = mix(0.58, 0.40, legs) + (0.5 - drift) * 0.34;
-  float tick = (1.0 - smoothstep(0.12, 0.26, length(fract(p * 118.0) - center))) * step(density, choice);
+  float density = mix(SETTER_FLECK_DENSITY, SETTER_FLECK_DENSITY - 0.18, legs) + (0.5 - drift) * 0.34;
+  vec3 offset = fract(p * SETTER_FLECK_SCALE) - center;
+  #ifdef SETTER_FACETED
+  // Faceted coat: crisp diamond flecks, the way the sculpted dog was painted.
+  float tick = (1.0 - step(0.2, abs(offset.x) + abs(offset.y) + abs(offset.z) * 0.6)) * step(density, choice);
+  #else
+  float tick = (1.0 - smoothstep(0.12, 0.26, length(offset))) * step(density, choice);
+  #endif
   float footprint = max(length(dFdx(p)), length(dFdy(p)));
   float resolve = 1.0 - smoothstep(0.002, 0.008, footprint);
   // Beyond the resolving distance the ticks average to a light roan tint.
@@ -137,7 +143,9 @@ if (vSetterCoatSurface > 0.5) {
   diffuseColor.rgb = mix(coat, setterTan * 0.9, tanLegs * 0.62);
 }`);
   };
-  material.customProgramCacheKey = () => 'generated-setter-bind-coat-v2';
+  material.defines = { ...material.defines, SETTER_FLECK_SCALE: faceted ? '40.0' : '118.0', SETTER_FLECK_DENSITY: faceted ? '0.60' : '0.58',
+    ...(faceted ? { SETTER_FACETED: '' } : {}) };
+  material.customProgramCacheKey = () => `generated-setter-bind-coat-v3${faceted ? '-faceted' : ''}`;
 }
 
 /** Shared smooth-coat lighting: baked occlusion and a soft sky rim. */
@@ -212,21 +220,27 @@ class Surface {
   }
 }
 
-export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = false, coatId: GeneratedCoatId = 'liver-white') {
-  const sides = detail === 'high' ? 10 : 6;
+export type GeneratedLook = 'smooth' | 'faceted';
+
+export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = false, coatId: GeneratedCoatId = 'liver-white', look: GeneratedLook = 'smooth') {
+  // The faceted look keeps every loft triangle flat, with fewer, broader
+  // planes: the sculpted low-poly dog on the same skinned rig and motion.
+  const faceted = look === 'faceted';
+  const sides = detail === 'high' ? (faceted ? 8 : 10) : 6;
   const breed = generatedBreedForCoat(coatId), setter = breed === 'english-setter';
   const root = new THREE.Group(); root.name = setter ? 'generated-english-setter' : 'generated-gsp';
   const label = setter ? englishSetterAppearance(coatId as EnglishSetterCoatId).label : germanShorthairedPointerAppearance(coatId as GspCoatId).label;
-  root.userData.coatId = coatId; root.userData.coatLabel = label; root.userData.breedId = breed;
+  root.userData.coatId = coatId; root.userData.coatLabel = label; root.userData.breedId = breed; root.userData.look = look;
   const material = new THREE.MeshLambertMaterial({ vertexColors: true });
-  if (setter) applySetterCoat(material, coatId as EnglishSetterCoatId); else applyGspCoat(material, coatId as GspCoatId);
+  if (faceted) material.flatShading = true;
+  if (setter) applySetterCoat(material, coatId as EnglishSetterCoatId, faceted); else applyGspCoat(material, coatId as GspCoatId);
   const geometries: THREE.BufferGeometry[] = [];
   const joints: Record<string, THREE.Bone> = {};
   const joint = (name: string, parent: THREE.Object3D, position: Point) => {
     const group = new THREE.Bone(); group.name = name; group.position.set(...position); parent.add(group); joints[name] = group; return group;
   };
   const surface = (parent: THREE.Object3D, author: (s: Surface) => void, softness = 0, ringSides = sides) => {
-    const s = new Surface(ringSides); author(s); const geometry = s.geometry(softness); geometries.push(geometry);
+    const s = new Surface(ringSides); author(s); const geometry = s.geometry(faceted ? 0 : softness); geometries.push(geometry);
     const mesh = new THREE.Mesh(geometry, material); mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh); return mesh;
   };
   const body = joint('body', root, [0, 0, 0]);
@@ -253,7 +267,10 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
   const jaw = joint('jaw', head, [0,-.027,.026]);
   const leftEar = joint('ear-left', head, [-.052,.019,-.012]);
   const rightEar = joint('ear-right', head, [.052,.019,-.012]);
-  const headGeometry = setter ? createGeneratedSetterHead(detail, coatId as EnglishSetterCoatId) : createGeneratedGspHead(detail, coatId as GspCoatId);
+  // The faceted head uses the coarser authored surface: broader planes that
+  // match the body's.
+  const headDetail = faceted ? 'lite' : detail;
+  const headGeometry = setter ? createGeneratedSetterHead(headDetail, coatId as EnglishSetterCoatId, faceted) : createGeneratedGspHead(headDetail, coatId as GspCoatId, faceted);
   geometries.push(headGeometry);
   const headMesh = new THREE.Mesh(headGeometry, material);
   headMesh.castShadow = true; headMesh.receiveShadow = true;
@@ -428,8 +445,10 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
       const t = THREE.MathUtils.clamp(presence, 0, 1);
       // Reach through the neck with a nearly level muzzle and a lifted,
       // still tail. The feet remain controlled by the field contact solver.
-      neck.rotation.x = .16 * t;
-      head.rotation.x = -.16 * t;
+      // A setter stands up to its bird: the neck carried higher, the head
+      // up and the muzzle level down the scent line.
+      neck.rotation.x = (setter ? .02 : .16) * t;
+      head.rotation.x = (setter ? -.06 : -.16) * t;
       neck.position.z += .045 * t;
       // Keep the elbow bend on the same side as the gait/ground solver.
       // The former positive lower-arm fold forced a reversal during release.
@@ -440,9 +459,9 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
       // than stacking both paws under it. Slight asymmetry avoids a pose stamp.
       joints['hind-left'].rotation.x = .32 * t;
       joints['hind-right'].rotation.x = .22 * t;
-      // A setter holds a high, still flag on point; the docked GSP tail
-      // stays firm just above the topline.
-      tail.rotation.x = (setter ? .78 : .20) * t;
+      // A setter holds a high, still flag on point, near twelve o'clock; the
+      // docked GSP tail stays firm just above the topline.
+      tail.rotation.x = (setter ? 1.2 : .20) * t;
     }
     root.updateMatrixWorld(true); skeleton.update(); if(!live){skin.computeBoundingBox(); skin.computeBoundingSphere();}
   };

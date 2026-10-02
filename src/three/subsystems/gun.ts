@@ -53,11 +53,12 @@ const SPORT_CARRY_POS = new THREE.Vector3(.19, -.285, -.50);
 const SPORT_CARRY_ROT = new THREE.Vector3(-.08, -.12, -.10);
 const SPORT_MOUNT_ROT = new THREE.Vector3(.085, 0, 0);
 const SPORT_MOUNT_POS = new THREE.Vector3(0, -(.030 * Math.cos(.085) + .766 * Math.sin(.085)), -.34);
-// Ready: walking in on a point, the gun comes up to port arms, across the
-// chest with the muzzle high and to the left, clear of the dog and the
-// cover ahead; the mount is a short swing of the muzzle to the bird.
-const SPORT_READY_POS = new THREE.Vector3(.10, -.25, -.42);
-const SPORT_READY_ROT = new THREE.Vector3(.30, .45, -.55);
+// Ready: walking in on a point, the gun comes up in both hands, butt low at
+// the hip and the muzzle high, just right of the line of sight, so the dog
+// and the cover ahead stay in clear view; the mount is a short swing of the
+// muzzle down to the bird.
+const SPORT_READY_POS = new THREE.Vector3(.25, -.31, -.34);
+const SPORT_READY_ROT = new THREE.Vector3(.50, .08, -.18);
 /** A dog on point this close (m) brings the gun to the ready. */
 const READY_POINT_M = 45;
 /** So does a bird in the air this close (m). */

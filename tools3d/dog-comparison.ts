@@ -9,7 +9,6 @@ import { mulberry32 } from '../src/game/math';
 import type { Ctx, Quality, Subsystem } from '../src/three/engine';
 import { fieldTimeOfDay } from '../src/three/palette';
 import { GeneratedDogSystem } from '../src/three/subsystems/generatedDog';
-import { DogSystem } from '../src/three/subsystems/dog';
 import { GSP_COATS, type GspCoatId } from '../src/three/dogs/germanShorthairedPointer';
 import { ENGLISH_SETTER_COATS, type EnglishSetterCoatId } from '../src/three/dogs/englishSetter';
 
@@ -30,8 +29,8 @@ function sequenceSpeed(seconds: number): number {
 }
 type View = 'quarter' | 'side' | 'front' | 'rear' | 'rear-quarter' | 'field';
 const params = new URLSearchParams(location.search);
-// Capture mode changes the legacy renderer's motion law. This comparison
-// deliberately uses the normal runtime path on both sides.
+// Capture mode pins the dog's motion to explicit hunt ticks. This comparison
+// deliberately uses the normal runtime path for every panel.
 if (params.has('capture')) { params.delete('capture'); history.replaceState(null, '', `${location.pathname}?${params}`); }
 const choice = <T extends string>(key: string, values: readonly T[], fallback: T): T => values.includes(params.get(key) as T) ? params.get(key) as T : fallback;
 let pose = choice('pose', poses, 'stand');
@@ -42,8 +41,8 @@ let gspCoat = choice('gsp', GSP_COATS.map(c => c.id), 'liver-white');
 let setterCoat = choice('setter', ENGLISH_SETTER_COATS.map(c => c.id), 'orange-belton');
 type Breed = 'gsp' | 'english-setter';
 type Style = 'smooth' | 'faceted';
-// Both art styles for both breeds: the question is which style should become
-// the house style, so every breed/style pairing shares one ground and camera.
+// Both looks for both breeds, all on the one skinned rig and its motion, so
+// every breed/look pairing shares one ground and camera.
 let layout = choice('layout', ['grid', 'smooth', 'faceted', 'gsp', 'english-setter', 'gsp-smooth', 'setter-smooth', 'gsp-faceted', 'setter-faceted'] as const, 'grid');
 const PANEL_KINDS: readonly { breed: Breed; style: Style; id: string }[] = [
   { breed: 'gsp', style: 'smooth', id: 'gsp-smooth' }, { breed: 'english-setter', style: 'smooth', id: 'setter-smooth' },
@@ -68,7 +67,7 @@ const landscape = new LandscapeModel(area, 'south-gate');
 interface Panel {
   breed: Breed; style: Style;
   element: HTMLElement; scene: THREE.Scene; camera: THREE.PerspectiveCamera; ctx: Ctx;
-  system: GeneratedDogSystem | DogSystem; dog: Dog; nodes: THREE.Object3D[];
+  system: GeneratedDogSystem; dog: Dog; nodes: THREE.Object3D[];
   sun: THREE.DirectionalLight; fill: THREE.DirectionalLight; hemi: THREE.HemisphereLight;
   floor: THREE.Mesh; grid: THREE.GridHelper;
 }
@@ -111,7 +110,7 @@ function makePanel(kind: Breed, style: Style, elementId: string): Panel {
   const gridMaterial = grid.material as THREE.Material; gridMaterial.transparent = true; gridMaterial.opacity = .30; scene.add(grid);
   const before = new Set(scene.children);
   const coat = kind === 'gsp' ? gspCoat : setterCoat;
-  const system = style === 'smooth' ? new GeneratedDogSystem(coat) : new DogSystem(kind, coat);
+  const system = new GeneratedDogSystem(coat, 0, style);
   system.init(ctx);
   const nodes = scene.children.filter(node => !before.has(node));
   return { breed: kind, style, element: document.querySelector(`#${elementId}`)!, scene, camera: panelCamera,
@@ -269,18 +268,11 @@ const review = {
   setPose(value: Pose) { if (!poses.includes(value)) throw new Error(`Unknown comparison pose: ${value}`); selectPose(value); },
   advance(seconds: number) { playing = false; for (let i = 0; i < Math.round(seconds / stepSeconds); i++) advance(stepSeconds); updateControls(); },
   state() {
-    const generatedAudit = (p: Panel) => p.style === 'smooth' ? (p.system as GeneratedDogSystem).snapshot() : null;
     return { pose, quality, light, playing, time, travel, speed, paceTime,
       renderers: panels.map(p => ({ breed: p.breed, style: p.style, source: p.system.constructor.name,
         scale: p.nodes.find(n => n.name === `${p.breed}-root`)?.scale.toArray() ?? [1, 1, 1],
         state: p.dog.state, gait: p.dog.gait, camera: p.camera.position.toArray(), fov: p.camera.fov,
-        paws: p.style === 'smooth' ? generatedAudit(p)?.feet.map(foot => ({ i: foot.i, gap: foot.groundGap, supporting: isTravel(pose) ? null : pose !== 'point' || foot.i !== 0 }))
-          : ['fore-paw-l', 'fore-paw-r', 'hind-paw-l', 'hind-paw-r'].map((id, foot) => {
-            const sole = p.nodes.map(node => node.getObjectByName(`${id}__sole`)).find(Boolean);
-            if (!sole) throw new Error(`Missing runtime sole marker: ${id}`);
-            const world = sole.getWorldPosition(new THREE.Vector3());
-            return { i: foot, gap: world.y, supporting: isTravel(pose) ? null : pose !== 'point' || foot !== 0 };
-          }),
+        paws: p.system.snapshot()?.feet.map(foot => ({ i: foot.i, gap: foot.groundGap, supporting: isTravel(pose) ? null : pose !== 'point' || foot.i !== 0 })),
         meshes: p.nodes.reduce((count, node) => { node.traverse(n => { if ((n as THREE.Mesh).isMesh) count++; }); return count; }, 0) })) };
   },
 };

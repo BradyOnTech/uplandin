@@ -5,7 +5,7 @@ import { getBreed } from '../src/game/breeds';
 import { LandscapeModel } from '../src/game/landscape';
 import { Dog } from '../src/game/dog';
 import { mulberry32 } from '../src/game/math';
-import { DogSystem } from '../src/three/subsystems/dog';
+import { GeneratedDogSystem } from '../src/three/subsystems/generatedDog';
 import { createGeneratedGsp } from '../src/three/dogs/generatedGsp';
 import { createSportingShotgun } from '../src/three/assets/shotgun';
 import type { Ctx } from '../src/three/engine';
@@ -64,9 +64,10 @@ document.querySelectorAll<HTMLButtonElement>('[data-dog]').forEach(button => but
     const hunt = { areaConfig: () => getArea('quail-fields'), dog: () => dog, dogRenderWorld: (_: number, out: any) => Object.assign(out, {x:0,z:0}), dogWorld: (out:any) => Object.assign(out,{x:0,z:0}), dogRenderHeading: () => Math.PI/2, dogRenderTravelHeading: () => Math.PI/2, huntState: () => ({birds:[{id:1,speciesId:'bobwhite',pos:{x:0,y:3}}]}), simToWorld: (x:number,z:number,out:any) => Object.assign(out,{x,z}), coverPatches:()=>[] };
     const terrain = { heightAt: () => 0 }, birds = { markingTarget:()=>false,groundedTarget:()=>false };
     const ctx = { scene, camera, renderer, quality:'high',timeOfDay:'noon',time:0,fixedAlpha:1,paused:false,rng:mulberry32(31),events:new EventTarget(),get:(id:string)=> id==='hunt3d'?hunt:id==='terrain'?terrain:birds } as unknown as Ctx;
-    const system = new DogSystem('english-setter','orange-belton'); system.init(ctx);
+    // The field setter: faceted look on the skinned rig.
+    const system = new GeneratedDogSystem('orange-belton', 0, 'faceted'); system.init(ctx);
     for (let i=0;i<60;i++) { ctx.time += 1/60; system.update(ctx,1/60); }
-    dispose = () => system.dispose(ctx);
+    dispose = () => system.dispose();
   }
   camera!.fov = 36; camera!.updateProjectionMatrix(); camera!.position.set(1.7, 1.05, 1.4); camera!.lookAt(0, .52, 0); show();
 });

@@ -12,8 +12,11 @@ const site: HuntArrivalSite = {
   releaseHeading: Math.PI / 2, fieldHeading: .7,
 };
 
-describe('generated GSP arrival bridge', () => {
-  it.each(['high', 'lite'] as const)('holds feet on the supplied box, folds in flight, and returns to hunt authority (%s)', quality => {
+describe('generated dog arrival bridge', () => {
+  it.each([
+    ['high', 'liver-white', 'smooth'], ['lite', 'liver-white', 'smooth'],
+    ['high', 'orange-belton', 'faceted'], ['lite', 'orange-belton', 'faceted'],
+  ] as const)('holds feet on the supplied box, folds in flight, and returns to hunt authority (%s %s %s)', (quality, coat, look) => {
     const scope: { __generatedDogAudit?: () => { speed: number; root: number[]; feet: { groundGap: number }[] } } = {};
     vi.stubGlobal('window', scope);
     const dog = Object.freeze({ state: 'heel', gait: 'still', scentStage: 'none', scentProgress: 0, carryingBirdId: null });
@@ -22,8 +25,8 @@ describe('generated GSP arrival bridge', () => {
       dogRenderHeading: vi.fn(() => site.fieldHeading), dogRenderTravelHeading: vi.fn(() => site.fieldHeading) };
     const ctx = { scene: new THREE.Scene(), quality, fixedAlpha: 1,
       get: (id: string) => id === 'hunt3d' ? hunt : { heightAt: () => .25 } } as unknown as Ctx;
-    const system = new GeneratedDogSystem(); system.init(ctx);
-    const root = ctx.scene.getObjectByName('generated-gsp')!, vector = new THREE.Vector3();
+    const system = new GeneratedDogSystem(coat, 0, look); system.init(ctx);
+    const root = ctx.scene.getObjectByName(look === 'faceted' ? 'generated-english-setter' : 'generated-gsp')!, vector = new THREE.Vector3();
     const feet = ['front-left-paw', 'front-right-paw', 'hind-left-paw', 'hind-right-paw'].map(name => root.getObjectByName(name)!);
     const bones: THREE.Bone[] = []; root.traverse(object => { if (object instanceof THREE.Bone) bones.push(object); });
     try {

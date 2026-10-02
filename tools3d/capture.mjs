@@ -98,19 +98,6 @@ const SHOTS = {
   'debug-dog-close': { tod: 'dawn', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 3.5, spin: -0.62, pitch: -16, hideGun: true },
   'debug-dog-side': { tod: 'noon', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 4, spin: -1.45, pitch: -14, hideGun: true },
   'debug-dog-work-close': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 6, spin: 0.8, pitch: -8, hideGun: true },
-  // One broadside run cycle, phase-locked through the capture audit. These
-  // four frames are the locomotion acceptance sheet: rear contact, extended
-  // suspension, fore contact, and gathered suspension.
-  'review-gallop-rear-contact': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['gallop', 0.125] },
-  'review-gallop-extended': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['gallop', 0.48] },
-  'review-gallop-fore-contact': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['gallop', 0.55] },
-  'review-gallop-gathered': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['gallop', 0.93] },
-  // Three-beat working canter: trailing hind, diagonal pair, lead fore,
-  // then suspension. This is the Setter's ordinary cover-search pace.
-  'review-canter-trailing-hind': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['canter', 0.05] },
-  'review-canter-diagonal': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['canter', 0.31] },
-  'review-canter-lead-fore': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['canter', 0.58] },
-  'review-canter-suspension': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['canter', 0.9] },
   // Shared search-to-point acceptance sequence. These freeze the real 2D
   // Dog simulation at the middle of each scent beat; the 3D subsystem only
   // presents that authoritative state.
@@ -118,10 +105,6 @@ const SHOTS = {
   'review-scent-locating': { tod: 'noon', sim: 'scent-locating', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.2, spin: 1.55, pitch: -27, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true },
   'review-scent-stalking': { tod: 'noon', sim: 'scent-stalking', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.2, spin: 1.55, pitch: -27, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true },
   'review-scent-locking': { tod: 'noon', sim: 'scent-locking', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.2, spin: 1.55, pitch: -27, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true },
-  // Opposite diagonal supports at the trot. These guard against the old
-  // four-leg pendulum read even when no reference video is available.
-  'review-trot-diagonal-a': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['trot', 0.1] },
-  'review-trot-diagonal-b': { tod: 'noon', sim: 'work', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.75, spin: 1.55, pitch: -31, fov: 36, hideGun: true, isolateDog: true, broadsideDog: true, gaitPhase: ['trot', 0.6] },
   // Mid-stride on open ground — proportion/gait inspection in the clear.
   'debug-dog-open': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 4.5, spin: 1.5, pitch: -14, hideGun: true },
   // Same open-ground pose at DAWN: the low-sun contact-shadow stretch
@@ -144,19 +127,18 @@ const SHOTS = {
   'review-dog-front': { tod: 'morning', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.1, camAz: 316, pitch: -24, fov: 32, hideGun: true, isolateDog: true },
   'review-dog-rear': { tod: 'morning', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.1, camAz: 136, pitch: -32, fov: 32, hideGun: true, isolateDog: true },
   'review-dog-three-quarter': { tod: 'morning', sim: 'point', maxTicks: 30000, base: [0, 40, 180, 4], dist: 2.1, camAz: 271, pitch: -30, fov: 32, hideGun: true, isolateDog: true },
-  // Neutral/level-tail review set for comparison with the standing-profile
-  // reference. All four shots freeze the same deterministic open-ground
-  // trot frame; only the orbit spin changes.
-  'review-dog-neutral-side': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.05, spin: 1.55, pitch: -48, fov: 40, hideGun: true, isolateDog: true, neutralDog: true },
+  // Open-ground review set: all four shots freeze the same deterministic
+  // open-ground frame; only the orbit spin changes.
+  'review-dog-neutral-side': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.05, spin: 1.55, pitch: -48, fov: 40, hideGun: true, isolateDog: true },
   'review-dog-neutral-front': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.45, spin: 2.7, pitch: -30, fov: 32, hideGun: true, isolateDog: true },
   'review-dog-neutral-rear': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.45, spin: 0.2, pitch: -30, fov: 32, hideGun: true, isolateDog: true },
   'review-dog-neutral-three-quarter': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 1.45, spin: 0.9, pitch: -30, fov: 32, hideGun: true, isolateDog: true },
-  // Lower-lens neutral conformation sheet for short-coated breeds. The
-  // Setter macro is intentionally steep; this one keeps the GSP wedge,
-  // tuck, docked tail, and ground clearance legible in true profile.
-  'review-gsp-neutral-side': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.0, spin: 1.55, pitch: -25, fov: 34, hideGun: true, isolateDog: true, neutralDog: true },
-  'review-gsp-neutral-front': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.0, spin: 2.7, pitch: -25, fov: 34, hideGun: true, isolateDog: true, neutralDog: true },
-  'review-gsp-neutral-three-quarter': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.0, spin: 0.9, pitch: -25, fov: 34, hideGun: true, isolateDog: true, neutralDog: true },
+  // Lower-lens conformation sheet for short-coated breeds. The Setter
+  // macro is intentionally steep; this one keeps the GSP wedge, tuck,
+  // docked tail, and ground clearance legible in true profile.
+  'review-gsp-neutral-side': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.0, spin: 1.55, pitch: -25, fov: 34, hideGun: true, isolateDog: true },
+  'review-gsp-neutral-front': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.0, spin: 2.7, pitch: -25, fov: 34, hideGun: true, isolateDog: true },
+  'review-gsp-neutral-three-quarter': { tod: 'noon', sim: 'open', maxTicks: 12000, base: [0, 40, 180, 4], dist: 2.0, spin: 0.9, pitch: -25, fov: 34, hideGun: true, isolateDog: true },
   // Feet-planting witness: mid-stride on visibly SLOPED ground (grade read
   // off window.__dogAudit.slopeAt), framed low and side-on so daylight
   // under a paw — or a buried shin — is unmissable.
@@ -723,24 +705,6 @@ async function main() {
           window.__dogAudit?.setIsolated(true);
           window.__api3d.renderOnce();
         });
-      }
-      if (spec.neutralDog) {
-        await page.evaluate(() => {
-          window.__dogAudit?.setReviewNeutral(true);
-          window.__api3d.renderOnce();
-        });
-      }
-      if (spec.gallopPhase !== undefined) {
-        await page.evaluate((cycle) => {
-          window.__dogAudit?.setGallopPhase(cycle);
-          window.__api3d.renderOnce();
-        }, spec.gallopPhase);
-      }
-      if (spec.gaitPhase !== undefined) {
-        await page.evaluate(([gait, cycle]) => {
-          window.__dogAudit?.setLocomotionPhase(gait, cycle);
-          window.__api3d.renderOnce();
-        }, spec.gaitPhase);
       }
       await new Promise((r) => setTimeout(r, 400)); // settle a few frames
       const file = `${outDir}/${name}.png`;

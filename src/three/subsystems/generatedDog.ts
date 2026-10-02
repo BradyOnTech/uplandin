@@ -9,9 +9,10 @@ import { dogTorsoHeading } from '../dogs/riggedMotion';
 import { GeneratedAttention } from '../dogs/generatedAttention';
 import type { BirdsSystem } from './birds';
 import type { GeneratedFieldIntent } from '../dogs/generatedScentMotion';
-import { generatedBreedForCoat, type GeneratedCoatId } from '../dogs/generatedGsp';
+import { generatedBreedForCoat, type GeneratedCoatId, type GeneratedLook } from '../dogs/generatedGsp';
 import { dogRendererId } from '../dogs/rendererId';
 import type { HuntArrivalFrame } from '../huntArrival';
+import { installDogReview } from '../dogs/dogReview';
 
 type AuditScope = { __generatedDogAudit?: unknown; __generatedDogAudits?: Record<string, unknown> };
 
@@ -19,7 +20,7 @@ type AuditScope = { __generatedDogAudit?: unknown; __generatedDogAudits?: Record
  * authority over breed behavior, movement and bird ownership. */
 export class GeneratedDogSystem implements Subsystem {
   readonly id:string;
-  constructor(private readonly coatId:GeneratedCoatId='liver-white',private readonly slot=0){this.id=dogRendererId(slot);}
+  constructor(private readonly coatId:GeneratedCoatId='liver-white',private readonly slot=0,private readonly look:GeneratedLook='smooth'){this.id=dogRendererId(slot);}
   private motion?:GeneratedFieldMotion;
   private hunt!:Hunt3DSystem;
   private position={x:0,z:0};
@@ -46,7 +47,12 @@ export class GeneratedDogSystem implements Subsystem {
       }
     }
   }
-  private field:GeneratedFieldIntent={state:'quartering',scentStage:'none',scentProgress:0,waitingForHandler:false,intentYaw:0};
+  private field:GeneratedFieldIntent={state:'quartering',scentStage:'none',scentProgress:0,waitingForHandler:false,intentYaw:0,inCover:false};
+  /** Under ?capture the hunt only moves by explicit ticks; poses follow that clock. */
+  private capture=typeof location!=='undefined'&&new URLSearchParams(location.search).has('capture');
+  private captureTicks=-1;
+  /** Cover parted around the dog: wider once it stands on point. */
+  private parting=.9;
   private audit=()=>{
     if(!this.motion)return null;
     const mouth=new THREE.Vector3();this.mouthWorld(mouth);
@@ -59,14 +65,31 @@ export class GeneratedDogSystem implements Subsystem {
   init(ctx:Ctx){
     this.hunt=ctx.get<Hunt3DSystem>('hunt3d');const terrain=ctx.get<TerrainSystem>('terrain');
     const water=new ShallowWater(new LandscapeModel(this.hunt.areaConfig(),this.hunt.dropPoint().id));
-    this.motion=new GeneratedFieldMotion(ctx.quality,(x,z)=>terrain.heightAt(x,z),(x,z)=>water.depthAtWorld(x,z),this.coatId);ctx.scene.add(this.motion.asset.root);
+    this.motion=new GeneratedFieldMotion(ctx.quality,(x,z)=>terrain.heightAt(x,z),(x,z)=>water.depthAtWorld(x,z),this.coatId,this.look);ctx.scene.add(this.motion.asset.root);
     const scope=window as unknown as AuditScope;
     (scope.__generatedDogAudits??={})[this.id]=this.audit;
     if(this.slot===0)scope.__generatedDogAudit=this.audit;
+    if(this.capture&&this.slot===0){
+      const motion=this.motion;
+      this.uninstallReview=installDogReview(ctx,{root:motion.asset.root,heightAt:(x,z)=>terrain.heightAt(x,z),state:()=>{
+        const dog=this.hunt.dog(this.slot);
+        return {state:dog.state,gait:dog.gait,breed:generatedBreedForCoat(this.coatId),scent:{stage:dog.scentStage,progress:dog.scentProgress},
+          paws:motion.contactSnapshot().map(foot=>({i:foot.i,x:foot.actual[0],y:foot.actual[1],z:foot.actual[2],gap:foot.groundGap}))};
+      }});
+    }
   }
-  update(ctx:Ctx,dt:number){
+  private uninstallReview?:()=>void;
+  update(ctx:Ctx,frameDt:number){
     if(!this.motion)return;
     if(this.arrival){this.updateArrival();return;}
+    // A frozen capture renders with dt 0; advance the pose by the hunt
+    // ticks stepped since the last render instead, so it settles honestly.
+    let dt=frameDt;
+    if(this.capture&&frameDt===0&&this.hunt.tickCount){
+      const ticks=this.hunt.tickCount();
+      dt=this.captureTicks<0?0:Math.min(2,(ticks-this.captureTicks)/30);
+      this.captureTicks=ticks;
+    }
     const dog=this.hunt.dog(this.slot);this.hunt.dogRenderWorld(ctx.fixedAlpha,this.position,this.slot);
     const distance=this.placed?Math.hypot(this.position.x-this.previous.x,this.position.z-this.previous.z):0;
     // The hunt snaps its first live placement away from the authored map
@@ -77,10 +100,12 @@ export class GeneratedDogSystem implements Subsystem {
     this.heading=dogTorsoHeading(dog,this.speed,this.hunt.dogRenderTravelHeading(ctx.fixedAlpha,this.slot),intentHeading,this.heading,dt,!this.placed||distance>3);
     this.field.state=dog.state;this.field.scentStage=dog.scentStage;this.field.scentProgress=dog.scentProgress??0;
     this.field.waitingForHandler=dog.waitingForHandler??false;
+    this.field.inCover=dog.state==='quartering'&&this.inCoverPatch();
     // Model yaw is pi/2 minus the simulation heading, so intent relative to
     // the torso has the opposite sign. Wrap before clamping in the pose layer.
     this.field.intentYaw=Math.atan2(Math.sin(this.heading-intentHeading),Math.cos(this.heading-intentHeading));
     const point=dog.state==='pointing'||dog.state==='honoring';
+    this.parting+=((point?2:.9)-this.parting)*(1-Math.exp(-Math.max(0,dt)*(point?3:6)));
     const retrieveId=dog.carryingBirdId??dog.reservedRetrieveId?.();
     const retrieve: GeneratedRetrievePose | undefined = dog.state === 'retrieving'
       ? { stage: dog.carryingBirdId !== null ? dog.gait === 'still' && dog.retrieveHoldTimeMs() > 0 ? 'deliver' : 'carry' : 'pickup',
@@ -142,9 +167,15 @@ export class GeneratedDogSystem implements Subsystem {
     });
     this.auditFrame++;
   }
-  partingPoint(out:{x:number;z:number;r:number}){out.x=this.position.x;out.z=this.position.z;out.r=.44;}
+  partingPoint(out:{x:number;z:number;r:number}){out.x=this.position.x;out.z=this.position.z;out.r=this.parting;}
+  private inCoverPatch():boolean{
+    const patches=this.hunt.coverPatches?.()??[];
+    for(const p of patches)if(Math.abs(this.position.x-p.cx)<p.hx&&Math.abs(this.position.z-p.cz)<p.hz)return true;
+    return false;
+  }
   mouthWorld(out:THREE.Vector3){if(!this.motion)return false;out.copy(this.motion.mouthMotion.grip);this.motion.asset.joints.head.localToWorld(out);return true;}
   dispose(){
+    this.uninstallReview?.();this.uninstallReview=undefined;
     const scope=window as unknown as AuditScope;
     if(scope.__generatedDogAudit===this.audit)delete scope.__generatedDogAudit;
     if(scope.__generatedDogAudits?.[this.id]===this.audit)delete scope.__generatedDogAudits[this.id];

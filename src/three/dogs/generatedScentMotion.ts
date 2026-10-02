@@ -10,6 +10,8 @@ export interface GeneratedFieldIntent {
   waitingForHandler: boolean;
   /** Signed difference between intent and torso bearing, in the model's +Z frame. */
   intentYaw: number;
+  /** Working inside a cover patch, where the handler tracks the dog by its tail. */
+  inCover?: boolean;
 }
 
 export type GeneratedFieldPerformance = 'neutral' | 'search' | 'checking' | 'locating' | 'stalking' | 'locking' | 'point' | 'waiting';
@@ -60,8 +62,20 @@ export class GeneratedScentMotion {
         neckPitch = -.10; headPitch = .035;
         yaw = bearing * .7 + (moving ? Math.sin(this.elapsed * 1.65) * .10 : 0);
         // A merry, busy tail while hunting: the first thing that changes on game.
-        tailPitch = .08;
-        tailYaw = moving ? Math.sin(this.elapsed * 6.2) * .24 : 0;
+        // Inside cover it rides high and cracks: the flag over the bluestem
+        // is how the handler follows his dog.
+        tailPitch = intent?.inCover ? .2 : .08;
+        tailYaw = moving ? Math.sin(this.elapsed * 6.2) * .24 + (intent?.inCover ? Math.sin(this.elapsed * 8) * .08 : 0) : 0;
+        break;
+      case 'neutral':
+        // Standing at heel or idle: soft breathing, an easy tail and a slow
+        // look round, so a waiting dog never reads as a statue.
+        if (!moving) {
+          height = Math.sin(this.elapsed * 2.2) * .004;
+          yaw = Math.sin(this.elapsed * .4) * .2;
+          tailPitch = -.12 + Math.sin(this.elapsed * 1.4) * .04;
+          tailYaw = Math.sin(this.elapsed * 1.1) * .1;
+        }
         break;
       case 'checking':
         // First scent: lift into the air and interrupt the searching tail.
