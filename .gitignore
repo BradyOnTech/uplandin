@@ -7,3 +7,35 @@ dist-2d/
 .git.icloud-backup/
 __pycache__/
 *.blend1
+
+# Run output from the review, capture and validation tools: regenerable, never committed.
+output/
+artifacts/
+.playwright-mcp/
+_to_delete/
+
+# Local to this machine.
+.claude/settings.local.json
+Claude outputs/
+
+# Screenshot evidence kept beside the docs on this machine: too large for git.
+docs/3d/anatomy-gameplay-evidence/
+docs/3d/art-direction-refresh/
+docs/3d/audio-gameplay-evidence/
+docs/3d/bobwhite-review/
+docs/3d/dog-contact-evidence/
+docs/3d/gait-evidence/
+docs/3d/gsp-anatomy-review/
+docs/3d/gsp-renders/
+docs/3d/gsp-renders-before-anatomy-revision/
+docs/3d/offline-preservation-evidence/
+docs/3d/presentation-validation/
+docs/3d/property-traversal-evidence/
+docs/3d/quail-access-evidence/
+docs/3d/quail-access-review/
+docs/3d/quail-environment-review/
+docs/3d/quail-survey-map-evidence/
+docs/3d/quail-vegetation-evidence/
+docs/3d/quail-world-renders/
+docs/3d/shotgun-review/
+docs/3d/world-ground-review/
