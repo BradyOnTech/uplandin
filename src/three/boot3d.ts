@@ -167,8 +167,8 @@ if (launchProfile.brace) {
     section.hidden = false;
   }
 }
-// `?birds=life` (true size up close) or `?birds=true` (true size everywhere):
-// flying-bird sizes under evaluation, October 2026. See birdScale.ts.
+// Flying birds draw at true size up close and ease to the readable enlargement
+// by shotgun range (birdScale.ts). `?birds=readable` or `?birds=true` compare.
 engine.register(new BirdsSystem({ size: resolveBirdSize(params.get('birds')) }));
 engine.register(new FalconrySystem());
 engine.register(new GunSystem());

@@ -404,8 +404,9 @@ const BODY_SECTS: SectZ[] = [
 ];
 
 export interface BirdsOptions {
-  /** How flying birds are sized (see birdScale.ts). Quail Fields keeps its
-   * own world scale in every mode. */
+  /** How flying birds are sized (see birdScale.ts); `readable` when left
+   * out. The field passes the link's mode, `life` by default. Quail Fields
+   * keeps its own world scale in every mode. */
   size?: BirdSizeMode;
 }
 

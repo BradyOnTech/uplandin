@@ -42,10 +42,10 @@ function rooster(options?: BirdsOptions, airMs = 120, ahead = 20) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('flying bird size modes', () => {
-  it('reads the field link and keeps today\'s sizes by default', () => {
-    expect(resolveBirdSize('life')).toBe('life');
+  it('flies life-size birds unless the field link asks for another size', () => {
+    expect(resolveBirdSize('readable')).toBe('readable');
     expect(resolveBirdSize('true')).toBe('true');
-    for (const value of [null, '', 'Life', 'today', 'readable']) expect(resolveBirdSize(value)).toBe('readable');
+    for (const value of [null, '', 'life', 'Life', 'today', 'Readable']) expect(resolveBirdSize(value)).toBe('life');
   });
 
   it.each([['pheasant', 1.25], ['chukar', 1.175], ['partridge', 1.35], ['grouse', 1.45]])(

@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 
 /**
- * How flying birds are sized, chosen by `?birds=` in a field link (under
- * evaluation, October 2026). Hits are scored against the bird's centre and
- * the shot pattern either way; only the drawn size changes.
+ * How flying birds are sized. `life` is the field's default (Brady's pick,
+ * October 2026); a field link can ask for the others with `?birds=` to
+ * compare. Hits are scored against the bird's centre and the shot pattern
+ * either way; only the drawn size changes.
  *
- * - `readable`: today's enlargement at every range (`RISE_SCALE`).
+ * - `readable`: the old enlargement at every range (`RISE_SCALE`).
  * - `true`: the bird's real size at every range. Honest, but a 70° view on a
  *   screen shows the world at roughly a third of the size the eye would, so
  *   a true-size rooster at 30 m is a speck of a few pixels.
@@ -14,9 +15,9 @@ import * as THREE from 'three';
  */
 export type BirdSizeMode = 'readable' | 'true' | 'life';
 
-/** A field link's `birds` value; anything unknown keeps today's sizes. */
+/** A field link's `birds` value; anything else is `life`. */
 export function resolveBirdSize(value: string | null | undefined): BirdSizeMode {
-  return value === 'life' || value === 'true' ? value : 'readable';
+  return value === 'readable' || value === 'true' ? value : 'life';
 }
 
 /** Metres from the camera over which `life` eases from true to readable size. */
