@@ -13,6 +13,7 @@ const sound = (value: string | null) => vi.stubGlobal('localStorage', { getItem:
 it('starts the theme on the first touch or key, once, and lets it fade when the hunter walks out', async () => {
   sound(null);
   const page = new EventTarget(), music = menuMusicOnFirstGesture(page);
+  await settle();
   expect(prepareMusic).toHaveBeenCalledOnce();
   expect(startMenuTheme).not.toHaveBeenCalled();
   page.dispatchEvent(new Event('pointerdown')); await settle();
@@ -40,9 +41,9 @@ it('keeps quiet with sound off, without a running context, or once the hunter ha
   expect(startMenuTheme).not.toHaveBeenCalled();
 });
 
-it("plays the hunt's last bars, unless sound is off", () => {
-  sound(null); huntSting('full');
+it("plays the hunt's last bars, unless sound is off", async () => {
+  sound(null); huntSting('full'); await settle();
   expect(playReportSting).toHaveBeenCalledWith('full');
-  sound('off'); huntSting('quiet');
+  sound('off'); huntSting('quiet'); await settle();
   expect(playReportSting).toHaveBeenCalledOnce();
 });

@@ -1,4 +1,4 @@
-import { audioReady, playReportSting, prepareMusic, startMenuTheme, unlockAudio, type MusicPlayer } from '../audio';
+import type { MusicPlayer } from '../audio';
 import type { StingKind } from './sound/score';
 
 /** The menus' music, and the few bars at the end of a hunt (sound/score.ts). */
@@ -6,6 +6,12 @@ const SOUND_KEY = 'uplandin.3d.sound';
 function soundOn(): boolean {
   try { return localStorage.getItem(SOUND_KEY) !== 'off'; } catch { return true; }
 }
+
+// The sound code loads after the page, so a menu draws without waiting on it;
+// by the first touch it is normally here, and the touch can start the sound.
+type Audio = typeof import('../audio');
+let loading: Promise<Audio> | null = null, loaded: Audio | null = null;
+const audio = () => loading ??= import('../audio').then(module => (loaded = module));
 
 export interface MenuMusic { stop(fadeSeconds?: number): void }
 
@@ -21,11 +27,12 @@ export function menuMusicOnFirstGesture(target: EventTarget = window): MenuMusic
   const begin = async () => {
     listening.abort();
     if (stopped || !soundOn()) return;
-    unlockAudio();
-    if (!(await audioReady()) || stopped) return;
-    player = startMenuTheme();
+    const sound = loaded ?? await audio();
+    sound.unlockAudio();
+    if (!(await sound.audioReady()) || stopped) return;
+    player = sound.startMenuTheme();
   };
-  prepareMusic();
+  void audio().then(sound => sound.prepareMusic());
   for (const type of ['pointerdown', 'keydown', 'touchstart']) target.addEventListener(type, () => { void begin(); }, { signal: listening.signal });
   return {
     stop(fadeSeconds = 1.5) {
@@ -37,5 +44,5 @@ export function menuMusicOnFirstGesture(target: EventTarget = window): MenuMusic
 
 /** The hunt is over: a few warm bars for a day with birds in the bag, gentler ones for a quiet day. */
 export function huntSting(kind: StingKind): void {
-  if (soundOn()) playReportSting(kind);
+  if (soundOn()) void audio().then(sound => sound.playReportSting(kind));
 }
