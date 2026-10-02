@@ -3,12 +3,13 @@ import {
   advanceCareerWeeks,
   awardDogXp,
   awardHunterXp,
+  recordDogHunt,
   recordHunt,
   type Career,
   type KennelDog,
 } from './career';
 import { unlocksAtLevel } from './progression';
-import { dogReport } from './dogReport';
+import { dogPoints, dogReport } from './dogReport';
 import { regionOfArea } from './regions';
 import { HOME_HUNT_WEEKS, seasonOver, TRIP_HUNT_WEEKS } from './season';
 import type { HuntState } from './state';
@@ -29,6 +30,8 @@ export interface DogHuntAward {
   gained: number;
   newLevel: number;
   levelsGained: number;
+  /** The dog's first point came on this hunt. */
+  firstPoint?: boolean;
 }
 
 export interface CareerHuntResult {
@@ -71,7 +74,10 @@ export function settleCareerHunt(
       (2 * work.pointFlushes + work.retrieves + 3 * work.downedOverPoint + (work.deadFinds ?? 0) + (work.relocations ?? 0))
         * getBreed(dog.breedId).xpRate,
     );
-    const award = awardDogXp(next, dog.id, gained);
+    // The record reads the dog as it came to this hunt, before its award.
+    const record = recordDogHunt(next, dog.id, { points: dogPoints(work), retrieves: work.retrieves },
+      { huntNumber: next.hunts, areaId: hunt.areaId, season: career.date.season });
+    const award = awardDogXp(record.career, dog.id, gained);
     next = award.career;
     dogAwards.push({
       dogId: dog.id,
@@ -79,6 +85,7 @@ export function settleCareerHunt(
       gained,
       newLevel: award.newLevel,
       levelsGained: award.levelsGained,
+      ...(record.firstPoint ? { firstPoint: true } : {}),
     });
   });
 
@@ -104,7 +111,8 @@ export function settleCareerHunt(
     henDowns: hunt.henDowns,
     hunterXp: hunterGained,
     dogs: dogs.flatMap((dog, slot) => dog ? [{ name: dog.name, breedId: dog.breedId,
-      ...(hunt.dogWork[slot] ? { note: dogReport(dog.name, hunt.dogWork[slot]).notes[0] } : {}) }] : []),
+      ...(hunt.dogWork[slot] ? { note: dogReport(dog.name, hunt.dogWork[slot]).notes[0] } : {}),
+      ...(dogAwards.find((award) => award.dogId === dog.id)?.firstPoint ? { milestone: 'first-point' as const } : {}) }] : []),
     ...((hunt.lostBirds ?? 0) > 0 ? { lost: hunt.lostBirds } : {}),
     ...((hunt.safety?.lowShots ?? 0) + (hunt.safety?.dogInLine ?? 0) > 0 ? { unsafe: hunt.safety!.lowShots + hunt.safety!.dogInLine } : {}),
     ...((hunt.overLimit ?? 0) > 0 ? { overLimit: hunt.overLimit } : {}),

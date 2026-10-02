@@ -41,8 +41,10 @@ describe('career hunt journal settlement', () => {
     expect(result.career.recentHunts).toEqual([{
       huntNumber: 1, areaId: 'quail-fields', date: { season: 2, week: 21 },
       retrieved: 1, downed: 2, escaped: 1, pointFlushes: 3, doubles: 1, henDowns: 0, hunterXp: 5,
-      // Each dog carries the first line of its after-hunt report.
-      dogs: [{ name: 'Millie', breedId: 'gsp', note: 'Handled its points cleanly.' }, { name: 'Boone', breedId: 'english-setter', note: 'A steady day\u2019s work.' }],
+      // Each dog carries the first line of its after-hunt report, and two
+      // new dogs that both point have their first points on the same day.
+      dogs: [{ name: 'Millie', breedId: 'gsp', note: 'Handled its points cleanly.', milestone: 'first-point' },
+        { name: 'Boone', breedId: 'english-setter', note: 'A steady day\u2019s work.', milestone: 'first-point' }],
     }]);
     expect(result.career.date).toEqual({ season: 2, week: 22 });
     expect(result.seasonEnded).toBe(true);

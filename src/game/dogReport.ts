@@ -14,9 +14,13 @@ export interface DogReport {
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const times = (n: number) => n === 1 ? 'once' : n === 2 ? 'twice' : `${n} times`;
 
+/** Points made this hunt. Older tallies only counted points that produced a flush. */
+export function dogPoints(work: DogWork): number {
+  return Math.max(work.pointFlushes, (work.points ?? 0) + (work.relocations ?? 0));
+}
+
 export function dogReport(name: string, work: DogWork): DogReport {
-  // Older tallies only counted points that produced a flush.
-  const points = Math.max(work.pointFlushes, (work.points ?? 0) + (work.relocations ?? 0));
+  const points = dogPoints(work);
   const stats = [
     { label: 'Points', value: points },
     { label: 'Held to the flush', value: work.pointFlushes },

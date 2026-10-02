@@ -194,6 +194,7 @@ body:has(#field-overlay:not([hidden])) :is(#hunt-hud,#controls,#pause-hunt,#fiel
 .field-career-dogs dt { color:#687353; }
 .field-career-dogs dd { color:#616c50; }
 .field-career-dogs .field-career-advanced { color:#806237; }
+.field-career-dogs .field-career-milestone { color:#806237; }
 .field-career-dogs .field-career-dog-next { color:#616c50; }
 .field-notes-career h4 { color:#806237; }
 .field-career-unlocks { color:#616c50; }

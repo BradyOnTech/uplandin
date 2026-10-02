@@ -17,7 +17,7 @@ export interface CareerJournalEntry {
   henDowns: number;
   hunterXp: number;
   /** Names/breeds at the time; later kennel changes do not rewrite history. */
-  dogs: { name: string; breedId: string; note?: string }[];
+  dogs: { name: string; breedId: string; note?: string; milestone?: DogMilestone }[];
   /** Downed birds never recovered, and unsafe shots. Absent on older entries. */
   lost?: number;
   unsafe?: number;
@@ -26,6 +26,10 @@ export interface CareerJournalEntry {
   /** Limits filled that day, by label ("roosters"). */
   limits?: string[];
 }
+
+/** A moment in a dog's life worth its own line in the journal. */
+export type DogMilestone = 'first-point';
+const MILESTONES: Readonly<Record<DogMilestone, string>> = { 'first-point': 'first point' };
 
 export const HUNT_JOURNAL_LIMIT = 30;
 const COUNTS = ['retrieved', 'downed', 'escaped', 'pointFlushes', 'doubles', 'henDowns', 'hunterXp'] as const;
@@ -40,7 +44,8 @@ function readEntry(value: unknown): CareerJournalEntry | null {
   const dogs: CareerJournalEntry['dogs'] = [];
   for (const dog of value.dogs) {
     if (!record(dog) || !text(dog.name) || !text(dog.breedId)) return null;
-    dogs.push({ name: dog.name, breedId: dog.breedId, ...(text(dog.note) ? { note: dog.note } : {}) });
+    dogs.push({ name: dog.name, breedId: dog.breedId, ...(text(dog.note) ? { note: dog.note } : {}),
+      ...(typeof dog.milestone === 'string' && dog.milestone in MILESTONES ? { milestone: dog.milestone as DogMilestone } : {}) });
   }
   return {
     huntNumber: value.huntNumber,
@@ -91,7 +96,8 @@ export function formatHuntJournalEntry(entry: CareerJournalEntry): {
     dateLabel: dateLabel(safe.date),
     dogsLabel: safe.dogs.map((dog) => {
       const breed = BREEDS.find((candidate) => candidate.id === dog.breedId);
-      const label = breed ? `${dog.name} (${breed.name})` : dog.name;
+      const named = breed ? `${dog.name} (${breed.name})` : dog.name;
+      const label = dog.milestone ? `${named}, ${MILESTONES[dog.milestone]}` : named;
       return dog.note ? `${label}: ${dog.note}` : label;
     }).join(' · '),
     resultLabel: `${safe.retrieved} retrieved · ${safe.downed} down · ${safe.escaped} escaped`

@@ -27,7 +27,14 @@ export interface KennelDog {
   bornSeason: number;
   /** Coat id for the breed's 3D model. Absent on older saves: the breed default. */
   coatId?: string;
+  /** Where and when it first pointed a bird: the pup's first point. */
+  firstPoint?: DogFirstPoint;
+  /** Career totals since this record began (older saves start at their next hunt). */
+  lifetime?: DogLifetime;
 }
+
+export interface DogFirstPoint { huntNumber: number; areaId: string; season: number }
+export interface DogLifetime { hunts: number; points: number; retrieves: number }
 
 export interface HunterProfile {
   level: number;
@@ -146,6 +153,32 @@ export function awardDogXp(
   };
 }
 
+/** A dog that has yet to point a bird for this hunter. A dog from an older
+ * save that was already earning experience before the record began has. */
+export function awaitsFirstPoint(dog: KennelDog): boolean {
+  if (dog.firstPoint) return false;
+  return dog.lifetime ? dog.lifetime.points === 0 : dog.xp === 0;
+}
+
+/** One hunt's work into a dog's record, noting its first point. Pure. */
+export function recordDogHunt(
+  career: Career,
+  dogId: string,
+  work: { points: number; retrieves: number },
+  at: DogFirstPoint,
+): { career: Career; firstPoint: boolean } {
+  const dog = career.kennel.find((d) => d.id === dogId);
+  if (!dog) return { career, firstPoint: false };
+  const firstPoint = work.points > 0 && awaitsFirstPoint(dog);
+  const before = dog.lifetime ?? { hunts: 0, points: 0, retrieves: 0 };
+  const updated: KennelDog = {
+    ...dog,
+    lifetime: { hunts: before.hunts + 1, points: before.points + work.points, retrieves: before.retrieves + work.retrieves },
+    ...(firstPoint ? { firstPoint: { ...at } } : {}),
+  };
+  return { career: { ...career, kennel: career.kennel.map((d) => (d.id === dogId ? updated : d)) }, firstPoint };
+}
+
 export function activeDog(career: Career): KennelDog | null {
   return career.kennel.find((d) => d.id === career.activeDogId) ?? null;
 }
@@ -218,6 +251,18 @@ function defaultStorage(): StorageLike | null {
   }
 }
 
+const savedCount = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+
+/** A dog's optional records must never cost the player the dog. */
+function readKennelDog(saved: KennelDog): KennelDog {
+  const dog: KennelDog = { ...saved, bornSeason: (saved as Partial<KennelDog>).bornSeason ?? 1 };
+  const first = dog.firstPoint as Partial<DogFirstPoint> | undefined;
+  if (first !== undefined && !(first && savedCount(first.huntNumber) && typeof first.areaId === 'string' && savedCount(first.season))) delete dog.firstPoint;
+  const life = dog.lifetime as Partial<DogLifetime> | undefined;
+  if (life !== undefined && !(life && savedCount(life.hunts) && savedCount(life.points) && savedCount(life.retrieves))) delete dog.lifetime;
+  return dog;
+}
+
 /** v1 saves held only totals; wrap them in the v2 shell. */
 function migrate(parsed: Record<string, unknown>): Career {
   const base = emptyCareer();
@@ -228,7 +273,7 @@ function migrate(parsed: Record<string, unknown>): Career {
       ...v2,
       areas: v2.areas ?? {},
       // Pre-season saves: existing dogs count as born in season 1.
-      kennel: (v2.kennel ?? []).map((d) => ({ ...d, bornSeason: (d as Partial<KennelDog>).bornSeason ?? 1 })),
+      kennel: (v2.kennel ?? []).map(readKennelDog),
       hunter: { ...base.hunter, ...v2.hunter },
       regionsUnlocked: v2.regionsUnlocked ?? base.regionsUnlocked,
       date: v2.date ?? base.date,

@@ -64,6 +64,7 @@ export class HuntHudSystem implements Subsystem {
   private abort = new AbortController();
   private dogCallout: HTMLElement | null = null;
   private dogCalloutUntil = 0;
+  private milestoneHeld = 0;
 
   init(ctx: Ctx): void {
     this.frozen = new URLSearchParams(location.search).has('capture');
@@ -146,10 +147,20 @@ export class HuntHudSystem implements Subsystem {
     // What the dog did with a command, or a moment of its work, for a few seconds.
     this.dogCallout = document.getElementById('dog-callout');
     ctx.events.addEventListener('dog-feedback', ((event: CustomEvent<string>) => {
-      if (!this.dogCallout || this.frozen) return;
+      // A milestone holds the line for its first two seconds.
+      if (!this.dogCallout || this.frozen || this.fieldTime < this.milestoneHeld) return;
       this.dogCallout.textContent = event.detail;
+      this.dogCallout.classList.remove('milestone');
       this.dogCallout.hidden = false;
       this.dogCalloutUntil = this.fieldTime + 2.8;
+    }) as EventListener, options);
+    ctx.events.addEventListener('hunt-milestone', ((event: CustomEvent<string>) => {
+      if (!this.dogCallout || this.frozen) return;
+      this.dogCallout.textContent = event.detail;
+      this.dogCallout.classList.add('milestone');
+      this.dogCallout.hidden = false;
+      this.dogCalloutUntil = this.fieldTime + 4.5;
+      this.milestoneHeld = this.fieldTime + 2;
     }) as EventListener, options);
     // Graphics may have changed in Pause after this HUD was initialized.
     const preparationHref = () => build3DPreparationHref(location.search, this.hunt.areaConfig().id, this.hunt.dropPoint().id);

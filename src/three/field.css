@@ -164,6 +164,7 @@ input { accent-color:var(--gold); }
 .field-career-dogs dt { min-width:0; overflow-wrap:anywhere; color:#eee8d5; }
 .field-career-dogs dd { flex:none; margin:0; font-size:12px; }
 .field-career-dogs .field-career-advanced { color:var(--gold); }
+.field-career-dogs .field-career-milestone { grid-column:1 / -1; font:italic 400 15px/1.3 Georgia,serif; color:var(--gold); }
 .field-career-dogs .field-career-dog-next { grid-column:1 / -1; color:#aeb8a2; font-size:13px; text-wrap:pretty; font-variant-numeric:tabular-nums; }
 .field-notes-career h4 { margin:16px 0 6px; font-size:12px; letter-spacing:.10em; text-transform:uppercase; color:#aeb8a2; }
 .field-career-unlocks { margin:0; padding-left:17px; color:#f2e7c8; }
@@ -388,6 +389,8 @@ body.touch-controls-active.touch-gun-held #touch-controls [data-action="reload"]
 /* Dog feedback: what the dog did with a command, just below the reticle line. */
 #dog-callout { position:fixed; top:56%; left:50%; transform:translateX(-50%); z-index:2; max-width:min(560px,calc(100vw - 32px)); padding:8px 14px; border-radius:10px;
   background:#15241cd0; color:#f2ecd8; font-size:15px; line-height:1.35; text-align:center; pointer-events:none; box-shadow:0 4px 18px #0005; }
+/* A dog's milestone: its first point, its last season. */
+#dog-callout.milestone { padding:10px 20px; border:1px solid #e3c38a73; background:#3a2e17e8; color:#f6e6bd; font:400 21px/1.3 Georgia,serif; letter-spacing:.01em; }
 body.capture #dog-callout,body.field-paused #dog-callout { display:none; }
 /* Dog commands on touch: Whoa is always one tap; the rest sit in a small tray. */
 body.touch-controls-active:not(.falconry-hunt) #touch-controls { grid-template-columns:64px 64px 88px; }

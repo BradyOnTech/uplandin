@@ -9,7 +9,7 @@ import { getDropPoint, type AreaConfig, type DropPoint } from '../../game/areas'
 import { playWhistle } from '../../audio';
 import { circleBack } from '../../game/birds';
 import { BREEDS, getBreed, type BreedMotion } from '../../game/breeds';
-import { loadCareer, saveCareer } from '../../game/career';
+import { awaitsFirstPoint, loadCareer, saveCareer } from '../../game/career';
 import { Dog, type CommandResponse, type DogGait, type DogState, type HandlerCommand, type HandlerCommandKind } from '../../game/dog';
 import { dogCommandFeedback, dogNoteFeedback } from '../dogFeedback';
 import { conditionMults, type Condition } from '../../game/conditions';
@@ -215,6 +215,8 @@ export class Hunt3DSystem implements Subsystem {
   private dogRange: DogRange = DEFAULT_DOG_RANGE;
   private assistsAbort: AbortController | null = null;
   private pointRevisions: number[] = [];
+  /** Career dogs, by slot, that have yet to point a bird for this hunter. */
+  private firstPointPending: boolean[] = [];
   private seedValue?: number;
   private activeChallenge: HuntChallenge = 'balanced';
   falconry: GoshawkFlight | null = null;
@@ -254,6 +256,9 @@ export class Hunt3DSystem implements Subsystem {
     this.dogNames = [setup.kennelDog?.name ?? shortBreedName(setup.breed.id), ...(setup.brace ? [setup.brace.kennelDog?.name ?? shortBreedName(setup.brace.breedId)] : [])];
     this.careerDogIds = setup.launch?.kind === 'career'
       ? [setup.kennelDog?.id ?? null, setup.brace?.kennelDog?.id ?? null]
+      : [];
+    this.firstPointPending = setup.launch?.kind === 'career'
+      ? [setup.kennelDog, setup.brace?.kennelDog ?? null].map(dog => !!dog && awaitsFirstPoint(dog))
       : [];
     this.area = setup.area;
     this.hunt = setup.hunt;
@@ -578,6 +583,11 @@ export class Hunt3DSystem implements Subsystem {
     this.ctxRef?.events?.dispatchEvent(new CustomEvent('dog-feedback', { detail: text }));
   }
 
+  /** A moment in a dog's life, held a little longer than everyday feedback. */
+  private milestone(text: string): void {
+    this.ctxRef?.events?.dispatchEvent(new CustomEvent('hunt-milestone', { detail: text }));
+  }
+
   private recordEvents(events: readonly HuntSimulationEvent[]): void {
     for (const event of events) {
       if (event.type === 'command') {
@@ -591,6 +601,11 @@ export class Hunt3DSystem implements Subsystem {
       }
       if (event.type === 'dog-pointed') {
         this.pointRevisions[event.dogIndex] = (this.pointRevisions[event.dogIndex] ?? 0) + 1;
+        if (this.firstPointPending[event.dogIndex]) {
+          // A pup's first point is a day the hunter remembers.
+          this.firstPointPending[event.dogIndex] = false;
+          this.milestone(`${this.dogNames[event.dogIndex] ?? 'The pup'}'s first point`);
+        }
         continue;
       }
       if (event.type !== 'covey-flushed') continue;

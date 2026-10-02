@@ -62,6 +62,7 @@ export function careerFieldNotes(result: CareerHuntResult) {
         award: `+${award.gained} XP`,
         level: award.levelsGained > 0 ? `Level ${award.newLevel} reached` : `Level ${award.newLevel}`,
         advanced: award.levelsGained > 0,
+        milestone: award.firstPoint ? `${award.name}'s first point` : null,
         next: development ? development.progress
           ? `${development.progress.remaining} XP to level ${development.progress.nextLevel} · ${development.nextBenefit}`
           : 'Maximum experience reached' : null,
@@ -103,6 +104,10 @@ export function renderCareerFieldNotes(container: HTMLElement, result: CareerHun
       const detail = document.createElement('dd'); detail.textContent = `${dog.award} · ${dog.level}`;
       if (dog.advanced) detail.className = 'field-career-advanced';
       row.append(name, detail);
+      if (dog.milestone) {
+        const milestone = document.createElement('dd'); milestone.className = 'field-career-milestone'; milestone.textContent = dog.milestone;
+        row.append(milestone);
+      }
       if (dog.next) {
         const next = document.createElement('dd'); next.className = 'field-career-dog-next'; next.textContent = dog.next;
         row.append(next);
