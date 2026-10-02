@@ -283,7 +283,7 @@ export class QuailEnvironmentSystem implements Subsystem {
           for (let column = 0; column < Math.ceil(width / spacing); column++) {
             const x = tx + column * spacing, y = ty + row * spacing;
             const rng = mulberry32(quailSeed(Math.round(x * 10), Math.round(y * 10), 79));
-            const px = x + rng() * Math.min(spacing, tx + width - x), py = y + rng() * Math.min(spacing, ty + depth - y);
+            let px = x + rng() * Math.min(spacing, tx + width - x), py = y + rng() * Math.min(spacing, ty + depth - y);
             if (px < bounds.x + 1.5 || py < bounds.y + 1.5 || px > bounds.x + bounds.w - 1.5 || py > bounds.y + bounds.h - 1.5) continue;
             const road = quailTrackDistanceAt(this.landscape.area, px, py, 16) * PROPERTY_PX_TO_M;
             // Account for the full clump footprint at the verge and parking.
@@ -297,19 +297,30 @@ export class QuailEnvironmentSystem implements Subsystem {
             const burnt = quailBurnAt(px, py), bare = Math.max(0, quailFeatureBare(px, py) - burnt * .92);
             const density = (.025 + sward * .12 + cover * .10 + mass * 1.15 + drain * .13)
               * (.22 + stocking * .80) * (1 - Math.max(routeSurface.dry, opening) * .72) * (1 - plum * .82) * (1 - bare);
-            if (rng() > density) continue;
-            const vigorous = rng() < mass * 1.15 + cover * .14;
-            const scale = (.94 + rng() * .42 + mass * .08) * (.82 + stocking * .23) * (1 - Math.max(routeSurface.dry, opening) * .38) * (1 - plum * .22);
-            this.color.setHex(vigorous ? COLOR.straw : COLOR.dry);
-            if (vigorous) this.color.lerp(dryStem, rng() * .3);
-            else this.color.lerp(dampLeaf, drain * .48);
-            const spread = scale * (vigorous ? 1 + mass * .24 : 1.28);
-            if (burnt > .05) this.color.lerp(burnt > .5 && rng() < .16 ? BURN_REGROWTH : BURN_CHAR, Math.min(1, burnt * .9));
-            const v: Instance = { px, py, angle: rng() * Math.PI * 2, sx: spread, sy: scale * (.85 + rng() * .3) * (1 - burnt * .8), sz: spread * (.8 + rng() * .35), color: this.color.getHex() };
-            const detail = rng();
-            if (ctx.quality === 'high' || detail > .25) {
-              (vigorous ? talls : shorts).push(v);
-              far.push({ ...v, sy: v.sy * (vigorous ? 1 : .30) });
+            // Bunchgrass grows in tussocks with gaps, not on a lattice: fewer
+            // single roots, and some of them carry a second tuft close beside.
+            if (rng() > density * .73) continue;
+            const pair = rng() < .38;
+            for (let tuft = 0; tuft < (pair ? 2 : 1); tuft++) {
+              if (tuft === 1) {
+                const turn = rng() * Math.PI * 2, reach = (.38 + rng() * .3) / PROPERTY_PX_TO_M;
+                px += Math.cos(turn) * reach; py += Math.sin(turn) * reach;
+                if (quailTrackDistanceAt(this.landscape.area, px, py, 16) * PROPERTY_PX_TO_M < 2.75 || quailGroundPropOccupies(px, py)
+                  || quailGrassClearingAt(this.landscape.area, px, py)) break;
+              }
+              const vigorous = rng() < mass * 1.15 + cover * .14;
+              const scale = (.94 + rng() * .42 + mass * .08) * (.82 + stocking * .23) * (1 - Math.max(routeSurface.dry, opening) * .38) * (1 - plum * .22);
+              this.color.setHex(vigorous ? COLOR.straw : COLOR.dry);
+              if (vigorous) this.color.lerp(dryStem, rng() * .3);
+              else this.color.lerp(dampLeaf, drain * .48);
+              const spread = scale * (vigorous ? 1 + mass * .24 : 1.28);
+              if (burnt > .05) this.color.lerp(burnt > .5 && rng() < .16 ? BURN_REGROWTH : BURN_CHAR, Math.min(1, burnt * .9));
+              const v: Instance = { px, py, angle: rng() * Math.PI * 2, sx: spread, sy: scale * (.85 + rng() * .3) * (1 - burnt * .8), sz: spread * (.8 + rng() * .35), color: this.color.getHex() };
+              const detail = rng();
+              if (ctx.quality === 'high' || detail > .25) {
+                (vigorous ? talls : shorts).push(v);
+                far.push({ ...v, sy: v.sy * (vigorous ? 1 : .30) });
+              }
             }
           }
         this.batch(short, grassMat, shorts, nearRange, 0, true); this.batch(tall, grassMat, talls, nearRange, 0, true);

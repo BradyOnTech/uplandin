@@ -5,7 +5,8 @@ import { PROPERTY_PX_TO_M } from '../../game/landscape';
 import { quailCoverAt, quailDrainageAt, quailSwardAt } from '../../game/quailLandscape';
 import type { Ctx } from '../engine';
 import { quailTrackDistanceAt } from './quailTracks';
-import { quailGrassMassAt, quailGrassStockingAt, quailSouthRouteAt } from './quailVegetation';
+import { quailGrassClearingAt, quailGrassMassAt, quailGrassStockingAt, quailSouthRouteAt } from './quailVegetation';
+import { quailBurnAt, quailFeatureBare } from '../../game/quailFeatures';
 import { QUAIL_GROUND_DIVISIONS, quailGroundNearDistance, quailGroundTiles, quailGroundUsesNear } from './quailGroundGeometry';
 
 export { QUAIL_TERRAIN_TILE } from './quailGroundGeometry';
@@ -21,46 +22,78 @@ const PAINT = {
   edgeLitter: new THREE.Color(0x8c714b),
   plumLitter: new THREE.Color(0x646044),
 };
-const routeSurface = { dry: 0, edge: 0 };
-
 function sweep(x: number, y: number): number {
   return (Math.sin(x * 0.018 + Math.sin(y * 0.012) * 1.2) + Math.cos(y * 0.014 - x * 0.005)) * 0.25 + 0.5;
 }
 
+/** The habitat at one ground point, shared by its color and its thatch. */
+const habitat = { landscape: null as LandscapeModel | null, x: NaN, y: NaN,
+  cover: 0, mass: 0, stocking: 0, sward: 0, dry: 0, edge: 0, opening: 0, plum: 0, road: 0 };
+const routeSurface = { dry: 0, edge: 0 };
+function sampleHabitat(landscape: LandscapeModel, x: number, y: number): typeof habitat {
+  if (habitat.landscape === landscape && habitat.x === x && habitat.y === y) return habitat;
+  const area = landscape.area;
+  habitat.landscape = landscape; habitat.x = x; habitat.y = y;
+  habitat.cover = quailCoverAt(area, x, y);
+  habitat.mass = quailGrassMassAt(area, x, y);
+  habitat.stocking = quailGrassStockingAt(x, y);
+  habitat.sward = quailSwardAt(x, y);
+  quailSouthRouteAt(x, y, routeSurface);
+  habitat.dry = routeSurface.dry; habitat.edge = routeSurface.edge;
+  habitat.opening = quailOpeningAt(x, y);
+  habitat.plum = quailPlumAt(x, y);
+  habitat.road = quailTrackDistanceAt(area, x, y, 16) * PROPERTY_PX_TO_M;
+  return habitat;
+}
+
 /** A single color recipe continues underneath the close vegetation and into the distance. */
 export function paintQuailGround(landscape: LandscapeModel, x: number, y: number, out: THREE.Color): THREE.Color {
-  const cover = quailCoverAt(landscape.area, x, y);
-  const mass = quailGrassMassAt(landscape.area, x, y);
+  const { cover, mass, stocking, sward, road } = sampleHabitat(landscape, x, y);
   const draw = quailDrainageAt(x, y);
   const variation = sweep(x, y);
-  const stocking = quailGrassStockingAt(x, y);
   out.copy(PAINT.sward).lerp(PAINT.straw, 0.28 + variation * 0.32);
   out.lerp(PAINT.cover, cover * .22 + mass * .46);
   // Stocked clumps sit in a darker litter bed; gaps reveal warmer dry soil.
   out.lerp(PAINT.litter, mass * (.14 + stocking * .25));
   out.lerp(PAINT.pale, (1 - stocking) * (1 - draw) * .17);
   out.lerp(PAINT.drain, draw * 0.68);
-  const sward = quailSwardAt(x, y);
   out.lerp(PAINT.litter, Math.max(0, (0.48 - sward) * 1.7) * (1 - cover * 0.55));
   out.lerp(PAINT.sward, Math.max(0, (sward - 0.52) * 1.5));
   if (landscape.area.id === 'quail-fields') {
-    quailSouthRouteAt(x, y, routeSurface);
-    const opening = Math.max(routeSurface.dry, quailOpeningAt(x, y));
+    const opening = Math.max(habitat.dry, habitat.opening);
     out.lerp(PAINT.openSoil, opening * (.55 + (1 - stocking) * .25));
-    out.lerp(PAINT.plumLitter, quailPlumAt(x, y) * cover * .70);
-    out.lerp(PAINT.edgeLitter, routeSurface.edge * cover * .40);
+    out.lerp(PAINT.plumLitter, habitat.plum * cover * .70);
+    out.lerp(PAINT.edgeLitter, habitat.edge * cover * .40);
   }
-  const road = quailTrackDistanceAt(landscape.area, x, y, 16) * PROPERTY_PX_TO_M;
   out.lerp(PAINT.road, Math.max(0, 1 - road / 1.8) * 0.25);
   return out.multiplyScalar(0.94 + variation * 0.1);
 }
 
-/** All edge vertices share exact property coordinates; skirts close differences between LODs. */
+/**
+ * How much of the old-field floor is matted dead grass (0 bare soil, 1 a
+ * full mat), from the same habitat recipe that stocks the tufts: thick in
+ * the grass drifts and cover, thin on dry openings and plum floors, none on
+ * the tracks, the parking yard, the creek, the firebreak or the burn.
+ */
+export function quailThatchAt(landscape: LandscapeModel, x: number, y: number): number {
+  const { cover, mass, stocking, sward, dry, opening, plum, road } = sampleHabitat(landscape, x, y);
+  const verge = THREE.MathUtils.smoothstep(road, 1.6, 3.4);
+  if (verge <= 0) return 0;
+  const bare = Math.max(quailFeatureBare(x, y), quailBurnAt(x, y));
+  if (bare >= 1) return 0;
+  const yard = quailGrassClearingAt(landscape.area, x, y) ? .15 : 1;
+  const mat = THREE.MathUtils.clamp(.32 + mass * .75 + sward * .22 + cover * .18 + stocking * .12, 0, 1);
+  return mat * (1 - Math.max(dry, opening) * .78) * (1 - plum * cover * .55) * verge * yard * (1 - bare);
+}
+
+/** All edge vertices share exact property coordinates; skirts close differences between LODs.
+ * With `thatch`, each vertex also carries how matted its floor is (`quailThatch`). */
 export function buildQuailTerrainGeometry(
   landscape: LandscapeModel, px: number, py: number, width: number, depth: number, divisions: number,
   paint: typeof paintQuailGround = paintQuailGround,
+  thatch?: (landscape: LandscapeModel, x: number, y: number) => number,
 ): THREE.BufferGeometry {
-  const positions: number[] = []; const colors: number[] = []; const indices: number[] = [];
+  const positions: number[] = []; const colors: number[] = []; const indices: number[] = []; const mats: number[] = [];
   const world = { x: 0, z: 0 }; const color = new THREE.Color();
   const bounds = landscape.area.world;
   const exterior = px + width <= bounds.x || px >= bounds.x + bounds.w
@@ -74,6 +107,7 @@ export function buildQuailTerrainGeometry(
     landscape.propertyToWorld(x, y, world);
     positions.push(world.x, landscape.heightAtProperty(x, y) - sink, world.z);
     paint(landscape, x, y, color); colors.push(color.r, color.g, color.b);
+    if (thatch) mats.push(thatch(landscape, x, y));
   };
   for (let z = 0; z <= divisions; z++) {
     for (let x = 0; x <= divisions; x++) add(px + x / divisions * width, py + z / divisions * depth);
@@ -99,6 +133,7 @@ export function buildQuailTerrainGeometry(
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  if (thatch) geometry.setAttribute('quailThatch', new THREE.Float32BufferAttribute(mats, 1));
   geometry.setIndex(indices); geometry.computeVertexNormals(); geometry.computeBoundingSphere();
   return geometry;
 }
@@ -106,16 +141,21 @@ export function buildQuailTerrainGeometry(
 /** Quiet matte soil detail, shared by ground and trail in property coordinates. */
 export function applyQuailSurfaceDetail(material: THREE.MeshLambertMaterial, landscape: LandscapeModel, fieldGround = false,
   painted?: { texture: {value:THREE.Texture|null}; strength:{value:number} }): void {
-    material.customProgramCacheKey=()=>`field-surface-v3-${fieldGround?'field':'track'}-${painted?'painted':'procedural'}`;
+    material.customProgramCacheKey=()=>`field-surface-v4-${fieldGround?'field':'track'}-${painted?'painted':'procedural'}`;
     const origin = landscape.worldToProperty(0, 0, { x: 0, y: 0 });
     material.onBeforeCompile = (shader) => {
       shader.uniforms.uFieldGround = { value: fieldGround ? 1 : 0 };
       shader.uniforms.uPropertyOrigin = { value: new THREE.Vector2(origin.x, origin.y) };
       if(painted){shader.uniforms.uPaintedSoil=painted.texture;shader.uniforms.uPaintedSoilK=painted.strength;}
-      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vQuailGround;')
-        .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvQuailGround = (modelMatrix * vec4(transformed, 1.0)).xz;');
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>
+        varying vec2 vQuailGround;
+        ${fieldGround ? 'attribute float quailThatch; varying float vQuailThatch;' : ''}`)
+        .replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
+        vQuailGround = (modelMatrix * vec4(transformed, 1.0)).xz;
+        ${fieldGround ? 'vQuailThatch = quailThatch;' : ''}`);
       shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
         varying vec2 vQuailGround;
+        ${fieldGround ? 'varying float vQuailThatch;' : ''}
         uniform vec2 uPropertyOrigin;
         uniform float uFieldGround;
         ${painted ? 'uniform sampler2D uPaintedSoil; uniform float uPaintedSoilK;' : ''}
@@ -185,6 +225,32 @@ export function applyQuailSurfaceDetail(material: THREE.MeshLambertMaterial, lan
           * (1.0 - smoothstep(5.0, 16.0, length(vQuailGround - cameraPosition.xz)));
         vec3 stoneTint = mix(vec3(.63, .64, .61), vec3(1.24, 1.18, 1.06), smoothstep(-stoneAA, stoneAA, stoneLocal.x + stoneLocal.y * .4));
         diffuseColor.rgb *= mix(vec3(1.0), stoneTint, stone * .72);
+        ${fieldGround ? `
+        // The old-field floor between the standing tufts is matted dead grass,
+        // not bare soil: a bronze-to-straw mat in soft drifts at every
+        // distance, and close in the grain of stems laid flat in broad
+        // swirls. Openings, tracks, the yard and the burn keep their soil.
+        float thatch = clamp(vQuailThatch, 0.0, 1.0);
+        float thatchRange = length(vQuailGround - cameraPosition.xz);
+        float mottle = quailNoise(p * 0.31 + vec2(19.0, 7.0)) * 0.62 + quailNoise(p * 1.07 + vec2(3.0, 41.0)) * 0.38;
+        vec3 matColor = mix(vec3(0.30, 0.232, 0.122), vec3(0.43, 0.352, 0.188), mottle);
+        matColor = mix(matColor, matColor * vec3(0.88, 1.0, 0.82), smoothstep(0.6, 0.84, mottle) * 0.35);
+        // The habitat paint still sets the mat's value: darker litter beds,
+        // paler dry swards, damp drainage.
+        float paintLuma = dot(diffuseColor.rgb, vec3(0.30, 0.59, 0.11));
+        matColor *= clamp(paintLuma / 0.31, 0.72, 1.28);
+        diffuseColor.rgb = mix(diffuseColor.rgb, matColor, thatch * 0.78);
+        // Stem grain: noise drawn out along the lie of the mat, which turns
+        // slowly across the field. Filtered out before it can shimmer.
+        float lie = quailNoise(p * 0.09 + vec2(5.0, 61.0)) * 6.2831853;
+        vec2 laid = mat2(cos(lie), -sin(lie), sin(lie), cos(lie)) * p;
+        vec2 fiberSpace = vec2(laid.x * 2.2, laid.y * 19.0);
+        float fiber = quailNoise(fiberSpace) * 0.65 + quailNoise(fiberSpace * vec2(1.9, 2.3) + 17.0) * 0.35;
+        vec2 fiberAA = fwidth(fiberSpace);
+        float fiberVisibility = (1.0 - smoothstep(0.45, 1.6, max(fiberAA.x, fiberAA.y)))
+          * (1.0 - smoothstep(8.0, 22.0, thatchRange));
+        diffuseColor.rgb *= mix(1.0, 0.80 + fiber * 0.42, thatch * fiberVisibility);
+        ` : ''}
         ${painted ? `
         // Painted detail is a neutral modulation of the habitat colors, not a
         // replacement for their drainage/cover recipe. Two unrelated scales
@@ -221,8 +287,8 @@ export class QuailTerrain {
     const bounds = this.landscape.area.world;
     for (const tile of quailGroundTiles(this.landscape)) {
         const { x: px, y: py, width: w, depth: h } = tile;
-        const near = new THREE.Mesh(buildQuailTerrainGeometry(this.landscape, px, py, w, h, QUAIL_GROUND_DIVISIONS.near), this.material);
-        const far = new THREE.Mesh(buildQuailTerrainGeometry(this.landscape, px, py, w, h, QUAIL_GROUND_DIVISIONS.far), this.material);
+        const near = new THREE.Mesh(buildQuailTerrainGeometry(this.landscape, px, py, w, h, QUAIL_GROUND_DIVISIONS.near, paintQuailGround, quailThatchAt), this.material);
+        const far = new THREE.Mesh(buildQuailTerrainGeometry(this.landscape, px, py, w, h, QUAIL_GROUND_DIVISIONS.far, paintQuailGround, quailThatchAt), this.material);
         near.name = `Quail terrain ${px},${py} near`; far.name = `Quail terrain ${px},${py} far`;
         near.receiveShadow = true; far.receiveShadow = true;
         this.tiles.push({ near, far, x: tile.centerX, z: tile.centerZ }); ctx.scene.add(near, far);
@@ -234,7 +300,7 @@ export class QuailTerrain {
       [-margin, bounds.h, bounds.w + margin * 2, margin],
       [-margin, 0, margin, bounds.h], [bounds.w, 0, margin, bounds.h],
     ]) {
-      const mesh = new THREE.Mesh(buildQuailTerrainGeometry(this.landscape, x, y, w, h, 96), this.material);
+      const mesh = new THREE.Mesh(buildQuailTerrainGeometry(this.landscape, x, y, w, h, 96, paintQuailGround, quailThatchAt), this.material);
       mesh.name = 'Quail distant prairie'; mesh.receiveShadow = true; this.horizon.push(mesh); ctx.scene.add(mesh);
     }
     this.update(ctx);
