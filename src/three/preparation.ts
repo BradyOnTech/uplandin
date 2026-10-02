@@ -1,7 +1,10 @@
 import './preparation.css';
 import { OFFERED_AREAS, isOfferedArea, getArea } from '../game/areas';
 import { BREEDS, getBreed, type BreedConfig } from '../game/breeds';
-import { CAREER_KEY, loadCareer, saveCareer, type Career, type KennelDog } from '../game/career';
+import {
+  CAREER_KEY, canNameLastSeason, inLastSeason, isRetired, loadCareer, saveCareer, seasonsHunted, setLastSeason, workingDogs,
+  type Career, type KennelDog,
+} from '../game/career';
 import { dogCareerProgress, hunterCareerProgress, type ExperienceProgress } from '../game/careerProgress';
 import { coatLabel, coatsForBreed, isModeledBreed, modelForBreed, resolveCoatFor } from '../game/dogCoats';
 import { GUNS, type GunConfig } from '../game/guns';
@@ -251,7 +254,8 @@ const goshawk = () => mode === 'quick' && quick.huntingMethod === 'goshawk';
 function chosenDogs(): { lead: { breedId: string; coatId?: string; name?: string } | null; second: { breedId: string; coatId?: string; name?: string } | null } {
   if (mode === 'career') {
     if (needsSetup()) return { lead: { breedId: puppyDraft.breedId, coatId: puppyDraft.coatId, name: puppyDraft.name || undefined }, second: null };
-    const lead = career.kennel.find(d => d.id === dogId) ?? null, mate = career.kennel.find(d => d.id === braceId) ?? null;
+    const working = workingDogs(career);
+    const lead = working.find(d => d.id === dogId) ?? null, mate = working.find(d => d.id === braceId) ?? null;
     return { lead: lead && { breedId: lead.breedId, coatId: lead.coatId, name: lead.name }, second: mate && careerPreparation(career).canBrace ? { breedId: mate.breedId, coatId: mate.coatId, name: mate.name } : null };
   }
   return { lead: { breedId: quick.breedId, coatId: quick.coatId },
@@ -424,12 +428,12 @@ function dogStep(panel: HTMLElement): void {
 }
 
 function careerDogs(choices: HTMLElement): void {
-  const preparation = careerPreparation(career);
-  if (!career.kennel.some(d => d.id === dogId)) dogId = career.activeDogId ?? '';
+  const preparation = careerPreparation(career), working = workingDogs(career);
+  if (!working.some(d => d.id === dogId)) dogId = preparation.activeDog?.id ?? '';
   choices.append(field('Working dog', radioGroup({ id: 'prep-dog', label: 'Working dog', value: dogId, className: 'kennel-list',
-    options: career.kennel.map(d => ({ id: d.id, label: `${d.name}, ${getBreed(d.breedId).name}, level ${d.level}`, build: kennelCard(d) })),
+    options: working.map(d => ({ id: d.id, label: `${d.name}, ${getBreed(d.breedId).name}, level ${d.level}`, build: kennelCard(d) })),
     onChange: value => { dogId = value; if (braceId === value) braceId = ''; } })));
-  const lead = career.kennel.find(d => d.id === dogId);
+  const lead = working.find(d => d.id === dogId);
   if (lead) {
     if (threeD) choices.append(field(`${lead.name}’s coat`, coatSwatches('prep-coat', lead.breedId, lead.coatId, value => {
       const result = commitDogCoat(loadCareer(), lead.id, value);
@@ -440,23 +444,47 @@ function careerDogs(choices: HTMLElement): void {
     if (outlook.progress) panel.append(experienceBar(outlook.progress, lead.name), node('p', `${outlook.progress.remaining} XP to level ${outlook.progress.nextLevel} · ${outlook.nextBenefit}`, 'progress-detail'));
     else panel.append(node('p', 'Maximum experience reached', 'progress-detail'));
     if (outlook.ageEffect) panel.append(node('p', outlook.ageEffect, 'progress-age'));
-    panel.append(node('p', 'Points, retrieves and birds downed over a point build your dog’s experience.', 'help'));
+    // An old dog's last season is its handler's call, never the game's.
+    if (inLastSeason(career, lead)) {
+      panel.append(node('p', `${lead.name}’s last season. ${lead.name} retires to the porch when it ends.`, 'last-season'));
+      const keep = button(`Keep ${lead.name} hunting`, () => { if (persistCareer(setLastSeason(loadCareer(), lead.id, false))) render('prep-last-season'); }, 'text-button');
+      keep.id = 'prep-last-season'; panel.append(keep);
+    } else if (canNameLastSeason(career, lead)) {
+      const name = button(`Make this ${lead.name}’s last season`, () => { if (persistCareer(setLastSeason(loadCareer(), lead.id, true))) render('prep-last-season'); }, 'text-button');
+      name.id = 'prep-last-season'; panel.append(name);
+    } else panel.append(node('p', 'Points, retrieves and birds downed over a point build your dog’s experience.', 'help'));
     choices.append(panel);
   }
-  if (preparation.canBrace && career.kennel.length > 1) {
+  if (preparation.canBrace && working.length > 1) {
     choices.append(field('Second dog', radioGroup({ id: 'prep-brace', label: 'Second dog', value: braceId || 'none', className: 'kennel-list compact',
       options: [{ id: 'none', label: 'Hunt one dog', build: (el: HTMLButtonElement) => { el.append(node('span', '', 'coat-swatch large empty'), node('span', 'Hunt one dog', 'choice-head')); } },
-        ...career.kennel.filter(d => d.id !== dogId).map(d => ({ id: d.id, label: `${d.name}, ${getBreed(d.breedId).name}`, build: kennelCard(d) }))],
+        ...working.filter(d => d.id !== dogId).map(d => ({ id: d.id, label: `${d.name}, ${getBreed(d.breedId).name}`, build: kennelCard(d) }))],
       onChange: value => { braceId = value === 'none' ? '' : value; } })));
   } else if (!preparation.canBrace) choices.append(node('p', 'Hunting two dogs together unlocks at a higher hunter level.', 'help'));
+  porch(choices);
   const kennel = node('div', '', 'kennel-footer');
-  kennel.append(node('p', `${GEAR_NAMES[preparation.gearTier]} · ${career.kennel.length}/${preparation.kennelCapacity} kennel places`, 'help'));
+  kennel.append(node('p', `${GEAR_NAMES[preparation.gearTier]} · ${working.length}/${preparation.kennelCapacity} kennel places`, 'help'));
   if (addingDog) { choices.append(kennel); dogForm(choices, false); return; }
   if (preparation.canAddDog) {
     const add = button('Add a dog to your kennel', () => { addingDog = true; puppyDraft = { ...puppyDraft, breedId: 'gsp', coatId: undefined, name: '' }; render('puppy-name'); }, 'secondary');
     add.id = 'prep-add-dog'; kennel.append(add);
   }
   choices.append(kennel);
+}
+
+/** Retired dogs, with the seasons they gave and their record. */
+function porch(choices: HTMLElement): void {
+  const retired = career.kennel.filter(isRetired);
+  if (!retired.length) return;
+  const section = node('section', '', 'kennel-porch'); section.setAttribute('aria-label', 'On the porch');
+  section.append(node('h4', 'On the porch', 'field-label'));
+  const list = node('ul');
+  for (const dog of retired) {
+    const life = dog.lifetime ? ` · ${dog.lifetime.points} points · ${dog.lifetime.retrieves} retrieves` : '';
+    const item = node('li'); item.append(node('strong', dog.name), node('span', ` ${getBreed(dog.breedId).name} · ${seasonsHunted(dog)} seasons${life}`));
+    list.append(item);
+  }
+  section.append(list); choices.append(section);
 }
 
 function dogForm(container: HTMLElement, first: boolean): void {
@@ -498,7 +526,11 @@ function dogForm(container: HTMLElement, first: boolean): void {
 
 function firstSeason(choices: HTMLElement, needsDog: boolean): void {
   const intro = node('div', '', 'first-season');
-  intro.append(node('p', 'A HUNTING LIFE', 'eyebrow'), node('h3', 'Your first season'), node('p', needsDog ? 'Name a young dog to grow with you, and choose the country you call home.' : 'Choose the country you call home.', 'help'));
+  // A kennel that has all retired carries on with a new pup.
+  const carryingOn = needsDog && career.kennel.some(isRetired);
+  intro.append(node('p', 'A HUNTING LIFE', 'eyebrow'), node('h3', carryingOn ? 'A new pup' : 'Your first season'),
+    node('p', carryingOn ? 'Your old dogs are on the porch. Name a young dog to carry on.'
+      : needsDog ? 'Name a young dog to grow with you, and choose the country you call home.' : 'Choose the country you call home.', 'help'));
   choices.append(intro);
   if (needsDog) { dogForm(choices, true); return; }
   choices.append(field('Home ground', radioGroup({ id: 'home-region', label: 'Home ground', value: puppyDraft.homeRegionId, className: 'region-cards',
@@ -673,7 +705,13 @@ function dayStep(panel: HTMLElement): void {
       season.append(node('h3', 'The season ahead', 'field-label'), node('p', `${dateLabel(career.date)} · ${entry.selectable ? `${entry.isHome ? 'Home hunt' : 'Hunting trip'} · ${entry.weeks} week${entry.weeks === 1 ? '' : 's'} afield` : entry.reason ?? ''}`, 'help'));
       const advance = button(calendar.label, () => {
         const result = commitPreparationCalendar(loadCareer(), calendar.kind);
-        if (!result.ok) error(result.message); else if (persistCareer(result.career)) { message = `Calendar advanced · ${dateLabel(career.date)}.`; render('prep-calendar'); }
+        const before = loadCareer();
+        if (!result.ok) error(result.message); else if (persistCareer(result.career)) {
+          const retired = result.career.kennel.filter(dog => isRetired(dog) && !before.kennel.some(prior => prior.id === dog.id && isRetired(prior)));
+          message = `Calendar advanced · ${dateLabel(career.date)}.`
+            + retired.map(dog => ` ${dog.name} retires to the porch after ${seasonsHunted(dog)} seasons.`).join('');
+          render('prep-calendar');
+        }
       }, 'secondary'); advance.id = 'prep-calendar'; season.append(advance); panel.append(season);
     }
   }
@@ -760,8 +798,9 @@ function showStep(next: Step, focusHeading = false): void {
 
 function render(focusId?: string): void {
   const saved = careerPreparation(career);
-  if (!career.kennel.some(dog => dog.id === dogId)) dogId = saved.activeDog?.id ?? career.kennel[0]?.id ?? '';
-  if (!saved.canBrace || braceId === dogId || !career.kennel.some(dog => dog.id === braceId)) braceId = '';
+  const working = workingDogs(career);
+  if (!working.some(dog => dog.id === dogId)) dogId = saved.activeDog?.id ?? working[0]?.id ?? '';
+  if (!saved.canBrace || braceId === dogId || !working.some(dog => dog.id === braceId)) braceId = '';
   if (!saved.availableGuns.some(gun => gun.id === gunId)) gunId = saved.availableGuns[0].id;
   const projected = commitCareerLoadout(career, { activeDogId: dogId || undefined, braceDogId: braceId || null, gunId });
   const preparation = careerPreparation(projected.ok ? projected.career : career);

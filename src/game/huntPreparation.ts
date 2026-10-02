@@ -3,7 +3,7 @@ import { OFFERED_AREAS, type AreaConfig } from './areas';
 import { BREEDS, type BreedConfig } from './breeds';
 import {
   activeDog, addDogToKennel, advanceCareerWeeks, braceDog, rollToNextSeason,
-  setActiveDog, setBraceDog, setHomeRegion, type Career, type KennelDog,
+  setActiveDog, setBraceDog, setHomeRegion, workingDogs, type Career, type KennelDog,
 } from './career';
 import { build3DHuntHref, type HuntLaunch } from './gameplayMode';
 import { GUNS, unlockedGuns, type GunConfig } from './guns';
@@ -51,7 +51,9 @@ const copyDog = (dog: KennelDog | null): KennelDog | null => dog ? { ...dog } : 
 export function careerPreparation(career: Career): CareerPreparation {
   // Home must be an offered region; a save homed in a hidden one chooses again.
   const home = offeredRegion(career.homeRegionId);
-  const needsDog = career.kennel.length === 0, needsHome = !home;
+  // Retired dogs keep their place in the record but no longer hunt.
+  const working = workingDogs(career).length;
+  const needsDog = working === 0, needsHome = !home;
   const lead = activeDog(career), mate = twoDogUnlocked(career.hunter.level) ? braceDog(career) : null;
   const over = seasonOver(career.date), truck = truckUnlocked(career.hunter.level);
   const areas = OFFERED_AREAS.map((area): PreparationArea => {
@@ -81,7 +83,7 @@ export function careerPreparation(career: Career): CareerPreparation {
   }
   return {
     needsDog, needsHome, activeDog: copyDog(lead), braceDog: copyDog(mate?.id === lead?.id ? null : mate),
-    kennelCapacity: kennelSlots(career.hunter.level), canAddDog: career.kennel.length < kennelSlots(career.hunter.level),
+    kennelCapacity: kennelSlots(career.hunter.level), canAddDog: working < kennelSlots(career.hunter.level),
     canBrace: twoDogUnlocked(career.hunter.level), gearTier: gearTierFor(career.hunter.level),
     // Breed choice has no level gate. Kennel capacity and brace hunting do.
     availableBreeds: BREEDS, availableGuns: unlockedGuns(career.hunter.level), areas, calendarAction,
@@ -123,7 +125,7 @@ function validDog(dog: PreparationDog): PreparationFailure | null {
 export function commitPreparationDog(career: Career, dog: PreparationDog): PreparationResult<{ career: Career; dog: KennelDog }> {
   const invalid = validDog(dog);
   if (invalid) return invalid;
-  if (career.kennel.length >= kennelSlots(career.hunter.level)) return failure('kennel-full', 'Your dog box is full. More kennel space comes with hunter levels.');
+  if (workingDogs(career).length >= kennelSlots(career.hunter.level)) return failure('kennel-full', 'Your dog box is full. More kennel space comes with hunter levels.');
   const added = addDogToKennel(career, dog.name.trim(), dog.breedId, dog.coatId ? resolveCoatFor(dog.breedId, dog.coatId) : undefined);
   return { ok: true, career: setActiveDog(added.career, added.dog.id), dog: added.dog };
 }
@@ -149,13 +151,13 @@ export function commitCareerSetup(career: Career, choice: {
 
 /** Explicit selections are idempotent; selecting the current brace does not toggle it off. */
 export function commitCareerLoadout(career: Career, choice: CareerLoadoutChoice): PreparationResult<{ career: Career }> {
-  if (choice.activeDogId !== undefined && !career.kennel.some((dog) => dog.id === choice.activeDogId)) return failure('unknown-dog', 'Choose a dog from your current kennel.');
+  if (choice.activeDogId !== undefined && !workingDogs(career).some((dog) => dog.id === choice.activeDogId)) return failure('unknown-dog', 'Choose a dog from your current kennel.');
   let next = choice.activeDogId !== undefined && choice.activeDogId !== career.activeDogId
     ? setActiveDog(career, choice.activeDogId) : career;
   if (choice.braceDogId !== undefined) {
     if (choice.braceDogId !== null) {
       if (!twoDogUnlocked(next.hunter.level)) return failure('brace-locked', `Brace hunting unlocks at hunter level ${TWO_DOG_LEVEL}.`);
-      if (!next.kennel.some((dog) => dog.id === choice.braceDogId)) return failure('unknown-brace', 'Choose a bracemate from your current kennel.');
+      if (!workingDogs(next).some((dog) => dog.id === choice.braceDogId)) return failure('unknown-brace', 'Choose a bracemate from your current kennel.');
       if (choice.braceDogId === next.activeDogId) return failure('same-dog', 'Choose a different dog as the bracemate.');
     }
     if (choice.braceDogId !== next.braceDogId) next = setBraceDog(next, choice.braceDogId);

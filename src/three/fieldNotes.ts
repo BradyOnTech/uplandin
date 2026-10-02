@@ -2,6 +2,7 @@ import type { HuntState } from '../game/state';
 import type { CareerHuntResult } from '../game/huntResults';
 import { dogCareerProgress, hunterCareerProgress } from '../game/careerProgress';
 import { dateLabel } from '../game/season';
+import { seasonsHunted, type KennelDog } from '../game/career';
 import { dogReport, handlerNotes } from '../game/dogReport';
 import { bagLines, limitedOut, limitsApply } from '../game/bagLimits';
 
@@ -43,6 +44,13 @@ export function fieldNotes(hunt: HuntState, dogCount: number, seconds: number) {
   };
 }
 
+/** An old dog's last hunt: the seasons it gave, and its record where kept. */
+function farewell(name: string, dog: KennelDog | undefined): string {
+  const seasons = dog ? seasonsHunted(dog) : 0, life = dog?.lifetime;
+  const record = life ? `, ${life.points} point${life.points === 1 ? '' : 's'} and ${life.retrieves} retrieve${life.retrieves === 1 ? '' : 's'} on record` : '';
+  return seasons ? `${name}'s last hunt. ${name} retires to the porch after ${seasons} seasons${record}.` : `${name}'s last hunt.`;
+}
+
 /** Presentation of the already-settled award; never mutates or settles saves. */
 export function careerFieldNotes(result: CareerHuntResult) {
   const level = result.hunterLevel;
@@ -62,7 +70,7 @@ export function careerFieldNotes(result: CareerHuntResult) {
         award: `+${award.gained} XP`,
         level: award.levelsGained > 0 ? `Level ${award.newLevel} reached` : `Level ${award.newLevel}`,
         advanced: award.levelsGained > 0,
-        milestone: award.firstPoint ? `${award.name}'s first point` : null,
+        milestone: award.lastHunt ? farewell(award.name, dog) : award.firstPoint ? `${award.name}'s first point` : null,
         next: development ? development.progress
           ? `${development.progress.remaining} XP to level ${development.progress.nextLevel} · ${development.nextBenefit}`
           : 'Maximum experience reached' : null,

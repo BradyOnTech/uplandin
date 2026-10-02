@@ -31,6 +31,10 @@ export interface KennelDog {
   firstPoint?: DogFirstPoint;
   /** Career totals since this record began (older saves start at their next hunt). */
   lifetime?: DogLifetime;
+  /** The season its handler named as its last. */
+  lastSeason?: number;
+  /** Retired to the porch when its last season ended; it hunts no more. */
+  retiredSeason?: number;
 }
 
 export interface DogFirstPoint { huntNumber: number; areaId: string; season: number }
@@ -179,13 +183,48 @@ export function recordDogHunt(
   return { career: { ...career, kennel: career.kennel.map((d) => (d.id === dogId ? updated : d)) }, firstPoint };
 }
 
+/** From its eighth season a dog is slowing down, and its handler may name its last. */
+export const LAST_SEASON_AGE = 8;
+
+export function isRetired(dog: KennelDog): boolean {
+  return dog.retiredSeason !== undefined;
+}
+
+/** The dogs that still hunt; retired dogs keep their place in the record. */
+export function workingDogs(career: Career): KennelDog[] {
+  return career.kennel.filter((d) => !isRetired(d));
+}
+
+export function inLastSeason(career: Career, dog: KennelDog): boolean {
+  return !isRetired(dog) && dog.lastSeason === career.date.season;
+}
+
+export function canNameLastSeason(career: Career, dog: KennelDog): boolean {
+  return !isRetired(dog) && dogAge(career, dog) >= LAST_SEASON_AGE;
+}
+
+/** Name this season as an old dog's last, or take it back. The game never
+ * retires a dog on its own; only its handler decides. Pure. */
+export function setLastSeason(career: Career, dogId: string, last: boolean): Career {
+  const dog = career.kennel.find((d) => d.id === dogId);
+  if (!dog || isRetired(dog) || (last && !canNameLastSeason(career, dog))) return career;
+  return {
+    ...career,
+    kennel: career.kennel.map((d) => {
+      if (d.id !== dogId) return d;
+      const { lastSeason: _named, ...rest } = d;
+      return last ? { ...rest, lastSeason: career.date.season } : rest;
+    }),
+  };
+}
+
 export function activeDog(career: Career): KennelDog | null {
-  return career.kennel.find((d) => d.id === career.activeDogId) ?? null;
+  return career.kennel.find((d) => d.id === career.activeDogId && !isRetired(d)) ?? null;
 }
 
 /** Choose which kennel dog rides along. Unknown ids leave the career as-is. */
 export function setActiveDog(career: Career, dogId: string): Career {
-  if (!career.kennel.some((d) => d.id === dogId)) return career;
+  if (!workingDogs(career).some((d) => d.id === dogId)) return career;
   // The lead dog can't also be its own bracemate.
   return { ...career, activeDogId: dogId, braceDogId: career.braceDogId === dogId ? null : career.braceDogId };
 }
@@ -193,12 +232,12 @@ export function setActiveDog(career: Career, dogId: string): Career {
 /** Pick (or clear, with null) the bracemate for two-dog hunts. */
 export function setBraceDog(career: Career, dogId: string | null): Career {
   if (dogId === null) return { ...career, braceDogId: null };
-  if (!career.kennel.some((d) => d.id === dogId) || dogId === career.activeDogId) return career;
+  if (!workingDogs(career).some((d) => d.id === dogId) || dogId === career.activeDogId) return career;
   return { ...career, braceDogId: career.braceDogId === dogId ? null : dogId };
 }
 
 export function braceDog(career: Career): KennelDog | null {
-  return career.kennel.find((d) => d.id === career.braceDogId) ?? null;
+  return career.kennel.find((d) => d.id === career.braceDogId && !isRetired(d)) ?? null;
 }
 
 /** How many seasons this dog has hunted, counting the current one. */
@@ -216,9 +255,21 @@ export function advanceCareerWeeks(career: Career, weeks: number): Career {
   return { ...career, date: advanceWeeks(career.date, weeks) };
 }
 
-/** Summer passes: the calendar rolls to next September and every dog is a season older. */
+/** Summer passes: the calendar rolls to next September and every dog is a
+ * season older. A dog whose last season this was retires to the porch. */
 export function rollToNextSeason(career: Career): Career {
-  return { ...career, date: nextSeason(career.date) };
+  const ending = career.date.season;
+  const kennel = career.kennel.map((d) => !isRetired(d) && d.lastSeason === ending ? { ...d, retiredSeason: ending } : d);
+  const working = kennel.filter((d) => !isRetired(d));
+  const keep = (id: string | null) => id !== null && working.some((d) => d.id === id) ? id : null;
+  const activeDogId = keep(career.activeDogId) ?? working[0]?.id ?? null;
+  const braceDogId = keep(career.braceDogId);
+  return { ...career, kennel, activeDogId, braceDogId: braceDogId === activeDogId ? null : braceDogId, date: nextSeason(career.date) };
+}
+
+/** The seasons a retired dog hunted, counting its first and its last. */
+export function seasonsHunted(dog: KennelDog): number {
+  return Math.max(1, (dog.retiredSeason ?? dog.lastSeason ?? dog.bornSeason) - dog.bornSeason + 1);
 }
 
 /** Award hunter XP. Pure. Returns the new career plus level-up info. */
@@ -260,6 +311,8 @@ function readKennelDog(saved: KennelDog): KennelDog {
   if (first !== undefined && !(first && savedCount(first.huntNumber) && typeof first.areaId === 'string' && savedCount(first.season))) delete dog.firstPoint;
   const life = dog.lifetime as Partial<DogLifetime> | undefined;
   if (life !== undefined && !(life && savedCount(life.hunts) && savedCount(life.points) && savedCount(life.retrieves))) delete dog.lifetime;
+  if (dog.lastSeason !== undefined && !(savedCount(dog.lastSeason) && dog.lastSeason >= 1)) delete dog.lastSeason;
+  if (dog.retiredSeason !== undefined && !(savedCount(dog.retiredSeason) && dog.retiredSeason >= 1)) delete dog.retiredSeason;
   return dog;
 }
 

@@ -3,6 +3,7 @@ import {
   advanceCareerWeeks,
   awardDogXp,
   awardHunterXp,
+  inLastSeason,
   recordDogHunt,
   recordHunt,
   type Career,
@@ -13,7 +14,7 @@ import { dogPoints, dogReport } from './dogReport';
 import { regionOfArea } from './regions';
 import { HOME_HUNT_WEEKS, seasonOver, TRIP_HUNT_WEEKS } from './season';
 import type { HuntState } from './state';
-import { HUNT_JOURNAL_LIMIT, readHuntJournal, type CareerJournalEntry } from './huntJournal';
+import { HUNT_JOURNAL_LIMIT, readHuntJournal, type CareerJournalEntry, type DogMilestone } from './huntJournal';
 import { limitsFilled } from './bagLimits';
 
 export const HEN_FINE_XP = 4;
@@ -32,6 +33,8 @@ export interface DogHuntAward {
   levelsGained: number;
   /** The dog's first point came on this hunt. */
   firstPoint?: boolean;
+  /** The last hunt of the season its handler named as its last. */
+  lastHunt?: boolean;
 }
 
 export interface CareerHuntResult {
@@ -51,6 +54,10 @@ export interface CareerHuntResult {
   seasonEnded: boolean;
 }
 
+function milestoneOf(award: DogHuntAward | undefined): { milestone?: DogMilestone } {
+  return award?.lastHunt ? { milestone: 'last-hunt' } : award?.firstPoint ? { milestone: 'first-point' } : {};
+}
+
 /** Pure shared career settlement used after either renderer finishes a hunt. */
 export function settleCareerHunt(
   career: Career,
@@ -64,6 +71,10 @@ export function settleCareerHunt(
   const hunterGained = Math.max(0, hunt.downed + hunt.doubles + 2 - henFine - lostFine - safetyFine - limitFine);
   let next = recordHunt(career, hunt.areaId, hunt.downed, hunt.escaped);
   const dogAwards: DogHuntAward[] = [];
+  const home = regionOfArea(hunt.areaId).id === career.homeRegionId;
+  const weeks = home ? HOME_HUNT_WEEKS : TRIP_HUNT_WEEKS;
+  // This hunt closes the season: an old dog's named last season ends with it.
+  const closesSeason = seasonOver({ season: career.date.season, week: career.date.week + weeks });
 
   dogs.forEach((dog, slot) => {
     if (!dog) return;
@@ -86,6 +97,7 @@ export function settleCareerHunt(
       newLevel: award.newLevel,
       levelsGained: award.levelsGained,
       ...(record.firstPoint ? { firstPoint: true } : {}),
+      ...(closesSeason && inLastSeason(career, dog) ? { lastHunt: true } : {}),
     });
   });
 
@@ -97,8 +109,6 @@ export function settleCareerHunt(
     unlocks.push(...unlocksAtLevel(level));
   }
 
-  const home = regionOfArea(hunt.areaId).id === next.homeRegionId;
-  const weeks = home ? HOME_HUNT_WEEKS : TRIP_HUNT_WEEKS;
   const entry: CareerJournalEntry = {
     huntNumber: next.hunts,
     areaId: hunt.areaId,
@@ -112,7 +122,7 @@ export function settleCareerHunt(
     hunterXp: hunterGained,
     dogs: dogs.flatMap((dog, slot) => dog ? [{ name: dog.name, breedId: dog.breedId,
       ...(hunt.dogWork[slot] ? { note: dogReport(dog.name, hunt.dogWork[slot]).notes[0] } : {}),
-      ...(dogAwards.find((award) => award.dogId === dog.id)?.firstPoint ? { milestone: 'first-point' as const } : {}) }] : []),
+      ...milestoneOf(dogAwards.find((award) => award.dogId === dog.id)) }] : []),
     ...((hunt.lostBirds ?? 0) > 0 ? { lost: hunt.lostBirds } : {}),
     ...((hunt.safety?.lowShots ?? 0) + (hunt.safety?.dogInLine ?? 0) > 0 ? { unsafe: hunt.safety!.lowShots + hunt.safety!.dogInLine } : {}),
     ...((hunt.overLimit ?? 0) > 0 ? { overLimit: hunt.overLimit } : {}),

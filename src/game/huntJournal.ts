@@ -28,8 +28,8 @@ export interface CareerJournalEntry {
 }
 
 /** A moment in a dog's life worth its own line in the journal. */
-export type DogMilestone = 'first-point';
-const MILESTONES: Readonly<Record<DogMilestone, string>> = { 'first-point': 'first point' };
+export type DogMilestone = 'first-point' | 'last-hunt';
+const MILESTONES: Readonly<Record<DogMilestone, string>> = { 'first-point': 'first point', 'last-hunt': 'last hunt' };
 
 export const HUNT_JOURNAL_LIMIT = 30;
 const COUNTS = ['retrieved', 'downed', 'escaped', 'pointFlushes', 'doubles', 'henDowns', 'hunterXp'] as const;

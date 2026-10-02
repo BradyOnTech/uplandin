@@ -9,7 +9,9 @@ import { getDropPoint, type AreaConfig, type DropPoint } from '../../game/areas'
 import { playWhistle } from '../../audio';
 import { circleBack } from '../../game/birds';
 import { BREEDS, getBreed, type BreedMotion } from '../../game/breeds';
-import { awaitsFirstPoint, loadCareer, saveCareer } from '../../game/career';
+import { awaitsFirstPoint, inLastSeason, loadCareer, saveCareer, type KennelDog } from '../../game/career';
+import { HOME_HUNT_WEEKS, SEASON_WEEKS, TRIP_HUNT_WEEKS } from '../../game/season';
+import { regionOfArea } from '../../game/regions';
 import { Dog, type CommandResponse, type DogGait, type DogState, type HandlerCommand, type HandlerCommandKind } from '../../game/dog';
 import { dogCommandFeedback, dogNoteFeedback } from '../dogFeedback';
 import { conditionMults, type Condition } from '../../game/conditions';
@@ -217,6 +219,8 @@ export class Hunt3DSystem implements Subsystem {
   private pointRevisions: number[] = [];
   /** Career dogs, by slot, that have yet to point a bird for this hunter. */
   private firstPointPending: boolean[] = [];
+  /** Said as the dogs leave the truck: an old dog's last season. */
+  private releaseMilestone: string | null = null;
   private seedValue?: number;
   private activeChallenge: HuntChallenge = 'balanced';
   falconry: GoshawkFlight | null = null;
@@ -260,6 +264,7 @@ export class Hunt3DSystem implements Subsystem {
     this.firstPointPending = setup.launch?.kind === 'career'
       ? [setup.kennelDog, setup.brace?.kennelDog ?? null].map(dog => !!dog && awaitsFirstPoint(dog))
       : [];
+    this.releaseMilestone = setup.launch?.kind === 'career' ? lastSeasonLine(setup.area.id, [setup.kennelDog, setup.brace?.kennelDog ?? null]) : null;
     this.area = setup.area;
     this.hunt = setup.hunt;
     this.falconry = this.hunt.huntingMethod === 'goshawk' ? new GoshawkFlight() : null;
@@ -390,6 +395,7 @@ export class Hunt3DSystem implements Subsystem {
     });
     this.liveSpawnSynced = true;
     this.liveIntroHolding = true;
+    if (this.releaseMilestone) { this.milestone(this.releaseMilestone); this.releaseMilestone = null; }
     return true;
   }
 
@@ -921,4 +927,13 @@ export class Hunt3DSystem implements Subsystem {
       avg: this.simTicks > 0 ? this.simMsTotal / this.simTicks : 0,
     };
   }
+}
+
+/** An old dog in its named last season: the weeks left, or its last hunt. */
+function lastSeasonLine(areaId: string, dogs: readonly (KennelDog | null)[]): string | null {
+  const career = loadCareer(), dog = dogs.find(candidate => candidate && inLastSeason(career, candidate));
+  if (!dog) return null;
+  const left = SEASON_WEEKS - career.date.week;
+  const cost = regionOfArea(areaId).id === career.homeRegionId ? HOME_HUNT_WEEKS : TRIP_HUNT_WEEKS;
+  return left <= cost ? `${dog.name}'s last hunt` : `${dog.name}'s last season · ${left} weeks left`;
 }
