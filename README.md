@@ -17,6 +17,8 @@ See the [current menu review](docs/3d/menu-redesign-audit.md),
 
 ## Playing
 
+Play online: [uplandin.brady-on-tech.workers.dev](https://uplandin.brady-on-tech.workers.dev/).
+
 ```bash
 npm install
 npm run dev     # Vite dev server (usually http://localhost:5173)

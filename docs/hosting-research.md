@@ -1,6 +1,6 @@
 # Hosting Uplandin for friends
 
-Researched October 2, 2026. Repository inspected at `da23c9e59198cd326e013f65622459d595a51ddf`. Prices are USD; provider terms and quotas can change. This is a recommendation and deployment recipe; nothing has been deployed.
+Researched October 2, 2026. Repository inspected at `da23c9e59198cd326e013f65622459d595a51ddf`. Prices are USD; provider terms and quotas can change. Cloudflare hosting has since been deployed at <https://uplandin.brady-on-tech.workers.dev/>. See [the deployment guide](deployment.md) for the verified result and current release workflow.
 
 ## Recommendation
 
@@ -63,6 +63,6 @@ Suggested `public/_redirects` (Vite copies it into `dist/`):
 / /index.html 200
 ```
 
-This preserves explicit `.html` game URLs while rendering the root from `index.html`. Cloudflare's default HTML handling redirects `/index3d.html` to `/index3d`; this repo's offline navigation keys and installed-choice logic expect the `.html` paths. Disabling that handling avoids this mismatch, while the explicit root rule keeps the PWA's `start_url: "./"` usable. Official docs show that `none` serves `.html` directly, and `_redirects` supports relative URL proxying with status 200 and follows matching rules regardless of an asset match. The combination is a documentation-supported proposal, not a deployed verification. [HTML handling](https://developers.cloudflare.com/workers/static-assets/routing/advanced/html-handling/), [redirect/proxy rules](https://developers.cloudflare.com/workers/static-assets/redirects/), [`offline.ts`](../src/three/offline.ts), [`service worker`](../public/sw.js).
+This preserves explicit `.html` game URLs while rendering the root from `index.html`. Cloudflare's default HTML handling redirects `/index3d.html` to `/index3d`; this repo's offline navigation keys and installed-choice logic expect the `.html` paths. Disabling that handling avoids this mismatch, while the explicit root rule keeps the PWA's `start_url: "./"` usable. Official docs show that `none` serves `.html` directly, and `_redirects` supports relative URL proxying with status 200 and follows matching rules regardless of an asset match. The root and explicit game URLs were subsequently verified on the public deployment. [HTML handling](https://developers.cloudflare.com/workers/static-assets/routing/advanced/html-handling/), [redirect/proxy rules](https://developers.cloudflare.com/workers/static-assets/redirects/), [`offline.ts`](../src/three/offline.ts), [`service worker`](../public/sw.js).
 
 Leave the project as pure static assets. Dynamic Worker requests have separate compute quotas and billing; they are unnecessary for the current game. If cloud saves or multiplayer are added later, evaluate those requirements then. Workers Paid has a $5/month minimum plus usage, but it is not needed for this release. [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/).

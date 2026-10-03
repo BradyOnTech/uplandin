@@ -4,9 +4,35 @@ Uplandin is configured for Cloudflare Workers Static Assets on the Free plan.
 The production game is the normal `dist/` build. Briar Glen's independent
 `dist-2d/` build is separate.
 
-## Initial setup
+**Play:** <https://uplandin.brady-on-tech.workers.dev/>
 
-Connect `BradyOnTech/uplandin` to a Cloudflare Worker named `uplandin`, using:
+The game was published through Cloudflare's static folder uploader. Static
+requests and storage cost $0; no paid plan or custom domain is needed.
+The GitHub app was reinstalled with access limited to `BradyOnTech/uplandin`,
+but Cloudflare still does not list that account. **Automatic publication on
+push is not enabled.** Use the dashboard release steps below for now.
+
+## Release feature changes now
+
+1. Make and test the change locally. Run `npm test` for gameplay changes and
+   `npm run build` to produce the complete production `dist/` folder.
+2. Commit the intended files and push to GitHub to preserve the source change.
+   A Git push alone does not update the public game yet.
+3. Open the [Uplandin Worker dashboard](https://dash.cloudflare.com/bc81aa678eddf93a3ac587d49faace10/workers/services/view/uplandin/production),
+   choose **New deployment**, click **folder**, and select the local `dist/`
+   folder. Upload the whole folder, not the repository or individual files.
+4. Choose **Deploy**. The public address stays the same. Open it and verify
+   the changed feature and a direct field URL. Check **Install & offline**
+   for offline readiness if the release changes assets or navigation.
+
+The current deployment uses assets directory `/`, HTML handling `none`, and
+not-found handling `none`. Preserve these options if the uploader offers them.
+The checked-in Wrangler configuration uses the same routing and account.
+
+## Optional Git build setup
+
+When Cloudflare's account connection works, connect `BradyOnTech/uplandin` to
+the existing Worker named `uplandin` in **Settings → Builds**, using:
 
 | Setting | Value |
 | --- | --- |
@@ -28,16 +54,12 @@ The `wrangler.jsonc` configuration uploads `dist/` and preserves `.html` URLs.
 content-hashed JavaScript/CSS long-lived caching. Other static assets retain
 Cloudflare's default revalidation behavior.
 
-## Release feature changes
+After that connection is enabled and its first build succeeds, pushing or
+merging into `main` will build and publish at the same public address. Pushes
+to other branches should not publish production. Verify the first automatic
+build before relying on this workflow.
 
-1. Make and test the change locally. Run `npm test` for gameplay changes and
-   `npm run build` to confirm the production build succeeds.
-2. Commit the intended files and push to `origin/main`, or merge your feature
-   pull request into `main`. Pushes to another branch do not publish production.
-3. Check the Worker build in Cloudflare. With the Git connection enabled,
-   Cloudflare builds the new commit and publishes it at the same public address.
-4. Open that address and verify the changed feature. Check a direct field URL
-   and wait for offline readiness if the change affects assets or navigation.
+## Player updates and rollback
 
 Cloudflare publishes complete deployments; do not upload individual changed
 files. If a release breaks, roll back to the previous production deployment in
@@ -53,9 +75,9 @@ Saves belong to the browser and host address. Use **Export save** and
 **Import save** to move a career from localhost, another device, or another
 hosting address. Do not clear site data to refresh the game: it removes saves.
 
-## Manual release
+## Optional command-line release
 
-After signing in with `npx wrangler login`, run:
+After signing in to the same Cloudflare account with `npx wrangler login`, run:
 
 ```sh
 npm ci
@@ -76,11 +98,15 @@ release with the build from that commit.
 - [Static asset cache headers](https://developers.cloudflare.com/workers/static-assets/headers/)
 - [Puppeteer configuration](https://pptr.dev/api/puppeteer.configuration)
 
-This guide describes the configured workflow; successful public deployment and
-the Git connection still need verification in Cloudflare.
-
 Local verification on October 2, 2026: production build passed; 36 focused
 offline/update tests passed; Cloudflare's local runtime parsed the redirect and
 header rules, returned the root and `.html` pages without redirects, and applied
 the intended cache headers. Chrome opened the home/preparation flow and rendered
-a live Quail Fields hunt. Public hosting has not yet been verified.
+a live Quail Fields hunt.
+
+Public verification: Cloudflare deployed 216 files as static assets (version
+`a9b607e5`). Chrome opened the HTTPS root, followed the preparation flow, and
+rendered an active Quail Fields hunt at an explicit `index3d.html` URL with
+query parameters. The public **Install & offline** panel reported “3D game
+saved for offline play.” Actual airplane-mode launch, installed mobile play,
+and command-line publication were not tested during this deployment.
