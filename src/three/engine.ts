@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mulberry32 } from '../game/math';
 import type { TimeOfDay } from './palette';
 import { FrameTelemetry } from './frameTelemetry';
+import { sampleVertexColorsInside } from './centroidColors';
 
 export type Quality = 'high' | 'lite';
 export interface Ctx {
@@ -59,6 +60,9 @@ export class Engine {
   private readonly drawingSize = new THREE.Vector2();
 
   constructor(canvas: HTMLCanvasElement, quality: Quality, seed = 1971) {
+    // Multisampled thin strips must not extrapolate their vertex colours
+    // (centroidColors.ts); this runs before any material compiles.
+    sampleVertexColorsInside();
     // Preserve thin vegetation edges even at the lightweight pixel budget.
     // The browser may decline multisampling; geometry and shadow savings
     // still distinguish the tiers independently of this context request.

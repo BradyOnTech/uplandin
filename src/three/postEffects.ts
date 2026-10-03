@@ -118,6 +118,9 @@ void main() {
   gl_FragColor = vec4(sum / weight, z, 0.0, 1.0);
 }`;
 
+/** The brightest linear value a scene pixel keeps on its way to the bloom. */
+export const HDR_CEILING = 10;
+
 const COMPOSITE_FRAGMENT = /* glsl */`
 ${VIEW_POSITION}
 uniform sampler2D tColor;
@@ -141,6 +144,11 @@ uniform int uDebug;
 varying vec2 vUv;
 void main() {
   vec4 color = texture2D(tColor, vUv);
+  // A ceiling above anything the field draws (prairie water's sun glint,
+  // the brightest, peaks a little over 8) and a floor at black: a single
+  // wild pixel must not reach the bloom, which would spread it into a flash
+  // across the frame (centroidColors.ts has the one we found).
+  color.rgb = clamp(color.rgb, 0.0, ${HDR_CEILING.toFixed(1)});
   float depth = texture2D(tDepth, vUv).x;
   bool sky = depth >= .99999;
   float z = sky ? uSkyDistance : -viewZ(depth);
