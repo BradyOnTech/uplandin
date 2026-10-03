@@ -3,6 +3,13 @@
   "releases": [
     {
       "date": "2026-10-03",
+      "through": "d7a35a7",
+      "notes": [
+        "Show the game's version and what's new on the home screen"
+      ]
+    },
+    {
+      "date": "2026-10-03",
       "through": "bdf2729",
       "notes": [
         "Stop the flashes of light on Chukar Ridge and Quail Fields",
