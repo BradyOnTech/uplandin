@@ -282,10 +282,10 @@ describe('HuntSimulation shared orchestration', () => {
   });
   it('flushes the nearby member of a pointed covey and preserves the earned point credit', () => {
     const f=pointedSimulation(40,true);
-    const nearby={...f.bird,id:9002,pos:{x:f.hunt.hunterPos.x+7,y:f.hunt.hunterPos.y}};
+    const nearby={...f.bird,id:9002,pos:{x:f.hunt.hunterPos.x+3,y:f.hunt.hunterPos.y}};
     f.hunt.birds.push(nearby);
     const events=f.simulation.update(16,{hunterPos:f.hunt.hunterPos});
-    expect(events).toContainEqual(expect.objectContaining({type:'covey-flushed',birdId:9002,pointCredit:true,hunterDistance:7}));
+    expect(events).toContainEqual(expect.objectContaining({type:'covey-flushed',birdId:9002,pointCredit:true,hunterDistance:3}));
     expect(f.hunt.dogWork[0].pointFlushes).toBe(1);
     expect(f.hunt.birds.every(b=>b.state==='flushed')).toBe(true);
   });
@@ -301,7 +301,8 @@ describe('HuntSimulation shared orchestration', () => {
     const f = pointedSimulation(20, true);
     expect(f.simulation.update(16, {hunterPos:f.hunt.hunterPos}).some(e=>e.type==='covey-flushed')).toBe(false);
     expect(f.bird.state).toBe('hidden');
-    const events=f.simulation.update(16,{hunterPos:{x:f.bird.pos.x-7,y:f.bird.pos.y}});
+    // Within a few strides of the covey, as a quiet walk-in gets since October 2026.
+    const events=f.simulation.update(16,{hunterPos:{x:f.bird.pos.x-3,y:f.bird.pos.y}});
     expect(events).toContainEqual(expect.objectContaining({type:'covey-flushed',cause:'proximity',pointCredit:true}));
   });
   it('still flushes a close pointed covey wild when the hunter sprints in', () => {

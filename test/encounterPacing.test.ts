@@ -126,23 +126,24 @@ describe('encounter pacing in a Loaded field', () => {
 });
 
 describe('close flushes', () => {
-  // The rooster underfoot is why people hunt pheasants; a tight covey of
-  // quail or chukar does it now and then; sharptail only occasionally. Share
-  // of pointed flushes where the birds went up within about six yards.
+  // The rooster underfoot is why people hunt pheasants, and a quail covey
+  // walked up on a point erupts around the hunter (October 2026 playtest:
+  // rises at 10-20 m read as specks). Chukar hold close often, sharptail now
+  // and then. Share of pointed flushes where the birds went up within about
+  // six yards.
   const seeds = [23, 41, 73, 11, 37, 53, 5, 17, 29, 31, 43, 47];
   const share = (area: string) => {
     const pointed = seeds.flatMap(seed => hunt(area, seed * 1009, 360).flushes).filter(f => f.pointed);
     return pointed.filter(f => f.yards <= 6.5).length / pointed.length;
   };
-  it('puts roughly one pointed rooster in three up at the hunter\'s feet', () => {
+  it('puts about half the pointed roosters up at the hunter\'s feet', () => {
     const pheasant = share('pheasant-coverts');
-    expect(pheasant).toBeGreaterThan(.2); expect(pheasant).toBeLessThan(.5);
+    expect(pheasant).toBeGreaterThan(.3); expect(pheasant).toBeLessThan(.7);
   }, 120_000);
-  it('lets some coveys hold tight, more often quail and chukar than sharptail', () => {
-    for (const area of ['quail-fields', 'chukar-ridge']) {
-      const covey = share(area);
-      expect(covey, area).toBeGreaterThan(.1); expect(covey, area).toBeLessThan(.4);
-    }
-    expect(share('sharptail-prairie')).toBeLessThan(.15);
+  it('puts most pointed quail coveys up around the hunter, chukar often, sharptail now and then', () => {
+    const quail = share('quail-fields'), chukar = share('chukar-ridge'), sharptail = share('sharptail-prairie');
+    expect(quail).toBeGreaterThan(.55);
+    expect(chukar).toBeGreaterThan(.2); expect(chukar).toBeLessThan(quail);
+    expect(sharptail).toBeLessThan(.25); expect(sharptail).toBeLessThan(chukar);
   }, 240_000);
 });

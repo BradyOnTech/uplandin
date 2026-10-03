@@ -381,7 +381,7 @@ export class HuntSimulation {
         // A tight covey lets the hunter walk right in.
         if (spatialEncounter && !input.hunterRunning && tightCovey(species.id, coveyRoll(this.hunt.birds, pointed.coveyId))) nerveMult *= TIGHT_COVEY_NERVE_SCALE;
         if (coveyApproach) {
-          nerveMult *= quailPointApproach(pointed.coveyId, dog.pressure, !!input.hunterRunning).nerveScale;
+          nerveMult *= quailPointApproach(pointed.coveyId, dog.pressure, !!input.hunterRunning, this.challenge).nerveScale;
           // Bobwhite's close covey walk-in must account for field-scale
           // travel. Other covey species keep their own warier approach.
           if (species.id === 'bobwhite') nerveMult *= bobwhiteApproachNerveScale(

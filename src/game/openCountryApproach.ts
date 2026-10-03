@@ -6,11 +6,15 @@ export function usesOpenCountryWalkIn(speciesId: string): boolean {
   return speciesId === 'sharptail' || speciesId === 'chukar';
 }
 
-/** A quietly approached prairie point can hold inside the wild-rise radius.
- * Ridge birds retain their smaller existing walk-in radius. Property units
- * are yards; challenge applies here just as it does for quail and pheasant. */
+/** A quietly approached point holds well inside the wild-rise radius, so the
+ * hunter walks in past the dog and the covey goes up close (the October 2026
+ * playtest found rises at 13-20 m read as specks): ridge birds at about half
+ * of it, prairie birds at a little more. Running gets the whole radius.
+ * Property units are yards; challenge applies here just as it does for quail
+ * and pheasant. */
+export const OPEN_COUNTRY_QUIET_SCALE: Readonly<Record<string, number>> = { chukar: .45, sharptail: .5 };
 export function openCountryPointRadius(speciesId: string, radius: number, challenge: HuntChallenge, running: boolean): number {
-  const quietScale = speciesId === 'sharptail' && !running ? .8 : 1;
+  const quietScale = running ? 1 : OPEN_COUNTRY_QUIET_SCALE[speciesId] ?? 1;
   return radius * quietScale * HUNT_CHALLENGES[challenge].approach;
 }
 

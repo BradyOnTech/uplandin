@@ -5,8 +5,10 @@ export function pheasantApproach(birdId: number, distance: number, running: bool
   // Close flushes are why people hunt pheasants: nearly half the roosters sit
   // until the hunter is right on them (closeFlush.ts presents those).
   const kind = roll < .46 ? 'tight' : roll < .83 ? 'ordinary' : 'wary';
-  const flushRadius = kind === 'tight' ? 2.5 + roll / .46 * 3
-    : kind === 'ordinary' ? 8 + (roll - .46) / .37 * 6
+  // Ordinary birds hold to a few strides too (8-14 yards until the October
+  // 2026 playtest); the wary ones still break wild at the end of the cover.
+  const flushRadius = kind === 'tight' ? 2 + roll / .46 * 2.5
+    : kind === 'ordinary' ? 5.5 + (roll - .46) / .37 * 5
       : 18 + (roll - .83) / .17 * 8;
   return {
     kind,

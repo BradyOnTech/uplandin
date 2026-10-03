@@ -8,6 +8,9 @@ import type { HuntChallenge } from '../src/game/huntChallenge';
 import { mulberry32 } from '../src/game/math';
 import { createHunt, emptyDogWork } from '../src/game/state';
 import { PROPERTY_PX_TO_M } from '../src/game/worldUnits';
+import { openCountryPointRadius, pointWalkInAllowanceMs } from '../src/game/openCountryApproach';
+import { huntingDoctrine } from '../src/game/huntDoctrine';
+import { getSpecies } from '../src/game/species';
 
 // Controlled held-point fixtures exercise actual simulation outcomes. They
 // are not claimed as naturally discovered coveys; public-route evidence lives
@@ -59,9 +62,11 @@ describe('world-scale held-point walk-in', () => {
       const rise = f.untilRise(true);
       expect(rise.cause).toBe('proximity'); radii.push(rise.rangeM);
     }
-    expect(radii[0]).toBeLessThan(18);
-    expect(radii[1]).toBeGreaterThan(radii[0] + 2);
-    expect(radii[2]).toBeGreaterThan(radii[1] + 3);
+    // Relaxed holds closer and Wild breaks well out, in proportion to the
+    // quiet walk-in radius (a few strides on Balanced since October 2026).
+    expect(radii[0]).toBeLessThan(12);
+    expect(radii[1]).toBeGreaterThan(radii[0] * 1.12);
+    expect(radii[2]).toBeGreaterThan(radii[1] * 1.35);
   });
 
   it('still expires for a stationary handler, and running or Wild makes a far point less forgiving', () => {
@@ -79,8 +84,13 @@ describe('world-scale held-point walk-in', () => {
     f.dog.state = 'heel'; f.dog.pointedBirdId = null; f.step();
     const other = { ...f.bird, id: 9002 }; f.hunt.birds.push(other);
     f.dog.state = 'pointing'; f.dog.gait = 'still'; f.dog.pointedBirdId = other.id;
-    const rise = f.untilRise(false, false, 6000);
-    expect(rise.cause).toBe('nerve'); expect(rise.ms).toBeLessThan(17000);
+    // One walk-in's protection, then the covey's own nerve: a second
+    // allowance would hold it far past this.
+    const radius = openCountryPointRadius('sharptail', huntingDoctrine('sharptail-prairie').pointRadius * (getSpecies('sharptail').pointRadiusMult ?? 1), 'balanced', false);
+    const allowance = pointWalkInAllowanceMs(50, radius, 'balanced');
+    expect(allowance).toBeGreaterThan(11000);
+    const rise = f.untilRise(false, false, allowance);
+    expect(rise.cause).toBe('nerve'); expect(rise.ms).toBeLessThan(allowance + 6000);
   });
 
   it('spends the shared covey allowance once per tick when both brace dogs point', () => {

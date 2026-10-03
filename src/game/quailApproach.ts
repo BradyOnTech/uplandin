@@ -6,12 +6,16 @@ import type { HuntChallenge } from './huntChallenge';
  * stable for the existing Quail Fields adapter, while SpeciesConfig decides
  * which other covey birds use this same approach beat.
  */
-export function quailPointApproach(coveyId: number, dogPressure: number, running: boolean) {
+export function quailPointApproach(coveyId: number, dogPressure: number, running: boolean, challenge: HuntChallenge = 'balanced') {
   const disposition = (Math.imul(coveyId + 1, 1597334677) >>> 0) / 0xffffffff;
   const steadiness = Math.max(0, Math.min(1, (1.45 - dogPressure) / .85));
   return {
-    flushRadius: running ? 22 : 12 + disposition * 6 - steadiness * 4,
-    nerveScale: running ? 1 : .65 + disposition * .2,
+    // A quiet walk-in reaches the covey: most go up within a few strides of
+    // the hunter, past the dog (October 2026; it was 8-18 yards).
+    flushRadius: running ? 22 : 6 + disposition * 5 - steadiness * 2.5,
+    // ...so it holds a little longer for the extra strides (was .65-.85),
+    // except on Wild, whose coveys keep the old urgency.
+    nerveScale: running ? 1 : (challenge === 'wild' ? .65 : .45) + disposition * .2,
   };
 }
 

@@ -47,7 +47,7 @@ describe('the close flush', () => {
     expect(share('ringneck')).toBe(0);
     for (const roll of [0, .05, .29]) {
       const radius = tightCoveyRadius('chukar', roll);
-      expect(radius).toBeGreaterThanOrEqual(4.5); expect(radius).toBeLessThanOrEqual(7.5);
+      expect(radius).toBeGreaterThanOrEqual(2.5); expect(radius).toBeLessThanOrEqual(5.5);
     }
     // A covey's roll comes from its first bird and never changes with the walk-in.
     const covey = [bird(5, 2, 'chukar', 0, 0, { approachRoll: .4 }), bird(3, 2, 'chukar', 1, 0, { approachRoll: .9 })];
@@ -66,7 +66,7 @@ describe('the close flush', () => {
       const events = f.sim.update(1000 / 30, { hunterPos: hunter });
       if (events.some(event => event.type === 'covey-flushed')) flushedAt = 300 - hunter.x;
     }
-    expect(flushedAt).toBeLessThanOrEqual(7.6);
+    expect(flushedAt).toBeLessThanOrEqual(5.6);
     expect(flushedAt).toBeGreaterThan(2);
   });
 

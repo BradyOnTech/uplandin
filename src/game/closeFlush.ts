@@ -40,7 +40,7 @@ export function tightCovey(speciesId: string, coveyRoll: number): boolean {
 
 /** A tight covey's flush radius in property yards, before the challenge scale. */
 export function tightCoveyRadius(speciesId: string, coveyRoll: number): number {
-  return 4.5 + Math.min(1, coveyRoll / Math.max(.01, tightCoveyShare(speciesId))) * 3;
+  return 2.5 + Math.min(1, coveyRoll / Math.max(.01, tightCoveyShare(speciesId))) * 3;
 }
 
 /** A covey's seeded roll: from its first bird's individual roll, decorrelated

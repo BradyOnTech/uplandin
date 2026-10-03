@@ -6,8 +6,9 @@ it('gives steadier dogs tighter approaches with stable, varied covey disposition
   for(let covey=0;covey<20;covey++) {
     const puppy=quailPointApproach(covey,1.45,false);
     const steady=quailPointApproach(covey,.6,false);
-    expect(steady.flushRadius).toBeGreaterThanOrEqual(8);
-    expect(puppy.flushRadius).toBeLessThanOrEqual(18);
+    // A quiet walk-in reaches the covey: a few strides out, never at the old 8-18 yards.
+    expect(steady.flushRadius).toBeGreaterThanOrEqual(3.5);
+    expect(puppy.flushRadius).toBeLessThanOrEqual(11);
     expect(steady.flushRadius).toBeLessThan(puppy.flushRadius);
     expect(steady).toEqual(quailPointApproach(covey,.6,false));
     expect(steady.nerveScale).toBeGreaterThan(0);
