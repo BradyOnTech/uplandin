@@ -5,7 +5,7 @@ import { birdFlightExpired } from '../../game/birdFlightLifetime';
 import { buildPheasantBody, buildPheasantLegs, buildPheasantWing, buildPheasantTail, pheasantLegTuck, pheasantTailFan, posePheasantFoldedWings, pheasantWingbeat } from '../assets/pheasant';
 import { buildBirdLegs } from '../assets/birdLegs';
 import { createQuailFlight, selectQuailEscapeCover, stepQuailFlight, type QuailFlight } from '../quailFlight';
-import { QUAIL_WORLD_SCALE, quailLaunchDelay } from '../quailPresentation';
+import { quailLaunchDelay } from '../quailPresentation';
 import { flyingBirdScale, type BirdSizeMode } from '../birdScale';
 import { chooseHitReaction, createHitReaction, featherCount, stepHitReaction, tumbleRate, type HitReaction, type HitReactionKind, type HitShot } from '../hitReactions';
 import { FeatherDrift, featherTones } from '../featherDrift';
@@ -96,9 +96,14 @@ const LAUNCH_PX_TO_M = 0.035;
 const NUDGE_CLAMP_PX = 55;
 const NUDGE_GAIN = 0.35;
 const LAUNCH_JITTER_PX = 16;
+/** How much wider a covey's escape fan opens when it is sat on underfoot
+ * (at full close-flush intensity): the birds break across the hunter's front
+ * as well as away, instead of lining out down one bearing. */
+export const CLOSE_FAN_WIDEN = 1.2;
 /**
- * Property-rise presentation scale on the 0.24 m body. Quail Fields uses
- * QUAIL_WORLD_SCALE consistently in flight and on the ground. The old 2D view
+ * Property-rise presentation scale on the 0.24 m body: the readable size a
+ * flying bird eases to by shotgun range (birdScale.ts), on every ground,
+ * Quail Fields included since October 2026. The old 2D view
  * paid with chunky sprites (its bobwhite spanned ~9% of the screen):
  * the silhouette must read GAMEBIRD at the 15-25 m a rise honestly
  * frames from, and a to-scale bobwhite is a 6-12 px speck there.
@@ -1060,7 +1065,10 @@ export class BirdsSystem implements Subsystem {
         this.stageRise(covey);
         const flight: FlightContext = { escX:this.escX,escZ:this.escZ,rightX:this.rightX,rightZ:this.rightZ,
           hunterX:this.hunterX,hunterZ:this.hunterZ,driftPx:this.driftPx,rng:this.riseRng };
-        for (const bird of covey) {
+        // The bird nearest the hunter's boots goes first; the rest erupt after it.
+        const boots = this.hunt.huntState().hunterPos;
+        const fromBoots = (bird: (typeof covey)[number]) => Math.hypot(bird.pos.x - boots.x, bird.pos.y - boots.y);
+        for (const bird of [...covey].sort((a, b) => fromBoots(a) - fromBoots(b) || a.id - b.id)) {
           this.queue[this.qTail++] = bird.id;
           this.pendingFlights.set(bird.id, { ...flight, slopeApproach: this.hunt.riseSlopeApproach(bird.id) });
         }
@@ -1629,7 +1637,17 @@ export class BirdsSystem implements Subsystem {
         rng,
         !!sim.young,
       );
-      if (slot.spatialFlight) slot.spatialFlight.burst = slot.closeness;
+      const closeness = slot.closeness ?? 0;
+      if (slot.spatialFlight) {
+        slot.spatialFlight.burst = closeness;
+        // A covey sat on underfoot bursts wide (CLOSE_FAN_WIDEN).
+        const away = Math.atan2(speciesFlight.escZ, speciesFlight.escX), bearing = slot.spatialFlight.bearing;
+        const off = Math.atan2(Math.sin(bearing - away), Math.cos(bearing - away));
+        slot.spatialFlight.bearing = away + off * (1 + CLOSE_FAN_WIDEN * closeness);
+      } else if (species.id !== 'ringneck') {
+        // The same for a chukar covey on the authored break: its lateral impulse.
+        slot.vel.x *= 1 + CLOSE_FAN_WIDEN * closeness;
+      }
       if (slot.spatialFlight && species.coveyApproach === true && !sim.single && rng() <= RELIGHT_CHANCE) {
         slot.spatialFlight.target = selectQuailEscapeCover(
           slot.x,
@@ -1734,9 +1752,11 @@ export class BirdsSystem implements Subsystem {
   /* ------------------------- read-only surface ----------------------- */
 
   /** Model scale while airborne, before the species' own size factor. The
-   * `life` size mode reads the bird's distance from the camera. */
+   * `life` size mode reads the bird's distance from the camera. Quail Fields
+   * flew its birds at true size at every range until the October 2026
+   * playtest found a covey a speck by 20 m; it eases like every ground now,
+   * from the bobwhite's true size (QUAIL_WORLD_SCALE) up close. */
   private flightScale(speciesId: string, at: { x: number; y: number; z: number }, camera = this.listener?.position): number {
-    if (this.refinedQuail) return QUAIL_WORLD_SCALE;
     const distanceM = this.size === 'life' && camera ? Math.hypot(at.x - camera.x, at.y - camera.y, at.z - camera.z) : 0;
     return flyingBirdScale(this.size, restingBirdScale(birdFamilyFor(speciesId)), RISE_SCALE, distanceM);
   }

@@ -15,7 +15,7 @@ type FlightSlot = { simId: number; status: string; x: number; y: number; z: numb
 
 /** One flying rooster on a non-quail ground, as birdFlightPresentation builds its chukar.
  * The camera stands 2 m up at the origin; the bird is `ahead` metres out. */
-function rooster(options?: BirdsOptions, airMs = 120, ahead = 20) {
+function rooster(options?: BirdsOptions, airMs = 120, ahead = 20, speciesId = 'ringneck') {
   vi.stubGlobal('window', new EventTarget()); vi.stubGlobal('location', { search: '' });
   vi.stubGlobal('document', { getElementById: () => null, querySelector: () => null });
   const birds = new BirdsSystem(options);
@@ -33,7 +33,7 @@ function rooster(options?: BirdsOptions, airMs = 120, ahead = 20) {
   internal.mat = new THREE.MeshLambertMaterial({ vertexColors: true }); internal.hunt = hunt; internal.listener = camera;
   internal.terrain = { heightAt: () => 0 }; internal.frozen = false; internal.spatialEncounter = true;
   internal.buildPool(ctx); const slot = internal.slots[0];
-  internal.applySpeciesAppearance(slot, getSpecies('ringneck'), 'rooster');
+  internal.applySpeciesAppearance(slot, getSpecies(speciesId), speciesId === 'ringneck' ? 'rooster' : undefined);
   Object.assign(slot, { simId: 1, status: 'flying', x: 0, y: 2, z: -ahead, vxW: 0, vyW: 4, vzW: 8,
     airMs, previousAirMs: airMs - 1000 / 30 });
   birds.update(ctx, 1 / 60);
@@ -79,12 +79,30 @@ describe('flying bird size modes', () => {
     for (const f of [today, honest, near, far]) f.birds.dispose(f.ctx);
   });
 
-  it('leaves Quail Fields at its own world scale in every mode', () => {
-    for (const options of [undefined, { size: 'true' as const }, { size: 'life' as const }]) {
-      const f = rooster(options);
+  it('eases Quail Fields bobwhite like every other ground: true size up close, readable by gun range', () => {
+    // The bobwhite's true size in flight is the size it sits and is carried at.
+    expect(restingBirdScale('quail')).toBe(QUAIL_WORLD_SCALE);
+    const quail = (options: BirdsOptions | undefined, ahead: number) => {
+      const f = rooster(options, 120, ahead, 'bobwhite');
       f.internal.refinedQuail = true; f.birds.update(f.ctx, 1 / 60);
-      expect(f.slot.root.scale.x).toBeCloseTo(QUAIL_WORLD_SCALE * f.slot.visualScale, 9);
+      const scale = f.slot.root.scale.x / f.slot.visualScale;
       f.birds.dispose(f.ctx);
+      return scale;
+    };
+    expect(quail({ size: 'life' }, 3)).toBeCloseTo(QUAIL_WORLD_SCALE, 9);
+    // A covey at 20-30 m was a 10-15 px speck at true size (October 2026 playtest).
+    expect(quail({ size: 'life' }, 25)).toBeGreaterThan(1.7 * QUAIL_WORLD_SCALE);
+    expect(quail({ size: 'life' }, 50)).toBeCloseTo(3.3, 9);
+    expect(quail({ size: 'true' }, 50)).toBeCloseTo(QUAIL_WORLD_SCALE, 9);
+    expect(quail({ size: 'readable' }, 3)).toBeCloseTo(3.3, 9);
+  });
+
+  it('still shrinks a quail on screen at every range as it flies away', () => {
+    let previousApparent = Infinity;
+    for (let d = 1; d <= 60; d += .25) {
+      const apparent = flyingBirdScale('life', QUAIL_WORLD_SCALE, 3.3, d) / d;
+      expect(apparent).toBeLessThan(previousApparent);
+      previousApparent = apparent;
     }
   });
 
