@@ -117,3 +117,11 @@ rendered an active Quail Fields hunt at an explicit `index3d.html` URL with
 query parameters. The public **Install & offline** panel reported “3D game
 saved for offline play.” Actual airplane-mode launch, installed mobile play,
 and command-line publication were not tested during this deployment.
+
+Automatic Git deployment verified on October 2, 2026: pushing commit `2f7a634`
+to `main` triggered Cloudflare build `1fbe80c4`, which built and deployed
+successfully in 1 minute 21 seconds. The deployed version was
+`3833f0e3-a809-4fea-8002-a9f382fd22a7`. This build used the restricted
+`Uplandin Cloudflare build token`. Chrome then opened the public root, followed
+the preparation flow, and rendered an active Quail Fields hunt at the direct
+`.html` URL with query parameters.
