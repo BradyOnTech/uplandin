@@ -6,33 +6,33 @@ The production game is the normal `dist/` build. Briar Glen's independent
 
 **Play:** <https://uplandin.brady-on-tech.workers.dev/>
 
-The game was published through Cloudflare's static folder uploader. Static
-requests and storage cost $0; no paid plan or custom domain is needed.
-The GitHub app was reinstalled with access limited to `BradyOnTech/uplandin`,
-but Cloudflare still does not list that account. **Automatic publication on
-push is not enabled.** Use the dashboard release steps below for now.
+The existing `uplandin` Worker is connected to `BradyOnTech/uplandin`.
+**Pushes or merges into `main` start an automatic build and deployment.**
+Static requests and storage cost $0; no paid plan or custom domain is needed.
+The GitHub app has access only to this repository. The Cloudflare build token
+is restricted to Workers Scripts edit and Account Settings read within the
+Brady Cloudflare account.
 
-## Release feature changes now
+## Release feature changes
 
 1. Make and test the change locally. Run `npm test` for gameplay changes and
    `npm run build` to produce the complete production `dist/` folder.
-2. Commit the intended files and push to GitHub to preserve the source change.
-   A Git push alone does not update the public game yet.
-3. Open the [Uplandin Worker dashboard](https://dash.cloudflare.com/bc81aa678eddf93a3ac587d49faace10/workers/services/view/uplandin/production),
-   choose **New deployment**, click **folder**, and select the local `dist/`
-   folder. Upload the whole folder, not the repository or individual files.
-4. Choose **Deploy**. The public address stays the same. Open it and verify
-   the changed feature and a direct field URL. Check **Install & offline**
-   for offline readiness if the release changes assets or navigation.
+2. Commit the intended files, then push `main` or merge the feature branch
+   into `main`. Cloudflare installs dependencies, builds the game, and deploys
+   the complete production `dist/` using the checked-in Wrangler configuration.
+3. Open the [Uplandin Worker dashboard](https://dash.cloudflare.com/bc81aa678eddf93a3ac587d49faace10/workers/services/view/uplandin/production)
+   and check the build result for that commit. A failed build keeps the previous
+   production release live; fix the reported error and push again.
+4. When the deployment succeeds, open the public game and verify the changed
+   feature and a direct field URL. Check **Install & offline** for offline
+   readiness if the release changes assets or navigation. The public address
+   stays the same.
 
-The current deployment uses assets directory `/`, HTML handling `none`, and
-not-found handling `none`. Preserve these options if the uploader offers them.
-The checked-in Wrangler configuration uses the same routing and account.
+Pushes to other branches do not publish production. Preview builds are disabled.
 
-## Optional Git build setup
+## Connected Git build settings
 
-When Cloudflare's account connection works, connect `BradyOnTech/uplandin` to
-the existing Worker named `uplandin` in **Settings → Builds**, using:
+The existing Worker named `uplandin` has these **Settings → Builds** values:
 
 | Setting | Value |
 | --- | --- |
@@ -54,10 +54,10 @@ The `wrangler.jsonc` configuration uploads `dist/` and preserves `.html` URLs.
 content-hashed JavaScript/CSS long-lived caching. Other static assets retain
 Cloudflare's default revalidation behavior.
 
-After that connection is enabled and its first build succeeds, pushing or
-merging into `main` will build and publish at the same public address. Pushes
-to other branches should not publish production. Verify the first automatic
-build before relying on this workflow.
+The production build uses the API token named `Uplandin Cloudflare build token`.
+Keep its permissions limited to the two account permissions above. The separate
+`Uplandin production builds` token created during setup is not used by this
+connection; it did not appear in Cloudflare's connection selector.
 
 ## Player updates and rollback
 
@@ -86,8 +86,15 @@ npm run deploy
 
 This builds the game and uploads the complete `dist/` to the same Worker.
 Manual publication and Git publication use the same Wrangler configuration.
-If the Git connection is enabled, the next push to `main` replaces the manual
-release with the build from that commit.
+The next push to `main` replaces a manual release with the build from that commit.
+
+## Dashboard upload fallback
+
+If Git builds are unavailable, run `npm run build`, choose **New deployment**
+in the Worker dashboard, click **folder**, select the whole local `dist/` folder,
+and choose **Deploy**. Preserve assets directory `/`, HTML handling `none`, and
+not-found handling `none` if the uploader offers those options. Upload the built
+folder, not the repository or individual files.
 
 ## Sources
 
