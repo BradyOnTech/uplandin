@@ -17,12 +17,18 @@ See the [current menu review](docs/3d/menu-redesign-audit.md),
 
 ## Playing
 
+Play online: [uplandin.brady-on-tech.workers.dev](https://uplandin.brady-on-tech.workers.dev/).
+
 ```bash
 npm install
 npm run dev     # Vite dev server (usually http://localhost:5173)
 npm test        # Vitest suite over the pure sim
 npm run build   # production build
 ```
+
+Pushes or merges into `main` automatically build and publish to the same game
+link through Cloudflare. See [deployment and updates](docs/deployment.md) for
+release checks, player updates, and rollback.
 
 Open `/` for the shared home and preparation flow. Choose the 3D or Classic 2D
 hunting view through Play settings. `npm run dev:3d` also serves this flow;
