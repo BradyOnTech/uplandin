@@ -17,18 +17,56 @@ Brady Cloudflare account.
 
 1. Make and test the change locally. Run `npm test` for gameplay changes and
    `npm run build` to produce the complete production `dist/` folder.
-2. Commit the intended files, then push `main` or merge the feature branch
-   into `main`. Cloudflare installs dependencies, builds the game, and deploys
-   the complete production `dist/` using the checked-in Wrangler configuration.
+2. Commit the intended files. On `main`, run `npm run release-notes` and
+   commit `release-notes.json` (see [Versions and release notes](#versions-and-release-notes)).
+   Then push `main` or merge the feature branch into `main`. Cloudflare
+   installs dependencies, builds the game, and deploys the complete production
+   `dist/` using the checked-in Wrangler configuration.
 3. Open the [Uplandin Worker dashboard](https://dash.cloudflare.com/bc81aa678eddf93a3ac587d49faace10/workers/services/view/uplandin/production)
    and check the build result for that commit. A failed build keeps the previous
    production release live; fix the reported error and push again.
-4. When the deployment succeeds, open the public game and verify the changed
-   feature and a direct field URL. Check **Install & offline** for offline
+4. When the deployment succeeds, open
+   <https://uplandin.brady-on-tech.workers.dev/version.json> and check that its
+   `commit` is the commit you pushed. Then open the public game and verify the
+   changed feature and a direct field URL. Check **Install & offline** for offline
    readiness if the release changes assets or navigation. The public address
    stays the same.
 
 Pushes to other branches do not publish production. Preview builds are disabled.
+
+## Versions and release notes
+
+Every build knows which version it is: **Version 2026.10.03 · bdf2729** is the
+day of the commit it was built from, in Central time, and that commit. The home
+screen shows the version at the bottom right; click it for **What's new**.
+
+- **Check that a release is live:** open `/version.json` on the public site.
+  Its `commit` is the commit production serves, its `builtAt` is when Cloudflare
+  built it, and `releases` holds the latest notes. Neither the host nor the
+  game's offline worker caches this file.
+- **An open or installed copy** keeps the version it has until the player
+  chooses **Update game**. When production moves on, the home screen's version
+  shows **Update ready**, and What's new names the new version and what it
+  brings. After the update, What's new opens once by itself with the new notes.
+  A first-time player is not shown it.
+
+`release-notes.json` holds the notes, newest first. A release lists the
+subjects of the commits a player could notice since the release before: changes
+to `src/`, `public/` and the built pages, but not docs, tests, tools or the
+retired 2D game. The game carries the latest five releases.
+
+To release:
+
+1. On `main`, after the last commit for the release, run `npm run release-notes`.
+   It adds a release dated today with those commit subjects, through the
+   current commit. Reword or remove lines freely; a file the build cannot read
+   stops the build with a plain message.
+2. Commit `release-notes.json` (for example, "Release notes for 2026.10.03") and
+   push.
+3. When the Cloudflare build finishes, check `/version.json`.
+
+When nothing a player could notice has changed, the script says so and leaves
+the file alone. The new build still shows its version, with no What's new.
 
 ## Connected Git build settings
 
@@ -50,7 +88,8 @@ so the lockfile determines the deployment tool version.
 
 The `wrangler.jsonc` configuration uploads `dist/` and preserves `.html` URLs.
 `public/_redirects` serves `/index.html` at `/`, matching the PWA start URL.
-`public/_headers` revalidates the service worker and precache manifest and gives
+`public/_headers` revalidates the service worker, precache manifest and
+`version.json`, and gives
 content-hashed JavaScript/CSS long-lived caching. Other static assets retain
 Cloudflare's default revalidation behavior.
 

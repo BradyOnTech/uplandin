@@ -197,3 +197,15 @@ it('retires the legacy shell after one scoped predecessor exists and leaves othe
   f.offline();
   expect(await (await f.dispatch('fetch', { request: new Request(`${scope}art/title.png`) }))?.text()).toBe('legacy art');
 });
+
+it('leaves the published version, the update manifest and itself to the network, so each always says what the server has', async () => {
+  const f = fixture();
+  await f.dispatch('install');
+  await f.dispatch('activate');
+  for (const file of ['version.json', 'precache.json', 'sw.js']) {
+    // No respondWith: the browser asks the server, as if there were no worker.
+    expect(await f.dispatch('fetch', { request: new Request(`${scope}${file}?checked=1`) })).toBeUndefined();
+  }
+  const cached = (await Promise.all([...f.stores.values()].map(store => store.keys()))).flat().map(request => request.url);
+  expect(cached.some(url => url.includes('version.json'))).toBe(false);
+});

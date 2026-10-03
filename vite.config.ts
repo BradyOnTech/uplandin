@@ -2,11 +2,30 @@ import { resolve } from 'node:path';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { defineConfig } from 'vite';
+import { RELEASES_IN_GAME, buildInfo } from './scripts/releases.mjs';
+
+// The version this build is (its commit and that commit's day) and the
+// latest release notes (scripts/releases.mjs).
+const { builtAt, ...build } = buildInfo({ root: __dirname });
+const inGame = { ...build, releases: build.releases.slice(0, RELEASES_IN_GAME) };
 
 export default defineConfig({
   // Relative base keeps the build deployable anywhere (itch.io, subpaths, Capacitor).
   base: './',
+  // The game knows its own version, even offline (src/three/gameVersion.ts).
+  // Only the commit and its day go in, so a rebuilt commit is the same game.
+  define: { __UPLANDIN_BUILD__: JSON.stringify(inGame) },
   plugins: [{
+    // What production is running, for anyone to check, and what an update brings.
+    // Never cached: the worker passes it through and _headers revalidates it.
+    name: 'game-version',
+    apply: 'build',
+    generateBundle() {
+      const { version, commit, releases } = inGame;
+      const published = { label: `Version ${version} · ${commit}`, version, commit, builtAt, releases };
+      this.emitFile({ type: 'asset', fileName: 'version.json', source: `${JSON.stringify(published, null, 2)}\n` });
+    },
+  }, {
     name: 'offline-hunt-assets',
     apply: 'build',
     writeBundle(options, bundle) {

@@ -100,8 +100,9 @@ self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== location.origin || !url.href.startsWith(SCOPE)) return;
-  // Never pin the update manifest or service worker in the application cache.
-  if (url.pathname.endsWith('/precache.json') || url.pathname.endsWith('/sw.js')) return;
+  // Never pin the update manifest, service worker or published version in the
+  // application cache: each must always say what the server has now.
+  if (url.pathname.endsWith('/precache.json') || url.pathname.endsWith('/sw.js') || url.pathname.endsWith('/version.json')) return;
   event.respondWith((async () => {
     // Menu art is bundled with this shell, unlike visited legacy 2D artwork.
     // Keeping it versioned also makes precached images available before their

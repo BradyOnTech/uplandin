@@ -8,6 +8,7 @@
     "dev:2d": "vite --config vite.2d.config.ts --port 4590",
     "build": "tsc && vite build",
     "deploy": "npm run build && wrangler deploy",
+    "release-notes": "node scripts/release-notes.mjs",
     "build:2d": "tsc && vite build --config vite.2d.config.ts",
     "preview": "vite preview",
     "play:mobile": "npm run build && vite preview --host 0.0.0.0 --port 4593 --strictPort",

@@ -6,7 +6,8 @@ import { loadCareer } from '../game/career';
 import { dateLabel } from '../game/season';
 import { saveGameplayMode, type GameplayMode } from '../game/gameplayMode';
 import { openHuntJournal } from './huntJournalView';
-import { enableOfflineHunts, requestOfflineUpdate } from './offline';
+import { enableOfflineHunts, requestOfflineUpdate, type OfflineUpdateState } from './offline';
+import { mountWhatsNew, UPDATE_MESSAGES } from './whatsNew';
 import { propertyMenuArt, titleMenuArt } from './menuArt';
 import { getArea } from '../game/areas';
 import { getBreed } from '../game/breeds';
@@ -91,6 +92,8 @@ const journal = button('Field journal', () => openHuntJournal(loadCareer(), jour
 utilities.append(link('Gun rack', './shotguns3d.html'), journal, button('Install & offline', () => showSettings(installButton)));
 const installButton = utilities.lastElementChild as HTMLButtonElement;
 footer.append(utilities);
+// The version this copy is, at a glance; it opens What's new.
+const whatsNew = mountWhatsNew(footer, () => syncInstallUpdate());
 frame.append(header, main, footer); root.append(frame);
 function syncLinks(): void {
   for (const [element, mode] of [[quick, 'quick'], [careerLink, 'career']] as const) element.href = `./prepare3d.html?mode=${mode}&renderer=${renderer}`;
@@ -169,9 +172,15 @@ function showSettings(from: HTMLElement): void {
   settingsFit.refresh();
 }
 dialog.addEventListener('close', () => opener?.focus({ preventScroll: true }));
+let updateState: OfflineUpdateState = 'none';
+function syncInstallUpdate(): void {
+  update.hidden = updateState === 'none'; update.disabled = updateState === 'applying';
+  update.textContent = updateState === 'applying' ? 'Updating…' : 'Update game';
+  // A ready update names its version once the server has said which it is.
+  updateStatus.textContent = updateState === 'ready' ? whatsNew.readyText() : UPDATE_MESSAGES[updateState];
+}
 enableOfflineHunts({ canReload: () => true, onUpdateState: state => {
-  update.hidden = state === 'none'; update.disabled = state === 'applying';
-  update.textContent = state === 'applying' ? 'Updating…' : 'Update game';
-  updateStatus.textContent = ({ none: '', ready: 'An update is ready.', applying: 'Applying the latest game update…', 'other-tabs': 'Close your other game windows, then try the update again.', unsafe: 'Finish your hunt before updating.', failed: 'The update could not finish. Reconnect and try again.' })[state];
+  updateState = state; syncInstallUpdate(); whatsNew.updateState(state);
 } });
+whatsNew.showIfUpdated();
 menuMusicOnFirstGesture();
