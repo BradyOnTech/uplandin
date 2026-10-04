@@ -1,3 +1,5 @@
+import { renderDogDevelopment } from './trainingView';
+import './training.css';
 import './preparation.css';
 import { OFFERED_AREAS, isOfferedArea, getArea } from '../game/areas';
 import { BREEDS, getBreed, type BreedConfig } from '../game/breeds';
@@ -455,6 +457,8 @@ function careerDogs(choices: HTMLElement): void {
       const name = button(`Make this ${lead.name}’s last season`, () => { if (persistCareer(setLastSeason(loadCareer(), lead.id, true))) render('prep-last-season'); }, 'text-button');
       name.id = 'prep-last-season'; panel.append(name);
     } else panel.append(node('p', 'Points, retrieves and birds downed over a point build your dog’s experience.', 'help'));
+    panel.append(renderDogDevelopment(lead));
+    const train = node('a', `Train ${lead.name} →`, 'training-link'); train.href = `./training3d.html?mode=career&trainee=${encodeURIComponent(lead.id)}`; panel.append(train);
     choices.append(panel);
   }
   if (preparation.canBrace && working.length > 1) {

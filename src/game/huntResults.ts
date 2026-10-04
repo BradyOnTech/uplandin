@@ -1,3 +1,4 @@
+import { developDog, developmentFromHunt, readDevelopment, type DogDevelopment } from './dogDevelopment';
 import { getBreed } from './breeds';
 import {
   advanceCareerWeeks,
@@ -29,6 +30,7 @@ export interface DogHuntAward {
   dogId: string;
   name: string;
   gained: number;
+  skillGains?: DogDevelopment;
   newLevel: number;
   levelsGained: number;
   /** The dog's first point came on this hunt. */
@@ -88,12 +90,15 @@ export function settleCareerHunt(
     // The record reads the dog as it came to this hunt, before its award.
     const record = recordDogHunt(next, dog.id, { points: dogPoints(work), retrieves: work.retrieves },
       { huntNumber: next.hunts, areaId: hunt.areaId, season: career.date.season });
-    const award = awardDogXp(record.career, dog.id, gained);
+    const practice = developDog(readDevelopment(dog.development, dog.level), developmentFromHunt(work), getBreed(dog.breedId).xpRate);
+    const developed = { ...record.career, kennel: record.career.kennel.map(candidate => candidate.id === dog.id ? { ...candidate, development: practice.development } : candidate) };
+    const award = awardDogXp(developed, dog.id, gained);
     next = award.career;
     dogAwards.push({
       dogId: dog.id,
       name: dog.name,
       gained,
+      skillGains: practice.gained,
       newLevel: award.newLevel,
       levelsGained: award.levelsGained,
       ...(record.firstPoint ? { firstPoint: true } : {}),

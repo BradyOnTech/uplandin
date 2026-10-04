@@ -82,13 +82,20 @@ Check items off (and adjust them) as tranches ship.
 
 Stat mapping: Nose→scent radius, Speed→ground speed, Range→quarter width,
 Steadiness→mistake resistance, Stamina→hunt-day endurance.
+These breed ratings describe mature potential. A career dog's current ratings
+develop through scent work, steadiness, retrieving, handling, and conditioning.
+See [Training Grounds](3d/training-grounds.md).
 
 ### Leveling & the puppy arc **[built]**
 
 - Dog XP: held point that produces a flush **+2**, retrieve **+1**, bird downed
   over their point **+3**. Cap level 10, thresholds ~`20 × level^1.5`.
-- Growth: +5%/level on the breed's two strongest axes, +3% on the rest,
-  hard cap +40% (breeds keep identity).
+- Career growth uses five independent skill progressions. Real hunting work and
+  targeted training advance relevant abilities; overall dog level records XP
+  without automatically improving every stat. Each skill selects a proficiency
+  on the established level 1–10 behavior curves, capped at mature breed potential.
+  Older saves migrate from their existing level; Quick Hunt's level remains a
+  preset across all abilities.
 - **Nose maturity**: effective scent = breed nose × (0.7 + 0.03 × level).
 - **Creep & bump** (puppy mistakes): on point, a young dog may creep forward;
   inside bump distance the bird flushes wild, no shot. ~25%/point at level 1

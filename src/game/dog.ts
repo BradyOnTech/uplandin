@@ -1,3 +1,4 @@
+import { skillLevel, type DogDevelopment, type DogSkill } from './dogDevelopment';
 import { DogObstacleMotion, type DogObstacle } from './dogObstacles';
 import { RUNNER_MAX_ENERGY, type Bird } from './birds';
 import {
@@ -387,6 +388,8 @@ export interface DogEnv {
   /** A whistle blast this tick. Never breaks a point or a retrieve. */
   recall?: boolean;
   holdForRaptor?: boolean;
+  /** An exercise may require a release before an automatic retrieve. */
+  waitForRetrieve?: boolean;
   guardRaptor?: Vec2;
   /** How far the recall carries; GPS+map gear recalls at any range. */
   whistleRange?: number;
@@ -413,6 +416,7 @@ export interface DogEnv {
 export interface DogProfile {
   breed: BreedConfig;
   level: number;
+  development?: DogDevelopment;
   /** Age curve on the body (speed/stamina): growing pup <1, prime 1, old dog <1. The nose holds. */
   ageMult?: number;
 }
@@ -557,9 +561,13 @@ export class Dog {
   ) {
     this.heading = rng() * Math.PI * 2;
     this.rng = rng;
-    this.maxStaminaMs = breedStaminaMs(profile.breed, profile.level) * (profile.ageMult ?? 1);
+    this.maxStaminaMs = breedStaminaMs(profile.breed, this.skill('conditioning')) * (profile.ageMult ?? 1);
     this.staminaMs = this.maxStaminaMs;
   }
+
+  private skill(skill: DogSkill): number { return skillLevel(this.profile.development, skill, this.profile.level); }
+
+  get scentLevel(): number { return this.skill('scent'); }
 
   get level(): number {
     return this.profile.level;
@@ -586,12 +594,12 @@ export class Dog {
 
   /** Bird nerve drain multiplier while this dog is on point. */
   get pressure(): number {
-    return breedPointPressure(this.profile.breed, this.profile.level);
+    return breedPointPressure(this.profile.breed, this.skill('steadiness'));
   }
 
   /** How far from the hunter this dog works while quartering. */
   get rangeRadius(): number {
-    return QUARTER_RANGE * rangeMult(this.profile.breed, this.profile.level);
+    return QUARTER_RANGE * rangeMult(this.profile.breed, this.skill('handling'));
   }
 
   private get fatigueMult(): number {
@@ -599,12 +607,12 @@ export class Dog {
   }
 
   private get speed(): number {
-    return DOG_SPEED * speedMult(this.profile.breed, this.profile.level) * this.fatigueMult * (this.profile.ageMult ?? 1);
+    return DOG_SPEED * speedMult(this.profile.breed, this.skill('conditioning')) * this.fatigueMult * (this.profile.ageMult ?? 1);
   }
 
   private get trackSpeed(): number {
     return (
-      TRACKING_SPEED * speedMult(this.profile.breed, this.profile.level) * this.fatigueMult * (this.profile.ageMult ?? 1)
+      TRACKING_SPEED * speedMult(this.profile.breed, this.skill('conditioning')) * this.fatigueMult * (this.profile.ageMult ?? 1)
     );
   }
 
@@ -618,7 +626,7 @@ export class Dog {
   }
 
   private get weave(): number {
-    return WEAVE_AMPLITUDE * rangeMult(this.profile.breed, this.profile.level);
+    return WEAVE_AMPLITUDE * rangeMult(this.profile.breed, this.skill('handling'));
   }
 
   /** Scent reach in a direction, if the dog is old enough to use the wind. */
@@ -641,8 +649,8 @@ export class Dog {
   private scentDistance(dx: number, dy: number, env: DogEnv): number {
     const windedNose = this.winded ? 0.8 : 1;
     const base =
-      SCENT_RADIUS * noseMult(this.profile.breed, this.profile.level) * windedNose * (env.scentMult ?? 1);
-    if (windCraftTier(this.profile.level) === 0) return base; // too young to work wind
+      SCENT_RADIUS * noseMult(this.profile.breed, this.skill('scent')) * windedNose * (env.scentMult ?? 1);
+    if (windCraftTier(this.skill('scent')) === 0) return base; // too young to work wind
     return (scentRange(env.windAngle, dx, dy) / SCENT_RADIUS) * base;
   }
 
@@ -767,7 +775,7 @@ export class Dog {
       this.gait = 'still';
       const airborne = birds.some(b => this.markingBirdIds.includes(b.id) &&
         (b.state === 'flushed' || (b.state === 'downed' && b.fallPending)));
-      if (airborne) return;
+      if (airborne || env.waitForRetrieve) return;
       this.markingBirdIds = [];
       this.state = 'quartering'; // The normal retrieve/search priorities resume below.
     }
@@ -877,7 +885,7 @@ export class Dog {
           this.retrieveHoldMs += dtMs;
           const holdNeeded = RETRIEVE_HOLD_MS +
             (this.needsSearch ? SEARCH_HOLD_MS * (env.searchMult ?? 1) : 0);
-          if (this.retrieveHoldMs >= holdNeeded) {
+          if (this.retrieveHoldMs >= holdNeeded * (this.profile.development ? 1.35 - .35 * (this.skill('retrieving') - 1) / 9 : 1)) {
             this.needsSearch = false;
             this.retrieveHoldMs = 0;
             // Direct Dog users without a handler preserve the old fetch-only
@@ -937,7 +945,7 @@ export class Dog {
 
     // A bird on the ground outranks fresh scent: fetch it first. The dog
     // knows the falls it marked; any other it has to wind for itself.
-    const downed = this.fallToFetch(birds, env);
+    const downed = env.waitForRetrieve ? null : this.fallToFetch(birds, env);
     if (downed) {
       if (this.state === 'seeking' || downed.marked === false) this.log.push({ kind: 'dead-found', birdId: downed.id });
       if (downed.marked === false) downed.marked = true;
@@ -987,7 +995,7 @@ export class Dog {
     if (env.honorPoint && dist(this.pos, env.honorPoint) <= HONOR_SIGHT) {
       if (!this.honorRolled) {
         this.honorRolled = true;
-        this.willHonor = this.rng() >= breedBreakChance(this.profile.breed, this.profile.level);
+        this.willHonor = this.rng() >= breedBreakChance(this.profile.breed, this.skill('steadiness'));
       }
       if (this.willHonor) {
         this.log.push({ kind: 'back' });
@@ -1020,7 +1028,7 @@ export class Dog {
       }
       this.state = 'tracking';
       this.work(dtMs * (env.drainMult ?? 1));
-      const style = scentApproachStyle(this.profile.breed, this.profile.level);
+      const style = scentApproachStyle(this.profile.breed, this.skill('scent'));
       const direct = Math.atan2(bird.pos.y - this.pos.y, bird.pos.x - this.pos.x);
       const birdDistance = dist(this.pos, bird.pos);
       if (fieldScent) {
@@ -1078,7 +1086,7 @@ export class Dog {
             this.heading = turnToward(this.heading, direct, 4 * dt);
             return;
           }
-          const maturity = clamp((this.level - 1) / 9, 0, 1);
+          const maturity = clamp((this.skill('scent') - 1) / 9, 0, 1);
           this.scentCastPhase += dt * Math.PI * 2 / (2.6 + this.profile.breed.motion.searchLooseness * .8 - maturity * .4);
           const close = clamp((birdDistance - POINT_SETTLE_RANGE - 5) / 25, 0, 1);
           // Working the cone: the dog casts back and forth across the wind
@@ -1227,7 +1235,7 @@ export class Dog {
       this.weavePhase += workDt * WEAVE_RATE;
       const upland = this.localUplandSearch(env);
       const aimPt = upland ? this.uplandCastAim(patch, env)
-        : castAimPoint(patch, env.windAngle, this.localPheasantSearch(env) ? 0 : windCraftTier(this.profile.level));
+        : castAimPoint(patch, env.windAngle, this.localPheasantSearch(env) ? 0 : windCraftTier(this.skill('scent')));
       // Route-aware casting is what turns the authored lines into dog work.
       // Pheasant, desert, bench, and ridge dogs should arrive at the cover
       // from the physical edge they are meant to hunt; the softer pull on
@@ -1395,7 +1403,7 @@ export class Dog {
         this.markingBirdIds = []; this.castTarget = null;
         this.resetScentApproach();
         this.seekTarget = { ...cmd.target };
-        this.seekMsLeft = SEEK_COMMAND_MS;
+        this.seekMsLeft = SEEK_COMMAND_MS * (this.profile.development ? .75 + .5 * (this.skill('retrieving') - 1) / 9 : 1);
         this.seekArrived = false;
         this.seekElapsedMs = 0;
         this.checkedSearchPosition = null;
@@ -1411,7 +1419,7 @@ export class Dog {
 
   /** How close a dog must get to wind a dead or wounded bird. */
   private deadScentRange(env: DogEnv): number {
-    return SCENT_RADIUS * noseMult(this.profile.breed, this.profile.level) * DEAD_SCENT_MULT
+    return SCENT_RADIUS * noseMult(this.profile.breed, this.skill('scent')) * DEAD_SCENT_MULT
       * (env.scentMult ?? 1) * (this.state === 'seeking' ? 1.4 : 1);
   }
 
@@ -1521,7 +1529,7 @@ export class Dog {
   }
 
   private beginSlam(bird: Bird): void {
-    const style = scentApproachStyle(this.profile.breed, this.profile.level);
+    const style = scentApproachStyle(this.profile.breed, this.skill('scent'));
     this.beginScentApproach(bird, 'locking');
     // The lock is the skid plus the usual settle before the point is made.
     this.startScentStage('locking', SLAM_SKID_MS + style.lockMs);
@@ -1543,7 +1551,7 @@ export class Dog {
   }
 
   private beginScentApproach(bird: Bird, stage: Exclude<DogScentStage, 'none'>): void {
-    const style = scentApproachStyle(this.profile.breed, this.profile.level);
+    const style = scentApproachStyle(this.profile.breed, this.skill('scent'));
     this.scentTargetId = bird.id;
     this.scentSample = null;
     this.scentCloseOrigin = stage === 'stalking' ? { ...bird.pos } : null;
@@ -1727,18 +1735,18 @@ export class Dog {
     if (env.rangeRadius !== undefined) this.rememberBeatSide({ x: rectCx(p), y: rectCy(p) }, anchor, Math.max(p.w, p.h, 12));
     const total =
       clamp(p.w * p.h * COVER_WORK_MS_PER_PX2, COVER_WORK_MIN_MS, COVER_WORK_MAX_MS) *
-      coverThoroughness(this.profile.level) *
+      coverThoroughness(this.skill('scent')) *
       doctrine.coverWorkMult *
       (0.85 + this.rng() * 0.3);
     this.coverWorkMsLeft = total;
     // Pheasants are a rim-and-run problem: spend a deliberate opening lap on
     // the outside before combing the core. Chukar get a shorter contour lap;
     // quail retain the established level-based recipe.
-    this.coverEdgeMsLeft = total * Math.min(0.78, coverEdgeFraction(this.profile.level) + doctrine.dogEdgeBias);
+    this.coverEdgeMsLeft = total * Math.min(0.78, coverEdgeFraction(this.skill('scent')) + doctrine.dogEdgeBias);
     this.coverEdgeT = nearestPerimeterT(p, this.pos);
     // Face the cast aim immediately so approach heading matches the objective
     // (center for pups/calm; downwind flank when wind-craft applies).
-    const aim = castAimPoint(p, env.windAngle, windCraftTier(this.profile.level));
+    const aim = castAimPoint(p, env.windAngle, windCraftTier(this.skill('scent')));
     if ((env.huntStyle === 'chukar' || env.huntStyle === 'alpine-edge') && env.slopeAngle !== undefined) {
       const center = { x: rectCx(p), y: rectCy(p) };
       const uphillReach = Math.min(p.w, p.h) * 0.34;
@@ -1769,7 +1777,7 @@ export class Dog {
   /** Retain the ridge dog's high-side approach inside its reachable sector.
    * Quail keep their existing downwind entry into a smaller plum-edge beat. */
   private uplandCastAim(patch: Rect, env: DogEnv): Vec2 {
-    const aim = castAimPoint(patch, env.windAngle, windCraftTier(this.level));
+    const aim = castAimPoint(patch, env.windAngle, windCraftTier(this.skill('scent')));
     if (this.localUplandSearch(env) === 'chukar' && env.slopeAngle !== undefined) {
       const reach = Math.min(patch.w, patch.h) * .34;
       aim.x = aim.x * .52 + (rectCx(patch) + Math.cos(env.slopeAngle) * reach) * .48;
@@ -1841,11 +1849,11 @@ export class Dog {
     this.rememberBeatSide({ x: rectCx(best.rect), y: rectCy(best.rect) }, anchor, Math.max(beatWidth, beatHeight));
     this.coverWorkMsLeft = upland
       ? clamp(best.rect.w * best.rect.h * COVER_WORK_MS_PER_PX2, COVER_WORK_MIN_MS, COVER_WORK_MAX_MS)
-        * coverThoroughness(this.level) * this.doctrineFor(env).coverWorkMult
+        * coverThoroughness(this.skill('scent')) * this.doctrineFor(env).coverWorkMult
       : prairie
-        ? clamp(Math.max(best.rect.w, best.rect.h) * 350, 3500, 10000) * coverThoroughness(this.level) * this.doctrineFor(env).coverWorkMult
-        : clamp(Math.max(best.rect.w, best.rect.h) * 550, 3200, 8000) * coverThoroughness(this.level);
-    this.coverEdgeMsLeft = this.coverWorkMsLeft * Math.min(.78, coverEdgeFraction(this.level) + this.doctrineFor(env).dogEdgeBias);
+        ? clamp(Math.max(best.rect.w, best.rect.h) * 350, 3500, 10000) * coverThoroughness(this.skill('scent')) * this.doctrineFor(env).coverWorkMult
+        : clamp(Math.max(best.rect.w, best.rect.h) * 550, 3200, 8000) * coverThoroughness(this.skill('scent'));
+    this.coverEdgeMsLeft = this.coverWorkMsLeft * Math.min(.78, coverEdgeFraction(this.skill('scent')) + this.doctrineFor(env).dogEdgeBias);
     this.coverEdgeT = nearestPerimeterT(best.rect, this.pos);
     // Selecting a new beat changes the objective, not the dog's velocity.
     // The active cast/edge steering above turns into it over real time;
@@ -1865,7 +1873,9 @@ export class Dog {
   }
 
   private effectiveRangeRadius(env: DogEnv): number {
-    return (env.rangeRadius ?? this.rangeRadius) * this.doctrineFor(env).dogRangeMult;
+    const proficiency = env.rangeRadius !== undefined && this.profile.development
+      ? rangeMult(this.profile.breed, this.skill('handling')) / rangeMult(this.profile.breed, 10) : 1;
+    return (env.rangeRadius ?? this.rangeRadius) * proficiency * this.doctrineFor(env).dogRangeMult;
   }
 
   /** While working cover, bounce off the patch edges instead of the field's. */
@@ -1904,7 +1914,7 @@ export class Dog {
     // far more likely to stand through the rise than one left to itself.
     const steady = this.steadied || this.state === 'whoa' ? STEADIED_BREAK_MULT : 1;
     this.steadied = false;
-    if (rng() >= breedBreakChance(this.profile.breed, this.profile.level) * steady) {
+    if (rng() >= breedBreakChance(this.profile.breed, this.skill('steadiness')) * steady) {
       // A neighboring rise does not resolve this dog's separate point.
       // Keep the nose line and target until its own bird moves or flushes.
       // An unsteady dog can still break through the same steadiness roll.
@@ -1942,7 +1952,7 @@ export class Dog {
   private creep(dtMs: number, pointed: Bird): void {
     if (!this.creepPlanned) {
       this.creepPlanned = true;
-      if (this.rng() < breedCreepChance(this.profile.breed, this.profile.level)) {
+      if (this.rng() < breedCreepChance(this.profile.breed, this.skill('steadiness'))) {
         this.creepStepsLeft = 1 + Math.floor(this.rng() * 3);
         this.creepTimerMs = CREEP_INTERVAL_MS;
       }

@@ -45,7 +45,7 @@ describe('classic field report', () => {
     expect(notes.canReplay).toBe(false);
     expect(notes.warning).toContain('1 protected hen was downed');
     expect(notes.career?.hunterAward).toBe('+0 XP · protected-hen penalty applied (4 XP)');
-    expect(notes.career?.dogs[0]).toMatchObject({ name: 'Sage', award: `+${result.dogAwards[0].gained} XP` });
+    expect(notes.career?.dogs[0]).toMatchObject({ name: 'Sage', award: `+${result.dogAwards[0].gained} XP · Scent work +4.0 · Steadiness +6.0` });
     expect(notes.career?.next).toContain('Start season 2');
     expect(notes.career?.calendar).toContain('season 1 — over');
     expect(JSON.stringify(result)).toBe(snapshot);

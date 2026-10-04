@@ -394,13 +394,13 @@ export class FieldScene extends Phaser.Scene {
         (breed, i) =>
           new Dog(
             { ...this.hunt.dogsPos[i] },
-            { breed, level: levels[i], ageMult: ageMults[i] },
+            { breed, level: levels[i], ageMult: ageMults[i], development: this.quick ? undefined : this.kennelDogs[i]?.development },
             Math.random,
             this.area.world,
           ),
       );
     this.dogs.forEach((dog, i) => {
-      dog.profile = { breed: this.breeds[i], level: levels[i], ageMult: ageMults[i] };
+      dog.profile = { breed: this.breeds[i], level: levels[i], ageMult: ageMults[i], development: this.quick ? undefined : this.kennelDogs[i]?.development };
     });
 
     this.flushing = false;

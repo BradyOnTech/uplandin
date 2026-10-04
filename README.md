@@ -50,6 +50,11 @@ quality choice; phones select touch controls automatically. Add `&diagnostics=1`
 to a field URL for the frame-time capture described in the handling doc.
 See the [mobile playtest guide](docs/3d/mobile-playtest.md) for controls and validation limits.
 
+**Training Grounds** opens from the home menu or a career dog's preparation card.
+Ten short drills reuse Quail Fields, the existing dogs, and the shared simulation.
+Career practice develops individual abilities toward breed potential; Quick
+challenges award medals and personal bests. See [training controls and progression](docs/3d/training-grounds.md).
+
 Two modes from the title screen:
 
 - **Career** — the full simulation: raise a puppy, pick a home region, and

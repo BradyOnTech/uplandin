@@ -8,6 +8,7 @@ import { GeneratedFieldMotion, type GeneratedRetrievePose } from '../dogs/genera
 import { dogTorsoHeading } from '../dogs/riggedMotion';
 import { GeneratedAttention } from '../dogs/generatedAttention';
 import type { BirdsSystem } from './birds';
+import type { TrainingGroundSystem } from './trainingGround';
 import type { GeneratedFieldIntent } from '../dogs/generatedScentMotion';
 import { generatedBreedForCoat, type GeneratedCoatId, type GeneratedLook } from '../dogs/generatedGsp';
 import { dogRendererId } from '../dogs/rendererId';
@@ -116,11 +117,13 @@ export class GeneratedDogSystem implements Subsystem {
       : undefined;
     // Only settle into pickup once the simulation has reached the actual fall.
     const retrievePose = retrieve?.stage === 'pickup' && dog.gait !== 'still' ? undefined : retrieve;
-    if(retrievePose?.stage==='pickup'&&retrieveId!=null&&ctx.get<BirdsSystem>('birds').groundedTarget?.(retrieveId,this.pickupTarget))
+    const practice = this.hunt.training ? ctx.get<TrainingGroundSystem>('training-ground') : undefined;
+    if(retrievePose?.stage==='pickup'&&retrieveId!=null&&(ctx.get<BirdsSystem>('birds').groundedTarget?.(retrieveId,this.pickupTarget)||practice?.target(retrieveId,this.pickupTarget)))
       retrievePose.target=this.pickupTarget;
     this.motion.update(this.position.x,this.position.z,Math.PI/2-this.heading,dt,dog.gait!=='still'&&this.speed>.06&&!point,point,retrievePose,this.field,this.speed);
     this.auditFrame++;
-    const watching=dog.state==='marking' && ctx.get<BirdsSystem>('birds').markingTarget(dog.watchedBirdIds(),this.attentionTarget);
+    const watching=dog.state==='marking' && (ctx.get<BirdsSystem>('birds').markingTarget(dog.watchedBirdIds(),this.attentionTarget)
+      || dog.watchedBirdIds().some(id=>practice?.target(id,this.attentionTarget)));
     this.attention.update(this.motion.asset,watching?this.attentionTarget:null,dt);
     this.previous.x=this.position.x;this.previous.z=this.position.z;this.placed=true;
   }

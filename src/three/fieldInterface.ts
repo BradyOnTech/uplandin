@@ -1,3 +1,4 @@
+import { parseTraining, TRAINING_DRILLS } from '../game/training';
 import { huntAssists } from './assistsRuntime';
 import { createAssistsPanel } from './assistsPanel';
 import { fitPages, type FitPager } from './fitPager';
@@ -386,7 +387,7 @@ export class FieldInterface {
   private updateGuide(dt: number): void {
     const line = document.getElementById('first-hunt-guide');
     if (!line) return;
-    if (!this.readyState || !this.entered || this.complete || this.capture || this.falconry || this.engine.ctx.paused || !huntAssists().hints) {
+    if (this.engine.ctx.get<Hunt3DSystem>('hunt3d').training || !this.readyState || !this.entered || this.complete || this.capture || this.falconry || this.engine.ctx.paused || !huntAssists().hints) {
       line.hidden = true; return;
     }
     this.guideElapsed += dt;
@@ -447,7 +448,7 @@ export class FieldInterface {
   /** The tailgate photo for the field report, and its print for the journal. */
   private tailgatePhoto(): void {
     const hunt = this.engine.ctx.get<Hunt3DSystem>('hunt3d');
-    if (hunt.huntState().huntingMethod === 'goshawk' || !stageTailgate(this.engine)) return;
+    if (hunt.training || hunt.huntState().huntingMethod === 'goshawk' || !stageTailgate(this.engine)) return;
     const photo = takeTailgatePhoto(this.engine);
     if (!photo) return;
     // Settlement is already done; this returns the settled career hunt.
@@ -458,6 +459,7 @@ export class FieldInterface {
 
   private refreshShotgunMenu(): void {
     if (!this.readyState || this.falconry) return;
+    if (parseTraining(location.search)) { document.getElementById('shotgun-options')!.hidden = true; return; }
     const gun = getGun(this.engine.ctx.get<GunSystem>('gun').equippedGunId());
     const choices = this.launch?.kind === 'career' ? unlockedGuns(loadCareer().hunter.level) : GUNS;
     const select = document.getElementById('shotgun-setting') as HTMLSelectElement;
@@ -476,7 +478,7 @@ export class FieldInterface {
     this.menuSelects?.sync();
   }
   private changeShotgun(id: string): void {
-    if (this.falconry || !this.readyState || !this.engine.ctx.paused || this.complete || this.lostContext) return;
+    if (this.falconry || parseTraining(location.search) || !this.readyState || !this.engine.ctx.paused || this.complete || this.lostContext) return;
     // Read the current save at the moment of choice; opening the rack or
     // another tab must not make this menu write back an old career snapshot.
     const career = this.launch?.kind === 'career' ? loadCareer() : null;
@@ -517,7 +519,19 @@ export class FieldInterface {
     this.progress.value = current / total;
   };
   ready(): void {
-    if (!this.capture && !this.falconry && !isFalconryPractice(location.search)) this.arrival = new HuntArrivalController(this.engine);
+    const training = parseTraining(location.search);
+    if (training) {
+      document.getElementById('field-title')!.textContent = TRAINING_DRILLS[training.drill].name;
+      document.getElementById('field-description')!.textContent = TRAINING_DRILLS[training.drill].description;
+      document.getElementById('field-species')!.textContent = 'TRAINING PIGEONS · PRACTICE BUMPERS';
+      document.getElementById('field-method')!.textContent = 'FOCUSED DOG WORK · QUAIL FIELDS';
+      this.enter.innerHTML = 'Begin training <span aria-hidden="true">↗</span>';
+      document.getElementById('end-hunt')!.textContent = 'End training';
+      document.getElementById('field-guide-preferences')!.hidden = true;
+      document.getElementById('field-instructions')!.innerHTML = '<p class="desktop-instructions"><kbd>W A S D</kbd> Walk · <kbd>Q</kbd> Recall · <kbd>Z</kbd> Whoa · <kbd>X</kbd> Hunt on · <kbd>C</kbd> Cast · <kbd>V</kbd> Hunt dead · <kbd>E</kbd> Drill action</p><p class="touch-instructions">Drag left to walk and right to look. Whoa steadies the dog. Whistle recalls it. Dog ▸ opens Hunt on, This way, and Dead bird. Tap the drill button to throw, send, or start the next repetition.</p><p>Follow the instruction at the top of the field. Approach a point quietly; stay still when the dog delivers a bumper.</p><p class="field-tip">Completed work develops the selected skills. Clean handling matters more than speed.</p>';
+      const controls = document.getElementById('controls'); if (controls) controls.textContent = 'WASD move · Q whistle · Z whoa · X hunt on · C cast · V hunt dead · E drill action';
+    }
+    if (!this.capture && !this.falconry && !isFalconryPractice(location.search) && !parseTraining(location.search)) this.arrival = new HuntArrivalController(this.engine);
     this.readyState = true;
     this.activeChallenge = this.engine.ctx.get<Hunt3DSystem>('hunt3d').getActiveChallenge();
     this.refreshShotAssistance();

@@ -135,7 +135,8 @@ export class PlayerSystem implements Subsystem {
           let hint = document.getElementById('mouse-look-fallback');
           if (!hint && active) {
             hint = document.createElement('div'); hint.id = 'mouse-look-fallback';
-            hint.textContent = document.body.classList.contains('falconry-hunt') ? 'Drag to look · Space slips the hawk' : 'Drag to look · F toggles aim · Space shoots';
+            hint.textContent = document.body.classList.contains('training-field') ? 'Drag to look · WASD to walk · Z whoa · X hunt on · C cast · V hunt dead · Q recall'
+              : document.body.classList.contains('falconry-hunt') ? 'Drag to look · Space slips the hawk' : 'Drag to look · F toggles aim · Space shoots';
             document.getElementById('controls')?.append(hint);
           }
           if (hint) hint.hidden = !active;

@@ -48,7 +48,7 @@ describe('Career field notes', () => {
     expect(notes.progress).toEqual({ earned: 1, required: 28, remaining: 27, nextLevel: 3 });
     expect(notes.unlocks).toContain('the truck — the whole map is open');
     expect(notes.dogs[0]).toMatchObject({ name: 'Sage', level: 'Level 2 reached', advanced: true });
-    expect(notes.dogs[0].next).toBe('56 XP to level 3 · Stronger scenting and steadier points');
+    expect(notes.dogs[0].next).toBe('56 XP to level 3 · Retrieving develops through focused work');
     expect(JSON.stringify(result)).toBe(before);
     expect(careerFieldNotes(result)).toEqual(notes);
   });

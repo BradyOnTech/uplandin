@@ -1,3 +1,4 @@
+import { TrainingGroundSystem } from './subsystems/trainingGround';
 import { frameTailgate, stageTailgate } from './tailgatePhoto';
 import { huntAssists, onHuntAssists } from './assistsRuntime';
 import { isFalconryPractice, FALCONRY_PRACTICE } from '../game/falconryPractice';
@@ -169,6 +170,7 @@ engine.register(new FalconrySystem());
 engine.register(new GunSystem());
 engine.register(new HuntHudSystem());
 engine.register(new FieldAudioSystem(launchArea.id));
+engine.register(new TrainingGroundSystem());
 
 // Lightweight review control for the standalone 3D build. Changing coats
 // reloads the page because geometry colors are authored once at init; capture

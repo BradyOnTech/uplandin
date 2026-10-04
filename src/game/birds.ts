@@ -16,6 +16,8 @@ export interface Bird {
   state: BirdState;
   /** A 3D fall is still airborne; it is not a reachable retrieve target yet. */
   fallPending?: boolean;
+  /** A reusable practice target, excluded from wild bird bags. */
+  trainingObject?: 'bumper';
   /** Ringneck rule: hens are protected. Only set for henRule species. */
   sex?: 'hen' | 'rooster';
   /** A relit covey survivor — holds tight, and next escape is for good. */

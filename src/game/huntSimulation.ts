@@ -1,3 +1,4 @@
+import type { Rect } from './field';
 import { bagCount, bagRuleFor, limitsApply } from './bagLimits';
 import type { AreaConfig } from './areas';
 import {
@@ -96,6 +97,9 @@ export interface HuntSimulationInput {
   whistleRange?: number;
   /** Hold the finished dog at heel while its hawk flies or holds quarry. */
   holdDogs?: boolean;
+  waitForRetrieve?: boolean;
+  workPatches?: Rect[];
+  practice?: boolean;
   guardRaptor?: Vec2;
   /** Presentation-scale movement overrides; gameplay rules stay internal. */
   dogMotion?: readonly HuntDogMotion[];
@@ -211,6 +215,7 @@ export class HuntSimulation {
     const weather = conditionMults(this.hunt.condition);
     for (let i = 0; i < this.dogs.length; i++) {
       const dog = this.dogs[i];
+      if (!['heel', 'whoa', 'pointing', 'honoring', 'marking'].includes(dog.state)) this.hunt.dogWork[i].activeWorkMs = (this.hunt.dogWork[i].activeWorkMs ?? 0) + dtMs;
       const packmate = this.dogs.find((candidate, j) => j !== i && candidate.state === 'pointing');
       const retrievedBefore = this.hunt.birds.filter((bird) => bird.state === 'retrieved').length;
       const motion = input.dogMotion?.[i];
@@ -233,6 +238,7 @@ export class HuntSimulation {
         heelFollowRange: spatialEncounter ? 2 / PROPERTY_PX_TO_M : undefined,
         hunterPos: this.hunt.hunterPos,
         holdForRaptor: input.holdDogs,
+        waitForRetrieve: input.waitForRetrieve,
         guardRaptor: input.guardRaptor,
         windAngle: this.hunt.wind,
         scentMult: wind.scent * weather.scent,
@@ -241,8 +247,8 @@ export class HuntSimulation {
         honorPoint: packmate?.pos,
         drainMult: weather.stamina * (motion?.effortScale ?? 1),
         searchMult: weather.search,
-        patches: this.area.patches,
-        trails: this.area.trails,
+        patches: input.workPatches ?? this.area.patches,
+        trails: input.practice ? [] : this.area.trails,
         coverAffinity: (point) => this.coverAffinity(point),
         huntStyle,
         huntAreaId: this.area.id,
@@ -292,7 +298,7 @@ export class HuntSimulation {
           // The open field's dogs wind birds at tens of yards, so they come
           // closer to sitting birds than the old long-reach dogs did; a
           // bird only catches a young dog's scent when it is nearly on it.
-          dogScentRadius(dog.level) * wind.dogScent * (spatialEncounter ? FIELD_BIRD_WINDS_DOG_SCALE : 1),
+          dogScentRadius(dog.scentLevel) * wind.dogScent * (spatialEncounter ? FIELD_BIRD_WINDS_DOG_SCALE : 1),
         );
         if (scented.length > 0) {
           const event = this.flushBird(scented[0].id, 'scent', null);

@@ -12,6 +12,8 @@ import { rollWindStrength, windMults, type WindStrength } from './wind';
  */
 /** One dog's work for the hunt, converted to its XP at the summary. */
 export interface DogWork {
+  /** Actual active simulation time, excluding pauses and rest. */
+  activeWorkMs?: number;
   pointFlushes: number;
   retrieves: number;
   downedOverPoint: number;

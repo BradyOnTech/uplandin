@@ -53,7 +53,9 @@ careerLink.querySelector('.home-action-index')!.textContent = '03';
 // Straight into a bird-rich preserve day on your last Quick Hunt setup.
 const loaded = button('', () => launchLoadedField(), 'home-action home-action-loaded');
 loaded.append(node('span', '02', 'home-action-index'), node('span', 'Loaded field', 'home-action-title'), node('span', 'Birds in every piece of cover. Fast action, right now.', 'home-action-detail'), node('span', '↗', 'home-action-arrow'));
-actions.append(quick, loaded, careerLink); introduction.append(actions); main.append(introduction);
+const training = link('', './training3d.html?mode=quick', 'home-action');
+training.append(node('span', '04', 'home-action-index'), node('span', 'Training Grounds', 'home-action-title'), node('span', 'Develop your dog. Try a short field challenge.', 'home-action-detail'), node('span', '↗', 'home-action-arrow'));
+actions.append(quick, loaded, careerLink, training); introduction.append(actions); main.append(introduction);
 
 function launchLoadedField(): void {
   const last = loadQuickConfig();
