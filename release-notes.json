@@ -2,6 +2,13 @@
   "about": "What changed in each release, newest first. Before pushing to main, run npm run release-notes: it adds the subjects of the player-facing commits since the last release. Edit the lines freely, then commit this file with the release.",
   "releases": [
     {
+      "date": "2026-10-04",
+      "through": "1cece1c",
+      "notes": [
+        "Add training grounds and targeted career dog development"
+      ]
+    },
+    {
       "date": "2026-10-03",
       "through": "aa3c6da",
       "notes": [
