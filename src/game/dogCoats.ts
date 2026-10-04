@@ -2,13 +2,13 @@
  * Coats a player can choose for the breeds that have their own 3D model.
  *
  * This is the renderer-free catalog used by saves, launch URLs and menus.
- * The 3D appearance modules (`three/dogs/germanShorthairedPointer.ts` and
- * `three/dogs/englishSetter.ts`) own the colours; a test keeps the ids of
- * both lists identical.
+ * The 3D appearance modules (`three/dogs/germanShorthairedPointer.ts`,
+ * `three/dogs/englishSetter.ts` and `three/dogs/griffon.ts`) own the colours;
+ * a test keeps the ids of the lists identical.
  */
 
 /** Breeds with a dedicated 3D model. Other breeds are 2D-only for now. */
-export const MODELED_BREED_IDS = ['gsp', 'english-setter'] as const;
+export const MODELED_BREED_IDS = ['gsp', 'english-setter', 'griffon'] as const;
 export type ModeledBreedId = (typeof MODELED_BREED_IDS)[number];
 
 export interface CoatChoice { id: string; label: string }
@@ -26,6 +26,9 @@ const COATS: Record<ModeledBreedId, readonly CoatChoice[]> = {
     { id: 'tricolor', label: 'Tricolor' },
     { id: 'liver-belton', label: 'Liver belton' },
     { id: 'lemon-belton', label: 'Lemon belton' },
+  ],
+  griffon: [
+    { id: 'steel-gray', label: 'Steel gray and brown' },
   ],
 };
 

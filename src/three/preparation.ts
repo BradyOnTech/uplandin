@@ -164,7 +164,7 @@ function cardArt(container: HTMLElement, sources: string[], className: string): 
 }
 const capital = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 /** Short breed names for tight summaries; full names stay on the cards. */
-const shortBreed = (breedId: string) => ({ gsp: 'GSP', 'english-setter': 'English Setter', 'english-pointer': 'Pointer', gwp: 'Wirehair' } as Record<string, string>)[breedId] ?? getBreed(breedId).name;
+const shortBreed = (breedId: string) => ({ gsp: 'GSP', 'english-setter': 'English Setter', 'english-pointer': 'Pointer', gwp: 'Wirehair', griffon: 'Griffon' } as Record<string, string>)[breedId] ?? getBreed(breedId).name;
 
 /**
  * A radio group of rich option buttons. Arrow keys move and select, as with

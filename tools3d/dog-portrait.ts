@@ -1,14 +1,15 @@
 /**
  * Renders the menu dog preview for review and for the static fallback
  * portraits in public/art/menus3d/dogs/<breed>-<style>.webp.
- * ?breed=gsp|english-setter&coat=&style=smooth|faceted&pose=stand|point|trot|run&compare=1&backdrop=1
+ * ?breed=gsp|english-setter|griffon&coat=&style=smooth|faceted&pose=stand|point|trot|run&compare=1&backdrop=1
  */
 import { createDogPreview, type PreviewBreed, type PreviewPose } from '../src/three/dogPreview';
-import { resolveCoatFor } from '../src/game/dogCoats';
+import { isModeledBreed, resolveCoatFor } from '../src/game/dogCoats';
 import type { DogStyle } from '../src/three/dogs/dogStyle';
 
 const params = new URLSearchParams(location.search);
-const breed = (params.get('breed') === 'english-setter' ? 'english-setter' : 'gsp') as PreviewBreed;
+const requested = params.get('breed');
+const breed: PreviewBreed = isModeledBreed(requested) ? requested : 'gsp';
 const coat = resolveCoatFor(breed, params.get('coat'));
 const style = (params.get('style') === 'faceted' ? 'faceted' : 'smooth') as DogStyle;
 if (params.has('backdrop')) document.body.classList.add('backdrop');

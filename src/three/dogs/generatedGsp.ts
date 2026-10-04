@@ -1,18 +1,24 @@
 import * as THREE from 'three';
-import { createGeneratedGspHead, createGeneratedSetterHead } from './generatedGspHead';
+import { createGeneratedGriffonHead, createGeneratedGspHead, createGeneratedSetterHead } from './generatedGspHead';
 import { BOUND_STRIDE, createLocomotionPose, writeLocomotionPose, type LocomotionGait, type FootTuple } from './locomotion';
 import { createTwoBoneSolution, solveTwoBone } from './legIk';
 import { germanShorthairedPointerAppearance, isGspCoatId, type GspCoatId } from './germanShorthairedPointer';
 import { englishSetterAppearance, isEnglishSetterCoatId, type EnglishSetterCoatId } from './englishSetter';
+import { griffonAppearance, griffonHash, griffonMarkerTone, isGriffonCoatId, type GriffonCoatId } from './griffon';
+import { resolveCoatFor, type ModeledBreedId } from '../../game/dogCoats';
 
 /** Coat ids are disjoint between breeds, so a coat also names its breed. */
-export type GeneratedCoatId = GspCoatId | EnglishSetterCoatId;
-export type GeneratedBreed = 'gsp' | 'english-setter';
+export type GeneratedCoatId = GspCoatId | EnglishSetterCoatId | GriffonCoatId;
+export type GeneratedBreed = ModeledBreedId;
 export function generatedBreedForCoat(coatId: GeneratedCoatId): GeneratedBreed {
-  return isEnglishSetterCoatId(coatId) ? 'english-setter' : 'gsp';
+  return isEnglishSetterCoatId(coatId) ? 'english-setter' : isGriffonCoatId(coatId) ? 'griffon' : 'gsp';
 }
 export function isGeneratedCoatId(value: string | null | undefined): value is GeneratedCoatId {
-  return isGspCoatId(value) || isEnglishSetterCoatId(value);
+  return isGspCoatId(value) || isEnglishSetterCoatId(value) || isGriffonCoatId(value);
+}
+/** A coat of this breed's model: the requested one if it belongs, else the default. */
+export function generatedCoatFor(breed: GeneratedBreed, coatId: string | null | undefined): GeneratedCoatId {
+  return resolveCoatFor(breed, coatId) as GeneratedCoatId;
 }
 
 /** Authored in metres, +Z nose. Geometry is generated once, never per frame. */
@@ -149,6 +155,95 @@ if (vSetterCoatSurface > 0.5) {
   material.customProgramCacheKey = () => `generated-setter-bind-coat-v3${faceted ? '-faceted' : ''}`;
 }
 
+/**
+ * Steel gray with brown markings for the Griffon. Brown runs back from the
+ * brown head over the nape, lies in a saddle over the back and at the tail
+ * set, with a patch on the near shoulder. Everywhere else the harsh coat is
+ * grizzled: each facet is its own lock of hair, a shade darker or lighter
+ * steel gray and now and then brown-gray (the coat marker carries its tone),
+ * with short wiry strokes of pale and brown hair inside the facets close up.
+ * The beard, moustache and lower legs are a little browner.
+ */
+function applyGriffonCoat(material: THREE.MeshLambertMaterial, coatId: GriffonCoatId, faceted = false): void {
+  const a = griffonAppearance(coatId);
+  material.onBeforeCompile = shader => {
+    withCoatLighting(shader);
+    shader.uniforms.griffonGray = { value: new THREE.Color(a.ground) };
+    shader.uniforms.griffonPale = { value: new THREE.Color(a.grizzle) };
+    shader.uniforms.griffonBrown = { value: new THREE.Color(a.primary) };
+    shader.uniforms.griffonBrownDeep = { value: new THREE.Color(a.primaryDeep) };
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>
+varying vec3 vGriffonBindPosition;
+varying float vGriffonCoatSurface;
+varying float vGriffonTone;`).replace('#include <begin_vertex>', `#include <begin_vertex>
+vGriffonBindPosition = position;
+vGriffonCoatSurface = step(0.25, min(color.r, min(color.g, color.b)));
+vGriffonTone = color.r;`);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+varying vec3 vGriffonBindPosition;
+varying float vGriffonCoatSurface;
+varying float vGriffonTone;
+uniform vec3 griffonGray;
+uniform vec3 griffonPale;
+uniform vec3 griffonBrown;
+uniform vec3 griffonBrownDeep;
+float griffonIsland(vec3 point, vec3 center, vec3 radius) {
+  vec3 p = (point - center) / radius;
+  float edge = length(p) + 0.11 * sin(point.z * 57.0 + point.y * 33.0) + 0.06 * sin(point.x * 89.0 - point.y * 63.0);
+  return 1.0 - smoothstep(0.95, 1.03, edge);
+}
+float griffonHash(vec3 p) {
+  p = fract(p * 0.1031);
+  p += dot(p, p.yzx + 33.33);
+  return fract((p.x + p.y) * p.z);
+}`).replace('#include <color_fragment>', `#include <color_fragment>
+if (vGriffonCoatSurface > 0.5) {
+  vec3 p = vGriffonBindPosition;
+  // The facet's own lock of hair, carried in the marker's brightness.
+  float lock = clamp((vGriffonTone - GRIFFON_TONE_LOW) / GRIFFON_TONE_SPAN, 0.0, 1.0);
+  float marks = max(griffonIsland(p, vec3(0.0, 0.715, 0.295), vec3(0.064, 0.072, 0.085)),
+    griffonIsland(p, vec3(0.0, 0.645, -0.12), vec3(0.115, 0.075, 0.165)));
+  marks = max(marks, griffonIsland(p, vec3(0.0, 0.6, -0.335), vec3(0.095, 0.075, 0.085)));
+  marks = max(marks, griffonIsland(p, vec3(-0.1, 0.55, 0.165), vec3(0.052, 0.07, 0.07)));
+  // Wiry strokes, longer down the hair's fall than across it.
+  vec3 q = p * vec3(GRIFFON_STROKE_SCALE, GRIFFON_STROKE_SCALE * 0.5, GRIFFON_STROKE_SCALE);
+  vec3 cell = floor(q);
+  float pick = griffonHash(cell);
+  vec3 offset = fract(q) - (vec3(griffonHash(cell + 3.1), griffonHash(cell + 7.7), griffonHash(cell + 11.3)) * 0.6 + 0.2);
+  #ifdef GRIFFON_FACETED
+  float stroke = 1.0 - step(0.24, abs(offset.x) + abs(offset.y) * 0.45 + abs(offset.z));
+  #else
+  float stroke = 1.0 - smoothstep(0.13, 0.25, length(offset * vec3(1.0, 0.45, 1.0)));
+  #endif
+  float footprint = max(length(dFdx(p)), length(dFdy(p)));
+  // Strokes only where they resolve; farther off the locks carry the grizzle.
+  float resolve = 1.0 - smoothstep(0.002, 0.008, footprint);
+  float pale = stroke * step(0.6, pick) * resolve;
+  float dark = stroke * step(pick, 0.2) * resolve;
+  // Steel grays, darker and lighter lock by lock, and now and then a
+  // brown-gray one.
+  vec3 grizzle = mix(griffonGray * 0.9, mix(griffonGray, griffonPale, 0.3), lock);
+  grizzle = mix(grizzle, mix(griffonGray, griffonBrown, 0.5), step(lock, 0.13));
+  grizzle = mix(grizzle, griffonPale, pale * 0.45);
+  grizzle = mix(grizzle, griffonBrownDeep, dark * 0.5);
+  // The grizzle browns a little down the legs to the feet, and in the
+  // furnishings of the face.
+  float legs = 1.0 - smoothstep(0.1, 0.3, p.y);
+  float face = smoothstep(0.4, 0.43, p.z);
+  grizzle = mix(grizzle, griffonBrown, max(legs * 0.22, face * 0.3));
+  vec3 brown = mix(griffonBrownDeep, griffonBrown, 0.55 + 0.45 * lock);
+  brown = mix(brown, griffonBrownDeep, dark * 0.4);
+  float underside = 1.0 - smoothstep(0.26, 0.56, p.y);
+  diffuseColor.rgb = mix(grizzle * (1.0 - underside * 0.04), brown, marks);
+}`);
+  };
+  // The marker's red channel at the darkest and lightest lock, as stored (linear).
+  const red = (tone: number) => new THREE.Color(griffonMarkerTone(WHITE, tone)).r;
+  material.defines = { ...material.defines, GRIFFON_STROKE_SCALE: faceted ? '56.0' : '112.0',
+    GRIFFON_TONE_LOW: red(0).toFixed(5), GRIFFON_TONE_SPAN: (red(1) - red(0)).toFixed(5), ...(faceted ? { GRIFFON_FACETED: '' } : {}) };
+  material.customProgramCacheKey = () => `generated-griffon-bind-coat-v2${faceted ? '-faceted' : ''}`;
+}
+
 /** Shared smooth-coat lighting: baked occlusion and a soft sky rim. */
 function withCoatLighting(shader: { vertexShader: string; fragmentShader: string }): void {
   shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>
@@ -228,13 +323,22 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
   // planes: the sculpted low-poly dog on the same skinned rig and motion.
   const faceted = look === 'faceted';
   const sides = detail === 'high' ? (faceted ? 8 : 10) : 6;
-  const breed = generatedBreedForCoat(coatId), setter = breed === 'english-setter';
-  const root = new THREE.Group(); root.name = setter ? 'generated-english-setter' : 'generated-gsp';
-  const label = setter ? englishSetterAppearance(coatId as EnglishSetterCoatId).label : germanShorthairedPointerAppearance(coatId as GspCoatId).label;
+  const breed = generatedBreedForCoat(coatId), setter = breed === 'english-setter', griffon = breed === 'griffon';
+  const root = new THREE.Group(); root.name = `generated-${breed}`;
+  const label = setter ? englishSetterAppearance(coatId as EnglishSetterCoatId).label
+    : griffon ? griffonAppearance(coatId as GriffonCoatId).label : germanShorthairedPointerAppearance(coatId as GspCoatId).label;
   root.userData.coatId = coatId; root.userData.coatLabel = label; root.userData.breedId = breed; root.userData.look = look;
   const material = new THREE.MeshLambertMaterial({ vertexColors: true });
   if (faceted) material.flatShading = true;
-  if (setter) applySetterCoat(material, coatId as EnglishSetterCoatId, faceted); else applyGspCoat(material, coatId as GspCoatId);
+  // Coat surfaces carry the marker. The Griffon's carries each facet's own
+  // lock of hair in its brightness (griffon.ts); the other coats are even.
+  const coat: number | ((p: THREE.Vector3) => number) = griffon ? p => griffonMarkerTone(WHITE, griffonHash(p.x, p.y, p.z)) : WHITE;
+  // A few hairs of grizzled brown, darker than the coat marker so they keep
+  // their own colour: the Griffon's eyebrows.
+  const brow = (p: THREE.Vector3) => [0x6f5a4a, 0x7d6857, 0x5e4a3d][Math.floor(griffonHash(p.z, p.y, p.x) * 3)];
+  if (setter) applySetterCoat(material, coatId as EnglishSetterCoatId, faceted);
+  else if (griffon) applyGriffonCoat(material, coatId as GriffonCoatId, faceted);
+  else applyGspCoat(material, coatId as GspCoatId);
   const geometries: THREE.BufferGeometry[] = [];
   const joints: Record<string, THREE.Bone> = {};
   const joint = (name: string, parent: THREE.Object3D, position: Point) => {
@@ -246,22 +350,29 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
   };
   const body = joint('body', root, [0, 0, 0]);
   // Behind the ribcage the trunk is compressed toward a square outline: a
-  // GSP is barely longer than tall, a setter a little longer.
-  const rear = (z: number) => z < -.05 ? -.05 + (z + .05) * (setter ? .96 : .915) : z;
-  const tuck = setter ? .092 : .079;
+  // GSP is barely longer than tall, a setter a little longer, and a Griffon
+  // slightly longer than tall, with a moderate tuck-up.
+  const rear = (z: number) => z < -.05 ? -.05 + (z + .05) * (setter ? .96 : griffon ? .945 : .915) : z;
+  const tuck = setter ? .092 : griffon ? .085 : .079;
+  // The Griffon's harsh coat stands off the neck a little.
+  const coatNeck = griffon ? 1.05 : 1;
   const torsoMesh = surface(body, s => s.loft(([
     // A continuous ribcage tapers into a tucked loin, a short sloping croup
     // and a high tail set; the withers are the top of the outline.
     [0,.522,-.39,.040,.064,.062], [0,.526,-.355,.070,.086,.088], [0,.532,-.30,.093,.096,.104],
     [0,.546,-.23,.090,.086,.100], [0,.552,-.16,.082,.086,tuck], [0,.536,-.08,.093,.105,.108],
     [0,.52,0,.112,.13,.14], [0,.512,.08,.121,.143,.162], [0,.516,.16,.12,.152,.172],
-  ] as Ring[]).map(([x, y, z, w, h, u]) => [x, y, rear(z), w, h, u] as Ring).concat([
+  ] as Ring[]).map(([x, y, z, w, h, u], i) => {
+    // A harsh coat breaks the clean outline a little, ring by ring.
+    const rough = griffon ? (k: number) => 1 + .04 * Math.sin(i * 12.9898 + k * 78.233) : () => 1;
+    return [x, y, rear(z), w * rough(1), h * rough(2), (u ?? h) * rough(3)] as Ring;
+  }).concat([
     [0,.531,.23,.099,.132,.173], [0,.55,.25,.092,.12,.15],
     // A clean, slightly arched neck carries the head well above the withers.
-    [0,.59,.268,.082,.098,.13], [0,.63,.29,.068,.08,.09],
+    ...([[0,.59,.268,.082,.098,.13], [0,.63,.29,.068,.08,.09],
     [0,.662,.312,.057,.063,.062], [0,.69,.335,.048,.05,.052],
-    [0,.703,.357,.042,.04,.045], [0,.707,.375,.037,.034,.038],
-  ]), WHITE), .88);
+    [0,.703,.357,.042,.04,.045], [0,.707,.375,.037,.034,.038]] as Ring[]).map(([x, y, z, w, h, u]) => [x, y, z, w * coatNeck, h * coatNeck, (u ?? h) * coatNeck] as Ring),
+  ]), coat), .88);
   const neck = joint('neck', body, [0,.51,.245]);
   torsoMesh.userData.neckJoint = neck;
   const head = joint('head', neck, [0,.19,.105]);
@@ -271,7 +382,9 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
   // The faceted head uses the coarser authored surface: broader planes that
   // match the body's.
   const headDetail = faceted ? 'lite' : detail;
-  const headGeometry = setter ? createGeneratedSetterHead(headDetail, coatId as EnglishSetterCoatId, faceted) : createGeneratedGspHead(headDetail, coatId as GspCoatId, faceted);
+  const headGeometry = setter ? createGeneratedSetterHead(headDetail, coatId as EnglishSetterCoatId, faceted)
+    : griffon ? createGeneratedGriffonHead(headDetail, coatId as GriffonCoatId, faceted)
+    : createGeneratedGspHead(headDetail, coatId as GspCoatId, faceted);
   geometries.push(headGeometry);
   const headMesh = new THREE.Mesh(headGeometry, material);
   headMesh.castShadow = true; headMesh.receiveShadow = true;
@@ -283,24 +396,38 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
     // carries a flag of feathering that is longest through the middle third.
     surface(tail, s => s.loft([[0,-.004,-.42,.002,.002,.006],[0,.002,-.37,.005,.005,.030],[0,.007,-.31,.007,.007,.052],
       [0,.010,-.24,.009,.009,.064],[0,.011,-.17,.011,.011,.058],[0,.009,-.10,.013,.013,.042],[0,.005,-.045,.016,.017,.026],[0,0,0,.020,.022,.022]], WHITE), .85);
+  } else if (griffon) {
+    // Docked by about a third, and as rough as the coat: thicker and blunt.
+    surface(tail, s => s.loft([[0,.018,-.27,.008,.009],[0,.022,-.226,.013,.014],[0,.016,-.14,.017,.018],[0,.007,-.06,.021,.022],[0,0,0,.024,.026]], coat), .8);
   } else surface(tail, s => s.loft([[0,.017,-.25,.005,.006],[0,.02,-.205,.009,.01],[0,.014,-.125,.014,.015],[0,.006,-.055,.019,.02],[0,0,0,.022,.024]], WHITE), .8);
+  // Hanging hair: thin vertical blades with a scalloped lower edge read as
+  // hair, not bulk. Each path point is [x, y, z, hang] in the parent's frame.
+  const fringe = (parent: THREE.Object3D, path: readonly (readonly [number, number, number, number])[], x: number, thickness: number, top = .012) => {
+    const rings: Ring[] = [];
+    for (let k = 0; k < path.length - 1; k++) for (let j = 0; j < 2; j++) {
+      const u = j / 2, a = path[k], b = path[k + 1], i = k * 2 + j;
+      const hang = THREE.MathUtils.lerp(a[3], b[3], u) * (i % 2 ? .88 : 1.05);
+      rings.push([x + THREE.MathUtils.lerp(a[0], b[0], u), THREE.MathUtils.lerp(a[1], b[1], u), THREE.MathUtils.lerp(a[2], b[2], u), thickness, top, hang]);
+    }
+    const last = path[path.length - 1]; rings.push([x + last[0], last[1], last[2], thickness, top, last[3]]);
+    // A diamond cross-section is enough for a thin hanging blade.
+    surface(parent, s => s.loft(rings, coat), .55, 4);
+  };
   if (setter) {
     // Brisket feathering hangs below the sternum between the elbows, and a
-    // light fringe follows each side of the belly toward the flank. Thin
-    // vertical blades with a scalloped lower edge read as hair, not bulk.
-    const fringe = (path: readonly (readonly [number, number, number, number])[], x: number, thickness: number) => {
-      const rings: Ring[] = [];
-      for (let k = 0; k < path.length - 1; k++) for (let j = 0; j < 2; j++) {
-        const u = j / 2, a = path[k], b = path[k + 1], i = k * 2 + j;
-        const hang = THREE.MathUtils.lerp(a[3], b[3], u) * (i % 2 ? .88 : 1.05);
-        rings.push([x, THREE.MathUtils.lerp(a[1], b[1], u), THREE.MathUtils.lerp(a[2], b[2], u), thickness, .012, hang]);
-      }
-      const last = path[path.length - 1]; rings.push([x, last[1], last[2], thickness, .012, last[3]]);
-      // A diamond cross-section is enough for a thin hanging blade.
-      surface(body, s => s.loft(rings, WHITE), .55, 4);
-    };
-    fringe([[0,.43,-.04,.01],[0,.395,.03,.03],[0,.372,.09,.046],[0,.364,.15,.052],[0,.37,.2,.04],[0,.39,.235,.02],[0,.43,.262,.008]], 0, .034);
-    for (const side of [-1, 1]) fringe([[0,.478,rear(-.20),.012],[0,.462,rear(-.14),.030],[0,.438,rear(-.07),.042],[0,.414,0,.048],[0,.394,.06,.036],[0,.386,.10,.012]], side * .040, .013);
+    // light fringe follows each side of the belly toward the flank.
+    fringe(body, [[0,.43,-.04,.01],[0,.395,.03,.03],[0,.372,.09,.046],[0,.364,.15,.052],[0,.37,.2,.04],[0,.39,.235,.02],[0,.43,.262,.008]], 0, .034);
+    for (const side of [-1, 1]) fringe(body, [[0,.478,rear(-.20),.012],[0,.462,rear(-.14),.030],[0,.438,rear(-.07),.042],[0,.414,0,.048],[0,.394,.06,.036],[0,.386,.10,.012]], side * .040, .013);
+  }
+  if (griffon) {
+    // The harsh coat leaves a short, ragged edge under the chest, not a
+    // setter's feathering.
+    fringe(body, [[0,.43,-.04,.006],[0,.396,.03,.017],[0,.374,.09,.024],[0,.366,.15,.026],[0,.372,.2,.019],[0,.392,.235,.011],[0,.43,.262,.005]], 0, .03);
+    // Furnishings. Eyebrows: a short, bushy wedge from the brow ridge out
+    // over each eye.
+    for (const side of [-1, 1]) surface(head, s => s.loft([[side*.026,.045,.048,.012,.006,.006],[side*.030,.043,.064,.010,.006,.005],[side*.033,.040,.079,.003,.002,.002]], brow), .5, 4);
+    // The moustache and beard belong to the head surface, skinned across the
+    // head and jaw (generatedGspHead.ts).
   }
   const paws: THREE.Bone[] = [];
   for (let i = 0; i < 4; i++) {
@@ -318,7 +445,8 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
     const ankleY = wristY + distalEnd[1], ankleZ = wristZ + distalEnd[2];
     // Setter furnishings: feathering behind the forearm and full breeches
     // down the back of the thigh deepen only the rear contour of the limb.
-    const fb = setter ? (fore ? [1.1, 1.6, 1.9, 1.55, 1.12] : [1.28, 1.25, 1.4, 1.48, 1.32]) : [1, 1, 1, 1, 1];
+    const fb = setter ? (fore ? [1.1, 1.6, 1.9, 1.55, 1.12] : [1.28, 1.25, 1.4, 1.48, 1.32])
+      : griffon ? (fore ? [1.04, 1.22, 1.32, 1.22, 1.06] : [1.14, 1.12, 1.2, 1.26, 1.14]) : [1, 1, 1, 1, 1];
     const at = (t: number): [number, number] => [upperEnd[1] + lowerEnd[1] * t, upperEnd[2] + lowerEnd[2] * t];
     const [lowY, lowZ] = at(.62), [highY, highZ] = at(.2);
     // Anatomical envelope, paw to withers/croup. Fore: pastern, wrist knob,
@@ -349,12 +477,12 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
       [side*.008,-.054,.016,.062,.096,.07],
       [side*.003,.008,-.006,.052,.07,.055],
       [0,.062,-.014,.025,.037],
-    ], WHITE, 'y'), .9);
+    ], coat, 'y'), .9);
     legMesh.userData.skinChain = [upper, lower, distal, paw];
     // A compact, arched foot: knuckles rise over the pads instead of a flat
     // slipper, and the toes close into a rounded front.
     surface(paw, s => s.loft([[0,.003,-.024,.012,.012],[0,.007,-.004,.019,.022,.020],
-      [0,.005,.018,.022,.024,.024],[0,.002,.035,.021,.019,.021],[0,-.003,.049,.016,.013,.016],[0,-.005,.057,.008,.007,.008]], WHITE), .78);
+      [0,.005,.018,.022,.024,.024],[0,.002,.035,.021,.019,.021],[0,-.003,.049,.016,.013,.016],[0,-.005,.057,.008,.007,.008]], coat), .78);
   }
   // Bake bind-space geometry into one draw call, retaining code-authored bones.
   root.updateMatrixWorld(true);
@@ -460,8 +588,9 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
       // still tail. The feet remain controlled by the field contact solver.
       // A setter stands up to its bird: the neck carried higher, the head
       // up and the muzzle level down the scent line.
-      neck.rotation.x = (setter ? .02 : .16) * t;
-      head.rotation.x = (setter ? -.06 : -.16) * t;
+      // A Griffon stands firm between the two, head a little high.
+      neck.rotation.x = (setter ? .02 : griffon ? .1 : .16) * t;
+      head.rotation.x = (setter ? -.06 : griffon ? -.12 : -.16) * t;
       neck.position.z += .045 * t;
       liftPaw(t);
       // Reference stance: the hind legs brace behind the pelvis rather
@@ -469,8 +598,9 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
       joints['hind-left'].rotation.x = .32 * t;
       joints['hind-right'].rotation.x = .22 * t;
       // A setter holds a high, still flag on point, near twelve o'clock; the
-      // docked GSP tail stays firm just above the topline.
-      tail.rotation.x = (setter ? 1.2 : .20) * t;
+      // docked GSP tail stays firm just above the topline, and the Griffon's
+      // nearly level with it.
+      tail.rotation.x = (setter ? 1.2 : griffon ? .08 : .20) * t;
     }
     root.updateMatrixWorld(true); skeleton.update(); if(!live){skin.computeBoundingBox(); skin.computeBoundingSphere();}
   };

@@ -11,7 +11,7 @@
 //   dogs     every breed, look and coat on point, from the dog portrait page.
 //
 // Start a dev server first (npm run dev), then:
-//   npm run art:menus -- --url http://localhost:5173 [--only grounds|title|dogs] [--chrome /path/to/chrome]
+//   npm run art:menus -- --url http://localhost:5173 [--only grounds|title|dogs] [--breeds griffon,gsp] [--chrome /path/to/chrome]
 // Software rendering takes a few minutes per ground; a GPU is much quicker.
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -23,6 +23,8 @@ const args = process.argv.slice(2), arg = (name, fallback) => {
 };
 const BASE = arg('url', 'http://localhost:5173').replace(/\/$/, '');
 const ONLY = arg('only', 'grounds,title,dogs').split(',');
+// Dog portraits for these breeds only (all by default), e.g. after adding one.
+const BREEDS = arg('breeds', '').split(',').filter(Boolean);
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'art', 'menus3d');
 const chrome = arg('chrome', process.env.PUPPETEER_EXECUTABLE_PATH);
 
@@ -36,9 +38,9 @@ const GROUNDS = [
 ];
 const TITLE = { area: 'sharptail-prairie', tod: 'evening', breed: 'english-setter', coat: 'orange-belton', seed: 12 };
 const COATS = { 'english-setter': ['orange-belton', 'blue-belton', 'tricolor', 'liver-belton', 'lemon-belton'],
-  gsp: ['liver-roan', 'liver-white', 'solid-liver', 'black-roan'] };
-const DEFAULT_COAT = { 'english-setter': 'orange-belton', gsp: 'liver-white' };
-const DEFAULT_LOOK = { 'english-setter': 'faceted', gsp: 'smooth' };
+  gsp: ['liver-roan', 'liver-white', 'solid-liver', 'black-roan'], griffon: ['steel-gray'] };
+const DEFAULT_COAT = { 'english-setter': 'orange-belton', gsp: 'liver-white', griffon: 'steel-gray' };
+const DEFAULT_LOOK = { 'english-setter': 'faceted', gsp: 'smooth', griffon: 'faceted' };
 
 const browser = await puppeteer.launch({ ...(chrome ? { executablePath: chrome } : {}), protocolTimeout: 1800000,
   args: ['--no-sandbox', '--ignore-gpu-blocklist', '--enable-unsafe-swiftshader'] });
@@ -178,11 +180,12 @@ if (ONLY.includes('dogs')) {
     await new Promise(resolve => setTimeout(resolve, 1200));
     await page.screenshot({ path: join(OUT, 'dogs', `${name}.webp`), type: 'webp', quality: 88, omitBackground: true });
   };
-  for (const breed of Object.keys(COATS)) for (const look of ['faceted', 'smooth']) {
+  const breeds = Object.keys(COATS).filter(breed => !BREEDS.length || BREEDS.includes(breed));
+  for (const breed of breeds) for (const look of ['faceted', 'smooth']) {
     for (const coat of COATS[breed]) await shoot(breed, look, coat, `${breed}-${look}-${coat}`);
     await shoot(breed, look, DEFAULT_COAT[breed], `${breed}-${look}`);
   }
-  for (const breed of Object.keys(COATS)) await shoot(breed, DEFAULT_LOOK[breed], DEFAULT_COAT[breed], breed);
+  for (const breed of breeds) await shoot(breed, DEFAULT_LOOK[breed], DEFAULT_COAT[breed], breed);
   console.log('dogs');
   await page.close();
 }

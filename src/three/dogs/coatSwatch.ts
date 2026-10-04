@@ -4,6 +4,7 @@
  */
 import { germanShorthairedPointerAppearance, isGspCoatId } from './germanShorthairedPointer';
 import { englishSetterAppearance, isEnglishSetterCoatId } from './englishSetter';
+import { griffonAppearance, isGriffonCoatId } from './griffon';
 
 const hex = (value: number) => `#${value.toString(16).padStart(6, '0')}`;
 
@@ -19,6 +20,11 @@ export function coatSwatch(coatId: string): string {
     const a = englishSetterAppearance(coatId), base = hex(a.ground), mark = hex(a.primary);
     const tan = a.tanPoint ? `radial-gradient(circle at 66% 72%, ${hex(a.tanPoint)} 0 14%, transparent 15%), ` : '';
     return `${tan}radial-gradient(circle at 30% 30%, ${mark} 0 26%, transparent 27%), radial-gradient(${mark} 1px, transparent 1.5px) 1px 2px / 6px 6px, radial-gradient(circle at 50% 50%, ${base}, ${hex(a.groundDim)})`;
+  }
+  if (isGriffonCoatId(coatId)) {
+    // A brown patch on grizzled steel gray: pale and brown hairs through gray.
+    const a = griffonAppearance(coatId), mark = hex(a.primary);
+    return `radial-gradient(circle at 30% 30%, ${mark} 0 27%, transparent 28%), radial-gradient(${hex(a.grizzle)} .9px, transparent 1.3px) 0 0 / 4px 4px, radial-gradient(${mark} .9px, transparent 1.3px) 2px 2px / 4px 4px, radial-gradient(circle at 50% 50%, ${hex(a.ground)}, ${hex(a.groundDim)})`;
   }
   return 'radial-gradient(circle, #cfc6b0, #8d8570)';
 }

@@ -17,8 +17,9 @@ import { TerrainSystem } from './subsystems/terrain';
 import { Hunt3DSystem, type WorldPatch } from './subsystems/hunt3d';
 import { PlayerSystem } from './subsystems/player';
 import { GeneratedDogSystem } from './subsystems/generatedDog';
+import { generatedCoatFor } from './dogs/generatedGsp';
 import { DOG_STYLE_LABELS, DOG_STYLE_SELECTABLE, effectiveDogStyle, preferredDogStyle, resolveDogStyle } from './dogs/dogStyle';
-import { coatLabel as coatName, resolveCoatFor } from '../game/dogCoats';
+import { coatLabel as coatName, coatsForBreed, modelForBreed, resolveCoatFor, type ModeledBreedId } from '../game/dogCoats';
 import { BREEDS } from '../game/breeds';
 import { BirdsSystem } from './subsystems/birds';
 import { resolveBirdSize } from './birdScale';
@@ -30,14 +31,6 @@ import { FieldMapSystem } from './subsystems/fieldMap';
 import { LandmarksSystem } from './subsystems/landmarks';
 import { LandscapeModel } from '../game/landscape';
 import { createLandscapeVisuals } from './landscapeVisuals';
-import {
-  ENGLISH_SETTER_COATS,
-  resolveEnglishSetterCoat,
-} from './dogs/englishSetter';
-import {
-  GSP_COATS,
-  resolveGspCoat,
-} from './dogs/germanShorthairedPointer';
 import {
   build3DPreparationHref,
   parseDropPointId,
@@ -71,7 +64,8 @@ const launchArea = resolveThreeHuntArea(location.search);
 const launchProfile = resolveThreeHuntProfile(location.search);
 const landscape = new LandscapeModel(launchArea, parseDropPointId(location.search));
 const landscapeVisuals = createLandscapeVisuals(landscape);
-const visualBreedFor = (breedId: string) => breedId === 'gsp' ? 'gsp' : 'english-setter';
+// Breeds without a model of their own borrow the setter's (dogCoats.ts).
+const visualBreedFor = (breedId: string): ModeledBreedId => modelForBreed(breedId);
 const visualBreed = visualBreedFor(launchProfile.breedId);
 // A launch carries the chosen coat; the saved kennel dog or Quick setup is
 // the fallback for older links. The URL wins so review links stay exact.
@@ -133,13 +127,14 @@ engine.register(new Hunt3DSystem(landscape));
 engine.register(new FieldMapSystem());
 for (const system of landscapeVisuals.systems) engine.register(system);
 engine.register(new LandmarksSystem());
-// Both breeds draw on the one skinned rig and its motion, in two looks:
+// Every breed draws on the one skinned rig and its motion, in two looks:
 // smooth and faceted. Each breed draws in its house look (a smooth GSP, a
-// faceted setter); `dogstyle` applies only while the style switch is open.
+// faceted setter and Griffon); `dogstyle` applies only while the style
+// switch is open.
 const dogStyle = resolveDogStyle(params.get('dogstyle')) ?? preferredDogStyle();
-const dogSystemFor = (breed: 'gsp' | 'english-setter', coat: string, slot = 0) => {
+const dogSystemFor = (breed: ModeledBreedId, coat: string, slot = 0) => {
   const style = effectiveDogStyle(breed, dogStyle);
-  return new GeneratedDogSystem(breed === 'gsp' ? resolveGspCoat(coat) : resolveEnglishSetterCoat(coat), slot, style);
+  return new GeneratedDogSystem(generatedCoatFor(breed, coat), slot, style);
 };
 engine.register(dogSystemFor(visualBreed, coatId));
 if (launchProfile.brace) {
@@ -191,6 +186,7 @@ if (coatPicker && coatPanel) {
     const visualBreeds = [
       { id: 'english-setter', label: 'English Setter' },
       { id: 'gsp', label: 'German Shorthaired Pointer' },
+      { id: 'griffon', label: 'Wirehaired Pointing Griffon' },
     ];
     for (const breed of visualBreeds) {
       const option = document.createElement('option');
@@ -206,8 +202,8 @@ if (coatPicker && coatPanel) {
       location.assign(next);
     });
   }
-  if (coatLabel) coatLabel.textContent = visualBreed === 'gsp' ? 'GSP coat' : 'English Setter coat';
-  const coats = visualBreed === 'gsp' ? GSP_COATS : ENGLISH_SETTER_COATS;
+  if (coatLabel) coatLabel.textContent = ({ gsp: 'GSP coat', 'english-setter': 'English Setter coat', griffon: 'Griffon coat' } as const)[visualBreed];
+  const coats = coatsForBreed(visualBreed);
   for (const coat of coats) {
     const option = document.createElement('option');
     option.value = coat.id;
@@ -217,12 +213,7 @@ if (coatPicker && coatPanel) {
   }
   coatPicker.addEventListener('change', () => {
     const next = new URL(location.href);
-    next.searchParams.set(
-      'coat',
-      visualBreed === 'gsp'
-        ? resolveGspCoat(coatPicker.value)
-        : resolveEnglishSetterCoat(coatPicker.value),
-    );
+    next.searchParams.set('coat', resolveCoatFor(visualBreed, coatPicker.value));
     location.assign(next);
   });
 }

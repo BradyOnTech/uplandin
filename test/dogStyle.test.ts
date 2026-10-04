@@ -12,6 +12,6 @@ describe('dog art style choice', () => {
     expect(resolveDogStyle(null)).toBeNull();
   });
   it('keeps each breed on its established style by default', () => {
-    expect(DEFAULT_DOG_STYLE).toEqual({ gsp: 'smooth', 'english-setter': 'faceted' });
+    expect(DEFAULT_DOG_STYLE).toEqual({ gsp: 'smooth', 'english-setter': 'faceted', griffon: 'faceted' });
   });
 });

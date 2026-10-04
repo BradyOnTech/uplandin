@@ -138,7 +138,7 @@ export function liveDogBreedId(search: string): string {
 const CAST_DISTANCE_M = 30;
 /** "Dead bird" reaches this far along the look ray. */
 const DEAD_BIRD_REACH_M = 70;
-const shortBreedName = (id: string) => ({ gsp: 'GSP', 'english-setter': 'Setter' } as Record<string, string>)[id] ?? getBreed(id).name;
+const shortBreedName = (id: string) => ({ gsp: 'GSP', 'english-setter': 'Setter', griffon: 'Griffon' } as Record<string, string>)[id] ?? getBreed(id).name;
 const LIVE_DOG_INTRO_ANGLE = -1.15;
 
 /** Sim tick budget (ms). The sim is tiny; blowing this means a bug. */

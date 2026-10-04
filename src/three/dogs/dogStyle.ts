@@ -1,3 +1,5 @@
+import type { ModeledBreedId } from '../../game/dogCoats';
+
 /**
  * The two dog art styles. Both are looks of the one skinned rig, its
  * contact-solved limbs and its motion, over the shared hunt simulation:
@@ -9,6 +11,8 @@
  * October 2, 2026: the faceted setter now draws on the skinned rig and the
  * articulated sculpt is retired. The comparison bench
  * (tools3d/dog-comparison.html) still shows all four pairings.
+ * October 3, 2026: the Wirehaired Pointing Griffon joins in the faceted look,
+ * Brady's choice for its rough coat and furnishings.
  */
 export const DOG_STYLES = ['smooth', 'faceted'] as const;
 export type DogStyle = (typeof DOG_STYLES)[number];
@@ -25,9 +29,10 @@ export const DOG_STYLE_LABELS: Record<DogStyle, { label: string; detail: string 
 };
 
 /** Each breed's established style when no explicit choice is made. */
-export const DEFAULT_DOG_STYLE: Record<'gsp' | 'english-setter', DogStyle> = {
+export const DEFAULT_DOG_STYLE: Record<ModeledBreedId, DogStyle> = {
   gsp: 'smooth',
   'english-setter': 'faceted',
+  griffon: 'faceted',
 };
 
 export function resolveDogStyle(value: string | null | undefined): DogStyle | null {
@@ -48,6 +53,6 @@ export function saveDogStyle(style: DogStyle, storage: Pick<Storage, 'setItem'> 
 }
 
 /** The style a breed is drawn in, given an explicit choice (URL or preference). */
-export function effectiveDogStyle(breed: 'gsp' | 'english-setter', choice: DogStyle | null): DogStyle {
+export function effectiveDogStyle(breed: ModeledBreedId, choice: DogStyle | null): DogStyle {
   return DOG_STYLE_SELECTABLE && choice ? choice : DEFAULT_DOG_STYLE[breed];
 }

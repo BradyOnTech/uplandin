@@ -5,6 +5,7 @@ import { commitCareerSetup, commitDogCoat, commitPreparationDog } from '../src/g
 import { normalizeQuickConfig } from '../src/game/quick';
 import { GSP_COAT_IDS } from '../src/three/dogs/germanShorthairedPointer';
 import { ENGLISH_SETTER_COAT_IDS } from '../src/three/dogs/englishSetter';
+import { GRIFFON_COAT_IDS } from '../src/three/dogs/griffon';
 import { DEFAULT_DOG_STYLE, DOG_STYLE_KEY, DOG_STYLE_SELECTABLE, effectiveDogStyle, preferredDogStyle, saveDogStyle } from '../src/three/dogs/dogStyle';
 
 function storage() {
@@ -16,9 +17,11 @@ describe('coat catalog for the modelled breeds', () => {
   it('matches the coats each 3D model can draw', () => {
     expect(coatsForBreed('gsp').map(c => c.id).sort()).toEqual([...GSP_COAT_IDS].sort());
     expect(coatsForBreed('english-setter').map(c => c.id).sort()).toEqual([...ENGLISH_SETTER_COAT_IDS].sort());
+    expect(coatsForBreed('griffon').map(c => c.id).sort()).toEqual([...GRIFFON_COAT_IDS].sort());
   });
-  it('models only the GSP and English Setter; other breeds borrow the setter body', () => {
-    expect(MODELED_BREED_IDS).toEqual(['gsp', 'english-setter']);
+  it('models the GSP, English Setter and Griffon; other breeds borrow the setter body', () => {
+    expect(MODELED_BREED_IDS).toEqual(['gsp', 'english-setter', 'griffon']);
+    expect(modelForBreed('griffon')).toBe('griffon');
     expect(isModeledBreed('vizsla')).toBe(false);
     expect(modelForBreed('vizsla')).toBe('english-setter');
     expect(modelForBreed('gsp')).toBe('gsp');

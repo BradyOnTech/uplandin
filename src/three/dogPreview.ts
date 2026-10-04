@@ -15,11 +15,11 @@ import { mulberry32 } from '../game/math';
 import type { Ctx, Quality, Subsystem } from './engine';
 import { fieldTimeOfDay } from './palette';
 import { GeneratedDogSystem } from './subsystems/generatedDog';
-import { resolveGspCoat } from './dogs/germanShorthairedPointer';
-import { resolveEnglishSetterCoat } from './dogs/englishSetter';
+import { generatedCoatFor } from './dogs/generatedGsp';
 import type { DogStyle } from './dogs/dogStyle';
+import type { ModeledBreedId } from '../game/dogCoats';
 
-export type PreviewBreed = 'gsp' | 'english-setter';
+export type PreviewBreed = ModeledBreedId;
 export type PreviewPose = 'stand' | 'point' | 'trot' | 'run';
 export interface PreviewDog { breed: PreviewBreed; coat: string; style: DogStyle; label?: string }
 export interface DogPreview {
@@ -144,7 +144,7 @@ export function createDogPreview(container: HTMLElement, options: DogPreviewOpti
     const shadow = new THREE.Mesh(new THREE.CircleGeometry(4, 64), new THREE.ShadowMaterial({ opacity: .42, transparent: true }));
     shadow.rotation.x = -Math.PI / 2; shadow.receiveShadow = true; scene.add(shadow);
     // Both looks draw on the field's skinned rig, exactly as they hunt.
-    const system = new GeneratedDogSystem(spec.breed === 'gsp' ? resolveGspCoat(spec.coat) : resolveEnglishSetterCoat(spec.coat), 0,
+    const system = new GeneratedDogSystem(generatedCoatFor(spec.breed, spec.coat), 0,
       spec.style) as unknown as Panel['system'];
     system.init(ctx);
     return { spec, scene, camera: panelCamera, ctx, system, dog, lights: [sun, fill, rim, hemi], ground, shadow };
