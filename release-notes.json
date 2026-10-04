@@ -3,6 +3,13 @@
   "releases": [
     {
       "date": "2026-10-03",
+      "through": "aa3c6da",
+      "notes": [
+        "Add the Wirehaired Pointing Griffon in steel gray and brown"
+      ]
+    },
+    {
+      "date": "2026-10-03",
       "through": "d7a35a7",
       "notes": [
         "Show the game's version and what's new on the home screen"
