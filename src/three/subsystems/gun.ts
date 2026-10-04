@@ -645,6 +645,7 @@ export class GunSystem implements Subsystem {
   }
 
   private fire(ctx: Ctx, request: ShotRequest): void {
+    if (this.hunt.training) return;
     if (this.hunt.falconry) return;
     if (ctx.paused || this.isReloading()) return;
     if (this.shells <= 0) {
@@ -820,6 +821,7 @@ export class GunSystem implements Subsystem {
   }
 
   update(ctx: Ctx, dt: number): void {
+    if (this.hunt.training) { this.root.visible = false; return; }
     if (this.hunt.falconry) return;
     const cam = ctx.camera;
     const snap = this.frozen;

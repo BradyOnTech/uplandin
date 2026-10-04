@@ -30,7 +30,7 @@ import {
   levelStep,
   type FlushBias,
 } from '../../game/shot';
-import { getSpecies, SPECIES, type SpeciesConfig } from '../../game/species';
+import { getSpecies, SPECIES, TRAINING_SPECIES, type SpeciesConfig } from '../../game/species';
 import { CLOSE_FLUSH_THRESHOLD, closeFlushIntensity } from '../../game/closeFlush';
 import { isSpatialEncounterArea } from '../../game/huntSimulation';
 import { evadeGoshawk, type QuarryTarget } from '../../game/falconry';
@@ -168,6 +168,7 @@ export function birdFamilyFor(speciesId: string): BirdFamily {
 function birdShapeFor(speciesId: string): BirdShape {
   const family = birdFamilyFor(speciesId);
   const base = BIRD_SHAPES[family];
+  if (speciesId === 'training-pigeon') return { ...base, bodyLength: 1.2, bodyWidth: 1.06, bodyDepth: .95, wingSpan: 1.65, wingChord: 1.05, tailLength: 1.65, tailWidth: 1.2, billLength: .85 };
   // The quail family shares the same low-poly construction, but not the
   // same proportions. These small silhouette changes keep a desert runner,
   // an oak-country topknot, a mountain bird, and a compact Mearns bird from
@@ -688,7 +689,7 @@ export class BirdsSystem implements Subsystem {
 
   private buildPool(ctx: Ctx): void {
     const rng = mulberry32(BIRD_ART_SEED);
-    for (const species of SPECIES) this.buildSpeciesGeometry(species, false);
+    for (const species of [...SPECIES, ...TRAINING_SPECIES]) this.buildSpeciesGeometry(species, false);
     this.buildSpeciesGeometry(getSpecies('ringneck'), true);
     const fallback = this.speciesGeos.get('bobwhite')!;
 

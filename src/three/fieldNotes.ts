@@ -1,3 +1,4 @@
+import { skillGainText } from '../game/dogDevelopment';
 import type { HuntState } from '../game/state';
 import type { CareerHuntResult } from '../game/huntResults';
 import { dogCareerProgress, hunterCareerProgress } from '../game/careerProgress';
@@ -67,7 +68,7 @@ export function careerFieldNotes(result: CareerHuntResult) {
       const development = dog ? dogCareerProgress(result.career, dog) : null;
       return {
         name: award.name,
-        award: `+${award.gained} XP`,
+        award: [`+${award.gained} XP`, ...skillGainText(award.skillGains ?? {})].join(" · "),
         level: award.levelsGained > 0 ? `Level ${award.newLevel} reached` : `Level ${award.newLevel}`,
         advanced: award.levelsGained > 0,
         milestone: award.lastHunt ? farewell(award.name, dog) : award.firstPoint ? `${award.name}'s first point` : null,

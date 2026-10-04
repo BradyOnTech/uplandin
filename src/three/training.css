@@ -1,0 +1,58 @@
+.training-preparation { margin: 0; min-height: 100vh; background: #172920; color: #f0eadb; font-family: Georgia, serif; }
+.training-preparation::before { content: ''; position: fixed; inset: 0; background: linear-gradient(90deg,rgba(12,27,20,.94),rgba(12,27,20,.82)),url('/art/menus3d/quail-fields.webp') center/cover; z-index: -1; }
+#training { max-width: 1300px; margin: auto; padding: max(24px,env(safe-area-inset-top)) max(24px,env(safe-area-inset-right)) max(36px,env(safe-area-inset-bottom)) max(24px,env(safe-area-inset-left)); }
+.training-preparation a { color: #efc477; text-decoration: none; }
+.training-masthead { display: flex; justify-content: space-between; gap: 24px; font: 600 12px/1.5 system-ui,sans-serif; letter-spacing: .1em; }
+.training-intro { max-width: 700px; margin: 44px 0 28px; }
+.training-eyebrow { color: #cebd95; font: 600 11px/1.5 system-ui,sans-serif; letter-spacing: .17em; }
+.training-intro h1 { font-size: clamp(30px,4.5vw,58px); line-height: 1.05; font-weight: 400; white-space: pre-line; margin: 14px 0; }
+.training-intro > p:last-of-type { color: #d1d4c5; font-size: 16px; line-height: 1.6; }
+.training-layout { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(320px,1fr); gap: 30px; align-items: start; }
+.training-mode { display: flex; gap: 8px; margin-top: 24px; }
+.training-preparation button,.training-preparation select { font: 14px/1.5 system-ui,sans-serif; color: inherit; background: #213b2d; border: 1px solid #657360; border-radius: 4px; padding: 10px 14px; cursor: pointer; }
+.training-preparation button[aria-pressed=true] { border-color: #edc279; background: #3f4c32; }
+.training-preparation button:focus-visible,.training-preparation select:focus-visible,.training-preparation a:focus-visible { outline: 2px solid #efc477; outline-offset: 4px; }
+.training-drills { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.training-preparation .training-drill { text-align: left; padding: 18px; min-height: 112px; }
+.training-drill strong { display: block; font: 400 21px/1.25 Georgia,serif; margin-bottom: 8px; }
+.training-drill span { display: block; font-size: 12px; line-height: 1.5; color: #d1d4c5; }
+.training-setup { background: rgba(17,33,25,.9); border: 1px solid #596954; padding: 24px; border-radius: 5px; }
+.training-setup h2 { font-size: 28px; font-weight: 400; margin: 0 0 20px; }
+.training-control { display: grid; gap: 7px; margin: 16px 0; font: 12px/1.5 system-ui,sans-serif; }
+.training-control > span { color: #d4cba9; }
+.training-control select { width: 100%; }
+.training-control input { width: 100%; accent-color: #efc477; }
+.training-budget,.training-skill-summary,.training-preparation .help { font: 12px/1.6 system-ui,sans-serif; color: #c5ceb9; }
+.training-course { display: flex; justify-content: space-between; align-items: center; gap: 10px; font: 12px system-ui,sans-serif; margin: 22px 0; }
+.training-preparation .training-start { width: 100%; background: #ebc077; color: #18291f; font-weight: 700; padding: 14px; }
+.training-start:disabled { opacity: .5; cursor: default; }
+.dog-development h3 { font: 600 12px/1.5 system-ui,sans-serif; color: inherit; margin: 18px 0 12px; }
+.training-ability { display: grid; gap: 8px; font: 12px/1.4 system-ui,sans-serif; margin: 0; }
+.training-ability > div { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; }
+.training-ability dd { margin: 0; font-variant-numeric: tabular-nums; }
+.training-ability meter { grid-column: 1/-1; width: 100%; height: 9px; accent-color: #799953; }
+.training-link { display: inline-block; margin-top: 10px; color: inherit; font-weight: 600; }
+.training-field-panel { position: fixed; z-index: 21; top: max(14px,env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(390px,42vw); padding: 13px 16px; border-radius: 4px; background: rgba(18,34,25,.9); border: 1px solid rgba(225,203,152,.4); color: #f4ecd9; font: 13px/1.4 system-ui,sans-serif; pointer-events: none; }
+.training-field-panel[hidden] { display: none; }
+.training-field-panel strong { font: 400 21px/1.1 Georgia,serif; display: block; }
+.training-field-progress { display: block; color: #deca9c; font-size: 11px; margin-top: 6px; }
+.training-field-panel p { margin: 8px 0 0; }
+.training-field-panel .training-field-direction { color: #efc477; font-size: 11px; }
+.training-field-panel button { pointer-events: auto; background: #efc477; color: #1b3023; border: 0; border-radius: 3px; padding: 9px 13px; margin-top: 9px; cursor: pointer; font: 600 12px system-ui,sans-serif; touch-action: manipulation; }
+.training-field-panel button:focus-visible { outline: 2px solid white; outline-offset: 3px; }
+.training-field [data-action=fire],.training-field [data-action=reload],.training-field [data-action=lower],.training-field #shotgun-select,.training-field #field-shotguns,.training-field #crosshair { display: none !important; }
+.training-result-medal { font: 400 28px/1.2 Georgia,serif; color: #805c2e; margin: 0 0 6px; }
+.training-results-overview p:not(.training-result-medal) { margin: 5px 0; line-height: 1.4; }
+.training-result-round { margin: 8px 0; line-height: 1.4; }
+.training-result-round p { margin: 5px 0; }
+.training-result-development h3 { margin: 4px 0 10px; }
+.training-result-development .help { display: none; }
+.training-result-development .training-skill-summary { color: inherit; margin: 8px 0; }
+@media(min-width:600px) { .training-result-development .training-ability { grid-template-columns: repeat(5,minmax(0,1fr)); } }
+@media(max-width:750px) { .training-layout { grid-template-columns: 1fr; gap: 20px; } .training-intro { margin-top: 30px; } .training-masthead { letter-spacing: .03em; } .training-drill strong { font-size: 18px; } }
+@media(max-height:500px) { .training-field-panel { width: min(370px,44vw); padding: 8px 12px; font-size: 11px; } .training-field-panel strong { font-size: 17px; } .training-field-panel p { margin-top: 5px; } .training-field-panel button { padding: 7px 10px; margin-top: 6px; } }
+
+.training-field #field-method-live,.training-field #field-guidance { display: none; }
+@media(max-width:1050px) and (min-width:751px) { .training-field-panel { left: max(280px,27vw); transform: none; width: min(340px,40vw); } }
+@media(max-width:750px) { .training-field-panel { top: max(130px,calc(env(safe-area-inset-top) + 120px)); width: calc(100vw - 48px); max-width: 370px; } }
+@media(max-width:750px) and (max-height:500px) { .training-field-panel { top: max(14px,env(safe-area-inset-top)); left: 270px; transform: none; width: calc(100vw - 390px); min-width: 210px; } }

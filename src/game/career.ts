@@ -1,3 +1,4 @@
+import { developmentForLevel, readDevelopment, type DogDevelopment } from './dogDevelopment';
 import { levelForXp } from './breeds';
 import { hunterLevelForXp } from './progression';
 import { advanceWeeks, nextSeason, startingDate, type SeasonDate } from './season';
@@ -25,6 +26,9 @@ export interface KennelDog {
   xp: number;
   /** The season this dog's career started — age derives from the calendar. */
   bornSeason: number;
+  /** Practiced abilities, bounded by the breed’s mature potential. */
+  development?: DogDevelopment;
+  training?: { season: number; week: number; skillXp: number; dogXp: number; sessions: number; sessionIds?: string[] };
   /** Coat id for the breed's 3D model. Absent on older saves: the breed default. */
   coatId?: string;
   /** Where and when it first pointed a bird: the pup's first point. */
@@ -122,6 +126,7 @@ export function addDogToKennel(
     level: 1,
     xp: 0,
     bornSeason: career.date.season,
+    development: developmentForLevel(1),
     ...(coatId ? { coatId } : {}),
   };
   return {
@@ -313,6 +318,10 @@ function readKennelDog(saved: KennelDog): KennelDog {
   if (life !== undefined && !(life && savedCount(life.hunts) && savedCount(life.points) && savedCount(life.retrieves))) delete dog.lifetime;
   if (dog.lastSeason !== undefined && !(savedCount(dog.lastSeason) && dog.lastSeason >= 1)) delete dog.lastSeason;
   if (dog.retiredSeason !== undefined && !(savedCount(dog.retiredSeason) && dog.retiredSeason >= 1)) delete dog.retiredSeason;
+  dog.development = readDevelopment(dog.development, dog.level);
+  const training = dog.training;
+  if (training && ![training.season, training.week, training.skillXp, training.dogXp, training.sessions].every(n => typeof n === 'number' && Number.isFinite(n) && n >= 0)) delete dog.training;
+  if (dog.training) dog.training.sessionIds = Array.isArray(dog.training.sessionIds) ? dog.training.sessionIds.filter(id => typeof id === 'string').slice(-64) : [];
   return dog;
 }
 

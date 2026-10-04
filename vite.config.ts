@@ -31,7 +31,7 @@ export default defineConfig({
     writeBundle(options, bundle) {
       const directory = resolve(options.dir ?? 'dist');
       const files = [
-        'index.html', 'home3d.html', 'index3d.html', 'prepare3d.html', 'shotguns3d.html', 'manifest.webmanifest', 'manifest3d.webmanifest', 'icon-192.png', 'icon-512.png',
+        'index.html', 'home3d.html', 'index3d.html', 'prepare3d.html', 'training3d.html', 'shotguns3d.html', 'manifest.webmanifest', 'manifest3d.webmanifest', 'icon-192.png', 'icon-512.png',
         ...['title-landscape', 'quail-fields', 'pheasant-coverts', 'chukar-ridge', 'sharptail-prairie', 'dogs/gsp', 'dogs/english-setter', 'dogs/gsp-smooth', 'dogs/gsp-faceted', 'dogs/english-setter-smooth', 'dogs/english-setter-faceted', 'dogs/griffon', 'dogs/griffon-smooth', 'dogs/griffon-faceted', 'guns/remington-870', 'guns/semi-auto', 'guns/over-under', 'guns/side-by-side'].map(name => `art/menus3d/${name}.webp`),
         'textures/terrain/prairie-painted.webp',
         'textures/terrain/sharptail-sward-v2.webp',
@@ -68,6 +68,7 @@ export default defineConfig({
         // classic.html (the retired 2D hunt) stays in the repo but is no longer built.
         three: resolve(__dirname, 'index3d.html'),
         preparation: resolve(__dirname, 'prepare3d.html'),
+        training: resolve(__dirname, 'training3d.html'),
         shotguns: resolve(__dirname, 'shotguns3d.html'),
         poc: resolve(__dirname, 'frame-poc.html'),
       },

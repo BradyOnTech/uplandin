@@ -1,3 +1,4 @@
+import { parseTraining, trainingStage } from './training';
 import { isFalconryPractice, FALCONRY_PRACTICE, stageFalconryPractice } from './falconryPractice';
 import { areaBirdCount, getArea, type AreaConfig } from './areas';
 import { getSpecies } from './species';
@@ -78,6 +79,12 @@ export function build3DHuntHref(launch: HuntLaunch, dropPointId?: string): strin
 /** Return with the chosen graphics preference, never the device's effective tier. */
 export function build3DPreparationHref(search: string, areaId: string, dropPointId: string): string {
   const mode = parseHuntLaunch(search)?.kind === 'career' ? 'career' : 'quick';
+  if (parseTraining(search)) {
+    const params = new URLSearchParams(search);
+    params.set('mode', mode);
+    for (const key of [...params.keys()]) if (!['mode', 'training', 'trainingDifficulty', 'trainingCover', 'wind', 'seed', 'trainee', 'breed', 'level', 'coat', 'quality'].includes(key)) params.delete(key);
+    return `./training3d.html?${params}`;
+  }
   const params = new URLSearchParams({ mode, area: areaId, drop: dropPointId });
   const quality = new URLSearchParams(search).get('quality');
   if (quality === 'auto' || quality === 'lite' || quality === 'high') params.set('quality', quality);
@@ -119,6 +126,20 @@ export function resolveThreeHuntProfile(
   storage: StorageLike | null = defaultStorage(),
 ): ThreeHuntProfile {
   const launch = parseHuntLaunch(search);
+  const training = parseTraining(search);
+  if (training) {
+    const params = new URLSearchParams(search), career = training.mode === 'career' ? loadCareer(storage) : null;
+    const dog = career?.kennel.find(d => d.id === params.get('trainee') && d.retiredSeason === undefined) ?? (career ? activeDog(career) : null);
+    if (career && !dog) throw new Error('Choose a working career dog before training.');
+    const requested = params.get('breed') ?? loadQuickConfig(storage).breedId;
+    const breedId = dog?.breedId ?? getBreed(requested).id;
+    const requestedLevel = Number(params.get('level') ?? loadQuickConfig(storage).level);
+    const level = dog?.level ?? Math.max(1, Math.min(10, Math.round(Number.isFinite(requestedLevel) ? requestedLevel : 5)));
+    const mentor = training.drill === 'honoring' ? { breedId: 'english-setter', level: 10, ageMultiplier: 1, kennelDog: null } : null;
+    return { breedId, level, ageMultiplier: career && dog ? ageMult(dogAge(career, dog)) : 1,
+      kennelDog: dog, quick: career ? null : normalizeQuickConfig({ ...loadQuickConfig(storage), breedId, level, areaId: 'quail-fields', huntingMethod: 'shotgun', breed2Id: mentor?.breedId ?? 'none' }),
+      gearTier: 3, brace: mentor };
+  }
   if (launch?.kind === 'quick') {
     const quick = normalizeQuickConfig({ ...loadQuickConfig(storage), ...(launch.method ? { huntingMethod: launch.method } : {}) });
     return {
@@ -184,7 +205,7 @@ export interface ThreeHuntSetup extends ThreeHuntProfile {
 }
 
 export function resolveThreeHuntChallenge(search: string, storage: StorageLike | null = defaultStorage()): HuntChallenge {
-  if (isFalconryPractice(search)) return 'balanced';
+  if (isFalconryPractice(search) || parseTraining(search)) return 'balanced';
   if (!huntingDoctrine(resolveThreeHuntArea(search, storage).id).spatialEncounter) return 'balanced';
   const params = new URLSearchParams(search);
   let challenge: HuntChallenge;
@@ -201,6 +222,7 @@ export function resolveThreeHuntArea(
   storage: StorageLike | null = defaultStorage(),
 ): AreaConfig {
   const launch = parseHuntLaunch(search);
+  if (parseTraining(search)) return getArea('quail-fields');
   if (launch?.kind === 'quick') return getArea(launch.method === 'goshawk' ? 'pheasant-coverts' : loadQuickConfig(storage).areaId);
   if (launch?.kind === 'career') return getArea(launch.areaId);
   return getArea(new URLSearchParams(search).get('area') ?? 'quail-fields');
@@ -224,6 +246,15 @@ export function createThreeHuntSetup(
   const challenge = resolveThreeHuntChallenge(search, storage);
   const tuning = HUNT_CHALLENGES[challenge];
   const resolvedArea = resolveThreeHuntArea(search, storage);
+  const training = parseTraining(search);
+  if (training) {
+    const stage = trainingStage(resolvedArea, training, 0);
+    const hunt = createHunt(resolvedArea, mulberry32(training.seed), { dropPointId, wind: training.wind, condition: 'frost' });
+    hunt.birds = stage.birds; hunt.hunterPos = stage.hunter; hunt.dogsPos = stage.dogs;
+    hunt.wind = -Math.PI / 2 + Math.PI; hunt.windStrength = training.wind; hunt.preserve = true;
+    if (profile.quick) hunt.quick = profile.quick;
+    return { ...profile, launch, area: resolvedArea, hunt, challenge: 'balanced', seed: training.seed, breed: getBreed(profile.breedId) };
+  }
   const isQuail = resolvedArea.id === 'quail-fields';
   const seed = parseHuntSeed(search) ?? Math.floor(rng() * 0x100000000);
   const environmentRng = mulberry32(huntStreamSeed(seed, 0xe071));

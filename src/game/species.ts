@@ -398,8 +398,16 @@ export const SPECIES: SpeciesConfig[] = [
   },
 ];
 
+/** Practice birds never enter the wild species mixes or seasonal openers. */
+export const TRAINING_SPECIES: SpeciesConfig[] = [{
+  id: 'training-pigeon', name: 'Training pigeon', size: .8, coveyMin: 1, coveyMax: 1,
+  runnerChance: 0, nerveMinMs: 30000, nerveMaxMs: 60000,
+  flight: { speedMin: 115, speedMax: 155, climb: .8, wobble: 5, flapRate: 9, glideAfterMs: 1800 },
+  palette: { body: 0x87949f, head: 0x515e76, tail: 0x455563 },
+}];
+
 export function getSpecies(id: string): SpeciesConfig {
-  return SPECIES.find((s) => s.id === id) ?? SPECIES[0];
+  return [...SPECIES, ...TRAINING_SPECIES].find((s) => s.id === id) ?? SPECIES[0];
 }
 
 /** One entry of an area's weighted species mix. */

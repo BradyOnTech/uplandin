@@ -27,16 +27,16 @@ describe('Career outlook from existing progression', () => {
       nextUnlock: { level: 3, labels: ['Browning A5', 'beeper collar'] } });
     expect(dogCareerProgress(result.career, result.career.kennel[0])).toMatchObject({ level: 2,
       progress: { earned: 1, required: 57, remaining: 56, nextLevel: 3 },
-      nextBenefit: 'Stronger scenting and steadier points' });
+      nextBenefit: 'Retrieving develops through focused work' });
     expect(JSON.stringify(result.career)).toBe(before);
   });
 
-  it('shows each wind-work transition only for the next actual level', () => {
+  it('shows a focused-work hint rather than promising wind skill at a general level-up', () => {
     const { career, dog } = addDogToKennel(emptyCareer(), 'Scout', 'english-setter');
     dog.level = 3; dog.xp = threshold(4, xpForLevel) - 1;
-    expect(dogCareerProgress(career, dog)).toMatchObject({ progress: { remaining: 1, nextLevel: 4 }, nextBenefit: 'More effective upwind scenting' });
+    expect(dogCareerProgress(career, dog)).toMatchObject({ progress: { remaining: 1, nextLevel: 4 }, nextBenefit: 'Scent work develops through focused work' });
     dog.level = 7; dog.xp = threshold(8, xpForLevel) - 1;
-    expect(dogCareerProgress(career, dog)).toMatchObject({ progress: { remaining: 1, nextLevel: 8 }, nextBenefit: 'Less scent pressure on birds while searching' });
+    expect(dogCareerProgress(career, dog)).toMatchObject({ progress: { remaining: 1, nextLevel: 8 }, nextBenefit: 'Scent work develops through focused work' });
     dog.level = 8; dog.xp = threshold(8, xpForLevel);
     expect(dogCareerProgress(career, dog).nextBenefit).not.toContain('pressure');
   });

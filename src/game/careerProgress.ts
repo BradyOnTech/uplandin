@@ -1,3 +1,4 @@
+import { DOG_SKILLS, readDevelopment, skillFraction, SKILL_LABELS } from './dogDevelopment';
 import { getBreed, LEVEL_CAP, noseMult, pointPressure, windCraftTier, xpForLevel } from './breeds';
 import { dogAge, type Career, type KennelDog } from './career';
 import { GUNS } from './guns';
@@ -67,6 +68,11 @@ export function dogCareerProgress(career: Career, dog: KennelDog) {
       nextBenefit = scent && steady ? 'Stronger scenting and steadier points'
         : scent ? 'Stronger scenting' : steady ? 'Steadier points' : 'More field experience';
     }
+  }
+  if (dog.development && progress) {
+    const skills = readDevelopment(dog.development, dog.level);
+    const weakest = [...DOG_SKILLS].sort((a, b) => skillFraction(skills, a) - skillFraction(skills, b))[0];
+    nextBenefit = `${SKILL_LABELS[weakest]} develops through focused work`;
   }
   return {
     name: dog.name, level, progress, nextBenefit,

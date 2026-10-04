@@ -1,3 +1,6 @@
+import { TrainingSession, parseTraining, settleTraining, type TrainingAward } from '../../game/training';
+import { developmentForLevel } from '../../game/dogDevelopment';
+import type { SeasonDate } from '../../game/season';
 import { bagCount, bagRuleFor, limitedOut, limitFilled, limitsApply } from '../../game/bagLimits';
 import * as THREE from 'three';
 import type { SlopeApproach } from '../../game/fieldcraft';
@@ -166,6 +169,9 @@ export interface WorldPatch {
 export class Hunt3DSystem implements Subsystem {
   readonly id = 'hunt3d';
 
+  training: TrainingSession | null = null;
+  private trainingAward: TrainingAward | null = null;
+  private trainingStarted: SeasonDate | null = null;
   private area!: AreaConfig;
   private hunt!: HuntState;
   private simDogs: Dog[] = [];
@@ -261,10 +267,10 @@ export class Hunt3DSystem implements Subsystem {
     this.careerDogIds = setup.launch?.kind === 'career'
       ? [setup.kennelDog?.id ?? null, setup.brace?.kennelDog?.id ?? null]
       : [];
-    this.firstPointPending = setup.launch?.kind === 'career'
+    this.firstPointPending = !parseTraining(location.search) && setup.launch?.kind === 'career'
       ? [setup.kennelDog, setup.brace?.kennelDog ?? null].map(dog => !!dog && awaitsFirstPoint(dog))
       : [];
-    this.releaseMilestone = setup.launch?.kind === 'career' ? lastSeasonLine(setup.area.id, [setup.kennelDog, setup.brace?.kennelDog ?? null]) : null;
+    this.releaseMilestone = !parseTraining(location.search) && setup.launch?.kind === 'career' ? lastSeasonLine(setup.area.id, [setup.kennelDog, setup.brace?.kennelDog ?? null]) : null;
     this.area = setup.area;
     this.hunt = setup.hunt;
     this.falconry = this.hunt.huntingMethod === 'goshawk' ? new GoshawkFlight() : null;
@@ -281,19 +287,20 @@ export class Hunt3DSystem implements Subsystem {
       ctx.get<PlayerSystem>('player').setPose(ctx, hunter.x, hunter.z, Math.atan2(hunter.x-quarry.x, hunter.z-quarry.z)*180/Math.PI, -8);
     }
     const dogProfiles = [
-      { breed: setup.breed, level: setup.level, ageMultiplier: setup.ageMultiplier },
+      { breed: setup.breed, level: setup.level, ageMultiplier: setup.ageMultiplier, development: setup.kennelDog?.development },
       ...(setup.brace
         ? [{
             breed: getBreed(setup.brace.breedId),
             level: setup.brace.level,
             ageMultiplier: setup.brace.ageMultiplier,
+            development: setup.brace.kennelDog?.development,
           }]
         : []),
     ];
     this.simDogs = dogProfiles.map((profile, slot) =>
       new Dog(
         { ...this.hunt.dogsPos[slot] },
-        { breed: profile.breed, level: profile.level, ageMult: profile.ageMultiplier },
+        { breed: profile.breed, level: profile.level, ageMult: profile.ageMultiplier, development: profile.development },
         mulberry32((DOG_SEED + slot * 0x9e3779b9) >>> 0),
         this.area.world,
       ),
@@ -333,6 +340,13 @@ export class Hunt3DSystem implements Subsystem {
       rng: this.flushRng,
     });
 
+    const trainingConfig = parseTraining(location.search);
+    if (trainingConfig) {
+      this.training = new TrainingSession(trainingConfig, this.area, globalThis.crypto?.randomUUID?.() ?? `training-${Date.now()}-${Math.random()}`);
+      this.trainingStarted = { ...loadCareer().date };
+      this.applyTrainingStage(ctx);
+    }
+
     // Cover patches in world meters, once.
     for (const p of this.area.patches) {
       this.landscape.propertyToWorld(p.x + p.w / 2, p.y + p.h / 2, this.coordWorld);
@@ -351,7 +365,7 @@ export class Hunt3DSystem implements Subsystem {
   }
 
   private advance(ctx: Ctx, dtMs: number): void {
-    if (this.hunt.fieldSessionEnded) return;
+    if (this.hunt.fieldSessionEnded || (this.training && this.training.snapshot().phase !== 'working')) return;
     // The 2D scene cut held field time while the rise played. In open-world
     // 3D we keep the camera free but hold the dog/scent simulation so the
     // point does not dissolve into a new search under airborne birds.
@@ -376,7 +390,7 @@ export class Hunt3DSystem implements Subsystem {
   /** The arrival presentation hands grounded dogs back before the first live
    * tick. Snap both interpolation endpoints; never run the hunt during release. */
   releaseFromTruck(ctx: Ctx, positions: readonly { x: number; z: number; heading: number }[]): boolean {
-    if (this.liveSpawnSynced || this.frozen || positions.length !== this.simDogs.length) return false;
+    if (this.training || this.liveSpawnSynced || this.frozen || positions.length !== this.simDogs.length) return false;
     if (positions.some(p => !Number.isFinite(p.x + p.z + p.heading))) return false;
     this.worldToSim(ctx.camera.position.x, ctx.camera.position.z, this.hunt.hunterPos);
     this.liveIntroHunter.x = this.hunt.hunterPos.x;
@@ -508,7 +522,15 @@ export class Hunt3DSystem implements Subsystem {
       whistleRange: this.gearTier >= 3 ? Infinity : undefined,
       dogMotion: this.liveDogMotions,
       commands,
+      waitForRetrieve: this.training?.waitingRetrieve,
+      workPatches: this.training?.stage.patches,
+      practice: !!this.training,
     });
+    if (this.training?.needsDistraction()) {
+      const bird = this.hunt.birds.find(b => b.state === 'hidden');
+      if (bird) { const distraction = this.simulation.flushBird(bird.id, 'startle', null); if (distraction) events.push(distraction); }
+    }
+    this.training?.update(dtMs, this.hunt, this.simDogs, events);
     this.recordEvents(events);
     for (let slot = 0; slot < this.simDogs.length; slot++) {
       const dog = this.simDogs[slot];
@@ -586,6 +608,47 @@ export class Hunt3DSystem implements Subsystem {
       if (!hit) { const flat = Math.hypot(dir.x, dir.z) || 1; x += dir.x / flat * 20; z += dir.z / flat * 20; }
     }
     return { kind, target: this.worldToSim(x, z, { x: 0, y: 0 }) };
+  }
+
+  private applyTrainingStage(ctx: Ctx): void {
+    const session = this.training; if (!session) return;
+    const stage = session.stage;
+    this.hunt.birds = stage.birds;
+    this.hunt.hunterPos = { ...stage.hunter };
+    this.hunt.dogsPos = stage.dogs.map(p => ({ ...p }));
+    this.hunt.dogWork = this.simDogs.map(() => ({ pointFlushes: 0, retrieves: 0, downedOverPoint: 0 }));
+    this.simDogs = this.simDogs.map((old, slot) => {
+      const dog = new Dog({ ...stage.dogs[slot] }, { ...old.profile, development: old.profile.development ?? developmentForLevel(old.level) }, mulberry32((session.config.seed + session.results.length * 7919 + slot * 101) >>> 0), this.area.world);
+      dog.heading = stage.heading;
+      if (stage.drill === 'marked-retrieve' || stage.drill === 'hunt-dead') { dog.state = stage.drill === 'marked-retrieve' ? 'whoa' : 'heel'; dog.gait = 'still'; }
+      if (stage.drill === 'honoring' && slot === 1) { dog.state = 'pointing'; dog.pointedBirdId = stage.birds[0].id; dog.steadied = true; }
+      return dog;
+    });
+    this.dogSnapshots = this.simDogs.map(dog => ({ prevX: dog.pos.x, prevY: dog.pos.y, currX: dog.pos.x, currY: dog.pos.y,
+      prevHeading: dog.heading, currHeading: dog.heading, prevTravelHeading: dog.heading, currTravelHeading: dog.heading, ready: true }));
+    this.simulation = new HuntSimulation({ hunt: this.hunt, dogs: this.simDogs, area: this.area, continuousEncounter: true, rng: this.flushRng });
+    const hunter = this.simToWorld(stage.hunter.x, stage.hunter.y, { x: 0, z: 0 });
+    ctx.get<PlayerSystem>('player').setPose(ctx, hunter.x, hunter.z, 0, -5);
+    this.liveSpawnSynced = true; this.liveIntroHolding = false;
+    this.lastFlush = null;
+    ctx.events.dispatchEvent(new Event('training-stage'));
+  }
+
+  trainingAction(ctx: Ctx): void {
+    const session = this.training; if (!session || ctx.paused) return;
+    const action = session.snapshot().action;
+    if (action === 'next' && session.next()) this.applyTrainingStage(ctx);
+    else if (action === 'throw') session.throwBumper(this.simDogs[0], this.hunt.birds, this.flushRng);
+    else if (action === 'send') ctx.events.dispatchEvent(new CustomEvent('hunt-action', { detail: 'release' }));
+  }
+
+  settleTraining(): TrainingAward | null {
+    if (!this.training || this.training.config.mode !== 'career' || !this.trainingStarted) return null;
+    if (this.trainingAward) return this.trainingAward;
+    const id = this.careerDogIds[0]; if (!id) return null;
+    this.trainingAward = settleTraining(loadCareer(), id, this.training.result(), this.trainingStarted);
+    saveCareer(this.trainingAward.career);
+    return this.trainingAward;
   }
 
   private say(text: string): void {
@@ -754,6 +817,7 @@ export class Hunt3DSystem implements Subsystem {
 
   /** Close a world-space field session without inventing escapes from untouched cover. */
   endHunt(): number {
+    if (this.training) { this.training.end(); return 0; }
     if (this.falconry && !this.falconry.canEnd) return 0;
     if (isSpatialEncounterArea(this.area.id)) {
       // Ending with birds still down loses them; they count in the report.
@@ -765,6 +829,7 @@ export class Hunt3DSystem implements Subsystem {
 
   /** Persist one completed 3D career hunt through the shared result module. */
   settleCareer(): CareerHuntResult | null {
+    if (this.training) return null;
     if (this.careerSettled) return this.careerResult;
     this.careerSettled = true;
     if (this.careerDogIds.length === 0 || this.careerDogIds.every((id) => id === null)) return null;

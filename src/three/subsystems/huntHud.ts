@@ -1,3 +1,4 @@
+import { renderTrainingResults } from '../trainingView';
 import { renderTailgatePhoto, tailgateFileName } from '../tailgatePhotoView';
 import { fitPages, type FitPager } from '../fitPager';
 import { isFalconryPractice } from '../../game/falconryPractice';
@@ -171,14 +172,18 @@ export class HuntHudSystem implements Subsystem {
     }) as EventListener, options);
     // Graphics may have changed in Pause after this HUD was initialized.
     const preparationHref = () => build3DPreparationHref(location.search, this.hunt.areaConfig().id, this.hunt.dropPoint().id);
-    if (isFalconryPractice(location.search)) document.getElementById('hunt-again')!.textContent = 'New drill';
+    if (isFalconryPractice(location.search) || this.hunt.training) document.getElementById('hunt-again')!.textContent = this.hunt.training ? 'Try this course again' : 'New drill';
+    if (this.hunt.training) {
+      document.getElementById('hunt-menu')!.textContent = 'Choose another drill';
+      document.getElementById('summary-journal-open')!.hidden = true;
+    }
     document.getElementById('hunt-again')?.addEventListener('click', () => {
-      location.assign(this.seasonEnded ? preparationHref() : nextHuntUrl(location.href));
+      location.assign(this.hunt.training ? location.href : this.seasonEnded ? preparationHref() : nextHuntUrl(location.href));
     }, options);
     document.getElementById('hunt-menu')?.addEventListener('click', () => location.assign(preparationHref()), options);
     document.getElementById('field-menu')?.addEventListener('click', () => location.assign(preparationHref()), options);
     this.endButton?.addEventListener('click', () => {
-      if (!this.birds.isRiseActive() && !this.endButton?.disabled) {
+      if ((this.hunt.training || !this.birds.isRiseActive()) && !this.endButton?.disabled) {
         this.hunt.endHunt();
         // The mobile action lives in Pause; settle/show results without
         // waiting for a running frame or advancing the simulation.
@@ -200,7 +205,7 @@ export class HuntHudSystem implements Subsystem {
     }
 
     const hawk=this.hunt.falconry;
-    const tally = hawk ? `Bag ${hawk.recovered} · Flights ${hawk.flights} · Catches ${hawk.catches}` : `Bag ${retrieved} · Down ${downOnGround} · Shells ${this.gun.shellsRemaining()}/${this.gun.shellCapacity()}`;
+    const tally = this.hunt.training ? `TRAINING · REP ${this.hunt.training.snapshot().round}/${this.hunt.training.roundCount}` : hawk ? `Bag ${hawk.recovered} · Flights ${hawk.flights} · Catches ${hawk.catches}` : `Bag ${retrieved} · Down ${downOnGround} · Shells ${this.gun.shellsRemaining()}/${this.gun.shellCapacity()}`;
     if (retrieved > this.lastRetrieved) this.deliveryNoticeUntil = this.fieldTime + 3;
     this.lastRetrieved = retrieved;
     if (tally !== this.lastTally) {
@@ -209,7 +214,7 @@ export class HuntHudSystem implements Subsystem {
     }
 
     const dogs = Array.from({ length: this.hunt.dogCount() }, (_, slot) => this.hunt.dog(slot));
-    const trackedDog = focusedFieldDog(dogs);
+    const trackedDog = this.hunt.training ? dogs[0] : focusedFieldDog(dogs);
     if (trackedDog) this.hunt.simToWorld(trackedDog.pos.x, trackedDog.pos.y, this.dogWorld);
     const dogDx = this.dogWorld.x - ctx.camera.position.x;
     const dogDz = this.dogWorld.z - ctx.camera.position.z;
@@ -224,9 +229,9 @@ export class HuntHudSystem implements Subsystem {
     const fetching = dogs.some(dog => dog.carryingBirdId !== null || dog.state === 'retrieving')
       || hunt.birds.some(bird => bird.state === 'downed' && bird.fallPending);
     if (this.endButton) {
-      this.endButton.disabled = rise || fetching || !!(hawk && !hawk.canEnd);
+      this.endButton.disabled = !this.hunt.training && (rise || fetching || !!(hawk && !hawk.canEnd));
       const lost = hunt.birds.filter(bird => bird.state === 'downed' && !bird.fallPending).length;
-      const label = lost > 0 ? `End hunt (leaves ${lost} bird${lost === 1 ? '' : 's'})` : 'End hunt';
+      const label = this.hunt.training ? 'End training' : lost > 0 ? `End hunt (leaves ${lost} bird${lost === 1 ? '' : 's'})` : 'End hunt';
       if (this.endButton.textContent !== label) this.endButton.textContent = label;
     }
     const shells = this.gun.shellsRemaining();
@@ -238,7 +243,8 @@ export class HuntHudSystem implements Subsystem {
     const trackingGuidance = trackedDog?.state === 'tracking' && tier >= 2
       ? trackingApproachGuidance(dogRange, hunt.areaId, trackedDog.scentStage, trackedDog.waitingForHandler) : null;
     const trackingCue = trackingGuidance?.headline ?? null;
-    const phase = hawk ? (hawk.phase === 'fist' ? (trackedDog?.state === 'pointing' ? 'DOG ON POINT · WALK IN FOR THE FLUSH' : trackedDog?.state === 'heel' ? 'HAWK ON FIST · Q SENDS DOG HUNTING' : 'HAWK ON FIST · WORKING COVER') : hawk.phase === 'on-quarry' || hawk.phase === 'settling' ? 'HAWK HAS QUARRY · WALK IN' : hawk.phase === 'picking-up' ? 'PICKING UP ONTO THE FIST' : hawk.phase === 'returning' ? 'HAWK RETURNING' : 'GOSHAWK IN PURSUIT') : this.gun.isReloading()
+    const phase = this.hunt.training?.stage.drill === 'honoring' ? 'MENTOR ON POINT · HOLD YOUR DOG’S BACK'
+      : this.hunt.training && rise ? 'PRACTICE BIRD RISE · KEEP THE DOG STEADY' : hawk ? (hawk.phase === 'fist' ? (trackedDog?.state === 'pointing' ? 'DOG ON POINT · WALK IN FOR THE FLUSH' : trackedDog?.state === 'heel' ? 'HAWK ON FIST · Q SENDS DOG HUNTING' : 'HAWK ON FIST · WORKING COVER') : hawk.phase === 'on-quarry' || hawk.phase === 'settling' ? 'HAWK HAS QUARRY · WALK IN' : hawk.phase === 'picking-up' ? 'PICKING UP ONTO THE FIST' : hawk.phase === 'returning' ? 'HAWK RETURNING' : 'GOSHAWK IN PURSUIT') : this.gun.isReloading()
       ? `RELOADING · ${shells}/${capacity}`
       : rise
         ? `${this.hunt.riseLabel() ?? 'BIRD FLUSH'} · shells ${shells}/${capacity}${shells === 0 ? ' · R RELOAD' : ''}`
@@ -356,7 +362,7 @@ export class HuntHudSystem implements Subsystem {
       }
     }
 
-    const complete = huntComplete(hunt) && !rise && (!hawk || hawk.canEnd);
+    const complete = this.hunt.training ? this.hunt.training.complete : huntComplete(hunt) && !rise && (!hawk || hawk.canEnd);
     if (complete && !this.summaryShown) {
       this.summaryShown = true;
       const careerResult = this.hunt.settleCareer();
@@ -369,7 +375,10 @@ export class HuntHudSystem implements Subsystem {
       if (this.summaryCopy) {
         const dogWork = hunt.dogWork.slice(0, this.hunt.dogCount());
         const pointFlushes = dogWork.reduce((sum, work) => sum + work.pointFlushes, 0);
-        if (hawk) {
+        if (this.hunt.training) {
+          const title = this.summary?.querySelector('h2'); if (title) title.textContent = 'Training notes';
+          renderTrainingResults(this.summaryCopy, this.hunt);
+        } else if (hawk) {
           const title=this.summary?.querySelector('h2'); if(title)title.textContent='Falconry field notes';
           this.summaryCopy.textContent=`Flights ${hawk.flights} · Catches ${hawk.catches} · Recovered ${hawk.recovered} · Unsuccessful flights ${hawk.misses} · Recalls ${hawk.recalls} · Points held ${pointFlushes}`;
         } else {
