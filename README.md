@@ -4,7 +4,7 @@
 
 [**Play it in your browser →**](https://uplandin.brady-on-tech.workers.dev/) &nbsp;·&nbsp; desktop or phone, installable, works offline
 
-![A liver-and-white German Shorthaired Pointer locked on point at dawn in Quail Fields](docs/readme/hero-on-point.jpg)
+![A liver-and-white German Shorthaired Pointer locked on point at the edge of golden cover in Cattail Coverts, with a farm and autumn trees behind](docs/readme/hero-cattail-point.jpg)
 
 ---
 
@@ -114,7 +114,7 @@ flowchart LR
 - **Tested where it matters.** **1,892 tests across 234 files** run against the simulation in about 50 seconds, with no browser or GPU.
 - The 2D view is no longer offered in the menus, since I chose to focus on 3D. It still boots from the same simulation, which is the best proof that the boundary held:
 
-![The classic 2D pixel-art hunt, running on the same simulation](docs/readme/classic-2d.jpg)
+![The classic 2D flush view: a covey of bobwhite quail bursting out of cover, Duck Hunt style, running on the same simulation](docs/readme/classic-2d-flush.png)
 
 ## How I built it
 
