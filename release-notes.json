@@ -3,28 +3,28 @@
   "releases": [
     {
       "date": "2026-10-04",
-      "through": "1cece1c",
+      "through": "c6047c4",
       "notes": [
         "Add training grounds and targeted career dog development"
       ]
     },
     {
       "date": "2026-10-03",
-      "through": "aa3c6da",
+      "through": "8661beb",
       "notes": [
         "Add the Wirehaired Pointing Griffon in steel gray and brown"
       ]
     },
     {
       "date": "2026-10-03",
-      "through": "d7a35a7",
+      "through": "66695eb",
       "notes": [
         "Show the game's version and what's new on the home screen"
       ]
     },
     {
       "date": "2026-10-03",
-      "through": "bdf2729",
+      "through": "41bd0e9",
       "notes": [
         "Stop the flashes of light on Chukar Ridge and Quail Fields",
         "Hold pointed coveys and roosters until the hunter is close",
@@ -33,7 +33,7 @@
     },
     {
       "date": "2026-10-02",
-      "through": "5b7ce89",
+      "through": "0c38335",
       "notes": [
         "Give the guns weight, a ready carry and spent hulls",
         "Deliver birds to hand, and show the dog's wake in Cattail cover",
