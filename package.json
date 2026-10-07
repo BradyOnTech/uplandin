@@ -2,6 +2,14 @@
   "name": "uplandin",
   "private": true,
   "version": "0.1.0",
+  "description": "A browser game about hunting behind a pointing dog: Duck Hunt, except the dog is the whole point.",
+  "license": "MIT",
+  "author": "Brady Anderson",
+  "homepage": "https://uplandin.brady-on-tech.workers.dev/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BradyOnTech/uplandin.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
