@@ -33,6 +33,7 @@ import {
 import { dist, mulberry32 } from '../../game/math';
 import { LandscapeModel, PROPERTY_PX_TO_M } from '../../game/landscape';
 import type { HuntState } from '../../game/state';
+import type { HuntTime } from '../../game/timeOfDay';
 import type { Vec2 } from '../../game/types';
 import { endFieldSession, endHuntEarly } from '../../game/state';
 import { windMults } from '../../game/wind';
@@ -803,6 +804,16 @@ export class Hunt3DSystem implements Subsystem {
   /** An unsafe shot counts against the hunter; the gun judges it. */
   recordShotSafety(kind: 'low' | 'dog-in-line'): void {
     this.simulation.recordShotSafety(kind);
+  }
+
+  /** The light changed before walking out; waiting birds take the new hour. */
+  retime(time: HuntTime): void {
+    this.simulation.retime(time);
+  }
+
+  /** A miss taken into a low sun; field notes teach the walk-in. */
+  recordSunMiss(): void {
+    this.simulation.recordSunMiss();
   }
 
   finishRise(): RiseResolution | null {

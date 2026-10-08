@@ -12,6 +12,8 @@ import type { PropertyHabitatSystem } from './propertyHabitat';
 import type { LandmarksSystem } from './landmarks';
 import { terrainBlocksShot } from '../shotVisibility';
 import { SHOT_RANGE_M, TravellingShot, WOUND_RANGE_M } from '../shotPattern';
+import { GLARE_MISS_THRESHOLD } from '../sunGlare';
+import type { SunGlareSystem } from './sunGlareVeil';
 import { shotSightPicture, mobileShotFov, shotAssistancePreference } from '../inputMode';
 import { resolveShotAssistance, type ShotAssistanceProfile, type ShotTriggerSource } from '../shotAssistance';
 import { createSportingShotgun, type ChamberState, type HullExit, type SportingShotgun } from '../assets/shotgun';
@@ -200,7 +202,7 @@ export class GunSystem implements Subsystem {
   private fx: ShotFx | null = null;
   private shotCallout: HTMLElement | null = null;
   private shotCalloutUntil = 0;
-  private shots: { pattern: TravellingShot; presentationPhase: number;
+  private shots: { pattern: TravellingShot; presentationPhase: number; intoSun: boolean;
     visible: (target: { x: number; y: number; z: number }) => boolean }[] = [];
 
   // Preallocated scratch.
@@ -686,13 +688,16 @@ export class GunSystem implements Subsystem {
     let ranch: typeof flora;
     try { ranch = ctx.get('sharptail-ranch'); } catch { /* other properties */ }
     const presentationPhase = this.frozen ? 1 : THREE.MathUtils.clamp(ctx.fixedAlpha ?? 1, 0, 1);
+    const targets = this.birds.shotTargets(presentationPhase);
     const pattern = new TravellingShot(ctx.camera.position, this.fwd, this.gun.spread * choke.pattern / 400,
-      this.birds.shotTargets(presentationPhase), request.assistance, WOUND_RANGE_M / Math.sqrt(choke.pattern));
+      targets, request.assistance, WOUND_RANGE_M / Math.sqrt(choke.pattern));
+    let glare = 0;
+    try { glare = ctx.get<SunGlareSystem>('sun-glare').strength(); } catch { /* no glare system (tools) */ }
     const wind = this.hunt.huntState().wind;
     this.fx?.fire(bore, Math.cos(wind), Math.sin(wind), typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
     const origin = pattern.origin;
     this.judgeShotSafety(ctx);
-    this.shots.push({ pattern, presentationPhase,
+    this.shots.push({ pattern, presentationPhase, intoSun: targets.length > 0 && glare >= GLARE_MISS_THRESHOLD,
       visible: target => !terrainBlocksShot(origin, target, (x, z) => this.terrain.heightAt(x, z))
         && !habitat?.blocksShot?.(origin, target)
         && !wetBottoms?.blocksShot?.(origin, target)
@@ -765,6 +770,7 @@ export class GunSystem implements Subsystem {
       // A coach's word, not a scoreboard: where a close miss went, and how a
       // hit bird is coming down.
       const reaction = hit && birdId !== null ? this.birds.hitReaction?.(birdId) : undefined;
+      if (!hit && shot.intoSun) (this.hunt as Partial<Hunt3DSystem>).recordSunMiss?.();
       this.showShotCall(ctx, shotCall(!!hit, !!hit && shot.pattern.wounding, shot.pattern.nearMiss, range, reaction), !!hit);
       return false;
     });

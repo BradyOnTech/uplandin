@@ -84,7 +84,7 @@ shooting.
 ### Real hunting knowledge, Duck Hunt shooting
 
 - **Fourteen species as data,** each with its own personality: holders, runners, and wild-flushers. Some come up as coveys, some as singles. Some relight and some circle back, each with its own flight and its own voice.
-- **Fieldcraft as mechanics.** Approaching chukar from above, blocking runners at the end of cover, flanking a point, protected pheasant hens (a game-warden fine), daily bag limits, staggered season openers, and birds that are naive in September and educated by December.
+- **Fieldcraft as mechanics.** Approaching chukar from above, blocking runners at the end of cover, flanking a point, protected pheasant hens (a game-warden fine), daily bag limits, staggered season openers, birds that are naive in September and educated by December, dawn birds that sit tight near the roost, and a low evening sun you have to keep at your back.
 - **Realism stops at the trigger.** That was a deliberate design rule: the *field* follows real dog and bird behavior, while the *shot* follows Duck Hunt rules. A real covey rise is a chaotic blur. The game sends at most a few readable birds in waves, because fun and readability beat realism at the moment you shoot.
 
 ### One simulation, two renderers
@@ -178,7 +178,7 @@ light renderer · `&diagnostics=1` records frame times.
 ## Status
 
 Uplandin is playable and live, and it's still a hobby project. On my list:
-time-of-day fieldcraft (low sun and glare), more breeds modeled in 3D, and
+more breeds modeled in 3D, and
 bringing back some of the seven additional grounds that still exist in the
 data. I'm not set up to take contributions, but issues and ideas from other
 bird-dog people are welcome.

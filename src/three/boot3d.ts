@@ -28,6 +28,7 @@ import { FalconrySystem } from './subsystems/falconry';
 import './falconry.css';
 import { GunSystem } from './subsystems/gun';
 import { HuntHudSystem } from './subsystems/huntHud';
+import { SunGlareSystem } from './subsystems/sunGlareVeil';
 import { FieldMapSystem } from './subsystems/fieldMap';
 import { LandmarksSystem } from './subsystems/landmarks';
 import { LandscapeModel } from '../game/landscape';
@@ -169,6 +170,7 @@ engine.register(new BirdsSystem({ size: resolveBirdSize(params.get('birds')) }))
 engine.register(new FalconrySystem());
 engine.register(new GunSystem());
 engine.register(new HuntHudSystem());
+engine.register(new SunGlareSystem(launchArea.id, !params.has('capture')));
 engine.register(new FieldAudioSystem(launchArea.id));
 engine.register(new TrainingGroundSystem());
 

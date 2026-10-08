@@ -197,7 +197,7 @@ Special rules:
   dog's own scent ~1.3× farther to downwind birds. **[built]**
 - Birds scent the dog downwind (see wind craft). **[built]**
 
-## Fieldcraft **[built — time of day remains]**
+## Fieldcraft **[built]**
 
 Situational hunting knowledge as mechanics: small, true-to-life edges that
 reward playing like a hunter. Wind is the prototype — each is a per-area
@@ -227,8 +227,15 @@ or per-hunt condition plus a few multipliers, not a new engine.
   of a slough.
 - **Walk-in craft** **[built]**: flanking a point (the bird between you
   and the dog) instead of walking up the dog's back — nerve ×0.75.
-- **Time of day** **[planned]**: evening hunts drop the sun low — westward
-  flushes glare in the shot view; morning birds sit tighter near roost.
+- **Time of day** **[built]**: the hour is chosen in hunt planning and fixed
+  once you walk out. Dawn and morning birds are still near the roost and
+  sit tighter (spawn nerve ×1.2 / ×1.1). A low sun (dawn, evening, last
+  light) glares: looking toward it washes the sky out with a veil keyed to
+  the rendered sun, so a bird flushed that way is hard to pick up. Birds
+  break away from the hunter, so the counter-tactic is the walk-in: come
+  in on a point with the sun at your back. Misses taken into the glare
+  earn a field-notes line that teaches it. Glare is identical on both
+  quality tiers; it never changes hit resolution, only what you can see.
 
 ## Seasons & time **[built]**
 
@@ -369,7 +376,7 @@ announce their unlocks at the hunt summary.
 - **T6 — fieldcraft [shipped]**: slope (the chukar uphill rule), per-hunt
   conditions with area climate bias + weather picker in Quick Hunt, hun
   circle-back, grouse timber screens, blocking runners, walk-in craft.
-  Time of day stays planned. See Fieldcraft section.
+  Time of day shipped 2026-10-08 (roost hold + low-sun glare).
 - **T7 — seasons & time [shipped]**: the week-tick calendar (home hunts
   1wk, trips 2wk, wait-a-week / skip-to-the-opener), home region choice at
   career start, species openers closing areas on the map, young/educated

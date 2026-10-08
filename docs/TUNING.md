@@ -227,6 +227,13 @@ hot (scent 0.75, stamina drain 1.5), rain (scent 0.6, nerve 1.3, search
 `rollCondition`; month→bias in season.ts `seasonalBias`.
 **fieldcraft.ts**: slope approach ±0.35 dot → nerve ×0.6 above / ×1.4
 below, flight ×0.82/×1.15; `FLANK_NERVE_MULT` 0.75.
+**timeOfDay.ts**: spawn nerve dawn ×1.2, morning ×1.1, else ×1 (`retime`
+rescales hidden birds if the light changes before walking out).
+**three/sunGlare.ts**: glare = lowness × angle; lowness full at ≤4° sun
+elevation, none at ≥20° (`GLARE_LOW_DEG`/`GLARE_HIGH_DEG`); angle full within
+6°, none past 40° of the sun (`GLARE_CORE_DEG`/`GLARE_OUTER_DEG`); a miss at
+≥0.35 (`GLARE_MISS_THRESHOLD`) with birds up counts as a sun miss. Veil
+strength/falloff lives in `#sun-glare` in three/field.css.
 
 ## Season & progression
 

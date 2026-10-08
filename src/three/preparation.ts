@@ -54,9 +54,9 @@ const STEPS: readonly { id: Step; label: string; eyebrow: string; title: string 
 ];
 const GUN_ACTIONS: Record<string, string> = { 'remington-870': 'Pump action', 'semi-auto': 'Semiautomatic', 'over-under': 'Over / under', 'side-by-side': 'Side by side' };
 const LIGHTS = [
-  { id: 'morning', label: 'Morning', detail: 'Long shadows, cool air' },
+  { id: 'morning', label: 'Morning', detail: 'Birds near the roost sit tight' },
   { id: 'noon', label: 'Noon', detail: 'High sun, bright cover' },
-  { id: 'evening', label: 'Evening', detail: 'Warm, low light' },
+  { id: 'evening', label: 'Evening', detail: 'Low sun · keep it at your back' },
 ] as const;
 const STAT_LABELS: readonly [keyof BreedConfig['stats'], string][] = [['nose', 'Nose'], ['speed', 'Speed'], ['range', 'Range'], ['steadiness', 'Steadiness'], ['stamina', 'Stamina']];
 const POSES: readonly [PreviewPose, string][] = [['stand', 'Standing'], ['point', 'On point'], ['trot', 'Trotting'], ['run', 'Running']];

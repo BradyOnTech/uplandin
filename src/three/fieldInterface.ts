@@ -158,7 +158,10 @@ export class FieldInterface {
     const light=document.getElementById('light-setting') as HTMLSelectElement;
     light.disabled=true;
     light.addEventListener('change',()=>{
-      if(!this.readyState)return;
+      // The hour is part of the hunt (birds near the roost hold, a low sun
+      // glares), so it is chosen before walking out and fixed after.
+      if(!this.readyState||this.entered)return;
+      this.engine.ctx.get<Hunt3DSystem>('hunt3d').retime(light.value as TimeOfDay);
       this.engine.setTimeOfDay(light.value as TimeOfDay);this.engine.renderOnce();
       const url=new URL(location.href);url.searchParams.set('tod',light.value);history.replaceState(null,'',url);
     },{signal});
@@ -593,6 +596,8 @@ export class FieldInterface {
     if (!this.readyState || this.complete || this.lostContext) return;
     const firstEntry = !this.entered;
     this.entered = true; unlockAudio();
+    const light = document.getElementById('light-setting') as HTMLSelectElement | null;
+    if (light) { light.disabled = true; light.title = 'The light is set for this hunt'; }
     // Walking out: the music gives way to the field.
     this.music?.stop(2.5); this.music = null;
     this.offlineUpdateState(this.updateState);

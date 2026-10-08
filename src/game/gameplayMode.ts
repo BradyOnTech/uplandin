@@ -29,6 +29,7 @@ import { authoredEncounterAnchors } from './areaEncounters';
 import { HUNT_CHALLENGES, HUNT_CHALLENGE_KEY, parseHuntChallenge, type HuntChallenge } from './huntChallenge';
 import { huntingDoctrine } from './huntDoctrine';
 import { getGun } from './guns';
+import { parseHuntTime } from './timeOfDay';
 
 /** The renderer is a preference, never a separate player/profile. */
 export type GameplayMode = '2d' | '3d';
@@ -267,6 +268,7 @@ export function createThreeHuntSetup(
   const authoredEncounterRng = mulberry32(huntStreamSeed(seed, 0xa11c0a ^ dropSalt));
   const authoredBirdRng = mulberry32(huntStreamSeed(seed, 0xb17d7d ^ dropSalt));
   const challengeOptions = {
+    timeOfDay: parseHuntTime(new URLSearchParams(search).get('tod'), resolvedArea.id),
     stockingMult: tuning.stocking, encounterNerveMult: tuning.nerve, mixedCoveys: true,
     ...(!isQuail ? {
       // Quail keeps its seeded calibration below. Other 3D properties use

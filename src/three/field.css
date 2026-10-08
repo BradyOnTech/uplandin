@@ -60,6 +60,8 @@ kbd { font:11px/1.5 inherit; opacity:.8; padding:2px 5px; border:1px solid #fff3
 #dog-appearance { position:fixed; top:85px; right:26px; z-index:4; background:var(--ink); padding:14px; border-radius:12px; font-size:12px; }
 #dog-appearance label { display:grid; gap:5px; margin-bottom:8px; }
 select { border:0; border-radius:6px; padding:7px; background:#ffffff12; }
+/* Low-sun glare (sunGlareVeil.ts): a bloom at the sun plus a contrast wash. */
+#sun-glare { --glare-rgb:255 214 160; --glare-x:50%; --glare-y:50%; position:fixed; inset:0; z-index:1; pointer-events:none; mix-blend-mode:screen; opacity:0; background:radial-gradient(circle at var(--glare-x) var(--glare-y), rgb(255 250 238 / .95) 0, rgb(var(--glare-rgb) / .78) 7vmin, rgb(var(--glare-rgb) / .34) 24vmin, rgb(var(--glare-rgb) / .1) 52vmin, transparent 85vmin), rgb(var(--glare-rgb) / .2); }
 #reticle { position:fixed; left:50%; top:50%; width:19px; height:19px; margin:-9px; border:1px solid #fff9; border-radius:50%; z-index:2; pointer-events:none; box-shadow:0 0 2px #0007; }
 #reticle::after { content:""; position:absolute; width:3px; height:3px; border-radius:50%; background:#ffeed0; left:7px; top:7px; }
 #shot-callout { position:fixed; top:43%; left:50%; transform:translateX(-50%); z-index:2; pointer-events:none; font-size:12px; letter-spacing:.14em; text-shadow:0 1px 4px #0009; }

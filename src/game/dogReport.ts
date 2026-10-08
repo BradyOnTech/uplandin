@@ -55,6 +55,8 @@ export function handlerNotes(hunt: HuntState): string[] {
   const low = hunt.safety?.lowShots ?? 0, line = hunt.safety?.dogInLine ?? 0;
   if (line > 0) notes.push(`Fired with a dog in the line ${times(line)}. Never swing through your dog.`);
   if (low > 0) notes.push(`${plural(low, 'low shot')} at birds skimming the cover.`);
+  const sun = hunt.sunMisses ?? 0;
+  if (sun > 0) notes.push(`Missed ${plural(sun, 'bird')} flying into the low sun. Walk in on a point with the sun at your back; birds flush away from you.`);
   const over = hunt.overLimit ?? 0;
   if (over > 0) notes.push(`${plural(over, 'bird')} past the daily limit. Count your birds as they come to hand.`);
   return notes;

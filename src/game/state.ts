@@ -1,6 +1,7 @@
 import { areaBirdCount, getDropPoint, type AreaConfig } from './areas';
 import { spawnBirds, type Bird } from './birds';
 import { conditionMults, rollCondition, type Condition } from './conditions';
+import { timeNerveMult, type HuntTime } from './timeOfDay';
 import type { QuickConfig } from './quick';
 import type { SpeciesShare } from './species';
 import type { RNG, Vec2 } from './types';
@@ -68,6 +69,10 @@ export interface HuntState {
   windStrength: WindStrength;
   /** The day's weather — frost mornings are the good days. */
   condition: Condition;
+  /** The hour afield; early birds sit tight near the roost. */
+  timeOfDay?: HuntTime;
+  /** Shots missed into a low sun — the walk-in put the flush in the glare. */
+  sunMisses?: number;
   downed: number;
   escaped: number;
   /** Explicit field-session closure; untouched birds remain in their cover. */
@@ -105,6 +110,8 @@ export interface HuntOptions {
   condition?: Condition;
   /** Seasonal climate lean; defaults to the area's flat bias. */
   conditionBias?: Condition;
+  /** The hour afield; dawn and morning birds hold tighter. */
+  timeOfDay?: HuntTime;
   /** Season-filtered species mix (openers); defaults to the whole area mix. */
   mix?: SpeciesShare[];
   /** Share of naive young-of-year birds (early season). */
@@ -145,7 +152,7 @@ export function createHunt(area: AreaConfig, rng: RNG = Math.random, opts: HuntO
         birdCount: Math.max(3, Math.round((opts.birdCount ?? areaBirdCount(area)) * (opts.stockingMult ?? 1))),
         speciesMix: opts.mix && opts.mix.length > 0 ? opts.mix : area.speciesMix,
         bounds: w,
-        nerveMult: windMults(windStrength).nerve * conditionMults(condition).nerve * (opts.educatedMult ?? 1) * (opts.encounterNerveMult ?? 1),
+        nerveMult: windMults(windStrength).nerve * conditionMults(condition).nerve * (opts.timeOfDay ? timeNerveMult(opts.timeOfDay) : 1) * (opts.educatedMult ?? 1) * (opts.encounterNerveMult ?? 1),
         youngShare: opts.youngShare,
         exclusionZones: area.dropPoints.map((point) => ({ center: point.position, radius: point.safetyRadius })),
         openingAnchor,
@@ -162,6 +169,7 @@ export function createHunt(area: AreaConfig, rng: RNG = Math.random, opts: HuntO
     wind: rng() * Math.PI * 2,
     windStrength,
     condition,
+    ...(opts.timeOfDay ? { timeOfDay: opts.timeOfDay } : {}),
     downed: 0,
     escaped: 0,
     doubles: 0,

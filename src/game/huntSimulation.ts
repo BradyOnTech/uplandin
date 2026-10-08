@@ -14,6 +14,7 @@ import {
 } from './birds';
 import { dogScentRadius } from './breeds';
 import { conditionMults } from './conditions';
+import { timeNerveMult, type HuntTime } from './timeOfDay';
 import { Dog, WHISTLE_RANGE, type CommandResponse, type DogEnv, type DogLogEvent, type DogState, type HandlerCommand, type HandlerCommandKind } from './dog';
 import {
   FLANK_NERVE_MULT,
@@ -667,6 +668,22 @@ export class HuntSimulation {
   recordShotSafety(kind: 'low' | 'dog-in-line'): void {
     this.hunt.safety ??= { lowShots: 0, dogInLine: 0 };
     if (kind === 'low') this.hunt.safety.lowShots++; else this.hunt.safety.dogInLine++;
+  }
+
+  /**
+   * The player changed the light before walking out: birds still in cover
+   * take the new hour's nerve. Only meaningful before the hunt begins.
+   */
+  retime(time: HuntTime): void {
+    const before = this.hunt.timeOfDay ? timeNerveMult(this.hunt.timeOfDay) : 1;
+    const scale = timeNerveMult(time) / before;
+    for (const bird of this.hunt.birds) if (bird.state === 'hidden') bird.nerveMs *= scale;
+    this.hunt.timeOfDay = time;
+  }
+
+  /** The adapter saw a miss taken into a low sun; field notes teach the walk-in. */
+  recordSunMiss(): void {
+    this.hunt.sunMisses = (this.hunt.sunMisses ?? 0) + 1;
   }
 
   /**
