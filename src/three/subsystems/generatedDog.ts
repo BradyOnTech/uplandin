@@ -101,13 +101,16 @@ export class GeneratedDogSystem implements Subsystem {
     this.heading=dogTorsoHeading(dog,this.speed,this.hunt.dogRenderTravelHeading(ctx.fixedAlpha,this.slot),intentHeading,this.heading,dt,!this.placed||distance>3);
     this.field.state=dog.state;this.field.scentStage=dog.scentStage;this.field.scentProgress=dog.scentProgress??0;
     this.field.waitingForHandler=dog.waitingForHandler??false;
+    const creeping=dog.state==='pointing'&&(dog.creeping??false);
+    this.field.creeping=creeping;
     this.field.slam=dog.slamProgress?.()??null;
     this.field.inCover=dog.state==='quartering'&&this.inCoverPatch();
     this.field.coverHeight=this.coverHeightAt(ctx,this.position.x,this.position.z);
     // Model yaw is pi/2 minus the simulation heading, so intent relative to
     // the torso has the opposite sign. Wrap before clamping in the pose layer.
     this.field.intentYaw=Math.atan2(Math.sin(this.heading-intentHeading),Math.cos(this.heading-intentHeading));
-    const point=dog.state==='pointing'||dog.state==='honoring';
+    // A creep step walks out of the point pose; the dog sets up again after.
+    const point=(dog.state==='pointing'&&!creeping)||dog.state==='honoring';
     this.parting+=((point?2:.9)-this.parting)*(1-Math.exp(-Math.max(0,dt)*(point?3:6)));
     const retrieveId=dog.carryingBirdId??dog.reservedRetrieveId?.();
     const retrieve: GeneratedRetrievePose | undefined = dog.state === 'retrieving'

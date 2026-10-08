@@ -16,12 +16,17 @@ export interface GeneratedFieldIntent {
   slam?: number | null;
   /** Crown height (m) of the standing cover the dog is in; 0 in the open. */
   coverHeight?: number;
+  /** On point but breaking it to creep a step closer. */
+  creeping?: boolean;
 }
 
 export type GeneratedFieldPerformance = 'neutral' | 'search' | 'checking' | 'locating' | 'stalking' | 'locking' | 'point' | 'waiting';
 
 export function fieldPerformance(intent: GeneratedFieldIntent | undefined): GeneratedFieldPerformance {
   if (!intent) return 'neutral';
+  // A creeping pup has broken its point: it walks the step low and intent,
+  // then sets up again.
+  if (intent.state === 'pointing' && intent.creeping) return 'stalking';
   if (intent.state === 'pointing' || intent.state === 'honoring') return 'point';
   if (intent.state === 'whoa') return 'waiting';
   if (intent.state === 'seeking') return 'stalking';

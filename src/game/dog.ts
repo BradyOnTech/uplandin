@@ -113,6 +113,8 @@ const HEEL_RECOVER_MULT = 3; // stamina recovery rate at heel, × work drain
 const BUMP_DISTANCE = 7; // creep this close and the bird is bumped
 const CREEP_STEP_PX = 2;
 const CREEP_INTERVAL_MS = 800;
+/** A creep step is a slow walk at the bird the handler can see coming. */
+const CREEP_STEP_MS = 1400;
 const BREAKING_SPEED = 110;
 const BREAKING_MS = 2500;
 const BREAK_BUMP_RADIUS = 12;
@@ -461,6 +463,8 @@ export class Dog {
   scentCheck = false;
   /** Close-timber scent approach pauses until the handler can follow. */
   waitingForHandler = false;
+  /** On point but breaking it to creep a step closer; whoa stops it. */
+  creeping = false;
   /** Drives the field scent gusts; advances with simulated time only. */
   private scentClockMs = 0;
   /** Current shared search-to-point beat, consumed by both presentations. */
@@ -488,6 +492,8 @@ export class Dog {
   private creepPlanned = false;
   private creepStepsLeft = 0;
   private creepTimerMs = 0;
+  /** Distance left in the creep step under way. */
+  private creepStepRemaining = 0;
   private breakMsLeft = 0;
   /** One honor roll per packmate point: a soft pup may steal it instead. */
   private honorRolled = false;
@@ -1358,6 +1364,7 @@ export class Dog {
           // Steady on point: no more creeping, and a better chance to stand the flush.
           this.steadied = true;
           this.creepPlanned = true; this.creepStepsLeft = 0;
+          this.stopCreepStep();
           return 'steadied';
         }
         if (s === 'heel' || s === 'recalled') return 'busy';
@@ -1962,24 +1969,43 @@ export class Dog {
       this.creepLogged = true;
       this.log.push({ kind: 'creep', birdId: pointed.id });
     }
+    if (this.creepStepRemaining > 0) {
+      // Mid-step: the pup breaks its point and walks at the bird, then
+      // freezes again. Slow enough that the handler can whoa it.
+      this.heading = Math.atan2(pointed.pos.y - this.pos.y, pointed.pos.x - this.pos.x);
+      const step = Math.min(this.creepStepRemaining, CREEP_STEP_PX * dtMs / CREEP_STEP_MS);
+      this.advance(this.heading, step);
+      this.creepStepRemaining -= step;
+      this.creeping = this.creepStepRemaining > 1e-9;
+      if (!this.creeping) this.creepStepRemaining = 0;
+      this.gait = this.creeping ? 'track' : 'still';
+      if (dist(this.pos, pointed.pos) <= BUMP_DISTANCE) {
+        this.bumpedBirdId = pointed.id;
+        this.log.push({ kind: 'bump', birdId: pointed.id });
+        this.creepStepsLeft = 0;
+        this.stopCreepStep();
+      }
+      return;
+    }
     if (this.creepStepsLeft === 0) return;
     this.creepTimerMs -= dtMs;
     if (this.creepTimerMs > 0) return;
     this.creepTimerMs = CREEP_INTERVAL_MS;
     this.creepStepsLeft--;
-    this.heading = Math.atan2(pointed.pos.y - this.pos.y, pointed.pos.x - this.pos.x);
-    this.advance(this.heading, CREEP_STEP_PX);
-    if (dist(this.pos, pointed.pos) <= BUMP_DISTANCE) {
-      this.bumpedBirdId = pointed.id;
-      this.log.push({ kind: 'bump', birdId: pointed.id });
-      this.creepStepsLeft = 0;
-    }
+    this.creepStepRemaining = CREEP_STEP_PX;
+    this.creeping = true;
+  }
+
+  private stopCreepStep(): void {
+    this.creepStepRemaining = 0;
+    this.creeping = false;
   }
 
   private resetCreep(): void {
     this.creepPlanned = false;
     this.creepStepsLeft = 0;
     this.creepTimerMs = 0;
+    this.stopCreepStep();
   }
 
   /** Active work drains the stamina pool. */

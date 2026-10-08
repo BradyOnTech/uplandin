@@ -39,6 +39,7 @@ export function dogNoteFeedback(kind: DogLogKind, name: string): string | null {
   switch (kind) {
     case 'relocated': return `${name} relocated · on point again`;
     case 'unproductive': return `The bird slipped away from ${name}`;
+    case 'creep': return `${name} is creeping in · whoa to steady`;
     case 'bump': return `${name} bumped a bird`;
     case 'dead-found': return `${name} found the bird`;
     case 'dead-lost': return `${name} couldn't find the bird · send it with Dead bird`;

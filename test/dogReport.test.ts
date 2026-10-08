@@ -56,5 +56,7 @@ describe('handler feedback', () => {
   it('only announces the notable moments', () => {
     expect(dogNoteFeedback('dead-lost', 'Sage')).toMatch(/couldn't find/);
     expect(dogNoteFeedback('point', 'Sage')).toBeNull();
+    // A creep is visible now; the line names the counter while there is time.
+    expect(dogNoteFeedback('creep', 'Sage')).toBe('Sage is creeping in · whoa to steady');
   });
 });

@@ -99,7 +99,9 @@ See [Training Grounds](3d/training-grounds.md).
 - **Nose maturity**: effective scent = breed nose × (0.7 + 0.03 × level).
 - **Creep & bump** (puppy mistakes): on point, a young dog may creep forward;
   inside bump distance the bird flushes wild, no shot. ~25%/point at level 1
-  for soft breeds → ~2% at level 10.
+  for soft breeds → ~2% at level 10. Each creep step is a visible slow walk
+  (the dog breaks its point pose, steps, and sets up again), so the handler
+  can see it coming and whoa it; whoa stops a step mid-stride.
 - **Cover work** [built]: the dog hunts objectives, not open ground — it
   casts to likely cover, works it until checked, and moves to the next
   patch, remembering what it's already combed. Finished dogs **ring the

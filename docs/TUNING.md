@@ -138,7 +138,9 @@ cadence + `BELL_HEARING` 700 · double-tap timing.
 
 Base: `DOG_SPEED` 75, `TRACKING_SPEED` 90, `SCENT_RADIUS` 45,
 `POINT_RANGE` 12, `QUARTER_RANGE` 130 (×Range stat = leash), `WHISTLE_RANGE`
-250, `HONOR_SIGHT` 150, plus private creep/break/retrieve timings inline.
+250, `HONOR_SIGHT` 150, plus private creep/break/retrieve timings inline
+(creep: 1–3 steps of `CREEP_STEP_PX` 2, each walked over `CREEP_STEP_MS`
+1400 after a `CREEP_INTERVAL_MS` 800 pause).
 
 **Cover work** — the dog hunts objectives, not open ground: it casts to the
 nearest unchecked cover patch inside its leash of the hunter
