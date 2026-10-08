@@ -44,3 +44,51 @@ describe('camera direction available to a shot before the next animation frame',
     } finally { player.dispose(); }
   });
 });
+
+describe('looking closer at the dog', () => {
+  function fixture() {
+    const canvas = Object.assign(new EventTarget(), { hasPointerCapture: () => false, releasePointerCapture: () => {} });
+    const documentStub = Object.assign(new EventTarget(), { pointerLockElement: canvas, getElementById: () => null });
+    vi.stubGlobal('window', new EventTarget()); vi.stubGlobal('document', documentStub);
+    vi.stubGlobal('location', { search: '' }); vi.stubGlobal('HTMLElement', class {});
+    const ctx = { paused: false, camera: new THREE.PerspectiveCamera(70), renderer: { domElement: canvas },
+      events: new EventTarget(), get: () => ({ heightAt: () => 4 }) } as unknown as Ctx;
+    const player = new PlayerSystem(); player.init(ctx); player.setPose(ctx, 0, 40, 0, 0);
+    const frames = (n: number) => { for (let i = 0; i < n; i++) player.update(ctx, 1 / 60); };
+    return { ctx, player, frames, canvas };
+  }
+
+  it('holds G or the touch Look button to look closer, and lets go on release', () => {
+    const f = fixture();
+    try {
+      window.dispatchEvent(Object.assign(new Event('keydown'), { code: 'KeyG' }));
+      f.frames(40);
+      expect(f.player.lookCloser).toBeGreaterThan(.99);
+      window.dispatchEvent(Object.assign(new Event('keyup'), { code: 'KeyG' }));
+      f.frames(40);
+      expect(f.player.lookCloser).toBe(0);
+      f.ctx.events.dispatchEvent(new CustomEvent('look-closer', { detail: true }));
+      f.frames(40);
+      expect(f.player.lookCloser).toBeGreaterThan(.99);
+      f.ctx.events.dispatchEvent(new CustomEvent('look-closer', { detail: false }));
+      f.frames(40);
+      expect(f.player.lookCloser).toBe(0);
+    } finally { f.player.dispose(); }
+  });
+
+  it('never sticks on through a pause or a lost window', () => {
+    const f = fixture();
+    try {
+      f.canvas.dispatchEvent(Object.assign(new Event('mousedown'), { button: 1, preventDefault: () => {} }));
+      f.frames(40);
+      expect(f.player.lookCloser).toBeGreaterThan(.99);
+      f.ctx.events.dispatchEvent(new Event('pause'));
+      f.frames(40);
+      expect(f.player.lookCloser).toBe(0);
+      window.dispatchEvent(Object.assign(new Event('keydown'), { code: 'KeyG' }));
+      window.dispatchEvent(new Event('blur'));
+      f.frames(40);
+      expect(f.player.lookCloser).toBe(0);
+    } finally { f.player.dispose(); }
+  });
+});

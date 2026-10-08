@@ -408,6 +408,11 @@ body.touch-controls-active:not(.falconry-hunt) #touch-controls [data-action="rec
 body.touch-controls-active:not(.falconry-hunt) #touch-controls #touch-lower { grid-column:2; grid-row:2; }
 body.touch-controls-active:not(.falconry-hunt) #touch-controls [data-action="reload"] { grid-column:3; grid-row:1; }
 body.touch-controls-active:not(.falconry-hunt) #touch-controls .fire { grid-column:3; grid-row:2; }
+/* Look closer shares the cell beside Dog ▸ while the gun is down; Lower takes it once the gun comes up. */
+body.touch-controls-active:not(.falconry-hunt) #touch-controls [data-action="look"] { grid-column:2; grid-row:2; }
+body.touch-controls-active.touch-gun-raised #touch-controls [data-action="look"],
+body.touch-controls-active.touch-gun-held #touch-controls [data-action="look"] { visibility:hidden; pointer-events:none; }
+body.falconry-hunt #touch-controls [data-action="look"] { display:none; }
 #dog-commands { position:absolute; left:0; bottom:calc(100% + 8px); display:grid; gap:8px; width:128px; }
 #dog-commands[hidden] { display:none; }
 #dog-commands button { width:100%; min-height:48px; background:#21382bf0 !important; font-size:13px; }

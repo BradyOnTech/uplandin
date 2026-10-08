@@ -157,7 +157,8 @@ npm run capture:3d     # headless screenshots from the real renderer
 
 **Controls (desktop):** WASD to walk, Shift to run, mouse to look and shoot.
 **Z** whoa · **X** hunt on · **C** cast · **V** dead bird · **Q** whistle ·
-**M** map. On touch, the dog commands live in the **Dog ▸** tray.
+**M** map · hold **G** (or the middle mouse button) to look closer at your dog.
+On touch, the dog commands live in the **Dog ▸** tray, and **Look** studies the dog.
 
 **Useful URL flags:** `?seed=N` replays a hunt · `?quality=lite` forces the
 light renderer · `&diagnostics=1` records frame times.

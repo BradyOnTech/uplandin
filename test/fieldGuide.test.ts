@@ -17,6 +17,19 @@ describe('first-hunt guide', () => {
     const stored = readFieldGuide({ getItem(key) { keys.push(key); return JSON.stringify({ disabled: true, learned: ['move/touch', 'move/touch', false, '<script>'], shown: {} }); }, setItem() { throw new Error('read only'); } });
     expect(keys).toEqual([FIELD_GUIDE_KEY]); expect(stored).toEqual({ disabled: true, learned: ['move/touch'], shown: [] });
   });
+  it('teaches looking closer at a distant point, and learns it from an actual look', () => {
+    const pointLearned = () => new FieldGuide({ disabled: false, learned: ['point/quail-fields'], shown: [] });
+    const far = snapshot({ input: 'desktop', dog: dog({ state: 'pointing', rangeM: 30 }) });
+    const guide = pointLearned();
+    expect(guide.update(far, .2)).toBe('Hold G to look closer at your dog.');
+    expect(pointLearned().update(snapshot({ dog: dog({ state: 'pointing', rangeM: 30 }) }), .2)).toBe('Hold Look to study your dog.');
+    // A dog already close needs no closer look.
+    expect(pointLearned().update(snapshot({ input: 'desktop', dog: dog({ state: 'pointing', rangeM: 12 }) }), .2)).not.toContain('look closer');
+    guide.update({ ...far, looking: true }, .2);
+    expect(guide.snapshot().learned).toContain('look/desktop');
+    expect(guide.update(far, .2)).not.toContain('look closer');
+    expect(readFieldGuide({ getItem: () => JSON.stringify({ learned: ['look/touch'] }), setItem() {} }).learned).toEqual(['look/touch']);
+  });
   it('fades an exposed tip without calling it learned and remembers it next visit', () => {
     const guide = new FieldGuide();
     for (let i = 0; i < 40; i++) guide.update(snapshot(), .25);

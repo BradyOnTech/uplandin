@@ -3,19 +3,23 @@ import type { StorageLike } from '../game/career';
 import { fieldSearchGuidance, longCastPointGuidance, pheasantPointGuidance, pointApproachCue, postRiseSearchGuidance, trackingApproachGuidance } from './dogLocator';
 
 export const FIELD_GUIDE_KEY = 'uplandin.3d.field-guide.v1';
+/** Beyond this range (m) a pointing dog is small enough to be worth a closer look. */
+const LOOK_TIP_RANGE_M = 20;
 export type GuideInput = 'desktop' | 'drag-look' | 'touch';
 export interface FieldGuideProgress { disabled: boolean; learned: string[]; shown: string[] }
 export interface FieldGuideSnapshot {
   active: boolean; input: GuideInput; areaId: string;
   x: number; z: number; yaw: number; pitch: number;
   rise: boolean; mounted: boolean; gunId: string; shells: number; reloading: boolean; retrieved: number;
+  /** The hunter is holding look closer. */
+  looking?: boolean;
   dog: { state: DogState; scentStage: DogScentStage; rangeM: number; heading: number; carrying: boolean;
     allAtHeel: boolean; searchAreaChecked: boolean; waitingForHandler: boolean };
 }
 const fresh = (): FieldGuideProgress => ({ disabled: false, learned: [], shown: [] });
 const cleanKeys = (value: unknown): string[] => Array.isArray(value)
   ? [...new Set(value.filter((key): key is string => typeof key === 'string'
-    && /^(move|shoot|reload|heel|retrieve|search|point|track|close|followup)(\/[a-z-]+)?$/.test(key)))].slice(0, 64) : [];
+    && /^(move|shoot|reload|heel|retrieve|search|point|track|close|followup|look)(\/[a-z-]+)?$/.test(key)))].slice(0, 64) : [];
 export function readFieldGuide(storage: StorageLike | null): FieldGuideProgress {
   try {
     const saved = JSON.parse(storage?.getItem(FIELD_GUIDE_KEY) ?? 'null');
@@ -67,6 +71,7 @@ export class FieldGuide {
     }
     if (p?.active && p.dog.allAtHeel && !p.dog.searchAreaChecked && dogHadWorked && s.dog.state === 'quartering') this.learn('heel');
     if (p?.active && s.retrieved > p.retrieved) this.learn('retrieve');
+    if (s.looking) this.learn(`look/${s.input}`);
     if (s.dog.state === 'pointing') {
       if (p?.dog.state !== 'pointing' || this.pointRange === null) this.pointRange = s.dog.rangeM;
       if (this.pointRange - s.dog.rangeM >= 3) this.learn(`point/${s.areaId}`);
@@ -85,6 +90,8 @@ export class FieldGuide {
       const approach = pointApproachCue(s.dog.rangeM, false, s.areaId).split(' · ')[1].toLowerCase();
       add(`point/${s.areaId}`, s.areaId === 'pheasant-coverts' ? pheasantPointGuidance(s.dog.rangeM, s.dog.heading)
         : longCastPointGuidance(s.dog.rangeM, s.areaId) ?? `Walk toward your dog. ${approach.charAt(0).toUpperCase() + approach.slice(1)}.`);
+      // A dog pointing 30 yards off is a dozen pixels: show the hunter how to study it.
+      if (s.dog.rangeM >= LOOK_TIP_RANGE_M) add(`look/${s.input}`, s.input === 'touch' ? 'Hold Look to study your dog.' : 'Hold G to look closer at your dog.');
       add(`shoot/${s.input}`, s.input === 'touch' ? 'Hold Shotgun, swing ahead, release to fire. Release over Lower to cancel.'
         : s.input === 'drag-look' ? 'F raises the gun. Drag to swing; Space fires.' : 'Hold right mouse to aim; left clicks fire. Or use F, then Space.');
     } else if (s.dog.state === 'tracking') {

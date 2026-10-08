@@ -15,6 +15,8 @@ import { SHOT_RANGE_M, TravellingShot, WOUND_RANGE_M } from '../shotPattern';
 import { GLARE_MISS_THRESHOLD } from '../sunGlare';
 import type { SunGlareSystem } from './sunGlareVeil';
 import { shotSightPicture, mobileShotFov, shotAssistancePreference } from '../inputMode';
+import { lookCloserFov, lookCloserGunDrop } from '../lookCloser';
+import type { PlayerSystem } from './player';
 import { resolveShotAssistance, type ShotAssistanceProfile, type ShotTriggerSource } from '../shotAssistance';
 import { createSportingShotgun, type ChamberState, type HullExit, type SportingShotgun } from '../assets/shotgun';
 import { DOUBLE_EJECT_S, DOUBLE_SEATED, doubleLoading, gunMechanism, reloadPose, shotgunCycleCues, shotgunReloadCues, TUBE_LOADING,
@@ -441,6 +443,11 @@ export class GunSystem implements Subsystem {
     return ease(this.mountT);
   }
 
+  /** How far the hunter is looking closer at the dog (0-1). */
+  private lookCloser(ctx: Ctx): number {
+    try { return ctx.get<PlayerSystem>('player').lookCloser ?? 0; } catch { return 0; }
+  }
+
   private createViewmodel(gun: GunConfig): SportingShotgun {
     return createSportingShotgun(gun.id === 'remington-870' ? 'pump'
       : gun.id === 'over-under' ? 'over-under'
@@ -827,7 +834,13 @@ export class GunSystem implements Subsystem {
   }
 
   update(ctx: Ctx, dt: number): void {
-    if (this.hunt.training) { this.root.visible = false; return; }
+    if (this.hunt.training) {
+      // No gun on the training ground, but the hunter can still study the dog.
+      this.root.visible = false;
+      const fov = lookCloserFov(mobileShotFov(0, this.closerSight, ctx.camera.aspect), this.lookCloser(ctx), 0);
+      if (!this.frozen && Math.abs(ctx.camera.fov - fov) > .01) { ctx.camera.fov = fov; ctx.camera.updateProjectionMatrix(); }
+      return;
+    }
     if (this.hunt.falconry) return;
     const cam = ctx.camera;
     const snap = this.frozen;
@@ -871,8 +884,12 @@ export class GunSystem implements Subsystem {
     const touch = !!document.body?.classList.contains('touch-controls-active');
     document.body?.classList.toggle('touch-gun-raised', touch && this.aim && !ctx.paused);
     document.body?.classList.toggle('touch-gun-held', touch && this.touchHeld && !ctx.paused);
+    // Looking closer at the dog narrows the carried view; the mounted sight
+    // picture always wins, so the shot view never changes.
+    const look = snap ? 0 : this.lookCloser(ctx);
     if (!snap) {
-      const fov = mobileShotFov(this.mountProgress(), this.closerSight, cam.aspect);
+      const mount = this.mountProgress();
+      const fov = lookCloserFov(mobileShotFov(mount, this.closerSight, cam.aspect), look, mount);
       if (Math.abs(cam.fov - fov) > .01) { cam.fov = fov; cam.updateProjectionMatrix(); }
     }
     const status = this.touchShotStatus(ctx);
@@ -951,6 +968,9 @@ export class GunSystem implements Subsystem {
     // ---- compose the camera-space pose (root rides the camera exactly).
     this.root.position.copy(cam.position);
     this.root.quaternion.copy(cam.quaternion);
+    // Studying the dog, the hunter lets the gun down out of the narrowed view.
+    const lookDrop = lookCloserGunDrop(look, m);
+    if (lookDrop > 0) this.root.translateY(-lookDrop);
 
     const breakAction = this.isDouble();
     const ready = this.readyK;

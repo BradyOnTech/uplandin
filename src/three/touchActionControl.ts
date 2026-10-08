@@ -40,3 +40,35 @@ export function bindTouchActionControl(button: HTMLButtonElement, options: {
   options.events.addEventListener('input-reset', clear, { signal: options.signal });
   options.signal.addEventListener('abort', clear, { once: true });
 }
+
+/** A press-and-hold touch button: `change(true)` on press, `change(false)` when the finger lifts or input resets. */
+export function bindTouchHoldControl(button: HTMLButtonElement, options: {
+  signal: AbortSignal;
+  enabled: () => boolean;
+  change: (held: boolean) => void;
+  events: EventTarget;
+}): void {
+  let pointer: number | null = null;
+  const release = () => {
+    const id = pointer;
+    if (id === null) return;
+    pointer = null;
+    if (button.hasPointerCapture(id)) button.releasePointerCapture(id);
+    button.setAttribute('aria-pressed', 'false');
+    options.change(false);
+  };
+  button.addEventListener('pointerdown', event => {
+    if (!options.enabled() || pointer !== null) return;
+    event.preventDefault();
+    pointer = event.pointerId;
+    button.setPointerCapture(pointer);
+    button.setAttribute('aria-pressed', 'true');
+    options.change(true);
+  }, { signal: options.signal });
+  for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(name, event => {
+    if (pointer === (event as PointerEvent).pointerId) release();
+  }, { signal: options.signal });
+  options.events.addEventListener('pause', release, { signal: options.signal });
+  options.events.addEventListener('input-reset', release, { signal: options.signal });
+  options.signal.addEventListener('abort', release, { once: true });
+}

@@ -10,6 +10,7 @@ import type { Hunt3DSystem } from './hunt3d';
 import { ObstacleIndex } from '../../game/obstacleIndex';
 import { bindMouseLook } from '../mouseLook';
 import { touchMovement, touchSensitivity, opticalLookScale } from '../inputMode';
+import { stepLookCloser } from '../lookCloser';
 
 const WALK_SPEED = 2.2;
 const SPRINT_MULT = 1.9;
@@ -44,6 +45,10 @@ export class PlayerSystem implements Subsystem {
   private stepDistance = 0;
   private captureMode = false;
   private recallPending = false;
+  /** Looking closer at the dog: 0 (normal view) to 1 (fully narrowed). */
+  lookCloser = 0;
+  private middleLook = false;
+  private touchLookCloser = false;
   /** Dog commands pressed since the hunt last read them. */
   private commandQueue: Array<'whoa' | 'release' | 'cast' | 'dead'> = [];
   private abort = new AbortController();
@@ -81,6 +86,7 @@ export class PlayerSystem implements Subsystem {
     const clear = () => {
       const ids = [this.touchMove?.id, this.touchLook?.id];
       this.keys.clear(); this.touchMove = null; this.touchLook = null; this.vel.set(0, 0, 0); this.showStick();
+      this.middleLook = false; this.touchLookCloser = false;
       for (const id of ids) if (id !== undefined && canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
     };
     ctx.events.addEventListener('pause', clear, { signal });
@@ -143,6 +149,14 @@ export class PlayerSystem implements Subsystem {
         },
       });
       ctx.events.addEventListener('pause', look.release, { signal });
+      // Look closer: hold G or the middle mouse button (touch has its own Look button).
+      canvas.addEventListener('mousedown', (event) => {
+        if (event.button !== 1 || ctx.paused) return;
+        event.preventDefault(); this.middleLook = true;
+      }, { signal });
+      window.addEventListener('mouseup', (event) => { if (event.button === 1) this.middleLook = false; }, { signal });
+      window.addEventListener('blur', () => { this.middleLook = false; this.keys.delete('KeyG'); }, { signal });
+      ctx.events.addEventListener('look-closer', ((event: CustomEvent<boolean>) => { this.touchLookCloser = !!event.detail; }) as EventListener, { signal });
       window.addEventListener('keydown', (event) => {
         if (ctx.paused || (event.target instanceof HTMLElement && /INPUT|SELECT|BUTTON/.test(event.target.tagName))) return;
         this.keys.add(event.code);
@@ -234,6 +248,8 @@ export class PlayerSystem implements Subsystem {
   }
   private flinch?: { age: number; pitch: number; roll: number };
   update(ctx: Ctx, dt: number): void {
+    const lookHeld = !ctx.paused && !this.captureMode && (this.keys.has('KeyG') || this.middleLook || this.touchLookCloser);
+    this.lookCloser = stepLookCloser(this.lookCloser, lookHeld, dt);
     if (this.flinch && dt > 0) {
       this.flinch.age += dt;
       if (this.flinch.age > FLINCH_SECONDS) this.flinch = undefined;

@@ -18,7 +18,7 @@
       <label>Dog breed <select id="dog-breed"></select></label>
       <label><span id="dog-coat-label">Dog coat</span><select id="dog-coat"></select></label>
     </aside>
-    <div id="controls">WASD move · Shift run · Q whistle · M survey map<br>Dog: Z whoa · X hunt on · C cast this way · V dead bird<br>F toggle aim · Space shoot · R reload · Mouse: RMB aim · LMB shoot</div>
+    <div id="controls">WASD move · Shift run · G look closer · Q whistle · M survey map<br>Dog: Z whoa · X hunt on · C cast this way · V dead bird<br>F toggle aim · Space shoot · R reload · Mouse: RMB aim · LMB shoot</div>
     <button id="pause-hunt" type="button" aria-label="Pause hunt">Pause <kbd>Esc</kbd></button>
     <button id="field-map-toggle" type="button" aria-expanded="false" aria-controls="field-map" hidden>Survey <kbd>M</kbd></button>
     <button id="field-menu" type="button">Main menu</button>
@@ -56,6 +56,7 @@
         <button data-action="cast" type="button" aria-label="Cast the dog the way you are facing">This way</button>
         <button data-action="dead" type="button" aria-label="Dead bird: send the dog to hunt where you are looking">Dead bird</button>
       </div>
+      <button data-action="look" type="button" aria-label="Look closer: hold to study your dog" aria-pressed="false">Look</button>
       <button data-action="reload" type="button">Reload</button>
       <button id="touch-lower" data-action="lower" type="button">Lower<small>Drag here to cancel</small></button>
       <button data-action="fire" class="fire" type="button" aria-label="Shotgun: hold to raise, drag to swing, release to shoot"><span>Shotgun</span><small id="touch-shot-status">Hold · swing · release</small><small class="shot-edge-hint">Keep swinging</small><small class="shot-cancel-hint">Release to cancel</small></button>
@@ -193,10 +194,11 @@
         <p class="field-section-kicker">FIELDCRAFT</p><h3 class="field-section-heading">A little know-how</h3>
         <div id="field-instructions">
           <p class="desktop-instructions"><kbd>W A S D</kbd> Walk <span>·</span> <kbd>Shift</kbd> Run <span>·</span> <kbd>Q</kbd> Whistle <span>·</span> <kbd>M</kbd> Survey map</p>
+          <p class="desktop-instructions">Hold <kbd>G</kbd> or the middle mouse button to look closer: study a distant dog's stance, head and tail.</p>
           <p class="desktop-instructions">Handle the dog: <kbd>Z</kbd> Whoa (stop it, or steady it on point) · <kbd>X</kbd> Hunt on (release it, or relocate from a point) · <kbd>C</kbd> Cast the way you face · <kbd>V</kbd> Dead bird where you look. Commands carry as far as your whistle.</p>
           <p class="desktop-instructions"><kbd>F</kbd> Toggle aim · <kbd>Space</kbd> Shoot · <kbd>R</kbd> Reload.<br>Mouse: hold right button to aim, left button to shoot.</p>
           <p class="desktop-instructions">On a trackpad, use <kbd>F</kbd> to raise the gun and <kbd>Space</kbd> to fire. If mouse lock is unavailable, drag to look and swing.</p>
-          <p class="touch-instructions">Drag left to walk; farther to run. Drag right to look.</p>
+          <p class="touch-instructions">Drag left to walk; farther to run. Drag right to look. Hold Look to study a distant dog's stance, head and tail.</p>
           <p class="touch-instructions">Hold Shotgun to raise it, drag to swing, then release to shoot. At the screen edge, keep holding to continue the swing; move inward to stop. For another shot, press and swing again. Release over Lower to cancel, or tap Lower to put the gun down.</p>
           <p class="touch-instructions">Whistle recalls your dog; whistle again at heel to send it hunting. Whoa stops the dog or steadies it on point. Dog ▸ opens Hunt on, This way (cast the way you face) and Dead bird (hunt where you look).</p>
           <p class="touch-instructions orientation-tip">Turn your phone sideways for a wider view of the field.</p>

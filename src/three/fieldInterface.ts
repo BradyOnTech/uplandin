@@ -5,7 +5,7 @@ import { fitPages, type FitPager } from './fitPager';
 import './fitPager.css';
 import { HuntArrivalController } from './huntArrivalController';
 import { isFalconryPractice } from '../game/falconryPractice';
-import { bindTouchActionControl } from './touchActionControl';
+import { bindTouchActionControl, bindTouchHoldControl } from './touchActionControl';
 import { bindTouchShotControl } from './touchShotControl';
 import { preferredInputMode, saveInputMode, usesTouchControls, touchSensitivity, saveTouchSensitivity, shotSightPicture, saveShotSightPicture, shotAssistancePreference, saveShotAssistancePreference, type InputMode } from './inputMode';
 import { resolveShotAssistance, type ShotAssistancePreference } from './shotAssistance';
@@ -30,6 +30,7 @@ import { openHuntJournal } from './huntJournalView';
 import { FieldGuide, FIELD_GUIDE_KEY, readFieldGuide, type GuideInput } from './fieldGuide';
 import { focusedFieldDog } from './fieldDogFocus';
 import type { BirdsSystem } from './subsystems/birds';
+import type { PlayerSystem } from './subsystems/player';
 import { enhanceMenuSelects } from './menuSelect';
 
 /** Lifecycle UI owns pause and preferences, never hunt outcomes. */
@@ -353,6 +354,11 @@ export class FieldInterface {
           events: this.engine.ctx.events });
         continue;
       }
+      if (button.dataset.action === 'look') {
+        bindTouchHoldControl(button, { signal, enabled: () => !this.engine.ctx.paused, events: this.engine.ctx.events,
+          change: held => this.engine.ctx.events.dispatchEvent(new CustomEvent('look-closer', { detail: held })) });
+        continue;
+      }
       bindTouchActionControl(button, { signal, enabled: () => !this.engine.ctx.paused,
         events: this.engine.ctx.events, activate: () => {
         let action = button.dataset.action;
@@ -408,6 +414,7 @@ export class FieldInterface {
       active: true, input, areaId: state.areaId,
       x: ctx.camera.position.x, z: ctx.camera.position.z, yaw: ctx.camera.rotation.y, pitch: ctx.camera.rotation.x,
       rise: ctx.get<BirdsSystem>('birds').isRiseActive(), mounted: gun.mountProgress() > .01,
+      looking: ((ctx.get<PlayerSystem>('player') as PlayerSystem | undefined)?.lookCloser ?? 0) > .5,
       gunId: state.gunId, shells: gun.shellsRemaining(), reloading: gun.isReloading(),
       retrieved: state.birds.filter(bird => bird.state === 'retrieved').length,
       dog: { state: dog.state, scentStage: dog.scentStage, heading: dog.heading, rangeM: Math.hypot(world.x - ctx.camera.position.x, world.z - ctx.camera.position.z),
@@ -531,8 +538,8 @@ export class FieldInterface {
       this.enter.innerHTML = 'Begin training <span aria-hidden="true">↗</span>';
       document.getElementById('end-hunt')!.textContent = 'End training';
       document.getElementById('field-guide-preferences')!.hidden = true;
-      document.getElementById('field-instructions')!.innerHTML = '<p class="desktop-instructions"><kbd>W A S D</kbd> Walk · <kbd>Q</kbd> Recall · <kbd>Z</kbd> Whoa · <kbd>X</kbd> Hunt on · <kbd>C</kbd> Cast · <kbd>V</kbd> Hunt dead · <kbd>E</kbd> Drill action</p><p class="touch-instructions">Drag left to walk and right to look. Whoa steadies the dog. Whistle recalls it. Dog ▸ opens Hunt on, This way, and Dead bird. Tap the drill button to throw, send, or start the next repetition.</p><p>Follow the instruction at the top of the field. Approach a point quietly; stay still when the dog delivers a bumper.</p><p class="field-tip">Completed work develops the selected skills. Clean handling matters more than speed.</p>';
-      const controls = document.getElementById('controls'); if (controls) controls.textContent = 'WASD move · Q whistle · Z whoa · X hunt on · C cast · V hunt dead · E drill action';
+      document.getElementById('field-instructions')!.innerHTML = '<p class="desktop-instructions"><kbd>W A S D</kbd> Walk · <kbd>Q</kbd> Recall · <kbd>Z</kbd> Whoa · <kbd>X</kbd> Hunt on · <kbd>C</kbd> Cast · <kbd>V</kbd> Hunt dead · <kbd>E</kbd> Drill action · <kbd>G</kbd> Look closer</p><p class="touch-instructions">Drag left to walk and right to look. Hold Look to study the dog. Whoa steadies the dog. Whistle recalls it. Dog ▸ opens Hunt on, This way, and Dead bird. Tap the drill button to throw, send, or start the next repetition.</p><p>Follow the instruction at the top of the field. Approach a point quietly; stay still when the dog delivers a bumper.</p><p class="field-tip">Completed work develops the selected skills. Clean handling matters more than speed.</p>';
+      const controls = document.getElementById('controls'); if (controls) controls.textContent = 'WASD move · G look closer · Q whistle · Z whoa · X hunt on · C cast · V hunt dead · E drill action';
     }
     if (!this.capture && !this.falconry && !isFalconryPractice(location.search) && !parseTraining(location.search)) this.arrival = new HuntArrivalController(this.engine);
     this.readyState = true;
