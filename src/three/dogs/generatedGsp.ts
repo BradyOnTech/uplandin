@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createGeneratedGriffonHead, createGeneratedGspHead, createGeneratedSetterHead } from './generatedGspHead';
 import { BOUND_STRIDE, createLocomotionPose, writeLocomotionPose, type LocomotionGait, type FootTuple } from './locomotion';
 import { createTwoBoneSolution, solveTwoBone } from './legIk';
+import { createCollarGeometry, createCollarMaterial, measureNeck } from './generatedCollar';
 import { germanShorthairedPointerAppearance, isGspCoatId, type GspCoatId } from './germanShorthairedPointer';
 import { englishSetterAppearance, isEnglishSetterCoatId, type EnglishSetterCoatId } from './englishSetter';
 import { griffonAppearance, griffonHash, griffonMarkerTone, isGriffonCoatId, type GriffonCoatId } from './griffon';
@@ -259,6 +260,17 @@ float coatRim = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition))
 totalEmissiveRadiance += diffuseColor.rgb * coatRim * (0.16 + 0.1 * clamp(normal.y, 0.0, 1.0)) * vCoatOcclusion;`);
 }
 
+/**
+ * Neck skin weight: keep the sternum on the chest while the throat above it
+ * follows the cervical column. The nape begins turning above the shoulder;
+ * the upper throat reaches full neck weight before meeting the head.
+ */
+function neckSkinBlend(p: THREE.Vector3): number {
+  const nape = THREE.MathUtils.smoothstep(p.z, .2, .33) * THREE.MathUtils.smoothstep(p.y, .5, .68);
+  const throat = THREE.MathUtils.smoothstep(p.z, .25, .345);
+  return Math.max(nape, throat);
+}
+
 class Surface {
   private positions: number[] = [];
   private colors: number[] = [];
@@ -486,6 +498,10 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
   }
   // Bake bind-space geometry into one draw call, retaining code-authored bones.
   root.updateMatrixWorld(true);
+  // The field collar is fitted to the bind-pose neck before the parts merge:
+  // mid-neck, behind the ears, square to the neck's rise.
+  const collarCenter = new THREE.Vector3(0, .662, .312), collarAxis = new THREE.Vector3(0, .041, .045).normalize();
+  const collarRadii = measureNeck(torsoMesh, collarCenter, collarAxis);
   const bones = Object.values(joints), positions: number[] = [], normals: number[] = [], colors: number[] = [], indices: number[] = [], weights: number[] = [], occlusion: number[] = [];
   const meshes: THREE.Mesh[] = []; root.traverse(node => { if (node instanceof THREE.Mesh) meshes.push(node); });
   for (const mesh of meshes) {
@@ -512,14 +528,8 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
       }
       let first = bones.indexOf(owner), second = first, blend = 0;
       if (mesh.userData.neckJoint) {
-        // Keep the sternum on the chest while the throat above it follows
-        // the cervical column. The nape begins turning above the shoulder;
-        // the upper throat reaches full neck weight before meeting the head.
         second = bones.indexOf(mesh.userData.neckJoint);
-        const nape = THREE.MathUtils.smoothstep(p.z, .2, .33)
-          * THREE.MathUtils.smoothstep(p.y, .5, .68);
-        const throat = THREE.MathUtils.smoothstep(p.z, .25, .345);
-        blend = Math.max(nape, throat);
+        blend = neckSkinBlend(p);
       }
       if (chain && chainY) {
         // The shoulder/hip surface stays attached to the torso while the
@@ -564,9 +574,26 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
   geometries.push(skinGeometry);
   const skin = new THREE.SkinnedMesh(skinGeometry,material); skin.name = 'gsp-surface'; skin.castShadow = true; skin.receiveShadow = true;
   const skeleton = new THREE.Skeleton(bones); root.add(skin); skin.bind(skeleton);
+  // The collar is its own small skinned band on the same skeleton, weighted
+  // exactly like the neck under it, so it rides the neck through every pose.
+  const collarGeometry = createCollarGeometry(collarCenter, collarAxis, collarRadii);
+  {
+    const position = collarGeometry.getAttribute('position'), v = new THREE.Vector3(), skinIndex: number[] = [], skinWeight: number[] = [];
+    const bodyIndex = bones.indexOf(body), neckIndex = bones.indexOf(neck);
+    for (let i = 0; i < position.count; i++) {
+      const blend = neckSkinBlend(v.fromBufferAttribute(position, i));
+      skinIndex.push(bodyIndex, neckIndex, 0, 0); skinWeight.push(1 - blend, blend, 0, 0);
+    }
+    collarGeometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndex, 4));
+    collarGeometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeight, 4));
+  }
+  const collarMaterial = createCollarMaterial(faceted);
+  const collar = new THREE.SkinnedMesh(collarGeometry, collarMaterial); collar.name = 'field-collar'; collar.receiveShadow = true;
+  root.add(collar); collar.bind(skeleton);
   // Runtime uses a conservative local envelope; do not reskin every vertex
   // on the CPU merely to update culling bounds each animation frame.
-  if(live){skin.boundingBox=new THREE.Box3(new THREE.Vector3(-.8,-.4,-1),new THREE.Vector3(.8,1.3,1));skin.boundingSphere=new THREE.Sphere(new THREE.Vector3(0,.4,0),1.6);}
+  if(live){skin.boundingBox=new THREE.Box3(new THREE.Vector3(-.8,-.4,-1),new THREE.Vector3(.8,1.3,1));skin.boundingSphere=new THREE.Sphere(new THREE.Vector3(0,.4,0),1.6);
+    collar.boundingBox=skin.boundingBox.clone();collar.boundingSphere=skin.boundingSphere.clone();}
   const rest = Object.values(joints).map(node => ({ node, position: node.position.clone(), rotation: node.quaternion.clone() }));
   // Keep the elbow bend on the same side as the gait/ground solver. The
   // former positive lower-arm fold forced a reversal during release.
@@ -710,8 +737,9 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
     body.position.y=Math.max(-.14,allowed);root.updateMatrixWorld(true);return body.position.y;
   };
   setPose('stand');
-  return { root, joints, paws, setPose, liftPointingPaw, setLocomotion, setSwimming, solveWorldFeet, fitBodyToFeet, material, skin, skeleton,
+  return { root, joints, paws, setPose, liftPointingPaw, setLocomotion, setSwimming, solveWorldFeet, fitBodyToFeet, material, skin, skeleton, collar,
     stats: { triangles: geometries.reduce((n,g) => n + g.getAttribute('position').count / 3,0), meshes: geometries.length, materials: 1, geometryBytes: geometries.reduce((n,g) => n + Object.values(g.attributes).reduce((s,a) => s + a.array.byteLength,0),0) },
-    dispose() { geometries.forEach(g => g.dispose()); material.dispose(); skeleton.dispose(); root.removeFromParent(); },
+    collarStats: { triangles: (collarGeometry.index?.count ?? 0) / 3, materials: 1 },
+    dispose() { geometries.forEach(g => g.dispose()); material.dispose(); collarGeometry.dispose(); collarMaterial.dispose(); skeleton.dispose(); root.removeFromParent(); },
   };
 }

@@ -47,6 +47,13 @@ Check items off (and adjust them) as tranches ship.
   radius (130px × Range multiplier); big-running breeds work off-screen.
   What the edge arrow shows is gear-gated (see Progression & gear): nothing
   on the bell, point-only on the beeper, always + distance on GPS. **[built]**
+- **Reading the dog at range** **[built]**: natural points come 30–40 yd from
+  the hunter, where a whole dog is a dozen pixels. Holding **look closer**
+  (G / middle mouse / touch Look) narrows the carried view to 30° so the
+  dog's stance, head and tail read again, and lets the gun down out of view;
+  a mounted gun always keeps its own sight picture. Every dog wears a
+  blaze-orange field collar, as real bird dogs do, skinned to the neck so it
+  rides every pose. Dog callouts sit in the lower third, never over the dog.
 - **Sprint** (double-tap or hold shift): 2× hunter speed, but loud — hidden
   birds within ~30px flush underfoot and pointed birds' nerve drains ~1.6×
   faster while running. **[built]**
