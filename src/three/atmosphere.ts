@@ -171,7 +171,7 @@ export const REGION_ATMOSPHERE: Readonly<Record<string, RegionAtmosphere>> = {
   // in the coulee bottoms at the ends of the day.
   'sharptail-prairie': { floor: .08, distance: .93,
     // Big sky: cloud shadows race across the swells; coulees sit dark.
-    ground: { occlusion: .9, crest: .14, floor: .42, cloudCover: .42, cloudStrength: .5, cloudSize: 420 },
+    ground: { occlusion: .7, crest: .14, floor: .58, cloudCover: .42, cloudStrength: .5, cloudSize: 420 },
     byTime: {
     dawn: { sunward: .7, sunwardPower: 2.5, pool: pool(.0008, 5, .4, MIST) },
     morning: { sunward: .35, sunwardPower: 3, pool: pool(.00025, 6, .25, MIST) },
@@ -182,7 +182,7 @@ export const REGION_ATMOSPHERE: Readonly<Record<string, RegionAtmosphere>> = {
   // Warm, dusty Red Plains air with haze lying in the creek bottom: a thin
   // layer on the lowest ground, not a sheet over the rolling uplands.
   'quail-fields': { floor: .03, distance: .9,
-    ground: { occlusion: .8, crest: .12, floor: .5, cloudCover: .32, cloudStrength: .4, cloudSize: 380 },
+    ground: { occlusion: .65, crest: .12, floor: .6, cloudCover: .32, cloudStrength: .4, cloudSize: 380 },
     byTime: {
     dawn: { sunward: .7, sunwardPower: 2, pool: pool(.001, 4, .35, MIST) },
     morning: { sunward: .45, sunwardPower: 2.5, pool: pool(.0005, 4, .3, DUST) },
@@ -193,7 +193,7 @@ export const REGION_ATMOSPHERE: Readonly<Record<string, RegionAtmosphere>> = {
   // Prairie potholes: dawn fog lies in the sloughs and burns off by mid
   // morning; cold blue air the rest of the day.
   'pheasant-coverts': { floor: .15, distance: .92,
-    ground: { occlusion: .8, crest: .1, floor: .5, cloudCover: .36, cloudStrength: .45, cloudSize: 460 },
+    ground: { occlusion: .65, crest: .1, floor: .6, cloudCover: .36, cloudStrength: .45, cloudSize: 460 },
     byTime: {
     dawn: { sunward: .6, sunwardPower: 2.5, pool: pool(.0028, 3.5, .7, MIST) },
     morning: { sunward: .3, sunwardPower: 3, pool: pool(.0003, 3, .2, MIST) },
@@ -205,7 +205,7 @@ export const REGION_ATMOSPHERE: Readonly<Record<string, RegionAtmosphere>> = {
   // the hunter steps back in a bluer band.
   'chukar-ridge': { floor: .02, distance: .9,
     // The canyon floor and north faces sit in deep sky shade.
-    ground: { occlusion: 1, crest: .14, floor: .38, cloudCover: .3, cloudStrength: .4, cloudSize: 520 },
+    ground: { occlusion: .8, crest: .14, floor: .5, cloudCover: .3, cloudStrength: .4, cloudSize: 520 },
     byTime: {
     dawn: { sunward: .65, sunwardPower: 2.5, pool: pool(.0009, 26, .35, CANYON) },
     morning: { sunward: .35, sunwardPower: 3, pool: pool(.0005, 30, .25, CANYON) },
