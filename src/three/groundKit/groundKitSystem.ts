@@ -144,7 +144,9 @@ export class GroundKitSystem implements Subsystem {
       add('Kit basal mat', MAT[q], kitMatGeometry(q === 'lite' ? 4 : 6), true, .1, .1, (...a) => this.fillGrass(...a));
       // Near blades lean into the tussocks but still fill the gaps; masses
       // gather fully, so the shoulder reads as bunches at 10-40 m.
-      add('Kit garnish', GARNISH[q], kitTuftGeometry(q === 'lite' ? 6 : 11), true, .18, .22, (...a) => this.fillGrass(...a, undefined, false, .15));
+      // Lightweight's fewer tufts gather into bunches with litter between,
+      // so its near ground reads as tussocks rather than an even stipple.
+      add('Kit garnish', GARNISH[q], kitTuftGeometry(q === 'lite' ? 6 : 11), true, .18, .22, (...a) => this.fillGrass(...a, undefined, false, q === 'lite' ? .7 : .15));
       // Seed culms are a High-tier grace note; phones spend the draw elsewhere.
       if (q === 'high') add('Kit seed culms', CULMS.high, kitCulmGeometry(3), true, .3, .25, (...a) => this.fillGrass(...a, undefined, true, 1));
       add('Kit short masses', MASSES_SHORT[q], kitMassGeometry(q === 'lite' ? 5 : 6), true, .06, .18, (...a) => this.fillGrass(...a, SHORT_CLASSES, false, 1));
@@ -271,8 +273,9 @@ export class GroundKitSystem implements Subsystem {
       if (tussock && !tuning.fixedHeight) h *= 1 + (tussock.bunch - .5) * .45 * bunching;
       const spread = coverHash(ix, iy, salt + 4);
       // Masses keep a grass proportion: footprint follows crown height.
-      const radius = masses ? Math.min(tuning.radius[1], Math.max(tuning.radius[0], h * 1.7)) * (.88 + spread * .24)
-        : tuning.radius[0] + spread * (tuning.radius[1] - tuning.radius[0]);
+      // A tussock's heart is broader as well as taller than its fringe.
+      const radius = (masses ? Math.min(tuning.radius[1], Math.max(tuning.radius[0], h * 1.7)) * (.88 + spread * .24)
+        : tuning.radius[0] + spread * (tuning.radius[1] - tuning.radius[0])) * (tussock ? 1 + (tussock.bunch - .5) * .5 * bunching : 1);
       this.landscape.propertyToWorld(x, y, this.world);
       this.position.set(this.world.x, ground(x, y) - (masses ? .04 : .02), this.world.z);
       this.rotation.setFromAxisAngle(this.up, coverHash(ix, iy, salt + 5) * Math.PI * 2);
