@@ -8,6 +8,7 @@ import { isFalconryPractice, FALCONRY_PRACTICE } from '../../game/falconryPracti
 import { GoshawkFlight } from '../../game/falconry';
 import { ShallowWater } from '../../game/shallowWater';
 import { quailGroundPropObstacles } from './quailGroundProps';
+import { LandformNav } from '../../game/landformNav';
 import { getDropPoint, type AreaConfig, type DropPoint } from '../../game/areas';
 import { playWhistle } from '../../audio';
 import { circleBack } from '../../game/birds';
@@ -234,6 +235,8 @@ export class Hunt3DSystem implements Subsystem {
   /** Call names for feedback; career dogs by name, Quick dogs by breed. */
   private dogNames: string[] = [];
   private ctxRef: Ctx | null = null;
+  private hasSolids = false;
+  private runnerChecked = new Map<number, Vec2>();
 
   constructor(private readonly landscape: LandscapeModel) {}
 
@@ -318,13 +321,17 @@ export class Hunt3DSystem implements Subsystem {
       ready: false,
     }));
     this.pacePhases = this.simDogs.map(() => 0);
-    const propObstacles = quailGroundPropObstacles(this.landscape).map(o => {
+    const propObstacles = [...quailGroundPropObstacles(this.landscape).map(o => {
       const p = this.landscape.worldToProperty(o.x,o.z,{x:0,y:0});
       return {x:p.x,y:p.y,radius:o.radius / PROPERTY_PX_TO_M};
-    });
+    }), ...this.landscape.solidBlockers()];
+    this.hasSolids = this.landscape.solidBlockers().length > 0;
     this.dogWater = new ShallowWater(this.landscape);
+    const solids = this.landscape.solidBlockers();
     this.liveDogMotions = this.simDogs.map((dog) => ({
       obstacles: propObstacles,
+      // A dog finds its way round a canyon's rims to a fall or a bird.
+      ...(solids.length ? (() => { const nav = new LandformNav(solids); return { navigate: (from: Vec2, to: Vec2) => nav.steer(from, to) }; })() : {}),
       retrieveTurnRate: 5,
       effortScale: LIVE_DOG_EFFORT_SCALE,
       movementScale: liveMovementScaleForGait(dog.gait),
@@ -430,6 +437,10 @@ export class Hunt3DSystem implements Subsystem {
     // A retrieve is presented a step in front of the hunter, where he looks.
     this.deliverySpot.x = hunterPos.x + (forwardX * DELIVERY_AHEAD_M) / PROPERTY_PX_TO_M;
     this.deliverySpot.y = hunterPos.y + (forwardZ * DELIVERY_AHEAD_M) / PROPERTY_PX_TO_M;
+    // Facing off a rim, the step in front of the hunter is rock or air: the
+    // dog brings the bird to the nearest open ground at his side instead.
+    if (this.hasSolids && this.landscape.solidAtProperty(this.deliverySpot.x, this.deliverySpot.y, 1.6))
+      this.landscape.openPropertyNear(hunterPos.x, hunterPos.y, this.deliverySpot);
 
     // The 2D area's hunter/dog spawn lives near its bottom edge, while the
     // 3D player deliberately starts near the field center. Without this
@@ -532,6 +543,16 @@ export class Hunt3DSystem implements Subsystem {
       if (bird) { const distraction = this.simulation.flushBird(bird.id, 'startle', null); if (distraction) events.push(distraction); }
     }
     this.training?.update(dtMs, this.hunt, this.simDogs, events);
+    // Birds on the ground never stand inside the rimrock: a runner that
+    // reaches a rim is held below it, where the dog can follow.
+    if (this.hasSolids) for (const bird of this.hunt.birds) {
+      // Only a runner moves on the ground; check it only when it has.
+      if (bird.state !== 'hidden' || !bird.runs) continue;
+      const last = this.runnerChecked.get(bird.id);
+      if (last && last.x === bird.pos.x && last.y === bird.pos.y) continue;
+      this.landscape.openPropertyNear(bird.pos.x, bird.pos.y, bird.pos);
+      this.runnerChecked.set(bird.id, { x: bird.pos.x, y: bird.pos.y });
+    }
     this.recordEvents(events);
     for (let slot = 0; slot < this.simDogs.length; slot++) {
       const dog = this.simDogs[slot];
@@ -793,7 +814,9 @@ export class Hunt3DSystem implements Subsystem {
 
   /** Convert a presentation-space ground contact into the shared fall. */
   recordFallWorld(birdId: number, worldX: number, worldZ: number): boolean {
-    const position = this.worldToSim(worldX, worldZ, { x: 0, y: 0 });
+    const contact = this.worldToSim(worldX, worldZ, { x: 0, y: 0 });
+    // A bird that comes down on the rimrock tumbles off it.
+    const position = this.landscape.openPropertyNear(contact.x, contact.y, { x: 0, y: 0 });
     const recorded = this.simulation.recordFall(birdId, position);
     const bird = this.simulation.bird(birdId);
     if (recorded && bird?.marked === false) this.say(`Fall not marked · send ${this.dogNames[0] ?? 'the dog'} with Dead bird`);

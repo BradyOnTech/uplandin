@@ -6,6 +6,7 @@ import { build3DPreparationHref } from '../../game/gameplayMode';
 import { huntComplete } from '../../game/state';
 import { nextHuntUrl } from '../../game/huntSeed';
 import { huntingDoctrine } from '../../game/huntDoctrine';
+import { huntAreaAt } from '../../game/huntAreas';
 import { renderFieldNotes } from '../fieldNotes';
 import { focusedFieldDog } from '../fieldDogFocus';
 import { dogRelativeBearing, dogWorkLabel, fieldCompassHeading, fieldSearchGuidance, pointApproachCue, pheasantPointGuidance, trackingApproachGuidance } from '../dogLocator';
@@ -33,6 +34,10 @@ export class HuntHudSystem implements Subsystem {
   private fieldIdentity: HTMLElement | null = null;
   private fieldMethod: HTMLElement | null = null;
   private heading: HTMLElement | null = null;
+  /** Names the hunt area underfoot on grounds built of named areas. */
+  private place: HTMLElement | null = null;
+  private placeText = '';
+  private placePoint = { x: 0, y: 0 };
   private truckDirection: HTMLElement | null = null;
   private truckDistance: HTMLElement | null = null;
   private windDirection: HTMLElement | null = null;
@@ -104,6 +109,7 @@ export class HuntHudSystem implements Subsystem {
       name.className = 'field-property-name'; name.textContent = area.name;
       const entry = document.createElement('span');
       entry.className = 'field-property-entry'; entry.textContent = `${drop.name} entry`;
+      this.place = entry; this.placeText = entry.textContent;
       property.append(name, entry);
       this.heading = document.createElement('span');
       this.heading.id = 'field-heading'; this.heading.setAttribute('aria-label', 'Heading');
@@ -213,6 +219,14 @@ export class HuntHudSystem implements Subsystem {
       this.lastTally = tally;
     }
 
+    if (this.place) {
+      // The hunt area you're in, as you walk into it; winded after a climb.
+      const point = this.hunt.worldToSim(ctx.camera.position.x, ctx.camera.position.z, this.placePoint);
+      const area = huntAreaAt(this.hunt.areaConfig(), point.x, point.y);
+      const winded = ctx.get<PlayerSystem>('player').breath?.winded() ?? false;
+      const text = `${area ? area.name : `${this.hunt.dropPoint().name} entry`}${winded ? ' · winded' : ''}`;
+      if (text !== this.placeText) { this.place.textContent = text; this.placeText = text; }
+    }
     const dogs = Array.from({ length: this.hunt.dogCount() }, (_, slot) => this.hunt.dog(slot));
     const trackedDog = this.hunt.training ? dogs[0] : focusedFieldDog(dogs);
     if (trackedDog) this.hunt.simToWorld(trackedDog.pos.x, trackedDog.pos.y, this.dogWorld);

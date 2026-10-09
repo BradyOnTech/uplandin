@@ -11,6 +11,7 @@ import { ObstacleIndex } from '../../game/obstacleIndex';
 import { bindMouseLook } from '../mouseLook';
 import { touchMovement, touchSensitivity, opticalLookScale } from '../inputMode';
 import { stepLookCloser } from '../lookCloser';
+import { HunterBreath, climbSpeedFactor } from '../../game/climbing';
 
 const WALK_SPEED = 2.2;
 const SPRINT_MULT = 1.9;
@@ -63,12 +64,17 @@ export class PlayerSystem implements Subsystem {
   private waterDepth = 0;
   private groundSample: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
   private propertyPoint = { x: 0, y: 0 };
+  /** Breath spent climbing, on grounds where the climb is part of the hunt. */
+  readonly breath = new HunterBreath();
+  private readonly climbs: boolean;
   private propertyAt(land: LandscapeModel): [number, number] {
     land.worldToProperty(this.pos.x, this.pos.z, this.propertyPoint);
     return [this.propertyPoint.x, this.propertyPoint.y];
   }
   constructor(private readonly landscape?: LandscapeModel) {
     if (landscape) this.water = new ShallowWater(landscape);
+    // Grounds with an uphill (the chukar rule) charge for the climb.
+    this.climbs = landscape?.area.slope !== undefined;
   }
 
   init(ctx: Ctx): void {
@@ -218,7 +224,8 @@ export class PlayerSystem implements Subsystem {
   }
   isRunning(): boolean {
     const keyboardMoving = this.keys.has('KeyW') || this.keys.has('KeyA') || this.keys.has('KeyS') || this.keys.has('KeyD');
-    return this.waterDepth < .12 && ((keyboardMoving && (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'))) || !!this.touchMove?.running);
+    return this.waterDepth < .12 && (!this.climbs || this.breath.canRun())
+      && ((keyboardMoving && (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'))) || !!this.touchMove?.running);
   }
   consumeRecall(): boolean { const pending = this.recallPending; this.recallPending = false; return pending; }
   consumeCommands(): Array<'whoa' | 'release' | 'cast' | 'dead'> { return this.commandQueue.splice(0); }
@@ -267,7 +274,14 @@ export class PlayerSystem implements Subsystem {
       this.vel.set(-Math.sin(this.yaw) * f + Math.cos(this.yaw) * s, 0, -Math.cos(this.yaw) * f - Math.sin(this.yaw) * s);
       if (this.vel.lengthSq() > 0.0025) {
         this.vel.clampLength(0, 1).multiplyScalar(WALK_SPEED * wadingSpeedMultiplier(this.waterDepth) * (this.isRunning() ? SPRINT_MULT : 1));
-        const oldX = this.pos.x, oldZ = this.pos.z;
+        if (this.climbs && this.landscape) {
+          // Slope slows the walk along the line of travel; trails ease it.
+          const land = this.landscape, ground = land.surfaceAtWorld(this.pos.x, this.pos.z, this.groundSample);
+          const speed = this.vel.length(), along = (ground.gradeX * this.vel.x + ground.gradeZ * this.vel.z) / (speed || 1);
+          const trail = onRoute(land.area.trails, ...this.propertyAt(land), 1.6) ? 1 : 0;
+          this.vel.multiplyScalar(climbSpeedFactor(along, trail) * this.breath.speedFactor());
+        }
+        const oldX = this.pos.x, oldZ = this.pos.z, oldGround = this.climbs ? ctx.get<TerrainSystem>('terrain').heightAt(oldX, oldZ) : 0;
         if (this.bounds) {
           if (!this.scenery) {
             try {
@@ -310,6 +324,7 @@ export class PlayerSystem implements Subsystem {
           }
         } else this.pos.addScaledVector(this.vel, dt);
         const moved = Math.hypot(this.pos.x - oldX, this.pos.z - oldZ);
+        if (this.climbs) this.breath.step(dt, ctx.get<TerrainSystem>('terrain').heightAt(this.pos.x, this.pos.z) - oldGround, moved > 1e-4, this.isRunning());
         this.bobPhase += moved * 4.3;
         this.stepDistance += moved;
         if (moved > 0 && this.stepDistance >= 0.86) {
@@ -323,7 +338,7 @@ export class PlayerSystem implements Subsystem {
             && onRoute(land.area.trails, ...this.propertyAt(land), 1 / PROPERTY_PX_TO_M);
           playFootstep(ground ? stepSurface(ground, inCover, this.waterDepth, lane) : inCover ? 'cover' : 'grass', 0.10, this.isRunning());
         }
-      }
+      } else if (this.climbs) this.breath.step(dt, 0, false, false);
     }
     this.place(ctx);
   }

@@ -7,7 +7,9 @@ import { pheasantDryCover, pheasantShoreCover, pheasantWestFence } from './pheas
 import { pheasantFarmCover } from './pheasantFarm';
 import { pheasantOldFarmsteadCover } from './pheasantFeatures';
 import { registerSharptailEntrances, sharptailEntrances } from './sharptailFeatures';
-import { chukarCoverPatches } from './chukarLandscape';
+import { CHUKAR_ENTRIES, CHUKAR_HUNT_AREAS } from './chukarRidge';
+import { CHUKAR_TRAILS } from './chukarTrails';
+import { derivedCoverRects } from './landHabitat';
 import { quailCoverPatches } from './quailComposition';
 import { SHARPTAIL_COVER_PATCHES } from './sharptailLandscape';
 
@@ -79,6 +81,8 @@ export interface AreaConfig {
   slope?: number;
   /** Climate lean for the per-hunt condition roll (desert heat, high-country snow). */
   conditionBias?: Condition;
+  /** Coveys a full 3D hunt stocks; bigger grounds carry more (default 10). */
+  coveyTarget?: number;
 }
 
 function world(w: number, h: number): Rect {
@@ -338,34 +342,22 @@ function hunGeography(w: number, h: number) {
   };
 }
 
-/** Switchback access and contour benches for the chukar property. */
-function chukarGeography(w: number, h: number) {
-  const base = geography(w, h, { name: 'Rimrock Tank', kind: 'pond' }, 77);
-  const [south, west] = base.dropPoints;
-  const lower = { x: w * .46, y: h * .72 };
-  const middle = { x: w * .61, y: h * .53 };
-  const upper = { x: w * .72, y: h * .31 };
-  const westBench = { x: w * .28, y: h * .42 };
-  const p=(x:number,y:number):Vec2=>({x:x*w/1400,y:y*h/800});
+/** Chukar Ridge: a canyon wall of ten named hunt areas (chukarRidge.ts), four
+ * truck entries around its edge and trails planned over the land. */
+function chukarGeography() {
   return {
-    ...base,
-    landmarks:[...base.landmarks,
-      {id:'lower-sage-bench',name:'Sage Bench',kind:'fence' as const,position:lower},
-      {id:'split-shoulder',name:'Split Shoulder',kind:'fence' as const,position:middle},
-      {id:'rim-overlook',name:'Rim Overlook',kind:'fence' as const,position:upper}],
-    // Face the authored first switchback, not the old generic junction.
-    // Trailhead props and dog release use these same bearings.
-    dropPoints: [
-      { ...south, heading: Math.atan2(710-south.position.y,640-south.position.x) },
-      { ...west, heading: Math.atan2(22, 52) },
+    // Each truck faces up its own trail, the way the hunt sets off.
+    dropPoints: CHUKAR_ENTRIES.map((entry): DropPoint => {
+      const route = CHUKAR_TRAILS.find(t => t.points[0].x === entry.position.x && t.points[0].y === entry.position.y);
+      const toward = route?.points[1] ?? entry.toward;
+      return { id: entry.id, name: entry.name, position: entry.position,
+        heading: Math.atan2(toward.y - entry.position.y, toward.x - entry.position.x), safetyRadius: 48, landmarkId: `${entry.id}-gate` };
+    }),
+    landmarks: [
+      ...CHUKAR_ENTRIES.map((entry): AreaLandmark => ({ id: `${entry.id}-gate`, name: entry.name, kind: 'gate', position: { ...entry.position } })),
+      ...CHUKAR_HUNT_AREAS.map((area): AreaLandmark => ({ id: area.id, name: area.landmark.name, kind: 'fence', position: area.landmark.position })),
     ],
-    trails: [
-      { id: 'south-switchback', points: [south.position,p(640,710),p(702,658),p(650,618),lower,p(748,552),p(804,521),p(871,509),p(905,468),middle] },
-      { id: 'west-switchback', points: [west.position, { x: west.position.x + 52, y: west.position.y + 22 }, westBench, { x: w * .42, y: h * .37 }, middle] },
-      { id: 'upper-bench', points: [middle,p(938,376),p(1013,365),p(1035,302),upper] },
-      { id: 'rim-return', points: [upper,p(1090,279),p(1083,381),p(967,452),p(905,468)] },
-      { id: 'tank-traverse', points: [upper,p(933,215),base.landmarks.find(l=>l.id==='area-feature')!.position] },
-    ] satisfies AreaTrail[],
+    trails: CHUKAR_TRAILS.map(trail => ({ id: trail.id, points: trail.points.map(p => ({ ...p })) })),
   };
 }
 
@@ -636,11 +628,13 @@ export const AREAS: AreaConfig[] = [
     tagline: 'they run up and fly down',
     grass: 0x8f7f5e,
     cover: 0x5e5340,
-    world: world(1400, 800),
+    world: world(2200, 1400),
     terrain: terrain('rimrock', 7701),
-    ...chukarGeography(1400, 800),
-    patches: chukarCoverPatches(world(1400,800),[...scatterRects(world(1400, 800), { count: 16, minW: 90, maxW: 160, minH: 30, maxH: 55 }, mulberry32(77)), ...entryCover(1400, 800, 77)]),
-    stocking: 0.7,
+    ...chukarGeography(),
+    // The derived-rectangle view of the land habitat, built on first read.
+    get patches() { return derivedCoverRects({ id: 'chukar-ridge' }); },
+    coveyTarget: 28,
+    stocking: 0.6,
     speciesMix: [
       { speciesId: 'chukar', weight: 0.8 },
       { speciesId: 'hun', weight: 0.2 },

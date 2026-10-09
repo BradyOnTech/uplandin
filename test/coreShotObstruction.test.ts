@@ -45,7 +45,7 @@ describe('core property solid shots', () => {
         const meshes: THREE.Mesh[] = []; ctx.scene.traverse(o => { if (o instanceof THREE.Mesh) meshes.push(o); });
         // Quail treeStand emits rooted timber then its separate leafy crown.
         const solid = areaId === 'quail-fields' ? (system as unknown as { batches: { mesh: THREE.Mesh; range: number }[] }).batches.find(batch => batch.range === 780)!.mesh
-          : areaId === 'chukar-ridge' ? meshes.find(m => m.geometry.userData.kind === 'chukar-authored-basalt')!
+          : areaId === 'chukar-ridge' ? meshes.find(m => m.geometry.userData.kind === 'chukar-rim-slab')!
             : meshes.find(m => m.name.includes('trunk habitat'))!;
         const foliage = areaId === 'quail-fields'
           ? (system as unknown as { batches: { mesh: THREE.Mesh; range: number }[] }).batches.filter(batch => batch.range === 780)[1].mesh

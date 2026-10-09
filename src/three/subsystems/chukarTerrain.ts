@@ -1,23 +1,28 @@
 import * as THREE from 'three';
-import { chukarCompositionAt } from '../../game/chukarComposition';
+import { CHUKAR_RIVER_HALF_WIDTH, CHUKAR_RIVER_LEVEL, chukarRiverY } from '../../game/chukarCanyon';
+import { chukarGroundAt, type ChukarGround } from '../../game/chukarHabitat';
+import { valueNoise } from '../../game/featureLandform';
 import { PROPERTY_PX_TO_M, type LandscapeModel } from '../../game/landscape';
 import type { Ctx } from '../engine';
 
 export const CHUKAR_GROUND_DETAIL = {
-  high: {near:48,far:20,range:170,horizonSpacing:14},
-  lite: {near:32,far:12,range:125,horizonSpacing:24},
+  high: {near:48,far:20,range:170,horizonSpacing:18},
+  lite: {near:32,far:12,range:125,horizonSpacing:28},
 } as const;
 import { buildQuailTerrainGeometry } from './quailTerrain';
 import { quailGroundTiles, quailGroundUsesNear } from './quailGroundGeometry';
-import { chukarGroundZones, chukarPlantStandAt, chukarDistantRelief } from '../../game/chukarLandscape';
 import { chukarPlantGroupAt } from './chukarSurface';
 
-const earth = new THREE.Color(0xa58e69), dust = new THREE.Color(0xc9b994);
-const stone = new THREE.Color(0x898b83), shade = new THREE.Color(0x79816f), sage = new THREE.Color(0x899374);
-const litter = new THREE.Color(0xb5a17b),stand={grass:0,sage:0};
-const zones={talus:0,shelter:0},composition={sage:0,grass:0,open:0,wash:0};
-const rootSoil=new THREE.Color(0x837760),silt=new THREE.Color(0xc2af8c);
+/** Ground colour comes from the land's habitat: bleached cheat on the sunny
+ * slopes, tawny bluebunch on the shaded ones, silver sage in the draws and on
+ * the flat, grey talus under dark basalt, green along the spring seam. */
+const earth = new THREE.Color(0x9c8a6c), dust = new THREE.Color(0xb9aa8a);
+const cheat = new THREE.Color(0xbfa983), bunch = new THREE.Color(0x9f9272), sage = new THREE.Color(0x8b8f83);
+const talus = new THREE.Color(0x7c766e), basalt = new THREE.Color(0x4f4944), seep = new THREE.Color(0x6b7f48);
+const shade = new THREE.Color(0x7d8178), gravel = new THREE.Color(0x9d968a), sageDot = new THREE.Color(0x7f8476), grazed = new THREE.Color(0xb39d70);
+const dots = valueNoise(7757);
 const sample = {height:0,slope:0,gradeX:0,gradeZ:0,rockiness:0,vegetation:0,moisture:0};
+const ground: ChukarGround = { cover: 'cheat', sage: 0, cheat: 0, bunchgrass: 0, talus: 0, rimrock: 0, seep: 0, s: 0, band: '', draw: 0, crest: 0, southness: 0 };
 
 /** World-anchored scree detail, filtered before individual chips become subpixel. */
 function applyScreeDetail(material: THREE.MeshLambertMaterial, landscape: LandscapeModel,texture:THREE.Texture): void {
@@ -107,24 +112,29 @@ function applyScreeDetail(material: THREE.MeshLambertMaterial, landscape: Landsc
   };
 }
 
+const smoothstep01=(t:number)=>{const c=Math.max(0,Math.min(1,t));return c*c*(3-2*c);};
+
 function paint(landscape:LandscapeModel,x:number,y:number,out:THREE.Color):THREE.Color {
   const surface=landscape.surfaceAtProperty(x,y,sample);
+  const g=chukarGroundAt(x,y,ground);
   const sweep=.5+.25*Math.sin(x*.019+Math.cos(y*.011)*1.5)+.25*Math.cos(y*.016-x*.007);
-  const bedding=.5+.5*Math.sin(surface.height*.63+x*.003),group=chukarPlantGroupAt(x,y);
-  chukarGroundZones(x,y,zones);
-  out.copy(earth).lerp(dust,.25+sweep*.32);
-  out.lerp(sage,surface.vegetation*(1-surface.rockiness)*.34);
-  out.lerp(stone,surface.rockiness*(.55+bedding*.30));
-  out.lerp(stone,zones.talus*.42);
-  chukarPlantStandAt(x,y,zones.talus,zones.shelter,stand);
-  out.lerp(litter,stand.grass*(.38+group*.30));
-  out.lerp(sage,stand.sage*.64+zones.shelter*.16);
-  chukarCompositionAt(x,y,composition);
-  out.lerp(rootSoil,composition.sage*.28+composition.grass*.17);
-  out.lerp(stone,composition.open*.23);
-  out.lerp(silt,composition.wash*.72);
-  out.lerp(shade,Math.min(.34,surface.slope*.27));
-  return out.multiplyScalar(.86+sweep*.18+bedding*.045);
+  const group=chukarPlantGroupAt(x,y);
+  out.copy(earth).lerp(dust,.2+sweep*.25);
+  out.lerp(cheat,g.cheat*(.5+group*.2));
+  out.lerp(bunch,g.bunchgrass*.55*Math.max(0,1-g.cheat*.6));
+  out.lerp(sage,Math.min(.8,g.sage*.6));
+  // Sage reads as dots of grey across the gold at a distance; grazing
+  // leaves darker, shorter stripes along the contours of the cheat.
+  out.lerp(sageDot,smoothstep01((dots(x*.23,y*.23)-(1-g.sage*.85))*4)*.7);
+  out.lerp(grazed,g.cheat*.35*smoothstep01((dots(x*.03+5,y*.11+2)-.55)*5));
+  out.lerp(talus,Math.min(.85,g.talus*.9));
+  out.lerp(seep,g.seep*.8);
+  out.lerp(basalt,g.rimrock*.9);
+  // The river's gravel bars and the canyon floor far below.
+  if(surface.height<-62)out.lerp(gravel,Math.min(1,(-62-surface.height)/5));
+  // North faces sit cooler and darker; steep ground darkens.
+  out.lerp(shade,Math.min(.38,surface.slope*.24+Math.max(0,-g.southness)*.14));
+  return out.multiplyScalar(.88+sweep*.14);
 }
 
 /** Rectangular sampling spends horizon vertices evenly in metres. A small
@@ -139,13 +149,6 @@ export function buildChukarHorizonGeometry(landscape:LandscapeModel,px:number,py
     const y=py+iz/nz*depth+(iz>0&&iz<nz?Math.sin(ix*269.5+iz*183.3)*spacing*.17:0);
     const h=landscape.heightAtProperty(x,y);landscape.propertyToWorld(x,y,world);
     positions.push(world.x,h,world.z);paint(landscape,x,y,color);
-    const relief=chukarDistantRelief(x,y),surface=landscape.surfaceAtProperty(x,y,sample);
-    // Exposed slopes carry mineral colors, not the planted parcel's sage tint.
-    if(relief>2){
-      const rock=Math.min(1,surface.slope*1.7),wash=.5+.5*Math.sin(x*.025+y*.018+h*.07);
-      color.copy(dust).lerp(stone,rock*.86).lerp(earth,(1-rock)*.28);
-      color.multiplyScalar(.89+wash*.17);
-    }
     colors.push(color.r,color.g,color.b);
   }
   for(let z=0;z<nz;z++)for(let x=0;x<nx;x++){
@@ -175,6 +178,31 @@ export function buildChukarHorizonGeometry(landscape:LandscapeModel,px:number,py
   geometry.computeBoundingSphere();return geometry;
 }
 
+/** Beyond the fence: 1,000 yd of canyon each way, and further south so
+ * the far wall rises across the river. Property yards [x, y, w, h]. */
+export function chukarHorizonStrips(b:{x:number;y:number;w:number;h:number}):[number,number,number,number][] {
+  const m=1000,south=1300;
+  return [[b.x-m,b.y-m,b.w+2*m,m],[b.x-m,b.y+b.h,b.w+2*m,south],[b.x-m,b.y,m,b.h],[b.x+b.w,b.y,m,b.h]];
+}
+
+/** The river far below: a ribbon of water down the canyon floor, glinting. */
+export function createChukarRiver(landscape:LandscapeModel):THREE.Mesh {
+  const b=landscape.area.world,positions:number[]=[],indices:number[]=[],world={x:0,z:0};
+  const step=20,from=b.x-1000,to=b.x+b.w+1000,n=Math.ceil((to-from)/step);
+  for(let i=0;i<=n;i++){
+    const x=from+i*step,y=chukarRiverY(x);
+    for(const side of [-1,1]){
+      landscape.propertyToWorld(x,y+side*(CHUKAR_RIVER_HALF_WIDTH+3),world);positions.push(world.x,CHUKAR_RIVER_LEVEL,world.z);
+    }
+    if(i)indices.push((i-1)*2,i*2,(i-1)*2+1,(i-1)*2+1,i*2,i*2+1);
+  }
+  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  geometry.setIndex(indices);geometry.computeVertexNormals();geometry.computeBoundingSphere();
+  const material=new THREE.MeshPhongMaterial({color:0x4d6b74,specular:0xd8e0dc,shininess:70,emissive:0x1e2a2e,emissiveIntensity:.5});
+  const mesh=new THREE.Mesh(geometry,material);mesh.name='Chukar river far below';mesh.receiveShadow=true;
+  return mesh;
+}
+
 /** The entire ridge uses the authoritative property heightfield. Near detail
  * follows the hunter instead of ending at the old drop-centered 480 m plate. */
 export class ChukarTerrain {
@@ -183,6 +211,7 @@ export class ChukarTerrain {
   private material=new THREE.MeshLambertMaterial({vertexColors:true});
   private nearDistance=170;
   private texture?:THREE.Texture;
+  private river?:THREE.Mesh;
   constructor(private landscape:LandscapeModel){}
   async init(ctx:Ctx):Promise<void> {
     this.texture=await new THREE.TextureLoader().loadAsync(`${import.meta.env.BASE_URL}textures/terrain/chukar-dry-ground.webp`);
@@ -202,12 +231,11 @@ export class ChukarTerrain {
       near.name='Chukar near terrain';far.name='Chukar distant terrain';near.receiveShadow=far.receiveShadow=true;
       this.tiles.push({near,far,x:tile.centerX,z:tile.centerZ});ctx.scene.add(near,far);
     }
-    const b=this.landscape.area.world,m=1000;
-    for(const [x,y,w,h] of [[b.x-m,b.y-m,b.w+2*m,m],[b.x-m,b.y+b.h,b.w+2*m,m],
-      [b.x-m,b.y,m,b.h],[b.x+b.w,b.y,m,b.h]]) {
+    for(const [x,y,w,h] of chukarHorizonStrips(this.landscape.area.world)) {
       const mesh=new THREE.Mesh(buildChukarHorizonGeometry(this.landscape,x,y,w,h,horizonSpacing),this.material);
       mesh.name='Chukar beyond property';this.distant.push(mesh);ctx.scene.add(mesh);
     }
+    this.river=createChukarRiver(this.landscape);ctx.scene.add(this.river);
     this.update(ctx);
   }
   update(ctx:Ctx):void {
@@ -217,6 +245,7 @@ export class ChukarTerrain {
   dispose(ctx:Ctx):void {
     for(const tile of this.tiles)for(const mesh of [tile.near,tile.far]){ctx.scene.remove(mesh);mesh.geometry.dispose();}
     for(const mesh of this.distant){ctx.scene.remove(mesh);mesh.geometry.dispose();}
+    if(this.river){ctx.scene.remove(this.river);this.river.geometry.dispose();(this.river.material as THREE.Material).dispose();this.river=undefined;}
     this.texture?.dispose();this.material.dispose();this.tiles.length=0;this.distant.length=0;
   }
 }

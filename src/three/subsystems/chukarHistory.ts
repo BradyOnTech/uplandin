@@ -1,20 +1,28 @@
 import * as THREE from 'three';
 import type { LandscapeModel } from '../../game/landscape';
 import { mulberry32 } from '../../game/math';
-import {
-  CHUKAR_GUZZLER, CHUKAR_JUNIPER_SNAG, CHUKAR_SEEP, CHUKAR_SHEEP_CAIRN, chukarSeepAt,
-} from '../../game/chukarFeatures';
+import { CHUKAR_GUZZLER, CHUKAR_SPRING_SEAM, chukarSeamAt } from '../../game/chukarHabitat';
+import { CHUKAR_PLACES } from '../../game/chukarRidge';
 import { Kit, place, stone } from '../lowPolyKit';
 import { CHUKAR_GROUND_DETAIL } from './chukarTerrain';
 import { applyQuailTrackGroundLod, groundQuailTrackGeometry, sampleQuailGroundHeights } from './quailGroundGeometry';
 
 /**
- * Chukar Ridge's remembered places (see game/chukarFeatures.ts): the old
- * sheepherder's cairn on the western mesa, a juniper snag on the split
- * shoulder, the wildlife guzzler on the west bench and the spring seep
- * below the shoulder with willows at its head. The seep's green grass and
- * the talus fans are planted by the environment itself.
+ * Chukar Ridge's remembered places, each the landmark of a hunt area (see
+ * game/chukarRidge.ts): the sheepherder's cairn on the High Bench, a juniper
+ * snag above Sage Draw, the guzzler on the West Bench, the spring and its
+ * seam of willow and rose in Spring Creek, the line camp corral on the Rim
+ * Flat, a homesteader's cabin chimney in the River Breaks and Split Rock
+ * under the North Face. The seam's green grass is planted by the environment.
  */
+const CHUKAR_SHEEP_CAIRN = CHUKAR_PLACES.cairn, CHUKAR_JUNIPER_SNAG = CHUKAR_PLACES.snag;
+
+/** Solid or bare footprints (metres) that plants keep out of. */
+export function chukarHistoryOccupies(x: number, y: number, radius: number): boolean {
+  const near = (p: { x: number; y: number }, r: number) => Math.hypot(x - p.x, y - p.y) * .9144 < r + radius;
+  return near(CHUKAR_SHEEP_CAIRN, 1.6) || near(CHUKAR_JUNIPER_SNAG, .9) || near(CHUKAR_GUZZLER, 6.2)
+    || near(CHUKAR_PLACES.corral, 9) || near(CHUKAR_PLACES.chimney, 3.4) || near(CHUKAR_PLACES.splitRock, 3.6) || near(CHUKAR_SPRING_SEAM[0], 1.4);
+}
 export interface ChukarHistoryHost {
   landscape: LandscapeModel;
   quality: 'high' | 'lite';
@@ -57,6 +65,9 @@ export function buildChukarHistory(host: ChukarHistoryHost): void {
   const [willows, wet] = buildSeep(host, groundAt, detail);
   keep(willows, 'Chukar seep willows', leaves, false);
   if (wet) host.keep(wet);
+  keep(buildCorral(host, groundAt), 'Chukar line camp corral', solid, true);
+  keep(buildChimney(host, groundAt), 'Chukar cabin chimney', solid, true);
+  keep(buildSplitRock(host, groundAt), 'Chukar split rock', solid, true);
 }
 
 /** A sheepherder's stone johnny: dry-laid slabs in courses, lichened, a
@@ -192,9 +203,18 @@ function buildGuzzler(host: ChukarHistoryHost, groundAt: (x: number, z: number) 
  * spring head ringed by a few willows in their fall yellow. */
 function buildSeep(host: ChukarHistoryHost, groundAt: (x: number, z: number) => number, detail: { near: number; far: number; range: number }): [Kit, THREE.Mesh | undefined] {
   const { landscape } = host, rng = mulberry32(9931), kit = new Kit();
-  const head = CHUKAR_SEEP[0];
+  const head = CHUKAR_SPRING_SEAM[0];
   const yellow = [0xc4a03c, 0xb48a35, 0xa9963f, 0x8f8a3a];
-  for (let i = 0; i < 4; i++) {
+  // Wild rose down the seam: low thorny clumps, hips gone dark red.
+  for (let i = 1; i < CHUKAR_SPRING_SEAM.length; i++) for (let n = 0; n < 3; n++) {
+    const a = CHUKAR_SPRING_SEAM[i - 1], b = CHUKAR_SPRING_SEAM[i], t = rng(), side = (rng() < .5 ? -1 : 1) * (3 + rng() * 6);
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+    const px = a.x + dx * t - dy / len * side, py = a.y + dy * t + dx / len * side;
+    const p = landscape.propertyToWorld(px, py, { x: 0, z: 0 }), base = groundAt(p.x, p.z), size = .6 + rng() * .5;
+    for (let k = 0; k < 4; k++) kit.add(new THREE.IcosahedronGeometry(.32 + rng() * .18, 0), rng() < .3 ? 0x7a3b2c : [0x8a6a3c, 0x7d6338, 0x96743f][k % 3],
+      place(p.x + (rng() - .5) * size, base + .25 + rng() * .3, p.z + (rng() - .5) * size, rng() * 3, rng() * 3, 0, 1.1, .7, 1.1), .2, rng);
+  }
+  for (let i = 0; i < 5; i++) {
     const a = i * 1.7 + rng() * .5, r = 2 + rng() * 2.5;
     const p = landscape.propertyToWorld(head.x + Math.cos(a) * r / .9144, head.y + Math.sin(a) * r / .9144 - 1, { x: 0, z: 0 });
     const base = groundAt(p.x, p.z), size = 1.6 + rng() * 1.2;
@@ -211,12 +231,14 @@ function buildSeep(host: ChukarHistoryHost, groundAt: (x: number, z: number) => 
   // Wet ground, with the trickle down its middle a shade darker.
   const positions: number[] = [], colors: number[] = [], index: number[] = [];
   const wet = new THREE.Color(0x4c4a35), green = new THREE.Color(0x5f7240), c = new THREE.Color();
-  const step = 1.4, x0 = 878, y0 = 486, columns = Math.ceil(76 / step), rows = Math.ceil(84 / step);
+  const xs = CHUKAR_SPRING_SEAM.map(p => p.x), ys = CHUKAR_SPRING_SEAM.map(p => p.y);
+  const step = 1.6, x0 = Math.min(...xs) - 20, y0 = Math.min(...ys) - 20;
+  const columns = Math.ceil((Math.max(...xs) - x0 + 20) / step), rows = Math.ceil((Math.max(...ys) - y0 + 20) / step);
   const vertex = new Map<number, number>();
   const at = (i: number, j: number) => {
     const key = j * (columns + 1) + i, saved = vertex.get(key);
     if (saved !== undefined) return saved;
-    const px = x0 + i * step, py = y0 + j * step, amount = chukarSeepAt(px, py), w = landscape.propertyToWorld(px, py, { x: 0, z: 0 });
+    const px = x0 + i * step, py = y0 + j * step, amount = chukarSeamAt(px, py), w = landscape.propertyToWorld(px, py, { x: 0, z: 0 });
     c.copy(green).lerp(wet, Math.pow(amount, 3));
     positions.push(w.x, 0, w.z); colors.push(c.r, c.g, c.b, amount * .78);
     vertex.set(key, positions.length / 3 - 1);
@@ -224,7 +246,7 @@ function buildSeep(host: ChukarHistoryHost, groundAt: (x: number, z: number) => 
   };
   for (let j = 0; j < rows; j++) for (let i = 0; i < columns; i++) {
     const px = x0 + i * step, py = y0 + j * step;
-    if (Math.max(chukarSeepAt(px, py), chukarSeepAt(px + step, py), chukarSeepAt(px, py + step), chukarSeepAt(px + step, py + step)) === 0) continue;
+    if (Math.max(chukarSeamAt(px, py), chukarSeamAt(px + step, py), chukarSeamAt(px, py + step), chukarSeamAt(px + step, py + step)) === 0) continue;
     const a = at(i, j), b = at(i + 1, j), d = at(i + 1, j + 1), e = at(i, j + 1);
     index.push(a, b, d, a, d, e);
   }
@@ -242,4 +264,74 @@ function buildSeep(host: ChukarHistoryHost, groundAt: (x: number, z: number) => 
   mesh.name = 'Chukar spring seep'; mesh.receiveShadow = true; mesh.renderOrder = -2;
   host.own(geometry); host.own(material);
   return [kit, mesh];
+}
+
+/** The line camp corral: juniper posts set in a rough ring, a few poles
+ * still wired between them and the rest fallen in the sage. */
+function buildCorral(host: ChukarHistoryHost, groundAt: (x: number, z: number) => number): Kit {
+  const kit = new Kit(), rng = mulberry32(5521), c = host.landscape.propertyToWorld(CHUKAR_PLACES.corral.x, CHUKAR_PLACES.corral.y, { x: 0, z: 0 });
+  const wood = [0x8f8576, 0x7f7668, 0x9c9282, 0x6f685e], count = 16, rx = 7.5, rz = 6;
+  const posts: THREE.Vector3[] = [];
+  for (let i = 0; i < count; i++) {
+    const a = i / count * Math.PI * 2 + (rng() - .5) * .12, x = c.x + Math.cos(a) * rx * (.94 + rng() * .1), z = c.z + Math.sin(a) * rz * (.94 + rng() * .1);
+    const ground = groundAt(x, z), h = 1.35 + rng() * .35, lean = (rng() - .5) * .18;
+    const top = V(x + lean, ground + h, z + (rng() - .5) * .14);
+    rod(kit, V(x, ground - .2, z), top, .09 + rng() * .03, wood[i % wood.length], 6, .07);
+    posts.push(top);
+    if (i % 2 === 0) host.obstacles.push({ x, z, radius: .35 });
+  }
+  for (let i = 0; i < count; i++) {
+    if (i === 3 || i === 4 || rng() < .25) continue; // the gate gap and broken spans
+    const a = posts[i], b = posts[(i + 1) % count];
+    for (const drop of [.25, .75]) rod(kit, V(a.x, a.y - drop, a.z), V(b.x, b.y - drop - (rng() - .5) * .1, b.z), .045, wood[(i + 1) % wood.length], 5);
+    // A rail in the gap between posts keeps the hunter out of the ring.
+    const m = V((a.x + b.x) / 2, 0, (a.z + b.z) / 2);
+    host.obstacles.push({ x: m.x, z: m.z, radius: .45 });
+  }
+  for (let i = 0; i < 6; i++) {
+    const a = rng() * Math.PI * 2, r = rx * (.4 + rng() * .9), x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r * .8, yaw = rng() * Math.PI;
+    const g = groundAt(x, z) + .05, l = 2 + rng() * 1.6;
+    rod(kit, V(x - Math.cos(yaw) * l / 2, g, z - Math.sin(yaw) * l / 2), V(x + Math.cos(yaw) * l / 2, g + .04, z + Math.sin(yaw) * l / 2), .05, wood[i % wood.length], 5);
+  }
+  return kit;
+}
+
+/** A homesteader's cabin is gone but its fieldstone chimney stands, with
+ * the low outline of the cabin's footings in front of it. */
+function buildChimney(host: ChukarHistoryHost, groundAt: (x: number, z: number) => number): Kit {
+  const kit = new Kit(), rng = mulberry32(6133), c = host.landscape.propertyToWorld(CHUKAR_PLACES.chimney.x, CHUKAR_PLACES.chimney.y, { x: 0, z: 0 });
+  const rock = [0x8c8274, 0x7b7366, 0x968b7a, 0x6e675d];
+  const base = Math.min(groundAt(c.x - .8, c.z), groundAt(c.x + .8, c.z), groundAt(c.x, c.z - .8), groundAt(c.x, c.z + .8)) - .1;
+  let y = base;
+  for (let course = 0; course < 22; course++) {
+    const w = course < 9 ? 1.7 : 1.05 - (course - 9) * .015, d = course < 9 ? 1.2 : .9, h = .2 + rng() * .05;
+    for (let i = 0; i < 4; i++) {
+      const a = i * Math.PI / 2 + (course % 2) * .2;
+      kit.add(new THREE.BoxGeometry(w * (i % 2 ? .55 : 1), h, d * (i % 2 ? 1 : .3)), rock[(course + i) % rock.length],
+        place(c.x + Math.cos(a) * (i % 2 ? w * .25 : 0), y + h / 2, c.z + Math.sin(a) * (i % 2 ? 0 : d * .35), 0, (rng() - .5) * .05, 0), .1, rng);
+    }
+    y += h * .97;
+  }
+  // Footings of the cabin, a course or two showing.
+  for (const [dx, dz, l, yaw] of [[0, 2.6, 5.6, 0], [-2.8, 5.2, 5.2, Math.PI / 2], [2.8, 5.2, 5.2, Math.PI / 2], [0, 7.8, 5.6, 0]] as const) {
+    for (let k = 0; k < 6; k++) {
+      const t = (k / 5 - .5) * l, x = c.x + dx + Math.cos(yaw) * t, z = c.z + dz + Math.sin(yaw) * t;
+      kit.add(stone(rng), rock[k % rock.length], place(x, groundAt(x, z) + .08, z, rng(), rng() * 6, rng(), .5 + rng() * .3, .25, .4), .1, rng);
+    }
+  }
+  host.obstacles.push({ x: c.x, z: c.z, radius: 1.1 });
+  return kit;
+}
+
+/** Split Rock: one house-sized basalt block cracked in two, under the face. */
+function buildSplitRock(host: ChukarHistoryHost, groundAt: (x: number, z: number) => number): Kit {
+  const kit = new Kit(), rng = mulberry32(7307), c = host.landscape.propertyToWorld(CHUKAR_PLACES.splitRock.x, CHUKAR_PLACES.splitRock.y, { x: 0, z: 0 });
+  const ground = Math.min(groundAt(c.x - 2, c.z), groundAt(c.x + 2, c.z), groundAt(c.x, c.z - 2), groundAt(c.x, c.z + 2));
+  for (const side of [-1, 1]) {
+    const x = c.x + side * 1.35, z = c.z + side * .2;
+    kit.add(new THREE.DodecahedronGeometry(1, 0), side < 0 ? 0x524c46 : 0x5d5650,
+      place(x, ground + 1.15, z, (rng() - .5) * .3, rng() * 3, side * .12, 1.55, 1.7, 2.1), .06, rng);
+    host.obstacles.push({ x, z, radius: 1.7 });
+  }
+  return kit;
 }

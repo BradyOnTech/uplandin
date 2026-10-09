@@ -11,8 +11,12 @@ import { QUAIL_CREEK_BED, quailCreekAt } from './quailFeatures';
 import { pheasantPondRadii } from './pheasantHabitat';
 import { createPheasantHomesteadGround } from './pheasantHomesteadGround';
 import { PROPERTY_PX_TO_M } from './worldUnits';
-import { chukarAuthoredHeight, chukarGroundZones } from './chukarLandscape';
+import { chukarHeight, chukarRimBlockers, chukarSolidAt } from './chukarCanyon';
+import { chukarSurfaceAt } from './chukarHabitat';
 import { sharptailAuthoredHeight, sharptailGroundZones } from './sharptailLandscape';
+
+/** Yards of room a dog needs beside solid rock to pick up or point a bird. */
+const OPEN_MARGIN = 1.6;
 
 /** One shared map pixel is one yard in the 3D presentation. */
 export { PROPERTY_PX_TO_M } from './worldUnits';
@@ -49,6 +53,10 @@ type Noise2D = ReturnType<typeof makeNoise>;
 
 interface LandformAdapter {
   heightAt(x: number, z: number, profile: AreaTerrainProfile, noise: Noise2D): number;
+  /** Solid ground features (rimrock) in property yards; radius in yards. */
+  solids?(): readonly { x: number; y: number; radius: number }[];
+  /** Whether a property position is inside solid rock, grown by a margin (yards). */
+  solidAt?(propertyX: number, propertyY: number, margin?: number): boolean;
   surfaceAt(
     x: number,
     z: number,
@@ -475,19 +483,17 @@ function woodcockLandform(area: AreaConfig): LandformAdapter {
   };
 }
 
-function chukarLandform(area:AreaConfig):LandformAdapter {
-  const drop=getDropPoint(area),zones={talus:0,shelter:0};
+/** Chukar Ridge: the authored canyon (chukarCanyon.ts) with habitat read
+ * from the land (chukarHabitat.ts). Basalt rims are solid. */
+function chukarLandform(area: AreaConfig): LandformAdapter {
+  const drop = getDropPoint(area);
+  const px = (x: number) => (x - HUNT_WORLD_ANCHOR.x) / PROPERTY_PX_TO_M + drop.position.x;
+  const py = (z: number) => (z - HUNT_WORLD_ANCHOR.z) / PROPERTY_PX_TO_M + drop.position.y;
   return {
-    heightAt(x,z,_profile,noise){
-      const px=(x-HUNT_WORLD_ANCHOR.x)/PROPERTY_PX_TO_M+drop.position.x,py=(z-HUNT_WORLD_ANCHOR.z)/PROPERTY_PX_TO_M+drop.position.y;
-      return chukarAuthoredHeight(px,py)+(noise(x*.038+731,z*.038+731)-.5)*.48;
-    },
-    surfaceAt(x,z,height,slope,gx,gz,noise,out){
-      RIMROCK_LANDFORM.surfaceAt(x,z,height,slope,gx,gz,noise,out);
-      chukarGroundZones((x-HUNT_WORLD_ANCHOR.x)/PROPERTY_PX_TO_M+drop.position.x,(z-HUNT_WORLD_ANCHOR.z)/PROPERTY_PX_TO_M+drop.position.y,zones);
-      out.rockiness=Math.max(0,Math.min(1,out.rockiness*.7+zones.talus*.64));
-      out.vegetation=Math.max(0,Math.min(1,.28+out.vegetation*.56+zones.shelter*.3-zones.talus*.3));
-    },
+    heightAt: (x, z) => chukarHeight(px(x), py(z)),
+    surfaceAt(x, z, _height, slope, gradeX, gradeZ, _noise, out) { chukarSurfaceAt(px(x), py(z), slope, gradeX, gradeZ, out); },
+    solids: () => chukarRimBlockers(),
+    solidAt: chukarSolidAt,
   };
 }
 
@@ -574,6 +580,31 @@ export class LandscapeModel {
     const propertyY =
       (worldZ - HUNT_WORLD_ANCHOR.z) / PROPERTY_PX_TO_M + this.dropPoint.position.y;
     return this.heightAtProperty(propertyX, propertyY);
+  }
+
+  /** Solid landform features (rimrock) every walker, dog and bird avoids:
+   * property yards, radius in yards. Empty on grounds without them. */
+  solidBlockers(): readonly { x: number; y: number; radius: number }[] {
+    return this.landform.solids?.() ?? [];
+  }
+
+  /** Whether a shared-map position lies inside solid rock, or within
+   * `margin` yards of it. */
+  solidAtProperty(propertyX: number, propertyY: number, margin = 0): boolean {
+    return this.landform.solidAt?.(propertyX, propertyY, margin) ?? false;
+  }
+
+  /** The nearest shared-map position with room for a dog beside the rock
+   * (itself when it has room). Writes into out. A fall or a bird never rests
+   * inside the rimrock or wedged against it out of a dog's reach. */
+  openPropertyNear<T extends Vec2>(propertyX: number, propertyY: number, out: T): T {
+    out.x = propertyX; out.y = propertyY;
+    if (!this.solidAtProperty(propertyX, propertyY, OPEN_MARGIN)) return out;
+    for (let r = 1; r <= 14; r += 1) for (let k = 0; k < 16; k++) {
+      const a = k / 16 * Math.PI * 2, x = propertyX + Math.cos(a) * r, y = propertyY + Math.sin(a) * r;
+      if (!this.solidAtProperty(x, y, OPEN_MARGIN)) { out.x = x; out.y = y; return out; }
+    }
+    return out;
   }
 
   /** Shared terrain/vegetation classification beneath a local 3D point. */

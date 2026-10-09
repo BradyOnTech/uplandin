@@ -7,7 +7,9 @@ import { pheasantCoverFringeAt, pheasantFields, pheasantPonds, pheasantShelterbe
 import { pheasantFarmFenceLines, type PheasantCrop } from '../../game/pheasantFarm';
 /** Survey tints for the harvested fields, matching the ground in the field. */
 const SURVEY_CROP: Record<PheasantCrop, [number, number, number]> = { corn: [222, 204, 162], beans: [184, 160, 132], wheat: [236, 209, 140], hay: [188, 192, 140] };
-import { chukarBrows } from '../../game/chukarLandscape';
+import { chukarRimModules } from '../../game/chukarCanyon';
+import { huntAreasFor } from '../../game/huntAreas';
+import { habitatClassAt } from '../../game/landHabitat';
 
 export interface SurveyView { center: Vec2; zoom: number }
 export interface SurveyTransform { scale: number; x: number; y: number }
@@ -69,6 +71,9 @@ type RGB = [number,number,number];
 const blend = (a: RGB, b: RGB, amount: number): RGB => {
   const t=clamp(amount,0,1);return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
 };
+/** Cartographic tints for land habitat classes. */
+const SURVEY_COVER: Record<string, RGB> = { sage: [150, 158, 128], cheat: [226, 204, 150], bunchgrass: [196, 184, 136], talus: [150, 146, 136],
+  rimrock: [92, 88, 82], seep: [118, 156, 96], bare: [214, 198, 166] };
 const inRect = (x:number,y:number,r:Rect) => x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h;
 const grain = (x:number,y:number) => { const n=Math.sin(x*127.1+y*311.7)*43758.5453;return n-Math.floor(n); };
 
@@ -94,8 +99,13 @@ export function buildSurveyRaster(area: AreaConfig, cols = 224): SurveyRaster {
     let color=blend(low,high,(surface.height-minHeight)/span);
     color=blend(color,[141,161,137],surface.moisture*(woods?.35:.6));
     color=blend(color,[157,150,132],surface.rockiness*.48);
-    const cover=pheasant?pheasantCoverFringeAt(area,px,py):Number(area.patches.some(p=>inRect(px,py,p)));
-    color=blend(color,woods?[91,125,99]:[136,151,98],cover*.72);
+    // Grounds with land habitat show their cover classes, not rectangles.
+    const habitat=habitatClassAt(area,px,py);
+    if(habitat)color=blend(color,SURVEY_COVER[habitat]??color,.62);
+    else{
+      const cover=pheasant?pheasantCoverFringeAt(area,px,py):Number(area.patches.some(p=>inRect(px,py,p)));
+      color=blend(color,woods?[91,125,99]:[136,151,98],cover*.72);
+    }
     if(pheasant){
       samplePheasantHarvest(area,px,py,fields,harvest as PheasantHarvestSample);
       color=blend(color,SURVEY_CROP[(harvest as PheasantHarvestSample).crop??'corn'],harvest.amount*.72);
@@ -141,12 +151,18 @@ export function createSurveyAtlas(area:AreaConfig):{canvas:HTMLCanvasElement;con
     g.beginPath();for(const [x1,y1,x2,y2]of surveyContours(raster,level)){g.moveTo(x1*canvas.width,y1*canvas.height);g.lineTo(x2*canvas.width,y2*canvas.height);}g.stroke();
   }
   const pheasant=area.id==='pheasant-coverts',fields=pheasant?pheasantFields(area):[],sample={amount:0,row:0,angle:0};
-  if(area.id==='chukar-ridge')for(const brow of chukarBrows(area)){
-    const [x,y]=point(brow.x,brow.y),half=brow.length*sx*.5,depth=brow.depth/PROPERTY_PX_TO_M*sy;
-    g.save();g.translate(x,y);g.rotate(brow.angle);g.fillStyle='#808575b8';g.strokeStyle='#606c58';g.lineWidth=1;
-    g.beginPath();g.moveTo(-half,-depth*.32);g.lineTo(-half*.7,-depth*.5);g.lineTo(half*.72,-depth*.39);
-    g.lineTo(half,depth*.12);g.lineTo(half*.65,depth*.42);g.lineTo(-half*.8,depth*.38);g.closePath();g.fill();g.stroke();
-    g.strokeStyle='#485844bb';for(let xx=-half*.75;xx<half*.85;xx+=7){g.beginPath();g.moveTo(xx,depth*.27);g.lineTo(xx-2,depth*.65);g.stroke();}g.restore();
+  if(area.id==='chukar-ridge'){
+    // Rimrock as a dark cliff line with short hachures falling downhill.
+    g.strokeStyle='#3f3c37d0';g.lineWidth=2;g.lineCap='round';
+    for(const m of chukarRimModules()){
+      const [x,y]=point(m.x,m.y),dx=-m.ny*2.4*sx,dy=m.nx*2.4*sy;
+      g.beginPath();g.moveTo(x-dx,y-dy);g.lineTo(x+dx,y+dy);g.stroke();
+    }
+    g.strokeStyle='#4a463f80';g.lineWidth=.9;
+    for(const [i,m] of chukarRimModules().entries()){
+      if(i%2)continue;
+      const [x,y]=point(m.x,m.y);g.beginPath();g.moveTo(x,y);g.lineTo(x+m.nx*7*sx,y+m.ny*7*sy);g.stroke();
+    }
   }
   // Small cartographic marks follow the real habitat union; rectangle seams disappear.
   for(let y=5;y<area.world.h;y+=7)for(let x=5;x<area.world.w;x+=7){
@@ -162,6 +178,13 @@ export function createSurveyAtlas(area:AreaConfig):{canvas:HTMLCanvasElement;con
       g.strokeStyle='#a18a4c32';g.lineWidth=.8;g.beginPath();
       if(along){g.moveTo(cx-2.5,cy+1);g.lineTo(cx+2.5,cy+1);}else{g.moveTo(cx+1,cy-2.5);g.lineTo(cx+1,cy+2.5);}g.stroke();
     }
+  }
+  // Named hunt areas, lettered across the ground the way a map names a basin.
+  for(const hunt of huntAreasFor(area)){
+    const [x,y]=point(hunt.center.x,hunt.center.y);
+    g.save();g.font='italic 600 15px Georgia, serif';g.textAlign='center';g.textBaseline='middle';
+    g.lineWidth=3.5;g.strokeStyle='#efe6cfcc';g.strokeText(hunt.name.toUpperCase(),x,y);
+    g.fillStyle='#5b5236';g.fillText(hunt.name.toUpperCase(),x,y);g.restore();
   }
   if(pheasant){
     const landscape=new LandscapeModel(area);

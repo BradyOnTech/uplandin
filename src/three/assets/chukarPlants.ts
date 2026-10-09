@@ -113,20 +113,30 @@ export function chukarGrassGeometry(lite:boolean):THREE.BufferGeometry {
   return surface.geometry('chukar-dry-bunchgrass');
 }
 
+/** Big sagebrush: a few gnarled grey stems leaning out from one root, and a
+ * ragged, wider-than-tall crown of small flat-topped tufts at unequal
+ * heights. Silver-grey foliage (the instance colour carries the tone), not a
+ * rounded leafy head. Both tiers keep the same stems and the largest tufts. */
 export function chukarSageGeometry(lite:boolean):THREE.BufferGeometry {
-  const surface=new PlantSurface();
-  // Unequal compact foliage masses hang over a low, open woody framework.
-  // Both tiers keep the same five centers. Lite spends 108 triangles total,
-  // compared with 110 for the previous ten pointed foliage cups.
-  for(let stem=0;stem<5;stem++){
-    const rng=mulberry32(9961+stem*317),az=stem*2.399,height=.48+rng()*.27,reach=.27+rng()*.24;
-    const fork:Point=[Math.sin(az)*reach*.38,height*.34,Math.cos(az)*reach*.38];
-    const crown:Point=[Math.sin(az)*reach,height,Math.cos(az)*reach];
-    surface.branch([0,.015,0],fork,.023,lite);surface.branch(fork,crown,.017,lite);
-    surface.crown(crown,.29+rng()*.045,.43+rng()*.07,az,lite,.84+rng()*.09);
-    if(!lite)surface.leaf(crown,az,.25,.026,.92);
+  const surface=new PlantSurface(),rng=mulberry32(9961);
+  // Short gnarled stems show only at the foot; the crown sits on them.
+  for(let stem=0;stem<3;stem++){
+    const az=stem*2.18+rng()*.5,lean=.12+rng()*.08;
+    surface.branch([Math.sin(az)*.03,.012,Math.cos(az)*.03],[Math.sin(az)*lean,.3+rng()*.06,Math.cos(az)*lean],.032,lite);
   }
-  // Broken basal litter gives the wood a root bed, not a floating foliage cap.
+  // A low, wider-than-tall mound of overlapping tufts, ragged on top: the
+  // big centre lumps first so Lite keeps the same outline in fewer pieces.
+  const tufts:{p:Point;r:number;h:number;a:number}[]=[];
+  for(let n=0;n<7;n++){
+    const a=n*2.399+rng()*.4,reach=n===0?0:.22+rng()*.22,high=n===0?.62:.26+rng()*.36;
+    tufts.push({p:[Math.sin(a)*reach,high,Math.cos(a)*reach*.9],r:(n===0?.42:.28+rng()*.11),h:.36+rng()*.14,a});
+  }
+  tufts.sort((a,b)=>b.r-a.r);
+  tufts.forEach((t,i)=>{
+    if(lite&&i>=4)return;
+    surface.crown(t.p,t.r*(lite?1.18:1),t.h*(lite?1.1:1),t.a,true,.8+(i%3)*.05);
+  });
+  // Broken basal litter gives the wood a root bed, not a floating canopy.
   for(let leaf=0;leaf<4;leaf++)surface.leaf([0,.02,0],leaf*2.399+.4,.33+leaf*.035,.04,.57);
   return surface.geometry('chukar-silver-sage');
 }

@@ -7,6 +7,7 @@ import { HuntSimulation } from '../src/game/huntSimulation';
 import { mulberry32 } from '../src/game/math';
 import { createHunt } from '../src/game/state';
 import { LandscapeModel } from '../src/game/landscape';
+import { chukarPointOnBand } from '../src/game/chukarCanyon';
 import { pheasantApproach } from '../src/game/pheasantApproach';
 import { HUNT_CHALLENGES, type HuntChallenge } from '../src/game/huntChallenge';
 
@@ -42,7 +43,9 @@ function pointedSimulation(hunterDistance: number, continuousEncounter = false, 
 describe('HuntSimulation shared orchestration', () => {
   it('retains authoritative slope per active rise and clears only the settled covey', () => {
     const f = pointedSimulation(30, true, 'chukar-ridge', 'chukar');
-    const other = { ...f.bird, id: 9002, coveyId: 78, pos: { x: 600, y: 200 } };
+    // Both birds on the canyon's cheat slopes, wherever the land puts them.
+    f.bird.pos = chukarPointOnBand({ x: 900, y: 790 }, 'lower-cheat');
+    const other = { ...f.bird, id: 9002, coveyId: 78, pos: chukarPointOnBand({ x: 460, y: 760 }, 'lower-cheat') };
     f.hunt.birds.push(other);
     const terrain = new LandscapeModel(getArea('chukar-ridge'));
     const slopeSide = (bird: Bird, above: boolean) => Array.from({ length: 72 }, (_, i) => ({
@@ -226,11 +229,17 @@ describe('HuntSimulation shared orchestration', () => {
   it('uses the actual Chukar cross-slope elevation for continuous encounters', () => {
     const area = getArea('chukar-ridge');
     const land = new LandscapeModel(area, 'south-gate');
-    // The authored eastern shoulder falls across the compass slope. The
-    // legacy north-facing model calls this same-y approach level, although
-    // the hunter is more than eight metres below the bird on real terrain.
-    const birdPos = {x:1010,y:400};
-    const hunterPos = {x:1042,y:400};
+    // Find a slope that falls across the compass uphill: a draw or creek wall
+    // where a hunter at the same y, 32 yd east, stands well below the bird.
+    // The legacy north-facing model calls that approach level.
+    let birdPos = { x: 0, y: 0 };
+    search: for (let y = 200; y < 1300; y += 9) for (let x = 100; x < 2000; x += 9) {
+      const drop = land.heightAtProperty(x, y) - land.heightAtProperty(x + 32, y);
+      const across = Math.abs(land.heightAtProperty(x, y - 2) - land.heightAtProperty(x, y + 2));
+      if (drop > 8 && drop < 14 && across < .5 && !land.solidAtProperty(x, y, 3) && !land.solidAtProperty(x + 32, y, 3)
+        && Math.abs(land.heightAtProperty(x - 32, y) - land.heightAtProperty(x, y) - drop) < 4) { birdPos = { x, y }; break search; }
+    }
+    const hunterPos = { x: birdPos.x + 32, y: birdPos.y };
     expect(land.heightAtProperty(birdPos.x, birdPos.y)
       - land.heightAtProperty(hunterPos.x, hunterPos.y)).toBeGreaterThan(5);
     const fixture = (continuousEncounter: boolean, speciesId = 'chukar') => {
@@ -254,7 +263,7 @@ describe('HuntSimulation shared orchestration', () => {
     expect(legacy.simulation.flushBird(9001, 'nerve', 0)?.slopeApproach).toBe('level');
     const nonMountain = fixture(true, 'bobwhite');
     expect(nonMountain.simulation.flushBird(9001, 'proximity', 0)?.slopeApproach).toBeNull();
-    for (const [x, y, expected] of [[978, 400, 'above'], [1010, 399, 'level']] as const) {
+    for (const [x, y, expected] of [[birdPos.x - 32, birdPos.y, 'above'], [birdPos.x, birdPos.y - 1, 'level']] as const) {
       const f = fixture(true);
       f.hunt.hunterPos = {x,y};
       expect(f.simulation.flushBird(9001, 'proximity', 0)?.slopeApproach).toBe(expected);

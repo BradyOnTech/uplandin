@@ -143,7 +143,10 @@ describe('close flushes', () => {
   it('puts most pointed quail coveys up around the hunter, chukar often, sharptail now and then', () => {
     const quail = share('quail-fields'), chukar = share('chukar-ridge'), sharptail = share('sharptail-prairie');
     expect(quail).toBeGreaterThan(.55);
-    expect(chukar).toBeGreaterThan(.2); expect(chukar).toBeLessThan(quail);
+    // Chukar Ridge is a canyon now: a roaming hunter mostly climbs to a
+    // point from below, and chukar approached from below go up at the edge
+    // of their radius (about 7 yd) more than at his feet. Still often close.
+    expect(chukar).toBeGreaterThan(.15); expect(chukar).toBeLessThan(quail);
     expect(sharptail).toBeLessThan(.25); expect(sharptail).toBeLessThan(chukar);
   }, 240_000);
 });
