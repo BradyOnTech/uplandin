@@ -1,6 +1,6 @@
 import { TrainingSession, parseTraining, settleTraining, type TrainingAward } from '../../game/training';
 import { developmentForLevel } from '../../game/dogDevelopment';
-import type { SeasonDate } from '../../game/season';
+import type { Month, SeasonDate } from '../../game/season';
 import { bagCount, bagRuleFor, limitedOut, limitFilled, limitsApply } from '../../game/bagLimits';
 import * as THREE from 'three';
 import type { SlopeApproach } from '../../game/fieldcraft';
@@ -234,6 +234,7 @@ export class Hunt3DSystem implements Subsystem {
   /** Call names for feedback; career dogs by name, Quick dogs by breed. */
   private dogNames: string[] = [];
   private ctxRef: Ctx | null = null;
+  private monthValue: Month = 'October';
 
   constructor(private readonly landscape: LandscapeModel) {}
 
@@ -274,6 +275,7 @@ export class Hunt3DSystem implements Subsystem {
     this.releaseMilestone = !parseTraining(location.search) && setup.launch?.kind === 'career' ? lastSeasonLine(setup.area.id, [setup.kennelDog, setup.brace?.kennelDog ?? null]) : null;
     this.area = setup.area;
     this.hunt = setup.hunt;
+    this.monthValue = setup.month;
     this.falconry = this.hunt.huntingMethod === 'goshawk' ? new GoshawkFlight() : null;
     const drop = getDropPoint(this.area, this.hunt.dropPointId);
     if (this.landscape.area.id !== this.area.id || this.landscape.dropPoint.id !== drop.id) {
@@ -919,6 +921,11 @@ export class Hunt3DSystem implements Subsystem {
 
   condition(): Condition {
     return this.hunt.condition;
+  }
+
+  /** The month the field is dressed for (fieldConditions.ts). */
+  month(): Month {
+    return this.monthValue;
   }
 
   dropPoint(): DropPoint {
