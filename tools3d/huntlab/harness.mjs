@@ -16,7 +16,7 @@ export const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const DT = 1000 / 30;
 const M = 0.9144;
 /** Shooting: a hunter takes birds 12–38 m out, at most two shots a rise. */
-const SHOT_MIN_M = 12, SHOT_MAX_M = 38, SHOT_REACTION_MS = 380, SHOT_GAP_MS = 420;
+const SHOT_MIN_M = 12, SHOT_MAX_M = 38, SHOT_REACTION_MS = 380, SHOT_GAP_MS = 420, GUN_RELOAD_MS = 2600;
 /** A downed bird not delivered within this long is a stuck retrieve. */
 const STUCK_RETRIEVE_S = 90;
 /** One dog state held this long (except heel and quartering) is stuck. */
@@ -117,8 +117,12 @@ export async function runHunt(o) {
   const player = { isRunning: () => false, consumeRecall: () => false, consumeCommands: () => commands.splice(0),
     setHuntHeading: (_c, heading) => { camera.rotation.y = -heading - Math.PI / 2; }, setPose() {} };
   const terrain = { heightAt: (x, z) => landscape.heightAtWorld(x, z) };
+  // A double gun the scripted hunter fires and reloads; the birds' waves
+  // read it (Duck Hunt rules: the next wave waits on the gun).
+  const gun = { shells: 2, reloadEndsMs: 0, nowMs: 0,
+    shellsRemaining() { return this.shells; }, shellCapacity: () => 2, isReloading() { return this.nowMs < this.reloadEndsMs; } };
   let birds = null;
-  const systems = { player, hunt3d: hunt, terrain };
+  const systems = { player, hunt3d: hunt, terrain, gun };
   const ctx = { scene: new THREE.Scene(), camera, events: new EventTarget(), quality: 'lite', timeOfDay: 'morning', time: 0,
     fixedAlpha: 1, paused: false, get: id => systems[id] ?? (id === 'birds' ? (birds ?? { isRiseActive: () => false }) : {}) };
   hunt.init(ctx);
@@ -197,6 +201,8 @@ export async function runHunt(o) {
     const cam = camera.position;
     const dx = dw.x - cam.x, dz = dw.z - cam.z, d = Math.hypot(dx, dz);
     const riseActive = birds ? birds.isRiseActive() : false;
+    gun.nowMs = nowMs;
+    if (gun.shells === 0 && nowMs >= gun.reloadEndsMs) gun.shells = 2;
     if (!riseActive && riseWasActive) riseShots = 0;
     riseWasActive = riseActive;
     // ---- scripted hunter ----
@@ -277,7 +283,7 @@ export async function runHunt(o) {
     } else if (d > .5 && !riseActive) camera.rotation.y = Math.atan2(-dx, -dz);
     cam.y = landscape.heightAtWorld(cam.x, cam.z) + 1.7;
     // ---- shooting ----
-    if (opts.shoot && birds && riseShots < 2 && nowMs - lastShotMs > SHOT_GAP_MS) {
+    if (opts.shoot && birds && gun.shells > 0 && !gun.isReloading() && nowMs - lastShotMs > SHOT_GAP_MS) {
       const hs = hunt.huntState();
       const candidates = birds.airborne().filter(a => a.status === 'flying' && a.airMs > SHOT_REACTION_MS).map(a => ({ a,
         range: Math.hypot(a.x - cam.x, a.y - cam.y, a.z - cam.z), bird: hs.birds.find(b => b.id === a.simId) }))
@@ -287,6 +293,7 @@ export async function runHunt(o) {
       if (shot) {
         camera.rotation.y = Math.atan2(-(shot.a.x - cam.x), -(shot.a.z - cam.z));
         res.shots++; riseShots++; lastShotMs = nowMs;
+        if (--gun.shells <= 0) { gun.shells = 0; gun.reloadEndsMs = nowMs + GUN_RELOAD_MS; }
         const p = Math.max(.25, Math.min(.8, .95 - shot.range * .017));
         if (shotRng() < p && hunt.resolveBird(shot.a.simId, 'downed')) {
           birds.downBird(shot.a.simId, { x: shot.a.x, y: shot.a.y, z: shot.a.z });
