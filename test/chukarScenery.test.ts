@@ -59,7 +59,7 @@ describe('Chukar Ridge scenery', () => {
     for (const tone of CHUKAR_SAGE_TONES) {
       new THREE.Color(tone).getHSL(hsl, THREE.SRGBColorSpace);
       expect(hsl.s).toBeLessThan(.12);
-      expect(hsl.l).toBeGreaterThan(.42); expect(hsl.l).toBeLessThan(.62);
+      expect(hsl.l).toBeGreaterThan(.38); expect(hsl.l).toBeLessThan(.6);
     }
   });
 

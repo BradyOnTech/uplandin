@@ -10,7 +10,8 @@ export const CHUKAR_GROUND_DETAIL = {
   lite: {near:32,far:12,range:125,horizonSpacing:28},
 } as const;
 import { buildQuailTerrainGeometry } from './quailTerrain';
-import { quailGroundTiles, quailGroundUsesNear } from './quailGroundGeometry';
+import { QUAIL_TERRAIN_TILE, quailGroundTiles, quailGroundUsesNear } from './quailGroundGeometry';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { chukarPlantGroupAt } from './chukarSurface';
 
 /** Ground colour comes from the land's habitat: bleached cheat on the sunny
@@ -106,8 +107,10 @@ function applyScreeDetail(material: THREE.MeshLambertMaterial, landscape: Landsc
         float litterEdge=max(abs(local.x+local.y*.22)*5.5,abs(local.y)*.8);
         float litterAA=max(fwidth(litterEdge),.003);
         float litter=1.-smoothstep(.18-litterAA,.18+litterAA,litterEdge);
-        diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(.78,.73,.63),
-          litter*step(seed,.21)*range*resolved*(1.-vRockFace)*.35);
+        // Cured grass blades in most cells off the rock faces: the ground
+        // reads as a dry sward, not bare sand.
+        diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(.74,.69,.58),
+          litter*step(seed,.46)*range*resolved*(1.-vRockFace)*.55);
       `);
   };
 }
@@ -206,8 +209,18 @@ export function createChukarRiver(landscape:LandscapeModel):THREE.Mesh {
 
 /** The entire ridge uses the authoritative property heightfield. Near detail
  * follows the hunter instead of ending at the old drop-centered 480 m plate. */
+/** Far terrain merges into blocks of this many tiles a side: a bigger ground
+ * would otherwise spend a draw on every distant tile. */
+const FAR_BLOCK = 3;
+/** The far blocks sit this far (m) below the near tiles, so a near tile
+ * drawn over its block always wins without fighting it for depth. */
+const FAR_SINK = .15;
+
+/** The entire ridge uses the authoritative property heightfield. Near detail
+ * follows the hunter; the far surface is a few merged blocks. */
 export class ChukarTerrain {
-  private tiles:{near:THREE.Mesh;far:THREE.Mesh;x:number;z:number}[]=[];
+  private tiles:{near:THREE.Mesh;x:number;z:number}[]=[];
+  private far:THREE.Mesh[]=[];
   private distant:THREE.Mesh[]=[];
   private material=new THREE.MeshLambertMaterial({vertexColors:true});
   private nearDistance=170;
@@ -220,33 +233,37 @@ export class ChukarTerrain {
     applyScreeDetail(this.material,this.landscape,this.texture);
     const detail=CHUKAR_GROUND_DETAIL[ctx.quality];
     this.nearDistance=detail.range;
-    // Spend detail on nearby plant silhouettes. The smooth heightfield
-    // keeps the same authored forms with a leaner grid; the footpath uses
+    // Spend detail on nearby plant silhouettes. The footpath and plants use
     // these exact divisions and the same near-distance switch.
-    const nearDivisions = detail.near;
-    const farDivisions = detail.far;
-    const horizonSpacing = detail.horizonSpacing;
+    const blocks=new Map<string,THREE.BufferGeometry[]>(),world=this.landscape.area.world;
     for(const tile of quailGroundTiles(this.landscape)) {
-      const near=new THREE.Mesh(buildQuailTerrainGeometry(this.landscape,tile.x,tile.y,tile.width,tile.depth,nearDivisions,paint),this.material);
-      const far=new THREE.Mesh(buildQuailTerrainGeometry(this.landscape,tile.x,tile.y,tile.width,tile.depth,farDivisions,paint),this.material);
-      near.name='Chukar near terrain';far.name='Chukar distant terrain';near.receiveShadow=far.receiveShadow=true;
-      this.tiles.push({near,far,x:tile.centerX,z:tile.centerZ});ctx.scene.add(near,far);
+      const near=new THREE.Mesh(buildQuailTerrainGeometry(this.landscape,tile.x,tile.y,tile.width,tile.depth,detail.near,paint),this.material);
+      near.name='Chukar near terrain';near.receiveShadow=true;
+      this.tiles.push({near,x:tile.centerX,z:tile.centerZ});ctx.scene.add(near);
+      // The far form of each tile is exactly the per-tile grid, merged by block.
+      const key=`${Math.floor((tile.x-world.x)/(QUAIL_TERRAIN_TILE*FAR_BLOCK))},${Math.floor((tile.y-world.y)/(QUAIL_TERRAIN_TILE*FAR_BLOCK))}`;
+      (blocks.get(key)??blocks.set(key,[]).get(key)!).push(buildQuailTerrainGeometry(this.landscape,tile.x,tile.y,tile.width,tile.depth,detail.far,paint));
+    }
+    for(const parts of blocks.values()){
+      const geometry=mergeGeometries(parts.map(part=>part.index?part.toNonIndexed():part))!;
+      for(const part of parts)part.dispose();
+      geometry.translate(0,-FAR_SINK,0);geometry.computeBoundingSphere();
+      const mesh=new THREE.Mesh(geometry,this.material);mesh.name='Chukar distant terrain';mesh.receiveShadow=true;
+      this.far.push(mesh);ctx.scene.add(mesh);
     }
     for(const [x,y,w,h] of chukarHorizonStrips(this.landscape.area.world)) {
-      const mesh=new THREE.Mesh(buildChukarHorizonGeometry(this.landscape,x,y,w,h,horizonSpacing),this.material);
+      const mesh=new THREE.Mesh(buildChukarHorizonGeometry(this.landscape,x,y,w,h,detail.horizonSpacing),this.material);
       mesh.name='Chukar beyond property';this.distant.push(mesh);ctx.scene.add(mesh);
     }
     this.river=createChukarRiver(this.landscape);ctx.scene.add(this.river);
     this.update(ctx);
   }
   update(ctx:Ctx):void {
-    for(const tile of this.tiles){const near=quailGroundUsesNear(tile.x,tile.z,ctx.camera.position.x,ctx.camera.position.z,this.nearDistance);
-      tile.near.visible=near;tile.far.visible=!near;}
+    for(const tile of this.tiles)tile.near.visible=quailGroundUsesNear(tile.x,tile.z,ctx.camera.position.x,ctx.camera.position.z,this.nearDistance);
   }
   dispose(ctx:Ctx):void {
-    for(const tile of this.tiles)for(const mesh of [tile.near,tile.far]){ctx.scene.remove(mesh);mesh.geometry.dispose();}
-    for(const mesh of this.distant){ctx.scene.remove(mesh);mesh.geometry.dispose();}
+    for(const mesh of [...this.tiles.map(tile=>tile.near),...this.far,...this.distant]){ctx.scene.remove(mesh);mesh.geometry.dispose();}
     if(this.river){ctx.scene.remove(this.river);this.river.geometry.dispose();(this.river.material as THREE.Material).dispose();this.river=undefined;}
-    this.texture?.dispose();this.material.dispose();this.tiles.length=0;this.distant.length=0;
+    this.texture?.dispose();this.material.dispose();this.tiles.length=0;this.far.length=0;this.distant.length=0;
   }
 }

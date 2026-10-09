@@ -127,14 +127,16 @@ export function chukarSageGeometry(lite:boolean):THREE.BufferGeometry {
   // A low, wider-than-tall mound of overlapping tufts, ragged on top: the
   // big centre lumps first so Lite keeps the same outline in fewer pieces.
   const tufts:{p:Point;r:number;h:number;a:number}[]=[];
-  for(let n=0;n<7;n++){
-    const a=n*2.399+rng()*.4,reach=n===0?0:.22+rng()*.22,high=n===0?.62:.26+rng()*.36;
-    tufts.push({p:[Math.sin(a)*reach,high,Math.cos(a)*reach*.9],r:(n===0?.42:.28+rng()*.11),h:.36+rng()*.14,a});
+  for(let n=0;n<10;n++){
+    const a=n*2.399+rng()*.4,reach=n===0?0:.18+rng()*.3,high=n===0?.68:.22+rng()*.46;
+    tufts.push({p:[Math.sin(a)*reach,high,Math.cos(a)*reach*.9],r:(n===0?.34:.2+rng()*.11),h:.3+rng()*.14,a});
   }
+  // Many small tufts make a soft, broken outline (foliage, not a stone);
+  // the lower ones sit in shadow under the crown.
   tufts.sort((a,b)=>b.r-a.r);
   tufts.forEach((t,i)=>{
-    if(lite&&i>=4)return;
-    surface.crown(t.p,t.r*(lite?1.18:1),t.h*(lite?1.1:1),t.a,true,.8+(i%3)*.05);
+    if(lite&&i>=5)return;
+    surface.crown(t.p,t.r*(lite?1.3:1),t.h*(lite?1.15:1),t.a,true,(.66+t.p[1]*.32)*(.94+(i%3)*.04));
   });
   // Broken basal litter gives the wood a root bed, not a floating canopy.
   for(let leaf=0;leaf<4;leaf++)surface.leaf([0,.02,0],leaf*2.399+.4,.33+leaf*.035,.04,.57);

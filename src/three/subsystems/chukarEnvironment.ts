@@ -24,16 +24,22 @@ const TRACK_HALF_WIDTH_M = .8;
 const SPACING = 2.65;
 /** Ranges (metres) at which each kind of scatter is drawn. */
 const RANGE = {
-  high: { grass: 190, sage: 240, chips: 170, talus: 320, build: 340 },
-  lite: { grass: 120, sage: 180, chips: 100, talus: 210, build: 225 },
+  high: { grass: 150, sage: 190, chips: 130, talus: 300, build: 320 },
+  lite: { grass: 95, sage: 130, chips: 80, talus: 200, build: 215 },
 } as const;
+/** Past this distance (m) from a tile's edge only its thinned share is
+ * drawn: one grass bunch in THIN_GRASS and one sage in THIN_SAGE. */
+const DENSE_RANGE = { high: 45, lite: 30 } as const;
+const THIN_GRASS = 3, THIN_SAGE = 2;
+/** Share of grass and sage candidates each tier keeps up close. */
+const KEEP = { high: { grass: .62, sage: .7 }, lite: { grass: .34, sage: .4 } } as const;
 /** Tiles built per frame while walking; a jump builds everything at once. */
 const TILES_PER_FRAME = 1;
 
 /** Basalt talus: dark grey-brown blocks, a few paler weathered faces. */
 const STONE = [0x6d665e, 0x5f5953, 0x7b746b, 0x857e74, 0x67615a];
 /** Big sagebrush in October: silver-grey, never saturated green. */
-export const CHUKAR_SAGE_TONES = [0x8f9284, 0x82867a, 0x999b8c, 0x8a8d80];
+export const CHUKAR_SAGE_TONES = [0x828a78, 0x767d6c, 0x8c9282, 0x7d8373];
 const SAGE = CHUKAR_SAGE_TONES;
 /** Cheatgrass bleached to gold; bluebunch wheatgrass cured tawny. */
 const CHEAT = [0xc5b086, 0xcfba8e, 0xb9a47b, 0xd5c299];
@@ -44,8 +50,9 @@ function seed(x: number, y: number, salt = 0): number {
   return (Math.imul(x, 73856093) ^ Math.imul(y, 19349663) ^ Math.imul(salt + 7701, 83492791)) >>> 0;
 }
 
-interface Plant { x: number; y: number; yaw: number; sx: number; sy: number; sz: number; color: number }
-interface Batch { mesh: THREE.InstancedMesh; range: number; radius: number; center: THREE.Vector3; shadow: boolean; nearGeometry: THREE.BufferGeometry; farGeometry?: THREE.BufferGeometry; detailRange: number; shadowRange: number; owned: THREE.BufferGeometry[] }
+interface Plant { x: number; y: number; yaw: number; sx: number; sy: number; sz: number; color: number; /** Kept in the thinned far share. */ far?: boolean }
+interface Batch { mesh: THREE.InstancedMesh; range: number; radius: number; center: THREE.Vector3; shadow: boolean; nearGeometry: THREE.BufferGeometry; farGeometry?: THREE.BufferGeometry; detailRange: number; shadowRange: number; owned: THREE.BufferGeometry[];
+  /** Instances in the far share (drawn first); the rest only up close. */ farCount: number; total: number }
 interface Tile { key: number; x: number; y: number; batches: Batch[] }
 
 /** Property-space distance keeps the same paths open from either parking place. */
@@ -158,6 +165,9 @@ export class ChukarEnvironmentSystem implements Subsystem {
 
   private batch(tile: Tile, geometry: THREE.BufferGeometry, material: THREE.Material, plants: Plant[], range: number, shadow: boolean, rock = false, farGeometry?: THREE.BufferGeometry, detailRange = 65, shadowRange = 110): void {
     if (!plants.length) return;
+    // The far share first, so drawing a prefix of the instances thins them.
+    const farCount = plants.some(p => p.far !== undefined) ? plants.filter(p => p.far).length : plants.length;
+    if (farCount < plants.length) plants = [...plants.filter(p => p.far), ...plants.filter(p => !p.far)];
     const owned: THREE.BufferGeometry[] = [];
     const grounds = rock ? null : new Float32Array(plants.length * 3);
     if (grounds) {
@@ -192,7 +202,7 @@ export class ChukarEnvironmentSystem implements Subsystem {
     mesh.boundingSphere!.radius += maxGroundShift + (grounds ? .15 : 0);
     if (grounds) mesh.customDepthMaterial = this.plantDepth;
     this.root.add(mesh);
-    tile.batches.push({ mesh, range, radius: mesh.boundingSphere!.radius, center: mesh.boundingSphere!.center.clone(), shadow, nearGeometry: geometry, farGeometry, detailRange, shadowRange, owned });
+    tile.batches.push({ mesh, range, radius: mesh.boundingSphere!.radius, center: mesh.boundingSphere!.center.clone(), shadow, nearGeometry: geometry, farGeometry, detailRange, shadowRange, owned, farCount, total: plants.length });
   }
 
   private plantVertexShader(shader: THREE.WebGLProgramParametersWithUniforms): void {
@@ -243,7 +253,7 @@ export class ChukarEnvironmentSystem implements Subsystem {
       material.customProgramCacheKey = () => `chukar-hunt-wind-plant-ground-v5-${tilt}`;
       this.materials.add(material); return material;
     };
-    const leafMat = plantMaterial(.55), sageMat = plantMaterial(.3);
+    const leafMat = plantMaterial(.55), sageMat = plantMaterial(.5);
     this.materials.add(rockMat); this.materials.add(rimMat);
     this.kit = { stones, gravel, grass, sage, farGrass, farSage, rockMat, leafMat, sageMat };
 
@@ -279,22 +289,17 @@ export class ChukarEnvironmentSystem implements Subsystem {
       const slope = this.sample.slope, group = chukarPlantGroupAt(x, y), tone = group * .72 + colorRoll * .28;
       const pick = (palette: readonly number[]) => palette[Math.min(palette.length - 1, Math.floor(tone * palette.length))];
       const sageChance = Math.min(.72, Math.pow(g.sage, 1.15) * .8) * (1 - g.seep * .9);
-      const grassChance = (g.cheat * .72 + g.bunchgrass * .72) * (1 - g.talus * .85) + g.seep * .75;
+      const grassChance = (g.cheat * .6 + g.bunchgrass * .65) * (1 - g.talus * .85) + g.seep * .75;
       let planted = false;
       if (choice < sageChance && slope < .95) {
         const size = .5 + sizeRoll * .55 + g.draw * .22;
-        if ((!lite || qualityKeep > .18) && this.clear(x, y, size * .8)) { bushes.push({ x, y, sx: size * 1.05, sy: size * .92, sz: size, yaw, color: pick(SAGE) }); planted = true; }
+        if (qualityKeep < KEEP[this.quality].sage && this.clear(x, y, size * .8)) { bushes.push({ x, y, sx: size * 1.05, sy: size * .92, sz: size, yaw, color: pick(SAGE), far: Math.floor(chipRoll * 97) % THIN_SAGE === 0 }); planted = true; }
       } else if (choice < sageChance + grassChance && slope < 1.05) {
         // Cheat is short and fine; bluebunch stands taller in bunches.
         const bunch = g.bunchgrass > g.cheat, size = (bunch ? .8 + sizeRoll * .45 : .55 + sizeRoll * .3) + g.seep * .3;
-        if (!lite || qualityKeep > .27) {
+        if (qualityKeep < KEEP[this.quality].grass) {
           const color = g.seep > .25 ? pick(SEEP_GREEN) : bunch ? pick(BUNCH) : pick(CHEAT);
-          bunches.push({ x, y, sx: size * 1.1, sy: size * (bunch ? 1 : .72), sz: size * 1.1, yaw: -.65 + (yaw - Math.PI) * .22, color }); planted = true;
-          // Cheat grows as a carpet: a smaller companion beside each tuft.
-          if (!bunch && !lite) {
-            const a = yaw * 1.7, r = .7 + sizeRoll * .5, cx = x + Math.sin(a) * r, cy = y + Math.cos(a) * r;
-            if (this.clear(cx, cy, .3)) bunches.push({ x: cx, y: cy, sx: size * .75, sy: size * .55, sz: size * .75, yaw: yaw + .8, color: pick(CHEAT) });
-          }
+          bunches.push({ x, y, sx: size * 1.1, sy: size * (bunch ? 1 : .72), sz: size * 1.1, yaw: -.65 + (yaw - Math.PI) * .22, color, far: Math.floor(chipRoll * 97) % THIN_GRASS === 0 }); planted = true;
         }
       }
       // Scree on the talus and steep broken ground.
@@ -315,8 +320,10 @@ export class ChukarEnvironmentSystem implements Subsystem {
         blocks.push({ x: px, y: py, sx: size * 1.25, sy: size * .95, sz: size, yaw: rng() * Math.PI * 2, color: STONE[Math.floor(rng() * STONE.length)] });
       }
     }
-    this.batch(tile, kit.grass, kit.leafMat, bunches, range.grass, false, false, kit.farGrass, 38);
-    this.batch(tile, kit.sage, kit.sageMat, bushes, range.sage, !lite, false, kit.farSage, 40, 30);
+    // The detailed plant geometry only on the tile underfoot; every other
+    // tile draws the lighter form (and past DENSE_RANGE only its far share).
+    this.batch(tile, kit.grass, kit.leafMat, bunches, range.grass, false, false, kit.farGrass, 0);
+    this.batch(tile, kit.sage, kit.sageMat, bushes, range.sage, !lite, false, kit.farSage, 10, 30);
     this.batch(tile, kit.gravel, kit.rockMat, chips, range.chips, false, true);
     this.batch(tile, kit.stones[(tile.key >>> 0) % 3], kit.rockMat, blocks, range.talus, !lite, true, undefined, 65, 90);
     return tile;
@@ -411,6 +418,7 @@ export class ChukarEnvironmentSystem implements Subsystem {
     for (const tile of this.tiles.values()) for (const batch of tile.batches) {
       const distance = Math.hypot(camera.x - batch.center.x, camera.z - batch.center.z);
       batch.mesh.visible = distance < batch.range + batch.radius;
+      batch.mesh.count = distance - batch.radius > DENSE_RANGE[this.quality] ? batch.farCount : batch.total;
       batch.mesh.castShadow = batch.shadow && distance < batch.shadowRange + batch.radius;
       if (batch.farGeometry) batch.mesh.geometry = distance > batch.detailRange + batch.radius * .5 ? batch.farGeometry : batch.nearGeometry;
     }
