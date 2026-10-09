@@ -132,11 +132,13 @@ export function kitMassGeometry(sides = 7, seed = 0x3a55): THREE.BufferGeometry 
     // A zigzag rim: the skirt's top never reads as one smooth ribbon.
     rim.push(new THREE.Vector3(Math.cos(a) * r1, (i % 2 ? .16 : .38) + rng() * .08, Math.sin(a) * r1));
   }
+  // A shallow cone closes the top: looking down into an open skirt from
+  // eye height reads as a tray. Its blades hide it from the side.
+  const heart = new THREE.Vector3(0, .34, 0);
   for (let i = 0; i < sides; i++) {
     const j = (i + 1) % sides;
-    // A low skirt closes the body from the side. No cap: seen from above,
-    // the blades and the sward floor show, never a flat polygon lid.
     tri(base[i], .74, base[j], .74, rim[j], .84); tri(base[i], .74, rim[j], .84, rim[i], .84);
+    tri(rim[i], .84, rim[j], .84, heart, .8);
   }
   // Rings of narrow leaning blades break the top edge into grass: the outer
   // ring fountains past the skirt, the inner rings stand taller. Narrow and
@@ -204,6 +206,8 @@ export function kitShrubGeometry(sides = 8, sprays = 48, seed = 0x5b0b): THREE.B
     const j = (i + 1) % sides;
     push(base[i][0], -.04, base[i][1], .42); push(base[j][0], -.04, base[j][1], .42); push(rim[j][0], rim[j][1], rim[j][2], .58);
     push(base[i][0], -.04, base[i][1], .42); push(rim[j][0], rim[j][1], rim[j][2], .58); push(rim[i][0], rim[i][1], rim[i][2], .58);
+    // A domed top, so the core never reads as a pit from above.
+    push(rim[i][0], rim[i][1], rim[i][2], .58); push(rim[j][0], rim[j][1], rim[j][2], .58); push(0, .62, 0, .66);
   }
   // Sprays: outer ones fan low and wide, inner ones stand tall.
   for (let k = 0; k < sprays; k++) {

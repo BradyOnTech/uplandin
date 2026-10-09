@@ -17,7 +17,7 @@ describe('ground kit geometry', () => {
   const pieces: [string, THREE.BufferGeometry, number][] = [
     ['tuft', kitTuftGeometry(7), 40], ['mat', kitMatGeometry(3), 14], ['culm', kitCulmGeometry(3), 8],
     ['mass', kitMassGeometry(6), 44], ['tall mass', kitMassGeometry(7), 50], ['stand', kitStandGeometry(14, 16), 32],
-    ['shrub', kitShrubGeometry(), 64],
+    ['shrub', kitShrubGeometry(), 76],
   ];
   for (const [name, geometry, budget] of pieces) {
     it(`keeps the ${name} at unit height, rooted, within ${budget} triangles`, () => {
