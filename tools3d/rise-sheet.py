@@ -23,7 +23,8 @@ def caption(rise):
     return (f"{rise['size']}  covey {rise['hunt'].get('coveySize')} / flushed {len(rise['hunt'].get('flushed', []))}"
             f"  in play max {f.get('maxInPlay')}  visible max {f.get('maxVisible')}  min sep {sep_text}"
             f"  sky first 1 s {f.get('skyShareFirstSecond', 0) * 100:.0f}%  straightaway {straight * 100:.0f}%"
-            f"  lines {lines}  over {f.get('riseOverS')} s  draws {rise.get('render', {}).get('calls')}")
+            f"  lines {lines}  rise length {f.get('riseLengthS')} s  settled {f.get('riseOverS')} s"
+            f"  shots {len(f.get('shots') or [])}  draws {rise.get('render', {}).get('calls')}")
 
 by_area = {}
 for rise in report['rises']:
@@ -49,7 +50,7 @@ for area, rises in by_area.items():
             im = Image.open(path).convert('RGB').resize((TW, th), Image.LANCZOS)
             block.paste(im, (x0, y0 + 16))
             sep = fr.get('minShotDeg', fr.get('minPairDeg'))
-            d.text((x0 + 4, y0 + 2), f"t {fr['t']:.2f}s  in play {fr['inPlay']}  seen {fr['visible']}  queued {fr['queued']}"
+            d.text((x0 + 4, y0 + 2), f"t {fr['t']:.2f}s  in play {fr['inPlay']}  on screen {fr.get('onScreen', fr['visible'])}  queued {fr['queued']}"
                    + (f"  sep {sep:.0f}deg" if sep is not None else ''), fill=(220, 220, 200))
             for b in fr.get('birds', []):
                 s = b.get('screen')

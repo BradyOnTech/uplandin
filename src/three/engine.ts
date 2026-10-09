@@ -5,6 +5,7 @@ import { FrameTelemetry } from './frameTelemetry';
 import { sampleVertexColorsInside } from './centroidColors';
 import { installGrade, setGradeViewport } from './grade';
 import { installAtmosphere } from './atmosphere';
+import { installGroundLight } from './groundLight';
 
 export type Quality = 'high' | 'lite';
 export interface Ctx {
@@ -30,6 +31,9 @@ export interface Subsystem {
   dispose?(ctx: Ctx): void;
 }
 const FIXED_MS = 1000 / 30;
+/** The view reaches the far terrain's outer edge from anywhere on a ground
+ * two to three times today's size. */
+const CAMERA_FAR = 9000;
 
 /** An optional screen-effects pipeline that replaces the plain scene render. */
 export interface RenderPipeline {
@@ -72,17 +76,20 @@ export class Engine {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     // ACES Filmic and then the field's colour grade, in every material
-    // (grade.ts), and fog driven from the sky (atmosphere.ts): both tiers
-    // render the same colour. Both patch shared chunks before any compile.
+    // (grade.ts), fog driven from the sky (atmosphere.ts), and the ground's
+    // sky occlusion and cloud shadows (groundLight.ts): both tiers render
+    // the same light. All patch shared chunks before any compile.
     installGrade(renderer);
     installAtmosphere();
+    installGroundLight();
     renderer.shadowMap.enabled = true;
     // Filter both tiers: an unfiltered 1024 map turns a close dog's shadow
     // into large squares. Lite still uses one quarter of the shadow-map
     // texels and its smaller geometry/pixel budgets. Keep the broad coverage
     // for midground trees and rocks instead of shrinking it around the dog.
     renderer.shadowMap.type = THREE.PCFShadowMap;
-    const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 1600);
+    // Far enough for the far country's outer edge (farTerrain.ts).
+    const camera = new THREE.PerspectiveCamera(70, 1, 0.05, CAMERA_FAR);
     const self = this;
     this.ctx = {
       scene: new THREE.Scene(), camera, renderer, rng: mulberry32(seed),

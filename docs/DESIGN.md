@@ -23,13 +23,18 @@ Check items off (and adjust them) as tranches ship.
   a hunting game. **Duck Hunt rules the sky, in 2D and in 3D.** The whole
   covey flushes: the cover blows out across its footprint and the wing
   thunder is sized to every bird, so a twelve-bird covey sounds bigger
-  than a five. But at most three birds are in the air at once. Up to three
-  burst TOGETHER on their own lanes; the rest wait in the cover and rise in
-  waves as the sky clears or the gun comes back loaded, never into an empty
-  gun except the sleeper, which waits for exactly that. Sharptails popcorn
-  up in singles and pairs; a pheasant goes alone. A big covey is rounds of
-  shooting, never a blob and never a single-file procession. Fun beats
-  covey realism in the sky; the rules are in `src/game/riseScore.ts`.
+  than a five. But at most three live targets are in the shot at once. Up
+  to three burst TOGETHER on their own lanes; the rest wait in the cover and
+  rise in waves as the sky clears in Duck Hunt terms (the last wave's birds
+  are down, past effective range, or have had their two seconds) or the gun
+  comes back loaded, never into an empty gun except the sleeper, which waits
+  for exactly that. Sharptails popcorn up in singles and pairs; a pheasant
+  goes alone. A big covey is rounds of shooting, never a blob and never a
+  single-file procession; a twelve-bird rise is over in about nine seconds.
+  Fun beats covey realism in the sky; the rules are in
+  `src/game/riseScore.ts`. Every bird flies a whole line planned at launch
+  (`src/game/flightLine.ts`), and every escaping bird either drives off the
+  screen or sets down in cover the hunter can see, so a miss can be marked.
   (Restored in 3D by Brady's delegation, 2026-10-08, after agent critics
   had swapped it for a whole-covey launch.)
 - **Progression you feel.** A level-1 dog is bad in specific, visible ways;

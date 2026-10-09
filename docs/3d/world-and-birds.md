@@ -58,7 +58,7 @@ A canyon you climb. Stacked bands of columnar basalt rimrock, each with a grey t
 
 | Lane | Campaign | Owns |
 | --- | --- | --- |
-| Birds | The rise (waves, one flight system, line variety, honest exits), then falls and marks, identity, ground birds | `src/three/subsystems/birds.ts`, `src/three/quailFlight.ts`, flight and bird presentation files, `src/game/birds.ts`, `src/game/species.ts`, bird tests |
+| Birds | The rise (waves, one flight system, line variety, honest exits), then falls and marks, identity, ground birds | `src/three/subsystems/birds.ts`, `src/game/flightLine.ts` (one planned flight line per bird), `src/game/riseScore.ts`, flight and bird presentation files, `src/game/birds.ts`, `src/game/species.ts`, bird tests |
 | Light | Each ground's own light on every screen: grade in materials, authored sky and fog, far terrain instead of mountain cards, sky occlusion, cloud shadows; later weather and season | `src/three/looks.ts`, `postEffects.ts`, `palette.ts`, `subsystems/sky.ts`, engine tone mapping, terrain shader hooks for light |
 | Landform | Bigger grounds of named hunt areas with feature-authored landforms (Chukar first, then Sharptail, Quail, Cattail), rimrock, habitat and bird placement from the land, the in-repo hunt lab that proves pacing | `src/game/landscape.ts`, `src/game/*Landscape.ts`, `src/game/areas.ts` layouts, `src/game/areaEncounters.ts` placement, landform tooling, rim and talus kits, Chukar vegetation |
 | Cover | Shape-first cover: one bake-off, one shared ground kit, Sharptail, Quail and Cattail rollouts | `src/three/subsystems/grass.ts`, per-ground vegetation subsystems, `src/three/landscapeVisuals.ts`, tree and shrub kits |

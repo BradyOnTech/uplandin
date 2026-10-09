@@ -1,9 +1,11 @@
 import * as THREE from 'three';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getArea } from '../src/game/areas';
 import { LandscapeModel } from '../src/game/landscape';
 import { PropertyTerrain } from '../src/three/subsystems/propertyTerrain';
 import { sharptailMeadowNormalTexture, SHARPTAIL_SURFACE_SIZE } from '../src/three/subsystems/sharptailMeadowSurface';
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe('Sharptail distant meadow surface field', () => {
   it('keeps bounded normals and meaningful density continuous across the periodic seam', () => {
@@ -55,7 +57,9 @@ describe('Sharptail distant meadow surface field', () => {
     texture.dispose();
   });
 
-  it('shares one density/normal read between actual ground and canopy shader stages', () => {
+  it('shares one density/normal read between actual ground and canopy shader stages (legacy stack)', () => {
+    // The bespoke prairie surface runs only on the legacy stack (?cover=legacy).
+    vi.stubGlobal('location', { search: '?cover=legacy' });
     const terrain = new PropertyTerrain(new LandscapeModel(getArea('sharptail-prairie')));
     const first = terrain.prairieCanopySurface()!, second = terrain.prairieCanopySurface()!;
     const compile = (material: THREE.MeshLambertMaterial) => {

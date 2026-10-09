@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { mulberry32 } from '../src/game/math';
 import {
-  BELOW_CONTOUR, GUN_PATIENCE_MS, laneLift, lanesOffTheHill, planRise, riseScoreFor, SKY_MAX, SLEEPER_MIN_MS, waveLanes, waveMayRise,
+  BELOW_CONTOUR, GUN_PATIENCE_MS, holdsSky, inTheShot, laneLift, lanesOffTheHill, planRise, RISE_RANGE_M, riseScoreFor, SKY_MAX, SLEEPER_MIN_MS,
+  WAVE_MAX_GAP_MS, waveLanes, waveMayRise,
   type RiseGun, type SkyClock,
 } from '../src/game/riseScore';
 
@@ -49,6 +50,24 @@ describe('the rise score plan', () => {
   });
 });
 
+describe('which birds hold the sky', () => {
+  it('lets a wave go when its birds are down, out of the shot, or have had their few seconds', () => {
+    const live = { status: 'flying', rangeM: 25, sinceLaunchMs: 900 };
+    expect(holdsSky(live)).toBe(true);
+    expect(holdsSky({ ...live, status: 'waiting' })).toBe(true);
+    expect(holdsSky({ ...live, status: 'falling' })).toBe(false);
+    expect(holdsSky({ ...live, status: 'grounded' })).toBe(false);
+    expect(holdsSky({ ...live, status: 'departing' })).toBe(false);
+    expect(holdsSky({ ...live, rangeM: RISE_RANGE_M + .5 })).toBe(false);
+    expect(holdsSky({ ...live, sinceLaunchMs: WAVE_MAX_GAP_MS })).toBe(false);
+    // A bird that has had its seconds is still a target in the shot until it is down or out of range.
+    const late = { ...live, sinceLaunchMs: WAVE_MAX_GAP_MS };
+    expect(inTheShot(late)).toBe(true);
+    expect(inTheShot({ ...live, rangeM: RISE_RANGE_M + .5 })).toBe(false);
+    expect(inTheShot({ ...live, status: 'departing' })).toBe(false);
+  });
+});
+
 describe('when the next wave may rise', () => {
   const bobwhite = riseScoreFor('bobwhite'), sharptail = riseScoreFor('sharptail');
   const wave = (n = 3, sleeper = false) => ({ ids: Array.from({ length: n }, (_, i) => i), sleeper, pauseMs: 500 });
@@ -57,6 +76,13 @@ describe('when the next wave may rise', () => {
     expect(waveMayRise(wave(3), bobwhite, sky({ inPlay: 1 }), true)).toBe(false);
     expect(waveMayRise(wave(2), bobwhite, sky({ inPlay: 1 }), true)).toBe(true);
     expect(waveMayRise(wave(1), sharptail, sky({ inPlay: 3, clearSinceMs: null }), false)).toBe(false);
+  });
+
+  it('lets the clock run on a wave that has had its seconds, but never crowds the shot past three', () => {
+    // The last wave no longer holds the sky, but one of its birds is still in range.
+    expect(waveMayRise(wave(3), bobwhite, sky({ inPlay: 0, inShot: 1, clearSinceMs: 9_500 }), false)).toBe(false);
+    expect(waveMayRise(wave(2), bobwhite, sky({ inPlay: 0, inShot: 1, clearSinceMs: 9_500 }), false)).toBe(true);
+    expect(waveMayRise(wave(3), bobwhite, sky({ inPlay: 0, inShot: 0, clearSinceMs: 9_500 }), false)).toBe(true);
   });
 
   it('lets a covey wave rise once the sky has cleared for its breath', () => {
@@ -136,6 +162,26 @@ describe('wave lanes', () => {
     // A wave already pouring straight downhill is left alone.
     const down = waveLanes(3, .5, mulberry32(3));
     expect(lanesOffTheHill(down, Math.PI / 2, -Math.PI / 2)).toEqual(down);
+  });
+
+  it('breaks a popcorn single away from the side birds already in the shot are on', () => {
+    for (let seed = 1; seed < 50; seed++) {
+      expect(waveLanes(1, .55, mulberry32(seed), 0, 1)[0].offset).toBeLessThan(0);
+      expect(waveLanes(1, .55, mulberry32(seed), 0, -1)[0].offset).toBeGreaterThan(0);
+      // Even when its covey's escape line runs toward the birds already up.
+      for (const [escape, avoid] of [[-.6, -1], [.7, 1], [-1.1, -1]]) {
+        const offSight = escape + waveLanes(1, .55, mulberry32(seed), escape, avoid)[0].offset;
+        expect(Math.sign(offSight)).toBe(-avoid); expect(Math.abs(offSight)).toBeGreaterThan(.29);
+      }
+      // A pair goes up on the free side together, still a lane apart.
+      for (const [escape, avoid] of [[0, 1], [.6, 1], [-.5, -1]]) {
+        const pair = waveLanes(2, .55, mulberry32(seed), escape, avoid).map(lane => Math.sin(escape + lane.offset));
+        for (const s of pair) expect(-avoid * s).toBeGreaterThan(.14);
+        expect(Math.abs(pair[0] - pair[1])).toBeGreaterThan(Math.sin(.55) * .9);
+      }
+      // An escape already wider on the free side is kept.
+      expect(waveLanes(1, .55, mulberry32(seed), 1.2, -1)[0].offset).toBeCloseTo(0, 9);
+    }
   });
 
   it('lifts the middle lane above the sides, and splits a pair high and low', () => {
