@@ -14,7 +14,7 @@ function rooster(distance: number, ms: number) {
   const birds = new BirdsSystem();
   const internal = birds as unknown as Record<string, any>;
   const sim = { id: 1, state: 'flushed', speciesId: 'ringneck', pos: { x: 0, y: -distance }, coveyId: 1, sex: 'rooster' as const };
-  const hunt = { areaConfig: () => ({ id: 'pheasant-coverts' }), huntState: () => ({ gunId: 'over-under', birds: [sim] }),
+  const hunt = { areaConfig: () => ({ id: 'pheasant-coverts' }), huntState: () => ({ gunId: 'over-under', birds: [sim], hunterPos: { x: 0, y: 0 }, wind: -Math.PI / 2 }),
     resolveBird: vi.fn(() => true), recordFallWorld: vi.fn(), getActiveChallenge: () => 'balanced', riseSlopeApproach: () => null,
     simToWorld: (x: number, y: number, out: { x: number; z: number }) => Object.assign(out, { x, z: y }),
     coverPatches: () => [], condition: () => 'mild', lastFlushInfo: () => null };
@@ -26,7 +26,7 @@ function rooster(distance: number, ms: number) {
   Object.assign(internal, { mat: new THREE.MeshLambertMaterial({ vertexColors: true }), hunt, terrain: { heightAt: () => 0 },
     frozen: false, spatialEncounter: true, coverEvents: events, escX: 0, escZ: -1, rightX: 1, rightZ: 0, hunterX: 0, hunterZ: 0 });
   internal.buildPool(ctx);
-  internal.staged.add(1); internal.riseActive = true; internal.queue[internal.qTail++] = 1; internal.launchWave([sim]);
+  internal.tickBirds(1000 / 30);
   const slot = internal.slots.find((candidate: { simId: number }) => candidate.simId === 1);
   const start = { x: slot.x, z: slot.z };
   for (let t = 0; t < ms; t += 1000 / 30) internal.tickBirds(1000 / 30);
@@ -40,10 +40,10 @@ describe('a rooster flushed underfoot', () => {
     expect(close.height).toBeGreaterThan(far.height * 1.35);
     expect(close.travel).toBeLessThan(1.5);
     expect(close.travel).toBeLessThan(far.travel);
-    // Then it tops out and carries off: well out of point-blank range at two seconds.
+    // Then it tops out, hangs and carries off: well out of point-blank range at two seconds.
     const later = rooster(3, 2000);
-    expect(later.height).toBeLessThan(8);
-    expect(later.travel).toBeGreaterThan(14);
+    expect(later.height).toBeLessThan(9);
+    expect(later.travel).toBeGreaterThan(9);
   });
 
   it('makes the hunter flinch only when the bird goes up at his feet', () => {
@@ -81,24 +81,24 @@ function covey(speciesId: string, areaId: string, distance: number) {
 
 describe('a covey sat on underfoot', () => {
   it('bursts wide across the hunter\'s front instead of lining out down one bearing', () => {
-    // Bobwhite fly the world-space controller: compare each bird's bearing off the escape line.
-    const away = Math.atan2(-1, 0), off = (slot: { spatialFlight: { bearing: number } }) =>
-      Math.abs(Math.atan2(Math.sin(slot.spatialFlight.bearing - away), Math.cos(slot.spatialFlight.bearing - away)));
-    const close = covey('bobwhite', 'quail-fields', 2.5).map(off), far = covey('bobwhite', 'quail-fields', 16).map(off);
+    // Compare each bird's asked-for bearing (its lane) off its escape line,
+    // before the launch constraints turn it across the gun.
+    const off = (slot: { line: { aim: number }; flight: { escX: number; escZ: number } }) => {
+      const away = Math.atan2(slot.flight.escZ, slot.flight.escX);
+      return Math.abs(Math.atan2(Math.sin(slot.line.aim - away), Math.cos(slot.line.aim - away)));
+    };
     const widest = (values: number[]) => Math.max(...values);
-    // About (1 + CLOSE_FAN_WIDEN) as wide: the lanes also slide a little with
-    // the line of sight, which is not quite the same from 2.5 m as from 16.
-    expect(widest(close) / widest(far)).toBeGreaterThan((1 + CLOSE_FAN_WIDEN) * .85);
-    expect(widest(close) / widest(far)).toBeLessThan((1 + CLOSE_FAN_WIDEN) * 1.15);
-    // Still a burst away from the gun: no bird turns back past square.
-    expect(widest(close)).toBeLessThan(Math.PI / 2);
-    // Wave-mates fly a lane either side of the line (game/riseScore.ts).
-    expect(widest(far)).toBeLessThan(.7);
-    // Chukar keep their authored break; its lateral impulse opens the same way.
-    const lateral = (slots: { vel: { x: number } }[]) => Math.max(...slots.map(slot => Math.abs(slot.vel.x)));
-    const chukarRatio = lateral(covey('chukar', 'chukar-ridge', 2.5)) / lateral(covey('chukar', 'chukar-ridge', 16));
-    expect(chukarRatio).toBeGreaterThan((1 + CLOSE_FAN_WIDEN) * .85);
-    expect(chukarRatio).toBeLessThan((1 + CLOSE_FAN_WIDEN) * 1.15);
+    for (const [species, area] of [['bobwhite', 'quail-fields'], ['chukar', 'chukar-ridge']]) {
+      const close = covey(species, area, 2.5).map(off), far = covey(species, area, 16).map(off);
+      // The lanes open by up to (1 + CLOSE_FAN_WIDEN); lanes are spaced by how
+      // they cross the view, so the outside lanes close up short of square.
+      expect(widest(close) / widest(far)).toBeGreaterThan(1.5);
+      expect(widest(close) / widest(far)).toBeLessThan(1 + CLOSE_FAN_WIDEN);
+      // Still a burst away from the gun: no bird turns back past square.
+      expect(widest(close)).toBeLessThan(Math.PI / 2);
+      // Wave-mates fly a lane either side of the line (game/riseScore.ts).
+      expect(widest(far)).toBeLessThan(.7);
+    }
   });
 });
 

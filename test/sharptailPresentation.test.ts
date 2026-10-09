@@ -118,40 +118,41 @@ describe('Sharptail species presentation', () => {
 function presentationFixture() {
   const system = new BirdsSystem();
   const internal = system as unknown as {
-    mat: THREE.Material; hunt: unknown; terrain: unknown; frozen: boolean; spatialEncounter: boolean;
-    queue: number[]; qHead: number; qTail: number; riseRng: () => number;
+    mat: THREE.Material; hunt: unknown; terrain: unknown; frozen: boolean; riseRng: () => number;
     slots: { simId: number; species: ReturnType<typeof getSpecies>; status: string; x: number; y: number; z: number;
       vxW: number; vyW: number; vzW: number; airMs: number; previousAirMs: number; gliding: boolean;
       wingR: THREE.Group; wingRMesh: THREE.Mesh; root: THREE.Group }[];
-    buildPool(ctx: Ctx): void;
-    launchWave(birds: { id: number; speciesId: string; pos: { x: number; y: number } }[]): void;
+    buildPool(ctx: Ctx): void; tickBirds(dtMs: number): void;
   };
   const area = getArea('sharptail-prairie'), scene = new THREE.Scene();
+  const birds = Array.from({ length: 6 }, (_, i) => ({ id: i + 1, coveyId: 1, speciesId: 'sharptail', state: 'flushed', pos: { x: 20 + i * 7, y: 30 + i * 2 } }));
   internal.mat = new THREE.MeshLambertMaterial({ vertexColors: true });
-  internal.hunt = { areaConfig: () => area, huntState: () => ({ birds: [] }),
+  internal.hunt = { areaConfig: () => area, huntState: () => ({ birds, hunterPos: { x: 0, y: 0 }, wind: 0 }), riseSlopeApproach: () => null,
     simToWorld: (x: number, y: number, out: { x: number; z: number }) => Object.assign(out, { x, z: y }), coverPatches: () => [] };
   internal.terrain = { heightAt: () => 0 };
-  internal.frozen = true; internal.spatialEncounter = true;
+  internal.frozen = true;
   internal.riseRng = mulberry32(517);
   const ctx = { scene, fixedAlpha: 1, camera: new THREE.PerspectiveCamera() } as unknown as Ctx;
   internal.buildPool(ctx);
-  const birds = Array.from({ length: 6 }, (_, i) => ({ id: i + 1, speciesId: 'sharptail', pos: { x: 20 + i * 7, y: 30 + i * 2 } }));
-  internal.queue = birds.map(bird => bird.id); internal.qHead = 0; internal.qTail = birds.length;
-  internal.launchWave(birds);
+  internal.tickBirds(1000 / 30);
   return { system, internal, ctx, birds };
 }
 
 describe('Sharptail live presentation integration', () => {
   it('retains real flush origins and excludes waiting birds from shots until lift', () => {
     const { system, internal, ctx, birds } = presentationFixture();
-    for (const bird of birds) {
+    // A popcorn rise: the first single or pair is up, the rest wait in the cover.
+    const up = birds.filter(bird => internal.slots.some(candidate => candidate.simId === bird.id));
+    expect(up.length).toBeGreaterThanOrEqual(1); expect(up.length).toBeLessThanOrEqual(2);
+    for (const bird of up) {
       const slot = internal.slots.find(candidate => candidate.simId === bird.id)!;
       expect(slot.x).toBe(bird.pos.x); expect(slot.z).toBe(bird.pos.y); expect(slot.y).toBe(.2);
       // Body, two wings and the legs it drops on a body hit.
       expect(slot.root.children.filter(child => child instanceof THREE.Mesh || child instanceof THREE.Group)).toHaveLength(4);
     }
-    const waiting = internal.slots.find(slot => slot.status === 'waiting')!;
-    expect(waiting).toBeDefined();
+    // A bird still on its launch delay is not yet a target.
+    const waiting = internal.slots.find(slot => slot.simId === up[0].id)!;
+    waiting.status = 'waiting';
     const origin = { x: waiting.x, y: waiting.y, z: waiting.z - 10 }, direction = { x: 0, y: 0, z: 1 };
     expect(system.shootRay(origin, direction, .001)).toBeNull();
     waiting.status = 'flying';
