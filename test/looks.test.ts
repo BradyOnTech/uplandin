@@ -65,6 +65,10 @@ describe('field looks', () => {
         for (const value of g.whiteBalance) { expect(value).toBeGreaterThan(.9); expect(value).toBeLessThan(1.1); }
       }
     }
+    // A ground's hour can carry its own light on top: Cattail's cold
+    // November day keeps a little low-sun warmth in the evening.
+    const day = lookAt(crisp, 'morning', 'pheasant-coverts').grade, dusk = lookAt(crisp, 'evening', 'pheasant-coverts').grade;
+    expect(dusk.whiteBalance[0] / dusk.whiteBalance[2]).toBeGreaterThan(day.whiteBalance[0] / day.whiteBalance[2]);
     // The base look is never written to.
     expect(crisp.grade.saturation).toBe(1.16);
     expect(crisp.grade.contrast).toBe(1.12);

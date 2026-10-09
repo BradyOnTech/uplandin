@@ -87,10 +87,12 @@ export const LOOKS: Record<LookId, LookSettings> = {
       lastlight: { aoStrength: .6, contrast: 1, offset: [.004, .004, .008], vignette: .1 },
     },
     byGround: {
-      // A prairie-pothole farm in late October: warm, low light on the
-      // stubble and cooler shade under the shelterbelts.
-      'pheasant-coverts': { whiteBalance: [1.055, 1, .935], saturation: 1.07, contrast: 1.2,
-        highlightTint: [.012, .006, -.006], shadowTint: [-.004, .002, .012] },
+      // A prairie-pothole farm in November: cold blue air, the slanting
+      // sun pale on the stubble rather than golden, blue shade under the
+      // shelterbelts. Evening keeps a little more of the low sun's warmth.
+      'pheasant-coverts': { whiteBalance: [1.005, 1, .985], saturation: .98, contrast: 1.2,
+        highlightTint: [.006, .006, .002], shadowTint: [-.006, .002, .016],
+        byTime: { evening: { whiteBalance: [1.03, 1, .97] } } },
       // Northern mixed grass under a big sky: the clearest air and a firmer
       // contrast, so the cured grass doesn't wash pale.
       'sharptail-prairie': { whiteBalance: [1.02, 1, .975], contrast: 1.4, shadowTint: [0, .003, .01] },
