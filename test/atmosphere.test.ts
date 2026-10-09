@@ -7,7 +7,7 @@ import { LandscapeModel } from '../src/game/landscape';
 
 const HOURS: TimeOfDay[] = ['dawn', 'morning', 'noon', 'evening', 'lastlight'];
 const GROUNDS = ['quail-fields', 'sharptail-prairie', 'pheasant-coverts', 'chukar-ridge'];
-const FOG_CHUNKS = ['fog_pars_vertex', 'fog_vertex', 'fog_pars_fragment', 'fog_fragment'] as const;
+const FOG_CHUNKS = ['fog_pars_vertex', 'fog_vertex', 'fog_pars_fragment', 'fog_fragment', 'tonemapping_fragment'] as const;
 const stock = () => Object.fromEntries(FOG_CHUNKS.map(name => [name, THREE.ShaderChunk[name]])) as Record<string, string>;
 const sunOf = (tod: TimeOfDay, ground: string) => {
   const spec = fieldTimeOfDay(ground, tod), el = spec.sunElevation * Math.PI / 180, az = spec.sunAzimuth * Math.PI / 180;
@@ -23,8 +23,23 @@ describe('fog driven from the sky', () => {
     expect(installAtmosphere(chunks, lib)).toBe(true);
     expect(installAtmosphere(chunks, lib)).toBe(true);
     expect(chunks.fog_vertex).toContain('vFogRay');
-    expect(chunks.fog_fragment.match(/uplandPooledFog/g)).toHaveLength(1);
+    // Fog runs in linear light just before tone mapping, on both tiers; three's
+    // own fog chunk (after tone mapping) stands down when it already ran.
+    const tone = chunks.tonemapping_fragment;
+    expect(tone.indexOf('uplandPooledFog')).toBeGreaterThan(-1);
+    expect(tone.indexOf('uplandPooledFog')).toBeLessThan(tone.indexOf('toneMapping( gl_FragColor.rgb )'));
+    expect(tone.match(/uplandPooledFog/g)).toHaveLength(1);
+    expect(chunks.fog_fragment).toContain('! defined( UPLAND_FOG_DONE )');
     expect(chunks.fog_fragment).toContain('smoothstep( fogNear, fogFar, vFogDepth )');
+    // Every built-in material includes tone mapping before fog, so the fog
+    // always runs once, in linear light.
+    for (const shader of Object.values(THREE.ShaderLib)) {
+      const source = shader.fragmentShader;
+      if (source.includes('#include <fog_fragment>')) {
+        expect(source.indexOf('#include <tonemapping_fragment>')).toBeGreaterThan(-1);
+        expect(source.indexOf('#include <tonemapping_fragment>')).toBeLessThan(source.indexOf('#include <fog_fragment>'));
+      }
+    }
     expect(THREE.UniformsUtils.clone(lib.lambert.uniforms)[FOG_UNIFORM].value).toBe(ATMOSPHERE);
   });
 
@@ -50,7 +65,7 @@ describe('fog driven from the sky', () => {
     const floor = poolFloor((x, z) => landscape.heightAtWorld(x, z), bounds, regionAtmosphere(ground).floor);
     for (const tod of HOURS) {
       const spec = fieldTimeOfDay(ground, tod), values = new Float32Array(ATMOSPHERE.length);
-      writeAtmosphere(spec, regionAtmosphere(ground).byTime[tod], sunOf(tod, ground), floor, values);
+      writeAtmosphere(spec, regionAtmosphere(ground), tod, sunOf(tod, ground), floor, values);
       // A hunter standing on the pool floor, eyes 1.6 m up, and the dog 27 m out.
       const eye = floor + 1.6, dog = { x: 27, y: -1.2, z: 0 };
       expect(pooledFog(eye, dog, values)).toBeLessThan(.12);
@@ -67,7 +82,7 @@ describe('fog driven from the sky', () => {
   it.each(GROUNDS)('warms %s\'s air toward the sun at the golden hours, from the sky\'s own horizon', ground => {
     for (const tod of ['dawn', 'evening'] as TimeOfDay[]) {
       const spec = fieldTimeOfDay(ground, tod), values = new Float32Array(ATMOSPHERE.length);
-      writeAtmosphere(spec, regionAtmosphere(ground).byTime[tod], sunOf(tod, ground), 0, values);
+      writeAtmosphere(spec, regionAtmosphere(ground), tod, sunOf(tod, ground), 0, values);
       const away = new THREE.Color(spec.fogColor);
       expect(values[0] / values[2]).toBeGreaterThan(away.r / away.b);
       expect(values[3]).toBeGreaterThan(.4);

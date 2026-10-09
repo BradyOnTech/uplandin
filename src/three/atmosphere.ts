@@ -18,6 +18,14 @@ import type { TimeOfDay, TodSpec } from './palette';
  * This replaces High's screen-space height haze, whose floor followed the
  * camera and turned every raised view white.
  *
+ * three applies fog after tone mapping and sRGB encoding, so on screen its
+ * linear fog colour was mixed into display colour, while High (rendering
+ * linear into a target, tone mapped later) mixed it into linear light: the
+ * same fog read dark on Lightweight and pale on High. The fog now runs at
+ * the start of the tone-mapping chunk, in linear light on both tiers, and
+ * three's own fog chunk stands down. (three also hands the fog colour over
+ * sRGB-encoded on screen; the chunk decodes it.)
+ *
  * Like the grade (grade.ts), the values are one shared Float32Array put into
  * ShaderLib, and every value is a departure from three's own fog, so a
  * shader without the uniform draws plain fog.
@@ -57,6 +65,21 @@ float uplandPooledFog(vec3 ray, float dist) {
   return min(1.0 - exp(-p.z * mean * dist), p.w);
 }`;
 
+const FOG_APPLY = `
+	// three hands fog its colour in the output's colour space, since it fogs
+	// after encoding (sRGB on screen, linear into a target); take it back to
+	// linear light on screen too.
+	vec3 fogLinear = linearToOutputTexel( vec4( .5 ) ).r == .5 ? fogColor : sRGBTransferEOTF( vec4( fogColor, 1.0 ) ).rgb;
+	float fogDistance = length( vFogRay );
+	#ifdef FOG_EXP2
+		float fogFactor = min( 1.0 - exp( - fogDensity * fogDensity * fogDistance * fogDistance ), 1.0 - ${FOG_UNIFORM}[3].w );
+	#else
+		float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
+	#endif
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, ${FOG_UNIFORM}[3].rgb, uplandPooledFog( vFogRay, fogDistance ) );
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, uplandFogTint( fogLinear, vFogRay / max( fogDistance, 1e-4 ) ), fogFactor );`;
+const STOCK_TONE_MAPPING = '#if defined( TONE_MAPPING )\n\tgl_FragColor.rgb = toneMapping( gl_FragColor.rgb );\n#endif';
+
 const CHUNKS = {
   fog_pars_vertex: '#ifdef USE_FOG\n\tvarying float vFogDepth;\n\tvarying vec3 vFogRay;\n#endif',
   // The world-space ray from the camera: the view-space position rotated
@@ -74,15 +97,15 @@ const CHUNKS = {
 	#endif
 	${ATMOSPHERE_GLSL}
 #endif`,
-  fog_fragment: `#ifdef USE_FOG
-	float fogDistance = length( vFogRay );
-	#ifdef FOG_EXP2
-		float fogFactor = min( 1.0 - exp( - fogDensity * fogDensity * fogDistance * fogDistance ), 1.0 - ${FOG_UNIFORM}[3].w );
-	#else
-		float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
-	#endif
-	gl_FragColor.rgb = mix( gl_FragColor.rgb, ${FOG_UNIFORM}[3].rgb, uplandPooledFog( vFogRay, fogDistance ) );
-	gl_FragColor.rgb = mix( gl_FragColor.rgb, uplandFogTint( fogColor, vFogRay / max( fogDistance, 1e-4 ) ), fogFactor );
+  // Fog in linear light, then tone mapping; a shader that never includes
+  // the tone-mapping chunk still gets its fog from three's fog chunk.
+  tonemapping_fragment: `#ifdef USE_FOG
+	${FOG_APPLY}
+	#define UPLAND_FOG_DONE
+#endif
+${STOCK_TONE_MAPPING}`,
+  fog_fragment: `#if defined( USE_FOG ) && ! defined( UPLAND_FOG_DONE )
+	${FOG_APPLY}
 #endif`,
 } as const;
 const STOCK_FOG_FRAGMENT = 'gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );';
@@ -96,8 +119,9 @@ export function installAtmosphere(
   chunks: Record<string, string> = THREE.ShaderChunk as unknown as Record<string, string>,
   lib: Record<string, { uniforms: Record<string, THREE.IUniform> }> = THREE.ShaderLib as unknown as Record<string, { uniforms: Record<string, THREE.IUniform> }>,
 ): boolean {
-  const fragment = chunks.fog_fragment;
+  const fragment = chunks.fog_fragment, toneMapping = chunks.tonemapping_fragment;
   if (!fragment?.includes(STOCK_FOG_FRAGMENT) && fragment !== CHUNKS.fog_fragment) return false;
+  if (toneMapping !== STOCK_TONE_MAPPING && toneMapping !== CHUNKS.tonemapping_fragment) return false;
   Object.assign(chunks, CHUNKS);
   for (const shader of Object.values(lib)) Object.assign(shader.uniforms, atmosphereUniforms());
   return true;
@@ -120,19 +144,22 @@ export interface AtmosphereHour {
 export interface RegionAtmosphere {
   /** The pool's floor as a quantile of the property's ground heights. */
   floor: number;
+  /** The most of any far surface the distance fog hides, so the farthest
+   * land stays a band of graded colour below the sky, never sky itself. */
+  distance: number;
   byTime: Record<TimeOfDay, AtmosphereHour>;
 }
 
 const pool = (density: number, depth: number, cap: number, tint: Rgb = [1, 1, 1]) => ({ density, depth, cap, tint });
 const MIST: Rgb = [1.06, 1.07, 1.1];
 const DUST: Rgb = [1.06, 1.0, .9];
-const CANYON: Rgb = [.92, .98, 1.1];
+const CANYON: Rgb = [.86, .96, 1.08];
 
 /** Each core ground's air. Others share the plains default. */
 export const REGION_ATMOSPHERE: Readonly<Record<string, RegionAtmosphere>> = {
   // Cool, clear high-plains air: the least haze of any ground, a thin mist
   // in the coulee bottoms at the ends of the day.
-  'sharptail-prairie': { floor: .08, byTime: {
+  'sharptail-prairie': { floor: .08, distance: .85, byTime: {
     dawn: { sunward: .7, sunwardPower: 2.5, pool: pool(.0008, 5, .4, MIST) },
     morning: { sunward: .35, sunwardPower: 3, pool: pool(.00025, 6, .25, MIST) },
     noon: { sunward: .15, sunwardPower: 3, pool: pool(0, 1, 0) },
@@ -141,7 +168,7 @@ export const REGION_ATMOSPHERE: Readonly<Record<string, RegionAtmosphere>> = {
   } },
   // Warm, dusty Red Plains air with haze lying in the creek bottom: a thin
   // layer on the lowest ground, not a sheet over the rolling uplands.
-  'quail-fields': { floor: .03, byTime: {
+  'quail-fields': { floor: .03, distance: .82, byTime: {
     dawn: { sunward: .7, sunwardPower: 2, pool: pool(.0014, 4, .5, MIST) },
     morning: { sunward: .45, sunwardPower: 2.5, pool: pool(.0005, 4, .3, DUST) },
     noon: { sunward: .25, sunwardPower: 3, pool: pool(.0003, 4, .2, DUST) },
@@ -150,7 +177,7 @@ export const REGION_ATMOSPHERE: Readonly<Record<string, RegionAtmosphere>> = {
   } },
   // Prairie potholes: dawn fog lies in the sloughs and burns off by mid
   // morning; cold blue air the rest of the day.
-  'pheasant-coverts': { floor: .15, byTime: {
+  'pheasant-coverts': { floor: .15, distance: .8, byTime: {
     dawn: { sunward: .6, sunwardPower: 2.5, pool: pool(.0028, 3.5, .7, MIST) },
     morning: { sunward: .3, sunwardPower: 3, pool: pool(.0007, 3, .35, MIST) },
     noon: { sunward: .12, sunwardPower: 3, pool: pool(0, 1, 0) },
@@ -159,16 +186,16 @@ export const REGION_ATMOSPHERE: Readonly<Record<string, RegionAtmosphere>> = {
   } },
   // A canyon: cool haze fills the depths, so every bench and ridge below
   // the hunter steps back in a bluer band.
-  'chukar-ridge': { floor: .02, byTime: {
-    dawn: { sunward: .65, sunwardPower: 2.5, pool: pool(.0018, 28, .6, CANYON) },
-    morning: { sunward: .35, sunwardPower: 3, pool: pool(.0011, 32, .5, CANYON) },
-    noon: { sunward: .15, sunwardPower: 3, pool: pool(.0008, 36, .45, CANYON) },
-    evening: { sunward: .7, sunwardPower: 2.5, pool: pool(.0011, 32, .5, CANYON) },
-    lastlight: { sunward: .55, sunwardPower: 2, pool: pool(.0016, 28, .6, CANYON) },
+  'chukar-ridge': { floor: .02, distance: .82, byTime: {
+    dawn: { sunward: .65, sunwardPower: 2.5, pool: pool(.0009, 26, .35, CANYON) },
+    morning: { sunward: .35, sunwardPower: 3, pool: pool(.0005, 30, .25, CANYON) },
+    noon: { sunward: .15, sunwardPower: 3, pool: pool(.0004, 32, .2, CANYON) },
+    evening: { sunward: .7, sunwardPower: 2.5, pool: pool(.0005, 30, .25, CANYON) },
+    lastlight: { sunward: .55, sunwardPower: 2, pool: pool(.0009, 26, .4, CANYON) },
   } },
 };
 
-const PLAINS: RegionAtmosphere = { floor: .1, byTime: {
+const PLAINS: RegionAtmosphere = { floor: .1, distance: 1, byTime: {
   dawn: { sunward: .6, sunwardPower: 2.5, pool: pool(0, 1, 0) },
   morning: { sunward: .3, sunwardPower: 3, pool: pool(0, 1, 0) },
   noon: { sunward: .12, sunwardPower: 3, pool: pool(0, 1, 0) },
@@ -195,20 +222,25 @@ export function poolFloor(heightAt: (x: number, z: number) => number,
 
 const scratch = new THREE.Color(), hot = new THREE.Color();
 
-/** Write one hour's air into the shared values. `sun` is the sun's world
- * direction; `floor` the pool floor in world metres. */
-export function writeAtmosphere(spec: TodSpec, hour: AtmosphereHour, sun: THREE.Vector3, floor: number,
+/** Write one hour of a region's air into the shared values. `sun` is the
+ * sun's world direction; `floor` the pool floor in world metres. */
+export function writeAtmosphere(spec: TodSpec, region: RegionAtmosphere, tod: TimeOfDay, sun: THREE.Vector3, floor: number,
   out: Float32Array = ATMOSPHERE): void {
-  // Sunward air is the dome's own horizon toward the sun: its horizon stop
-  // heated by the hot band, so fogged land and sky meet in one colour.
+  const hour = region.byTime[tod];
+  // Sunward air takes the warmth of the dome's horizon toward the sun (its
+  // horizon stop heated by the hot band) at the far land's own value, so
+  // looking into the sun the land warms instead of whitening.
   scratch.setHex(spec.skyHorizon).lerp(hot.setHex(spec.hotBand), Math.min(.85, spec.hotStrength));
+  const fog = new THREE.Color(spec.fogColor), value = (c: THREE.Color) => .2126 * c.r + .7152 * c.g + .0722 * c.b;
+  scratch.multiplyScalar(value(fog) * 1.12 / Math.max(1e-4, value(scratch)));
   out[0] = scratch.r; out[1] = scratch.g; out[2] = scratch.b; out[3] = hour.sunward;
   const level = Math.hypot(sun.x, sun.z) || 1;
   out[4] = sun.x / level; out[5] = sun.z / level; out[6] = hour.sunwardPower; out[7] = 0;
   const p = hour.pool;
   out[8] = floor; out[9] = 1 / Math.max(.5, p.depth); out[10] = p.density; out[11] = p.cap;
-  scratch.setHex(spec.fogColor);
-  out[12] = scratch.r * p.tint[0]; out[13] = scratch.g * p.tint[1]; out[14] = scratch.b * p.tint[2]; out[15] = 0;
+  // Mist is a little paler than the far land, never white.
+  scratch.setHex(spec.fogColor).lerp(hot.setHex(spec.skyHorizon), .2);
+  out[12] = scratch.r * p.tint[0]; out[13] = scratch.g * p.tint[1]; out[14] = scratch.b * p.tint[2]; out[15] = 1 - region.distance;
 }
 
 /** `uplandPooledFog` in JavaScript, for tests and checks: the share of a

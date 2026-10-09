@@ -1104,7 +1104,7 @@ export class SkySystem implements Subsystem {
     const fog = ctx.scene.fog as THREE.FogExp2;
     fog.color.setHex(spec.fogColor);
     fog.density = spec.fogDensity;
-    writeAtmosphere(spec, regionAtmosphere(this.areaId).byTime[tod], this.sunDir.set(sx, sy, sz), this.poolFloor);
+    writeAtmosphere(spec, regionAtmosphere(this.areaId), tod, this.sunDir.set(sx, sy, sz), this.poolFloor);
 
     // Aerial perspective: each ridge steps from the near color toward the
     // cool far color, then flattens gently toward the fog with distance.
