@@ -1,4 +1,5 @@
-# Contact sheets from tools3d/postcards.sh: one per ground, rows High morning / Lightweight morning / High evening.
+# Contact sheets from tools3d/postcards.sh: one per ground, rows High morning / Lightweight morning / High evening
+# (and Lightweight evening when it was captured).
 # Usage: python3 tools3d/contact-sheet.py <label> [postcards dir]
 import sys, os, glob
 from PIL import Image, ImageDraw
@@ -6,7 +7,7 @@ label = sys.argv[1]; root = sys.argv[2] if len(sys.argv) > 2 else '/tmp/uplandin
 W = 480; H = 270
 for area in sorted(os.listdir(root)):
     rows = []
-    for cfg in ['high-morning', 'lite-morning', 'high-evening']:
+    for cfg in ['high-morning', 'lite-morning', 'high-evening', 'lite-evening']:
         files = sorted(glob.glob(f'{root}/{area}/{label}-{cfg}-*.png'))
         if files: rows.append((cfg, files))
     if not rows: continue
