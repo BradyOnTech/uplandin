@@ -103,6 +103,11 @@ const EXIT_CLEARANCE = 1.2;
 export const LAND_TURN_S = 1.6;
 /** Landing cover lies within this cosine of the bird's own line (about 35 degrees). */
 const LAND_CONE = .82;
+/** A marked single walked up goes this much faster and jinks this much harder. */
+const WILD_SPEED = 1.08;
+const WILD_CURL = 1.5;
+/** A Hun covey circling back turns through this much (radians) before it sets down. */
+const CIRCLE_BACK_CURL = Math.PI * 1.15;
 /** Seconds of look-ahead along the line for rising ground. */
 const LOOK_AHEAD_S = [.35, .8] as const;
 
@@ -129,6 +134,8 @@ export interface FlightLine {
   climbMult: number;
   /** Where a miss sets down: inside cover the hunter can see. */
   target?: { x: number; z: number };
+  /** When it turns for that cover, seconds (LAND_TURN_S unless it loops back). */
+  landTurnS?: number;
 }
 
 export interface FlightBody {
@@ -161,7 +168,7 @@ export function stepFlightLine(line: FlightLine, body: FlightBody, dt: number, g
     const dx = line.target.x - body.x, dz = line.target.z - body.z;
     distance = Math.hypot(dx, dz);
     // Keep the bird's own line out of the cover, then ease into the landing.
-    const blend = smooth((t - Math.max(LAND_TURN_S, line.curlStart)) / 1.4);
+    const blend = smooth((t - Math.max(line.landTurnS ?? LAND_TURN_S, line.curlStart)) / 1.4);
     heading += wrap(Math.atan2(dz, dx) - heading) * blend;
     speed = Math.min(speed, Math.max(3, distance * 1.8), distance / Math.max(dt, 1e-4));
   }
@@ -199,7 +206,7 @@ export function stepFlightLine(line: FlightLine, body: FlightBody, dt: number, g
  * family's landing range, and in sight of the hunter. */
 export function selectLanding(
   from: { x: number; z: number }, heading: number, range: Range, cover: readonly CoverPatch[],
-  rng: () => number, visible: (x: number, z: number) => boolean = () => true,
+  rng: () => number, visible: (x: number, z: number) => boolean = () => true, cone = LAND_CONE,
 ): { x: number; z: number } | undefined {
   const dirX = Math.cos(heading), dirZ = Math.sin(heading), prefer = (range[0] + range[1]) / 2;
   let best: { x: number; z: number; hx: number; hz: number } | undefined, bestScore = Infinity;
@@ -215,12 +222,14 @@ export function selectLanding(
       if (distance < range[0] || distance > range[1]) continue;
       const alignment = (dx * dirX + dz * dirZ) / distance;
       const score = Math.abs(distance - prefer) + (1 - alignment) * 70;
-      if (alignment < LAND_CONE || score >= bestScore || !visible(x, z)) continue;
+      if (alignment < cone || score >= bestScore || !visible(x, z)) continue;
       bestScore = score; best = { x, z, hx: insetX, hz: insetZ };
     }
   }
   if (!best) return undefined;
-  return { x: best.x + (rng() - .5) * best.hx, z: best.z + (rng() - .5) * best.hz };
+  // A little way into the patch, unless that little way is somewhere it cannot land.
+  const spot = { x: best.x + (rng() - .5) * best.hx, z: best.z + (rng() - .5) * best.hz };
+  return visible(spot.x, spot.z) ? spot : { x: best.x, z: best.z };
 }
 
 /** Steepest grade a bird sets down on in the open (about 35 degrees). */
@@ -290,6 +299,14 @@ export interface LineInput {
   lean?: number;
   /** May this bird set down? A relit single's next escape is for good. */
   mayLand?: boolean;
+  /** Can a bird set down here: in bounds, clear of rock, trees and buildings,
+   * on walkable ground, not in water? Absent: anywhere. */
+  landable?: (x: number, z: number) => boolean;
+  /** A marked single walked up: it goes a little faster and jinks harder. */
+  wild?: boolean;
+  /** A Hun covey that flushed wild loops round and sets down again, near
+   * where it rose, in cover the hunter can see. */
+  circleBack?: boolean;
   ground: (x: number, z: number) => number;
   cover?: readonly CoverPatch[];
   rng: () => number;
@@ -326,14 +343,14 @@ export function planFlightLine(input: LineInput): FlightLine {
   const climb = Math.max(.6, Math.min(1.4, doctrine.climb)) * (input.lift ?? 1);
   // The line is planned at the level speed; the slope rule then scales the
   // speed of that same line, so from above or below only its pace changes.
-  const speed = Math.min(SPEED_CAP, pick([input.flight.speedMin, input.flight.speedMax]) * SPEED_PER_PX * doctrine.carry
-    * (input.young ? YOUNG_FLIGHT_MULT : 1));
+  const speed = Math.min(SPEED_CAP * (input.wild ? WILD_SPEED : 1), pick([input.flight.speedMin, input.flight.speedMax]) * SPEED_PER_PX * doctrine.carry
+    * (input.young ? YOUNG_FLIGHT_MULT : 1) * (input.wild ? WILD_SPEED : 1));
   // A bird sat on underfoot pops to head height; a rooster towers.
   const tower = input.family === 'rooster' ? burst : 0;
   const curlSign = input.curlSign ?? (rng() < .5 ? -1 : 1);
   const line: FlightLine = {
     family: input.family, bearing: input.bearing, aim: input.bearing,
-    curl: pick(fam.curl) * Math.max(.5, Math.min(1.5, doctrine.wobble)) * curlSign,
+    curl: pick(fam.curl) * Math.max(.5, Math.min(1.5, doctrine.wobble)) * curlSign * (input.wild ? WILD_CURL : 1),
     curlStart: fam.curlStart, curlS: fam.curlS, speed,
     jumpCarry: fam.jumpCarry * (1 - .5 * tower), burstS: fam.burstS * (1 + .2 * tower), hangS: fam.hangS * (1 + tower), accelS: fam.accelS,
     burstHeight: pick(fam.burstHeight) * climb + tower * 2.5, cruise: pick(fam.cruise) * climb,
@@ -380,9 +397,24 @@ export function planFlightLine(input: LineInput): FlightLine {
     }
   }
   line.burstHeight = base[0] + bestLift; line.cruise = base[1] + bestLift;
-  // A miss sets down in cover it can see from the hunter, along its own line.
-  if (input.mayLand !== false && landRoll < fam.landChance && (input.cover?.length || fam.landsInOpen)) {
-    const heading = line.bearing + line.curl / 2, seen = (x: number, z: number) => inSight(input.eye, x, z, ground);
+  // A miss sets down in cover it can see from the hunter, along its own line,
+  // in bounds, clear of rock, trees and buildings, on ground a dog can reach.
+  const seen = (x: number, z: number) => (input.landable?.(x, z) ?? true) && inSight(input.eye, x, z, ground);
+  if (input.circleBack) {
+    // The loop: out on its line, round through more than a half turn, and
+    // down again near where it rose, where the hunter can watch it in.
+    line.curl = curlSign * CIRCLE_BACK_CURL; line.curlStart = .9; line.curlS = 3.4;
+    line.glideAt = Math.max(line.glideAt, 4.2); line.landTurnS = 4.4;
+    const round = sample(line, input.start, ground, [5.6])[0];
+    const heading = Math.atan2(round.vz, round.vx);
+    line.target = selectLanding(round, heading, [4, 45], input.cover ?? [], landJitter, seen, -.2);
+    if (!line.target) {
+      // Nowhere to set down near the turn: it drives off on its first line.
+      line.curl = pick(fam.curl) * curlSign; line.curlStart = fam.curlStart; line.curlS = fam.curlS;
+      line.glideAt = pick(fam.glideAt); line.landTurnS = undefined;
+    }
+  } else if (input.mayLand !== false && landRoll < fam.landChance && (input.cover?.length || fam.landsInOpen)) {
+    const heading = line.bearing + line.curl / 2;
     line.target = selectLanding(input.start, heading, fam.landRange, input.cover ?? [], landJitter, seen)
       ?? (fam.landsInOpen ? selectOpenLanding(input.start, heading, fam.landRange, ground, landJitter, seen) : undefined);
   }

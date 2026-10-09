@@ -43,6 +43,13 @@ const DUST_DEFAULT: readonly [number, number] = [0xcdb98f, 0xbaa67c];
 const SNOW: readonly [number, number] = [0xf1f4f7, 0xdfe5ec];
 /** Straw, seed and leaf: light enough never to read as a dark speck (a bird) at range. */
 const CHAFF_TONES = [0xeadbab, 0xdcc48c, 0xcaae74, 0xb89c62];
+/** Cattail and reed: pale seed fluff and broken blade. */
+const REED_TONES = [0xe6dcc0, 0xc9b98a, 0xa9a46e, 0x8d8a5a];
+/** Water thrown up: pale, catching the sky. */
+const WATER_TONES = [0xeef4f6, 0xd6e2e8, 0xc4d4dc];
+
+/** Where a shot bird strikes: open ground, cattails and heavy reeds, or water. */
+export type ImpactSurface = 'ground' | 'reeds' | 'water';
 
 interface Puff {
   age: number; life: number;
@@ -55,6 +62,8 @@ interface Flake {
   x: number; y: number; z: number;
   vx: number; vy: number; vz: number;
   size: number; phase: number; spin: number;
+  /** A water drop falls fast and is gone where it lands; chaff flutters and lies. */
+  drop: boolean;
 }
 
 export interface EruptionBurst {
@@ -136,7 +145,7 @@ export class CoverEruption {
       mesh.name = mesh === this.puffMesh ? 'covey-eruption-dust' : 'covey-eruption-chaff';
     }
     this.puffs = Array.from({ length: puffMax }, () => ({ age: -1, life: 1, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, radius: 1, spin: 0, grow: .35 }));
-    this.flakes = Array.from({ length: chaffMax }, () => ({ age: -1, life: 1, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, size: .1, phase: 0, spin: 0 }));
+    this.flakes = Array.from({ length: chaffMax }, () => ({ age: -1, life: 1, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, size: .1, phase: 0, spin: 0, drop: false }));
     // Colour every slot once; a burst only recolours the slots it takes.
     for (let i = 0; i < puffMax; i++) this.puffMesh.setColorAt(i, this.color.setHex(this.tones[0]));
     for (let i = 0; i < chaffMax; i++) this.chaffMesh.setColorAt(i, this.color.setHex(CHAFF_TONES[i % CHAFF_TONES.length]));
@@ -192,8 +201,50 @@ export class CoverEruption {
       flake.vy = (2 + rng() * 2.4) * power;
       flake.size = (.12 + rng() * .1) * (this.lite ? 1.5 : 1);
       flake.phase = rng() * Math.PI * 2; flake.spin = (rng() < .5 ? -1 : 1) * (5 + rng() * 6);
+      flake.drop = false;
       const tone = burst.snow ? SNOW[i % 2] : CHAFF_TONES[Math.floor(rng() * CHAFF_TONES.length) % CHAFF_TONES.length];
       this.chaffMesh.setColorAt(index, this.color.setHex(tone));
+    }
+    for (const mesh of [this.puffMesh, this.chaffMesh]) if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }
+
+  /**
+   * A shot bird striking the ground where it fell: a small burst of dust and
+   * stems off open ground, seed fluff and broken blade out of cattails, or
+   * water thrown up. `scale` is the bird's own readability enlargement at
+   * that range, so the strike reads as far off as the bird does.
+   */
+  impact(at: { x: number; z: number }, surface: ImpactSurface, scale: number, seed: number): void {
+    this.bursts++;
+    const rng = mulberry32((seed ^ 0x1f2e3d) >>> 0), k = Math.max(1, scale) * (this.lite ? 1.25 : 1);
+    const groundY = this.ground(at.x, at.z);
+    const puffs = surface === 'ground' ? 3 : surface === 'reeds' ? 1 : 0;
+    for (let i = 0; i < puffs; i++) {
+      const puff = this.puffs[this.puffCursor], index = this.puffCursor;
+      this.puffCursor = (this.puffCursor + 1) % this.puffs.length;
+      const angle = rng() * Math.PI * 2, out = .3 + rng() * .5;
+      puff.age = 0; puff.life = .9 + rng() * .5;
+      puff.x = at.x + Math.cos(angle) * .1 * k; puff.z = at.z + Math.sin(angle) * .1 * k; puff.y = groundY + .05;
+      puff.vx = Math.cos(angle) * out; puff.vz = Math.sin(angle) * out; puff.vy = .5 + rng() * .5;
+      puff.radius = (.16 + rng() * .1) * k; puff.grow = .5; puff.spin = (rng() - .5) * 1.4;
+      const tones = this.tones;
+      this.color.setHex(tones[0]).lerp(this.scratch.setHex(tones[1]), rng()).lerp(this.scratch.setHex(HAZE), DUST_PALE);
+      this.puffMesh.setColorAt(index, this.color);
+    }
+    const flakes = surface === 'water' ? 14 : surface === 'reeds' ? 12 : 7;
+    const palette = surface === 'water' ? WATER_TONES : surface === 'reeds' ? REED_TONES : CHAFF_TONES;
+    for (let i = 0; i < flakes; i++) {
+      const flake = this.flakes[this.flakeCursor], index = this.flakeCursor;
+      this.flakeCursor = (this.flakeCursor + 1) % this.flakes.length;
+      const angle = rng() * Math.PI * 2, out = (surface === 'water' ? .5 : .8) + rng() * 1.2;
+      flake.age = 0; flake.life = surface === 'water' ? 1.2 : 1.3 + rng() * .7;
+      flake.x = at.x; flake.z = at.z; flake.y = groundY + .08;
+      flake.vx = Math.cos(angle) * out; flake.vz = Math.sin(angle) * out;
+      flake.vy = surface === 'water' ? 2.4 + rng() * 2 : 1.4 + rng() * 1.8;
+      flake.size = (surface === 'water' ? .06 + rng() * .05 : .07 + rng() * .06) * k;
+      flake.phase = rng() * Math.PI * 2; flake.spin = (rng() < .5 ? -1 : 1) * (5 + rng() * 6);
+      flake.drop = surface === 'water';
+      this.chaffMesh.setColorAt(index, this.color.setHex(palette[Math.floor(rng() * palette.length) % palette.length]));
     }
     for (const mesh of [this.puffMesh, this.chaffMesh]) if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   }
@@ -215,10 +266,12 @@ export class CoverEruption {
       if (flake.age >= flake.life) { flake.age = -1; continue; }
       const drag = Math.exp(-dt * 2.4);
       flake.vx *= drag; flake.vz *= drag;
-      // Light chaff: a quick climb, then a slow flutter down (terminal ~0.9 m/s).
-      flake.vy = Math.max(-.9, flake.vy - 6 * dt);
+      // Light chaff: a quick climb, then a slow flutter down (terminal ~0.9 m/s);
+      // a drop of water falls as a drop does and is gone where it lands.
+      flake.vy = flake.drop ? flake.vy - 9.8 * dt : Math.max(-.9, flake.vy - 6 * dt);
       flake.x += flake.vx * dt; flake.y += flake.vy * dt; flake.z += flake.vz * dt;
       const ground = this.ground(flake.x, flake.z) + .02;
+      if (flake.y < ground && flake.drop) { flake.age = -1; continue; }
       if (flake.y < ground) { flake.y = ground; flake.vx = flake.vz = flake.vy = 0; }
     }
   }

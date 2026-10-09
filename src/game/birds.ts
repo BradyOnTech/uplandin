@@ -22,6 +22,8 @@ export interface Bird {
   sex?: 'hen' | 'rooster';
   /** A relit covey survivor — holds tight, and next escape is for good. */
   single?: boolean;
+  /** The covey a relit single was scattered from: its singles call each other back together. */
+  scatteredFrom?: number;
   /** Hun circle-back already used — the next wild flush is for good. */
   circled?: boolean;
   /** Held tight when the rest of its covey went up; flushes on its own. */
@@ -66,6 +68,10 @@ export const RELIGHT_CHANCE = 0.65; // the rest are gone to the next county
 const SINGLE_SCATTER_MIN = 140; // survivors put real ground behind them...
 const SINGLE_SCATTER_MAX = 420;
 const SINGLE_NEAR_COVER = 70; // ...but sometimes drop into surprisingly close cover
+/** Birds of open country, whose whole slope or prairie is cover: a miss that
+ * sets down in the open in sight of the hunter is a single to hunt there,
+ * not one that flew away (flightLine.ts LINE_FAMILIES landsInOpen). */
+export const OPEN_COUNTRY_SINGLES: ReadonlySet<string> = new Set(['chukar', 'sharptail', 'prairie-chicken']);
 
 /** Uniformly scatter one bird inside a species-sized covey disk. The radial
  * square-root keeps the center from becoming unnaturally dense while the
@@ -312,7 +318,8 @@ export function relightSurvivors(
     if (landings && (!landing || !Number.isFinite(landing.x) || !Number.isFinite(landing.y) ||
       landing.x < bounds.x || landing.x > bounds.x + bounds.w ||
       landing.y < bounds.y || landing.y > bounds.y + bounds.h ||
-      !patches.some(p => landing.x >= p.x && landing.x <= p.x + p.w && landing.y >= p.y && landing.y <= p.y + p.h))) continue;
+      (!OPEN_COUNTRY_SINGLES.has(b.speciesId)
+        && !patches.some(p => landing.x >= p.x && landing.x <= p.x + p.w && landing.y >= p.y && landing.y <= p.y + p.h)))) continue;
     // Continuous flight has already shown which birds put down. Do not roll
     // a second disappearance after the player has watched one land.
     if (!landings && rng() > RELIGHT_CHANCE) continue;
@@ -340,6 +347,7 @@ export function relightSurvivors(
     }
     b.state = 'hidden';
     b.single = true;
+    b.scatteredFrom = b.coveyId;
     b.coveyId = -b.id; // scattered singles sit alone — the old covey bond is broken
     b.runs = false; // a scattered single sits, it doesn't run
     b.nerveMs =
@@ -628,7 +636,7 @@ export function circleBack(
   bounds: Rect,
   rng: RNG = Math.random,
   nerveMult = 1,
-  options: { returnTrail?: AreaTrail; patches?: readonly Rect[] } = {},
+  options: { returnTrail?: AreaTrail; patches?: readonly Rect[]; landings?: ReadonlyMap<number, Vec2> } = {},
 ): Bird[] {
   // A spatial rise reaches this seam after the flight has either settled or
   // left the readable envelope, so survivors may already be marked escaped.
@@ -643,6 +651,23 @@ export function circleBack(
   }
   const cx = covey.reduce((a, b) => a + b.pos.x, 0) / covey.length;
   const cy = covey.reduce((a, b) => a + b.pos.y, 0) / covey.length;
+  // A continuous scene has flown the loop: the covey is where the hunter
+  // watched it set down, every bird where it landed, together again.
+  const landed = options.landings;
+  if (landed && covey.every(b => {
+    const at = landed.get(b.id);
+    return at && Number.isFinite(at.x) && Number.isFinite(at.y)
+      && at.x >= bounds.x && at.x <= bounds.x + bounds.w && at.y >= bounds.y && at.y <= bounds.y + bounds.h;
+  })) {
+    const species = getSpecies('hun');
+    for (const b of covey) {
+      b.pos = { ...landed.get(b.id)! };
+      b.state = 'hidden';
+      b.circled = true;
+      b.nerveMs = (species.nerveMinMs + rng() * (species.nerveMaxMs - species.nerveMinMs)) * nerveMult;
+    }
+    return covey;
+  }
   let anchor: Vec2 | undefined;
   const returnTrail = options.returnTrail;
   const patches = options.patches ?? [];

@@ -31,11 +31,21 @@ export const SKY_MAX = 3;
 export const RISE_RANGE_M = 40;
 /** A wave holds the sky this long at most; then the next may rise. */
 export const WAVE_MAX_GAP_MS = 2000;
+/** A bird leaving the shot still counts against the cap until it is this far
+ * from the hunter, metres, so the sky never shows six. */
+export const LEAVING_RANGE_M = 55;
 
 /** Is this bird a live target in the shot: launching or flying, inside
  * effective range? No more than SKY_MAX ever are, whatever their waves' clocks. */
 export function inTheShot(bird: { status: string; rangeM: number }): boolean {
   return (bird.status === 'waiting' || bird.status === 'flying') && bird.rangeM <= RISE_RANGE_M;
+}
+
+/** Does this bird count against the cap: a live target in the shot, or a bird
+ * leaving it (out of range, or already credited out and flying on) that is
+ * not yet LEAVING_RANGE_M off? Never more than SKY_MAX do at once. */
+export function countsAgainstCap(bird: { status: string; rangeM: number }): boolean {
+  return (bird.status === 'waiting' || bird.status === 'flying' || bird.status === 'departing') && bird.rangeM <= LEAVING_RANGE_M;
 }
 
 /** Does this bird still hold the sky against the next wave? A bird that is
@@ -143,10 +153,10 @@ export interface SkyClock {
   nowMs: number;
   /** Birds holding the sky (holdsSky), across every covey: they set the clock. */
   inPlay: number;
-  /** Live targets in the shot (inTheShot), across every covey: they set the
-   * cap. A bird whose wave has had its time still counts here until it is
-   * down or out of range. Absent: the same as `inPlay`. */
-  inShot?: number;
+  /** Birds counting against the cap (countsAgainstCap), across every covey:
+   * live targets, and leaving birds not yet LEAVING_RANGE_M off, whatever
+   * their waves' clocks. Absent: the same as `inPlay`. */
+  inSky?: number;
   /** When the most recent wave of any covey rose (-Infinity before one). */
   lastWaveMs: number;
   /** When the sky last cleared (no bird holding it), or null while one does. */
@@ -159,7 +169,7 @@ export interface SkyClock {
  * the eruption whenever it fits under the cap.
  */
 export function waveMayRise(wave: RiseWave, score: RiseScore, sky: SkyClock, first: boolean): boolean {
-  if (Math.max(sky.inPlay, sky.inShot ?? 0) + wave.ids.length > SKY_MAX) return false;
+  if (Math.max(sky.inPlay, sky.inSky ?? 0) + wave.ids.length > SKY_MAX) return false;
   if (first) return true;
   const gun = sky.gun;
   const gunEmpty = !!gun && (gun.loaded <= 0 || gun.reloading);
