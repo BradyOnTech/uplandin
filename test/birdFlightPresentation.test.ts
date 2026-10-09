@@ -18,11 +18,13 @@ function field() {
   const internal = birds as unknown as {
     mat: THREE.Material; hunt: unknown; terrain: unknown; frozen: boolean; spatialEncounter: boolean;
     queue: number[]; qHead: number; qTail: number; riseRng: () => number;
-    launchWave(birds: { id: number; speciesId: string; pos: { x: number; y: number } }[]): void;
+    tickBirds(dtMs: number): void;
     slots: FlightSlot[]; buildPool(ctx: Ctx): void; applySpeciesAppearance(slot: FlightSlot, species: ReturnType<typeof getSpecies>): void;
   };
   const simBird = { id: 1, state: 'downed' };
-  const hunt = { areaConfig: () => ({ id: 'chukar-ridge' }), huntState: () => ({ gunId: 'over-under', birds: [simBird] }),
+  const simBirds: Record<string, unknown>[] = [simBird];
+  const hunt = { areaConfig: () => ({ id: 'chukar-ridge' }), huntState: () => ({ gunId: 'over-under', birds: simBirds, hunterPos: { x: 0, y: 0 }, wind: 0 }),
+    riseSlopeApproach: () => null,
     resolveBird: vi.fn(() => true), recordFallWorld: vi.fn(), getActiveChallenge: () => 'wild',
     simToWorld: (x: number, y: number, out: { x: number; z: number }) => Object.assign(out, { x, z: y }),
     coverPatches: () => [] };
@@ -35,7 +37,7 @@ function field() {
   internal.buildPool(ctx); const slot = internal.slots[0]; internal.applySpeciesAppearance(slot, getSpecies('chukar'));
   Object.assign(slot, { simId: 1, status: 'flying', x: .6, y: 2, z: -12, previousX: 0, previousY: 2, previousZ: -12,
     vxW: 18, vyW: 0, vzW: 0, airMs: 500, previousAirMs: 500 - 1000 / 30 });
-  return { birds, internal, slot, ctx, hunt };
+  return { birds, internal, slot, ctx, hunt, simBirds };
 }
 afterEach(() => vi.unstubAllGlobals());
 
@@ -55,8 +57,8 @@ describe('visible flight and shot sampling', () => {
     f.birds.dispose(f.ctx);
   });
 
-  it.each(['capture', 'legacy'])('preserves authoritative %s positions and samples', mode => {
-    const f = field(); f.internal.frozen = mode === 'capture'; f.internal.spatialEncounter = mode !== 'legacy';
+  it('preserves authoritative capture positions and samples', () => {
+    const f = field(); f.internal.frozen = true;
     f.ctx.fixedAlpha = .1; f.birds.update(f.ctx, 0);
     expect(f.slot.root.position.x).toBe(.6); expect(f.birds.shotTargets(.1)[0].x).toBe(.6);
     expect(f.birds.airborne()[0].x).toBe(.6); f.birds.dispose(f.ctx);
@@ -78,8 +80,8 @@ describe('visible flight and shot sampling', () => {
   it('discards the old flight when a pooled slot launches from new cover', () => {
     const f = field(); f.slot.status = 'done';
     f.internal.frozen = true; // Silence audio for this exact launch fixture.
-    f.internal.riseRng = mulberry32(517); f.internal.queue = [2]; f.internal.qHead = 0; f.internal.qTail = 1;
-    f.internal.launchWave([{ id: 2, speciesId: 'chukar', pos: { x: 20, y: 30 } }]);
+    f.simBirds.push({ id: 2, coveyId: 2, speciesId: 'chukar', state: 'flushed', pos: { x: 20, y: 30 } });
+    f.internal.tickBirds(1000 / 30);
     f.internal.frozen = false;
     for (const alpha of [0, .5, 1]) {
       f.ctx.fixedAlpha = alpha; f.birds.update(f.ctx, 0);

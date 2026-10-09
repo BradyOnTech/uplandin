@@ -4,25 +4,46 @@
  * The simulation flushes a covey as a unit (birds.ts flushCovey): every bird
  * that rose is `flushed`, the dog marks them all, and the cover erupts and the
  * wing thunder is sized to all of them. The sky, though, holds at most
- * SKY_MAX birds at once. The rest of the covey waits in the cover, queued,
- * and rises in waves: when the sky clears, or when the gun has been fired dry
- * and reloaded, never into an empty gun except for the sleeper, which waits
- * for exactly that.
+ * SKY_MAX live targets at once. The rest of the covey waits in the cover,
+ * queued, and rises in waves when the sky clears in Duck Hunt terms (every
+ * bird of the last wave is down, past effective range, or the wave has had
+ * its few seconds), or when the gun has been fired dry and reloaded; never
+ * into an empty gun except for the sleeper, which waits for exactly that.
  *
  * Bird states across a rise:
  * - queued: `flushed` in the simulation, still in the cover. Not drawn, not a
  *   target, never in the bag or the escaped tally. The dog stays marking.
- * - in the air: launching, flying (the only shootable state) or falling. All
- *   coveys share the one cap.
- * - settled: downed, or escaped when its flight ends (range or a landing).
+ * - holding the sky (holdsSky): launching or flying, inside effective range
+ *   of the hunter, within WAVE_MAX_GAP_MS of its wave's rise. All coveys share
+ *   the one cap of SKY_MAX.
+ * - leaving: still flying, but out of the shot; it drives off-screen or sets
+ *   down in visible cover (game/flightLine.ts), and holds nothing back.
+ * - settled: downed, or escaped when it leaves the shot or lands.
  * The rise settles (finishRise) only when nothing is queued or in the air.
  *
  * Pure and deterministic: callers supply the clock, the sky count, the gun
  * and a seeded stream.
  */
 
-/** At most this many birds in the air at once, across every covey. */
+/** At most this many live targets hold the sky at once, across every covey. */
 export const SKY_MAX = 3;
+/** Effective range, metres from the hunter: a bird beyond it is out of the shot. */
+export const RISE_RANGE_M = 40;
+/** A wave holds the sky this long at most; then the next may rise. */
+export const WAVE_MAX_GAP_MS = 2000;
+
+/** Is this bird a live target in the shot: launching or flying, inside
+ * effective range? No more than SKY_MAX ever are, whatever their waves' clocks. */
+export function inTheShot(bird: { status: string; rangeM: number }): boolean {
+  return (bird.status === 'waiting' || bird.status === 'flying') && bird.rangeM <= RISE_RANGE_M;
+}
+
+/** Does this bird still hold the sky against the next wave? A bird that is
+ * down (falling or on the ground), out past effective range, or whose wave
+ * has had its time, does not. */
+export function holdsSky(bird: { status: string; rangeM: number; sinceLaunchMs: number }): boolean {
+  return inTheShot(bird) && bird.sinceLaunchMs < WAVE_MAX_GAP_MS;
+}
 
 /** How a species leaves the cover once it has been flushed. */
 export interface RiseScore {
@@ -43,7 +64,7 @@ export interface RiseScore {
 }
 
 const COVEY: RiseScore = {
-  waveSize: 3, popcorn: false, breathMs: [350, 700], popcornGapMs: [0, 0], sleeperChance: .18, laneStep: .55,
+  waveSize: 3, popcorn: false, breathMs: [150, 350], popcornGapMs: [0, 0], sleeperChance: .18, laneStep: .55,
 };
 
 /** Species scores. Bobwhite thunder out three at a time on three bearings;
@@ -53,8 +74,8 @@ export const RISE_SCORES: Readonly<Record<string, RiseScore>> = {
   bobwhite: COVEY,
   hun: { ...COVEY, laneStep: .4, sleeperChance: .14 },
   chukar: { ...COVEY, laneStep: .5, sleeperChance: .2 },
-  sharptail: { waveSize: 2, popcorn: true, breathMs: [300, 600], popcornGapMs: [450, 950], sleeperChance: .22, laneStep: .55 },
-  ringneck: { waveSize: 1, popcorn: true, breathMs: [300, 600], popcornGapMs: [700, 1300], sleeperChance: 0, laneStep: 0 },
+  sharptail: { waveSize: 2, popcorn: true, breathMs: [150, 350], popcornGapMs: [450, 950], sleeperChance: .22, laneStep: .55 },
+  ringneck: { waveSize: 1, popcorn: true, breathMs: [150, 350], popcornGapMs: [700, 1300], sleeperChance: 0, laneStep: 0 },
 };
 
 export function riseScoreFor(speciesId: string): RiseScore {
@@ -65,7 +86,7 @@ export function riseScoreFor(speciesId: string): RiseScore {
 export const SLEEPER_MIN_MS = 450;
 /** With the gun never emptied, the sleeper gets up this long after the sky
  * has cleared of the last wave: the bird that waits until you relax. */
-export const SLEEPER_LATE_MS: readonly [number, number] = [1100, 2000];
+export const SLEEPER_LATE_MS: readonly [number, number] = [300, 700];
 /** The covey does not wait on a gun the hunter never reloads: this long after
  * the sky clears (beyond the breath), the next wave rises anyway. */
 export const GUN_PATIENCE_MS = 2400;
@@ -120,11 +141,15 @@ export interface RiseGun {
 export interface SkyClock {
   /** Rise clock, ms. */
   nowMs: number;
-  /** Birds launching, flying or falling, across every covey. */
+  /** Birds holding the sky (holdsSky), across every covey: they set the clock. */
   inPlay: number;
+  /** Live targets in the shot (inTheShot), across every covey: they set the
+   * cap. A bird whose wave has had its time still counts here until it is
+   * down or out of range. Absent: the same as `inPlay`. */
+  inShot?: number;
   /** When the most recent wave of any covey rose (-Infinity before one). */
   lastWaveMs: number;
-  /** When the sky last emptied, or null while birds are up. */
+  /** When the sky last cleared (no bird holding it), or null while one does. */
   clearSinceMs: number | null;
   gun?: RiseGun;
 }
@@ -134,7 +159,7 @@ export interface SkyClock {
  * the eruption whenever it fits under the cap.
  */
 export function waveMayRise(wave: RiseWave, score: RiseScore, sky: SkyClock, first: boolean): boolean {
-  if (sky.inPlay + wave.ids.length > SKY_MAX) return false;
+  if (Math.max(sky.inPlay, sky.inShot ?? 0) + wave.ids.length > SKY_MAX) return false;
   if (first) return true;
   const gun = sky.gun;
   const gunEmpty = !!gun && (gun.loaded <= 0 || gun.reloading);
@@ -154,6 +179,13 @@ export function waveMayRise(wave: RiseWave, score: RiseScore, sky: SkyClock, fir
 /** Lanes keep inside this sideways share of a bird's speed, seen from the gun
  * (about 76 degrees off the line of sight): none flies back past square. */
 const LANE_SIDE_MAX = .97;
+/** A popcorn single clears the line of sight by this much (radians), plus up
+ * to LONE_REACH more, on the side away from the birds already up. */
+const LONE_CLEAR = .3;
+const LONE_REACH = .35;
+/** A popcorn pair's near bird crosses at least this sideways share of its
+ * speed clear of the line of sight, on the side away from the birds up. */
+const PAIR_CLEAR = .15;
 
 /**
  * Lane offsets for a wave's birds, as bearings off the covey's escape line.
@@ -166,11 +198,14 @@ const LANE_SIDE_MAX = .97;
  * sight from the gun. Going straight away that is the same thing; a covey
  * breaking across the gun would otherwise put its side lanes one behind
  * another, so the wave slides toward the line of sight as far as it must
- * for its lanes to open on screen.
+ * for its lanes to open on screen. `avoidSide` is the side of the line of
+ * sight (as a bearing turns) that birds already in the shot are on.
  */
-export function waveLanes(count: number, step: number, rng: () => number, escapeOffSight = 0): WaveLane[] {
-  // A lone bird (a sharptail single, a straggler) breaks to one side or the other.
-  const base = count >= 3 ? [-1, 0, 1] : count === 2 ? [-.7, .7] : [(rng() < .5 ? -1 : 1) * (.5 + rng() * .5)];
+export function waveLanes(count: number, step: number, rng: () => number, escapeOffSight = 0, avoidSide = 0): WaveLane[] {
+  // A lone bird (a sharptail single, a straggler) breaks to one side or the
+  // other: away from the side birds already in the shot are on, if any.
+  const lone = rng() < .5 ? -1 : 1, reach = .5 + rng() * .5;
+  const base = count >= 3 ? [-1, 0, 1] : count === 2 ? [-.7, .7] : [(avoidSide ? -Math.sign(avoidSide) : lone) * reach];
   for (let i = base.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
     [base[i], base[j]] = [base[j], base[i]];
@@ -178,10 +213,26 @@ export function waveLanes(count: number, step: number, rng: () => number, escape
   const lanes = base.slice(0, Math.max(1, count)).map(lane => lane + (rng() - .5) * .35);
   const side = Math.sin(step), widest = Math.max(...lanes.map(Math.abs)) * side;
   const away = Math.cos(escapeOffSight) >= 0;
+  if (count === 1 && avoidSide) {
+    // A popcorn single crosses the gun on the other side of the line of
+    // sight from the birds already in the shot, however its covey's escape
+    // line runs; an escape already wider on that side is kept.
+    const want = -Math.sign(avoidSide) * Math.min(LANE_SIDE_MAX, Math.sin(LONE_CLEAR + LONE_REACH * reach));
+    const s = Math.sign(Math.sin(escapeOffSight)) === Math.sign(want) && Math.abs(Math.sin(escapeOffSight)) > Math.abs(want) ? Math.sin(escapeOffSight) : want;
+    const offSight = away ? Math.asin(s) : Math.PI - Math.asin(s);
+    return [{ offset: Math.atan2(Math.sin(offSight - escapeOffSight), Math.cos(offSight - escapeOffSight)), side: .6 }];
+  }
   // The wave slides toward the sight line only as far as its outside lane
   // needs half its room (a crossing covey still crosses); the lanes on the
   // crowded side then close up evenly, in order, to fit.
-  const centre = Math.max(-LANE_SIDE_MAX + widest / 2, Math.min(LANE_SIDE_MAX - widest / 2, Math.sin(escapeOffSight)));
+  let centre = Math.max(-LANE_SIDE_MAX + widest / 2, Math.min(LANE_SIDE_MAX - widest / 2, Math.sin(escapeOffSight)));
+  if (count === 2 && avoidSide) {
+    // A popcorn pair rises on the far side of the line of sight from the
+    // birds already in the shot: its near bird crosses at least PAIR_CLEAR
+    // clear of it, and the pair keeps its spacing.
+    const free = -Math.sign(avoidSide), near = Math.min(...lanes.map(lane => free * (centre + lane * side)));
+    if (near < PAIR_CLEAR) centre = Math.max(-LANE_SIDE_MAX + widest / 2, Math.min(LANE_SIDE_MAX - widest / 2, centre + free * (PAIR_CLEAR - near)));
+  }
   const raw = lanes.map(lane => centre + lane * side);
   const hi = Math.max(...raw), lo = Math.min(...raw);
   return lanes.map((lane, i) => {

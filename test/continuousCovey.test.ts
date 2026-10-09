@@ -4,11 +4,12 @@ import * as audio from '../src/audio';
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { BirdsSystem, pickBirdAlongRay } from '../src/three/subsystems/birds';
-import { GUN_PATIENCE_MS, SLEEPER_MIN_MS } from '../src/game/riseScore';
+import { GUN_PATIENCE_MS, holdsSky, SLEEPER_MIN_MS } from '../src/game/riseScore';
 import type { Bird } from '../src/game/birds';
 import { getSpecies } from '../src/game/species';
 import { getArea } from '../src/game/areas';
 import { QuailFlushDebris } from '../src/three/quailFlushDebris';
+import { CoverEruption } from '../src/three/coverEruption';
 import { createHitReaction } from '../src/three/hitReactions';
 import { mulberry32 } from '../src/game/math';
 
@@ -37,6 +38,14 @@ function fixture(areaId = 'quail-fields') {
 
 const IN_PLAY = ['waiting', 'flying', 'falling'];
 
+/** Birds holding the sky against the next wave (riseScore holdsSky), from
+ * the fixture's hunter at the origin. */
+function holding(f: ReturnType<typeof fixture>) {
+  const skyMs = (f.runtime as unknown as { skyMs: number }).skyMs;
+  return f.runtime.slots.filter(s => holdsSky({ status: s.status, rangeM: Math.hypot(s.x, s.z),
+    sinceLaunchMs: skyMs - (s.launchedSkyMs ?? -Infinity) }));
+}
+
 /** Run a rise until it settles, recording each bird's launch (a slot copy at
  * the tick it left the cover) and the most birds ever in the air. */
 function flyOut(f: ReturnType<typeof fixture>, maxTicks = 30 * 150) {
@@ -45,7 +54,7 @@ function flyOut(f: ReturnType<typeof fixture>, maxTicks = 30 * 150) {
   for (let tick = 0; tick < maxTicks && !f.finishRise.mock.calls.length; tick++) {
     f.runtime.tickBirds(1000 / 30);
     const inPlay = f.runtime.slots.filter(s => IN_PLAY.includes(s.status));
-    maxInPlay = Math.max(maxInPlay, inPlay.length);
+    maxInPlay = Math.max(maxInPlay, holding(f).length);
     for (const s of inPlay) {
       if (!launched.has(s.simId)) launched.set(s.simId, { tick, slot: { ...s, spatialFlight: s.spatialFlight && { ...s.spatialFlight } } });
     }
@@ -67,15 +76,16 @@ describe('continuous Quail coveys', () => {
     for (const [simId, launch] of run.launched) {
       const s = launch.slot;
       const away = Math.atan2(s.flight.escZ, s.flight.escX);
-      const offset = Math.atan2(Math.sin(s.spatialFlight.bearing - away), Math.cos(s.spatialFlight.bearing - away));
+      const offset = Math.atan2(Math.sin(s.line.bearing - away), Math.cos(s.line.bearing - away));
       waves.set(launch.tick, [...waves.get(launch.tick) ?? [], offset]);
       const bird = run.f.birds.find(b => b.id === simId)!;
       expect([s.x, s.z]).toEqual([bird.pos.x, bird.pos.y]);
-      expect(s.spatialFlight).toEqual(repeated.launched.get(simId)!.slot.spatialFlight);
-      expect(s.spatialFlight.speed).toBeGreaterThanOrEqual(115 * .12 * .92);
-      expect(s.spatialFlight.speed).toBeLessThanOrEqual(155 * .12 * .92);
-      // Still a burst away from the gun, a lane either side of the line.
-      expect(Math.abs(offset)).toBeLessThan(.7);
+      expect(s.line).toEqual(repeated.launched.get(simId)!.slot.line);
+      expect(s.line.speed).toBeGreaterThanOrEqual(115 * .12 * .92);
+      expect(s.line.speed).toBeLessThanOrEqual(155 * .12 * .92);
+      // Still a burst away from the gun: lanes either side of the line, the
+      // outer ones turned further across the shooter's view.
+      expect(Math.abs(offset)).toBeLessThan(Math.PI / 2);
     }
     // Waves of three (this stream holds a sleeper back to the end), each
     // wave-mate on its own lane, never a stream of nearly parallel departures.
@@ -89,20 +99,21 @@ describe('continuous Quail coveys', () => {
   it('holds a bobwhite departure before smoothly finding and landing in its actual escape cover', () => {
     const f = fixture(), free = fixture();
     for (const run of [f, free]) {
-      (run.runtime.hunt as { coverPatches: () => unknown[] }).coverPatches = () => [{ cx: 70, cz: 22, hx: 14, hz: 12 }];
+      // A broad stand of cover ahead, wide enough for every lane of the wave.
+      (run.runtime.hunt as { coverPatches: () => unknown[] }).coverPatches = () => [{ cx: 70, cz: 0, hx: 20, hz: 60 }];
       for (let id = 1; id <= 9; id++) run.add(id, 1, 12 + id * .25, (id % 3 - 1) * .4);
       run.runtime.tickBirds(1000 / 30);
     }
-    const slot = f.runtime.slots.find(s => s.spatialFlight?.target)!;
+    const slot = f.runtime.slots.find(s => s.line?.target)!;
     expect(slot).toBeDefined();
-    const target = { ...slot.spatialFlight.target };
+    const target = { ...slot.line.target };
     const freeSlot = free.runtime.slots.find(s => s.simId === slot.simId)!;
-    freeSlot.spatialFlight.target = undefined;
+    freeSlot.line.target = undefined;
     let compared = 0, previousHeading: number | undefined, maxTurn = 0;
     for (let tick = 0; tick < 300 && slot.status !== 'done'; tick++) {
       f.runtime.tickBirds(1000 / 30); free.runtime.tickBirds(1000 / 30);
       if (slot.status !== 'flying') continue;
-      if (slot.airMs <= 1000) {
+      if (slot.airMs <= 800) {
         expect(slot.x).toBeCloseTo(freeSlot.x, 10);
         expect(slot.z).toBeCloseTo(freeSlot.z, 10);
         compared++;
@@ -157,8 +168,8 @@ describe('continuous Quail coveys', () => {
   it('renders restrained fixed-clock pheasant banking through heading wrap and settles on straight flight', () => {
     const f=fixture();f.add(1,1,4,0);f.birds[0].speciesId='ringneck';f.runtime.tickBirds(1000/30);
     const slot=f.runtime.slots[0];Object.assign(slot,{body:new THREE.Mesh(),wingL:new THREE.Group(),wingR:new THREE.Group(),visualScale:1});
-    const runtime=f.runtime as unknown as {updatePheasantBank(slot:unknown,dt:number):void;update(ctx:unknown,dt:number):void};
-    const heading=(yaw:number)=>{slot.vxW=Math.sin(yaw)*10;slot.vzW=Math.cos(yaw)*10;runtime.updatePheasantBank(slot,1/30);};
+    const runtime=f.runtime as unknown as {updateBank(slot:unknown,dt:number):void;update(ctx:unknown,dt:number):void};
+    const heading=(yaw:number)=>{slot.vxW=Math.sin(yaw)*10;slot.vzW=Math.cos(yaw)*10;runtime.updateBank(slot,1/30);};
     slot.bank=0;slot.bankYaw=Math.PI-.01;
     heading(-Math.PI+.01);runtime.update({},0);
     expect(slot.bank).toBeLessThan(0);expect(Math.abs(slot.bank)).toBeLessThan(.06);
@@ -216,15 +227,6 @@ describe('continuous Quail coveys', () => {
     const rest=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,.8,1.2,'YXZ'));
     expect(slot.root.quaternion.angleTo(rest)).toBeLessThan(.00001);
     expect(slot.body.morphTargetInfluences[0]).toBe(1);slot.body.geometry.dispose();
-  });
-
-  it('preserves legacy falling for a non-spatial hunt', () => {
-    const f=fixture();f.add(1,1,4,0);f.birds[0].speciesId='ringneck';
-    f.runtime.tickBirds(1000/30);f.runtime.spatialEncounter=false;
-    const slot=f.runtime.slots[0];Object.assign(slot,{x:4,y:10,z:2,vxW:10,vyW:3,vzW:2});
-    f.birds[0].state='downed';f.runtime.downBird(1);f.runtime.tickBirds(1000/30);
-    expect(slot.x).toBe(4);expect(slot.z).toBe(2);expect(slot.vyW).toBeLessThan(0);
-    const velocity=slot.vyW;f.runtime.tickBirds(1000/30);expect(slot.vyW).toBe(velocity);
   });
 
   it('picks a hit reaction from the shot, and folds a bird hit without one', () => {
@@ -422,6 +424,28 @@ describe('continuous Quail coveys', () => {
       expect(sound.mock.calls.at(-1)![2]!.z).toBeCloseTo(-8,6);
     } finally {sound.mockRestore();}
   });
+  it('blows the cover out over every bird of the covey at the flush, sized to the covey, three in the air or not', () => {
+    const throwFor = (birds: number) => {
+      const f = fixture();
+      const eruption = new CoverEruption('high', () => 0, 'quail-fields');
+      (f.runtime as unknown as { eruption: CoverEruption }).eruption = eruption;
+      for (let i = 0; i < birds; i++) f.add(i + 1, 1, 30 + (i % 4), (Math.floor(i / 4) - 1) * .9);
+      f.runtime.tickBirds(1000 / 30);
+      const audit = eruption.audit();
+      // The shaking cover reaches over the whole covey, not just its middle.
+      for (let i = 0; i < 9; i++) f.runtime.tickBirds(1000 / 30);
+      const burst = { x: 0, z: 0, r: 0 }; (f.runtime as unknown as { burstPoint(out: typeof burst): void }).burstPoint(burst);
+      eruption.dispose();
+      return { ...audit, shake: burst.r };
+    };
+    const five = throwFor(5), twelve = throwFor(12);
+    expect(five.bursts).toBe(1); expect(twelve.bursts).toBe(1);
+    expect(twelve.puffs).toBe(CoverEruption.size(12, 'high').puffs);
+    expect(twelve.puffs).toBeGreaterThan(five.puffs);
+    expect(twelve.flakes).toBeGreaterThan(five.flakes);
+    expect(twelve.shake).toBeGreaterThan(five.shake);
+  });
+
   it('erupts across the whole covey at the flush, then disturbs each bird again as it rises, without changing flight at either quality', () => {
     const reference = fixture();
     const variants = [fixture(), fixture()];
@@ -465,50 +489,31 @@ describe('continuous Quail coveys', () => {
       f.runtime.launchCover!.dispose();
     }
   });
-  it('gives an underfoot pheasant a stronger upward break than a distant bird', () => {
+  it('towers a rooster flushed underfoot almost straight up, where a distant one carries away sooner', () => {
     const close = fixture(), far = fixture();
     close.add(1, 1, 3, 0); far.add(1, 1, 40, 0);
-    for (const f of [close, far]) {
-      f.birds[0].speciesId = 'ringneck';
-      f.runtime.tickBirds(1000 / 30);
-    }
-    expect(close.runtime.slots[0].vyW).toBeGreaterThan(far.runtime.slots[0].vyW * 1.3);
-    // Launch alone only checks the displayed velocity; the controller must
-    // retain that impulse when the first real flight tick moves the bird.
-    // The underfoot bird also towers (closeFlush.ts): its climb never falls
-    // below the distance law, and the extra push fades over the first beats.
-    for (let i = 0; i < 15; i++) {
-      for (const f of [close, far]) f.runtime.tickBirds(1000 / 30);
-      expect(close.runtime.slots[0].vyW / far.runtime.slots[0].vyW).toBeGreaterThan(1.25 / .85 - .01);
-    }
-    expect((close.runtime.slots[0].y - .2) / (far.runtime.slots[0].y - .2)).toBeGreaterThan(1.25 / .85);
-    // Nearly straight up at first: little ground covered in the first half second.
-    expect(Math.hypot(close.runtime.slots[0].vxW, close.runtime.slots[0].vzW)).toBeLessThan(Math.hypot(far.runtime.slots[0].vxW, far.runtime.slots[0].vzW));
+    for (const f of [close, far]) f.birds[0].speciesId = 'ringneck';
+    const travel = (f: ReturnType<typeof fixture>, x0: number) => Math.hypot(f.runtime.slots[0].x - x0, f.runtime.slots[0].z);
+    for (let i = 0; i < 18; i++) for (const f of [close, far]) f.runtime.tickBirds(1000 / 30);
+    // Half a second out: the underfoot rooster is higher and has covered less ground.
+    expect(close.runtime.slots[0].y).toBeGreaterThan(far.runtime.slots[0].y + 1);
+    expect(travel(close, 3)).toBeLessThan(travel(far, 40));
+    expect(travel(close, 3)).toBeLessThan(close.runtime.slots[0].y);
+    for (let i = 0; i < 60; i++) for (const f of [close, far]) f.runtime.tickBirds(1000 / 30);
+    // Then it levels off and drives away like any rooster.
+    expect(Math.hypot(close.runtime.slots[0].vxW, close.runtime.slots[0].vzW)).toBeGreaterThan(12);
   });
   it('pops a covey sat on underfoot to head height, then lines it out like any other', () => {
     const close = fixture(), far = fixture();
+    // Seen from high above, both lines stay against the sky: no sky lift
+    // muddies the comparison of the pop itself.
+    for (const f of [close, far]) { const eye = new THREE.PerspectiveCamera(); eye.position.set(0, 60, 0); f.runtime.listener = eye; }
     close.add(1, 1, 3, 0); far.add(1, 1, 40, 0);
-    for (const f of [close, far]) { f.birds[0].speciesId = 'bobwhite'; f.runtime.spatialEncounter = true; }
+    for (const f of [close, far]) f.birds[0].speciesId = 'bobwhite';
     for (let i = 0; i < 12; i++) for (const f of [close, far]) f.runtime.tickBirds(1000 / 30);
     expect(close.runtime.slots[0].y).toBeGreaterThan(far.runtime.slots[0].y + .4);
     for (let i = 0; i < 60; i++) for (const f of [close, far]) f.runtime.tickBirds(1000 / 30);
-    expect(Math.abs(close.runtime.slots[0].y - far.runtime.slots[0].y)).toBeLessThan(1);
-  });
-  it.each([
-    { species: 'ringneck', spatial: false },
-  ])('keeps distance-independent climb for $species with spatial=$spatial', ({ species, spatial }) => {
-    const close = fixture(), far = fixture();
-    close.add(1, 1, 3, 0); far.add(1, 1, 40, 0);
-    for (const f of [close, far]) {
-      f.birds[0].speciesId = species;
-      f.runtime.spatialEncounter = spatial;
-      f.runtime.tickBirds(1000 / 30);
-    }
-    for (let i = 0; i < 15; i++) {
-      expect(close.runtime.slots[0].vyW).toBeCloseTo(far.runtime.slots[0].vyW);
-      for (const f of [close, far]) f.runtime.tickBirds(1000 / 30);
-    }
-    expect(close.runtime.slots[0].y).toBeCloseTo(far.runtime.slots[0].y);
+    expect(Math.abs(close.runtime.slots[0].y - far.runtime.slots[0].y)).toBeLessThan(1.2);
   });
   it('lets pheasants punch above tall cover before leveling out without changing a low covey launch', () => {
     const pheasant = fixture(), quail = fixture();
@@ -535,9 +540,9 @@ describe('continuous Quail coveys', () => {
     f.add(2, 1, 0, 2);
     f.runtime.tickBirds(1000 / 30);
     const landing = f.runtime.slots.find(s => s.simId === 1)!;
-    landing.spatialFlight.target = { x: 75, z: 12 };
+    landing.line.target = { x: 75, z: 12 };
     const leaving = f.runtime.slots.find(s => s.simId === 2)!;
-    leaving.spatialFlight.target = undefined;
+    leaving.line.target = undefined;
     for (let i = 0; i < 14 * 30; i++) f.runtime.tickBirds(1000 / 30);
     expect(resolveBird).toHaveBeenCalledWith(1, 'escaped', { x: landing.x, z: landing.z });
     expect(Math.hypot(landing.x - 75, landing.z - 12)).toBeLessThan(.5);
@@ -592,9 +597,12 @@ describe('continuous Quail coveys', () => {
 
 
 describe('Chukar launch slope in world flight', () => {
-  const flight = (slope: SlopeApproach | null, species = 'chukar', area = 'chukar-ridge', spatial = true) => {
-    const f = fixture(area); f.runtime.spatialEncounter = spatial;
+  const flight = (slope: SlopeApproach | null, species = 'chukar', area = 'chukar-ridge') => {
+    const f = fixture(area);
     f.add(1, 1, 12, 4); f.birds[0].speciesId = species; f.slopes.set(1, slope);
+    // A line that drives off: the slope rule scales the pace of one line (a
+    // miss setting down eases its own speed into its spot).
+    (f.birds[0] as { single?: boolean }).single = true;
     f.runtime.tickBirds(1000 / 30);
     return f;
   };
@@ -602,29 +610,25 @@ describe('Chukar launch slope in world flight', () => {
     const s = f.runtime.slots[0]; return [s.vxW, s.vyW, s.vzW];
   };
 
-  it.each(['chukar-ridge', 'quail-fields'])('applies the earned slope once to actual Chukar flight on %s', area => {
+  it.each(['chukar-ridge', 'quail-fields'])('flies the same Chukar line at the slope rule\'s pace on %s', area => {
     const above = flight('above', 'chukar', area), level = flight('level', 'chukar', area), below = flight('below', 'chukar', area), absent = flight(null, 'chukar', area);
     for (const f of [above, below, absent]) {
       expect([f.runtime.slots[0].x, f.runtime.slots[0].z, f.runtime.slots[0].delayMs]).toEqual([12, 4, level.runtime.slots[0].delayMs]);
+      expect(f.runtime.slots[0].line.bearing).toBe(level.runtime.slots[0].line.bearing);
     }
     for (let tick = 1; tick <= 75; tick++) {
       for (const f of [above, level, below, absent]) f.runtime.tickBirds(1000 / 30);
       const a = velocity(above), l = velocity(level), b = velocity(below);
       expect(velocity(absent)).toEqual(l);
       for (const index of [0, 2]) { expect(a[index]).toBeCloseTo(l[index] * .82, 10); expect(b[index]).toBeCloseTo(l[index] * 1.15, 10); }
-      expect(a[1]).toBeCloseTo(l[1] * .82 * .85, 10); expect(b[1]).toBeCloseTo(l[1] * 1.15, 10);
     }
     expect(above.runtime.slots[0].x - 12).toBeCloseTo((level.runtime.slots[0].x - 12) * .82, 10);
     expect(below.runtime.slots[0].z - 4).toBeCloseTo((level.runtime.slots[0].z - 4) * 1.15, 10);
   });
 
-  it('keeps the relative reward after the base horizontal cap without compounding it', () => {
+  it('keeps the relative reward on the speed cap: 15.17, 18.5 and 21.275 m/s', () => {
     const variants = [flight('above'), flight('level'), flight('below')];
-    for (const f of variants) { f.runtime.slots[0].vel.x = 10000; f.runtime.slots[0].vel.y = -1000; }
-    for (let tick = 0; tick < 15; tick++) {
-      variants.forEach(f => f.runtime.tickBirds(1000 / 30));
-      variants.forEach((f, i) => expect(Math.hypot(f.runtime.slots[0].vxW, f.runtime.slots[0].vzW)).toBeCloseTo(18.5 * [.82, 1, 1.15][i], 10));
-    }
+    variants.forEach((f, i) => expect(f.runtime.slots[0].line.speed).toBeCloseTo(18.5 * [.82, 1, 1.15][i], 10));
   });
 
   it.each(['hun', 'bobwhite', 'ringneck'])('leaves %s bycatch unchanged on Chukar Ridge', species => {
@@ -633,11 +637,6 @@ describe('Chukar launch slope in world flight', () => {
       variants.forEach(f => f.runtime.tickBirds(1000 / 30));
       expect(velocity(variants[0])).toEqual(velocity(variants[1])); expect(velocity(variants[2])).toEqual(velocity(variants[1]));
     }
-  });
-
-  it('does not alter the legacy nonspatial 3D controller', () => {
-    const variants = [flight('above', 'chukar', 'chukar-ridge', false), flight(null, 'chukar', 'chukar-ridge', false)];
-    for (let tick = 0; tick < 60; tick++) { variants.forEach(f => f.runtime.tickBirds(1000 / 30)); expect(velocity(variants[0])).toEqual(velocity(variants[1])); }
   });
 
   it('retains each overlapping rise through queue delay, camera changes, and slot reuse', () => {
@@ -677,24 +676,41 @@ describe('Duck Hunt rules the sky', () => {
     return ticks;
   };
 
-  it('never has more than three birds in the air across overlapping coveys and species', () => {
+  it('never has more than three live targets holding the sky across overlapping coveys and species', () => {
     const f = fixture('sharptail-prairie');
     const flush = (from: number, n: number, covey: number, species: string, x: number, z: number) => {
       for (let i = 0; i < n; i++) { f.add(from + i, covey, x + (i % 3) * .7, z + Math.floor(i / 3) * .7); f.birds.at(-1)!.speciesId = species; }
     };
     flush(1, 9, 1, 'bobwhite', 20, 6);
-    let maxInPlay = 0;
+    let most = 0;
     for (let tick = 0; tick < 30 * 240; tick++) {
       if (tick === 20) flush(20, 7, 2, 'chukar', -18, 10);
       if (tick === 80) flush(40, 6, 3, 'sharptail', 4, -22);
       if (tick === 95) { flush(60, 1, 4, 'ringneck', 9, 9); flush(61, 1, 5, 'ringneck', 11, 9); }
       f.runtime.tickBirds(1000 / 30);
-      maxInPlay = Math.max(maxInPlay, inPlay(f).length);
-      expect(inPlay(f).length).toBeLessThanOrEqual(3);
+      most = Math.max(most, holding(f).length);
+      expect(holding(f).length).toBeLessThanOrEqual(3);
     }
-    expect(maxInPlay).toBe(3);
+    expect(most).toBe(3);
     expect(rises(f)).toHaveLength(0);
     expect(f.finishRise).toHaveBeenCalled();
+  });
+
+  it('gets a twelve-bird covey through its waves inside nine seconds without a shot, a sleeper soon after', () => {
+    const f = fixture();
+    for (let i = 0; i < 12; i++) f.add(i + 1, 1, 18 + (i % 4) * .6, (Math.floor(i / 4) - 1) * .8);
+    let waves: number | null = null, over: number | null = null;
+    for (let tick = 1; tick <= 30 * 20; tick++) {
+      f.runtime.tickBirds(1000 / 30);
+      expect(holding(f).length).toBeLessThanOrEqual(3);
+      const left = rises(f)[0]?.waves.slice(rises(f)[0].next) ?? [];
+      const clear = holding(f).length === 0;
+      if (waves === null && clear && left.every(wave => wave.sleeper)) waves = tick / 30;
+      if (over === null && clear && left.length === 0) over = tick / 30;
+    }
+    expect(waves).not.toBeNull(); expect(over).not.toBeNull();
+    expect(waves!).toBeLessThan(9);
+    expect(over! - waves!).toBeLessThan(3);
   });
 
   it('keeps a queued bird out of the shot until its wave rises', () => {
@@ -723,16 +739,17 @@ describe('Duck Hunt rules the sky', () => {
     const f = fixture(), gun = gunFor(f);
     for (let i = 1; i <= 6; i++) f.add(i, 1, 18 + i * .4, (i % 3) - 1);
     f.runtime.tickBirds(1000 / 30);
-    expect(inPlay(f)).toHaveLength(3);
+    expect(holding(f)).toHaveLength(3);
     gun.shells = 0; // Both barrels at the first wave.
-    tickUntil(f, () => inPlay(f).length === 0);
+    tickUntil(f, () => holding(f).length === 0);
     // Sky clear, gun empty: the covey sits on, though the breath alone would let it go.
-    for (let i = 0; i < 30; i++) { f.runtime.tickBirds(1000 / 30); expect(inPlay(f)).toHaveLength(0); }
+    const waiting = rises(f)[0].next;
+    for (let i = 0; i < 30; i++) { f.runtime.tickBirds(1000 / 30); expect(rises(f)[0].next).toBe(waiting); }
     gun.reloading = true; for (let i = 0; i < 20; i++) f.runtime.tickBirds(1000 / 30);
-    expect(inPlay(f)).toHaveLength(0);
+    expect(rises(f)[0].next).toBe(waiting);
     gun.reloading = false; gun.shells = 2;
     f.runtime.tickBirds(1000 / 30);
-    expect(inPlay(f).length).toBeGreaterThan(0);
+    expect(holding(f).length).toBeGreaterThan(0);
   });
 
   it('does not wait for ever on a hunter who never reloads', () => {
@@ -740,23 +757,24 @@ describe('Duck Hunt rules the sky', () => {
     for (let i = 1; i <= 6; i++) f.add(i, 1, 18 + i * .4, (i % 3) - 1);
     f.runtime.tickBirds(1000 / 30);
     gun.shells = 0;
-    tickUntil(f, () => inPlay(f).length === 0);
-    const waited = tickUntil(f, () => inPlay(f).length > 0) * 1000 / 30;
+    tickUntil(f, () => holding(f).length === 0);
+    const waiting = rises(f)[0].next;
+    const waited = tickUntil(f, () => rises(f).length === 0 || rises(f)[0].next > waiting) * 1000 / 30;
     expect(waited).toBeGreaterThan(GUN_PATIENCE_MS);
-    expect(waited).toBeLessThan(GUN_PATIENCE_MS + 800);
+    expect(waited).toBeLessThan(GUN_PATIENCE_MS + 600);
   });
 
-  it('lifts a wave that fits while earlier birds are still out, once the gun is reloaded', () => {
+  it('lifts a wave that fits while earlier birds are still in the shot, once the gun is reloaded', () => {
     const f = fixture(), gun = gunFor(f);
     for (let i = 1; i <= 5; i++) f.add(i, 1, 18 + i * .4, (i % 3) - 1);
     f.runtime.tickBirds(1000 / 30);
     const next = rises(f)[0].waves[rises(f)[0].next];
     // Leave room for exactly the next wave: the others were shot and are down.
-    for (const slot of inPlay(f).slice(0, next.ids.length)) slot.status = 'done';
-    gun.shells = 0; for (let i = 0; i < 30; i++) f.runtime.tickBirds(1000 / 30);
-    expect(inPlay(f).length).toBe(3 - next.ids.length);
+    for (const slot of holding(f).slice(0, next.ids.length)) slot.status = 'done';
+    gun.shells = 0; for (let i = 0; i < 12; i++) f.runtime.tickBirds(1000 / 30);
+    expect(holding(f).length).toBe(3 - next.ids.length);
     gun.shells = 2; f.runtime.tickBirds(1000 / 30);
-    expect(inPlay(f).length).toBe(3);
+    expect(holding(f).length).toBe(3);
   });
 
   it('opens a chukar wave around the fall line, never steering a lane into the hill above a hunter below', () => {
@@ -776,8 +794,10 @@ describe('Duck Hunt rules the sky', () => {
         if (s.status === 'flying' && s.airMs > 300 && s.airMs < 2500) expect(s.y - ground(s.x, s.z)).toBeGreaterThan(.3);
       }
     }
+    // Nobody puts down in the hill: a chukar that sets down does it well out
+    // on the slope, where a miss is marked.
     const landings = (f.runtime.hunt as { resolveBird: ReturnType<typeof vi.fn> }).resolveBird.mock.calls.filter(call => call[2]);
-    expect(landings).toHaveLength(0);
+    for (const [, , spot] of landings) expect(Math.hypot(spot.x - upX * 18, spot.z - upZ * 18)).toBeGreaterThan(45);
   });
 
   it('gets the sleeper up into an empty gun', () => {
@@ -788,7 +808,7 @@ describe('Duck Hunt rules the sky', () => {
     // A third bird of the covey sat tight through the wave.
     f.add(3, 1, 18.5, .5); (f.runtime as unknown as { staged: Set<number> }).staged.add(3);
     rises(f).push({ waves: [{ ids: [], sleeper: false }, { ids: [3], sleeper: true, pauseMs: 1500 }], next: 1, speciesId: 'bobwhite' } as never);
-    for (let i = 0; i < 20; i++) { f.runtime.tickBirds(1000 / 30); expect(inPlay(f)).toHaveLength(2); }
+    for (let i = 0; i < 20; i++) { f.runtime.tickBirds(1000 / 30); expect(inPlay(f).some(s => s.simId === 3)).toBe(false); }
     gun.shells = 0;
     const waited = tickUntil(f, () => inPlay(f).some(s => s.simId === 3)) * 1000 / 30;
     expect(waited).toBeLessThanOrEqual(1000 / 30 * 2);

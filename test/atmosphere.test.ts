@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { ATMOSPHERE, FOG_UNIFORM, installAtmosphere, pooledFog, poolFloor, regionAtmosphere, writeAtmosphere } from '../src/three/atmosphere';
+import { ATMOSPHERE, distanceFog, FOG_UNIFORM, installAtmosphere, pooledFog, poolFloor, regionAtmosphere, writeAtmosphere } from '../src/three/atmosphere';
 import { fieldTimeOfDay, type TimeOfDay } from '../src/three/palette';
 import { getArea } from '../src/game/areas';
 import { LandscapeModel } from '../src/game/landscape';
@@ -69,7 +69,7 @@ describe('fog driven from the sky', () => {
       // A hunter standing on the pool floor, eyes 1.6 m up, and the dog 27 m out.
       const eye = floor + 1.6, dog = { x: 27, y: -1.2, z: 0 };
       expect(pooledFog(eye, dog, values)).toBeLessThan(.12);
-      expect(1 - Math.exp(-((spec.fogDensity * 27) ** 2))).toBeLessThan(.01);
+      expect(distanceFog(spec.fogDensity, 27)).toBeLessThan(.01);
       // However long the view, the pool alone never hides the land.
       expect(pooledFog(eye, { x: 5000, y: 0, z: 0 }, values)).toBeLessThanOrEqual(.75);
       // A crest or overview view, 80 m up, sees less of it on the same
