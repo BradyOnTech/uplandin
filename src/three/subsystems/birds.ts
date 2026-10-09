@@ -718,6 +718,15 @@ export class BirdsSystem implements Subsystem {
           hunterX: this.hunterX,
           hunterZ: this.hunterZ,
         }),
+        /** Rise review's shooting hunter: the capture never fires the real
+         * gun, so the tool reports a double's shells and reload here and the
+         * wave rule reads them as it reads the gun (null restores the gun). */
+        gun: (state: { shells: number; capacity: number; reloading: boolean } | null) => {
+          const gun = ctx.get<Subsystem & GunReadout>('gun');
+          this.gunReadout = state
+            ? () => ({ shellsRemaining: () => state.shells, shellCapacity: () => state.capacity, isReloading: () => state.reloading })
+            : () => gun;
+        },
         /** The pointed bird's species and covey (null = no point). */
         pointedBird: () => {
           const dog = this.hunt.dog();

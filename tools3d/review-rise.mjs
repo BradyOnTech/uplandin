@@ -44,6 +44,11 @@ const settleSeconds = Number(arg('--settle', '14'));
 const tod = arg('--tod', 'morning');
 const out = resolve(arg('--out', `/tmp/uplandin-rise/${label}`));
 const maxHuntTicks = Number(arg('--max-ticks', '36000'));
+/** --shoot: a hunter with a double fires at the first bird of each wave
+ * 0.75 s after it rises (a hit) and at a wave-mate 0.5 s later (a miss),
+ * then reloads (0.55 s + 0.38 s a shell). The capture never fires the real
+ * gun: the shells go to the wave rule through the birds' capture audit. */
+const shoot = args.includes('--shoot');
 mkdirSync(out, { recursive: true });
 
 const { server } = await startServer(url);
@@ -63,7 +68,7 @@ try {
       const query = new URLSearchParams({ area, quality: size.quality, tod, seed: String(seed), capture: '1' });
       await page.goto(`${url}/index3d.html?${query}`, { waitUntil: 'load', timeout: 180000 });
       await page.waitForFunction(() => window.__ready3d === true && !!window.__api3d && !!window.__riseAudit, { timeout: 240000, polling: 250 });
-      const hunt = await page.evaluate(runHuntToPoint, maxHuntTicks, speciesFor[area] ?? null);
+      const hunt = await page.evaluate(runHuntToPoint, maxHuntTicks, speciesFor[area] ?? null, shoot);
       const record = { area, seed, size: size.id, width: size.width, height: size.height, quality: size.quality, hunt, frames: [], errors };
       if (!hunt.ok) {
         console.error(`${area} ${size.id}: ${hunt.why}`);
@@ -88,7 +93,7 @@ try {
       const f = record.final;
       console.log(`  in play max ${f.maxInPlay}, visible max ${f.maxVisible}, birds ${f.birds.length}, ` +
         `min separation ${f.minSeparationDeg?.toFixed(1) ?? '-'} deg, shot window ${f.shotWindow ? `min ${f.shotWindow.minDeg.toFixed(1)} / median ${f.shotWindow.medianDeg.toFixed(1)} deg, ${(f.shotWindow.share5Deg * 100).toFixed(0)}% >= 5 deg` : '-'}, sky-backed first second ${(f.skyShareFirstSecond * 100).toFixed(0)}%, ` +
-        `lines ${JSON.stringify(f.lines)}, rise over at ${f.riseOverS?.toFixed(1) ?? '-'} s, ${record.render.calls} draws`);
+        `lines ${JSON.stringify(f.lines)}, rise length ${f.riseLengthS?.toFixed(1) ?? '-'} s (settled ${f.riseOverS?.toFixed(1) ?? '-'} s), waves at ${f.waveTimesS.join("/")} s, shots ${f.shots.length} (${f.shots.filter(s => s.hit).length} hit), ${record.render.calls} draws`);
       if (errors.length) console.error(`  page errors: ${errors.join(' | ')}`);
       await page.close();
     }
@@ -107,7 +112,7 @@ process.stdout.write(sheet.stdout); process.stderr.write(sheet.stderr);
 /** Hunt the cover, patch to nearest patch, until the dog holds a point on
  * the ground's own bird; then walk in and flush. The dog quarters ahead of
  * the walking hunter, as it does in play. */
-function runHuntToPoint(maxTicks, wantSpecies) {
+function runHuntToPoint(maxTicks, wantSpecies, shoot) {
   const api = window.__api3d;
   // The field is stepped by hand; the live frame loop must not move the camera.
   api.pause(true);
@@ -191,7 +196,31 @@ function runHuntToPoint(maxTicks, wantSpecies) {
 
   function installReview(hunter, origin) {
     const tracks = new Map();
-    let tick = 0, maxInPlay = 0, maxVisible = 0, minSeparation = Infinity, riseOver = null;
+    let tick = 0, maxInPlay = 0, maxVisible = 0, minSeparation = Infinity, riseOver = null, envelopeClear = null;
+    // Shooting hunter (--shoot): a double, fired and reloaded on a fixed rhythm.
+    const RELOAD_TICKS = Math.round((0.55 + 2 * 0.38) * 30);
+    const gun = { shells: 2, capacity: 2, reloading: false };
+    let reloadAt = null, reloadedAt = null;
+    const shots = [], waves = new Map();
+    if (shoot) window.__riseAudit.gun(gun);
+    const fire = (target, hit) => {
+      if (gun.reloading || gun.shells <= 0) return;
+      const bird = window.__riseAudit.sky().birds.find(b => b.simId === target && b.status === 'flying');
+      if (!bird) return;
+      gun.shells--;
+      shots.push({ t: tick / 30, target, hit, rangeM: +Math.hypot(bird.x - hunter.x, bird.z - hunter.z).toFixed(1) });
+      if (hit) api.downBird(target);
+      if (gun.shells <= 0) reloadAt = tick + 10;
+    };
+    const shooter = () => {
+      if (!shoot) return;
+      if (reloadAt !== null && tick >= reloadAt) { gun.reloading = true; reloadAt = null; reloadedAt = tick + RELOAD_TICKS; }
+      if (reloadedAt !== null && tick >= reloadedAt) { gun.reloading = false; gun.shells = gun.capacity; reloadedAt = null; }
+      for (const wave of waves.values()) {
+        if (!wave.first && tick >= wave.tick + 23) { wave.first = true; fire(wave.ids[0], true); }
+        if (!wave.second && tick >= wave.tick + 38) { wave.second = true; if (wave.ids[1] !== undefined) fire(wave.ids[1], false); }
+      }
+    };
     const shotSeparations = [];
     const heightAt = (x, z) => window.__dogAudit ? window.__dogAudit.heightAt(x, z) : 0;
     const coverAt = (x, z) => window.__dogAudit ? window.__dogAudit.coverAt(x, z) : 0;
@@ -256,6 +285,15 @@ function runHuntToPoint(maxTicks, wantSpecies) {
       if (m.minPairDeg !== null) minSeparation = Math.min(minSeparation, m.minPairDeg);
       if (m.minShotDeg !== null) shotSeparations.push(m.minShotDeg);
       if (riseOver === null && tick > 3 && m.inPlay === 0 && m.queued === 0) riseOver = tick / 30;
+      // The rise's length for the hunter: until nothing is queued and no live
+      // bird is still inside effective range (40 m) of where he stands.
+      const holding = m.sky.birds.some(b => (b.status === 'flying' || b.status === 'waiting') && Math.hypot(b.x - hunter.x, b.z - hunter.z) <= 40);
+      if (holding || m.queued > 0) envelopeClear = null; else envelopeClear ??= tick / 30;
+      for (const b of m.sky.birds) {
+        if (tracks.has(b.simId)) continue;
+        const wave = waves.get(tick) ?? { tick, ids: [] };
+        wave.ids.push(b.simId); waves.set(tick, wave);
+      }
       for (const b of m.sky.birds) {
         let track = tracks.get(b.simId);
         if (!track) { track = { simId: b.simId, speciesId: b.speciesId, sex: b.sex, firstSeen: tick / 30, launched: null, firstSecond: [], line: null, last: null, spanAt1s: null }; tracks.set(b.simId, track); }
@@ -276,11 +314,11 @@ function runHuntToPoint(maxTicks, wantSpecies) {
       return m;
     };
     window.__riseReview = {
-      step(ticks) { for (let i = 0; i < ticks; i++) { api.stepSim(1); tick++; observe(); } },
+      step(ticks) { for (let i = 0; i < ticks; i++) { api.stepSim(1); tick++; observe(); shooter(); } },
       frame() {
         api.renderOnce();
         const m = measure(true);
-        return { tick, inPlay: m.inPlay, visible: m.visible, queued: m.queued, minPairDeg: m.minPairDeg === null ? null : +m.minPairDeg.toFixed(1),
+        return { tick, inPlay: m.inPlay, visible: m.visible, onScreen: m.birds.filter(b => b.screen?.onScreen && b.spanPx >= 2).length, queued: m.queued, minPairDeg: m.minPairDeg === null ? null : +m.minPairDeg.toFixed(1),
           minShotDeg: m.minShotDeg === null ? null : +m.minShotDeg.toFixed(1),
           birds: m.birds, camera: { yawDeg: m.e.yawDeg, pitchDeg: m.e.pitchDeg, fov: m.e.fov }, dog: api.hunt().dog.state, render: api.info() };
       },
@@ -291,6 +329,7 @@ function runHuntToPoint(maxTicks, wantSpecies) {
         for (const b of birds) if (b.line) lines[b.line] = (lines[b.line] ?? 0) + 1;
         const shot = [...shotSeparations].sort((a, b) => a - b);
         return { maxInPlay, maxVisible, minSeparationDeg: Number.isFinite(minSeparation) ? minSeparation : null,
+          riseLengthS: envelopeClear, waveTimesS: [...waves.values()].map(w => +(w.tick / 30).toFixed(2)), shots,
           shotWindow: shot.length ? { minDeg: shot[0], medianDeg: shot[shot.length >> 1], share5Deg: shot.filter(d => d >= 5).length / shot.length, ticks: shot.length } : null,
           skyShareFirstSecond: first.length ? first.filter(Boolean).length / first.length : 0,
           lines, riseOverS: riseOver, origin, hunter,
