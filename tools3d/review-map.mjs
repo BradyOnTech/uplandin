@@ -29,7 +29,10 @@ mkdirSync(out, { recursive: true });
 
 const { server } = await startServer(url);
 const browser = await puppeteer.launch({ headless: true, executablePath,
-  args: ['--ignore-gpu-blocklist', '--enable-unsafe-swiftshader', '--no-sandbox'] });
+  // --uncapped: a sleeping display stops headless frames; drive them off
+  // Chrome's own timer instead (diagnostic evidence, not frame-rate proof).
+  args: ['--ignore-gpu-blocklist', '--enable-unsafe-swiftshader', '--no-sandbox',
+    ...(args.includes('--uncapped') ? ['--disable-frame-rate-limit', '--disable-gpu-vsync'] : [])] });
 const report = { area, label, url, quality, tod, startedAt: new Date().toISOString(), frames: [], errors: [] };
 try {
   const page = await browser.newPage();
