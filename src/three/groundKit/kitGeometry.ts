@@ -198,16 +198,17 @@ export function kitShrubGeometry(sides = 8, sprays = 48, seed = 0x5b0b): THREE.B
   const push = (x: number, y: number, z: number, shade: number) => { positions.push(x, y, z); normals.push(0, 1, 0); colors.push(shade, shade, shade); };
   const base: [number, number][] = [], rim: [number, number, number][] = [];
   for (let i = 0; i < sides; i++) {
-    const a = (i / sides) * Math.PI * 2, r0 = .55 + rng() * .15, r1 = .72 + rng() * .14;
+    // The core narrows upward into a dome: a flared core read as a bowl.
+    const a = (i / sides) * Math.PI * 2, r0 = .62 + rng() * .1, r1 = .5 + rng() * .1;
     base.push([Math.cos(a) * r0, Math.sin(a) * r0]);
-    rim.push([Math.cos(a) * r1, .38 + rng() * .1, Math.sin(a) * r1]);
+    rim.push([Math.cos(a) * r1, .42 + rng() * .08, Math.sin(a) * r1]);
   }
   for (let i = 0; i < sides; i++) {
     const j = (i + 1) % sides;
-    push(base[i][0], -.04, base[i][1], .42); push(base[j][0], -.04, base[j][1], .42); push(rim[j][0], rim[j][1], rim[j][2], .58);
-    push(base[i][0], -.04, base[i][1], .42); push(rim[j][0], rim[j][1], rim[j][2], .58); push(rim[i][0], rim[i][1], rim[i][2], .58);
-    // A domed top, so the core never reads as a pit from above.
-    push(rim[i][0], rim[i][1], rim[i][2], .58); push(rim[j][0], rim[j][1], rim[j][2], .58); push(0, .62, 0, .66);
+    push(base[i][0], -.04, base[i][1], .5); push(base[j][0], -.04, base[j][1], .5); push(rim[j][0], rim[j][1], rim[j][2], .7);
+    push(base[i][0], -.04, base[i][1], .5); push(rim[j][0], rim[j][1], rim[j][2], .7); push(rim[i][0], rim[i][1], rim[i][2], .7);
+    // A lit domed top, so the core never reads as a pit from above.
+    push(rim[i][0], rim[i][1], rim[i][2], .7); push(rim[j][0], rim[j][1], rim[j][2], .7); push(0, .74, 0, .86);
   }
   // Sprays: outer ones fan low and wide, inner ones stand tall.
   for (let k = 0; k < sprays; k++) {
