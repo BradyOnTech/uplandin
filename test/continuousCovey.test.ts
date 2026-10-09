@@ -3,7 +3,8 @@ import { buildPheasantBody } from '../src/three/assets/pheasant';
 import * as audio from '../src/audio';
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
-import { BirdsSystem } from '../src/three/subsystems/birds';
+import { BirdsSystem, pickBirdAlongRay } from '../src/three/subsystems/birds';
+import { GUN_PATIENCE_MS, SLEEPER_MIN_MS } from '../src/game/riseScore';
 import type { Bird } from '../src/game/birds';
 import { getSpecies } from '../src/game/species';
 import { getArea } from '../src/game/areas';
@@ -34,27 +35,54 @@ function fixture(areaId = 'quail-fields') {
   return { runtime, birds, add, finishRise, slopes };
 }
 
+const IN_PLAY = ['waiting', 'flying', 'falling'];
+
+/** Run a rise until it settles, recording each bird's launch (a slot copy at
+ * the tick it left the cover) and the most birds ever in the air. */
+function flyOut(f: ReturnType<typeof fixture>, maxTicks = 30 * 150) {
+  const launched = new Map<number, { tick: number; slot: Record<string, any> }>();
+  let maxInPlay = 0;
+  for (let tick = 0; tick < maxTicks && !f.finishRise.mock.calls.length; tick++) {
+    f.runtime.tickBirds(1000 / 30);
+    const inPlay = f.runtime.slots.filter(s => IN_PLAY.includes(s.status));
+    maxInPlay = Math.max(maxInPlay, inPlay.length);
+    for (const s of inPlay) {
+      if (!launched.has(s.simId)) launched.set(s.simId, { tick, slot: { ...s, spatialFlight: s.spatialFlight && { ...s.spatialFlight } } });
+    }
+  }
+  return { launched, maxInPlay };
+}
+
 describe('continuous Quail coveys', () => {
-  it('keeps distinct bobwhite departure bearings through the actual covey launch loop', () => {
+  it('breaks a big bobwhite covey in waves whose birds take distinct bearings from their actual cover', () => {
     const launch = () => {
       const f = fixture();
       for (let id = 1; id <= 12; id++) f.add(id, 1, 15 + id * .2, (id % 3 - 1) * .3);
-      f.runtime.tickBirds(1000 / 30);
-      return f;
+      return { f, ...flyOut(f) };
     };
-    const f = launch(), repeated = launch();
-    const profiles = f.runtime.slots.filter(s => s.simId > 0);
-    const offsets = profiles.map(s => Math.atan2(Math.sin(s.spatialFlight.bearing - Math.atan2(s.flight.escZ, s.flight.escX)), Math.cos(s.spatialFlight.bearing - Math.atan2(s.flight.escZ, s.flight.escX))));
-    // A narrow stream of nearly parallel departures is not the authored
-    // bobwhite burst. Exercise the species adapter, not just its helper.
-    expect(Math.max(...offsets) - Math.min(...offsets)).toBeGreaterThan(.48);
-    expect(Math.max(...offsets.map(Math.abs))).toBeLessThan(.42);
-    for (const s of profiles) {
-      const bird = f.birds.find(b => b.id === s.simId)!;
+    const run = launch(), repeated = launch();
+    expect(run.launched.size).toBe(12);
+    expect(run.maxInPlay).toBeLessThanOrEqual(3);
+    const waves = new Map<number, number[]>();
+    for (const [simId, launch] of run.launched) {
+      const s = launch.slot;
+      const away = Math.atan2(s.flight.escZ, s.flight.escX);
+      const offset = Math.atan2(Math.sin(s.spatialFlight.bearing - away), Math.cos(s.spatialFlight.bearing - away));
+      waves.set(launch.tick, [...waves.get(launch.tick) ?? [], offset]);
+      const bird = run.f.birds.find(b => b.id === simId)!;
       expect([s.x, s.z]).toEqual([bird.pos.x, bird.pos.y]);
-      expect(s.spatialFlight).toEqual(repeated.runtime.slots.find(r => r.simId === s.simId)!.spatialFlight);
+      expect(s.spatialFlight).toEqual(repeated.launched.get(simId)!.slot.spatialFlight);
       expect(s.spatialFlight.speed).toBeGreaterThanOrEqual(115 * .12 * .92);
       expect(s.spatialFlight.speed).toBeLessThanOrEqual(155 * .12 * .92);
+      // Still a burst away from the gun, a lane either side of the line.
+      expect(Math.abs(offset)).toBeLessThan(.7);
+    }
+    // Waves of three (this stream holds a sleeper back to the end), each
+    // wave-mate on its own lane, never a stream of nearly parallel departures.
+    expect([...waves.values()].map(wave => wave.length)).toEqual([3, 3, 3, 2, 1]);
+    for (const wave of waves.values()) {
+      const sorted = [...wave].sort((a, b) => a - b);
+      for (let i = 1; i < sorted.length; i++) expect(sorted[i] - sorted[i - 1]).toBeGreaterThan(.25);
     }
   });
 
@@ -200,7 +228,8 @@ describe('continuous Quail coveys', () => {
   });
 
   it('picks a hit reaction from the shot, and folds a bird hit without one', () => {
-    const f=fixture('pheasant-coverts');f.add(1,1,4,0);f.add(2,1,6,0);
+    // Two pheasants from separate pockets: a lone bird is its own wave.
+    const f=fixture('pheasant-coverts');f.add(1,1,4,0);f.add(2,2,6,0);
     for(const b of f.birds)b.speciesId='ringneck';
     f.runtime.tickBirds(1000/30);
     const [first,second]=f.runtime.slots;
@@ -393,7 +422,7 @@ describe('continuous Quail coveys', () => {
       expect(sound.mock.calls.at(-1)![2]!.z).toBeCloseTo(-8,6);
     } finally {sound.mockRestore();}
   });
-  it('disturbs each actual launch once, including late birds, without changing flight or stagger at either quality', () => {
+  it('erupts across the whole covey at the flush, then disturbs each bird again as it rises, without changing flight at either quality', () => {
     const reference = fixture();
     const variants = [fixture(), fixture()];
     const disturbances: Array<Array<{ x: number; z: number }>> = [[], []];
@@ -412,14 +441,27 @@ describe('continuous Quail coveys', () => {
     const snapshot = (f: ReturnType<typeof fixture>) => f.runtime.slots.map(s => ({
       state: s.status, x: s.x, y: s.y, z: s.z, delay: s.delayMs,
     }));
-    for (const f of variants) expect(snapshot(f)).toEqual(snapshot(reference));
-    expect(variants[0].runtime.launchCover!.audit().launches).toBeLessThan(9);
-    for (let step = 0; step < 30; step++) for (const f of [reference, ...variants]) f.runtime.tickBirds(1000 / 30);
+    const firstWave = new Set(reference.runtime.slots.filter(s => IN_PLAY.includes(s.status)).map(s => s.simId));
+    expect(firstWave.size).toBe(3);
+    const spot = (id: number) => { const bird = reference.birds.find(b => b.id === id)!; return { x: bird.pos.x, z: bird.pos.y }; };
     for (const [i, f] of variants.entries()) {
-      expect(disturbances[i]).toHaveLength(9);
-      expect(disturbances[i]).toEqual(f.birds.map(bird => ({ x: bird.pos.x, z: bird.pos.y })));
       expect(snapshot(f)).toEqual(snapshot(reference));
-      expect(f.runtime.launchCover!.audit().launches).toBe(9);
+      // The six birds still in the cover blow it out where they sit, now.
+      const held = reference.birds.filter(b => !firstWave.has(b.id)).map(b => spot(b.id));
+      expect(disturbances[i].slice(0, 6)).toEqual(held);
+      expect(f.runtime.launchCover!.audit().launches).toBeGreaterThanOrEqual(6);
+    }
+    for (const f of [reference, ...variants]) flyOut(f);
+    for (const [i, f] of variants.entries()) {
+      // Each held bird is disturbed twice (the eruption, then its own rise);
+      // each first-wave bird once, as it goes.
+      expect(disturbances[i]).toHaveLength(15);
+      for (const bird of f.birds) {
+        const count = disturbances[i].filter(d => d.x === bird.pos.x && d.z === bird.pos.y).length;
+        expect(count).toBe(firstWave.has(bird.id) ? 1 : 2);
+      }
+      expect(snapshot(f)).toEqual(snapshot(reference));
+      expect(f.runtime.launchCover!.audit().launches).toBe(15);
       f.runtime.launchCover!.dispose();
     }
   });
@@ -503,14 +545,23 @@ describe('continuous Quail coveys', () => {
     expect(resolveBird).toHaveBeenCalledWith(2, 'escaped');
     expect(resolveBird).toHaveBeenCalledTimes(2);
   });
-  it('launches a whole covey from its actual cover and keeps the encounter active on its first tick', () => {
+  it('rises a covey in waves of at most three from its actual cover, and settles only when the last bird is out', () => {
+    // Duck Hunt rules the sky (DESIGN.md): the whole covey flushes, three fly.
     const f=fixture();
     for(let i=0;i<7;i++) f.add(i,1,30+i*3,12-i);
     f.runtime.tickBirds(1000/30);
     const active=f.runtime.slots.filter(s=>s.status!=='idle');
-    expect(active).toHaveLength(7);
+    expect(active).toHaveLength(3);
     for(const s of active){const b=f.birds.find(b=>b.id===s.simId)!;expect([s.x,s.z]).toEqual([b.pos.x,b.pos.y]);}
     expect(f.finishRise).not.toHaveBeenCalled();
+    const firstWave=new Set(active.map(s=>s.simId));
+    const {launched,maxInPlay}=flyOut(f);
+    expect(launched.size).toBe(7);expect(maxInPlay).toBeLessThanOrEqual(3);
+    for(const [id,{slot}] of launched){
+      if(firstWave.has(id))continue; // already on the wing when the record began
+      const b=f.birds.find(b=>b.id===id)!;expect([slot.x,slot.z]).toEqual([b.pos.x,b.pos.y]);
+    }
+    expect(f.finishRise).toHaveBeenCalledOnce();
   });
   it('does not redirect an airborne covey when another one flushes behind the hunter', () => {
     const f=fixture();f.add(1,1,40,0);f.runtime.tickBirds(1000/30);
@@ -521,14 +572,21 @@ describe('continuous Quail coveys', () => {
     expect(second.flight.escX).toBeLessThan(0);
     expect(first.vxW).toBeGreaterThan(0);expect(second.vxW).toBeLessThan(0);
   });
-  it('retains overflow birds until slots become free instead of dropping queued IDs', () => {
+  it('keeps every queued bird of a covey bigger than the pool, and holds a wave together until the pool has room', () => {
     const f=fixture();for(let i=0;i<20;i++) f.add(i,1,40,i);
+    // Twelve shot birds still lie in the grass: two free slots cannot take a wave of three.
+    for(let i=0;i<12;i++){
+      f.birds.push({id:100+i,coveyId:9,pos:{x:0,y:0},state:'downed',speciesId:'bobwhite',runs:false,runEnergy:0,restingMs:0,nerveMs:0});
+      Object.assign(f.runtime.slots[i],{status:'grounded',simId:100+i});
+    }
     f.runtime.tickBirds(1000/30);
-    const seen=new Set(f.runtime.slots.map(s=>s.simId));expect(seen.size).toBe(14);
-    for(let i=0;i<6;i++) f.runtime.slots[i].status='done';
-    f.runtime.tickBirds(1000/30);f.runtime.slots.forEach(s=>seen.add(s.simId));
-    expect([...seen].sort((a,b)=>a-b)).toEqual(Array.from({length:20},(_,i)=>i));
+    expect(f.runtime.slots.filter(s=>IN_PLAY.includes(s.status))).toHaveLength(0);
     expect(f.finishRise).not.toHaveBeenCalled();
+    for(let i=0;i<6;i++) f.runtime.slots[i].status='done';
+    const {launched,maxInPlay}=flyOut(f);
+    expect([...launched.keys()].sort((a,b)=>a-b)).toEqual(Array.from({length:20},(_,i)=>i));
+    expect(maxInPlay).toBeLessThanOrEqual(3);
+    expect(f.finishRise).toHaveBeenCalledOnce();
   });
 });
 
@@ -588,14 +646,152 @@ describe('Chukar launch slope in world flight', () => {
     // A sibling Hun shares the rise, but not the Chukar flight payoff.
     f.birds[1].speciesId = 'hun';
     f.runtime.tickBirds(1000 / 30);
-    expect(f.runtime.slots.every(s => s.flight.slopeApproach === 'above')).toBe(true);
-    expect(f.runtime.slots.find(s => s.simId === 2)!.species.id).toBe('hun');
-    // Authority may settle later and the player may turn; the queued launch
+    const first = f.runtime.slots.filter(s => IN_PLAY.includes(s.status));
+    expect(first.length).toBe(3);
+    expect(first.every(s => s.flight.slopeApproach === 'above')).toBe(true);
+    // Authority may settle later and the player may turn; a queued launch
     // must retain its own actual event, not query whichever rise is newest.
     f.slopes.clear(); f.runtime.listener = new THREE.PerspectiveCamera(); f.runtime.listener.position.y = 150;
-    f.runtime.slots[0].status = 'done'; f.runtime.tickBirds(1000 / 30);
-    const reused = f.runtime.slots.find(s => s.simId === 15)!; expect(reused.flight.slopeApproach).toBe('below');
-    reused.status = 'done'; f.add(16, 3, 16, 4); f.birds.at(-1)!.speciesId = 'chukar'; f.runtime.tickBirds(1000 / 30);
-    expect(f.runtime.slots.find(s => s.simId === 16)!.flight.slopeApproach).toBeNull();
+    const { launched, maxInPlay } = flyOut(f);
+    expect(maxInPlay).toBeLessThanOrEqual(3);
+    expect(launched.size).toBe(15);
+    for (const [id, { slot }] of launched) expect(slot.flight.slopeApproach).toBe(id <= 14 ? 'above' : 'below');
+    expect(launched.get(2)!.slot.species.id).toBe('hun');
+    f.add(16, 3, 16, 4); f.birds.at(-1)!.speciesId = 'chukar'; f.finishRise.mockClear(); f.runtime.tickBirds(1000 / 30);
+    expect(f.runtime.slots.find(s => s.simId === 16 && IN_PLAY.includes(s.status))!.flight.slopeApproach).toBeNull();
+  });
+});
+
+describe('Duck Hunt rules the sky', () => {
+  /** A double the test fires and reloads by hand. */
+  const gunFor = (f: ReturnType<typeof fixture>) => {
+    const gun = { shells: 2, reloading: false, shellsRemaining() { return this.shells; }, shellCapacity() { return 2; }, isReloading() { return this.reloading; } };
+    (f.runtime as unknown as { gunReadout: () => typeof gun }).gunReadout = () => gun;
+    return gun;
+  };
+  const inPlay = (f: ReturnType<typeof fixture>) => f.runtime.slots.filter(s => IN_PLAY.includes(s.status));
+  const rises = (f: ReturnType<typeof fixture>) => (f.runtime as unknown as { rises: { waves: { ids: number[]; sleeper: boolean }[]; next: number }[] }).rises;
+  const tickUntil = (f: ReturnType<typeof fixture>, done: () => boolean, max = 30 * 30) => {
+    let ticks = 0;
+    while (!done() && ticks < max) { f.runtime.tickBirds(1000 / 30); ticks++; }
+    return ticks;
+  };
+
+  it('never has more than three birds in the air across overlapping coveys and species', () => {
+    const f = fixture('sharptail-prairie');
+    const flush = (from: number, n: number, covey: number, species: string, x: number, z: number) => {
+      for (let i = 0; i < n; i++) { f.add(from + i, covey, x + (i % 3) * .7, z + Math.floor(i / 3) * .7); f.birds.at(-1)!.speciesId = species; }
+    };
+    flush(1, 9, 1, 'bobwhite', 20, 6);
+    let maxInPlay = 0;
+    for (let tick = 0; tick < 30 * 240; tick++) {
+      if (tick === 20) flush(20, 7, 2, 'chukar', -18, 10);
+      if (tick === 80) flush(40, 6, 3, 'sharptail', 4, -22);
+      if (tick === 95) { flush(60, 1, 4, 'ringneck', 9, 9); flush(61, 1, 5, 'ringneck', 11, 9); }
+      f.runtime.tickBirds(1000 / 30);
+      maxInPlay = Math.max(maxInPlay, inPlay(f).length);
+      expect(inPlay(f).length).toBeLessThanOrEqual(3);
+    }
+    expect(maxInPlay).toBe(3);
+    expect(rises(f)).toHaveLength(0);
+    expect(f.finishRise).toHaveBeenCalled();
+  });
+
+  it('keeps a queued bird out of the shot until its wave rises', () => {
+    const f = fixture();
+    for (let i = 1; i <= 9; i++) f.add(i, 1, 24 + (i % 3), (i % 4) - 1.5);
+    for (let i = 0; i < 9; i++) f.runtime.tickBirds(1000 / 30);
+    const up = new Set(inPlay(f).map(s => s.simId));
+    const queued = f.birds.filter(b => !up.has(b.id));
+    expect(queued).toHaveLength(6);
+    const eye = { x: 0, y: 1.62, z: 0 };
+    const targets = (f.runtime as unknown as { shotTargets(): readonly { simId: number; x: number; y: number; z: number; status: string }[] }).shotTargets();
+    for (const bird of queued) {
+      // Aimed straight at a queued bird's cover: nothing there to hit yet.
+      const picked = pickBirdAlongRay(targets, eye, { x: bird.pos.x - eye.x, y: .2 - eye.y, z: bird.pos.y - eye.z }, .001);
+      expect(picked === null || up.has(picked)).toBe(true);
+    }
+    const flying = inPlay(f).find(s => s.status === 'flying')!;
+    expect(pickBirdAlongRay(targets, eye, { x: flying.x - eye.x, y: flying.y - eye.y, z: flying.z - eye.z }, .001)).toBe(flying.simId);
+    // Nothing still in the cover is ever settled as escaped or downed.
+    for (let i = 0; i < 60; i++) f.runtime.tickBirds(1000 / 30);
+    const resolve = (f.runtime.hunt as { resolveBird: ReturnType<typeof vi.fn> }).resolveBird;
+    for (const call of resolve.mock.calls) expect(up.has(call[0])).toBe(true);
+  });
+
+  it('holds the next wave for an empty gun, and lifts it as the gun comes back loaded', () => {
+    const f = fixture(), gun = gunFor(f);
+    for (let i = 1; i <= 6; i++) f.add(i, 1, 18 + i * .4, (i % 3) - 1);
+    f.runtime.tickBirds(1000 / 30);
+    expect(inPlay(f)).toHaveLength(3);
+    gun.shells = 0; // Both barrels at the first wave.
+    tickUntil(f, () => inPlay(f).length === 0);
+    // Sky clear, gun empty: the covey sits on, though the breath alone would let it go.
+    for (let i = 0; i < 30; i++) { f.runtime.tickBirds(1000 / 30); expect(inPlay(f)).toHaveLength(0); }
+    gun.reloading = true; for (let i = 0; i < 20; i++) f.runtime.tickBirds(1000 / 30);
+    expect(inPlay(f)).toHaveLength(0);
+    gun.reloading = false; gun.shells = 2;
+    f.runtime.tickBirds(1000 / 30);
+    expect(inPlay(f).length).toBeGreaterThan(0);
+  });
+
+  it('does not wait for ever on a hunter who never reloads', () => {
+    const f = fixture(), gun = gunFor(f);
+    for (let i = 1; i <= 6; i++) f.add(i, 1, 18 + i * .4, (i % 3) - 1);
+    f.runtime.tickBirds(1000 / 30);
+    gun.shells = 0;
+    tickUntil(f, () => inPlay(f).length === 0);
+    const waited = tickUntil(f, () => inPlay(f).length > 0) * 1000 / 30;
+    expect(waited).toBeGreaterThan(GUN_PATIENCE_MS);
+    expect(waited).toBeLessThan(GUN_PATIENCE_MS + 800);
+  });
+
+  it('lifts a wave that fits while earlier birds are still out, once the gun is reloaded', () => {
+    const f = fixture(), gun = gunFor(f);
+    for (let i = 1; i <= 5; i++) f.add(i, 1, 18 + i * .4, (i % 3) - 1);
+    f.runtime.tickBirds(1000 / 30);
+    const next = rises(f)[0].waves[rises(f)[0].next];
+    // Leave room for exactly the next wave: the others were shot and are down.
+    for (const slot of inPlay(f).slice(0, next.ids.length)) slot.status = 'done';
+    gun.shells = 0; for (let i = 0; i < 30; i++) f.runtime.tickBirds(1000 / 30);
+    expect(inPlay(f).length).toBe(3 - next.ids.length);
+    gun.shells = 2; f.runtime.tickBirds(1000 / 30);
+    expect(inPlay(f).length).toBe(3);
+  });
+
+  it('opens a chukar wave around the fall line, never steering a lane into the hill above a hunter below', () => {
+    const f = fixture('chukar-ridge');
+    const slope = getArea('chukar-ridge').slope!, upX = Math.cos(slope), upZ = Math.sin(slope);
+    const ground = (x: number, z: number) => .35 * (x * upX + z * upZ);
+    f.runtime.terrain = { heightAt: ground };
+    // The covey sits 18 m uphill of the hunter, spread across the slope.
+    for (let i = 0; i < 6; i++) {
+      const across = (i - 2.5) * 1.2;
+      f.add(i + 1, 1, upX * 18 - upZ * across, upZ * 18 + upX * across);
+      f.birds.at(-1)!.speciesId = 'chukar';
+    }
+    for (let tick = 0; tick < 30 * 40 && !f.finishRise.mock.calls.length; tick++) {
+      f.runtime.tickBirds(1000 / 30);
+      for (const s of inPlay(f)) {
+        if (s.status === 'flying' && s.airMs > 300 && s.airMs < 2500) expect(s.y - ground(s.x, s.z)).toBeGreaterThan(.3);
+      }
+    }
+    const landings = (f.runtime.hunt as { resolveBird: ReturnType<typeof vi.fn> }).resolveBird.mock.calls.filter(call => call[2]);
+    expect(landings).toHaveLength(0);
+  });
+
+  it('gets the sleeper up into an empty gun', () => {
+    const f = fixture(), gun = gunFor(f);
+    f.add(1, 1, 18, 0); f.add(2, 1, 19, 1);
+    f.runtime.tickBirds(1000 / 30);
+    expect(inPlay(f)).toHaveLength(2);
+    // A third bird of the covey sat tight through the wave.
+    f.add(3, 1, 18.5, .5); (f.runtime as unknown as { staged: Set<number> }).staged.add(3);
+    rises(f).push({ waves: [{ ids: [], sleeper: false }, { ids: [3], sleeper: true, pauseMs: 1500 }], next: 1, speciesId: 'bobwhite' } as never);
+    for (let i = 0; i < 20; i++) { f.runtime.tickBirds(1000 / 30); expect(inPlay(f)).toHaveLength(2); }
+    gun.shells = 0;
+    const waited = tickUntil(f, () => inPlay(f).some(s => s.simId === 3)) * 1000 / 30;
+    expect(waited).toBeLessThanOrEqual(1000 / 30 * 2);
+    expect(21 * 1000 / 30 + waited).toBeGreaterThanOrEqual(SLEEPER_MIN_MS);
   });
 });

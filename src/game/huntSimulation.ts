@@ -6,6 +6,7 @@ import {
   birdsDisturbedByHunter,
   birdsSpookedBy,
   circleBack,
+  COVEY_BOND_YD,
   flushCovey,
   relightSurvivors,
   updateBirdNerve,
@@ -493,8 +494,11 @@ export class HuntSimulation {
       (pointed?.id === bird.id || (this.continuousEncounter && huntingDoctrine(this.area.id).spatialEncounter && pointed?.coveyId === bird.coveyId));
     if (pointCredit) this.hunt.dogWork[pointingSlot].pointFlushes++;
 
-    const flushed = flushCovey(this.hunt.birds, bird.id);
     const species = getSpecies(bird.speciesId);
+    // In the continuous field a covey whose runners can scatter (it is not
+    // held together on the ground) rises in pieces (COVEY_BOND_YD).
+    const scatters = spatialEncounter && !(species.coveyApproach === true && species.roadAsCovey !== true);
+    const flushed = flushCovey(this.hunt.birds, bird.id, scatters ? COVEY_BOND_YD : Infinity);
     if (spatialEncounter && species.flushAsCovey !== false && !bird.heldSingle && flushed.length > 1) {
       // One or two birds of a covey may hold when the rest go up. They are
       // the farthest from the bird that broke, and stay where they sat.

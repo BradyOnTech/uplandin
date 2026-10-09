@@ -3,7 +3,9 @@ import type { LandscapeModel } from '../../game/landscape';
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
 import { fieldTimeOfDay, type TimeOfDay } from '../palette';
-import { samplePheasantSkyline } from '../pheasantSkyline';
+import { gradeUniforms } from '../grade';
+import { ATMOSPHERE_GLSL, atmosphereUniforms, poolFloor, regionAtmosphere, writeAtmosphere } from '../atmosphere';
+import { buildHorizon, horizonLand, type Horizon } from '../horizon';
 import { snapShadowTarget } from '../shadowPlacement';
 import { createSharptailCloudAtlas, SHARPTAIL_CLOUD_ATLAS_GLSL } from './sharptailCloudAtlas';
 
@@ -48,6 +50,7 @@ uniform float uPheasant;
 uniform float uChukar;
 uniform float uSharptail;
 varying vec3 vPos;
+${ATMOSPHERE_GLSL}
 
 /*
  * Flat cumulus: ONE authored cumulus silhouette (lumpy towers over a flat
@@ -231,7 +234,8 @@ void main() {
 
   // Below the horizon, settle to the fog color (ground haze, soft seam) —
   // fast, so any sliver between terrain rim and ridge cards reads as haze.
-  col = mix(col, uBelow, smoothstep(0.0, 0.05, -h));
+  // The same sky-driven tint the field's fog takes (atmosphere.ts).
+  col = mix(col, uplandFogTint(uBelow, dir), smoothstep(0.0, 0.05, -h));
 
   // Sun disc with a soft edge; it may set into the haze but not below it.
   float disc = smoothstep(uDiscCos.x, uDiscCos.y, d) * smoothstep(-0.035, -0.005, h);
@@ -285,6 +289,7 @@ varying vec2 vDirXZ;
 varying float vY;
 varying float vHaze;
 varying float vBase;
+${ATMOSPHERE_GLSL}
 void main() {
   float az = max(dot(normalize(vDirXZ), uSunXZ), 0.0);
   float spill = pow(az, 9.0) * uSpillStrength;
@@ -294,7 +299,7 @@ void main() {
   // atmosphere without smearing pale stripes down the whole card.
   float tHaze = vHaze * smoothstep(vBase, vBase + 1.2, vY);
   float haze = exp(-max(vY, 0.0) * uHazeK) * uHazeAmt + tHaze;
-  col = mix(col, uHaze, clamp(haze, 0.0, 0.95));
+  col = mix(col, uplandFogTint(uHaze, vec3(vDirXZ.x, 0.0, vDirXZ.y)), clamp(haze, 0.0, 0.95));
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -413,6 +418,10 @@ const RIDGE_FEATURES: ReadonlyArray<ReadonlyArray<RidgeFeature>> = [
 ];
 // Serrated bands get the resolution.
 const RIDGE_SEGS = [1536, 1536, 640, 512] as const;
+/** Share of the region's farthest fog the nearest and farthest region-true
+ * horizon bands take (atmosphere.ts `distance` is the whole). */
+const HORIZON_FOG_NEAR = .42;
+const HORIZON_FOG_FAR = .9;
 const RIDGE_BOTTOM = -40;
 const TREE_COUNT = 190; // conifers around a serrated ring (~8-10 m spacing)
 
@@ -430,50 +439,6 @@ const DEFAULT_RIDGES: RidgeProfile = {
   features: RIDGE_FEATURES,
   segments: RIDGE_SEGS,
   treeCount: TREE_COUNT,
-};
-
-/** Southern Plains wooded drainage shoulders: low crowns and open field
- * breaks, not the old smooth plateau/mountain bands. */
-const QUAIL_RIDGES: RidgeProfile = {
-  layers: [
-    { radius: 340, base: 1, amp: 22, far: 0, fogMix: 0.06, hazeAmt: 0.40, jag: 0, freqs: [4, 11, 27], noiseScale: 0, land: true, treeHaze: .14 },
-    { radius: 620, base: 7, amp: 32, far: 0.3, fogMix: 0.16, hazeAmt: 0.60, jag: 0, freqs: [7, 18, 39], noiseScale: 0, treeHaze: .25 },
-    { radius: 950, base: 14, amp: 40, far: 0.72, fogMix: 0.28, hazeAmt: 0.84, jag: 0, freqs: [4, 11, 27], noiseScale: 0 },
-  ],
-  features: [[], [], []],
-  segments: [768, 640, 384],
-  treeCount: 0,
-  verticalFollow: 0.75,
-};
-
-const CHUKAR_RIDGES: RidgeProfile = {
-  layers: [
-    { radius: 970, base: -22, amp: 75, far: 0.12, fogMix: 0.08, hazeAmt: 0.5, jag: 0.12, freqs: [5, 17, 43], noiseScale: 0.75 },
-    { radius: 1250, base: -5, amp: 140, far: 0.52, fogMix: 0.15, hazeAmt: 0.76, jag: 0.18, freqs: [5, 14, 37], noiseScale: 0.85 },
-    { radius: 1480, base: 15, amp: 210, far: 0.72, fogMix: 0.22, hazeAmt: 0.94, jag: 0.2, freqs: [4, 13, 31], noiseScale: 0.80 },
-  ],
-  features: [
-    [{ c: -34, h: .85, sl: 12, sr: 26 }, { c: 52, h: .72, sl: 15, sr: 27 }, { c: 101, h: 1.05, sl: 9, sr: 20 }, { c: 124, h: -.28, sl: 7, sr: 10 }, { c: 150, h: .8, sl: 15, sr: 25 }],
-    [{ c: -58, h: .72, sl: 20, sr: 32 }, { c: 38, h: .64, sl: 26, sr: 18 }, { c: 119, h: .95, sl: 13, sr: 25 }, { c: 164, h: .62, sl: 17, sr: 28 }],
-    [{ c: -80, h: 0.62, sl: 16, sr: 25 }, { c: 20, h: 0.7, sl: 19, sr: 31 }, { c: 126, h: 0.65, sl: 16, sr: 24 }],
-  ],
-  segments: [896, 640, 512],
-  treeCount: 0,
-  verticalFollow: 0.35,
-};
-
-const PHEASANT_RIDGES: RidgeProfile = {
-  layers: [
-    { radius: 420, base: 0, amp: 14, far: 0, fogMix: 0.02, hazeAmt: 0.3, jag: 0, freqs: [3, 8, 19], noiseScale: 0, land: true, treeHaze: .16 },
-    { radius: 750, base: 0, amp: 28, far: 0.38, fogMix: 0.12, hazeAmt: 0.58, jag: 0, freqs: [2, 7, 17], noiseScale: 0, treeHaze: .28 },
-    { radius: 1200, base: 0, amp: 42, far: 0.78, fogMix: 0.2, hazeAmt: 0.78, jag: 0, freqs: [3, 6, 15], noiseScale: 0 },
-  ],
-  // Pheasant's authored contours and separated shelterbelts are sampled
-  // below. They must not inherit the generic mountain profile generator.
-  features: [[], [], []],
-  segments: [768, 640, 512],
-  treeCount: 0,
-  verticalFollow: .7,
 };
 
 /** Broad Great Basin benches: lower and softer than Chukar's broken ridge,
@@ -495,93 +460,6 @@ const HUN_RIDGES: RidgeProfile = {
   treeCount: 0,
   verticalFollow: 0.68,
 };
-
-/** Northern prairie: low rolling grass country with only two distant
- * windbreak groups. Most azimuths remain open ground beneath a broad sky. */
-const SHARPTAIL_RIDGES: RidgeProfile = {
-  layers: [
-    { radius: 300, base: 0, amp: 6, far: 0, fogMix: 0.06, hazeAmt: 0.48, jag: 0, freqs: [3, 8, 21], noiseScale: 0, land: true },
-    { radius: 620, base: 3, amp: 14, far: 0.28, fogMix: 0.16, hazeAmt: 0.64, jag: 0, freqs: [4, 10, 25], noiseScale: 0, treeHaze: .34 },
-    { radius: 960, base: 9, amp: 22, far: 0.68, fogMix: 0.25, hazeAmt: 0.86, jag: 0, freqs: [3, 7, 19], noiseScale: 0 },
-  ],
-  features: [[], [], []],
-  segments: [512, 448, 384],
-  treeCount: 0,
-  verticalFollow: 0.72,
-};
-
-type PlainsArea = 'quail-fields' | 'sharptail-prairie';
-type PlainsContour = readonly (readonly [azimuth: number, height: number])[];
-interface PlainsGrove { center: number; width: number; count: number; height: number }
-const PLAINS_CONTOURS: Record<PlainsArea, readonly PlainsContour[]> = {
-  'quail-fields': [
-    [[-180,2],[-155,5],[-128,-2],[-94,4],[-60,1],[-28,6],[7,2],[40,-3],[67,4],[94,6],[129,-2],[157,3],[180,2]],
-    [[-180,10],[-143,16],[-112,9],[-77,13],[-43,6],[-9,16],[27,8],[61,11],[97,19],[137,8],[180,10]],
-    [[-180,20],[-139,32],[-96,22],[-51,16],[-10,27],[31,19],[76,30],[116,23],[155,15],[180,20]],
-  ],
-  'sharptail-prairie': [
-    [[-180,-2],[-144,1],[-107,-3],[-61,2],[-16,-2],[33,1],[82,-4],[129,2],[157,0],[180,-2]],
-    [[-180,4],[-149,7],[-111,3],[-69,9],[-26,4],[18,7],[61,2],[96,6],[141,3],[180,4]],
-    [[-180,14],[-137,23],[-91,15],[-39,19],[6,12],[49,22],[95,16],[139,24],[180,14]],
-  ],
-};
-const PLAINS_GROVES: Record<PlainsArea, readonly (readonly PlainsGrove[])[]> = {
-  'quail-fields': [
-    [{ center:-159,width:24,count:8,height:17 },{ center:-91,width:22,count:7,height:19 },
-      { center:-23,width:30,count:9,height:21 },{ center:29,width:13,count:4,height:15 },
-      { center:78,width:24,count:8,height:18 },{ center:148,width:18,count:6,height:16 }],
-    [{ center:-125,width:27,count:10,height:13 },{ center:-56,width:22,count:8,height:16 },
-      { center:6,width:20,count:7,height:14 },{ center:113,width:30,count:11,height:17 }],
-    [],
-  ],
-  'sharptail-prairie': [[],
-    [{ center:-142,width:10,count:4,height:8 },{ center:88,width:11,count:5,height:7 }],
-    [],
-  ],
-};
-
-/** Decorative silhouettes only: world vegetation and bird habitat stay in
- * the map data. Sampling never adds trees, collision or hunting cover. */
-export function sampleRegionalSkyline(area: PlainsArea, layer: number, theta: number): { ground: number; crown: number; crest: number } {
-  const az = ((theta * 180 / Math.PI + 180) % 360 + 360) % 360 - 180;
-  const contour = PLAINS_CONTOURS[area][layer];
-  let ground = contour[0][1];
-  for (let i = 1; i < contour.length; i++) {
-    const [right, b] = contour[i];
-    if (az > right) continue;
-    const [left, a] = contour[i - 1];
-    const t = (az - left) / (right - left);
-    ground = a + (b - a) * t * t * (3 - 2 * t);
-    break;
-  }
-  let crown = 0;
-  for (const [group, grove] of PLAINS_GROVES[area][layer].entries()) {
-    const step = grove.width / grove.count;
-    for (let tree = 0; tree < grove.count; tree++) {
-      const salt = group * 71 + layer * 137;
-      const center = grove.center - grove.width * .5 + step * (tree + .5 + (hash01(tree, salt) - .5) * .32);
-      const local = (az - center) / (step * (.55 + .25 * hash01(tree, salt + 1)));
-      const dx = Math.abs(local);
-      if (dx >= 1) continue;
-      // Low, broadleaf crowns with short faceted shoulders; no conifer teeth.
-      let shape = dx < .38 ? 1 - dx * .20 : (1 - dx) / .62 * .924;
-      if (area === 'quail-fields') {
-        // Unequal overlapping crown lobes break the repeated plateau caps.
-        // Keep clear field gaps between groves and a quiet ground contour.
-        const bulge = (offset: number, width: number) => {
-          const t = (local - offset) / width;
-          return Math.sqrt(Math.max(0, 1 - t * t));
-        };
-        const lean = (hash01(tree, salt + 3) - .5) * .28;
-        shape = Math.max(bulge(lean, .72), bulge(-.43, .52) * .73, bulge(.46, .49) * .82);
-        shape *= Math.min(1, (1 - dx) * 10);
-      }
-      const edge = .55 + .45 * Math.sin(Math.PI * (tree + .5) / grove.count);
-      crown = Math.max(crown, grove.height * shape * edge * (.72 + .28 * hash01(tree, salt + 2)));
-    }
-  }
-  return { ground, crown, crest: ground + crown };
-}
 
 /** Ruffed-grouse country: a close dark timber wall with irregular conifer
  * crowns. The horizon stays compressed so the player reads short sightlines
@@ -703,12 +581,18 @@ const VALLEY_OAK_RIDGES: RidgeProfile = {
   verticalFollow: 0.7,
 };
 
+/** The core grounds' region-true horizons (horizon.ts) as ridge layers. */
+function horizonProfile(horizon: Horizon): RidgeProfile {
+  return {
+    layers: horizon.layers.map(layer => ({ ...layer, jag: 0, freqs: [1, 1, 1] as const, noiseScale: 0 })),
+    features: horizon.layers.map(() => []),
+    segments: horizon.layers.map(layer => layer.segments),
+    treeCount: 0,
+  };
+}
+
 function ridgeProfileFor(landscape?: LandscapeModel): RidgeProfile {
-  if (landscape?.area.id === 'quail-fields') return QUAIL_RIDGES;
-  if (landscape?.area.id === 'chukar-ridge') return CHUKAR_RIDGES;
-  if (landscape?.area.id === 'pheasant-coverts') return PHEASANT_RIDGES;
   if (landscape?.area.id === 'hun-benches') return HUN_RIDGES;
-  if (landscape?.area.id === 'sharptail-prairie') return SHARPTAIL_RIDGES;
   if (landscape?.area.id === 'grouse-woods') return GROUSE_RIDGES;
   if (landscape?.area.id === 'woodcock-bottoms') return WOODCOCK_RIDGES;
   if (landscape?.area.id === 'desert-washes') return DESERT_RIDGES;
@@ -759,11 +643,17 @@ export class SkySystem implements Subsystem {
   private fillDir = new THREE.Vector3(0, 1, 0);
   private fwd = new THREE.Vector3();
   private readonly ridgeProfile: RidgeProfile;
+  /** The core grounds' region-true horizon, or null for the generic ridges. */
+  private readonly horizon: Horizon | null;
   private readonly quail: boolean;
   private readonly areaId: string;
+  /** World height the region's fog pools at (atmosphere.ts). */
+  private poolFloor = 0;
+  private readonly sunDir = new THREE.Vector3();
 
   constructor(private readonly landscape?: LandscapeModel) {
-    this.ridgeProfile = ridgeProfileFor(landscape);
+    this.horizon = landscape ? buildHorizon(landscape.area.id, horizonLand(landscape)) : null;
+    this.ridgeProfile = this.horizon ? horizonProfile(this.horizon) : ridgeProfileFor(landscape);
     this.quail = landscape?.area.id === 'quail-fields';
     this.areaId = landscape?.area.id ?? '';
   }
@@ -800,6 +690,8 @@ export class SkySystem implements Subsystem {
         uSharptail: { value: this.areaId === 'sharptail-prairie' ? 1 : 0 },
         uQuail: { value: this.quail ? 1 : 0 },
         uPheasant: { value: this.areaId === 'pheasant-coverts' ? 1 : 0 },
+        ...gradeUniforms(),
+        ...atmosphereUniforms(),
       },
       side: THREE.BackSide,
       depthWrite: false,
@@ -851,6 +743,10 @@ export class SkySystem implements Subsystem {
     ctx.scene.add(this.hemi);
 
     ctx.scene.fog = new THREE.FogExp2(0xffffff, 0.005);
+    const landscape = this.landscape;
+    if (landscape) {
+      this.poolFloor = poolFloor((x, z) => landscape.heightAtWorld(x, z), landscape.worldBounds(), regionAtmosphere(this.areaId).floor);
+    }
 
     this.apply(ctx, ctx.timeOfDay);
     ctx.events.addEventListener('tod', ((e: CustomEvent) => this.apply(ctx, e.detail)) as EventListener);
@@ -957,22 +853,14 @@ export class SkySystem implements Subsystem {
             }
           }
         }
-        if (this.areaId === 'pheasant-coverts') {
-          const prairie = samplePheasantSkyline(l, theta);
-          h = prairie.crest;
-          treeBase = prairie.ground;
-          treeFrac = Math.min(1, prairie.crown / 8);
-        }
-        const plains = this.areaId === 'quail-fields' || this.areaId === 'sharptail-prairie';
-        if (plains) {
-          const horizon = sampleRegionalSkyline(this.areaId as PlainsArea, l, theta);
-          h = horizon.crest;
-          treeBase = horizon.ground;
-          treeFrac = Math.min(1, horizon.crown / 12);
-        }
-        // Plains contours may fall below the local datum: clamping them to
-        // one positive floor created a continuous, water-like horizon strip.
-        h = Math.max(h, plains ? -8 : this.areaId==='chukar-ridge' ? -50 : layer.land ? -2.0 : l <= 1 ? 2.5 : 1.2);
+        if (this.horizon) {
+          // Region-true silhouettes may dip below the local datum: clamping
+          // them to one positive floor made a water-like horizon strip.
+          const sample = this.horizon.sample(l, theta);
+          h = sample.crest;
+          treeBase = sample.ground;
+          treeFrac = Math.min(1, sample.crown / 12);
+        } else h = Math.max(h, layer.land ? -2.0 : l <= 1 ? 2.5 : 1.2);
         const x = Math.sin(theta) * layer.radius;
         const z = Math.cos(theta) * layer.radius;
         const top = i * 2;
@@ -993,10 +881,19 @@ export class SkySystem implements Subsystem {
           indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
         }
       }
+      // Built silhouettes (poles, an elevator, a windmill) paint over their
+      // layer's ground; they take its height haze but no treeline haze.
+      const props = this.horizon?.props(l) ?? new Float32Array(0);
+      const strip = positions.length / 3, count = props.length / 3;
+      const all = new Float32Array(positions.length + props.length);
+      all.set(positions); all.set(props, positions.length);
+      const haze = new Float32Array(strip + count), base = new Float32Array(strip + count).fill(1e4);
+      haze.set(hazeAttr); base.set(baseAttr);
+      for (let i = 0; i < count; i++) indices.push(strip + i);
       const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      geo.setAttribute('aHaze', new THREE.BufferAttribute(hazeAttr, 1));
-      geo.setAttribute('aBase', new THREE.BufferAttribute(baseAttr, 1));
+      geo.setAttribute('position', new THREE.BufferAttribute(all, 3));
+      geo.setAttribute('aHaze', new THREE.BufferAttribute(haze, 1));
+      geo.setAttribute('aBase', new THREE.BufferAttribute(base, 1));
       geo.setIndex(indices);
       const mat = new THREE.ShaderMaterial({
         vertexShader: RIDGE_VERT,
@@ -1010,6 +907,8 @@ export class SkySystem implements Subsystem {
           // Haze decays over roughly the lower half of the layer's relief.
           uHazeK: { value: 3.0 / (layer.base + 0.5 * layer.amp) },
           uHazeAmt: { value: layer.hazeAmt },
+          ...gradeUniforms(),
+          ...atmosphereUniforms(),
         },
         side: THREE.DoubleSide, // viewed from inside the ring
         depthWrite: false,
@@ -1088,6 +987,7 @@ export class SkySystem implements Subsystem {
     const fog = ctx.scene.fog as THREE.FogExp2;
     fog.color.setHex(spec.fogColor);
     fog.density = spec.fogDensity;
+    writeAtmosphere(spec, regionAtmosphere(this.areaId), tod, this.sunDir.set(sx, sy, sz), this.poolFloor);
 
     // Aerial perspective: each ridge steps from the near color toward the
     // cool far color, then flattens gently toward the fog with distance.
@@ -1098,9 +998,25 @@ export class SkySystem implements Subsystem {
     // dome shows just below the horizon, so ridge bases dissolve into it.
     this.hazeCol.setHex(spec.skyHorizon).lerp(this.fogCol, 0.55);
     const sunFlatLen = Math.hypot(sx, sz) || 1;
+    const air = regionAtmosphere(this.areaId);
+    if (this.horizon) {
+      // Below the horizon is far land under the haze, as the fog leaves the
+      // terrain's far edge, never bare fog.
+      (u.uBelow.value as THREE.Color).setHex(spec.landform).lerp(this.fogCol, air.distance);
+    }
     for (let l = 0; l < this.ridgeMats.length; l++) {
       const ru = this.ridgeMats[l].uniforms;
-      if (this.ridgeProfile.layers[l].land) {
+      if (this.horizon) {
+        // Region horizons lie beyond the terrain's fogged far edge: each
+        // band takes its own hue (the land, then ridge stepping to ridgeFar)
+        // under nearly as much of the same fog, a little more per band, so
+        // they step back lighter and cooler and never stand darker than the
+        // land in front of them by more than a rise beyond it would.
+        const layer = this.ridgeProfile.layers[l], depth = l / Math.max(1, this.ridgeMats.length - 1);
+        this.ridgeBase.setHex(layer.land ? spec.landform : spec.ridge);
+        if (!layer.land) this.ridgeBase.lerp(this.ridgeFar.setHex(spec.ridgeFar), layer.far);
+        (ru.uCol.value as THREE.Color).copy(this.ridgeBase).lerp(this.fogCol, air.distance * (HORIZON_FOG_NEAR + (HORIZON_FOG_FAR - HORIZON_FOG_NEAR) * depth));
+      } else if (this.ridgeProfile.layers[l].land) {
         // THE BENCH: its own hue (TOD.landform), sunk into the scene fog at
         // its radius so it reads as a mass IN the field's atmosphere — the
         // haze step between the fence line and the ridge stack.
@@ -1118,9 +1034,9 @@ export class SkySystem implements Subsystem {
           .lerp(this.ridgeFar, this.ridgeProfile.layers[l].far)
           .lerp(this.fogCol, this.ridgeProfile.layers[l].fogMix);
       }
-      // Exposed Chukar slopes and the long prairie view fade to scene fog.
-      // Match it at their backdrop bases instead of adding a bright strip.
-      (ru.uHaze.value as THREE.Color).copy(this.quail || this.areaId === 'chukar-ridge' || this.areaId === 'sharptail-prairie' ? this.fogCol : this.hazeCol);
+      // Region horizons and the long views fade to scene fog. Match it at
+      // their backdrop bases instead of adding a bright strip.
+      (ru.uHaze.value as THREE.Color).copy(this.horizon ? this.fogCol : this.hazeCol);
       (ru.uSpill.value as THREE.Color).setHex(spec.hotBand);
       ru.uSpillStrength.value = spec.hotStrength * 0.55 * (1 - 0.55 * this.ridgeProfile.layers[l].far);
       (ru.uSunXZ.value as THREE.Vector2).set(sx / sunFlatLen, sz / sunFlatLen);
@@ -1139,11 +1055,9 @@ export class SkySystem implements Subsystem {
     // The dome and ridge rings ride the camera so the horizon never recedes.
     this.dome.position.copy(ctx.camera.position);
     for (let l = 0; l < this.ridges.length; l++) {
-      this.ridges[l].position.set(
-        ctx.camera.position.x,
-        ctx.camera.position.y * (this.ridgeProfile.verticalFollow ?? 0),
-        ctx.camera.position.z,
-      );
+      const y = ctx.camera.position.y;
+      this.ridges[l].position.set(ctx.camera.position.x,
+        this.horizon ? this.horizon.ringHeight(l, y) : y * (this.ridgeProfile.verticalFollow ?? 0), ctx.camera.position.z);
     }
     // Preserve the broad midground coverage while anchoring the depth grid
     // to whole light-space texels. Ground elevation matters on every property.

@@ -50,12 +50,12 @@ describe('vertex colours under multisampling', () => {
 });
 
 describe('the bloom input', () => {
-  it('caps any one pixel above everything the field draws, and floors it at black, before the haze and bloom', () => {
+  it('caps any one pixel above everything the field draws, and floors it at black, before the occlusion and bloom', () => {
     const effects = new PostEffects(LOOKS.crisp);
     const source = (effects as unknown as { composite: THREE.ShaderMaterial }).composite.fragmentShader;
     const cap = source.indexOf(`color.rgb = clamp(color.rgb, 0.0, ${HDR_CEILING.toFixed(1)});`);
     expect(cap).toBeGreaterThan(source.indexOf('vec4 color = texture2D(tColor, vUv);'));
-    expect(cap).toBeLessThan(source.indexOf('Exponential height haze'));
+    expect(cap).toBeLessThan(source.indexOf('Joint bilateral upsample'));
     // Prairie water's sun glint (five times a sun colour of up to 1.6, plus
     // its sheen) is the brightest thing drawn on purpose; the ceiling leaves
     // it alone. The flashes ran to thousands.
