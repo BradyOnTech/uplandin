@@ -40,7 +40,9 @@ try {
   // Skip the arrival sequence so it can never move a staged camera.
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
   page.on('pageerror', error => report.errors.push(String(error)));
-  const query = new URLSearchParams({ area, drop: 'south-gate', quality, tod, dog: 'generated', seed: '7701', capture: '1' });
+  // --query adds review switches, e.g. cover=legacy for a before frame.
+  const query = new URLSearchParams({ area, drop: 'south-gate', quality, tod, dog: 'generated', seed: '7701', capture: '1',
+    ...Object.fromEntries(new URLSearchParams(arg('--query', ''))) });
   await page.goto(`${url}/index3d.html?${query}`, { waitUntil: 'load', timeout: 120000 });
   await page.waitForFunction(() => window.__ready3d === true && !!window.__api3d, { timeout: 240000, polling: 250 });
   const views = await page.evaluate(async id => {
