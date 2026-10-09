@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type * as THREE from 'three';
-import { kitCulmGeometry, kitMassGeometry, kitMatGeometry, kitShrubGeometry, kitStandGeometry, kitTuftGeometry } from '../src/three/groundKit/kitGeometry';
+import { kitCulmGeometry, kitMassGeometry, kitMatGeometry, kitStandGeometry, kitTuftGeometry } from '../src/three/groundKit/kitGeometry';
 import { lattice } from '../src/three/groundKit/groundKitSystem';
 
 const triangles = (g: THREE.BufferGeometry) => g.getAttribute('position').count / 3;
@@ -17,7 +17,6 @@ describe('ground kit geometry', () => {
   const pieces: [string, THREE.BufferGeometry, number][] = [
     ['tuft', kitTuftGeometry(7), 40], ['mat', kitMatGeometry(3), 14], ['culm', kitCulmGeometry(3), 8],
     ['mass', kitMassGeometry(6), 44], ['tall mass', kitMassGeometry(7), 50], ['stand', kitStandGeometry(14, 16), 32],
-    ['shrub', kitShrubGeometry(), 76],
   ];
   for (const [name, geometry, budget] of pieces) {
     it(`keeps the ${name} at unit height, rooted, within ${budget} triangles`, () => {

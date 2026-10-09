@@ -104,7 +104,14 @@ export interface CoverCell {
   height: number;
   /** 0..1 colony variation inside the class (palette lerp). */
   tone: number;
+  /** Which plant community of the class grows here (palette swatch,
+   * woody species group): needle-and-thread or wheatgrass, thicket or
+   * buckbrush. 0..COVER_VARIANTS-1. */
+  variant: number;
 }
+
+/** Communities a class can hold. */
+export const COVER_VARIANTS = 4;
 
 /** A ground's rules: land, habitat and layout in, cover out. */
 export interface CoverRecipe {
@@ -365,6 +372,7 @@ export class CoverMap {
   /** Centimetres / 2: 0..255 = 0..5.1 m. */
   readonly height: Uint8Array;
   readonly tone: Uint8Array;
+  readonly variant: Uint8Array;
 
   constructor(bounds: CoverRect, margin: number, cell = COVER_CELL_YARDS) {
     this.cell = cell;
@@ -374,7 +382,7 @@ export class CoverMap {
     this.rows = Math.ceil((bounds.h + margin * 2) / this.cell);
     const n = this.cols * this.rows;
     this.cls = new Uint8Array(n); this.density = new Uint8Array(n);
-    this.height = new Uint8Array(n); this.tone = new Uint8Array(n);
+    this.height = new Uint8Array(n); this.tone = new Uint8Array(n); this.variant = new Uint8Array(n);
   }
 
   /** Cell index under a property position (clamped to the map). */
@@ -390,6 +398,7 @@ export class CoverMap {
     out.density = this.density[i] / 255;
     out.height = this.height[i] * .02;
     out.tone = this.tone[i] / 255;
+    out.variant = this.variant[i];
     return out;
   }
 
@@ -398,6 +407,7 @@ export class CoverMap {
     this.density[i] = Math.round(Math.min(1, Math.max(0, cell.density)) * 255);
     this.height[i] = Math.round(Math.min(5.1, Math.max(0, cell.height)) / .02);
     this.tone[i] = Math.round(Math.min(1, Math.max(0, cell.tone)) * 255);
+    this.variant[i] = Math.min(COVER_VARIANTS - 1, Math.max(0, Math.round(cell.variant)));
   }
 
   /** Share of in-property cells per class, for tests and review. */
@@ -476,7 +486,7 @@ export function buildCoverMap(source: CoverMapSource): CoverMap {
     }
   }
   const sample: CoverSample = { height: 0, slope: 0, tpi: 0, relief: 0, wetness: 0, south: 0, west: 0, convergence: 0, habitat: 0, route: 0, clearing: 0, head: 0 };
-  const cell: CoverCell = { cls: Cover.short, density: 0, height: 0, tone: 0 };
+  const cell: CoverCell = { cls: Cover.short, density: 0, height: 0, tone: 0, variant: 0 };
   for (let r = 0; r < map.rows; r++) {
     const y = map.y0 + (r + .5) * map.cell;
     for (let c = 0; c < map.cols; c++) {
@@ -491,7 +501,7 @@ export function buildCoverMap(source: CoverMapSource): CoverMap {
       }
       sample.clearing = clearing;
       sample.head = head[i];
-      cell.cls = Cover.short; cell.density = 0; cell.height = 0; cell.tone = 0;
+      cell.cls = Cover.short; cell.density = 0; cell.height = 0; cell.tone = 0; cell.variant = 0;
       source.recipe.classify(x, y, sample, cell);
       map.write(i, cell);
     }

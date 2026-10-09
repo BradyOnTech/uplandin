@@ -378,9 +378,10 @@ export class PropertyTerrain {
     // of its own bespoke prairie paint.
     const kit = groundKitStyle(landscape.area.id) !== null;
     const prairie = landscape.area.id === 'sharptail-prairie' && !kit;
-    // Sharptail's fine native sward detail serves both the bespoke paint and the kit.
-    const sward = landscape.area.id === 'sharptail-prairie';
-    const painted = landscape.area.id === 'pheasant-coverts' || wetSoil || prairie || kit;
+    // The kit draws its own litter floor; the fine sward texture rippled
+    // like sand under it at grazing angles.
+    const sward = prairie;
+    const painted = landscape.area.id === 'pheasant-coverts' || wetSoil || prairie;
     const woodland = landscape.area.id === 'grouse-woods';
     const farm = landscape.area.id === 'pheasant-coverts';
     const origin = landscape.propertyToWorld(0, 0, { x: 0, z: 0 });
@@ -423,7 +424,7 @@ export class PropertyTerrain {
           float soilValue = dot(mix(soilA, soilB, .24), vec3(.2126,.7152,.0722));
           `}
           float soilDetail = clamp(soilValue / ${wetSoil ? ".052" : sward ? "0.1740556" : ".33"}, ${wetSoil ? ".78, 1.25" : sward ? ".60, 1.4" : ".55, 1.55"});
-          float soilFade = 1.0 - smoothstep(${kit ? '6.0, 34.0' : sward ? '30.0, 110.0' : '24.0, 90.0'}, distance(vPropertyWorld.xz, cameraPosition.xz));
+          float soilFade = 1.0 - smoothstep(${sward ? '30.0, 110.0' : '24.0, 90.0'}, distance(vPropertyWorld.xz, cameraPosition.xz));
           diffuseColor.rgb *= mix(1.0, soilDetail, soilFade * uPropertySoilStrength);
           ${prairie ? `
           // Stand-scale basal litter remains legible between middle-distance
@@ -457,8 +458,8 @@ export class PropertyTerrain {
     const wetSoil = this.landscape.area.id === 'woodcock-bottoms';
     this.kit = groundKitSurface(this.landscape, ctx.quality);
     const prairie = this.landscape.area.id === 'sharptail-prairie' && !this.kit;
-    const sward = this.landscape.area.id === 'sharptail-prairie';
-    if (this.landscape.area.id === 'pheasant-coverts' || wetSoil || prairie || this.kit) {
+    const sward = prairie;
+    if (this.landscape.area.id === 'pheasant-coverts' || wetSoil || prairie) {
       try {
         const texture = await new THREE.TextureLoader().loadAsync(`${import.meta.env.BASE_URL}textures/terrain/${wetSoil ? "wet-alder-painted" : sward ? "sharptail-sward-v2" : "prairie-painted"}.webp`);
         if (this.abort.signal.aborted) { texture.dispose(); return; }
@@ -469,9 +470,7 @@ export class PropertyTerrain {
         this.soil.value = texture;
         // Ground identity comes from broad habitat paint; keep the repeating
         // grit subordinate so the farm and open cut fields retain clear masses.
-        // The kit's near floor leans harder on the fine sward: it is the mat
-        // the garnish blades stand in.
-        this.soilStrength.value = wetSoil ? .32 : sward ? (this.kit ? .3 : .30) : .40;
+        this.soilStrength.value = wetSoil ? .32 : sward ? .30 : .40;
       } catch (error) {
         // The baked habitat paint remains usable if an optional art asset
         // cannot load; a missing texture must not prevent entering a hunt.

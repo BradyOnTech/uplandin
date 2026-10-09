@@ -31,6 +31,16 @@ export const SHARPTAIL_COVER_HEIGHTS = {
   shrub: [.9, 1.8],
 } as const;
 
+/** Sharptail's plant communities per class (the cover map's variant). */
+export const SHARPTAIL_COMMUNITY = {
+  short: { needle: 0, wheatgrass: 1, bluestem: 2, sage: 3 },
+  crown: { bluestem: 0, needle: 1, sage: 2 },
+  swale: { bigBluestem: 0, lowland: 1 },
+  // Rank stands keep the community round them, grown taller and denser.
+  stand: { needle: 0, wheatgrass: 1, bluestem: 2, bigBluestem: 3 },
+  shrub: { thicket: 0, buckbrush: 1, rose: 2 },
+} as const;
+
 /** Moisture from the land: flow accumulation, hollows and basins. */
 function prairieMoisture(s: CoverSample): number {
   return coverSmooth(.12, .8, s.wetness * .85 + Math.max(0, -s.tpi) * .32 + Math.max(0, -s.relief) * .07);
@@ -42,21 +52,32 @@ function prairieDryness(s: CoverSample): number {
     + Math.max(0, s.south) * .26 + Math.max(0, s.west) * .08 - s.wetness * .6);
 }
 
-/** The head of a draw: water has started to gather, the ground is concave
- * and still sloping. Woody clumps colonise exactly there. */
-function drawHead(s: CoverSample): number {
-  // Side hollows: contours fold in on a slope before water has gathered.
+/** Side hollows and the upper reach of a draw: contours folding in on a
+ * slope before water has gathered. */
+function drawHollow(s: CoverSample): number {
   const hollow = coverSmooth(.25, .6, s.convergence) * (1 - coverSmooth(.3, .55, s.wetness)) * coverSmooth(.02, .06, s.slope);
-  // The upper reach of a draw, on its flanks rather than in the wet bottom.
   const upper = coverSmooth(.15, .5, s.convergence) * coverSmooth(.05, .3, -s.tpi)
     * (1 - coverSmooth(.35, .6, s.wetness)) * coverSmooth(.015, .05, s.slope);
   // Buckbrush favours the cooler north-facing side of a draw.
   return Math.max(hollow, upper * .85) * (.85 + Math.max(0, -s.south) * .3);
 }
 
-export const sharptailCoverRecipe = (shelterbelts: readonly { a: CoverPoint; b: CoverPoint; width: number }[]): CoverRecipe => ({
+/** Lee slopes: the cool north and east faces below a crest, where snow
+ * lies longest and snowberry colonies spread. */
+function leeSlope(s: CoverSample): number {
+  return coverSmooth(.15, .6, -s.south * .8 - s.west * .4) * coverSmooth(.03, .08, s.slope) * (1 - coverSmooth(.1, .5, s.tpi));
+}
+
+/** Real prairie is patchy at every scale: a broad field, broken by a
+ * middle one, broken again at the scale of a few bunches. */
+function patchiness(x: number, y: number, salt: number): number {
+  return coverNoise(x / 110, y / 110, salt) * .5 + coverNoise(x / 36, y / 36, salt + 1) * .32 + coverNoise(x / 11, y / 11, salt + 2) * .18;
+}
+
+export const sharptailCoverRecipe = (shelterbelts: readonly { a: CoverPoint; b: CoverPoint; width: number }[],
+  bounds?: { x: number; y: number; w: number; h: number }): CoverRecipe => ({
   classify(x, y, s, out) {
-    const H = SHARPTAIL_COVER_HEIGHTS;
+    const H = SHARPTAIL_COVER_HEIGHTS, C = SHARPTAIL_COMMUNITY;
     const colony = coverNoise(x / 70, y / 70, 11) * .7 + coverNoise(x / 23, y / 23, 12) * .3;
     out.tone = colony;
     if (s.clearing > .5) {
@@ -70,44 +91,68 @@ export const sharptailCoverRecipe = (shelterbelts: readonly { a: CoverPoint; b: 
       }
     }
     const moist = prairieMoisture(s), dry = prairieDryness(s);
-    // Woody draw heads, broken into clumps by a coarse colony field: from a
-    // crest they read as dark blots at the head of each draw.
+    const lerp = (range: readonly [number, number], t: number) => range[0] + (range[1] - range[0]) * t;
+    const worn = 1 - coverSmooth(1.2, 3.2, s.route);
+    // Woody cover, broken into clumps by a coarse colony field.
     const clump = coverNoise(x / 12, y / 12, 31) * .75 + coverNoise(x / 4, y / 4, 32) * .25;
-    // A thicket at the head of every draw, ragged at the edge, plus thinner
-    // buckbrush in the side hollows that feed it.
-    const head = 1 - coverSmooth(8, 24, s.head + (clump - .5) * 16);
-    const woody = Math.max(head * coverSmooth(.2, .45, clump), coverSmooth(.15, .55, drawHead(s)) * coverSmooth(.45, .65, clump) * .8);
+    // A chokecherry and buffaloberry thicket at the head of every draw,
+    // skirted with buckbrush, thinning downslope into the swale grass.
+    const head = (1 - coverSmooth(8, 24, s.head + (clump - .5) * 16)) * coverSmooth(.2, .45, clump);
+    // Buckbrush colonies in the side hollows and on the lee slopes.
+    const colonies = coverNoise(x / 30, y / 30, 71) * .8 + coverNoise(x / 8, y / 8, 72) * .2;
+    const buckbrush = Math.max(coverSmooth(.15, .55, drawHollow(s)) * coverSmooth(.45, .65, clump),
+      leeSlope(s) * coverSmooth(.66, .8, colonies));
+    // Wild rose and snowberry along the fence line.
+    const fence = bounds ? Math.min(x - bounds.x, bounds.x + bounds.w - x, y - bounds.y, bounds.y + bounds.h - y) : Infinity;
+    const rose = (1 - coverSmooth(1.5, 3.5, Math.abs(fence))) * coverSmooth(.5, .62, coverNoise(x / 6, y / 6, 81));
+    if (worn < .5 && (head > .35 || buckbrush > .4 || rose > .5)) {
+      out.cls = Cover.shrub;
+      if (head > .35) {
+        out.variant = head > .5 ? C.shrub.thicket : C.shrub.buckbrush;
+        out.density = coverSmooth(.35, .8, head);
+        out.height = H.shrub[0] + (H.shrub[1] - H.shrub[0]) * coverSmooth(.4, 1, head) * (.6 + clump * .4);
+      } else if (buckbrush > .4) {
+        out.variant = C.shrub.buckbrush; out.density = coverSmooth(.4, .8, buckbrush) * .9; out.height = .6 + clump * .35;
+      } else {
+        out.variant = C.shrub.rose; out.density = .55; out.height = .45 + clump * .3;
+      }
+      return;
+    }
     // Bird cover: the sim's patches carry rank native stands with feathered
     // fringes that blend into whatever the land grows round them.
     const ragged = (coverNoise(x / 9, y / 9, 41) - .5) * 18;
     const stand = 1 - coverSmooth(-4, 12, s.habitat + Math.max(-4, ragged));
-    // Ruts and their crown keep a short worn strip; the grass between the
-    // wheel marks is kept by the near garnish, not the masses.
-    const worn = 1 - coverSmooth(1.2, 3.2, s.route);
-    if (woody > .35 && worn < .5) {
-      out.cls = Cover.shrub;
-      out.density = coverSmooth(.35, .8, woody);
-      out.height = H.shrub[0] + (H.shrub[1] - H.shrub[0]) * coverSmooth(.4, 1, woody) * (.6 + clump * .4);
-      return;
-    }
-    const lerp = (range: readonly [number, number], t: number) => range[0] + (range[1] - range[0]) * t;
+    const patch = patchiness(x, y, 51);
+    // Fringed sage and forbs in small patches where the soil is thin.
+    const sage = coverSmooth(.72, .8, coverNoise(x / 14, y / 14, 61)) * (.4 + dry * .6) * (1 - moist);
+    // Copper bluestem creeps down the dry knobs and south faces; the rest
+    // is a patchwork of silver needle-and-thread and tawny wheatgrass, the
+    // wheatgrass on the moister, lower ground.
+    const knob = dry * .6 + Math.max(0, s.south) * .35 + (coverNoise(x / 30, y / 30, 55) - .5) * .35;
+    const shoulder = knob > .42 ? C.short.bluestem
+      : patch + moist * .25 - Math.max(0, s.tpi) * .2 > .55 ? C.short.wheatgrass : C.short.needle;
     if (stand > .5 && moist < .7) {
       out.cls = Cover.stand;
+      out.variant = moist > .35 ? C.stand.bigBluestem : shoulder;
       out.density = .82 + stand * .16;
       out.height = lerp(H.stand, colony * .6 + moist * .4);
     } else if (moist > .5) {
       out.cls = Cover.swale;
+      out.variant = s.wetness > .75 && patch > .45 ? C.swale.lowland : C.swale.bigBluestem;
       out.density = .86 + moist * .14;
       out.height = lerp(H.swale, coverSmooth(.5, 1, moist) * .7 + colony * .3);
     } else if (dry > .45) {
       out.cls = Cover.crown;
-      // Wind-scoured crowns open between bunches.
-      out.density = .62 + (1 - dry) * .2;
-      out.height = lerp(H.crown, colony * .7 + (1 - dry) * .3);
+      out.variant = sage > .5 ? C.crown.sage : patch > .6 ? C.crown.needle : C.crown.bluestem;
+      // Little bluestem holds the crowns in close bunches; the wind opens
+      // only a little more litter between them than on the shoulders.
+      out.density = .76 + (1 - dry) * .14;
+      out.height = lerp(H.crown, colony * .7 + (1 - dry) * .3) * (out.variant === C.crown.sage ? .78 : 1);
     } else {
       out.cls = Cover.short;
+      out.variant = sage > .5 ? C.short.sage : shoulder;
       out.density = .7 + moist * .2;
-      out.height = lerp(H.short, colony * .6 + moist * .4);
+      out.height = lerp(H.short, colony * .6 + moist * .4) * (out.variant === C.short.sage ? .8 : 1);
     }
     if (worn > 0) {
       out.density *= 1 - worn * .55;
@@ -162,7 +207,7 @@ function clearingsFor(area: AreaConfig): CoverClearing[] {
 }
 
 const RECIPES: Readonly<Record<string, ((area: AreaConfig) => CoverRecipe) | undefined>> = {
-  'sharptail-prairie': () => sharptailCoverRecipe(SHARPTAIL_SHELTERBELTS),
+  'sharptail-prairie': area => sharptailCoverRecipe(SHARPTAIL_SHELTERBELTS, area.world),
   'pheasant-coverts': area => cattailRecipe(area),
 };
 
@@ -224,5 +269,5 @@ export function farCoverMapFor(landscape: LandscapeModel): CoverMap | undefined 
 
 /** Scratch cell for callers that sample in loops. */
 export function coverCell(): CoverCell {
-  return { cls: Cover.short, density: 0, height: 0, tone: 0 };
+  return { cls: Cover.short, density: 0, height: 0, tone: 0, variant: 0 };
 }
