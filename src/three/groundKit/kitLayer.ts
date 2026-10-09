@@ -95,6 +95,8 @@ export interface KitMaterialOptions {
   /** Dither in at the near edge too: for a level-of-detail handover,
    * where growing out of the ground would read as plants popping up. */
   nearDither?: boolean;
+  /** Near-edge jitter for a handover: the near detail's far-edge jitter. */
+  handoverJitter?: number;
 }
 
 /**
@@ -116,6 +118,7 @@ export function kitVegetationMaterial(options: KitMaterialOptions): THREE.MeshLa
     shader.uniforms.uKitSway = { value: options.sway };
     shader.uniforms.uKitSheen = { value: options.sheen };
     shader.uniforms.uKitJitter = { value: options.jitter ?? 6 };
+    shader.uniforms.uKitHandover = { value: options.handoverJitter ?? options.jitter ?? 6 };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>
 uniform vec4 uKitBand;
@@ -124,6 +127,7 @@ uniform vec2 uKitWind;
 uniform float uKitWindStrength;
 uniform float uKitSway;
 uniform float uKitJitter;
+uniform float uKitHandover;
 varying float vKitFade;
 varying float vKitSheen;
 ${options.merged ? 'attribute vec3 kitRoot;\nattribute float kitBend;' : ''}
@@ -140,7 +144,10 @@ float kitDistance = distance(kitRootWorld, cameraPosition);
 // by up to the jitter, the near edge within its own (narrow) fade.
 float kitRand = kitHash(kitRootWorld.xz) - .5;
 float kitFar = 1.0 - smoothstep(uKitBand.z, uKitBand.w, kitDistance + kitRand * uKitJitter);
-float kitNear = smoothstep(uKitBand.x, uKitBand.y, kitDistance + kitRand * (uKitBand.y - uKitBand.x));
+// A level-of-detail handover jitters its near edge exactly as the near
+// detail jitters its far edge: both details of one plant share a root, so
+// one fades out just as the other fades in, over a few metres.
+float kitNear = smoothstep(uKitBand.x, uKitBand.y, kitDistance + kitRand * ${options.nearDither ? 'uKitHandover' : '(uKitBand.y - uKitBand.x)'});
 ${options.nearDither ? `vKitFade = kitFar * kitNear;
 float kitGrow = 1.0;` : `// Only the far edge dithers. Near the hunter a broad mass would show the
 // dither as a screen; there it grows out of the garnish instead.

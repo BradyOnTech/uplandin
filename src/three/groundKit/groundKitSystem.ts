@@ -37,20 +37,19 @@ const TERRAIN_DIVISIONS: Record<Quality, { near: number; far: number }> = { high
 /** Garnish blades round the hunter and dog. Lightweight reaches a little
  * further so the masses grow out of blades rather than bare litter. */
 const GARNISH: Record<Quality, LayerTuning> = {
-  high: { band: { in: [0, 0], out: [12, 16] }, step: .5, chunk: 12, radius: [.3, .46], height: [.75, 1.15], keep: .96 },
-  lite: { band: { in: [0, 0], out: [11, 15] }, step: .66, chunk: 16, radius: [.34, .5], height: [.75, 1.15], keep: .94 },
+  high: { band: { in: [0, 0], out: [12, 16] }, step: .5, chunk: 12, radius: [.38, .58], height: [.75, 1.15], keep: .97 },
+  lite: { band: { in: [0, 0], out: [10, 13] }, step: .72, chunk: 16, radius: [.44, .64], height: [.75, 1.15], keep: .95 },
 };
 
 /** Seed culms over the near bunches: pale heads that catch the light. */
-const CULMS: Record<Quality, LayerTuning> = {
+const CULMS: Record<'high', LayerTuning> = {
   high: { band: { in: [0, 0], out: [12, 16] }, step: 1.5, chunk: 12, radius: [.3, .4], height: [1.15, 1.45], keep: .55 },
-  lite: { band: { in: [0, 0], out: [8, 11] }, step: 1.9, chunk: 16, radius: [.34, .44], height: [1.15, 1.45], keep: .5 },
 };
 
 /** The low mat at the boots, under the bunches. */
 const MAT: Record<Quality, LayerTuning> = {
-  high: { band: { in: [0, 0], out: [7, 10] }, step: .36, chunk: 8, radius: [.28, .38], height: [1, 1], keep: .97, fixedHeight: [.09, .18] },
-  lite: { band: { in: [0, 0], out: [5, 7] }, step: .48, chunk: 12, radius: [.32, .42], height: [1, 1], keep: .94, fixedHeight: [.09, .18] },
+  high: { band: { in: [0, 0], out: [10, 13] }, step: .4, chunk: 8, radius: [.4, .55], height: [1, 1], keep: .98, fixedHeight: [.07, .15] },
+  lite: { band: { in: [0, 0], out: [7, 10] }, step: .52, chunk: 12, radius: [.44, .6], height: [1, 1], keep: .96, fixedHeight: [.07, .15] },
 };
 
 /** Faceted sward masses through the middle distance, in two layers so
@@ -59,7 +58,7 @@ const MAT: Record<Quality, LayerTuning> = {
  * bunch-sized and gathered into tussocks with litter between them. */
 const MASSES_SHORT: Record<Quality, LayerTuning> = {
   high: { band: { in: [6, 9], out: [65, 90] }, step: 1.45, chunk: 24, radius: [.5, .95], height: [.85, 1.1], keep: 1 },
-  lite: { band: { in: [8, 12], out: [42, 58] }, step: 1.85, chunk: 32, radius: [.6, 1.1], height: [.85, 1.1], keep: 1 },
+  lite: { band: { in: [7, 11], out: [42, 58] }, step: 1.85, chunk: 40, radius: [.6, 1.1], height: [.85, 1.1], keep: 1 },
 };
 const MASSES_TALL: Record<Quality, LayerTuning> = {
   high: { band: { in: [8, 12], out: [125, 165] }, step: 2.5, chunk: 40, radius: [1.15, 1.55], height: [.85, 1.08], keep: 1 },
@@ -72,13 +71,16 @@ const TALL_CLASSES: readonly CoverClass[] = [Cover.swale, Cover.stand];
  * (Lightweight), then the far detail, dithering across, to the horizon
  * band. All species merge into one mesh per chunk. */
 const WOODY_NEAR: Record<Quality, { band: KitBand; chunk: number; step: number }> = {
-  high: { band: { in: [0, 0], out: [80, 105] }, chunk: 64, step: 2.1 },
-  lite: { band: { in: [0, 0], out: [55, 75] }, chunk: 64, step: 2.5 },
+  high: { band: { in: [0, 0], out: [92, 96] }, chunk: 64, step: 2.1 },
+  lite: { band: { in: [0, 0], out: [46, 50] }, chunk: 64, step: 2.5 },
 };
 const WOODY_FAR: Record<Quality, { band: KitBand; chunk: number; step: number }> = {
-  high: { band: { in: [75, 100], out: [340, 420] }, chunk: 256, step: 2.1 },
-  lite: { band: { in: [50, 70], out: [240, 290] }, chunk: 256, step: 2.5 },
+  high: { band: { in: [92, 96], out: [340, 420] }, chunk: 256, step: 2.1 },
+  lite: { band: { in: [46, 50], out: [210, 260] }, chunk: 256, step: 2.5 },
 };
+/** Each plant hands from its near to its far detail at its own distance,
+ * within this many metres of the band edge. */
+const WOODY_HANDOVER_JITTER = 10;
 
 /** Tussocks: the size (yards) of the bunch field that gathers grass into
  * clumps with gaps of litter between them, at 10-40 m. */
@@ -137,11 +139,14 @@ export class GroundKitSystem implements Subsystem {
     };
     // 'bare' is the cost baseline: far band and woody plants only.
     if (this.style === 'masses') {
-      add('Kit basal mat', MAT[q], kitMatGeometry(q === 'lite' ? 2 : 3), true, .1, .1, (...a) => this.fillGrass(...a));
+      // Blue grama and buffalograss: a continuous short turf the bunches
+      // stand in, so the near ground reads as sward, not bare litter.
+      add('Kit basal mat', MAT[q], kitMatGeometry(q === 'lite' ? 4 : 6), true, .1, .1, (...a) => this.fillGrass(...a));
       // Near blades lean into the tussocks but still fill the gaps; masses
       // gather fully, so the shoulder reads as bunches at 10-40 m.
-      add('Kit garnish', GARNISH[q], kitTuftGeometry(q === 'lite' ? 7 : 9), true, .18, .22, (...a) => this.fillGrass(...a, undefined, false, .45));
-      add('Kit seed culms', CULMS[q], kitCulmGeometry(q === 'lite' ? 2 : 3), true, .3, .25, (...a) => this.fillGrass(...a, undefined, true, 1));
+      add('Kit garnish', GARNISH[q], kitTuftGeometry(q === 'lite' ? 6 : 11), true, .18, .22, (...a) => this.fillGrass(...a, undefined, false, .15));
+      // Seed culms are a High-tier grace note; phones spend the draw elsewhere.
+      if (q === 'high') add('Kit seed culms', CULMS.high, kitCulmGeometry(3), true, .3, .25, (...a) => this.fillGrass(...a, undefined, true, 1));
       add('Kit short masses', MASSES_SHORT[q], kitMassGeometry(q === 'lite' ? 5 : 6), true, .06, .18, (...a) => this.fillGrass(...a, SHORT_CLASSES, false, 1));
       const open = groundKitTallCoverOpen(this.landscape.area.id);
       add('Kit tall masses', MASSES_TALL[q], open ? kitStandGeometry(q === 'lite' ? 9 : 14, q === 'lite' ? 11 : 16) : kitMassGeometry(q === 'lite' ? 6 : 7, 0x3a56),
@@ -167,7 +172,8 @@ export class GroundKitSystem implements Subsystem {
     for (const asset of this.woody.values()) this.owned.push(asset.geometry);
     for (const [label, tuning, detail] of [['near', WOODY_NEAR[ctx.quality], near], ['far', WOODY_FAR[ctx.quality], 'far']] as const) {
       const material = kitVegetationMaterial({ band: tuning.band, wind: this.wind, clock: this.clock, sway: .02, sheen: .05, upNormals: true,
-        merged: true, nearDither: label === 'far', jitter: Math.max(2, (tuning.band.out[1] - tuning.band.out[0]) * .5) });
+        merged: true, nearDither: label === 'far', handoverJitter: WOODY_HANDOVER_JITTER,
+        jitter: label === 'near' ? WOODY_HANDOVER_JITTER : (tuning.band.out[1] - tuning.band.out[0]) * .5 });
       this.owned.push(material);
       this.layers.push(new KitLayer(this.landscape, { name: `Kit woody ${label}`, chunkYards: tuning.chunk, range: tuning.band.out[1] + 4, material,
         fillMerged: (x0, y0, size, sink) => this.fillWoody(x0, y0, size, sink, groups, detail, tuning.step) }));
@@ -265,7 +271,7 @@ export class GroundKitSystem implements Subsystem {
       if (tussock && !tuning.fixedHeight) h *= 1 + (tussock.bunch - .5) * .45 * bunching;
       const spread = coverHash(ix, iy, salt + 4);
       // Masses keep a grass proportion: footprint follows crown height.
-      const radius = masses ? Math.min(tuning.radius[1], Math.max(tuning.radius[0], h * 1.9)) * (.88 + spread * .24)
+      const radius = masses ? Math.min(tuning.radius[1], Math.max(tuning.radius[0], h * 1.7)) * (.88 + spread * .24)
         : tuning.radius[0] + spread * (tuning.radius[1] - tuning.radius[0]);
       this.landscape.propertyToWorld(x, y, this.world);
       this.position.set(this.world.x, ground(x, y) - (masses ? .04 : .02), this.world.z);

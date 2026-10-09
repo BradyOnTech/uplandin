@@ -36,8 +36,10 @@ export function kitTuftGeometry(blades = 9, seed = 0x7af7): THREE.BufferGeometry
     const outer = i / Math.max(1, blades - 1);
     const yaw = i * 2.39996 + rng() * .5;
     const ox = Math.cos(yaw), oz = Math.sin(yaw), sx = -oz, sz = ox;
-    const root = .04 + rng() * .1, height = .72 + rng() * .3 - outer * .22;
-    const width = .04 + rng() * .02, arc = .2 + outer * .55 + rng() * .2;
+    // A vase: blades rise from a broad crown and only the outer ones arch
+    // over at the tip. Wide-flung blades read as a starfish, not a bunch.
+    const root = .06 + rng() * .16, height = .76 + rng() * .28 - outer * .2;
+    const width = .055 + rng() * .03, arc = .08 + outer * .32 + rng() * .12;
     // Three nodes along an arc: stiff at the root, bending through the top.
     const nodes = [0, .5, .82, 1].map(t => {
       const bend = arc * t * t;
@@ -138,12 +140,14 @@ export function kitMassGeometry(sides = 7, seed = 0x3a55): THREE.BufferGeometry 
   for (let i = 0; i < sides; i++) {
     const j = (i + 1) % sides;
     tri(base[i], .74, base[j], .74, rim[j], .84); tri(base[i], .74, rim[j], .84, rim[i], .84);
-    tri(rim[i], .84, rim[j], .84, heart, .8);
+    // The cap sits in the bunch's own shade: from a crest a mass reads as
+    // a tussock's dark heart under its blades, not as a lit pad.
+    tri(rim[i], .8, rim[j], .8, heart, .66);
   }
   // Rings of narrow leaning blades break the top edge into grass: the outer
   // ring fountains past the skirt, the inner rings stand taller. Narrow and
   // tall, so even a wide, short mass keeps a grass silhouette.
-  const rings = [{ n: sides * 2, r: .84, lean: .26, h: .86 }, { n: sides + 2, r: .52, lean: .16, h: 1.0 }, { n: Math.max(4, sides - 2), r: .22, lean: .08, h: 1.1 }];
+  const rings = [{ n: sides * 2, r: .84, lean: .26, h: .86 }, { n: sides + 4, r: .52, lean: .16, h: 1.0 }, { n: sides, r: .24, lean: .08, h: 1.1 }];
   for (const ring of rings) for (let k = 0; k < ring.n; k++) {
     const a = (k / ring.n) * Math.PI * 2 + (rng() - .5) * .5;
     const r = ring.r * (.85 + rng() * .25), width = .045 + rng() * .02;
