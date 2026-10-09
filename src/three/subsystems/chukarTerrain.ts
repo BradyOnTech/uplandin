@@ -207,8 +207,6 @@ export function createChukarRiver(landscape:LandscapeModel):THREE.Mesh {
   return mesh;
 }
 
-/** The entire ridge uses the authoritative property heightfield. Near detail
- * follows the hunter instead of ending at the old drop-centered 480 m plate. */
 /** Far terrain merges into blocks of this many tiles a side: a bigger ground
  * would otherwise spend a draw on every distant tile. */
 const FAR_BLOCK = 3;

@@ -143,6 +143,9 @@ export function liveDogBreedId(search: string): string {
 const CAST_DISTANCE_M = 30;
 /** "Dead bird" reaches this far along the look ray. */
 const DEAD_BIRD_REACH_M = 70;
+/** A fall lands at least this far (yd) inside the fence: past the dog's own
+ * 4 yd keep-in, with room to stand over the bird. */
+const FALL_FENCE_INSET = 6;
 const shortBreedName = (id: string) => ({ gsp: 'GSP', 'english-setter': 'Setter', griffon: 'Griffon' } as Record<string, string>)[id] ?? getBreed(id).name;
 const LIVE_DOG_INTRO_ANGLE = -1.15;
 
@@ -815,6 +818,11 @@ export class Hunt3DSystem implements Subsystem {
   /** Convert a presentation-space ground contact into the shared fall. */
   recordFallWorld(birdId: number, worldX: number, worldZ: number): boolean {
     const contact = this.worldToSim(worldX, worldZ, { x: 0, y: 0 });
+    // A bird shot flying out over the fence drops just inside it, where the
+    // dog can fetch it: the dog never leaves the property (it keeps 4 yd in).
+    const world = this.area.world, inset = FALL_FENCE_INSET;
+    contact.x = Math.min(Math.max(contact.x, world.x + inset), world.x + world.w - inset);
+    contact.y = Math.min(Math.max(contact.y, world.y + inset), world.y + world.h - inset);
     // A bird that comes down on the rimrock tumbles off it.
     const position = this.landscape.openPropertyNear(contact.x, contact.y, { x: 0, y: 0 });
     const recorded = this.simulation.recordFall(birdId, position);

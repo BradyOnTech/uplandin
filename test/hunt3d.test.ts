@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Ctx } from '../src/three/engine';
 import { getBreed } from '../src/game/breeds';
+import { getArea } from '../src/game/areas';
 import { Dog, type DogEnv } from '../src/game/dog';
 import { LandscapeModel } from '../src/game/landscape';
 import { parseDropPointId, resolveThreeHuntArea } from '../src/game/gameplayMode';
@@ -402,6 +403,29 @@ describe('Hunt3DSystem live start', () => {
     expect(hunt.resolveBird(last.id, 'downed')).toBe(true);
     expect(said.at(-1)).toBe('Over the limit · 4 roosters on a limit of 3');
     expect(hunt.huntState().overLimit).toBe(1);
+  });
+
+  it('drops a bird shot out over the fence just inside it, where the dog can fetch it', () => {
+    vi.stubGlobal('location', { search: '?breed=english-setter&area=pheasant-coverts' });
+    const ctx = liveCtx();
+    const hunt = liveHunt();
+    hunt.init(ctx);
+    hunt.fixedUpdate(ctx, 1000 / 30);
+    const dog = hunt.dog();
+    const bird = hunt.huntState().birds[0];
+    hunt.huntState().birds.splice(1);
+    bird.state = 'hidden';
+    bird.pos = { ...dog.pos, x: dog.pos.x + 10 };
+    dog.state = 'pointing';
+    dog.pointedBirdId = bird.id;
+    expect(hunt.triggerFlush(ctx)?.ids).toContain(bird.id);
+    expect(hunt.resolveBird(bird.id, 'downed')).toBe(true);
+    const world = getArea('pheasant-coverts').world;
+    const outside = hunt.simToWorld(world.x + world.w * .5, world.y - 30, { x: 0, z: 0 });
+    expect(hunt.recordFallWorld(bird.id, outside.x, outside.z)).toBe(true);
+    // Inside the dog's own 4 yd keep-in, with room to stand over the bird.
+    expect(bird.pos.y).toBeGreaterThanOrEqual(world.y + 4.5);
+    expect(bird.pos.x).toBeCloseTo(world.x + world.w * .5, 6);
   });
 
   it('retrieves from the rendered landing point and credits the dog', () => {
