@@ -44,7 +44,7 @@ export const COVER_CELL_YARDS = 2;
 /** Yards per landform analysis sample. Broad shapes need no finer grid. */
 export const COVER_LAND_STEP_YARDS = 4;
 /** The map continues past the fence so the far mosaic has no edge. */
-export const COVER_MARGIN_YARDS = 200;
+export const COVER_MARGIN_YARDS = 120;
 /** Radii (yards) of the local and broad landform position. */
 const LOCAL_RADIUS_YARDS = 24;
 const BROAD_RADIUS_YARDS = 84;
@@ -86,7 +86,7 @@ export interface LandSample {
 
 /** Everything a recipe sees at one cover cell. */
 export interface CoverSample extends LandSample {
-  /** Yards to the nearest habitat patch; negative inside one. */
+  /** Yards to the nearest habitat patch (capped at its reach); negative inside one. */
   habitat: number;
   /** Yards to the nearest route centreline. */
   route: number;
@@ -124,6 +124,9 @@ export interface CoverMapSource {
   clearings: readonly CoverClearing[];
   recipe: CoverRecipe;
   margin?: number;
+  /** Cell and landform sample size, yards (a coarse far map uses larger). */
+  cell?: number;
+  landStep?: number;
 }
 
 /**
@@ -135,11 +138,10 @@ export class LandAnalysis {
   readonly y0: number;
   readonly cols: number;
   readonly rows: number;
-  readonly step = COVER_LAND_STEP_YARDS;
   private readonly fields: Float32Array[];
 
-  constructor(x0: number, y0: number, width: number, depth: number, heightAt: (x: number, y: number) => number) {
-    const step = this.step;
+  constructor(x0: number, y0: number, width: number, depth: number, heightAt: (x: number, y: number) => number,
+    readonly step = COVER_LAND_STEP_YARDS) {
     this.x0 = x0; this.y0 = y0;
     this.cols = Math.ceil(width / step) + 1;
     this.rows = Math.ceil(depth / step) + 1;
@@ -329,7 +331,9 @@ export class LandAnalysis {
         if (share[d] > 0) acc[(y + offsets[d][1]) * cols + x + offsets[d][0]] += acc[i] * share[d] / total;
       }
     }
-    const lo = Math.log(WET_START_CELLS), hi = Math.log(WET_FULL_CELLS);
+    // Thresholds are upslope areas: a coarser grid needs fewer cells.
+    const area = (COVER_LAND_STEP_YARDS / this.step) ** 2;
+    const lo = Math.log(Math.max(1.5, WET_START_CELLS * area)), hi = Math.log(Math.max(3, WET_FULL_CELLS * area));
     for (let i = 0; i < n; i++) acc[i] = Math.min(1, Math.max(0, (Math.log(acc[i]) - lo) / (hi - lo)));
     return acc;
   }
@@ -353,7 +357,7 @@ export class CoverMap {
   readonly y0: number;
   readonly cols: number;
   readonly rows: number;
-  readonly cell = COVER_CELL_YARDS;
+  readonly cell: number;
   readonly bounds: CoverRect;
   readonly cls: Uint8Array;
   /** 0..255 = density 0..1. */
@@ -362,7 +366,8 @@ export class CoverMap {
   readonly height: Uint8Array;
   readonly tone: Uint8Array;
 
-  constructor(bounds: CoverRect, margin: number) {
+  constructor(bounds: CoverRect, margin: number, cell = COVER_CELL_YARDS) {
+    this.cell = cell;
     this.bounds = { ...bounds };
     this.x0 = bounds.x - margin; this.y0 = bounds.y - margin;
     this.cols = Math.ceil((bounds.w + margin * 2) / this.cell);
@@ -427,12 +432,13 @@ function rectDistance(x: number, y: number, r: CoverRect): number {
 }
 
 const ROUTE_REACH_YARDS = 6;
+const HABITAT_REACH_YARDS = 40;
 
 /** Build a ground's cover map. Synchronous; ~0.1-0.3 s for a full section. */
 export function buildCoverMap(source: CoverMapSource): CoverMap {
   const margin = source.margin ?? COVER_MARGIN_YARDS;
-  const map = new CoverMap(source.bounds, margin);
-  const land = new LandAnalysis(map.x0, map.y0, map.cols * map.cell, map.rows * map.cell, source.heightAt);
+  const map = new CoverMap(source.bounds, margin, source.cell);
+  const land = new LandAnalysis(map.x0, map.y0, map.cols * map.cell, map.rows * map.cell, source.heightAt, source.landStep);
   // Route distance is stamped only near each segment; everywhere else it
   // stays at the reach, which recipes read as "far from any track".
   const route = new Float32Array(map.cols * map.rows).fill(ROUTE_REACH_YARDS);
@@ -456,6 +462,19 @@ export function buildCoverMap(source: CoverMapSource): CoverMap {
       if (d < head[i]) head[i] = d;
     }
   }
+  // Habitat distance is stamped round each patch out to its reach, like the
+  // routes; recipes read anything farther as open ground.
+  const habitat = new Float32Array(map.cols * map.rows).fill(HABITAT_REACH_YARDS);
+  for (const patch of source.habitat) {
+    const c0 = Math.max(0, Math.floor((patch.x - HABITAT_REACH_YARDS - map.x0) / map.cell));
+    const c1 = Math.min(map.cols - 1, Math.ceil((patch.x + patch.w + HABITAT_REACH_YARDS - map.x0) / map.cell));
+    const r0 = Math.max(0, Math.floor((patch.y - HABITAT_REACH_YARDS - map.y0) / map.cell));
+    const r1 = Math.min(map.rows - 1, Math.ceil((patch.y + patch.h + HABITAT_REACH_YARDS - map.y0) / map.cell));
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+      const i = r * map.cols + c, d = rectDistance(map.x0 + (c + .5) * map.cell, map.y0 + (r + .5) * map.cell, patch);
+      if (d < habitat[i]) habitat[i] = d;
+    }
+  }
   const sample: CoverSample = { height: 0, slope: 0, tpi: 0, relief: 0, wetness: 0, south: 0, west: 0, convergence: 0, habitat: 0, route: 0, clearing: 0, head: 0 };
   const cell: CoverCell = { cls: Cover.short, density: 0, height: 0, tone: 0 };
   for (let r = 0; r < map.rows; r++) {
@@ -463,13 +482,7 @@ export function buildCoverMap(source: CoverMapSource): CoverMap {
     for (let c = 0; c < map.cols; c++) {
       const x = map.x0 + (c + .5) * map.cell, i = r * map.cols + c;
       land.sample(x, y, sample);
-      let habitat = Infinity;
-      for (const patch of source.habitat) {
-        // Cheap reject: a patch more than the current best away cannot win.
-        if (x < patch.x - habitat || x > patch.x + patch.w + habitat || y < patch.y - habitat || y > patch.y + patch.h + habitat) continue;
-        habitat = Math.min(habitat, rectDistance(x, y, patch));
-      }
-      sample.habitat = habitat;
+      sample.habitat = habitat[i];
       sample.route = route[i];
       let clearing = 0;
       for (const place of source.clearings) {

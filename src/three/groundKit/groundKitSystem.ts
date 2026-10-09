@@ -8,7 +8,7 @@ import { coverCell, coverMapFor } from './coverRecipes';
 import { PaletteColors, type CoverColorField } from './coverPalette';
 import { groundKitColors, groundKitPalette, groundKitStyle, groundKitSurface, groundKitTallCoverOpen, type CoverStyle } from './groundKit';
 import { InstanceSink, KitLayer, kitVegetationMaterial, type KitBand } from './kitLayer';
-import { kitFringeGeometry, kitMassGeometry, kitMatGeometry, kitShrubGeometry, kitStandGeometry, kitTuftGeometry } from './kitGeometry';
+import { kitCulmGeometry, kitMassGeometry, kitMatGeometry, kitShrubGeometry, kitStandGeometry, kitTuftGeometry } from './kitGeometry';
 
 /*
  * The kit's vegetation bands on a ground. Every layer is filled from the
@@ -33,65 +33,47 @@ interface LayerTuning {
 
 const TERRAIN_DIVISIONS: Record<Quality, { near: number; far: number }> = { high: { near: 48, far: 14 }, lite: { near: 24, far: 14 } };
 
-/** Garnish blades round the hunter and dog, shared by every style. */
+/** Garnish blades round the hunter and dog. */
 const GARNISH: Record<Quality, LayerTuning> = {
   high: { band: { in: [0, 0], out: [11, 15] }, step: .62, chunk: 12, radius: [.26, .38], height: [.75, 1.15], keep: .92 },
-  lite: { band: { in: [0, 0], out: [7, 10] }, step: .8, chunk: 12, radius: [.3, .44], height: [.75, 1.15], keep: .88 },
-};
-const GARNISH_WIDE: Record<Quality, LayerTuning> = {
-  high: { band: { in: [0, 0], out: [17, 23] }, step: .62, chunk: 16, radius: [.26, .38], height: [.75, 1.15], keep: .92 },
-  lite: { band: { in: [0, 0], out: [11, 15] }, step: .8, chunk: 16, radius: [.3, .44], height: [.75, 1.15], keep: .88 },
+  lite: { band: { in: [0, 0], out: [7, 10] }, step: .8, chunk: 16, radius: [.3, .44], height: [.75, 1.15], keep: .88 },
 };
 
-/** The low mat at the boots, under every style's bunches. */
+/** Seed culms over the near bunches: pale heads that catch the light. */
+const CULMS: Record<Quality, LayerTuning> = {
+  high: { band: { in: [0, 0], out: [12, 16] }, step: 1.5, chunk: 12, radius: [.3, .4], height: [1.15, 1.45], keep: .55 },
+  lite: { band: { in: [0, 0], out: [8, 11] }, step: 1.9, chunk: 16, radius: [.34, .44], height: [1.15, 1.45], keep: .5 },
+};
+
+/** The low mat at the boots, under the bunches. */
 const MAT: Record<Quality, LayerTuning> = {
   high: { band: { in: [0, 0], out: [6, 9] }, step: .42, chunk: 8, radius: [.26, .36], height: [1, 1], keep: .95, fixedHeight: [.08, .16] },
-  lite: { band: { in: [0, 0], out: [4, 6] }, step: .55, chunk: 8, radius: [.3, .4], height: [1, 1], keep: .9, fixedHeight: [.08, .16] },
+  lite: { band: { in: [0, 0], out: [4, 6] }, step: .55, chunk: 12, radius: [.3, .4], height: [1, 1], keep: .9, fixedHeight: [.08, .16] },
 };
 
-/** Candidate A: faceted sward masses through the middle distance, in two
- * layers so short shoulder grass and tall swale grass keep their own
- * proportions (radius follows crown height, within these bounds). */
+/** Faceted sward masses through the middle distance, in two layers so
+ * short shoulder grass and tall swale grass keep their own proportions
+ * (radius follows crown height, within these bounds). */
 const MASSES_SHORT: Record<Quality, LayerTuning> = {
   high: { band: { in: [7, 11], out: [65, 90] }, step: 1.75, chunk: 24, radius: [.8, 1.15], height: [.85, 1.08], keep: 1 },
-  lite: { band: { in: [5, 8], out: [42, 58] }, step: 2.3, chunk: 24, radius: [1.0, 1.4], height: [.85, 1.08], keep: 1 },
+  lite: { band: { in: [5, 8], out: [42, 58] }, step: 2.2, chunk: 32, radius: [.85, 1.3], height: [.85, 1.08], keep: 1 },
 };
 const MASSES_TALL: Record<Quality, LayerTuning> = {
   high: { band: { in: [7, 11], out: [125, 165] }, step: 2.5, chunk: 40, radius: [1.15, 1.55], height: [.85, 1.08], keep: 1 },
-  lite: { band: { in: [5, 8], out: [80, 105] }, step: 3.1, chunk: 40, radius: [1.4, 1.85], height: [.85, 1.08], keep: 1 },
+  lite: { band: { in: [5, 8], out: [80, 105] }, step: 3.1, chunk: 56, radius: [1.4, 1.85], height: [.85, 1.08], keep: 1 },
 };
 const SHORT_CLASSES: readonly CoverClass[] = [Cover.short, Cover.crown, Cover.bare];
 const TALL_CLASSES: readonly CoverClass[] = [Cover.swale, Cover.stand];
 
-/** Candidate C: chunky tufts in three coarsening rings. */
-const TUFTS: Record<Quality, LayerTuning[]> = {
-  high: [
-    { band: { in: [0, 0], out: [14, 19] }, step: .62, chunk: 12, radius: [.26, .38], height: [.72, 1.12], keep: .9 },
-    { band: { in: [12, 17], out: [40, 52] }, step: 1.3, chunk: 24, radius: [.5, .72], height: [.75, 1.08], keep: .9 },
-    { band: { in: [36, 48], out: [90, 115] }, step: 2.6, chunk: 40, radius: [.95, 1.35], height: [.78, 1.05], keep: .9 },
-  ],
-  lite: [
-    { band: { in: [0, 0], out: [9, 13] }, step: .8, chunk: 12, radius: [.3, .44], height: [.72, 1.12], keep: .85 },
-    { band: { in: [8, 12], out: [28, 38] }, step: 1.7, chunk: 24, radius: [.6, .88], height: [.75, 1.08], keep: .88 },
-    { band: { in: [26, 34], out: [62, 80] }, step: 3.4, chunk: 40, radius: [1.2, 1.7], height: [.78, 1.05], keep: .88 },
-  ],
-};
-
-/** Candidate B: silhouette fringes along the crests only. */
-const FRINGES: Record<Quality, LayerTuning> = {
-  high: { band: { in: [10, 16], out: [210, 260] }, step: 3, chunk: 48, radius: [1.1, 1.5], height: [.9, 1.1], keep: 1 },
-  lite: { band: { in: [8, 12], out: [150, 190] }, step: 4, chunk: 48, radius: [1.3, 1.8], height: [.9, 1.1], keep: 1 },
-};
-
-/** Woody clumps (every style): the coulee-head thickets. */
+/** Woody clumps (also in the bare baseline): the coulee-head thickets. */
 const SHRUBS: Record<Quality, LayerTuning> = {
-  high: { band: { in: [0, 0], out: [330, 400] }, step: 3, chunk: 128, radius: [1.0, 1.7], height: [.85, 1.1], keep: 1 },
-  lite: { band: { in: [0, 0], out: [230, 280] }, step: 3.6, chunk: 128, radius: [1.2, 1.9], height: [.85, 1.1], keep: 1 },
+  high: { band: { in: [0, 0], out: [330, 400] }, step: 3, chunk: 128, radius: [.8, 2.0], height: [.8, 1.25], keep: 1 },
+  lite: { band: { in: [0, 0], out: [230, 280] }, step: 3.6, chunk: 128, radius: [1.0, 2.2], height: [.8, 1.25], keep: 1 },
 };
 
 /** Lattice sites owned by one chunk: an exact partition, so neighbouring
  * chunks never double a row or leave one out. */
-function* lattice(x0: number, y0: number, size: number, step: number): Generator<readonly [number, number]> {
+export function* lattice(x0: number, y0: number, size: number, step: number): Generator<readonly [number, number]> {
   const ix0 = Math.ceil(x0 / step), ix1 = Math.ceil((x0 + size) / step);
   const iy0 = Math.ceil(y0 / step), iy1 = Math.ceil((y0 + size) / step);
   for (let iy = iy0; iy < iy1; iy++) for (let ix = ix0; ix < ix1; ix++) yield [ix, iy];
@@ -126,34 +108,24 @@ export class GroundKitSystem implements Subsystem {
     this.wind.connect(ctx);
     const q = ctx.quality;
     const add = (name: string, tuning: LayerTuning, geometry: THREE.BufferGeometry, upNormals: boolean, sway: number, sheen: number,
-      fill: (x0: number, y0: number, size: number, sink: InstanceSink, tuning: LayerTuning) => void, twoSided = false) => {
-      const material = kitVegetationMaterial({ band: tuning.band, wind: this.wind, clock: this.clock, sway, sheen, upNormals, twoSided,
+      fill: (x0: number, y0: number, size: number, sink: InstanceSink, tuning: LayerTuning) => void) => {
+      const material = kitVegetationMaterial({ band: tuning.band, wind: this.wind, clock: this.clock, sway, sheen, upNormals,
         jitter: Math.max(2, (tuning.band.out[1] - tuning.band.out[0]) * .5) });
       this.owned.push(geometry, material);
       this.layers.push(new KitLayer(this.landscape, { name, chunkYards: tuning.chunk, range: tuning.band.out[1] + 4, geometry, material,
         fill: (x0, y0, size, sink) => fill(x0, y0, size, sink, tuning) }));
     };
-    const tuft = () => kitTuftGeometry(q === 'lite' ? 5 : 7);
-    // 'bare' is the budget baseline: far band and woody clumps only.
-    if (this.style !== 'bare') add('Kit basal mat', MAT[q], kitMatGeometry(q === 'lite' ? 7 : 10), true, .1, .1, (...a) => this.fillGrass(...a));
-    if (this.style === 'tufts') {
-      TUFTS[q].forEach((tuning, i) => add(`Kit tufts ${i}`, tuning, tuft(), true, .18, .22, (...a) => this.fillGrass(...a)));
-    } else if (this.style === 'strokes') {
-      // The terrain carries the middle distance, so blades reach further.
-      add('Kit garnish', GARNISH_WIDE[q], tuft(), true, .18, .22, (...a) => this.fillGrass(...a));
-    } else if (this.style === 'masses') {
-      add('Kit garnish', GARNISH[q], tuft(), true, .18, .22, (...a) => this.fillGrass(...a));
-    }
+    // 'bare' is the cost baseline: far band and woody clumps only.
     if (this.style === 'masses') {
+      add('Kit basal mat', MAT[q], kitMatGeometry(q === 'lite' ? 2 : 3), true, .1, .1, (...a) => this.fillGrass(...a));
+      add('Kit garnish', GARNISH[q], kitTuftGeometry(q === 'lite' ? 5 : 7), true, .18, .22, (...a) => this.fillGrass(...a));
+      add('Kit seed culms', CULMS[q], kitCulmGeometry(q === 'lite' ? 2 : 3), true, .3, .25, (...a) => this.fillGrass(...a, undefined, true));
       add('Kit short masses', MASSES_SHORT[q], kitMassGeometry(q === 'lite' ? 5 : 6), true, .06, .18, (...a) => this.fillGrass(...a, SHORT_CLASSES));
       const open = groundKitTallCoverOpen(this.landscape.area.id);
       add('Kit tall masses', MASSES_TALL[q], open ? kitStandGeometry(q === 'lite' ? 9 : 14, q === 'lite' ? 11 : 16) : kitMassGeometry(q === 'lite' ? 6 : 7, 0x3a56),
         true, .06, .18, (...a) => this.fillGrass(...a, TALL_CLASSES));
     }
-    if (this.style === 'strokes') {
-      add('Kit crest fringe', FRINGES[q], kitFringeGeometry(), true, .1, .2, (...a) => this.fillFringe(...a));
-    }
-    add('Kit woody clumps', SHRUBS[q], q === 'lite' ? kitShrubGeometry(3, 12) : kitShrubGeometry(), false, .03, 0, (...a) => this.fillShrubs(...a), true);
+    add('Kit woody clumps', SHRUBS[q], q === 'lite' ? kitShrubGeometry(6, 28) : kitShrubGeometry(), true, .04, .05, (...a) => this.fillShrubs(...a));
     this.update(ctx);
   }
 
@@ -214,6 +186,7 @@ export class GroundKitSystem implements Subsystem {
 
   private readonly cell = coverCell();
   private readonly color = new THREE.Color();
+  private readonly paleHead = new THREE.Color(0xcfc6aa);
   private readonly matrix = new THREE.Matrix4();
   private readonly position = new THREE.Vector3();
   private readonly scale = new THREE.Vector3();
@@ -225,7 +198,7 @@ export class GroundKitSystem implements Subsystem {
 
   /** Grass on a jittered lattice: kept by density, sized by crown height,
    * coloured by the class swatch at its colony tone. */
-  private fillGrass(x0: number, y0: number, size: number, sink: InstanceSink, tuning: LayerTuning, classes?: readonly CoverClass[]): void {
+  private fillGrass(x0: number, y0: number, size: number, sink: InstanceSink, tuning: LayerTuning, classes?: readonly CoverClass[], culms = false): void {
     const ground = this.chunkGround(x0, y0, size), step = tuning.step, masses = !!classes;
     const salt = Math.round(step * 100) + (masses ? 7 : 0);
     for (const [ix, iy] of lattice(x0, y0, size, step)) {
@@ -261,28 +234,8 @@ export class GroundKitSystem implements Subsystem {
       // edges break up plant by plant instead of on a line.
       this.field.sample(x + (coverHash(ix, iy, salt + 8) - .5) * 7, y + (coverHash(ix, iy, salt + 9) - .5) * 7, this.color);
       this.color.multiplyScalar(.9 + coverHash(ix, iy, salt + 7) * .18);
-      sink.push(this.matrix, this.color);
-    }
-  }
-
-  /** Crest fringes: on ground standing clear of its surroundings. */
-  private fillFringe(x0: number, y0: number, size: number, sink: InstanceSink, tuning: LayerTuning): void {
-    const ground = this.chunkGround(x0, y0, size), step = tuning.step;
-    const h = (x: number, y: number) => this.landscape.heightAtProperty(x, y);
-    for (const [ix, iy] of lattice(x0, y0, size, step)) {
-      const x = (ix + .5) * step, y = (iy + .5) * step;
-      if (!this.inside(x, y)) continue;
-      this.map.sample(x, y, this.cell);
-      if (!grassy(this.cell.cls) || this.cell.cls === Cover.bare) continue;
-      const rise = h(x, y) - (h(x + 14, y) + h(x - 14, y) + h(x, y + 14) + h(x, y - 14)) / 4;
-      if (rise < .22 || coverHash(ix, iy, 91) > .85) continue;
-      this.landscape.propertyToWorld(x, y, this.world);
-      this.position.set(this.world.x, ground(x, y) - .03, this.world.z);
-      this.rotation.setFromAxisAngle(this.up, coverHash(ix, iy, 92) * Math.PI);
-      const radius = tuning.radius[0] + coverHash(ix, iy, 93) * (tuning.radius[1] - tuning.radius[0]);
-      this.scale.set(radius, this.cell.height * (tuning.height[0] + coverHash(ix, iy, 94) * .2), radius);
-      this.matrix.compose(this.position, this.rotation, this.scale);
-      this.field.sample(x, y, this.color);
+      // Ripe heads bleach toward pale straw and silver.
+      if (culms) this.color.lerp(this.paleHead, .35);
       sink.push(this.matrix, this.color);
     }
   }
@@ -290,7 +243,7 @@ export class GroundKitSystem implements Subsystem {
   /** Woody clumps where the map says shrub; buffaloberry greys a few. */
   private fillShrubs(x0: number, y0: number, size: number, sink: InstanceSink, tuning: LayerTuning): void {
     const ground = this.chunkGround(x0, y0, size), step = tuning.step;
-    const silver = new THREE.Color(0x6f6c5e);
+    const silver = new THREE.Color(0x8a897a);
     for (const [ix, iy] of lattice(x0, y0, size, step)) {
       const x = (ix + .15 + coverHash(ix, iy, 61) * .7) * step, y = (iy + .15 + coverHash(ix, iy, 62) * .7) * step;
       if (!this.inside(x, y)) continue;
@@ -300,10 +253,11 @@ export class GroundKitSystem implements Subsystem {
       this.position.set(this.world.x, ground(x, y) - .08, this.world.z);
       this.rotation.setFromAxisAngle(this.up, coverHash(ix, iy, 64) * Math.PI * 2);
       const radius = tuning.radius[0] + coverHash(ix, iy, 65) * (tuning.radius[1] - tuning.radius[0]);
-      this.scale.set(radius, this.cell.height * (tuning.height[0] + coverHash(ix, iy, 66) * .25), radius * (.75 + coverHash(ix, iy, 67) * .4));
+      const h = this.cell.height * (tuning.height[0] + coverHash(ix, iy, 66) * (tuning.height[1] - tuning.height[0]));
+      this.scale.set(radius, h, radius * (.75 + coverHash(ix, iy, 67) * .4));
       this.matrix.compose(this.position, this.rotation, this.scale);
       this.colors.canopy(Cover.shrub, coverHash(ix, iy, 68), this.color);
-      if (coverHash(ix, iy, 69) < .1) this.color.lerp(silver, .45);
+      if (coverHash(ix, iy, 69) < .16) this.color.lerp(silver, .55);
       this.color.multiplyScalar(.9 + coverHash(ix, iy, 70) * .2);
       sink.push(this.matrix, this.color);
     }

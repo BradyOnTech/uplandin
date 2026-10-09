@@ -44,3 +44,15 @@ Sheets: `cover/bakeoff-sharptail-high.jpg`, `cover/bakeoff-sharptail-lite.jpg`, 
 - Cost. At budget on both tiers, and the whole Lightweight frame drops from ~570–650k to ~270–290k triangles. Masses cost the most draws of the three, so the pilot watches draws on Lightweight.
 
 Known weaknesses carried into the pilot: the near garnish still reads a little stiff; the fine sward texture under it ripples like sand at grazing angles; woody clumps read as dark blobs, too boulder-like up close; a dog four yards inside a CRP block is still hidden from 12 m (stems too dense for "open at dog height").
+
+### Sharptail pilot
+
+Sharptail now runs on the kit by default (`?cover=legacy` brings the old stack back for review). The losing candidates are gone from the code; they live in `932504c` and the sheets above.
+
+- Near band: a basal mat of short sprouts to ~9 m, blade tufts to ~15 m, and sparse seed culms with pale heads (little bluestem fluff, needle-and-thread) over them. The flat-triangle mat of the first pass read as confetti and was replaced.
+- Middle band: short masses to ~90 m (High) / ~58 m (Lite), tall masses to ~165 m / ~105 m. The flat cap on each mass is gone so a lifted view never shows polygon lids, the band edges use the full 3D distance, and past the far edge a mass also settles toward the ground so the dither never leaves a dotted crest.
+- Far band: the fine cover texture over the ground and a 120-yard margin, and a coarse far map (16-yard cells, 1,100-yard margin) painted into the terrain's vertex colour, so the mosaic reaches the horizon ground on both tiers with no edge.
+- Woody draw heads: three shapes failed (faceted lobes read as boulders, octahedron clusters on stems as umbrellas, a smooth dome as loaves). The fourth builds a thicket the way the masses are built, a low core under rings of twiggy sprays, and reads as brush in the middle distance; up close it is still too much like spiky grass. A proper low-poly buckbrush, chokecherry and buffaloberry kit from the Blender pipeline is the fix (milestone 2 kit work).
+- The accepted native-plant near ring (`e57ee89`) and common grass (`b35875e`) are not carried into the kit: they are the thigh-high bunches that made the shoulders read as a crop and hid the dog. Their code stays reachable through `?cover=legacy` until the lead accepts the pilot.
+- The kit answers the shared `grass` contract (`launchHeightAt`), so the dog's bound now reads Sharptail's crown heights: in swales over 0.9 m a quartering dog bounds, as it already did in Cattail's stands.
+- Build cost: the fine cover map takes about 0.44 s and the far map 0.12 s in Node on the desktop, plus 35 ms for the colour fields. That is new load time (a phone may take two to three times as long) against the old Sharptail sward fields and middle-sward planting it replaces.

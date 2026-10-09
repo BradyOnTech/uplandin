@@ -14,15 +14,15 @@ export type CoverPalette = Readonly<Record<CoverClass, CoverSwatch>>;
 export const SHARPTAIL_PALETTE: CoverPalette = {
   [Cover.bare]: { a: 0x9d947e, b: 0x978e78, floor: 0x8d856f },
   // Tawny western wheatgrass to silvered needle-and-thread.
-  [Cover.short]: { a: 0xa39277, b: 0x9f9c88, floor: 0x7f7656 },
+  [Cover.short]: { a: 0x9f9079, b: 0x9a998b, floor: 0x7f7656 },
   // Copper little bluestem.
-  [Cover.crown]: { a: 0xa07a5c, b: 0xa88a6c, floor: 0x7d6046 },
+  [Cover.crown]: { a: 0x9c7a60, b: 0xa48a70, floor: 0x7d6046 },
   // Maroon big bluestem.
-  [Cover.swale]: { a: 0x7b5a4e, b: 0x725a50, floor: 0x55433a },
+  [Cover.swale]: { a: 0x7a5a50, b: 0x86705e, floor: 0x55433a },
   // Rank mixed stand, bronze.
-  [Cover.stand]: { a: 0x977a5c, b: 0x9e8768, floor: 0x665441 },
+  [Cover.stand]: { a: 0x947f68, b: 0x9a8c76, floor: 0x665441 },
   // Buckbrush purple-brown to chokecherry red; buffaloberry greys the edge.
-  [Cover.shrub]: { a: 0x56403a, b: 0x5e3a34, floor: 0x45372e },
+  [Cover.shrub]: { a: 0x5f4b46, b: 0x6c4139, floor: 0x45372e },
   [Cover.tree]: { a: 0x5c5a44, b: 0x666049, floor: 0x55543f },
   [Cover.water]: { a: 0x4d6a72, b: 0x4d6a72, floor: 0x4d6a72 },
 };
@@ -105,17 +105,23 @@ export class CoverColorField {
   }
 }
 
+/** Separable box blur with running sums, edge-clamped averages. */
 function blur(src: Float32Array, cols: number, rows: number, r: number): Float32Array {
   const tmp = new Float32Array(src.length), out = new Float32Array(src.length);
-  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) for (let k = 0; k < 3; k++) {
-    let sum = 0, count = 0;
-    for (let d = -r; d <= r; d++) { const xx = x + d; if (xx < 0 || xx >= cols) continue; sum += src[(y * cols + xx) * 3 + k]; count++; }
-    tmp[(y * cols + x) * 3 + k] = sum / count;
-  }
-  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) for (let k = 0; k < 3; k++) {
-    let sum = 0, count = 0;
-    for (let d = -r; d <= r; d++) { const yy = y + d; if (yy < 0 || yy >= rows) continue; sum += tmp[(yy * cols + x) * 3 + k]; count++; }
-    out[(y * cols + x) * 3 + k] = sum / count;
-  }
+  const pass = (from: Float32Array, to: Float32Array, length: number, lines: number, stride: number, step: number) => {
+    for (let line = 0; line < lines; line++) for (let k = 0; k < 3; k++) {
+      const base = line * stride + k;
+      let sum = 0, count = 0;
+      for (let d = 0; d <= Math.min(r, length - 1); d++) { sum += from[base + d * step]; count++; }
+      for (let i = 0; i < length; i++) {
+        to[base + i * step] = sum / count;
+        const enter = i + r + 1, leave = i - r;
+        if (enter < length) { sum += from[base + enter * step]; count++; }
+        if (leave >= 0) { sum -= from[base + leave * step]; count--; }
+      }
+    }
+  };
+  pass(src, tmp, cols, rows, cols * 3, 3);
+  pass(tmp, out, rows, cols, 3, cols * 3);
   return out;
 }

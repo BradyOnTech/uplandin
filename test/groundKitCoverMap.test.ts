@@ -112,10 +112,12 @@ describe('Sharptail cover from its own land and habitat', () => {
 });
 
 describe('ground kit selection', () => {
-  it('stays on the legacy stack unless a style is asked for, and only where a recipe exists', () => {
-    expect(groundKitStyle('sharptail-prairie', null)).toBeNull();
-    expect(groundKitStyle('sharptail-prairie', 'masses')).toBe('masses');
-    expect(groundKitStyle('sharptail-prairie', 'sparkles')).toBeNull();
+  it('puts Sharptail on the kit, keeps the old stack on request, and previews only where a recipe exists', () => {
+    expect(groundKitStyle('sharptail-prairie', null)).toBe('masses');
+    expect(groundKitStyle('sharptail-prairie', 'sparkles')).toBe('masses');
+    expect(groundKitStyle('sharptail-prairie', 'legacy')).toBeNull();
+    expect(groundKitStyle('pheasant-coverts', null)).toBeNull();
+    expect(groundKitStyle('pheasant-coverts', 'masses')).toBe('masses');
     expect(groundKitStyle('chukar-ridge', 'masses')).toBeNull();
     expect(groundKitLegacyReview('sharptail-prairie', 'legacy')).toBe(true);
     expect(groundKitLegacyReview('chukar-ridge', 'legacy')).toBe(false);

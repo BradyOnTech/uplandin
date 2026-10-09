@@ -37,7 +37,7 @@ export function kitTuftGeometry(blades = 9, seed = 0x7af7): THREE.BufferGeometry
     const yaw = i * 2.39996 + rng() * .5;
     const ox = Math.cos(yaw), oz = Math.sin(yaw), sx = -oz, sz = ox;
     const root = .04 + rng() * .1, height = .72 + rng() * .3 - outer * .22;
-    const width = .05 + rng() * .025, arc = .2 + outer * .55 + rng() * .2;
+    const width = .04 + rng() * .02, arc = .2 + outer * .55 + rng() * .2;
     // Three nodes along an arc: stiff at the root, bending through the top.
     const nodes = [0, .5, .82, 1].map(t => {
       const bend = arc * t * t;
@@ -63,22 +63,51 @@ export function kitTuftGeometry(blades = 9, seed = 0x7af7): THREE.BufferGeometry
 }
 
 /**
- * The low basal mat between bunches: blue grama and buffalograss curls,
- * short leaning blades spread over the footprint. Garnish at the boots.
+ * The low basal mat between bunches: blue grama and buffalograss, short
+ * narrow blades in little upright clusters, so the ground at the boots
+ * reads as sward rather than bare litter. Garnish only.
  */
-export function kitMatGeometry(blades = 10, seed = 0x3a7e): THREE.BufferGeometry {
+export function kitMatGeometry(clusters = 3, blades = 4, seed = 0x3a7e): THREE.BufferGeometry {
   const rng = mulberry32(seed);
   const positions: number[] = [], normals: number[] = [], colors: number[] = [];
-  for (let i = 0; i < blades; i++) {
-    const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * .9, lean = rng() * Math.PI * 2;
-    const x = Math.cos(a) * r, z = Math.sin(a) * r, reach = .18 + rng() * .3, w = .06 + rng() * .04;
-    const px = -Math.sin(lean) * w, pz = Math.cos(lean) * w, h = .55 + rng() * .45;
-    const base = .76 + rng() * .06, tip = 1.0 + rng() * .1;
-    positions.push(x - px, 0, z - pz, x + px, 0, z + pz, x + Math.cos(lean) * reach, h, z + Math.sin(lean) * reach);
-    normals.push(0, 1, 0, 0, 1, 0, 0, 1, 0);
-    colors.push(base, base, base * .96, base, base, base * .96, tip, tip, tip * .96);
+  for (let c = 0; c < clusters; c++) {
+    const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * .7, cx = Math.cos(a) * r, cz = Math.sin(a) * r;
+    for (let i = 0; i < blades; i++) {
+      const lean = rng() * Math.PI * 2, reach = .06 + rng() * .14, w = .03 + rng() * .015;
+      const px = -Math.sin(lean) * w, pz = Math.cos(lean) * w, h = .6 + rng() * .4;
+      const base = .76 + rng() * .06, tip = 1.0 + rng() * .1;
+      positions.push(cx - px, 0, cz - pz, cx + px, 0, cz + pz, cx + Math.cos(lean) * reach, h, cz + Math.sin(lean) * reach);
+      normals.push(0, 1, 0, 0, 1, 0, 0, 1, 0);
+      colors.push(base, base, base * .96, base, base, base * .96, tip, tip, tip * .96);
+    }
   }
   return finish(positions, normals, colors, 'kit-mat');
+}
+
+/**
+ * Flowering culms over the bunches: a few thin stalks, each carrying a
+ * slim pale head (little bluestem fluff, needle-and-thread awns) that
+ * catches the light above the sward. Garnish only.
+ */
+export function kitCulmGeometry(stalks = 3, seed = 0xc017): THREE.BufferGeometry {
+  const rng = mulberry32(seed);
+  const positions: number[] = [], normals: number[] = [], colors: number[] = [];
+  const tri = (a: number[], sa: number, b: number[], sb: number, c: number[], sc: number) => {
+    positions.push(...a, ...b, ...c); normals.push(0, 1, 0, 0, 1, 0, 0, 1, 0);
+    colors.push(sa, sa, sa * .96, sb, sb, sb * .96, sc, sc, sc * .96);
+  };
+  for (let k = 0; k < stalks; k++) {
+    const a = rng() * Math.PI * 2, r = rng() * .25, x = Math.cos(a) * r, z = Math.sin(a) * r;
+    const lean = rng() * Math.PI * 2, bend = .14 + rng() * .2, h = .82 + rng() * .18, w = .012;
+    const tx = x + Math.cos(lean) * bend, tz = z + Math.sin(lean) * bend, sx = -Math.sin(lean), sz = Math.cos(lean);
+    const head = h * .72;
+    const hx = x + Math.cos(lean) * bend * .7, hz = z + Math.sin(lean) * bend * .7;
+    tri([x - sx * w, 0, z - sz * w], .7, [x + sx * w, 0, z + sz * w], .7, [hx, head, hz], .95);
+    // The head: a narrow pale lozenge continuing the stalk.
+    const hw = .016 + rng() * .01;
+    tri([hx - sx * hw, head, hz - sz * hw], 1.02, [hx + sx * hw, head, hz + sz * hw], 1.02, [tx, h, tz], 1.08);
+  }
+  return finish(positions, normals, colors, 'kit-culm');
 }
 
 /**
@@ -100,25 +129,25 @@ export function kitMassGeometry(sides = 7, seed = 0x3a55): THREE.BufferGeometry 
     const a = (i / sides) * Math.PI * 2;
     const r0 = .8 + rng() * .12, r1 = .86 + rng() * .1;
     base.push(new THREE.Vector3(Math.cos(a) * r0, -.05, Math.sin(a) * r0));
-    rim.push(new THREE.Vector3(Math.cos(a) * r1, .34 + rng() * .08, Math.sin(a) * r1));
+    // A zigzag rim: the skirt's top never reads as one smooth ribbon.
+    rim.push(new THREE.Vector3(Math.cos(a) * r1, (i % 2 ? .16 : .38) + rng() * .08, Math.sin(a) * r1));
   }
-  const heart = new THREE.Vector3(0, .4, 0);
   for (let i = 0; i < sides; i++) {
     const j = (i + 1) % sides;
-    // A low skirt closes the body, so the mass is solid from the side.
+    // A low skirt closes the body from the side. No cap: seen from above,
+    // the blades and the sward floor show, never a flat polygon lid.
     tri(base[i], .74, base[j], .74, rim[j], .84); tri(base[i], .74, rim[j], .84, rim[i], .84);
-    tri(rim[i], .84, rim[j], .84, heart, .82);
   }
   // Rings of narrow leaning blades break the top edge into grass: the outer
   // ring fountains past the skirt, the inner rings stand taller. Narrow and
   // tall, so even a wide, short mass keeps a grass silhouette.
-  const rings = [{ n: sides * 2 - 2, r: .82, lean: .26, h: .86 }, { n: sides + 2, r: .52, lean: .16, h: 1.0 }, { n: Math.max(4, sides - 2), r: .22, lean: .08, h: 1.1 }];
+  const rings = [{ n: sides * 2, r: .84, lean: .26, h: .86 }, { n: sides + 2, r: .52, lean: .16, h: 1.0 }, { n: Math.max(4, sides - 2), r: .22, lean: .08, h: 1.1 }];
   for (const ring of rings) for (let k = 0; k < ring.n; k++) {
     const a = (k / ring.n) * Math.PI * 2 + (rng() - .5) * .5;
     const r = ring.r * (.85 + rng() * .25), width = .045 + rng() * .02;
     const cx = Math.cos(a), cz = Math.sin(a), sx = -cz, sz = cx;
-    const left = new THREE.Vector3(cx * r - sx * width, .3, cz * r - sz * width);
-    const right = new THREE.Vector3(cx * r + sx * width, .3, cz * r + sz * width);
+    const left = new THREE.Vector3(cx * r - sx * width, .12, cz * r - sz * width);
+    const right = new THREE.Vector3(cx * r + sx * width, .12, cz * r + sz * width);
     const lean = ring.lean * (.7 + rng() * .6);
     const tip = new THREE.Vector3(cx * (r + lean) + sx * (rng() - .5) * .1, ring.h * (.85 + rng() * .25), cz * (r + lean) + sz * (rng() - .5) * .1);
     tri(left, .84, right, .84, tip, 1.04 + rng() * .06);
@@ -155,61 +184,36 @@ export function kitStandGeometry(stems = 14, heads = 16, seed = 0x57a4): THREE.B
 }
 
 /**
- * A woody clump: buckbrush, chokecherry, plum. A broad faceted crown on a
- * short dark skirt, open enough at the base to read as shrub, not boulder.
+ * A woody clump: buckbrush, chokecherry, buffaloberry, plum. Built the way
+ * the sward masses are, because that reads as growth: a low solid core
+ * under rings of broad twiggy sprays, fanning out and up into a ragged
+ * crown, mottled spray by spray. Taller, darker and coarser than grass, so
+ * a thicket reads as brush from the crest and up close, never as a stone.
  */
-export function kitShrubGeometry(lobes = 5, twigs = 22, seed = 0x5b0b): THREE.BufferGeometry {
+export function kitShrubGeometry(sides = 8, sprays = 48, seed = 0x5b0b): THREE.BufferGeometry {
   const rng = mulberry32(seed);
   const positions: number[] = [], normals: number[] = [], colors: number[] = [];
-  const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), nn = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
-  const tri = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, shade: (p: THREE.Vector3) => number, soft: number) => {
-    e1.subVectors(b, a); e2.subVectors(c, a); nn.crossVectors(e1, e2).normalize().lerp(up, soft).normalize();
-    for (const q of [a, b, c]) { positions.push(q.x, q.y, q.z); normals.push(nn.x, nn.y, nn.z); const s = shade(q); colors.push(s, s, s); }
-  };
-  // Overlapping faceted lobes make an irregular crown: dark at the base,
-  // lit on top, softened toward the sky so it reads as foliage.
-  const lobeShade = (q: THREE.Vector3) => .5 + Math.min(1, Math.max(0, q.y)) * .45;
-  for (let l = 0; l < lobes; l++) {
-    const a = l / lobes * Math.PI * 2 + rng() * .8, off = l === 0 ? 0 : .34 + rng() * .22;
-    const cx = Math.cos(a) * off, cz = Math.sin(a) * off;
-    const sx = .42 + rng() * .16, sy = .4 + rng() * .14, cy = .5 + rng() * .18 - off * .25;
-    const ico = new THREE.IcosahedronGeometry(1, 0), p = ico.getAttribute('position');
-    const at = (i: number) => new THREE.Vector3(cx + p.getX(i) * sx, Math.max(.02, cy + p.getY(i) * sy), cz + p.getZ(i) * sx * (.85 + rng() * .1));
-    for (let i = 0; i < p.count; i += 3) tri(at(i), at(i + 1), at(i + 2), lobeShade, .55);
-    ico.dispose();
+  const push = (x: number, y: number, z: number, shade: number) => { positions.push(x, y, z); normals.push(0, 1, 0); colors.push(shade, shade, shade); };
+  const base: [number, number][] = [], rim: [number, number, number][] = [];
+  for (let i = 0; i < sides; i++) {
+    const a = (i / sides) * Math.PI * 2, r0 = .55 + rng() * .15, r1 = .72 + rng() * .14;
+    base.push([Math.cos(a) * r0, Math.sin(a) * r0]);
+    rim.push([Math.cos(a) * r1, .38 + rng() * .1, Math.sin(a) * r1]);
   }
-  // Bare twigs and leafy sprays break the crown's outline, so a thicket
-  // reads as brush up close and not as a boulder.
-  const twigShade = (q: THREE.Vector3) => .55 + Math.min(1.2, q.y) * .3;
-  for (let k = 0; k < twigs; k++) {
-    const a = rng() * Math.PI * 2, r = .3 + rng() * .5, h = .55 + rng() * .4;
-    const cx = Math.cos(a), cz = Math.sin(a), sx = -cz, sz = cx, w = .035 + rng() * .02;
-    const base = new THREE.Vector3(cx * r * .6, h * .55, cz * r * .6);
-    const tip = new THREE.Vector3(cx * (r + .32 + rng() * .2), h + .18 + rng() * .2, cz * (r + .32 + rng() * .2));
-    tri(new THREE.Vector3(base.x - sx * w, base.y, base.z - sz * w), new THREE.Vector3(base.x + sx * w, base.y, base.z + sz * w), tip, twigShade, .5);
+  for (let i = 0; i < sides; i++) {
+    const j = (i + 1) % sides;
+    push(base[i][0], -.04, base[i][1], .42); push(base[j][0], -.04, base[j][1], .42); push(rim[j][0], rim[j][1], rim[j][2], .58);
+    push(base[i][0], -.04, base[i][1], .42); push(rim[j][0], rim[j][1], rim[j][2], .58); push(rim[i][0], rim[i][1], rim[i][2], .58);
+  }
+  // Sprays: outer ones fan low and wide, inner ones stand tall.
+  for (let k = 0; k < sprays; k++) {
+    const t = k / sprays, a = k * 2.39996 + rng() * .4, inner = 1 - t;
+    const r = .12 + t * .62, lean = .08 + t * .26, h = .8 + inner * .28 + rng() * .14;
+    const w = .05 + rng() * .035, y0 = .22 + rng() * .14;
+    const cx = Math.cos(a), cz = Math.sin(a), sx = -cz, sz = cx;
+    const tone = .78 + rng() * .4;
+    push(cx * r - sx * w, y0, cz * r - sz * w, .55 * tone); push(cx * r + sx * w, y0, cz * r + sz * w, .55 * tone);
+    push(cx * (r + lean) + sx * (rng() - .5) * .12, h, cz * (r + lean) + sz * (rng() - .5) * .12, .9 * tone);
   }
   return finish(positions, normals, colors, 'kit-shrub');
-}
-
-/**
- * Crest fringe: two crossed vertical strips with a ragged top edge, the
- * grass silhouette a swell shows against the sky. Width 2 along x and z.
- */
-export function kitFringeGeometry(seed = 0xf41e): THREE.BufferGeometry {
-  const rng = mulberry32(seed);
-  const positions: number[] = [], normals: number[] = [], colors: number[] = [];
-  const teeth = 9;
-  for (const axis of [0, 1]) {
-    for (let i = 0; i < teeth; i++) {
-      const u0 = -1 + (i / teeth) * 2, u1 = -1 + ((i + 1) / teeth) * 2, um = (u0 + u1) / 2 + (rng() - .5) * .08;
-      const h = .7 + rng() * .3, shoulder = .45 + rng() * .1;
-      const P = (u: number, y: number): [number, number, number] => axis ? [0, y, u] : [u, y, 0];
-      const quad = [P(u0, 0), P(u1, 0), P(u1, shoulder), P(u0, shoulder)];
-      const push = (q: [number, number, number], s: number) => { positions.push(...q); normals.push(0, 1, 0); colors.push(s, s, s * .96); };
-      push(quad[0], .55); push(quad[1], .55); push(quad[2], .85);
-      push(quad[0], .55); push(quad[2], .85); push(quad[3], .85);
-      push(quad[3], .85); push(quad[2], .85); push(P(um, h), 1.04);
-    }
-  }
-  return finish(positions, normals, colors, 'kit-fringe');
 }

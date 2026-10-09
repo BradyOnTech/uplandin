@@ -17,7 +17,7 @@ import { sharptailAccentGroundAt } from './sharptailAccents';
 import { sharptailMeadowAt, SHARPTAIL_MEADOW_COLORS } from './sharptailMeadow';
 import { sharptailBandSurfaceTexture, SHARPTAIL_BAND_SURFACE_FRAGMENT } from './sharptailBandSurface';
 import { sharptailMeadowNormalTexture, SHARPTAIL_SURFACE_COLOR_FRAGMENT, SHARPTAIL_SURFACE_NORMAL_FRAGMENT } from './sharptailMeadowSurface';
-import { groundKitStyle, groundKitSurface, type GroundKitSurface } from '../groundKit/groundKit';
+import { groundKitPaint, groundKitStyle, groundKitSurface, type GroundKitSurface } from '../groundKit/groundKit';
 
 type Paint = (landscape: LandscapeModel, x: number, y: number, out: THREE.Color) => THREE.Color;
 
@@ -368,7 +368,9 @@ export class PropertyTerrain {
   }
 
   constructor(private readonly landscape: LandscapeModel) {
-    this.paint = paintFor(landscape);
+    const base = paintFor(landscape), kitPaint = groundKitStyle(landscape.area.id) ? groundKitPaint(landscape) : undefined;
+    // On the kit, vertex paint carries the cover mosaic out to the horizon.
+    this.paint = kitPaint ? (l, x, y, out) => kitPaint(x, y, out) ? out : base(l, x, y, out) : base;
     this.material = new THREE.MeshLambertMaterial({ vertexColors: true });
     const uniforms = this.light;
     const wetSoil = landscape.area.id === 'woodcock-bottoms';

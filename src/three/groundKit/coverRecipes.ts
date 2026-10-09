@@ -192,6 +192,36 @@ export function coverMapFor(landscape: LandscapeModel): CoverMap | undefined {
   return map;
 }
 
+const farCache = new WeakMap<AreaConfig, CoverMap>();
+
+/** Yards per cell and margin of the coarse far map that carries the mosaic
+ * out to the horizon ground beyond the fine map. */
+const FAR_CELL_YARDS = 16;
+const FAR_MARGIN_YARDS = 1100;
+
+/** The same recipe on a coarse grid reaching the horizon: the terrain's
+ * vertex paint beyond the fine map, so the mosaic never stops at a line. */
+export function farCoverMapFor(landscape: LandscapeModel): CoverMap | undefined {
+  const area = landscape.area, recipe = RECIPES[area.id];
+  if (!recipe) return undefined;
+  let map = farCache.get(area);
+  if (!map) {
+    map = buildCoverMap({
+      bounds: area.world,
+      heightAt: (x, y) => landscape.heightAtProperty(x, y),
+      habitat: area.patches,
+      routes: [],
+      clearings: [],
+      recipe: recipe(area),
+      margin: FAR_MARGIN_YARDS,
+      cell: FAR_CELL_YARDS,
+      landStep: FAR_CELL_YARDS,
+    });
+    farCache.set(area, map);
+  }
+  return map;
+}
+
 /** Scratch cell for callers that sample in loops. */
 export function coverCell(): CoverCell {
   return { cls: Cover.short, density: 0, height: 0, tone: 0 };

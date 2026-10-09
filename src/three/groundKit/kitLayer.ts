@@ -36,8 +36,6 @@ export interface KitMaterialOptions {
   sheen: number;
   /** Blades: shade like the ground they grow from, both faces lit. */
   upNormals?: boolean;
-  /** Open geometry (twigs, single blades) seen from both sides. */
-  twoSided?: boolean;
   /** Per-instance jitter of the band edges, metres. */
   jitter?: number;
   occlusion?: number;
@@ -49,8 +47,11 @@ export interface KitMaterialOptions {
  * Geometry is authored at unit height so position.y is the bend weight.
  */
 export function kitVegetationMaterial(options: KitMaterialOptions): THREE.MeshLambertMaterial {
-  const material = new THREE.MeshLambertMaterial({ vertexColors: true, side: options.upNormals || options.twoSided ? THREE.DoubleSide : THREE.FrontSide });
-  const band = new THREE.Vector4(options.band.in[0], options.band.in[1], options.band.out[0], options.band.out[1]);
+  const material = new THREE.MeshLambertMaterial({ vertexColors: true, side: options.upNormals ? THREE.DoubleSide : THREE.FrontSide });
+  // smoothstep needs edge0 < edge1 on every GPU: a band that starts at the
+  // boots ([0, 0]) still gets a sliver of a fade.
+  const band = new THREE.Vector4(options.band.in[0], Math.max(options.band.in[1], options.band.in[0] + .01),
+    options.band.out[0], Math.max(options.band.out[1], options.band.out[0] + .01));
   material.onBeforeCompile = shader => {
     shader.uniforms.uKitBand = { value: band };
     shader.uniforms.uKitTime = options.clock;
@@ -75,12 +76,21 @@ ${KIT_FADE_GLSL}
 ${KIT_SHEEN_GLSL}`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
 vec3 kitRoot = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-float kitDistance = distance(kitRoot.xz, cameraPosition.xz);
+// Full 3D distance: from a lifted overview the bands close in as they
+// would at eye height, instead of showing plant tops from above.
+float kitDistance = distance(kitRoot, cameraPosition);
 // Each instance crosses its band edges at its own distance: the far edge
 // by up to the jitter, the near edge within its own (narrow) fade.
 float kitRand = kitHash(kitRoot.xz) - .5;
-vKitFade = smoothstep(uKitBand.x, uKitBand.y, kitDistance + kitRand * (uKitBand.y - uKitBand.x))
-  * (1.0 - smoothstep(uKitBand.z, uKitBand.w, kitDistance + kitRand * uKitJitter));
+float kitFar = 1.0 - smoothstep(uKitBand.z, uKitBand.w, kitDistance + kitRand * uKitJitter);
+float kitNear = smoothstep(uKitBand.x, uKitBand.y, kitDistance + kitRand * (uKitBand.y - uKitBand.x));
+// Only the far edge dithers. Near the hunter a broad mass would show the
+// dither as a screen; there it grows out of the garnish instead.
+vKitFade = kitFar * step(.001, kitNear);
+transformed.xz *= mix(.55, 1.0, kitNear);
+// Past the far edge an instance also settles toward the ground, so the
+// dither never leaves a dotted silhouette standing on a crest.
+transformed.y *= mix(.35, 1.0, kitFar) * mix(.2, 1.0, kitNear);
 float kitBend = clamp(position.y, 0.0, 1.2);
 kitBend *= kitBend;
 transformed += vegetationInstanceWind(uKitWind) * vegetationGust(uKitTime, kitRoot.xz, uKitWind)

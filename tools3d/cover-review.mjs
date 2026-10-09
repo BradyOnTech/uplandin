@@ -75,7 +75,15 @@ try {
       const render = await page.evaluate(() => { window.__api3d.renderOnce(); return { ...window.__api3d.info(), kit: window.__groundKit?.stats?.() }; });
       const file = `${label}-${name}-${style}-${quality}-${tod}-d${view.d}.png`;
       await page.screenshot({ path: `${out}/${file}` });
-      report.frames.push({ style, d: view.d, file, render });
+      let nodog;
+      if (args.includes('--dogdiff')) {
+        // The same frame without the dog: tools3d/dog-pixels.py measures how
+        // much of the pointing dog the cover leaves visible.
+        await page.evaluate(() => { window.__groundKit?.hideDog(); window.__api3d.renderOnce(); });
+        nodog = file.replace('.png', '-nodog.png');
+        await page.screenshot({ path: `${out}/${nodog}` });
+      }
+      report.frames.push({ style, d: view.d, file, nodog, render });
       console.log(`${style} d${view.d}: ${render.calls} draws, ${render.triangles.toLocaleString()} triangles`);
     }
     await page.close();

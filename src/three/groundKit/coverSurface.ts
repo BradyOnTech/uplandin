@@ -26,9 +26,6 @@ export interface CoverSurfaceUniforms {
   [key: string]: { value: unknown };
 }
 
-/** How the terrain itself carries grass at middle distance. */
-export type CoverSurfaceStyle = 'paint' | 'strokes';
-
 /** Darkness of the floor beneath a full canopy, near the hunter. */
 const FLOOR_SHADE = .8;
 
@@ -80,8 +77,7 @@ ${KIT_SHEEN_GLSL}
  * and uPropertyFloorOrigin (world position of property 0,0). Replaces the
  * base colour; the terrain's own light, drench and cloud shade follow it.
  */
-export function coverSurfaceFragment(style: CoverSurfaceStyle): string {
-  return /* glsl */ `
+export const COVER_SURFACE_FRAGMENT = /* glsl */ `
 vec2 coverYards = (vPropertyWorld.xz - uPropertyFloorOrigin) / .9144;
 vec2 coverUV = (coverYards - uCoverRect.xy) / uCoverRect.zw;
 vec4 coverTexel = texture2D(uCoverMap, coverUV);
@@ -93,38 +89,6 @@ vec3 coverFloor = coverTexel.rgb * mix(1.0, ${FLOOR_SHADE.toFixed(2)}, coverTexe
 vec3 coverColor = mix(coverFloor, coverTexel.rgb, coverCanopy);
 // The wind's sheen rolls across the far sward as well as the near plants.
 coverColor *= 1.0 + kitSheen(vPropertyWorld.xz, uKitWind, uKitWindStrength, uKitTime) * .10 * coverCanopy * coverTexel.a;
-${style === 'strokes' ? STROKES_GLSL : ''}
 // Cells the kit leaves alone (density 0) keep the ground's own paint.
 diffuseColor.rgb = mix(diffuseColor.rgb, coverColor, coverInside * smoothstep(.02, .1, coverTexel.a));
-`;
-}
-
-/**
- * Candidate B's grass, drawn by the terrain: short wind-combed strokes in
- * world space, lit on one side and shaded on the other, that average out to
- * the canopy colour as they shrink below a pixel.
- */
-const STROKES_GLSL = /* glsl */ `
-{
-  // Two octaves of wind-combed strokes in world space: fine blades near the
-  // hunter, broad drifts through the middle distance. Each octave fades as
-  // its strokes shrink below a pixel, so the field averages to the canopy.
-  vec2 strokeAxis = normalize(uKitWind + vec2(.3, .2));
-  mat2 strokeFrame = mat2(strokeAxis.x, -strokeAxis.y, strokeAxis.y, strokeAxis.x);
-  float strokeShade = 0.0;
-  for (int octave = 0; octave < 2; octave++) {
-    vec2 strokeScale = octave == 0 ? vec2(2.4, 8.0) : vec2(.7, 2.6);
-    vec2 strokeSpace = strokeFrame * vPropertyWorld.xz * strokeScale + float(octave) * 17.3;
-    vec2 strokeCell = floor(strokeSpace);
-    vec2 strokeLocal = fract(strokeSpace) - .5;
-    float strokeSeed = fract(sin(dot(strokeCell, vec2(12.9898, 78.233))) * 43758.5453);
-    strokeLocal.x += (strokeSeed - .5) * .5;
-    float strokeBody = smoothstep(.5, .12, abs(strokeLocal.x)) * smoothstep(.5, .25, abs(strokeLocal.y));
-    vec2 strokeFootprint = fwidth(strokeSpace);
-    float strokeResolved = 1.0 - smoothstep(.3, 1.0, max(strokeFootprint.x, strokeFootprint.y));
-    // Lit blade tops against the shaded litter between them.
-    strokeShade += (mix(-.05, .2, strokeSeed) * strokeBody - .1 * (1.0 - strokeBody)) * strokeResolved * (octave == 0 ? 1.0 : .8);
-  }
-  coverColor *= 1.0 + strokeShade * coverTexel.a * 1.4;
-}
 `;

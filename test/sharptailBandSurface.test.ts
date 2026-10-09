@@ -7,7 +7,11 @@ import type { Ctx } from '../src/three/engine';
 import { PropertyTerrain } from '../src/three/subsystems/propertyTerrain';
 import { sharptailBandSurfaceTexture, SHARPTAIL_BAND_SURFACE_FRAGMENT, SHARPTAIL_BAND_TEXTURE_SIZE } from '../src/three/subsystems/sharptailBandSurface';
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+/** The bespoke prairie surface now runs only on the legacy stack (the
+ * ground kit replaces it by default), reachable by review with ?cover=legacy. */
+const legacyStack = () => vi.stubGlobal('location', { search: '?cover=legacy' });
 
 function compile(material: THREE.MeshLambertMaterial) {
   const shader = { uniforms: {}, vertexShader: THREE.ShaderLib.lambert.vertexShader,
@@ -70,7 +74,8 @@ describe('Sharptail vegetation ground alignment', () => {
     } finally { texture.dispose(); }
   });
 
-  it('keeps a shared ground/vegetation point aligned across both real drop origins', () => {
+  it('keeps a shared ground/vegetation point aligned across both real drop origins (legacy stack)', () => {
+    legacyStack();
     const area = getArea('sharptail-prairie');
     expect(area.dropPoints.length).toBeGreaterThan(1);
     const origins: THREE.Vector2[] = [];
@@ -100,7 +105,8 @@ describe('Sharptail vegetation ground alignment', () => {
     expect(origins[0].distanceTo(origins[1])).toBeGreaterThan(100);
   });
 
-  it('shares one field texture with the canopy and releases it exactly once with the terrain', async () => {
+  it('shares one field texture with the canopy and releases it exactly once with the terrain (legacy stack)', async () => {
+    legacyStack();
     vi.spyOn(THREE.TextureLoader.prototype, 'loadAsync').mockResolvedValue(new THREE.Texture());
     const area = { ...getArea('sharptail-prairie'), world: { x: 0, y: 0, w: 120, h: 120 } };
     const terrain = new PropertyTerrain(new LandscapeModel(area));
