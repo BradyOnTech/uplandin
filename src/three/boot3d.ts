@@ -11,7 +11,8 @@ import { FieldInterface, preferredQuality } from './fieldInterface';
 import { FieldAudioSystem } from './subsystems/fieldAudio';
 import { Engine } from './engine';
 import { PostEffects, supportsScreenEffects } from './postEffects';
-import { DEFAULT_LOOK, fieldLook, LOOK_IDS, LOOKS, resolveLook, type LookId } from './looks';
+import { DEFAULT_LOOK, fieldLook, fieldScreenEffects, lookAt, LOOK_IDS, LOOKS, resolveLook, type LookId } from './looks';
+import { writeGrade } from './grade';
 import type { TimeOfDay } from './palette';
 import { SkySystem } from './subsystems/sky';
 import { TerrainSystem } from './subsystems/terrain';
@@ -76,46 +77,49 @@ const coatId = resolveCoatFor(visualBreed, params.get('coat')
 
 const canvas = document.getElementById('game3d') as HTMLCanvasElement;
 const engine = new Engine(canvas, quality);
-// Screen effects (ambient occlusion, ground haze, bloom and the colour grade)
-// belong to desktop High: the Crisp autumn look, chosen October 2026. A link
-// with `?look=off` renders without them and `?look=golden|natural` shows
-// another look; either one lets L cycle the looks and the plain render for
-// comparison in motion. Lightweight never renders screen effects.
+// The look: Crisp autumn, chosen October 2026, with each core ground's own
+// light. Its colour grade is built into every material's tone mapping, so
+// both tiers render it (grade.ts); desktop High adds the screen effects
+// (ambient occlusion and bloom). A link with `?look=off` renders plain ACES
+// and `?look=golden|natural` shows another look; either one lets L cycle
+// the looks and the plain render for comparison in motion.
 let fieldEffects: PostEffects | null = null;
 {
   const lookParam = params.get('look');
-  const look = fieldLook(lookParam, quality);
-  const comparing = quality === 'high' && (lookParam === 'off' || resolveLook(lookParam) !== null);
-  if ((look || comparing) && supportsScreenEffects(engine.ctx.renderer)) {
-    const effects = fieldEffects = new PostEffects(LOOKS[look ?? DEFAULT_LOOK]);
+  const comparing = lookParam === 'off' || resolveLook(lookParam) !== null;
+  let current: LookId | 'off' = fieldLook(lookParam) ?? 'off';
+  const effects = quality === 'high' && supportsScreenEffects(engine.ctx.renderer) ? fieldEffects = new PostEffects(LOOKS[current === 'off' ? DEFAULT_LOOK : current]) : null;
+  const apply = () => {
+    writeGrade(current === 'off' ? null : lookAt(LOOKS[current], engine.ctx.timeOfDay, launchArea.id).grade);
+    if (!effects) return;
+    if (current !== 'off') effects.setLook(LOOKS[current]);
+    engine.setPipeline(fieldScreenEffects(current === 'off' ? null : current, quality) ? effects : null);
+  };
+  if (effects) {
     effects.setDebug(Number(params.get('lookdebug')) || 0);
     effects.setTimeOfDay(engine.ctx.timeOfDay);
     effects.setGround(launchArea.id);
     engine.ctx.events.addEventListener('tod', event => effects.setTimeOfDay((event as CustomEvent<TimeOfDay>).detail));
-    engine.setPipeline(look ? effects : null);
-    if (comparing) {
-      const order: (LookId | 'off')[] = [...LOOK_IDS, 'off'];
-      let current: LookId | 'off' = look ?? 'off';
-      const label = document.createElement('div');
-      label.className = 'look-label';
-      Object.assign(label.style, { position: 'fixed', left: '50%', top: '14px', transform: 'translateX(-50%)', zIndex: '40',
-        padding: '6px 12px', borderRadius: '6px', background: 'rgba(16,26,22,.78)', color: '#ece5d2',
-        font: '600 13px system-ui, sans-serif', pointerEvents: 'none', transition: 'opacity .4s', opacity: '0' });
-      document.body.append(label);
-      let hide = 0;
-      window.addEventListener('keydown', event => {
-        if (event.code !== 'KeyL' || event.repeat || (event.target as HTMLElement | null)?.closest?.('input, textarea, select')) return;
-        current = order[(order.indexOf(current) + 1) % order.length];
-        if (current === 'off') engine.setPipeline(null);
-        else {
-          effects.setLook(LOOKS[current]);
-          engine.setPipeline(effects);
-        }
-        label.textContent = current === 'off' ? 'Look: off (no screen effects) · L to cycle' : `Look: ${LOOKS[current].label} · L to cycle`;
-        label.style.opacity = '1';
-        clearTimeout(hide); hide = window.setTimeout(() => { label.style.opacity = '0'; }, 1800);
-      });
-    }
+  }
+  engine.ctx.events.addEventListener('tod', apply);
+  apply();
+  if (comparing) {
+    const order: (LookId | 'off')[] = [...LOOK_IDS, 'off'];
+    const label = document.createElement('div');
+    label.className = 'look-label';
+    Object.assign(label.style, { position: 'fixed', left: '50%', top: '14px', transform: 'translateX(-50%)', zIndex: '40',
+      padding: '6px 12px', borderRadius: '6px', background: 'rgba(16,26,22,.78)', color: '#ece5d2',
+      font: '600 13px system-ui, sans-serif', pointerEvents: 'none', transition: 'opacity .4s', opacity: '0' });
+    document.body.append(label);
+    let hide = 0;
+    window.addEventListener('keydown', event => {
+      if (event.code !== 'KeyL' || event.repeat || (event.target as HTMLElement | null)?.closest?.('input, textarea, select')) return;
+      current = order[(order.indexOf(current) + 1) % order.length];
+      apply();
+      label.textContent = current === 'off' ? 'Look: off (plain ACES) · L to cycle' : `Look: ${LOOKS[current].label} · L to cycle`;
+      label.style.opacity = '1';
+      clearTimeout(hide); hide = window.setTimeout(() => { label.style.opacity = '0'; }, 1800);
+    });
   }
 }
 const fieldInterface = new FieldInterface(engine, landscape);

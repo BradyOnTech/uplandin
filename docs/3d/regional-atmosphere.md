@@ -1,5 +1,7 @@
 # Quail and Sharptail regional atmosphere
 
+> Superseded for the horizon silhouettes and fog by the light lane's milestone 1 (`docs/3d/campaign/light.md`): region horizons now come from `src/three/horizon.ts`, and fog from `src/three/atmosphere.ts`. The contour tables described below are retired.
+
 Quail Fields now reads as warm Southern Plains country beyond its playable boundary: broken broadleaf drainage lines, open field gaps and a cream-toned horizon beneath uneven cloud banks. Sharptail Prairie uses cooler open-country light, much lower grass-covered swells and only two narrow distant windbreak groups. These changes complement the separately authored terrain and vegetation; they do not create hunting cover or collision from decorative scenery.
 
 **Scope and cost**

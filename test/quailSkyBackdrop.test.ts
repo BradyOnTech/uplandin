@@ -4,6 +4,7 @@ import { getArea } from '../src/game/areas';
 import { LandscapeModel } from '../src/game/landscape';
 import type { Ctx, Quality } from '../src/three/engine';
 import { SkySystem } from '../src/three/subsystems/sky';
+import { horizonLand } from '../src/three/horizon';
 
 function fixture(areaId: string, quality: Quality = 'high') {
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(70, 1, .05, 1600);
@@ -46,30 +47,21 @@ describe('Decorative skyline ordering', () => {
     } finally { f.dispose(); }
   });
 
-  it('keeps the pheasant decorative horizon following elevated camera views without moving real terrain', () => {
-    const f=fixture('pheasant-coverts');
-    try {
-      const worldPositions=f.world.map(mesh=>mesh.position.clone());
-      f.camera.position.set(120,20,-35);f.sky.update(f.ctx);
-      for(const ridge of f.ridges)expect(ridge.position.toArray()).toEqual([120,14,-35]);
-      f.world.forEach((mesh,i)=>expect(mesh.position.toArray()).toEqual(worldPositions[i].toArray()));
-      f.camera.position.y=40;f.sky.update(f.ctx);
-      for(const ridge of f.ridges)expect(ridge.position.y).toBe(28);
-    } finally {f.dispose();}
-  });
-
-  it('keeps the Sharptail skyline decorative from its elevated prairie shoulders', () => {
-    const area = 'sharptail-prairie';
-    const f = fixture(area);
+  it.each(['pheasant-coverts', 'sharptail-prairie', 'quail-fields', 'chukar-ridge'])('stands the %s horizon on the far terrain\'s sightline from any height, without moving real terrain', area => {
+    const f = fixture(area), landscape = new LandscapeModel(getArea(area)), land = horizonLand(landscape);
     try {
       const worldPositions = f.world.map(mesh => mesh.position.clone());
-      for (const elevation of [2, 12, 22]) {
+      for (const elevation of [2, 12, 22, 60]) {
         f.camera.position.set(120, elevation, -35); f.sky.update(f.ctx);
-        for (const ridge of f.ridges) {
-          expect(ridge.position.y).toBeCloseTo(elevation * .72);
+        f.ridges.forEach((ridge, layer) => {
+          expect(ridge.position.x).toBe(120); expect(ridge.position.z).toBe(-35);
+          // The ring's datum and the property's edge height at the terrain's
+          // far edge lie on one sightline from the eye.
+          const radius = Math.hypot(...(ridge.geometry.getAttribute('position').array as Float32Array).slice(0, 3).filter((_, i) => i !== 1));
+          expect((ridge.position.y - elevation) / radius).toBeCloseTo((land.datum - elevation) / land.reach, 6);
           expect(ridge.renderOrder).toBeLessThan(f.world[1].renderOrder);
           expect((ridge.material as THREE.ShaderMaterial).depthTest).toBe(false);
-        }
+        });
       }
       f.world.forEach((mesh, index) => expect(mesh.position.toArray()).toEqual(worldPositions[index].toArray()));
     } finally { f.dispose(); }

@@ -1,10 +1,12 @@
 /**
- * Screen-effects looks for the desktop High tier. Each look is one set of
- * numbers for the same pipeline in postEffects.ts: ambient occlusion, ground
- * haze, bloom and a colour grade. Crisp autumn was chosen in October 2026 and
- * is what High renders with. A field link can ask for `?look=off` (no screen
- * effects) or another look (`golden`, `natural`) to compare; Lightweight
- * never renders screen effects.
+ * The field's looks. Each look is a colour grade, which every material
+ * applies in its tone mapping on both tiers (grade.ts), plus the High tier's
+ * screen effects (postEffects.ts): ambient occlusion and bloom. Crisp autumn
+ * was chosen in October 2026 and is what both tiers render with; each core
+ * ground adds its own light. A field link can ask for `?look=off` (plain ACES,
+ * no grade or screen effects) or another look (`golden`, `natural`) to
+ * compare. Haze is not part of a look: the regional atmosphere draws it in
+ * every material (atmosphere.ts).
  */
 import type { TimeOfDay } from './palette';
 
@@ -24,15 +26,16 @@ export interface LookTimeTweak {
 
 /** A ground's own grade on top of a look, applied after the time of day:
  * multipliers on white balance and saturation, a scale on contrast's
- * departure from neutral (so a flat last light stays flat), added shadow and
- * highlight tints, and a scale on the haze density. */
+ * departure from neutral (so a flat last light stays flat), and added shadow
+ * and highlight tints. `byTime` adds an hour's own tweak on top, the same
+ * way. */
 export interface LookGroundTweak {
   whiteBalance?: Rgb;
   saturation?: number;
   contrast?: number;
   shadowTint?: Rgb;
   highlightTint?: Rgb;
-  haze?: number;
+  byTime?: Partial<Record<TimeOfDay, Omit<LookGroundTweak, 'byTime'>>>;
 }
 
 export interface LookSettings {
@@ -44,15 +47,8 @@ export interface LookSettings {
   byTime?: Partial<Record<TimeOfDay, LookTimeTweak>>;
   /** Each ground's own light, by area id (see LookGroundTweak). */
   byGround?: Partial<Record<string, LookGroundTweak>>;
-  /** Screen-space ambient occlusion. Radius and fade distance in metres. */
+  /** Screen-space ambient occlusion (High). Radius and fade distance in metres. */
   ao: { radius: number; intensity: number; strength: number; maxDistance: number };
-  /**
-   * Exponential height haze over the existing scene fog: density per metre at
-   * the hunter's feet, thinning by `falloff` per metre of height. Its colour is
-   * the time of day's fog colour times `tint`, pulled toward the sun's colour
-   * by `sunTint` in a lobe of width `sunPower` around the sun.
-   */
-  haze: { density: number; falloff: number; tint: Rgb; sunTint: number; sunPower: number; skyDistance: number };
   /** Bloom on the HDR image: threshold is linear scene brightness. */
   bloom: { strength: number; radius: number; threshold: number };
   grade: {
@@ -78,7 +74,6 @@ export const LOOKS: Record<LookId, LookSettings> = {
     label: 'Crisp autumn',
     detail: 'Clean air, deep contact shadows, saturated autumn colour and firm contrast.',
     ao: { radius: .9, intensity: 1.1, strength: .85, maxDistance: 140 },
-    haze: { density: .0004, falloff: .05, tint: [1, 1, 1], sunTint: .3, sunPower: 10, skyDistance: 900 },
     bloom: { strength: .16, radius: .35, threshold: 1.6 },
     grade: {
       whiteBalance: [1.02, 1, .97], saturation: 1.16, contrast: 1.12,
@@ -92,24 +87,25 @@ export const LOOKS: Record<LookId, LookSettings> = {
       lastlight: { aoStrength: .6, contrast: 1, offset: [.004, .004, .008], vignette: .1 },
     },
     byGround: {
-      // A prairie-pothole farm in late October: warm, low light on the
-      // stubble and cooler shade under the shelterbelts.
-      'pheasant-coverts': { whiteBalance: [1.055, 1, .935], saturation: 1.07, contrast: 1.2,
-        highlightTint: [.012, .006, -.006], shadowTint: [-.004, .002, .012] },
+      // A prairie-pothole farm in November: cold blue air, the slanting
+      // sun pale on the stubble rather than golden, blue shade under the
+      // shelterbelts. Evening keeps a little more of the low sun's warmth.
+      'pheasant-coverts': { whiteBalance: [1.005, 1, .985], saturation: .98, contrast: 1.2,
+        highlightTint: [.006, .006, .002], shadowTint: [-.006, .002, .016],
+        byTime: { evening: { whiteBalance: [1.03, 1, .97] } } },
       // Northern mixed grass under a big sky: the clearest air and a firmer
       // contrast, so the cured grass doesn't wash pale.
-      'sharptail-prairie': { whiteBalance: [1.02, 1, .975], contrast: 1.4, haze: .5, shadowTint: [0, .003, .01] },
+      'sharptail-prairie': { whiteBalance: [1.02, 1, .975], contrast: 1.4, shadowTint: [0, .003, .01] },
       // Southern quail woods: soft, humid light, the red soil kept from orange.
-      'quail-fields': { whiteBalance: [1.01, 1, .99], saturation: .88, contrast: .7, haze: 2.4, highlightTint: [.006, .006, .002] },
+      'quail-fields': { whiteBalance: [1.01, 1, .99], saturation: .88, contrast: .7, highlightTint: [.006, .006, .002] },
       // High desert: dry clarity, and blue shade off the rock.
-      'chukar-ridge': { whiteBalance: [.985, 1, 1.02], saturation: .92, contrast: 1.5, haze: .6, shadowTint: [-.006, 0, .014] },
+      'chukar-ridge': { whiteBalance: [.985, 1, 1.02], saturation: .92, contrast: 1.5, shadowTint: [-.006, 0, .014] },
     },
   },
   golden: {
     label: 'Golden haze',
     detail: 'Warm, glowing morning air: soft blacks, distance melting into haze, a painterly feel.',
     ao: { radius: 1.1, intensity: .9, strength: .7, maxDistance: 160 },
-    haze: { density: .003, falloff: .035, tint: [1.08, 1, .86], sunTint: .85, sunPower: 6, skyDistance: 900 },
     bloom: { strength: .35, radius: .6, threshold: 1.3 },
     grade: {
       whiteBalance: [1.07, 1, .88], saturation: 1.04, contrast: .94,
@@ -121,7 +117,6 @@ export const LOOKS: Record<LookId, LookSettings> = {
     label: 'Natural',
     detail: 'True colour and gentle contrast: today’s world, grounded and with a little depth.',
     ao: { radius: .8, intensity: .95, strength: .6, maxDistance: 120 },
-    haze: { density: .0008, falloff: .05, tint: [1, 1, 1], sunTint: .4, sunPower: 8, skyDistance: 900 },
     bloom: { strength: .25, radius: .5, threshold: 1.25 },
     grade: {
       whiteBalance: [1.01, 1, .985], saturation: 1.07, contrast: 1.04,
@@ -149,18 +144,18 @@ export function lookAt(look: LookSettings, tod: TimeOfDay, ground?: string): Loo
     },
   };
   if (!local) return timed;
-  const g = timed.grade;
+  const hour = local.byTime?.[tod];
+  return { ...timed, grade: hour ? groundGrade(groundGrade(timed.grade, local), hour) : groundGrade(timed.grade, local) };
+}
+
+function groundGrade(g: LookSettings['grade'], local: Omit<LookGroundTweak, 'byTime'>): LookSettings['grade'] {
   return {
-    ...timed,
-    haze: local.haze === undefined ? timed.haze : { ...timed.haze, density: timed.haze.density * local.haze },
-    grade: {
-      ...g,
-      whiteBalance: local.whiteBalance ? times(g.whiteBalance, local.whiteBalance) : g.whiteBalance,
-      saturation: g.saturation * (local.saturation ?? 1),
-      contrast: 1 + (g.contrast - 1) * (local.contrast ?? 1),
-      shadowTint: local.shadowTint ? plus(g.shadowTint, local.shadowTint) : g.shadowTint,
-      highlightTint: local.highlightTint ? plus(g.highlightTint, local.highlightTint) : g.highlightTint,
-    },
+    ...g,
+    whiteBalance: local.whiteBalance ? times(g.whiteBalance, local.whiteBalance) : g.whiteBalance,
+    saturation: g.saturation * (local.saturation ?? 1),
+    contrast: 1 + (g.contrast - 1) * (local.contrast ?? 1),
+    shadowTint: local.shadowTint ? plus(g.shadowTint, local.shadowTint) : g.shadowTint,
+    highlightTint: local.highlightTint ? plus(g.highlightTint, local.highlightTint) : g.highlightTint,
   };
 }
 
@@ -169,12 +164,17 @@ export function resolveLook(value: string | null | undefined): LookId | null {
   return LOOK_IDS.includes(value as LookId) ? value as LookId : null;
 }
 
-/** High's look, chosen October 2026. */
+/** The field's look, chosen October 2026. */
 export const DEFAULT_LOOK: LookId = 'crisp';
 
-/** The look a field renders with: the link's look, `off` for none, or
- * Crisp autumn; Lightweight never renders screen effects. */
-export function fieldLook(value: string | null | undefined, quality: 'high' | 'lite'): LookId | null {
-  if (quality !== 'high' || value === 'off') return null;
+/** The look a field renders with on either tier: the link's look, `off` for
+ * none (plain ACES), or Crisp autumn. */
+export function fieldLook(value: string | null | undefined): LookId | null {
+  if (value === 'off') return null;
   return resolveLook(value) ?? DEFAULT_LOOK;
+}
+
+/** Only desktop High adds the screen effects (occlusion and bloom). */
+export function fieldScreenEffects(look: LookId | null, quality: 'high' | 'lite'): boolean {
+  return look !== null && quality === 'high';
 }

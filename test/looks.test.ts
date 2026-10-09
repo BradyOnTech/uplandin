@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_LOOK, fieldLook, lookAt, LOOK_IDS, LOOKS, resolveLook } from '../src/three/looks';
+import { DEFAULT_LOOK, fieldLook, fieldScreenEffects, lookAt, LOOK_IDS, LOOKS, resolveLook } from '../src/three/looks';
 import { supportsScreenEffects } from '../src/three/postEffects';
 
-describe('screen-effects looks', () => {
+describe('field looks', () => {
   it('opts in only for a named look', () => {
     for (const id of LOOK_IDS) expect(resolveLook(id)).toBe(id);
     expect(resolveLook(null)).toBeNull();
@@ -11,13 +11,20 @@ describe('screen-effects looks', () => {
     expect(resolveLook('Golden')).toBeNull();
   });
 
-  it('renders Crisp autumn on High unless the link asks for another look or none', () => {
+  it('renders Crisp autumn on both tiers unless the link asks for another look or none', () => {
     expect(DEFAULT_LOOK).toBe('crisp');
-    for (const value of [null, '', 'today', 'Golden', 'crisp']) expect(fieldLook(value, 'high')).toBe('crisp');
-    expect(fieldLook('golden', 'high')).toBe('golden');
-    expect(fieldLook('natural', 'high')).toBe('natural');
-    expect(fieldLook('off', 'high')).toBeNull();
-    for (const value of [null, 'crisp', 'golden', 'off']) expect(fieldLook(value, 'lite')).toBeNull();
+    for (const value of [null, '', 'today', 'Golden', 'crisp']) expect(fieldLook(value)).toBe('crisp');
+    expect(fieldLook('golden')).toBe('golden');
+    expect(fieldLook('natural')).toBe('natural');
+    expect(fieldLook('off')).toBeNull();
+  });
+
+  it('adds screen effects only on High, and only with a look', () => {
+    for (const look of LOOK_IDS) {
+      expect(fieldScreenEffects(look, 'high')).toBe(true);
+      expect(fieldScreenEffects(look, 'lite')).toBe(false);
+    }
+    expect(fieldScreenEffects(null, 'high')).toBe(false);
   });
 
   it('eases the Crisp grade in low light and on a high sun, leaving the base look alone', () => {
@@ -32,7 +39,7 @@ describe('screen-effects looks', () => {
     expect(last.ao.strength).toBeLessThan(crisp.ao.strength);
     expect(last.grade.vignette).toBeLessThan(crisp.grade.vignette);
     // Everything not tweaked carries over, and the base look is unchanged.
-    expect(last.haze).toBe(crisp.haze);
+    expect(last.bloom).toBe(crisp.bloom);
     expect(last.ao.radius).toBe(crisp.ao.radius);
     expect(last.grade.slope).toBe(crisp.grade.slope);
     expect(crisp.grade.contrast).toBe(1.12);
@@ -58,9 +65,13 @@ describe('screen-effects looks', () => {
         for (const value of g.whiteBalance) { expect(value).toBeGreaterThan(.9); expect(value).toBeLessThan(1.1); }
       }
     }
+    // A ground's hour can carry its own light on top: Cattail's cold
+    // November day keeps a little low-sun warmth in the evening.
+    const day = lookAt(crisp, 'morning', 'pheasant-coverts').grade, dusk = lookAt(crisp, 'evening', 'pheasant-coverts').grade;
+    expect(dusk.whiteBalance[0] / dusk.whiteBalance[2]).toBeGreaterThan(day.whiteBalance[0] / day.whiteBalance[2]);
     // The base look is never written to.
     expect(crisp.grade.saturation).toBe(1.16);
-    expect(crisp.haze.density).toBe(.0004);
+    expect(crisp.grade.contrast).toBe(1.12);
   });
 
   it('needs a renderable half-float format', () => {
@@ -76,15 +87,13 @@ describe('screen-effects looks', () => {
     expect(look.ao.radius).toBeGreaterThan(.3); expect(look.ao.radius).toBeLessThan(2);
     expect(look.ao.strength).toBeGreaterThanOrEqual(0); expect(look.ao.strength).toBeLessThanOrEqual(1);
     expect(look.ao.maxDistance).toBeGreaterThan(40);
-    expect(look.haze.density).toBeGreaterThanOrEqual(0); expect(look.haze.density).toBeLessThan(.01);
-    expect(look.haze.falloff).toBeGreaterThan(0);
     expect(look.bloom.threshold).toBeGreaterThan(.5);
     expect(look.bloom.strength).toBeLessThan(1);
     const g = look.grade;
     expect(g.saturation).toBeGreaterThan(.7); expect(g.saturation).toBeLessThan(1.4);
     expect(g.contrast).toBeGreaterThan(.8); expect(g.contrast).toBeLessThan(1.3);
     expect(g.vignette).toBeGreaterThanOrEqual(0); expect(g.vignette).toBeLessThan(.4);
-    for (const triple of [g.whiteBalance, g.slope, g.offset, g.power, g.shadowTint, g.highlightTint, look.haze.tint]) {
+    for (const triple of [g.whiteBalance, g.slope, g.offset, g.power, g.shadowTint, g.highlightTint]) {
       expect(triple).toHaveLength(3);
       for (const value of triple) expect(Number.isFinite(value)).toBe(true);
     }
