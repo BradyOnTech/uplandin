@@ -182,6 +182,9 @@ const PRAIRIE_COVER_BEAT = 32; // broad casts across reachable parts of a long g
 const QUAIL_COVER_BEAT = 20; // smaller plum-edge checks before moving to the next pocket
 const CHUKAR_CONTOUR_BEAT = 32;
 const CHUKAR_UPHILL_BEAT = 16; // longer along the bench than up the fall line
+/** A cast that has stopped closing on its local beat for this long gives the
+ * beat up: something (range, a property edge) is holding the dog off it. */
+const LOCAL_CAST_STALL_MS = 6000;
 const SEARCH_MOVE_ON = 8 / PROPERTY_PX_TO_M;
 /** Field search locomotion: a running dog cannot pivot on the spot. It brakes
  * into a hard turn, sweeps through it on a finite radius and drives out. */
@@ -218,6 +221,11 @@ const rectContains = (r: Rect, p: Vec2): boolean =>
 /** Positive distance from an interior point to the nearest side (0 on the edge). */
 function distToRectEdge(r: Rect, p: Vec2): number {
   return Math.min(p.x - r.x, r.x + r.w - p.x, p.y - r.y, r.y + r.h - p.y);
+}
+
+/** Straight-line gap from a point to a rect; zero inside it. */
+function distToRect(r: Rect, p: Vec2): number {
+  return Math.hypot(Math.max(r.x - p.x, 0, p.x - r.x - r.w), Math.max(r.y - p.y, 0, p.y - r.y - r.h));
 }
 
 function distanceToTrail(point: Vec2, trails: readonly AreaTrail[]): number {
@@ -509,6 +517,9 @@ export class Dog {
   private checkedCovers = new Map<number, number>();
   private localCoverBeat: { key: string; rect: Rect; index: number } | null = null;
   private checkedLocalBeats = new Set<string>();
+  /** Closest the cast has come to the current local beat, and how long it has gone without closing. */
+  private localCastGap = Infinity;
+  private localCastStallMs = 0;
   private checkedSearchPosition: Vec2 | null = null;
   private searchHunterCheckpoint: Vec2 | null = null;
   private stationarySearchMs = 0;
@@ -674,6 +685,7 @@ export class Dog {
       // standing or trotting dog, not at full running pace.
       this.travelDir = null;
       this.travelPace = SEARCH_BRAKE_FLOOR + .1;
+      this.localCastGap = Infinity; this.localCastStallMs = 0;
     }
     this.trackHandler(env.hunterPos);
     this.waitingForHandler = false;
@@ -1235,6 +1247,18 @@ export class Dog {
       );
 
     if (patch && !working) {
+      if (localBeat) {
+        // A dog that has stopped closing on a small local beat is being held
+        // off it (range, a property edge). Left alone it circles the beat for
+        // as long as the handler stands watching, so pass it over.
+        const gap = distToRect(patch, this.pos);
+        if (gap < this.localCastGap - 1) {
+          this.localCastGap = gap; this.localCastStallMs = 0;
+        } else if ((this.localCastStallMs += dtMs) >= LOCAL_CAST_STALL_MS) {
+          this.finishLocalBeat();
+          return;
+        }
+      }
       // Casting: purposeful trot to the aim point (center, or downwind edge
       // when the dog knows wind), only a hint of weave.
       this.gait = 'trot';
@@ -1254,10 +1278,12 @@ export class Dog {
           env.trails,
         );
         if (routePoint) {
+          // The pull may bend the cast, never carry its end outside the box
+          // the dog must enter to start working (a local beat's is tight).
           aimPt.x = clamp(aimPt.x * (1 - routePull) + routePoint.x * routePull,
-            patch.x - COVER_GRACE, patch.x + patch.w + COVER_GRACE);
+            patch.x - grace, patch.x + patch.w + grace);
           aimPt.y = clamp(aimPt.y * (1 - routePull) + routePoint.y * routePull,
-            patch.y - COVER_GRACE, patch.y + patch.h + COVER_GRACE);
+            patch.y - grace, patch.y + patch.h + grace);
         }
       }
       const aim = Math.atan2(aimPt.y - this.pos.y, aimPt.x - this.pos.x);
@@ -1278,13 +1304,11 @@ export class Dog {
       // phase), then comb the interior; pups skip straight to the comb.
       // Birds interrupt this at any moment (above).
       this.gait = 'run';
+      this.localCastGap = Infinity; this.localCastStallMs = 0;
       this.coverWorkMsLeft -= dtMs;
       if (this.coverWorkMsLeft <= 0) {
-        if (this.localCoverBeat) {
-          this.checkedLocalBeats.add(this.localCoverBeat.key);
-          if (this.checkedLocalBeats.size > 256) this.checkedLocalBeats.delete(this.checkedLocalBeats.values().next().value!);
-          this.localCoverBeat = null;
-        } else this.checkedCovers.set(this.coverIdx!, COVER_REVISIT_MS);
+        if (this.localCoverBeat) this.finishLocalBeat();
+        else this.checkedCovers.set(this.coverIdx!, COVER_REVISIT_MS);
         this.coverIdx = null;
         this.coverEdgeMsLeft = 0;
         return;
@@ -1793,6 +1817,13 @@ export class Dog {
     return aim;
   }
 
+  /** The current local beat is done with: worked through, or passed over. */
+  private finishLocalBeat(): void {
+    this.checkedLocalBeats.add(this.localCoverBeat!.key);
+    if (this.checkedLocalBeats.size > 256) this.checkedLocalBeats.delete(this.checkedLocalBeats.values().next().value!);
+    this.localCoverBeat = null; this.coverIdx = null;
+  }
+
   /** Search reachable pieces of the habitat union, never concealed birds.
    * Whole-patch centers can lie hundreds of yards beyond a nearby edge. */
   private chooseLocalCoverBeat(env: DogEnv): Rect | null {
@@ -1853,6 +1884,7 @@ export class Dog {
     }
     if (!best) { this.coverIdx = null; return null; }
     this.localCoverBeat = best; this.coverIdx = best.index;
+    this.localCastGap = Infinity; this.localCastStallMs = 0;
     this.rememberBeatSide({ x: rectCx(best.rect), y: rectCy(best.rect) }, anchor, Math.max(beatWidth, beatHeight));
     this.coverWorkMsLeft = upland
       ? clamp(best.rect.w * best.rect.h * COVER_WORK_MS_PER_PX2, COVER_WORK_MIN_MS, COVER_WORK_MAX_MS)

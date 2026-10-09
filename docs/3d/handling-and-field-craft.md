@@ -63,6 +63,23 @@ With a handler walking a public trail at 1.5 m/s for three minutes, without bird
 
 `test/fieldQuartering.test.ts` now covers pheasant too. The other three properties are unchanged.
 
+## Quail and Chukar search (circling fix, 2026-10-08)
+
+Quail and Chukar dogs bend each cast toward the nearest authored route. The bend could carry the end of a cast up to 9 yd outside a small local beat, which the dog only starts working within 1.5 yd of, so it circled the beat until the handler walked well past. A handler following the dog, as the Quail guidance asks, rarely does. Two changes:
+
+- The route-pulled aim stays inside the box the dog must enter to work the beat.
+- A dog that stops closing on a local beat for 6 s passes it over (a backstop for range or property edges holding it off).
+
+Headless sweep of the real hunt system, 7-minute hunts, 4 grounds × 2 drops × 6 seeds × 3 breeds × levels 1/2/4/8 (1,631 of 1,728 runs completed):
+
+| Ground, handler | Hunts with over a minute of circling | Longest cast (mean) |
+|---|---|---|
+| Quail, following the dog | 111/144 → 0 | 198 s → 6 s |
+| Chukar, following the dog | 106/109 → 0 | 328 s → 10 s |
+| Chukar, walking the trail | 57/127 → 4 | 26 s → 12 s |
+
+The remaining Chukar runs are several separate 13–16 s casts behind a walking handler, not circling. Following on Quail, points per hunt rose from 1.8 to 3.2 at level 1 and from 3.3 to 6.0 at level 8. Sharptail and Cattail results are identical. `test/dogLocalBeatReach.test.ts` follows the dog on both grounds.
+
 ## Measuring on your own devices
 
 All verification so far is headless, with software WebGL. To measure real frame times:
