@@ -3,6 +3,8 @@ import type { LandscapeModel } from '../../game/landscape';
 import { mulberry32 } from '../../game/math';
 import type { Ctx, Subsystem } from '../engine';
 import { fieldTimeOfDay, type TimeOfDay } from '../palette';
+import { gradeUniforms } from '../grade';
+import { ATMOSPHERE_GLSL, atmosphereUniforms, poolFloor, regionAtmosphere, writeAtmosphere } from '../atmosphere';
 import { samplePheasantSkyline } from '../pheasantSkyline';
 import { snapShadowTarget } from '../shadowPlacement';
 import { createSharptailCloudAtlas, SHARPTAIL_CLOUD_ATLAS_GLSL } from './sharptailCloudAtlas';
@@ -48,6 +50,7 @@ uniform float uPheasant;
 uniform float uChukar;
 uniform float uSharptail;
 varying vec3 vPos;
+${ATMOSPHERE_GLSL}
 
 /*
  * Flat cumulus: ONE authored cumulus silhouette (lumpy towers over a flat
@@ -231,7 +234,8 @@ void main() {
 
   // Below the horizon, settle to the fog color (ground haze, soft seam) —
   // fast, so any sliver between terrain rim and ridge cards reads as haze.
-  col = mix(col, uBelow, smoothstep(0.0, 0.05, -h));
+  // The same sky-driven tint the field's fog takes (atmosphere.ts).
+  col = mix(col, uplandFogTint(uBelow, dir), smoothstep(0.0, 0.05, -h));
 
   // Sun disc with a soft edge; it may set into the haze but not below it.
   float disc = smoothstep(uDiscCos.x, uDiscCos.y, d) * smoothstep(-0.035, -0.005, h);
@@ -285,6 +289,7 @@ varying vec2 vDirXZ;
 varying float vY;
 varying float vHaze;
 varying float vBase;
+${ATMOSPHERE_GLSL}
 void main() {
   float az = max(dot(normalize(vDirXZ), uSunXZ), 0.0);
   float spill = pow(az, 9.0) * uSpillStrength;
@@ -294,7 +299,7 @@ void main() {
   // atmosphere without smearing pale stripes down the whole card.
   float tHaze = vHaze * smoothstep(vBase, vBase + 1.2, vY);
   float haze = exp(-max(vY, 0.0) * uHazeK) * uHazeAmt + tHaze;
-  col = mix(col, uHaze, clamp(haze, 0.0, 0.95));
+  col = mix(col, uplandFogTint(uHaze, vec3(vDirXZ.x, 0.0, vDirXZ.y)), clamp(haze, 0.0, 0.95));
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -761,6 +766,9 @@ export class SkySystem implements Subsystem {
   private readonly ridgeProfile: RidgeProfile;
   private readonly quail: boolean;
   private readonly areaId: string;
+  /** World height the region's fog pools at (atmosphere.ts). */
+  private poolFloor = 0;
+  private readonly sunDir = new THREE.Vector3();
 
   constructor(private readonly landscape?: LandscapeModel) {
     this.ridgeProfile = ridgeProfileFor(landscape);
@@ -800,6 +808,8 @@ export class SkySystem implements Subsystem {
         uSharptail: { value: this.areaId === 'sharptail-prairie' ? 1 : 0 },
         uQuail: { value: this.quail ? 1 : 0 },
         uPheasant: { value: this.areaId === 'pheasant-coverts' ? 1 : 0 },
+        ...gradeUniforms(),
+        ...atmosphereUniforms(),
       },
       side: THREE.BackSide,
       depthWrite: false,
@@ -851,6 +861,10 @@ export class SkySystem implements Subsystem {
     ctx.scene.add(this.hemi);
 
     ctx.scene.fog = new THREE.FogExp2(0xffffff, 0.005);
+    const landscape = this.landscape;
+    if (landscape) {
+      this.poolFloor = poolFloor((x, z) => landscape.heightAtWorld(x, z), landscape.worldBounds(), regionAtmosphere(this.areaId).floor);
+    }
 
     this.apply(ctx, ctx.timeOfDay);
     ctx.events.addEventListener('tod', ((e: CustomEvent) => this.apply(ctx, e.detail)) as EventListener);
@@ -1010,6 +1024,8 @@ export class SkySystem implements Subsystem {
           // Haze decays over roughly the lower half of the layer's relief.
           uHazeK: { value: 3.0 / (layer.base + 0.5 * layer.amp) },
           uHazeAmt: { value: layer.hazeAmt },
+          ...gradeUniforms(),
+          ...atmosphereUniforms(),
         },
         side: THREE.DoubleSide, // viewed from inside the ring
         depthWrite: false,
@@ -1088,6 +1104,7 @@ export class SkySystem implements Subsystem {
     const fog = ctx.scene.fog as THREE.FogExp2;
     fog.color.setHex(spec.fogColor);
     fog.density = spec.fogDensity;
+    writeAtmosphere(spec, regionAtmosphere(this.areaId).byTime[tod], this.sunDir.set(sx, sy, sz), this.poolFloor);
 
     // Aerial perspective: each ridge steps from the near color toward the
     // cool far color, then flattens gently toward the fog with distance.
