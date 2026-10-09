@@ -36,7 +36,7 @@ const SKIRT_REACH = 4.4, SKIRT_HEIGHT = .2;
 const MODULE_LENGTH = CHUKAR_RIM_STEP * PROPERTY_PX_TO_M;
 
 /** Basalt: brown-greys, darker in the joints, paler where it weathers. */
-const BASALT = [0x645c55, 0x5a534d, 0x6d655c, 0x564f49];
+const BASALT = [0x6e665e, 0x625b54, 0x787066, 0x5d5650];
 const ENTABLATURE = [0x6f675d, 0x7a7165, 0x655e56];
 const WEATHERED = [0x8f8576, 0x857c6e, 0x9a8f7e];
 const RUBBLE = [0x6a645c, 0x5f5a53, 0x726b62];
@@ -168,7 +168,7 @@ export class ChukarRimrock {
     const modules = chukarRimModules();
     const slab = chukarRimSlabGeometry(), variants = [0, 1, 2].map(v => chukarRimModuleGeometry(v, quality));
     this.geometries.push(slab, ...variants);
-    const world = { x: 0, z: 0 }, q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+    const world = { x: 0, z: 0 }, q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), tilt = new THREE.Quaternion(), euler = new THREE.Euler();
     for (const m of modules) {
       landscape.propertyToWorld(m.x, m.y, world);
       // Measure the real ground just below and above the face.
@@ -178,8 +178,11 @@ export class ChukarRimrock {
       // Weathered stretches stand lower, shrinking to rubble toward a break;
       // the lip rises and falls along the rim rather than ruling a line.
       const height = Math.max(1.2, (lip - foot) * (1 - m.decay * .4) * towerLift(m) * (1 + .05 * rimSwell(m.x * .045, m.y * .045)));
-      const yaw = Math.atan2(m.nx, m.ny); // local +z points downhill in property (= world) axes
+      const yaw = Math.atan2(m.nx, m.ny) + (m.variant - .5) * .16; // local +z points downhill in property (= world) axes
       q.setFromAxisAngle(up, yaw);
+      // Blocks settle unevenly: a slight lean along and across the face.
+      tilt.setFromEuler(euler.set((rimSwell(m.x * .11 + 7, m.y * .11) - .5) * .07, 0, (m.variant - .5) * .06));
+      q.multiply(tilt);
       // Buttresses: stretches of the face stand out over their talus.
       const jut = m.jut * PROPERTY_PX_TO_M;
       const matrix = new THREE.Matrix4().compose(new THREE.Vector3(world.x + m.nx * jut, foot - BURY, world.z + m.ny * jut), q,

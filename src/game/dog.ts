@@ -1688,6 +1688,9 @@ export class Dog {
     // Beside him and a little ahead: from there the line to the spot is clear.
     this.deliveryWaypoint.x = hunter.x + (px * side * 1.3 + fx / length * .9) * DELIVERY_CLEARANCE;
     this.deliveryWaypoint.y = hunter.y + (py * side * 1.3 + fy / length * .9) * DELIVERY_CLEARANCE;
+    // Already beside him (tight ground by a rim can leave the line to the
+    // spot brushing his legs from there): go straight to the spot.
+    if (dist(this.pos, this.deliveryWaypoint) < DELIVERY_CLEARANCE * .6) return spot;
     return this.deliveryWaypoint;
   }
 

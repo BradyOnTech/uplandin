@@ -633,7 +633,7 @@ export const AREAS: AreaConfig[] = [
     ...chukarGeography(),
     // The derived-rectangle view of the land habitat, built on first read.
     get patches() { return derivedCoverRects({ id: 'chukar-ridge' }); },
-    coveyTarget: 28,
+    coveyTarget: 32,
     stocking: 0.6,
     speciesMix: [
       { speciesId: 'chukar', weight: 0.8 },

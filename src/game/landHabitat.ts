@@ -167,8 +167,11 @@ function chamfer(source: Uint8Array, cols: number, rows: number, cell: number): 
  * the other grounds' cover (a fifth to a quarter), and patchy, so a runner
  * meets the end of its cover instead of roading across the property. */
 const COVER_SHARE = .26;
-/** Derived rectangles are merged on cells this many habitat cells wide. */
+/** Derived rectangles are merged on cells this many habitat cells wide, at
+ * most RECT_MAX blocks a side, with a seam of RECT_SEAM yards between them. */
 const RECT_BLOCK = 4;
+const RECT_MAX = 4;
+const RECT_SEAM = 1.5;
 
 const rects = new Map<string, Rect[]>();
 /**
@@ -199,14 +202,17 @@ export function derivedCoverRects(area: Pick<AreaConfig, 'id'>): Rect[] {
   for (let j = 0; j < br; j++) for (let i = 0; i < bc; i++) {
     if (!on[j * bc + i] || used[j * bc + i]) continue;
     let w = 0;
-    while (i + w < bc && on[j * bc + i + w] && !used[j * bc + i + w] && w < 8) w++;
+    while (i + w < bc && on[j * bc + i + w] && !used[j * bc + i + w] && w < RECT_MAX) w++;
     let hgt = 1;
-    grow: while (j + hgt < br && hgt < 8) {
+    grow: while (j + hgt < br && hgt < RECT_MAX) {
       for (let a = 0; a < w; a++) if (!on[(j + hgt) * bc + i + a] || used[(j + hgt) * bc + i + a]) break grow;
       hgt++;
     }
     for (let b = 0; b < hgt; b++) for (let a = 0; a < w; a++) used[(j + b) * bc + i + a] = 1;
-    out.push({ x: h.world.x + i * size, y: h.world.y + j * size, w: Math.min(w * size, h.world.x + h.world.w - (h.world.x + i * size)), h: Math.min(hgt * size, h.world.y + h.world.h - (h.world.y + j * size)) });
+    // A seam between pieces of cover: a runner reaching the end of its piece
+    // holds there (birds.ts) rather than roading on along a whole rim.
+    const x = h.world.x + i * size + RECT_SEAM, y = h.world.y + j * size + RECT_SEAM;
+    out.push({ x, y, w: Math.min(w * size, h.world.x + h.world.w - (h.world.x + i * size)) - RECT_SEAM * 2, h: Math.min(hgt * size, h.world.y + h.world.h - (h.world.y + j * size)) - RECT_SEAM * 2 });
   }
   rects.set(area.id, out);
   return out;
@@ -250,6 +256,8 @@ const TRUCK_CLEAR = 150;
  * ahead and near a route from it; the second within the wider reach. */
 const ENTRY_REACH = 330;
 const SECOND_REACH = 520;
+/** How far the entry covey's draw flattens habitat weight (1 = as is). */
+const ENTRY_FLATTEN = .3;
 /** Coveys favour ground a route passes within this many yards of. */
 const ROUTE_REACH = 110;
 /** Coveys keep this far (yards) inside the fence: a runner pressed against
@@ -292,7 +300,7 @@ export function landDrivenAnchors(area: AreaConfig, drop: DropPoint, rng: RNG, c
     // Birds don't keep to trails, but a share of them live where the
     // routes run, so walking the trails is a fair way to hunt.
     const route = cells.route[n];
-    weight *= (index >= 0 ? lean[index] : 1) * (.7 + .6 * rng()) * (.25 + .75 * (1 - smoothstep(30, ROUTE_REACH, route)));
+    weight *= (index >= 0 ? lean[index] : 1) * (.7 + .6 * rng()) * (.15 + .85 * (1 - smoothstep(30, ROUTE_REACH, route)));
     const reach = plan + Math.abs(h.height[k] - dropHeight) * CLIMB_YARDS;
     // A packed (Loaded) field fills the good cover within a walk of the
     // truck, near the routes, rather than spreading over the whole ground.
@@ -302,24 +310,30 @@ export function landDrivenAnchors(area: AreaConfig, drop: DropPoint, rng: RNG, c
       route, ahead: ((x - drop.position.x) * headingX + (y - drop.position.y) * headingY) / (plan || 1) });
   }
   const spacing = COVEY_SPACING * spacingScale, chosen: Vec2[] = [];
-  const pick = (pool: typeof candidates, bias: (c: typeof candidates[number]) => number) => {
+  const pick = (pool: typeof candidates, bias: (c: typeof candidates[number]) => number, flatten = 1) => {
     let total = 0;
     const live = pool.filter(c => chosen.every(p => Math.hypot(p.x - c.x, p.y - c.y) >= spacing));
-    for (const c of live) total += c.weight * bias(c);
+    for (const c of live) total += Math.pow(c.weight, flatten) * bias(c);
     let roll = rng() * total;
-    for (const c of live) { roll -= c.weight * bias(c); if (roll <= 0) return c; }
+    for (const c of live) { roll -= Math.pow(c.weight, flatten) * bias(c); if (roll <= 0) return c; }
     return live.at(-1);
   };
   // The entry covey: good cover a fair walk out, ahead and near a route,
   // so the first cast of the day can find it without it being staged at
   // the tailgate. Each step relaxes the conditions if the land has none.
-  for (const [reach, ahead, route] of [[ENTRY_REACH, .75, 60], [ENTRY_REACH * 1.25, .5, 90], [ENTRY_REACH * 1.6, 0, Infinity], [Infinity, -1, Infinity]]) {
+  for (const [reach, ahead, route] of [[ENTRY_REACH * 1.25, .4, 90], [ENTRY_REACH * 1.6, 0, Infinity], [Infinity, -1, Infinity]]) {
     const near = candidates.filter(c => c.reach <= reach && c.ahead >= ahead && c.route <= route);
-    const entry = near.length ? pick(near, c => .4 + .6 * (1 - Math.min(1, c.reach / reach))) : undefined;
+    // Flattened weights, and the nearest, most ahead and most on-route
+    // cover only favoured: any decent cover out ahead will do, so the first
+    // covey is not in the same pocket every hunt from this entry.
+    const ideal = (c: typeof candidates[number]) => c.reach <= ENTRY_REACH && c.ahead >= .6 && c.route <= 70 ? 1 : .55;
+    const entry = near.length ? pick(near, c => ideal(c) * (.6 + .4 * (1 - Math.min(1, c.reach / reach))), ENTRY_FLATTEN) : undefined;
     if (entry) { chosen.push({ x: entry.x, y: entry.y }); break; }
   }
-  // A second covey within a longer walk, any direction.
-  const second = pick(candidates.filter(c => c.reach <= SECOND_REACH), () => 1);
+  // A second covey further on along the way out, so the first contact is
+  // not followed by a long dry walk.
+  const second = pick(candidates.filter(c => c.reach <= SECOND_REACH && c.ahead >= .2 && c.route <= 90), () => 1, ENTRY_FLATTEN)
+    ?? pick(candidates.filter(c => c.reach <= SECOND_REACH), () => 1, ENTRY_FLATTEN);
   if (second) chosen.push({ x: second.x, y: second.y });
   const target = Math.round(MAX_ANCHORS / Math.min(1, spacingScale));
   while (chosen.length < target) {

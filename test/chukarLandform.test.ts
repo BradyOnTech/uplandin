@@ -243,7 +243,11 @@ describe('Chukar Ridge birds live where the land says', () => {
   it('finds birds in different places on different hunts', () => {
     const drop = area.dropPoints[0], areasOf = (seed: number) => new Set(landDrivenAnchors(area, drop, mulberry32(seed)).slice(0, 12).map(a => huntAreaAt(area, a.x, a.y)?.id));
     const a = areasOf(3), b = areasOf(99), c = areasOf(2026);
-    const firstOf = (seed: number) => landDrivenAnchors(area, drop, mulberry32(seed))[0];
+    // Where the land offers several pockets out ahead (the West Bench), the
+    // first covey moves between them; from the River Road the mouth of Sage
+    // Draw is the one escape cover in a fair walk, and the land says so.
+    const west = area.dropPoints.find(d => d.id === 'west-track')!;
+    const firstOf = (seed: number) => landDrivenAnchors(area, west, mulberry32(seed))[0];
     expect(new Set([3, 99, 2026, 5, 8].map(s => `${Math.round(firstOf(s).x / 40)},${Math.round(firstOf(s).y / 40)}`)).size).toBeGreaterThan(2);
     expect([...a].every(id => b.has(id)) && [...b].every(id => c.has(id)) && a.size === c.size).toBe(false);
   });

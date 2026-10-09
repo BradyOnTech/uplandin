@@ -178,10 +178,11 @@ export function buildChukarHorizonGeometry(landscape:LandscapeModel,px:number,py
   geometry.computeBoundingSphere();return geometry;
 }
 
-/** Beyond the fence: 1,000 yd of canyon each way, and further south so
- * the far wall rises across the river. Property yards [x, y, w, h]. */
+/** Beyond the fence: 1,000 yd of canyon each way (the apron the region
+ * horizon in horizon.ts stands on), the far wall rising across the river.
+ * Property yards [x, y, w, h]. */
 export function chukarHorizonStrips(b:{x:number;y:number;w:number;h:number}):[number,number,number,number][] {
-  const m=1000,south=1300;
+  const m=1000,south=1000;
   return [[b.x-m,b.y-m,b.w+2*m,m],[b.x-m,b.y+b.h,b.w+2*m,south],[b.x-m,b.y,m,b.h],[b.x+b.w,b.y,m,b.h]];
 }
 
