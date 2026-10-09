@@ -23,6 +23,9 @@ import { CanyonOakSystem } from './subsystems/canyonOak';
 import { AlpineParksSystem } from './subsystems/alpineParks';
 import { ValleyOakSystem } from './subsystems/valleyOak';
 import { WoodlandFloorSystem } from './subsystems/woodlandFloor';
+import { GroundKitSystem } from './groundKit/groundKitSystem';
+import { groundKitLegacyReview, groundKitStyle } from './groundKit/groundKit';
+import { KitReviewSystem } from './groundKit/kitReview';
 
 interface LandscapeVisuals {
   systems: readonly Subsystem[];
@@ -60,9 +63,17 @@ const RIMROCK_VISUALS: LandscapeVisualAdapter = {
 };
 
 const PHEASANT_VISUALS: LandscapeVisualAdapter = {
-  create: (landscape) => ({
-    systems: [new PropertyTrailsSystem(landscape), new PheasantCoverSystem(landscape), new PheasantCropResidueSystem(landscape), new PheasantScenerySystem(landscape)],
-  }),
+  create: (landscape) => {
+    // On the kit, the cover blocks come from the cover map; the farm's
+    // crop residue and scenery stay.
+    const style = groundKitStyle(landscape.area.id);
+    if (style) {
+      const kit = new GroundKitSystem(landscape);
+      return { systems: [kit, new KitReviewSystem(landscape, style, () => kit.stats()), new PropertyTrailsSystem(landscape), new PheasantCropResidueSystem(landscape), new PheasantScenerySystem(landscape)] };
+    }
+    return { systems: [new PropertyTrailsSystem(landscape), new PheasantCoverSystem(landscape), new PheasantCropResidueSystem(landscape), new PheasantScenerySystem(landscape),
+      ...(groundKitLegacyReview(landscape.area.id) ? [new KitReviewSystem(landscape, 'legacy')] : [])] };
+  },
 };
 
 const HUN_VISUALS: LandscapeVisualAdapter = {
@@ -120,8 +131,19 @@ const VALLEY_OAK_VISUALS: LandscapeVisualAdapter = {
   }),
 };
 
+/** The shared ground kit replaces a ground's bespoke grass, turf and
+ * low-cover stack; its ranch, tracks, trees and stones stay. */
+function groundKitSystems(landscape: LandscapeModel): Subsystem[] | null {
+  const style = groundKitStyle(landscape.area.id);
+  if (!style) return null;
+  const kit = new GroundKitSystem(landscape);
+  return [kit, new KitReviewSystem(landscape, style, () => kit.stats()), new SharptailRanchSystem(landscape),
+    new PropertyTrailsSystem(landscape), new PropertyHabitatSystem(landscape, { kitLowCover: true })];
+}
+
 const AREA_VISUALS: Readonly<Record<string, LandscapeVisualAdapter | undefined>> = {
-  'sharptail-prairie': { create: (landscape) => ({ systems: [new GrassSystem(landscape), new SharptailTurfSystem(landscape), new SharptailRanchSystem(landscape), new PropertyTrailsSystem(landscape), new PropertyHabitatSystem(landscape)] }) },
+  'sharptail-prairie': { create: (landscape) => ({ systems: groundKitSystems(landscape) ?? [new GrassSystem(landscape), new SharptailTurfSystem(landscape), new SharptailRanchSystem(landscape), new PropertyTrailsSystem(landscape), new PropertyHabitatSystem(landscape),
+    ...(groundKitLegacyReview(landscape.area.id) ? [new KitReviewSystem(landscape, 'legacy')] : [])] }) },
   'quail-fields': { create: (landscape) => ({ systems: [new QuailEnvironmentSystem(landscape, loadQuailTreeKit), new QuailKitSystem(landscape), new QuailGroundPropsSystem(landscape)] }) },
   'chukar-ridge': { create: (landscape) => ({ systems: [new ChukarEnvironmentSystem(landscape)] }) },
   'pheasant-coverts': PHEASANT_VISUALS,
