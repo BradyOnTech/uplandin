@@ -681,6 +681,25 @@ export class BirdsSystem implements Subsystem {
           hunterX: this.hunterX,
           hunterZ: this.hunterZ,
         }),
+        /** The pointed bird's species and covey (null = no point). */
+        pointedBird: () => {
+          const dog = this.hunt.dog();
+          if (dog.state !== 'pointing' || dog.pointedBirdId === null) return null;
+          const bird = this.hunt.huntState().birds.find(b => b.id === dog.pointedBirdId);
+          return bird ? { id: bird.id, speciesId: bird.speciesId, coveyId: bird.coveyId, sex: bird.sex } : null;
+        },
+        /** Rise review (tools3d/review-rise.mjs): every bird the sky holds,
+         * including a launch still waiting on its delay and an escaped
+         * silhouette finishing its departure, plus the birds still queued. */
+        sky: () => ({
+          queued: this.qTail - this.qHead,
+          riseActive: this.riseActive,
+          birds: this.slots.filter(s => s.status === 'flying' || s.status === 'falling' || s.status === 'waiting' || s.status === 'departing')
+            .map(s => ({ simId: s.simId, status: s.status, x: s.x, y: s.y, z: s.z, airMs: s.airMs,
+              sizeM: s.spanM * this.flightScale(s.species.id, s) * s.visualScale,
+              vx: s.vxW, vy: s.vyW, vz: s.vzW, speciesId: s.species.id, sex: s.sex,
+              target: s.spatialFlight?.target ? { ...s.spatialFlight.target } : null })),
+        }),
       };
     }
   }
