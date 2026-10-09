@@ -33,7 +33,7 @@ const { LandscapeModel } = await load('/src/game/landscape.ts');
 const { createHunt } = await load('/src/game/state.ts');
 const { mulberry32 } = await load('/src/game/math.ts');
 const { PROPERTY_PX_TO_M } = await load('/src/game/worldUnits.ts');
-const { holdsSky, inTheShot } = await load('/src/game/riseScore.ts');
+const { holdsSky, inTheShot, countsAgainstCap } = await load('/src/game/riseScore.ts');
 const { skyBehind } = await load('/src/game/flightLine.ts');
 
 const lineOf = (eye, b) => {
@@ -75,7 +75,7 @@ function riseOnce(area, landscape, patches, covey, hunterWorld, rng, ground) {
   runtime.buildPool({ scene: new THREE.Scene() });
   const eye = camera.position;
   const tracks = new Map();
-  let over = null, minShot = Infinity, maxInShot = 0;
+  let over = null, minShot = Infinity, maxInShot = 0, maxInSky = 0;
   const shotTicks = [];
   for (let tick = 1; tick <= 30 * 24; tick++) {
     runtime.tickBirds(1000 / 30);
@@ -94,12 +94,13 @@ function riseOnce(area, landscape, patches, covey, hunterWorld, rng, ground) {
     const holding = runtime.slots.filter(s => holdsSky({ status: s.status, rangeM: Math.hypot(s.x - eye.x, s.z - eye.z),
       sinceLaunchMs: runtime.skyMs - (s.launchedSkyMs ?? -Infinity) })).length;
     maxInShot = Math.max(maxInShot, runtime.slots.filter(s => inTheShot({ status: s.status, rangeM: Math.hypot(s.x - eye.x, s.z - eye.z) })).length);
+    if (countsAgainstCap) maxInSky = Math.max(maxInSky, runtime.slots.filter(s => countsAgainstCap({ status: s.status, rangeM: Math.hypot(s.x - eye.x, s.z - eye.z) })).length);
     const queued = runtime.rises.reduce((n, r) => n + r.waves.slice(r.next).reduce((m, w) => m + w.ids.length, 0), 0);
     if (over === null && holding === 0 && queued === 0 && tick > 3) over = tick / 30;
     if (over !== null && runtime.slots.every(s => !['flying', 'waiting', 'departing', 'falling'].includes(s.status))) break;
   }
   system.dispose({ scene: new THREE.Scene() });
-  return { birds: covey.length, species: covey[0].speciesId, over, maxInShot, shotTicks, minShot: Number.isFinite(minShot) ? minShot : null,
+  return { birds: covey.length, species: covey[0].speciesId, over, maxInShot, maxInSky, shotTicks, minShot: Number.isFinite(minShot) ? minShot : null,
     tracks: [...tracks.values()], landed: landings.length, droveOff: escapes.length };
 }
 
@@ -129,7 +130,7 @@ for (const id of grounds) {
   const bySize = (lo, hi) => lengths.filter(r => r.birds >= lo && r.birds <= hi).map(r => r.over).sort((a, b) => a - b);
   const median = values => values.length ? values[values.length >> 1] : null;
   const summary = {
-    rises: rises.length, birds: tracks.length, maxInShot: Math.max(...rises.map(r => r.maxInShot)),
+    rises: rises.length, birds: tracks.length, maxInShot: Math.max(...rises.map(r => r.maxInShot)), maxInSky: Math.max(...rises.map(r => r.maxInSky)),
     straightawayShare: (lines.straightaway ?? 0) / classified, lines,
     skyBackedFirstSecond: sky.length ? sky.filter(Boolean).length / sky.length : 0,
     shotWindowSeparation: { min: seps[0] ?? null, median: median(seps), p10: seps[Math.floor(seps.length * .1)] ?? null },
@@ -142,7 +143,7 @@ for (const id of grounds) {
     species: Object.fromEntries([...new Set(rises.map(r => r.species))].map(s => [s, rises.filter(r => r.species === s).length])),
   };
   report.grounds[id] = summary;
-  console.log(`${id}: ${summary.rises} rises, ${summary.birds} birds; most in the shot ${summary.maxInShot}; straightaways ${(summary.straightawayShare * 100).toFixed(0)}% ${JSON.stringify(lines)}; ` +
+  console.log(`${id}: ${summary.rises} rises, ${summary.birds} birds; most in the shot ${summary.maxInShot}, inside 55 m ${summary.maxInSky}; straightaways ${(summary.straightawayShare * 100).toFixed(0)}% ${JSON.stringify(lines)}; ` +
     `sky-backed first second ${(summary.skyBackedFirstSecond * 100).toFixed(0)}%; shot window: closest pair median ${summary.shotWindowTicks.median?.toFixed(1)} deg over ${summary.shotWindowTicks.ticks} ticks, ${((summary.shotWindowTicks.share5Deg ?? 0) * 100).toFixed(0)}% >= 5 deg, least per rise median ${summary.shotWindowSeparation.median?.toFixed(1)} deg; ` +
     `rise length median ${summary.riseLengthS.median?.toFixed(1)} s, max ${summary.riseLengthS.max.toFixed(1)} s ${JSON.stringify(summary.riseLengthS.bySize)}; ` +
     `escapes landed ${summary.escapes.landedInCover} / drove off ${summary.escapes.droveOff}; species ${JSON.stringify(summary.species)}`);
