@@ -7,7 +7,8 @@ installable PWA.
 
 The current 3D finishing scope and verified checkpoints are in
 [Production finish](3d/production-finish.md). The original 2D flush-view
-rules below do not replace 3D's continuous spatial hunting and shooting.
+rules below do not replace 3D's continuous spatial hunting and shooting,
+except the sky rule (Duck Hunt waves), which governs both.
 Species-specific decisions are governed by [Hunting doctrine](3d/hunting-doctrine.md).
 
 This is the living spec. Sections are marked **[built]** or **[planned]**.
@@ -19,11 +20,18 @@ Check items off (and adjust them) as tranches ship.
   to read the dog, the wind, and the clock.
 - **Hunting realism over arcade realism — in the field.** Wind, nerve, wild
   flushes, protected birds, puppy mistakes. Target discrimination makes it
-  a hunting game. **The original 2D flush view uses Duck Hunt-style waves.** Up
-  to three birds burst TOGETHER — the covey thunder — across shuffled
-  lanes with a per-flush break direction; the next wave rises when the
-  sky clears. A big covey is rounds of shooting, never a blob and never
-  a single-file procession. Fun beats covey realism in this view.
+  a hunting game. **Duck Hunt rules the sky, in 2D and in 3D.** The whole
+  covey flushes: the cover blows out across its footprint and the wing
+  thunder is sized to every bird, so a twelve-bird covey sounds bigger
+  than a five. But at most three birds are in the air at once. Up to three
+  burst TOGETHER on their own lanes; the rest wait in the cover and rise in
+  waves as the sky clears or the gun comes back loaded, never into an empty
+  gun except the sleeper, which waits for exactly that. Sharptails popcorn
+  up in singles and pairs; a pheasant goes alone. A big covey is rounds of
+  shooting, never a blob and never a single-file procession. Fun beats
+  covey realism in the sky; the rules are in `src/game/riseScore.ts`.
+  (Restored in 3D by Brady's delegation, 2026-10-08, after agent critics
+  had swapped it for a whole-covey launch.)
 - **Progression you feel.** A level-1 dog is bad in specific, visible ways;
   a level-10 dog is a partner. Gear changes what questions you can answer.
 - **Everything important is data.** Species, breeds, areas, and gear are

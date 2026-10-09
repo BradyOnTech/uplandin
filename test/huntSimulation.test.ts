@@ -280,6 +280,40 @@ describe('HuntSimulation shared orchestration', () => {
     expect(f.simulation.finishRise()?.relitIds).toEqual([]);
     expect(f.hunt.escaped).toBe(2);
   });
+  it('keeps a covey queued for later waves out of the bag and the escaped tally, with the dog still marking', () => {
+    // The sky holds three (game/riseScore.ts); the rest of the covey is flushed but in the cover.
+    const f = pointedSimulation(10, true);
+    const covey = [f.bird, ...Array.from({ length: 5 }, (_, i) => ({ ...f.bird, id: 9002 + i, pos: { x: f.bird.pos.x + i, y: f.bird.pos.y + 2 } }))];
+    f.hunt.birds = covey;
+    f.dog.steadied = true;
+    const event = f.simulation.flushBird(f.bird.id, 'proximity', 0)!;
+    // One bird may hold tight as a single (closeFlush.ts heldSingles); the rest rose.
+    expect(event.birdIds.length).toBeGreaterThanOrEqual(5);
+    const [first, queued] = [event.birdIds.slice(0, 3), event.birdIds.slice(3)];
+    f.simulation.resolveBird(first[0], 'downed'); f.simulation.resolveBird(first[1], 'escaped'); f.simulation.resolveBird(first[2], 'escaped');
+    f.simulation.update(50, { hunterPos: f.hunt.hunterPos });
+    expect(f.hunt.downed).toBe(1); expect(f.hunt.escaped).toBe(2);
+    expect(queued.every(id => f.simulation.bird(id)!.state === 'flushed')).toBe(true);
+    // A steady dog stands through the waves: queued birds keep it marking.
+    expect(f.dog.state).toBe('marking');
+    expect(f.dog.watchedBirdIds()).toEqual(expect.arrayContaining(queued));
+    for (const id of queued) f.simulation.resolveBird(id, 'escaped');
+    const result = f.simulation.finishRise({ relight: false })!;
+    expect(result.downedIds).toEqual([first[0]]);
+    expect(result.escapedIds.sort()).toEqual([...first.slice(1), ...queued].sort());
+    expect(f.hunt.escaped).toBe(2 + queued.length);
+  });
+  it('raises a scattered chukar covey in pieces in the continuous field, but keeps a bobwhite covey whole', () => {
+    const chukar = pointedSimulation(10, true, 'chukar-ridge', 'chukar');
+    const far = { ...chukar.bird, id: 9002, pos: { x: chukar.bird.pos.x + 60, y: chukar.bird.pos.y - 40 } };
+    const near = { ...chukar.bird, id: 9003, pos: { x: chukar.bird.pos.x + 8, y: chukar.bird.pos.y } };
+    chukar.hunt.birds.push(far, near);
+    expect(chukar.simulation.flushBird(chukar.bird.id, 'proximity', 0)!.birdIds.sort()).toEqual([9001, 9003]);
+    expect(far.state).toBe('hidden');
+    const quail = pointedSimulation(10, true);
+    quail.hunt.birds.push({ ...quail.bird, id: 9002, pos: { x: quail.bird.pos.x + 60, y: quail.bird.pos.y } });
+    expect(quail.simulation.flushBird(quail.bird.id, 'proximity', 0)!.birdIds).toHaveLength(2);
+  });
   it('flushes the nearby member of a pointed covey and preserves the earned point credit', () => {
     const f=pointedSimulation(40,true);
     const nearby={...f.bird,id:9002,pos:{x:f.hunt.hunterPos.x+3,y:f.hunt.hunterPos.y}};

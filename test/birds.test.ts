@@ -3,6 +3,7 @@ import {
   birdsScentingDog,
   birdsSpookedBy,
   circleBack,
+  COVEY_BOND_YD,
   flushCovey,
   relightSurvivors,
   RUNNER_MAX_ENERGY,
@@ -199,6 +200,21 @@ describe('flushCovey', () => {
 
   it('returns empty for an unknown id', () => {
     expect(flushCovey([], 99)).toEqual([]);
+  });
+
+  it('raises a scattered covey in pieces: only the birds chained within reach of the one that broke', () => {
+    // Chukar that ran up the slope: three within a few yards, a chain out to
+    // 44 yd, and two that went 70 yd and hold there.
+    const chukar = (id: number, x: number, y: number) => bird({ id, coveyId: 4, speciesId: 'chukar', pos: { x, y } });
+    const birds = [chukar(1, 0, 0), chukar(2, 6, 4), chukar(3, -5, 9), chukar(4, 24, 14), chukar(5, 44, 20), chukar(6, 70, 66), chukar(7, 78, 70)];
+    const first = flushCovey(birds, 1, COVEY_BOND_YD);
+    expect(first.map((b) => b.id)).toEqual([1, 2, 3, 4, 5]);
+    expect(birds.filter((b) => b.state === 'hidden').map((b) => b.id)).toEqual([6, 7]);
+    // The rest of the covey rises later, from where it sat, as its own piece.
+    expect(flushCovey(birds, 7, COVEY_BOND_YD).map((b) => b.id)).toEqual([6, 7]);
+    // Without a reach (the scene-cut view) the whole covey goes together.
+    const whole = [chukar(1, 0, 0), chukar(6, 70, 66)];
+    expect(flushCovey(whole, 1).map((b) => b.id)).toEqual([1, 6]);
   });
 });
 

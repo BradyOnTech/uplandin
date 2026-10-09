@@ -1,11 +1,10 @@
 import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BirdsSystem, CLOSE_FAN_WIDEN } from '../src/three/subsystems/birds';
-import { mulberry32 } from '../src/game/math';
 import type { Ctx } from '../src/three/engine';
 
 vi.mock('../src/audio', () => ({ playShot: vi.fn(), prepareGunSounds: vi.fn(), unlockAudio: vi.fn(), playActionClick: vi.fn(), playThud: vi.fn(), playFlush: vi.fn(),
-  playPheasantFlush: vi.fn(), playBirdFlush: vi.fn() }));
+  playPheasantFlush: vi.fn(), playBirdFlush: vi.fn(), playCoveyThunder: vi.fn() }));
 afterEach(() => vi.unstubAllGlobals());
 
 /** Launch one rooster `distance` metres from the hunter and fly it for `ms`. */
@@ -53,8 +52,9 @@ describe('a rooster flushed underfoot', () => {
   });
 });
 
-/** Launch a covey of eight `distance` metres out (the hunter at the origin,
- * escaping toward -z) on the same random stream, and read each bird's break. */
+/** Flush a covey of eight `distance` metres out (the hunter at the origin,
+ * the wind and the escape toward -z) on the same random stream, and read the
+ * break of each bird in its first wave. */
 function covey(speciesId: string, areaId: string, distance: number) {
   vi.stubGlobal('window', new EventTarget()); vi.stubGlobal('location', { search: '' });
   vi.stubGlobal('document', { getElementById: () => null, querySelector: () => null });
@@ -62,7 +62,7 @@ function covey(speciesId: string, areaId: string, distance: number) {
   const internal = birds as unknown as Record<string, any>;
   const sims = Array.from({ length: 8 }, (_, i) => ({ id: i + 1, state: 'flushed', speciesId, coveyId: 1,
     pos: { x: (i % 4 - 1.5) * .8, y: -distance - Math.floor(i / 4) * .8 } }));
-  const hunt = { areaConfig: () => ({ id: areaId }), huntState: () => ({ gunId: 'over-under', birds: sims }),
+  const hunt = { areaConfig: () => ({ id: areaId }), huntState: () => ({ gunId: 'over-under', birds: sims, hunterPos: { x: 0, y: 0 }, wind: -Math.PI / 2 }),
     resolveBird: vi.fn(() => true), recordFallWorld: vi.fn(), getActiveChallenge: () => 'balanced', riseSlopeApproach: () => null,
     simToWorld: (x: number, y: number, out: { x: number; z: number }) => Object.assign(out, { x, z: y }),
     coverPatches: () => [], condition: () => 'mild', lastFlushInfo: () => null };
@@ -71,13 +71,12 @@ function covey(speciesId: string, areaId: string, distance: number) {
     events, quality: 'lite', timeOfDay: 'morning', time: 1, paused: false,
     get: (id: string) => ({ hunt3d: hunt, birds, terrain: { heightAt: () => 0 } }[id]) } as unknown as Ctx;
   Object.assign(internal, { mat: new THREE.MeshLambertMaterial({ vertexColors: true }), hunt, terrain: { heightAt: () => 0 },
-    frozen: false, spatialEncounter: true, coverEvents: events, escX: 0, escZ: -1, rightX: 1, rightZ: 0, hunterX: 0, hunterZ: 0,
-    riseRng: mulberry32(7) });
+    frozen: false, spatialEncounter: true, coverEvents: events });
   internal.buildPool(ctx);
-  internal.riseActive = true;
-  for (const sim of sims) { internal.staged.add(sim.id); internal.queue[internal.qTail++] = sim.id; }
-  internal.launchWave(sims);
-  return sims.map(sim => internal.slots.find((slot: { simId: number }) => slot.simId === sim.id));
+  internal.tickBirds(1000 / 30);
+  const wave = internal.slots.filter((slot: { status: string }) => slot.status === 'waiting' || slot.status === 'flying');
+  expect(wave).toHaveLength(3);
+  return wave;
 }
 
 describe('a covey sat on underfoot', () => {
@@ -87,13 +86,19 @@ describe('a covey sat on underfoot', () => {
       Math.abs(Math.atan2(Math.sin(slot.spatialFlight.bearing - away), Math.cos(slot.spatialFlight.bearing - away)));
     const close = covey('bobwhite', 'quail-fields', 2.5).map(off), far = covey('bobwhite', 'quail-fields', 16).map(off);
     const widest = (values: number[]) => Math.max(...values);
-    expect(widest(close)).toBeCloseTo(widest(far) * (1 + CLOSE_FAN_WIDEN), 6);
+    // About (1 + CLOSE_FAN_WIDEN) as wide: the lanes also slide a little with
+    // the line of sight, which is not quite the same from 2.5 m as from 16.
+    expect(widest(close) / widest(far)).toBeGreaterThan((1 + CLOSE_FAN_WIDEN) * .85);
+    expect(widest(close) / widest(far)).toBeLessThan((1 + CLOSE_FAN_WIDEN) * 1.15);
     // Still a burst away from the gun: no bird turns back past square.
     expect(widest(close)).toBeLessThan(Math.PI / 2);
-    expect(widest(far)).toBeLessThan(.42);
+    // Wave-mates fly a lane either side of the line (game/riseScore.ts).
+    expect(widest(far)).toBeLessThan(.7);
     // Chukar keep their authored break; its lateral impulse opens the same way.
     const lateral = (slots: { vel: { x: number } }[]) => Math.max(...slots.map(slot => Math.abs(slot.vel.x)));
-    expect(lateral(covey('chukar', 'chukar-ridge', 2.5))).toBeCloseTo(lateral(covey('chukar', 'chukar-ridge', 16)) * (1 + CLOSE_FAN_WIDEN), 6);
+    const chukarRatio = lateral(covey('chukar', 'chukar-ridge', 2.5)) / lateral(covey('chukar', 'chukar-ridge', 16));
+    expect(chukarRatio).toBeGreaterThan((1 + CLOSE_FAN_WIDEN) * .85);
+    expect(chukarRatio).toBeLessThan((1 + CLOSE_FAN_WIDEN) * 1.15);
   });
 });
 
@@ -120,8 +125,10 @@ describe('a covey rise', () => {
     internal.tickBirds(1000 / 30);
     const up = internal.slots.filter((slot: { status: string }) => slot.status === 'flying');
     expect(up.map((slot: { simId: number }) => slot.simId)).toEqual([6]);
-    // The rest follow it out within a quarter of a second.
+    // Its wave-mates, the next nearest, follow it out within a quarter of a
+    // second; the rest of the covey waits in the cover for the next wave.
     for (let t = 0; t < 250; t += 1000 / 30) internal.tickBirds(1000 / 30);
-    expect(internal.slots.filter((slot: { status: string }) => slot.status === 'flying').length).toBeGreaterThanOrEqual(5);
+    const flying = internal.slots.filter((slot: { status: string }) => slot.status === 'flying');
+    expect(flying.map((slot: { simId: number }) => slot.simId).sort()).toEqual([4, 5, 6]);
   });
 });
