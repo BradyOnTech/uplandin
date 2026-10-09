@@ -87,7 +87,7 @@ try {
       summary.rises.push(record);
       const f = record.final;
       console.log(`  in play max ${f.maxInPlay}, visible max ${f.maxVisible}, birds ${f.birds.length}, ` +
-        `min separation ${f.minSeparationDeg?.toFixed(1) ?? '-'} deg, sky-backed first second ${(f.skyShareFirstSecond * 100).toFixed(0)}%, ` +
+        `min separation ${f.minSeparationDeg?.toFixed(1) ?? '-'} deg, shot window ${f.shotWindow ? `min ${f.shotWindow.minDeg.toFixed(1)} / median ${f.shotWindow.medianDeg.toFixed(1)} deg, ${(f.shotWindow.share5Deg * 100).toFixed(0)}% >= 5 deg` : '-'}, sky-backed first second ${(f.skyShareFirstSecond * 100).toFixed(0)}%, ` +
         `lines ${JSON.stringify(f.lines)}, rise over at ${f.riseOverS?.toFixed(1) ?? '-'} s, ${record.render.calls} draws`);
       if (errors.length) console.error(`  page errors: ${errors.join(' | ')}`);
       await page.close();
@@ -192,6 +192,7 @@ function runHuntToPoint(maxTicks, wantSpecies) {
   function installReview(hunter, origin) {
     const tracks = new Map();
     let tick = 0, maxInPlay = 0, maxVisible = 0, minSeparation = Infinity, riseOver = null;
+    const shotSeparations = [];
     const heightAt = (x, z) => window.__dogAudit ? window.__dogAudit.heightAt(x, z) : 0;
     const coverAt = (x, z) => window.__dogAudit ? window.__dogAudit.coverAt(x, z) : 0;
     const eye = () => api.telemetry().camera;
@@ -234,21 +235,26 @@ function runHuntToPoint(maxTicks, wantSpecies) {
         }
         return out;
       });
+      // Separation from the gun between live birds; the shot window counts
+      // pairs that are both 0.5-2.5 s out of the cover, when a hunter shoots.
       const flying = visible.filter(b => b.status === 'flying');
-      let minPair = null;
+      const inShotWindow = (b) => b.airMs >= 500 && b.airMs <= 2500;
+      let minPair = null, minShot = null;
       for (let i = 0; i < flying.length; i++) for (let j = i + 1; j < flying.length; j++) {
         const a = flying[i], c = flying[j];
         const ax = a.x - e.x, ay = a.y - e.y, az = a.z - e.z, cx = c.x - e.x, cy = c.y - e.y, cz = c.z - e.z;
         const cos = (ax * cx + ay * cy + az * cz) / ((Math.hypot(ax, ay, az) * Math.hypot(cx, cy, cz)) || 1);
         const deg = Math.acos(Math.max(-1, Math.min(1, cos))) * 180 / Math.PI;
         if (minPair === null || deg < minPair) minPair = deg;
+        if (inShotWindow(a) && inShotWindow(c) && (minShot === null || deg < minShot)) minShot = deg;
       }
-      return { sky, e, inPlay: inPlay.length, visible: visible.length, birds, minPairDeg: minPair, queued: sky.queued };
+      return { sky, e, inPlay: inPlay.length, visible: visible.length, birds, minPairDeg: minPair, minShotDeg: minShot, queued: sky.queued };
     };
     const observe = () => {
       const m = measure(false);
       maxInPlay = Math.max(maxInPlay, m.inPlay); maxVisible = Math.max(maxVisible, m.visible);
       if (m.minPairDeg !== null) minSeparation = Math.min(minSeparation, m.minPairDeg);
+      if (m.minShotDeg !== null) shotSeparations.push(m.minShotDeg);
       if (riseOver === null && tick > 3 && m.inPlay === 0 && m.queued === 0) riseOver = tick / 30;
       for (const b of m.sky.birds) {
         let track = tracks.get(b.simId);
@@ -275,14 +281,17 @@ function runHuntToPoint(maxTicks, wantSpecies) {
         api.renderOnce();
         const m = measure(true);
         return { tick, inPlay: m.inPlay, visible: m.visible, queued: m.queued, minPairDeg: m.minPairDeg === null ? null : +m.minPairDeg.toFixed(1),
-          birds: m.birds, camera: { yawDeg: m.e.yawDeg, pitchDeg: m.e.pitchDeg, fov: m.e.fov }, dog: api.hunt().dog.state };
+          minShotDeg: m.minShotDeg === null ? null : +m.minShotDeg.toFixed(1),
+          birds: m.birds, camera: { yawDeg: m.e.yawDeg, pitchDeg: m.e.pitchDeg, fov: m.e.fov }, dog: api.hunt().dog.state, render: api.info() };
       },
       summary() {
         const birds = [...tracks.values()];
         const first = birds.flatMap(b => b.firstSecond);
         const lines = {};
         for (const b of birds) if (b.line) lines[b.line] = (lines[b.line] ?? 0) + 1;
+        const shot = [...shotSeparations].sort((a, b) => a - b);
         return { maxInPlay, maxVisible, minSeparationDeg: Number.isFinite(minSeparation) ? minSeparation : null,
+          shotWindow: shot.length ? { minDeg: shot[0], medianDeg: shot[shot.length >> 1], share5Deg: shot.filter(d => d >= 5).length / shot.length, ticks: shot.length } : null,
           skyShareFirstSecond: first.length ? first.filter(Boolean).length / first.length : 0,
           lines, riseOverS: riseOver, origin, hunter,
           birds: birds.map(b => ({ simId: b.simId, speciesId: b.speciesId, sex: b.sex, launchedS: b.launched, line: b.line,
