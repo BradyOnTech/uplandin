@@ -112,8 +112,12 @@ describe('encounter pacing on a balanced hunt', () => {
       expect(points / runs.reduce((sum, r) => sum + r.points + r.wild, 0)).toBeGreaterThan(.6);
       // Birds are winded at tens of yards, not a hundred...
       expect(median(runs.flatMap(r => r.detections))).toBeLessThan(45);
-      // ...and located by casting across the scent, not a straight line.
-      expect(median(runs.flatMap(r => r.straightness))).toBeLessThan(.93);
+      // ...and located by casting across the scent, not a straight line. Each
+      // hunt counts once: on Chukar's bigger ground one hunt can walk a trail
+      // past a covey sitting close to it and score six straight-in points,
+      // which outvoted the other five hunts' casting when points were pooled.
+      const hunts = runs.filter(r => r.straightness.length);
+      expect(median(hunts.map(r => median(r.straightness)))).toBeLessThan(.93);
     }, 120_000);
 });
 

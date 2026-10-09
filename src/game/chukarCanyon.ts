@@ -139,16 +139,19 @@ function baseWall(x: number, y: number): number {
 
 export function chukarWallAt(x: number, y: number, out: ChukarWallSample): ChukarWallSample {
   let s = baseWall(x, y);
-  let lift = 0, crestAmount = 0;
+  let lift = 0, crestAmount = 0, landmark = 0;
   for (const c of CHUKAR_CRESTS) {
     if (!c.line.nearest(x, y, hit)) continue;
     const half = c.line.value(hit, 'half'), r = hit.distance / half;
+    if (c.mesa && r < 1.6) landmark = Math.max(landmark, 1 - smoothstep(1.1, 1.6, r));
     if (r >= 1) continue;
     if (c.mesa) {
       // A level top to about half the half-width, then flanks falling away.
       const hold = 1 - smoothstep(.5, 1, r);
       lift = Math.max(lift, (c.line.value(hit, 'lift') - s) * hold);
       crestAmount = Math.max(crestAmount, hold);
+      // The named promontories keep their rims whole: no weathered gaps.
+      landmark = Math.max(landmark, 1 - smoothstep(1.1, 1.6, r));
     } else {
       const shape = (1 - r * r) * (1 - r * r);
       lift = Math.max(lift, c.line.value(hit, 'lift') * shape);
@@ -175,7 +178,7 @@ export function chukarWallAt(x: number, y: number, out: ChukarWallSample): Chuka
     broken = Math.max(broken, 1 - smoothstep(b.radius * .5, b.radius, Math.hypot(dx, dy)));
   }
   // Basalt weathers unevenly: stretches of every rim slump into rubble.
-  const decay = smoothstep(.5, .6, rimNoise(x * .012 + 2, y * .012 + 9));
+  const decay = smoothstep(.5, .6, rimNoise(x * .012 + 2, y * .012 + 9)) * (1 - landmark);
   out.s = s; out.broken = Math.max(broken, decay); out.draw = drawAmount; out.drawId = drawAmount > 0 ? drawId : null; out.crest = crestAmount;
   return out;
 }
