@@ -86,14 +86,28 @@ const FOG_APPLY = `
 const STOCK_TONE_MAPPING = '#if defined( TONE_MAPPING )\n\tgl_FragColor.rgb = toneMapping( gl_FragColor.rgb );\n#endif';
 
 const CHUNKS = {
-  fog_pars_vertex: '#ifdef USE_FOG\n\tvarying float vFogDepth;\n\tvarying vec3 vFogRay;\n#endif',
+  fog_pars_vertex: '#ifdef USE_FOG\n\tvarying float vFogDepth;\n\tvarying vec3 vFogRay;\n\tvarying float vUplandSurface;\n#endif',
   // The world-space ray from the camera: the view-space position rotated
-  // back by the view matrix (a rigid transform, so its transpose).
-  fog_vertex: '#ifdef USE_FOG\n\tvFogDepth = - mvPosition.z;\n\tvFogRay = ( vec4( mvPosition.xyz, 0.0 ) * viewMatrix ).xyz;\n#endif',
+  // back by the view matrix (a rigid transform, so its transpose). Skinned
+  // meshes (the dog) are not ground surfaces for the field's weather.
+  fog_vertex: `#ifdef USE_FOG
+	vFogDepth = - mvPosition.z;
+	vFogRay = ( vec4( mvPosition.xyz, 0.0 ) * viewMatrix ).xyz;
+	// What kind of surface weathers here: 0 the skinned dog (never), 1 the
+	// ground and built things, 2 instanced plants (grass, cover, shrubs).
+	#if defined( USE_SKINNING )
+		vUplandSurface = 0.0;
+	#elif defined( USE_INSTANCING )
+		vUplandSurface = 2.0;
+	#else
+		vUplandSurface = 1.0;
+	#endif
+#endif`,
   fog_pars_fragment: `#ifdef USE_FOG
 	uniform vec3 fogColor;
 	varying float vFogDepth;
 	varying vec3 vFogRay;
+	varying float vUplandSurface;
 	#ifdef FOG_EXP2
 		uniform float fogDensity;
 	#else

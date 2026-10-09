@@ -6,6 +6,7 @@ import { sampleVertexColorsInside } from './centroidColors';
 import { installGrade, setGradeViewport } from './grade';
 import { installAtmosphere } from './atmosphere';
 import { installGroundLight } from './groundLight';
+import { installFieldConditions } from './fieldConditions';
 
 export type Quality = 'high' | 'lite';
 export interface Ctx {
@@ -77,11 +78,13 @@ export class Engine {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     // ACES Filmic and then the field's colour grade, in every material
     // (grade.ts), fog driven from the sky (atmosphere.ts), and the ground's
-    // sky occlusion and cloud shadows (groundLight.ts): both tiers render
-    // the same light. All patch shared chunks before any compile.
+    // sky occlusion and cloud shadows (groundLight.ts), and the day's season
+    // and weather on the ground (fieldConditions.ts): both tiers render the
+    // same light. All patch shared chunks before any compile.
     installGrade(renderer);
     installAtmosphere();
     installGroundLight();
+    installFieldConditions();
     renderer.shadowMap.enabled = true;
     // Filter both tiers: an unfiltered 1024 map turns a close dog's shadow
     // into large squares. Lite still uses one quarter of the shadow-map

@@ -9,6 +9,10 @@ import { buildHorizon, horizonLand, TERRAIN_APRON_M, type Horizon, type HorizonL
 import { buildFarTerrain, type FarTerrain } from '../farTerrain';
 import { bakeSkyOcclusion, setSkyMap, skyOcclusionTexture, writeGroundLight, type SkyOcclusion } from '../groundLight';
 import { VegetationWind } from './vegetationWind';
+import type { Condition } from '../../game/conditions';
+import type { Month } from '../../game/season';
+import { weatherLook, weatherSpec, writeFieldConditions } from '../fieldConditions';
+import { createWeatherParticles, type WeatherParticles } from '../weatherParticles';
 import { snapShadowTarget } from '../shadowPlacement';
 import { createSharptailCloudAtlas, SHARPTAIL_CLOUD_ATLAS_GLSL } from './sharptailCloudAtlas';
 
@@ -52,6 +56,8 @@ uniform float uQuail;
 uniform float uPheasant;
 uniform float uChukar;
 uniform float uSharptail;
+uniform float uOvercast;
+uniform vec3 uDeck;
 varying vec3 vPos;
 ${ATMOSPHERE_GLSL}
 
@@ -235,13 +241,18 @@ void main() {
   float g3 = pow(d, 220.0) * uGlowStrength;
   col = mix(col, uSunDisc, clamp(g3, 0.0, 0.95));
 
+  // A rain or snow day draws a low grey deck over all of it, lighter at the
+  // horizon, with a faint bright patch where the sun hides.
+  vec3 deck = mix(uDeck * 1.1, uDeck * .84, smoothstep(0.0, .55, hc)) + uGlow * pow(d, 6.0) * .06;
+  col = mix(col, deck, uOvercast);
+
   // Below the horizon, settle to the fog color (ground haze, soft seam) —
   // fast, so any sliver between terrain rim and ridge cards reads as haze.
   // The same sky-driven tint the field's fog takes (atmosphere.ts).
   col = mix(col, uplandFogTint(uBelow, dir), smoothstep(0.0, 0.05, -h));
 
   // Sun disc with a soft edge; it may set into the haze but not below it.
-  float disc = smoothstep(uDiscCos.x, uDiscCos.y, d) * smoothstep(-0.035, -0.005, h);
+  float disc = smoothstep(uDiscCos.x, uDiscCos.y, d) * smoothstep(-0.035, -0.005, h) * (1.0 - uOvercast);
   col = mix(col, uSunDisc, disc);
 
   gl_FragColor = vec4(col, 1.0);
@@ -666,6 +677,14 @@ export class SkySystem implements Subsystem {
   private windConnected = false;
   private groundTod: TimeOfDay = 'morning';
   private readonly drift = { x: 0, z: 0 };
+  /** The day (fieldConditions.ts), read from the hunt on the first frame. */
+  private condition: Condition = 'mild';
+  private month: Month = 'October';
+  private conditionsKnown = false;
+  private particles: WeatherParticles | null = null;
+  private readonly skyTint = new THREE.Color();
+  private readonly particleLight = new THREE.Color();
+  private readonly levelSun = { x: 1, z: 0 };
   private readonly sunDir = new THREE.Vector3();
 
   constructor(private readonly landscape?: LandscapeModel) {
@@ -708,6 +727,8 @@ export class SkySystem implements Subsystem {
         uSharptail: { value: this.areaId === 'sharptail-prairie' ? 1 : 0 },
         uQuail: { value: this.quail ? 1 : 0 },
         uPheasant: { value: this.areaId === 'pheasant-coverts' ? 1 : 0 },
+        uOvercast: { value: 0 },
+        uDeck: { value: new THREE.Color(0x9aa1a7) },
         ...gradeUniforms(),
         ...atmosphereUniforms(),
       },
@@ -946,8 +967,14 @@ export class SkySystem implements Subsystem {
     }
   }
 
+  /** The hour's light under the day's weather. */
+  private hour(tod: TimeOfDay) { return weatherSpec(fieldTimeOfDay(this.areaId, tod), this.condition); }
+
   private apply(ctx: Ctx, tod: TimeOfDay): void {
-    const spec = fieldTimeOfDay(this.areaId, tod);
+    const spec = this.hour(tod);
+    // A rain or snow day's deck takes the hour's (greyed) mid-sky colour.
+    this.mat.uniforms.uOvercast.value = weatherLook(this.condition).overcast;
+    (this.mat.uniforms.uDeck.value as THREE.Color).setHex(spec.skyMid);
     const u = this.mat.uniforms;
     (u.uTop.value as THREE.Color).setHex(spec.skyTop);
     (u.uMid.value as THREE.Color).setHex(spec.skyMid);
@@ -1074,14 +1101,51 @@ export class SkySystem implements Subsystem {
 
   /** The hour's ground light: sky map strength, and cloud shadows from the
    * region's cover scaled by the hour's sky, fading as the sun drops. */
-  private writeGround(spec = fieldTimeOfDay(this.areaId, this.groundTod)): void {
-    const g = regionAtmosphere(this.areaId).ground;
+  private writeGround(spec = this.hour(this.groundTod)): void {
+    const g = regionAtmosphere(this.areaId).ground, overcast = weatherLook(this.condition).overcast;
     const sunUp = THREE.MathUtils.smoothstep(spec.sunElevation, 1, 16);
     writeGroundLight(this.skyBake, {
-      occlusion: g.occlusion, crest: g.crest, floor: g.floor, cloudSize: g.cloudSize,
-      cloudCover: g.cloudCover * THREE.MathUtils.clamp(.55 + spec.cloudAmount, .55, 1.2),
+      // Under a deck the light is all sky, so hollows read darker still.
+      occlusion: Math.min(1, g.occlusion * (1 + overcast * .35)), crest: g.crest, floor: g.floor, cloudSize: g.cloudSize,
+      // A full deck casts no cloud shadows.
+      cloudCover: g.cloudCover * THREE.MathUtils.clamp(.55 + spec.cloudAmount, .55, 1.2) * (1 - overcast),
       cloudStrength: g.cloudStrength * (.35 + .65 * sunUp),
     }, this.drift);
+  }
+
+  /** Read the day from the hunt once it is ready, and dress the field. */
+  private readConditions(ctx: Ctx): void {
+    this.conditionsKnown = true;
+    let hunt: { condition?(): Condition; month?(): Month } | undefined;
+    try { hunt = ctx.get('hunt3d') as unknown as typeof hunt; } catch { hunt = undefined; }
+    if (typeof hunt?.condition !== 'function') return;
+    this.condition = hunt.condition();
+    this.month = hunt.month?.() ?? 'October';
+    this.apply(ctx, ctx.timeOfDay);
+    this.particles = createWeatherParticles(this.condition, ctx.quality);
+    ctx.scene.add(this.particles.points);
+  }
+
+  /** The day on the ground, every frame: frost burns off and the wind's
+   * sheen rolls on with the field's clock. */
+  private writeField(ctx: Ctx): void {
+    const spec = this.hour(this.groundTod);
+    const az = THREE.MathUtils.degToRad(spec.sunAzimuth);
+    this.levelSun.x = Math.sin(az); this.levelSun.z = Math.cos(az);
+    this.skyTint.setHex(spec.skyHorizon).lerp(this.fogCol, .4);
+    const toward = this.wind.direction.value;
+    writeFieldConditions({
+      areaId: this.areaId, condition: this.condition, month: this.month, tod: this.groundTod,
+      sunElevation: spec.sunElevation, seconds: ctx.time,
+      wind: { x: toward.x, z: toward.y, strength: this.wind.strength.value },
+      ground: this.skyBake ? { minHeight: this.skyBake.minHeight, maxHeight: this.skyBake.maxHeight, lowGround: this.poolFloor + 3 } : null,
+      sky: this.skyTint, sun: this.levelSun,
+    });
+    if (this.particles) {
+      // Particles take the sky's light: dim under a deck, warm at evening.
+      this.particleLight.setHex(spec.ambientSky).multiplyScalar(.55 + .25 * spec.ambientIntensity).lerp(this.sun.color, .25);
+      this.particles.update(ctx.camera.position, { x: toward.x, z: toward.y, strength: this.wind.strength.value }, ctx.time, this.particleLight);
+    }
   }
 
   update(ctx: Ctx): void {
@@ -1091,7 +1155,9 @@ export class SkySystem implements Subsystem {
     this.wind.update();
     const speed = CLOUD_SPEED_MIN + CLOUD_SPEED_RANGE * this.wind.strength.value, toward = this.wind.direction.value;
     this.drift.x = -toward.x * speed * ctx.time; this.drift.z = -toward.y * speed * ctx.time;
+    if (!this.conditionsKnown) this.readConditions(ctx);
     this.writeGround();
+    this.writeField(ctx);
 
     // The dome and ridge rings ride the camera so the horizon never recedes.
     this.dome.position.copy(ctx.camera.position);
@@ -1120,6 +1186,7 @@ export class SkySystem implements Subsystem {
 
   dispose(ctx: Ctx): void {
     if (this.far) { ctx.scene.remove(this.far.mesh); this.far.dispose(); this.far = null; }
+    if (this.particles) { ctx.scene.remove(this.particles.points); this.particles.dispose(); this.particles = null; }
     this.skyMap?.dispose();
     this.skyMap = null;
     this.cloudAtlas?.dispose();
