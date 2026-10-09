@@ -55,8 +55,8 @@ describe('the colour grade in every material', () => {
     try {
       sky.init(ctx);
       const shaders = scene.children.filter((node): node is THREE.Mesh => node instanceof THREE.Mesh)
-        .map(node => node.material as THREE.ShaderMaterial);
-      expect(shaders.length).toBeGreaterThan(2);
+        .map(node => node.material).filter((material): material is THREE.ShaderMaterial => material instanceof THREE.ShaderMaterial);
+      expect(shaders.length).toBeGreaterThanOrEqual(2);
       for (const material of shaders) {
         expect(material.toneMapped).toBe(true);
         expect(material.uniforms[GRADE_UNIFORM].value).toBe(GRADE);

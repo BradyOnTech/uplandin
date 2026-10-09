@@ -5,8 +5,9 @@ import type { TimeOfDay, TodSpec } from './palette';
  * Regional atmosphere: the fog every material draws, driven from the sky.
  *
  * three's fog is one colour at one density. Here the shared fog chunk keeps
- * the scene's FogExp2 (colour and density per ground and hour, palette.ts)
- * as the air away from the sun, and adds two things, on both tiers:
+ * the scene's FogExp2 colour and density (per ground and hour, palette.ts)
+ * as the air away from the sun, with a curve that is squared near and
+ * linear far (`distanceFog`), and adds two things, on both tiers:
  *   - the air warms toward the sun's azimuth, taking the sky's horizon
  *     colour there, so the far field melts into the sky it sits under;
  *   - a height fog pools in low ground: densest at a floor taken from the
@@ -72,7 +73,11 @@ const FOG_APPLY = `
 	vec3 fogLinear = linearToOutputTexel( vec4( .5 ) ).r == .5 ? fogColor : sRGBTransferEOTF( vec4( fogColor, 1.0 ) ).rgb;
 	float fogDistance = length( vFogRay );
 	#ifdef FOG_EXP2
-		float fogFactor = min( 1.0 - exp( - fogDensity * fogDensity * fogDistance * fogDistance ), 1.0 - ${FOG_UNIFORM}[3].w );
+		// Squared near (the hunter's ground stays clear), linear far, so each
+		// band of far country steps back paler instead of all reaching the
+		// same haze by two kilometres.
+		float fogX = fogDensity * fogDistance;
+		float fogFactor = min( 1.0 - exp( - fogX * fogX / ( 1.0 + fogX ) ), 1.0 - ${FOG_UNIFORM}[3].w );
 	#else
 		float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
 	#endif
@@ -147,6 +152,11 @@ export interface RegionAtmosphere {
   /** The most of any far surface the distance fog hides, so the farthest
    * land stays a band of graded colour below the sky, never sky itself. */
   distance: number;
+  /** The ground's own light (groundLight.ts): how strongly the sky map
+   * darkens draws and lifts crests, and the cloud shadows the hunt's wind
+   * carries over it. Cloud cover scales with the hour's sky cover, and
+   * the shadows fade as the sun drops. */
+  ground: { occlusion: number; crest: number; floor: number; cloudCover: number; cloudStrength: number; cloudSize: number };
   byTime: Record<TimeOfDay, AtmosphereHour>;
 }
 
@@ -159,7 +169,10 @@ const CANYON: Rgb = [.86, .96, 1.08];
 export const REGION_ATMOSPHERE: Readonly<Record<string, RegionAtmosphere>> = {
   // Cool, clear high-plains air: the least haze of any ground, a thin mist
   // in the coulee bottoms at the ends of the day.
-  'sharptail-prairie': { floor: .08, distance: .85, byTime: {
+  'sharptail-prairie': { floor: .08, distance: .93,
+    // Big sky: cloud shadows race across the swells; coulees sit dark.
+    ground: { occlusion: .7, crest: .14, floor: .58, cloudCover: .42, cloudStrength: .5, cloudSize: 420 },
+    byTime: {
     dawn: { sunward: .7, sunwardPower: 2.5, pool: pool(.0008, 5, .4, MIST) },
     morning: { sunward: .35, sunwardPower: 3, pool: pool(.00025, 6, .25, MIST) },
     noon: { sunward: .15, sunwardPower: 3, pool: pool(0, 1, 0) },
@@ -168,7 +181,9 @@ export const REGION_ATMOSPHERE: Readonly<Record<string, RegionAtmosphere>> = {
   } },
   // Warm, dusty Red Plains air with haze lying in the creek bottom: a thin
   // layer on the lowest ground, not a sheet over the rolling uplands.
-  'quail-fields': { floor: .03, distance: .82, byTime: {
+  'quail-fields': { floor: .03, distance: .9,
+    ground: { occlusion: .65, crest: .12, floor: .6, cloudCover: .32, cloudStrength: .4, cloudSize: 380 },
+    byTime: {
     dawn: { sunward: .7, sunwardPower: 2, pool: pool(.001, 4, .35, MIST) },
     morning: { sunward: .45, sunwardPower: 2.5, pool: pool(.0005, 4, .3, DUST) },
     noon: { sunward: .25, sunwardPower: 3, pool: pool(.0003, 4, .2, DUST) },
@@ -177,16 +192,21 @@ export const REGION_ATMOSPHERE: Readonly<Record<string, RegionAtmosphere>> = {
   } },
   // Prairie potholes: dawn fog lies in the sloughs and burns off by mid
   // morning; cold blue air the rest of the day.
-  'pheasant-coverts': { floor: .15, distance: .8, byTime: {
+  'pheasant-coverts': { floor: .15, distance: .92,
+    ground: { occlusion: .65, crest: .1, floor: .6, cloudCover: .36, cloudStrength: .45, cloudSize: 460 },
+    byTime: {
     dawn: { sunward: .6, sunwardPower: 2.5, pool: pool(.0028, 3.5, .7, MIST) },
-    morning: { sunward: .3, sunwardPower: 3, pool: pool(.0007, 3, .35, MIST) },
+    morning: { sunward: .3, sunwardPower: 3, pool: pool(.0003, 3, .2, MIST) },
     noon: { sunward: .12, sunwardPower: 3, pool: pool(0, 1, 0) },
     evening: { sunward: .7, sunwardPower: 2.5, pool: pool(.0005, 4, .3, MIST) },
     lastlight: { sunward: .55, sunwardPower: 2, pool: pool(.0016, 4, .55, MIST) },
   } },
   // A canyon: cool haze fills the depths, so every bench and ridge below
   // the hunter steps back in a bluer band.
-  'chukar-ridge': { floor: .02, distance: .82, byTime: {
+  'chukar-ridge': { floor: .02, distance: .9,
+    // The canyon floor and north faces sit in deep sky shade.
+    ground: { occlusion: .8, crest: .14, floor: .5, cloudCover: .3, cloudStrength: .4, cloudSize: 520 },
+    byTime: {
     dawn: { sunward: .65, sunwardPower: 2.5, pool: pool(.0009, 26, .35, CANYON) },
     morning: { sunward: .35, sunwardPower: 3, pool: pool(.0005, 30, .25, CANYON) },
     noon: { sunward: .15, sunwardPower: 3, pool: pool(.0004, 32, .2, CANYON) },
@@ -195,7 +215,9 @@ export const REGION_ATMOSPHERE: Readonly<Record<string, RegionAtmosphere>> = {
   } },
 };
 
-const PLAINS: RegionAtmosphere = { floor: .1, distance: 1, byTime: {
+const PLAINS: RegionAtmosphere = { floor: .1, distance: 1,
+  ground: { occlusion: .8, crest: .1, floor: .5, cloudCover: 0, cloudStrength: 0, cloudSize: 400 },
+  byTime: {
   dawn: { sunward: .6, sunwardPower: 2.5, pool: pool(0, 1, 0) },
   morning: { sunward: .3, sunwardPower: 3, pool: pool(0, 1, 0) },
   noon: { sunward: .12, sunwardPower: 3, pool: pool(0, 1, 0) },
@@ -241,6 +263,13 @@ export function writeAtmosphere(spec: TodSpec, region: RegionAtmosphere, tod: Ti
   // Mist is a little paler than the far land, never white.
   scratch.setHex(spec.fogColor).lerp(hot.setHex(spec.skyHorizon), .2);
   out[12] = scratch.r * p.tint[0]; out[13] = scratch.g * p.tint[1]; out[14] = scratch.b * p.tint[2]; out[15] = 1 - region.distance;
+}
+
+/** The distance fog's curve in JavaScript: the share of a surface `metres`
+ * away the fog hides at `density`, before the region's cap. */
+export function distanceFog(density: number, metres: number): number {
+  const x = density * metres;
+  return 1 - Math.exp(-x * x / (1 + x));
 }
 
 /** `uplandPooledFog` in JavaScript, for tests and checks: the share of a

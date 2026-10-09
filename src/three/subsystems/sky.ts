@@ -5,7 +5,10 @@ import type { Ctx, Subsystem } from '../engine';
 import { fieldTimeOfDay, type TimeOfDay } from '../palette';
 import { gradeUniforms } from '../grade';
 import { ATMOSPHERE_GLSL, atmosphereUniforms, poolFloor, regionAtmosphere, writeAtmosphere } from '../atmosphere';
-import { buildHorizon, horizonLand, type Horizon } from '../horizon';
+import { buildHorizon, horizonLand, TERRAIN_APRON_M, type Horizon, type HorizonLand } from '../horizon';
+import { buildFarTerrain, type FarTerrain } from '../farTerrain';
+import { bakeSkyOcclusion, setSkyMap, skyOcclusionTexture, writeGroundLight, type SkyOcclusion } from '../groundLight';
+import { VegetationWind } from './vegetationWind';
 import { snapShadowTarget } from '../shadowPlacement';
 import { createSharptailCloudAtlas, SHARPTAIL_CLOUD_ATLAS_GLSL } from './sharptailCloudAtlas';
 
@@ -421,6 +424,9 @@ const RIDGE_SEGS = [1536, 1536, 640, 512] as const;
 /** Share of the region's farthest fog the nearest and farthest region-true
  * horizon bands take (atmosphere.ts `distance` is the whole). */
 const HORIZON_FOG_NEAR = .42;
+/** Cloud-shadow drift, metres a second: calm air to a strong wind. */
+const CLOUD_SPEED_MIN = 3;
+const CLOUD_SPEED_RANGE = 10;
 const HORIZON_FOG_FAR = .9;
 const RIDGE_BOTTOM = -40;
 const TREE_COUNT = 190; // conifers around a serrated ring (~8-10 m spacing)
@@ -645,14 +651,26 @@ export class SkySystem implements Subsystem {
   private readonly ridgeProfile: RidgeProfile;
   /** The core grounds' region-true horizon, or null for the generic ridges. */
   private readonly horizon: Horizon | null;
+  private readonly land: HorizonLand | null;
+  /** The far country with real parallax beyond the terrain apron. */
+  private far: FarTerrain | null = null;
   private readonly quail: boolean;
   private readonly areaId: string;
   /** World height the region's fog pools at (atmosphere.ts). */
   private poolFloor = 0;
+  /** This ground's baked sky occlusion and its texture (groundLight.ts). */
+  private skyBake: SkyOcclusion | null = null;
+  private skyMap: THREE.DataTexture | null = null;
+  /** The hunt's one wind carries the cloud shadows. */
+  private readonly wind = new VegetationWind();
+  private windConnected = false;
+  private groundTod: TimeOfDay = 'morning';
+  private readonly drift = { x: 0, z: 0 };
   private readonly sunDir = new THREE.Vector3();
 
   constructor(private readonly landscape?: LandscapeModel) {
-    this.horizon = landscape ? buildHorizon(landscape.area.id, horizonLand(landscape)) : null;
+    this.land = landscape ? horizonLand(landscape) : null;
+    this.horizon = landscape && this.land ? buildHorizon(landscape.area.id, this.land) : null;
     this.ridgeProfile = this.horizon ? horizonProfile(this.horizon) : ridgeProfileFor(landscape);
     this.quail = landscape?.area.id === 'quail-fields';
     this.areaId = landscape?.area.id ?? '';
@@ -746,6 +764,15 @@ export class SkySystem implements Subsystem {
     const landscape = this.landscape;
     if (landscape) {
       this.poolFloor = poolFloor((x, z) => landscape.heightAtWorld(x, z), landscape.worldBounds(), regionAtmosphere(this.areaId).floor);
+      // Sky occlusion over the property and its terrain apron, baked before
+      // the first frame so every material compiles with this ground's map.
+      const b = landscape.worldBounds(), m = TERRAIN_APRON_M;
+      this.skyBake = bakeSkyOcclusion((x, z) => landscape.heightAtWorld(x, z),
+        { minX: b.minX - m, maxX: b.maxX + m, minZ: b.minZ - m, maxZ: b.maxZ + m });
+      this.skyMap = skyOcclusionTexture(this.skyBake);
+      setSkyMap(this.skyMap);
+      if (this.land) this.far = buildFarTerrain(landscape, this.land, ctx.quality);
+      if (this.far) ctx.scene.add(this.far.mesh);
     }
 
     this.apply(ctx, ctx.timeOfDay);
@@ -881,19 +908,10 @@ export class SkySystem implements Subsystem {
           indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
         }
       }
-      // Built silhouettes (poles, an elevator, a windmill) paint over their
-      // layer's ground; they take its height haze but no treeline haze.
-      const props = this.horizon?.props(l) ?? new Float32Array(0);
-      const strip = positions.length / 3, count = props.length / 3;
-      const all = new Float32Array(positions.length + props.length);
-      all.set(positions); all.set(props, positions.length);
-      const haze = new Float32Array(strip + count), base = new Float32Array(strip + count).fill(1e4);
-      haze.set(hazeAttr); base.set(baseAttr);
-      for (let i = 0; i < count; i++) indices.push(strip + i);
       const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(all, 3));
-      geo.setAttribute('aHaze', new THREE.BufferAttribute(haze, 1));
-      geo.setAttribute('aBase', new THREE.BufferAttribute(base, 1));
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geo.setAttribute('aHaze', new THREE.BufferAttribute(hazeAttr, 1));
+      geo.setAttribute('aBase', new THREE.BufferAttribute(baseAttr, 1));
       geo.setIndex(indices);
       const mat = new THREE.ShaderMaterial({
         vertexShader: RIDGE_VERT,
@@ -988,6 +1006,8 @@ export class SkySystem implements Subsystem {
     fog.color.setHex(spec.fogColor);
     fog.density = spec.fogDensity;
     writeAtmosphere(spec, regionAtmosphere(this.areaId), tod, this.sunDir.set(sx, sy, sz), this.poolFloor);
+    this.groundTod = tod;
+    this.writeGround(spec);
 
     // Aerial perspective: each ridge steps from the near color toward the
     // cool far color, then flattens gently toward the fog with distance.
@@ -1012,7 +1032,8 @@ export class SkySystem implements Subsystem {
         // under nearly as much of the same fog, a little more per band, so
         // they step back lighter and cooler and never stand darker than the
         // land in front of them by more than a rise beyond it would.
-        const layer = this.ridgeProfile.layers[l], depth = l / Math.max(1, this.ridgeMats.length - 1);
+        // A single band is the farthest one.
+        const layer = this.ridgeProfile.layers[l], depth = this.ridgeMats.length > 1 ? l / (this.ridgeMats.length - 1) : 1;
         this.ridgeBase.setHex(layer.land ? spec.landform : spec.ridge);
         if (!layer.land) this.ridgeBase.lerp(this.ridgeFar.setHex(spec.ridgeFar), layer.far);
         (ru.uCol.value as THREE.Color).copy(this.ridgeBase).lerp(this.fogCol, air.distance * (HORIZON_FOG_NEAR + (HORIZON_FOG_FAR - HORIZON_FOG_NEAR) * depth));
@@ -1051,7 +1072,27 @@ export class SkySystem implements Subsystem {
     ctx.renderer.toneMappingExposure = spec.exposure;
   }
 
+  /** The hour's ground light: sky map strength, and cloud shadows from the
+   * region's cover scaled by the hour's sky, fading as the sun drops. */
+  private writeGround(spec = fieldTimeOfDay(this.areaId, this.groundTod)): void {
+    const g = regionAtmosphere(this.areaId).ground;
+    const sunUp = THREE.MathUtils.smoothstep(spec.sunElevation, 1, 16);
+    writeGroundLight(this.skyBake, {
+      occlusion: g.occlusion, crest: g.crest, floor: g.floor, cloudSize: g.cloudSize,
+      cloudCover: g.cloudCover * THREE.MathUtils.clamp(.55 + spec.cloudAmount, .55, 1.2),
+      cloudStrength: g.cloudStrength * (.35 + .65 * sunUp),
+    }, this.drift);
+  }
+
   update(ctx: Ctx): void {
+    // Cloud shadows drift downwind at a speed set by the hunt's wind. The
+    // hunt is ready only once the field is, so connect on the first frame.
+    if (!this.windConnected) { this.wind.connect(ctx); this.windConnected = true; }
+    this.wind.update();
+    const speed = CLOUD_SPEED_MIN + CLOUD_SPEED_RANGE * this.wind.strength.value, toward = this.wind.direction.value;
+    this.drift.x = -toward.x * speed * ctx.time; this.drift.z = -toward.y * speed * ctx.time;
+    this.writeGround();
+
     // The dome and ridge rings ride the camera so the horizon never recedes.
     this.dome.position.copy(ctx.camera.position);
     for (let l = 0; l < this.ridges.length; l++) {
@@ -1078,6 +1119,9 @@ export class SkySystem implements Subsystem {
   }
 
   dispose(ctx: Ctx): void {
+    if (this.far) { ctx.scene.remove(this.far.mesh); this.far.dispose(); this.far = null; }
+    this.skyMap?.dispose();
+    this.skyMap = null;
     this.cloudAtlas?.dispose();
     this.cloudAtlas = undefined;
     ctx.scene.remove(this.dome);

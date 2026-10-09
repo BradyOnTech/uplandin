@@ -95,7 +95,10 @@ export const LOOKS: Record<LookId, LookSettings> = {
         byTime: { evening: { whiteBalance: [1.03, 1, .97] } } },
       // Northern mixed grass under a big sky: the clearest air and a firmer
       // contrast, so the cured grass doesn't wash pale.
-      'sharptail-prairie': { whiteBalance: [1.02, 1, .975], contrast: 1.4, shadowTint: [0, .003, .01] },
+      'sharptail-prairie': { whiteBalance: [1.02, 1, .975], contrast: 1.4, shadowTint: [0, .003, .01],
+        // Evening: warm gold light, cool blue-violet shade, a gentler curve
+        // so the shade side holds its colour instead of sinking to brown.
+        byTime: { evening: { contrast: .7, shadowTint: [-.006, -.002, .007] } } },
       // Southern quail woods: soft, humid light, the red soil kept from orange.
       'quail-fields': { whiteBalance: [1.01, 1, .99], saturation: .88, contrast: .7, highlightTint: [.006, .006, .002] },
       // High desert: dry clarity, and blue shade off the rock.

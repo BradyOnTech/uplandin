@@ -31,7 +31,7 @@ describe('Decorative skyline ordering', () => {
   it.each<[string, Quality]>([['quail-fields', 'high'], ['quail-fields', 'lite'], ['chukar-ridge', 'high'], ['chukar-ridge', 'lite'], ['pheasant-coverts', 'high'], ['pheasant-coverts', 'lite'], ['sharptail-prairie', 'high'], ['sharptail-prairie', 'lite']])('draws the %s %s backdrop behind every opaque world surface', (area, quality) => {
     const f = fixture(area, quality);
     try {
-      expect(f.ridges.length).toBeGreaterThan(1);
+      expect(f.ridges.length).toBeGreaterThanOrEqual(1);
       const ordered = [...f.ridges].reverse(); // authored layers run near to far
       const all = [f.dome, ...ordered, ...f.world];
       expect([...all].sort((a, b) => a.renderOrder - b.renderOrder).map(mesh => mesh.id))
