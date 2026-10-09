@@ -91,9 +91,10 @@ try {
       record.render = await page.evaluate(() => window.__api3d.info());
       summary.rises.push(record);
       const f = record.final;
-      console.log(`  in play max ${f.maxInPlay}, visible max ${f.maxVisible}, birds ${f.birds.length}, ` +
+      console.log(`  in play max ${f.maxInPlay}, inside 40 m max ${f.maxHolding ?? '-'}, visible max ${f.maxVisible}, birds ${f.birds.length}, ` +
         `min separation ${f.minSeparationDeg?.toFixed(1) ?? '-'} deg, shot window ${f.shotWindow ? `min ${f.shotWindow.minDeg.toFixed(1)} / median ${f.shotWindow.medianDeg.toFixed(1)} deg, ${(f.shotWindow.share5Deg * 100).toFixed(0)}% >= 5 deg` : '-'}, sky-backed first second ${(f.skyShareFirstSecond * 100).toFixed(0)}%, ` +
-        `lines ${JSON.stringify(f.lines)}, rise length ${f.riseLengthS?.toFixed(1) ?? '-'} s (settled ${f.riseOverS?.toFixed(1) ?? '-'} s), waves at ${f.waveTimesS.join("/")} s, shots ${f.shots.length} (${f.shots.filter(s => s.hit).length} hit), ${record.render.calls} draws`);
+        `lines ${JSON.stringify(f.lines)}, rise length ${f.riseLengthS?.toFixed(1) ?? '-'} s (settled ${f.riseOverS?.toFixed(1) ?? '-'} s), waves at ${f.waveTimesS.join("/")} s, shots ${f.shots.length} (${f.shots.filter(s => s.hit).length} hit), ` +
+        `exits ${JSON.stringify(f.birds.reduce((n, b) => ({ ...n, [b.exit]: (n[b.exit] ?? 0) + 1 }), {}))}, ${record.render.calls} draws`);
       if (errors.length) console.error(`  page errors: ${errors.join(' | ')}`);
       await page.close();
     }
@@ -196,7 +197,7 @@ function runHuntToPoint(maxTicks, wantSpecies, shoot) {
 
   function installReview(hunter, origin) {
     const tracks = new Map();
-    let tick = 0, maxInPlay = 0, maxVisible = 0, minSeparation = Infinity, riseOver = null, envelopeClear = null;
+    let tick = 0, maxInPlay = 0, maxVisible = 0, maxHolding = 0, minSeparation = Infinity, riseOver = null, envelopeClear = null;
     // Shooting hunter (--shoot): a double, fired and reloaded on a fixed rhythm.
     const RELOAD_TICKS = Math.round((0.55 + 2 * 0.38) * 30);
     const gun = { shells: 2, capacity: 2, reloading: false };
@@ -287,7 +288,8 @@ function runHuntToPoint(maxTicks, wantSpecies, shoot) {
       if (riseOver === null && tick > 3 && m.inPlay === 0 && m.queued === 0) riseOver = tick / 30;
       // The rise's length for the hunter: until nothing is queued and no live
       // bird is still inside effective range (40 m) of where he stands.
-      const holding = m.sky.birds.some(b => (b.status === 'flying' || b.status === 'waiting') && Math.hypot(b.x - hunter.x, b.z - hunter.z) <= 40);
+      const holding = m.sky.birds.filter(b => (b.status === 'flying' || b.status === 'waiting') && Math.hypot(b.x - hunter.x, b.z - hunter.z) <= 40).length;
+      maxHolding = Math.max(maxHolding, holding);
       if (holding || m.queued > 0) envelopeClear = null; else envelopeClear ??= tick / 30;
       for (const b of m.sky.birds) {
         if (tracks.has(b.simId)) continue;
@@ -308,7 +310,7 @@ function runHuntToPoint(maxTicks, wantSpecies, shoot) {
         if (track.gone || m.sky.birds.some(b => b.simId === track.simId)) continue;
         track.gone = tick / 30;
         const l = track.last;
-        track.exit = l.status === 'falling' ? 'fell' : l.status === 'departing' ? 'departed'
+        track.exit = l.status === 'falling' ? 'fell' : l.status === 'departing' ? (l.heightM < 0.6 ? 'set-down-in-sight' : 'left-the-screen')
           : l.heightM < 0.6 ? (l.target ? 'landed-in-target-cover' : 'put-down') : l.rangeM > 75 ? 'range-out' : 'vanished';
       }
       return m;
@@ -328,7 +330,7 @@ function runHuntToPoint(maxTicks, wantSpecies, shoot) {
         const lines = {};
         for (const b of birds) if (b.line) lines[b.line] = (lines[b.line] ?? 0) + 1;
         const shot = [...shotSeparations].sort((a, b) => a - b);
-        return { maxInPlay, maxVisible, minSeparationDeg: Number.isFinite(minSeparation) ? minSeparation : null,
+        return { maxInPlay, maxVisible, maxHolding, minSeparationDeg: Number.isFinite(minSeparation) ? minSeparation : null,
           riseLengthS: envelopeClear, waveTimesS: [...waves.values()].map(w => +(w.tick / 30).toFixed(2)), shots,
           shotWindow: shot.length ? { minDeg: shot[0], medianDeg: shot[shot.length >> 1], share5Deg: shot.filter(d => d >= 5).length / shot.length, ticks: shot.length } : null,
           skyShareFirstSecond: first.length ? first.filter(Boolean).length / first.length : 0,
