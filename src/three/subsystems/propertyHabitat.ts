@@ -389,7 +389,9 @@ export class PropertyHabitatSystem implements Subsystem {
 
   collisionCircles(): readonly { x: number; z: number; radius: number }[] { return this.obstacles; }
 
-  constructor(private readonly landscape: LandscapeModel) {}
+  /** kitLowCover: the shared ground kit draws this ground's shrubs and
+   * forbs from its cover map, so only trees and stones are placed here. */
+  constructor(private readonly landscape: LandscapeModel, private readonly options: { kitLowCover?: boolean } = {}) {}
 
   init(ctx: Ctx): void {
     const doctrine = huntingDoctrine(this.landscape.area.id);
@@ -462,13 +464,13 @@ export class PropertyHabitatSystem implements Subsystem {
           const yaw = rng() * Math.PI * 2;
           addHero('trunk', x, y, height, yaw);
           addHero('canopy', x, y, height, yaw);
-          addHero('shrub', x + 5, y + 8, .8 + rng() * .25, yaw);
+          if (!this.options.kitLowCover) addHero('shrub', x + 5, y + 8, .8 + rng() * .25, yaw);
         }
       }
-      for (const item of sharptailAccentPlacements(ctx.quality === 'lite')) {
+      if (!this.options.kitLowCover) for (const item of sharptailAccentPlacements(ctx.quality === 'lite')) {
         addHero(item.kind, item.x, item.y, item.scale, item.yaw, 0, item.color);
       }
-      for (const item of sharptailDrawBrushPlacements(ctx.quality === 'lite')) {
+      if (!this.options.kitLowCover) for (const item of sharptailDrawBrushPlacements(ctx.quality === 'lite')) {
         // Same shrub geometry/material/batch as the interior. Exterior roots
         // use the actual coarse horizon triangles, whose chords can differ
         // from analytic heights by a metre. Interior placement stays exact.
@@ -539,7 +541,7 @@ export class PropertyHabitatSystem implements Subsystem {
           if (cursor < chance) { pick = kind; break; }
           cursor -= chance;
         }
-        if (!pick) continue;
+        if (!pick || (this.options.kitLowCover && (pick === 'shrub' || pick === 'reed'))) continue;
         const add = (kind: HabitatKind, size: number, yOffset = 0): void => {
           const palette = profile.colors[kind];
           const tint = palette[Math.floor(rng() * palette.length)];
