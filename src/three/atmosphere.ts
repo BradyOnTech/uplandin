@@ -169,11 +169,11 @@ export const REGION_ATMOSPHERE: Readonly<Record<string, RegionAtmosphere>> = {
   // Warm, dusty Red Plains air with haze lying in the creek bottom: a thin
   // layer on the lowest ground, not a sheet over the rolling uplands.
   'quail-fields': { floor: .03, distance: .82, byTime: {
-    dawn: { sunward: .7, sunwardPower: 2, pool: pool(.0014, 4, .5, MIST) },
+    dawn: { sunward: .7, sunwardPower: 2, pool: pool(.001, 4, .35, MIST) },
     morning: { sunward: .45, sunwardPower: 2.5, pool: pool(.0005, 4, .3, DUST) },
     noon: { sunward: .25, sunwardPower: 3, pool: pool(.0003, 4, .2, DUST) },
     evening: { sunward: .75, sunwardPower: 2, pool: pool(.0005, 4, .3, DUST) },
-    lastlight: { sunward: .6, sunwardPower: 2, pool: pool(.001, 4, .45, MIST) },
+    lastlight: { sunward: .6, sunwardPower: 2, pool: pool(.0008, 4, .35, MIST) },
   } },
   // Prairie potholes: dawn fog lies in the sloughs and burns off by mid
   // morning; cold blue air the rest of the day.
@@ -191,7 +191,7 @@ export const REGION_ATMOSPHERE: Readonly<Record<string, RegionAtmosphere>> = {
     morning: { sunward: .35, sunwardPower: 3, pool: pool(.0005, 30, .25, CANYON) },
     noon: { sunward: .15, sunwardPower: 3, pool: pool(.0004, 32, .2, CANYON) },
     evening: { sunward: .7, sunwardPower: 2.5, pool: pool(.0005, 30, .25, CANYON) },
-    lastlight: { sunward: .55, sunwardPower: 2, pool: pool(.0009, 26, .4, CANYON) },
+    lastlight: { sunward: .55, sunwardPower: 2, pool: pool(.0006, 26, .28, CANYON) },
   } },
 };
 

@@ -285,7 +285,8 @@ function section(land: HorizonLand): Horizon {
       center: wrap(i * 360 / count + rng() * 360 / count * .6 + rng() * 360),
       width: width[0] + rng() * (width[1] - width[0]), height: height[0] + rng() * (height[1] - height[0]), tree,
     }));
-  const groves = [belts(2, [4, 8], [12, 15], 1.1), belts(4, [2.5, 5], [9, 12], .7), belts(5, [1.2, 2.5], [6, 8], .45)];
+  // Long and low, as shelterbelts are: a quarter mile of trees ten metres up.
+  const groves = [belts(2, [9, 16], [8, 10], 1.1), belts(4, [5, 10], [7, 9], .7), belts(5, [2.5, 5], [5, 7], .45)];
   // Section roads run on the grid: the pole line follows one, off to a side.
   const road = Math.floor(rng() * 4) * 90, roadDistance = 360;
   const elevator = wrap(rng() * 360);

@@ -627,6 +627,9 @@ const PHEASANT_TOD = Object.fromEntries((Object.keys(TOD) as TimeOfDay[]).map((t
     skyTop: 0x3b536b, skyMid: 0x7d8e9f, skyHorizon: 0xbca39d,
     fogColor: 0x7f8890, fogDensity: .0019, ambientGround: 0x55575b,
     ridge: 0x3a3f45, ridgeFar: 0x737d8a, landform: 0x3f4447,
+    // Last light on the potholes leans cold blue-grey rather than violet.
+    ambientSky: 0x7d8aa6, ambientIntensity: 1.25, groundCoolTint: 0x56606e, groundCoolK: .3,
+    grassHaze: 0x4f5664, grassShadow: 0x9aa2b8,
     floraWarm: .13, floraCool: .7, exposure: 1.04,
   }),
 }])) as Record<TimeOfDay, TodSpec>;
@@ -683,9 +686,9 @@ const SHARPTAIL_TOD = patchedTod({
     floraWarm: .30, floraCool: .48, exposure: 1.1 },
   lastlight: { skyTop: 0x283e61, skyMid: 0x687d9c, skyHorizon: 0xb9b6c5,
     fogColor: 0x7f8b98, fogDensity: .0021, sunColor: 0xecc4a7, sunIntensity: .85,
-    fillColor: 0x8fa7c3, fillIntensity: .24, ambientSky: 0x7f94b1, ambientGround: 0x515b62, ambientIntensity: .66,
+    fillColor: 0x8fa7c3, fillIntensity: .24, ambientSky: 0x7f94b1, ambientGround: 0x515b62, ambientIntensity: .8,
     ridge: 0x414f5c, ridgeFar: 0x76889a, landform: 0x4d5a5a,
-    hotStrength: .22, glowStrength: .28, cloudLit: 0xaaa9bb, cloudShade: 0x60768f, cloudAmount: .16, exposure: 1.04 },
+    hotStrength: .22, glowStrength: .28, cloudLit: 0xaaa9bb, cloudShade: 0x60768f, cloudAmount: .16, exposure: 1.14 },
 });
 
 // Timber and wet bottoms are overcast country: blue-green fill preserves
