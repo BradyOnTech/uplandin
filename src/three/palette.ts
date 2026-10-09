@@ -563,29 +563,41 @@ const BASE_QUAIL_TOD: Record<TimeOfDay, TodSpec> = {
 };
 // Keep the accepted Chukar light independent of subsequent Southern Plains
 // art direction: its original base below is intentionally unchanged.
+// Distance colours (fogColor) are mid-tone dusty land, darker than the
+// cream horizon above them, so far ground never whitens into the sky: the
+// creek timber reads olive, the far breaks a dusty rose-tan, not blue.
 const QUAIL_TOD: Record<TimeOfDay, TodSpec> = {
   ...BASE_QUAIL_TOD,
+  dawn: { ...BASE_QUAIL_TOD.dawn, fogDensity: .002,
+    fogColor: 0xa9a3a0, ridge: 0x5a5a52, ridgeFar: 0xa49a98, landform: 0x6d6450 },
   morning: { ...BASE_QUAIL_TOD.morning,
     skyTop: 0x567f92, skyMid: 0xb5c6c7, skyHorizon: 0xe9d6b4,
-    fogColor: 0xc6c3b0, ridge: 0x626d4e, ridgeFar: 0xa7af99, landform: 0x65724c,
+    fogColor: 0xa69f88, fogDensity: .0014, ridge: 0x535b3c, ridgeFar: 0xa89b88, landform: 0x77704f,
     cloudAmount: .34, cloudLit: 0xfff1d7, cloudShade: 0xb4bac0 },
   noon: { ...BASE_QUAIL_TOD.noon,
     skyTop: 0x487b97, skyMid: 0xa4c1cc, skyHorizon: 0xe6d9bd,
-    fogColor: 0xc4c8b8, ridge: 0x5b6c50, ridgeFar: 0xa4b4a2, landform: 0x65764d,
+    fogColor: 0xa5a38e, fogDensity: .0013, ridge: 0x525d3d, ridgeFar: 0xa59f8c, landform: 0x767250,
     cloudAmount: .38, cloudLit: 0xfff6e5, cloudShade: 0xb4bec6 },
+  evening: { ...BASE_QUAIL_TOD.evening, fogDensity: .0016,
+    fogColor: 0x988c84, ridge: 0x5a5444, ridgeFar: 0xa8958c, landform: 0x6f6146 },
+  lastlight: { ...BASE_QUAIL_TOD.lastlight, fogDensity: .0022,
+    fogColor: 0x7a7682, ridge: 0x44414a, ridgeFar: 0x827c8a, landform: 0x4f4a4c },
 };
 export function quailTimeOfDay(tod: TimeOfDay): TodSpec { return QUAIL_TOD[tod]; }
 
+// Canyon walls: the near rim a warm basalt brown, each wall beyond a cooler
+// blue band; the haze between them a clear canyon blue, never milk.
 const CHUKAR_TOD = Object.fromEntries((Object.keys(BASE_QUAIL_TOD) as TimeOfDay[]).map(tod=>[tod,{
   ...BASE_QUAIL_TOD[tod],
   ...(tod==='morning'||tod==='noon'?{
     skyTop:0x416c87,skyMid:0x94b1be,skyHorizon:0xd6d7c8,
-    fogColor:0xb9c5ca,fogDensity:.00095,sunColor:0xffead0,
+    fogColor:0x99aab5,fogDensity:.00095,sunColor:0xffead0,
     sunAzimuth:tod==='morning'?45:28,fillColor:0xb1c7d4,fillIntensity:.44,ambientGround:0x948367,ambientIntensity:1.04,
     exposure:1.04,
-    ridge:0x536a77,ridgeFar:0x93acbc,landform:0x80796b,cloudAmount:.23,hotStrength:.26,glowStrength:.34,
+    ridge:0x6c675d,ridgeFar:0x8fa6b8,landform:0x80796b,cloudAmount:.23,hotStrength:.26,glowStrength:.34,
     floraWarm:.24,floraCool:.35,
-  }:{fogDensity:.0018}),
+  }:tod==='lastlight'?{fogDensity:.0015,fogColor:0x878c9c,ridge:0x4a4248,ridgeFar:0x7a8196}
+    :{fogDensity:.0012,fogColor:0x929aa6,ridge:0x6a5a52,ridgeFar:0x8b98ad}),
 }])) as Record<TimeOfDay,TodSpec>;
 
 // Prairie pothole light: a cooler sky and a low, damp horizon keep the
@@ -596,21 +608,28 @@ const PHEASANT_TOD = Object.fromEntries((Object.keys(TOD) as TimeOfDay[]).map((t
     // Clear October air over the potholes: a deeper sky, a longer view and
     // a firmer sun so the field patchwork and windbreaks read at distance.
     skyTop: 0x41708e, skyMid: 0x9bb6bf, skyHorizon: 0xd9d0b6,
-    fogColor: 0xb7c3c2, fogDensity: tod === 'noon' ? .0012 : .00142,
+    // The far section country is a cold blue-grey band and the shelterbelts
+    // dark walls on it, darker than the pale horizon sky above them.
+    fogColor: 0x95a3a6, fogDensity: tod === 'noon' ? .0012 : .00142,
     sunColor: 0xffe6c2, sunIntensity: tod === 'noon' ? 3.0 : 2.9,
     fillColor: 0xaac4d1, fillIntensity: .24,
     ambientSky: 0xb1c5cf, ambientGround: 0x747d69, ambientIntensity: .78,
-    ridge: 0x53665b, ridgeFar: 0x95a9aa, landform: 0x75816d,
+    ridge: 0x46554d, ridgeFar: 0x8b9ea4, landform: 0x56634f,
     floraWarm: .23, floraCool: .55, exposure: 1.0,
   } : tod === 'dawn' || tod === 'evening' ? {
     skyTop: 0x536d82, skyMid: 0xa7afb0, skyHorizon: 0xd7b69b,
-    fogColor: 0xa9b2b2, fogDensity: .0018, fillColor: 0x9cb6c9,
+    fogColor: 0x8b9094, fogDensity: .0013, fillColor: 0x9cb6c9,
+    ridge: 0x4a4f4c, ridgeFar: 0x8a939b, landform: 0x50574d,
     sunColor: 0xffdab0, sunIntensity: 2.7,
     fillIntensity: .40, ambientSky: 0xabb8c3, ambientGround: 0x666d64, ambientIntensity: .96,
     floraWarm: .23, floraCool: .55, exposure: 1.01,
   } : {
     skyTop: 0x3b536b, skyMid: 0x7d8e9f, skyHorizon: 0xbca39d,
-    fogColor: 0x919ca2, fogDensity: .00255, ambientGround: 0x55575b,
+    fogColor: 0x7f8890, fogDensity: .0019, ambientGround: 0x55575b,
+    ridge: 0x3a3f45, ridgeFar: 0x737d8a, landform: 0x3f4447,
+    // Last light on the potholes leans cold blue-grey rather than violet.
+    ambientSky: 0x7d8aa6, ambientIntensity: 1.25, groundCoolTint: 0x56606e, groundCoolK: .3,
+    grassHaze: 0x4f5664, grassShadow: 0x9aa2b8,
     floraWarm: .13, floraCool: .7, exposure: 1.04,
   }),
 }])) as Record<TimeOfDay, TodSpec>;
@@ -630,38 +649,46 @@ function patchedTod(patches: Partial<Record<TimeOfDay, Partial<TodSpec>>>): Reco
 }
 
 // The open prairie is broad and wind-polished: cool air keeps the long view
-// silver while the low horizon retains the straw field under it.
+// silver while the low horizon retains the straw field under it. The swells
+// step back in blue-grey (ridge to ridgeFar), every band darker than the
+// sky's horizon so the layers read against it. The evening is warm gold
+// light on straw, not the generic ember key, which turned the cured grass
+// a muddy oxblood.
 const SHARPTAIL_TOD = patchedTod({
   dawn: { skyTop: 0x4d627e, skyMid: 0x9caeba, skyHorizon: 0xe5c4b2,
     sunColor: 0xffdfbb, sunIntensity: 2.8, fillColor: 0xabc0d2, fillIntensity: .38,
     ambientSky: 0xaabecf, ambientGround: 0x707367, ambientIntensity: .78,
-    fogColor: 0xb8c2c5, fogDensity: .0016, ridge: 0x596866, ridgeFar: 0xa6b5b7, landform: 0x76816b,
+    fogColor: 0xa3aeb4, fogDensity: .0016, ridge: 0x5a6566, ridgeFar: 0x98a6b0, landform: 0x6d7563,
     hotStrength: .30, glowStrength: .40, cloudAmount: .18, exposure: 1.02 },
   morning: { skyTop: 0x4c7294, skyMid: 0xa5bfce, skyHorizon: 0xdce4df,
-    fogColor: 0xb8c9cc, fogDensity: .00125, sunAzimuth: 132,
+    fogColor: 0x98aab0, fogDensity: .00125, sunAzimuth: 132,
     sunColor: 0xfff2df, sunIntensity: 2.85, fillColor: 0xb8c8d2, fillIntensity: .36,
     ambientSky: 0xb8cbd8, ambientGround: 0x79816d, ambientIntensity: .63,
-    ridge: 0x6d7c6d, ridgeFar: 0xacbdba, landform: 0x7f8a6c,
+    ridge: 0x66745f, ridgeFar: 0x96aab3, landform: 0x7a8466,
     hotStrength: .08, glowStrength: .24, cloudAmount: .20,
     floraWarm: .24, floraCool: .42, exposure: 1.0 },
   noon: { skyTop: 0x416d95, skyMid: 0x98bed5, skyHorizon: 0xdce8e5,
-    fogColor: 0xb7cccf, fogDensity: .0011, sunAzimuth: 128,
+    fogColor: 0x98adb3, fogDensity: .0011, sunAzimuth: 128,
     sunColor: 0xfff4e7, sunIntensity: 3.0, fillColor: 0xb4c9d5, fillIntensity: .26,
     ambientSky: 0xb7cedc, ambientGround: 0x79826e, ambientIntensity: .64,
-    ridge: 0x687e73, ridgeFar: 0xa8bfbd, landform: 0x798969,
+    ridge: 0x637565, ridgeFar: 0x95acb5, landform: 0x768465,
     hotStrength: .05, glowStrength: .19, cloudAmount: .20,
     floraWarm: .32, floraCool: .48, exposure: .96 },
   evening: { skyTop: 0x4c6383, skyMid: 0xabbac7, skyHorizon: 0xe3bfab,
-    fogColor: 0xb0bec3, fogDensity: .00165, fillColor: 0xa3bdd1, fillIntensity: .42,
-    ambientSky: 0x9fb5cc, ambientGround: 0x6b7066, ambientIntensity: .82,
-    ridge: 0x626c71, ridgeFar: 0xa4b3bd, landform: 0x727969,
+    sunColor: 0xffcf9e, sunIntensity: 3.1,
+    fogColor: 0x91969e, fogDensity: .00165, fillColor: 0xa3bdd1, fillIntensity: .42,
+    ambientSky: 0x9fb5cc, ambientGround: 0x6b7066, ambientIntensity: .9,
+    ridge: 0x5f625e, ridgeFar: 0x949ca8, landform: 0x6c6c5c,
     hotStrength: .34, glowStrength: .40, cloudAmount: .18,
-    floraWarm: .30, floraCool: .48, exposure: 1.03 },
+    grassHaze: 0xa8a092, grassShadow: 0xa6adc6,
+    groundSunTint: 0xf3c590, groundSunK: .36, groundSunEmit: .12,
+    groundCoolTint: 0x7f93ad, groundCoolK: .1,
+    floraWarm: .30, floraCool: .48, exposure: 1.1 },
   lastlight: { skyTop: 0x283e61, skyMid: 0x687d9c, skyHorizon: 0xb9b6c5,
-    fogColor: 0x909faa, fogDensity: .0021, sunColor: 0xecc4a7, sunIntensity: .85,
-    fillColor: 0x8fa7c3, fillIntensity: .24, ambientSky: 0x7f94b1, ambientGround: 0x515b62, ambientIntensity: .66,
-    ridge: 0x455664, ridgeFar: 0x879da9, landform: 0x546361,
-    hotStrength: .22, glowStrength: .28, cloudLit: 0xaaa9bb, cloudShade: 0x60768f, cloudAmount: .16, exposure: 1.04 },
+    fogColor: 0x7f8b98, fogDensity: .0021, sunColor: 0xecc4a7, sunIntensity: .85,
+    fillColor: 0x8fa7c3, fillIntensity: .24, ambientSky: 0x7f94b1, ambientGround: 0x515b62, ambientIntensity: .8,
+    ridge: 0x414f5c, ridgeFar: 0x76889a, landform: 0x4d5a5a,
+    hotStrength: .22, glowStrength: .28, cloudLit: 0xaaa9bb, cloudShade: 0x60768f, cloudAmount: .16, exposure: 1.14 },
 });
 
 // Timber and wet bottoms are overcast country: blue-green fill preserves

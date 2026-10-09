@@ -3,6 +3,8 @@ import { mulberry32 } from '../game/math';
 import type { TimeOfDay } from './palette';
 import { FrameTelemetry } from './frameTelemetry';
 import { sampleVertexColorsInside } from './centroidColors';
+import { installGrade, setGradeViewport } from './grade';
+import { installAtmosphere } from './atmosphere';
 
 export type Quality = 'high' | 'lite';
 export interface Ctx {
@@ -69,6 +71,11 @@ export class Engine {
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: quality === 'high' ? 'high-performance' : 'low-power' });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    // ACES Filmic and then the field's colour grade, in every material
+    // (grade.ts), and fog driven from the sky (atmosphere.ts): both tiers
+    // render the same colour. Both patch shared chunks before any compile.
+    installGrade(renderer);
+    installAtmosphere();
     renderer.shadowMap.enabled = true;
     // Filter both tiers: an unfiltered 1024 map turns a close dog's shadow
     // into large squares. Lite still uses one quarter of the shadow-map
@@ -94,10 +101,10 @@ export class Engine {
       previousWidth = w; previousHeight = h; previousRatio = ratio;
       renderer.setPixelRatio(ratio);
       renderer.setSize(w, h, false);
-      if (this.pipeline) {
-        renderer.getDrawingBufferSize(this.drawingSize);
-        this.pipeline.setSize(this.drawingSize.x, this.drawingSize.y);
-      }
+      // three's drawing-buffer size, for the grade's vignette.
+      this.drawingSize.set(w * ratio, h * ratio).floor();
+      setGradeViewport(this.drawingSize.x, this.drawingSize.y);
+      this.pipeline?.setSize(this.drawingSize.x, this.drawingSize.y);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       // Resizing clears the drawing buffer. A rotated, paused phone must

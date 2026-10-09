@@ -1,5 +1,5 @@
 import { synthesizePheasantLaunch, PHEASANT_AUDIO_RATE, type PheasantLaunchVoice } from './three/pheasantFlushAudio';
-import { synthesizeBirdLaunch, BIRD_FLUSH_AUDIO_RATE, type BirdLaunchVoice } from './three/speciesFlushAudio';
+import { synthesizeBirdLaunch, synthesizeCoveyThunder, BIRD_FLUSH_AUDIO_RATE, type BirdLaunchVoice } from './three/speciesFlushAudio';
 import { fieldInsectSamples, fieldSoundscape, fieldWindSamples, HOUR_INSECTS, HOUR_WIND } from './three/fieldSoundscape';
 import type { TimeOfDay } from './three/palette';
 import type { WindStrength } from './game/wind';
@@ -316,6 +316,15 @@ export function playBirdFlush(species: string, distanceM: number,
   };
   coveyVoices.add(entry);
   return handle;
+}
+
+/** The birds a covey holds back for later waves are heard at the flush, from
+ * their cover, as one wing thunder sized to how many there are. */
+export function playCoveyThunder(species: string, count: number, distanceM: number,
+  source: SoundDirection, voice: BirdLaunchVoice = {}): void {
+  const c = ready();
+  if (!c || count <= 0) return;
+  playSpatialLaunch(c, synthesizeCoveyThunder(species, count, voice), BIRD_FLUSH_AUDIO_RATE, distanceM, source);
 }
 
 interface LaunchCall { samples: Float32Array; rate: number; gain: number; delay: number }

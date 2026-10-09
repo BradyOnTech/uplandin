@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { SPECIES } from '../src/game/species';
-import { BIRD_FLUSH_AUDIO_RATE, synthesizeBirdLaunch } from '../src/three/speciesFlushAudio';
+import { BIRD_FLUSH_AUDIO_RATE, synthesizeBirdLaunch, synthesizeCoveyThunder } from '../src/three/speciesFlushAudio';
 
 afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); });
 
@@ -77,4 +77,18 @@ it('bounds covey panners, favors nearer actual launches and releases voices on f
   audio.setAudioEnabled(true);
   const resumed = audio.playBirdFlush('chukar', 4, { x: 0, y: 0, z: -4 })!;
   expect(resumed.active).toBe(true); resumed.stop();
+});
+
+it('sizes the covey thunder to the birds held back: a big covey is louder and longer, never clipped', () => {
+  const voice = { seed: 9, flapRate: 18 };
+  const rms = (data: Float32Array) => Math.sqrt(data.reduce((sum, x) => sum + x * x, 0) / Math.max(1, data.length));
+  const five = synthesizeCoveyThunder('bobwhite', 5, voice), twelve = synthesizeCoveyThunder('bobwhite', 12, voice);
+  expect(synthesizeCoveyThunder('bobwhite', 12, voice)).toEqual(twelve);
+  expect(twelve.flight.length).toBeGreaterThan(five.flight.length);
+  expect(rms(twelve.flight)).toBeGreaterThan(rms(five.flight) * 1.2);
+  for (const data of [five.cover, five.flight, twelve.cover, twelve.flight]) {
+    expect(data.every(x => Number.isFinite(x) && Math.abs(x) < 1)).toBe(true);
+    expect(Math.abs(data.at(-1)!)).toBeLessThan(.01);
+  }
+  expect(synthesizeCoveyThunder('bobwhite', 0, voice).flight).toHaveLength(0);
 });
