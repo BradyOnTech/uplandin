@@ -40,3 +40,6 @@ docs/3d/quail-vegetation-evidence/
 docs/3d/quail-world-renders/
 docs/3d/shotgun-review/
 docs/3d/world-ground-review/
+
+# Agent worktrees for parallel campaign lanes.
+.claude/worktrees/

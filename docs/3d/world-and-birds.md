@@ -12,6 +12,8 @@ Baseline postcards (before any campaign work) are captured with `tools3d/postcar
 - **Quail Fields is the Rolling Red Plains** of western Oklahoma and north Texas: red sandy loam and gullied red clay, little bluestem curing copper, sand plum thickets, shinnery oak and sand sage mottes, mesquite, and hackberry, elm and cottonwood along one creek.
 - **Sound stays synthesised.** No recorded or third-party audio enters the public repo.
 - **Landform tests become invariants.** Tests that pin exact heights are replaced by rules that always hold: drops sit on the ground, routes are walkable, cover is reachable, no bird or retrieve sits inside rock, and the survey map agrees with the world.
+- **Bigger grounds made of recognisable hunt areas (Brady, 2026-10-08).** Hunting the same spots with birds in the same places makes the game monotonous. Each core ground grows to roughly two to three times its area (about a full section or more, around 2,000–2,400 by 1,400–1,600 yd) and is built from 6–10 named hunt areas, each with its own landform, cover and landmark, recognisable from across the property and named on the survey map and in the HUD as you enter it. Each ground has three or four entries spread around its edge.
+- **Birds live where the land says, not around the truck.** Today coveys are placed in rings out from the chosen truck, the first always 72–180 yd ahead. Instead, coveys are placed in the hunt areas that suit them: roost, feed, loaf, escape and water cover, weighted by hour, season, weather and wind, and seeded per hunt so two hunts on the same ground find birds in different places. Every entry still has birds within a reasonable walk, so the first contact never becomes a long dry spell, but nothing is staged in front of the truck.
 - **Chukar climbing costs something, but is not punishing.** Slope slows the hunter and spends stamina; rim breaks and cattle trails are the easy routes.
 - **Not touched:** dog retirement, the GSP point tail, new grounds, new species, new breeds.
 
@@ -50,6 +52,7 @@ A canyon you climb. Stacked bands of columnar basalt rimrock, each with a grey t
 - `tools3d/postcards.sh <label>` captures the fixed postcard set (4 grounds × 5 views × High morning, Lightweight morning, High evening) and `tools3d/contact-sheet.py <label>` builds one sheet per ground. Lanes judge their work against the baseline sheets and the targets above, and look at the images.
 - Captures pass `--uncapped`, because a sleeping display stops headless frames.
 - Every commit leaves tests green and is a playable build.
+- Everything placed in the world (vegetation, trees, props, far terrain, bird sites) is derived from the landform, the cover data and each ground's hunt areas, never hand-placed against today's coordinates, so the bigger rebuilt grounds dress themselves.
 
 ## Lanes
 
@@ -57,5 +60,5 @@ A canyon you climb. Stacked bands of columnar basalt rimrock, each with a grey t
 | --- | --- | --- |
 | Birds | The rise (waves, one flight system, line variety, honest exits), then falls and marks, identity, ground birds | `src/three/subsystems/birds.ts`, `src/three/quailFlight.ts`, flight and bird presentation files, `src/game/birds.ts`, `src/game/species.ts`, bird tests |
 | Light | Each ground's own light on every screen: grade in materials, authored sky and fog, far terrain instead of mountain cards, sky occlusion, cloud shadows; later weather and season | `src/three/looks.ts`, `postEffects.ts`, `palette.ts`, `subsystems/sky.ts`, engine tone mapping, terrain shader hooks for light |
-| Landform | Country you can read: feature-authored landforms, Chukar first, rimrock, habitat from the land | `src/game/landscape.ts`, `src/game/*Landscape.ts`, landform tooling, rim and talus kits |
+| Landform | Bigger grounds of named hunt areas with feature-authored landforms (Chukar first, then Sharptail, Quail, Cattail), rimrock, habitat and bird placement from the land, the in-repo hunt lab that proves pacing | `src/game/landscape.ts`, `src/game/*Landscape.ts`, `src/game/areas.ts` layouts, `src/game/areaEncounters.ts` placement, landform tooling, rim and talus kits, Chukar vegetation |
 | Cover | Shape-first cover: one bake-off, one shared ground kit, Sharptail, Quail and Cattail rollouts | `src/three/subsystems/grass.ts`, per-ground vegetation subsystems, `src/three/landscapeVisuals.ts`, tree and shrub kits |
