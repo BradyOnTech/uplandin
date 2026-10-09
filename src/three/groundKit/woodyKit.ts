@@ -19,9 +19,9 @@ export type WoodySpecies =
 export type WoodyDetail = 'high' | 'lite' | 'far';
 
 export interface WoodyAsset {
-  /** Unit-height geometry: position, normal, color. */
+  /** Geometry at unit height for the species' tallest loaded detail: position, normal, color. */
   geometry: THREE.BufferGeometry;
-  /** Authored height, metres. */
+  /** Authored height of that tallest detail, metres. */
   height: number;
 }
 
@@ -41,6 +41,16 @@ export async function loadWoodyKit(species: readonly WoodySpecies[], details: re
       if (result.status === 'rejected') throw result.reason;
       kit.set(woodyKey(jobs[i].name, jobs[i].detail), flattenWoody(result.value.scene));
     });
+    // One species' details share a scale: a far mass without the twigs that
+    // top the near detail stays as low as the near detail's foliage.
+    for (const name of species) {
+      const assets = details.map(detail => kit.get(woodyKey(name, detail))!);
+      const reference = Math.max(...assets.map(asset => asset.height));
+      for (const asset of assets) {
+        asset.geometry.scale(asset.height / reference, asset.height / reference, asset.height / reference);
+        asset.height = reference;
+      }
+    }
     return kit;
   } catch (error) {
     for (const asset of kit.values()) asset.geometry.dispose();
@@ -61,7 +71,7 @@ export function flattenWoody(scene: THREE.Object3D): WoodyAsset {
   const parts: { mesh: THREE.Mesh; foliage: boolean }[] = [];
   scene.traverse(node => { if (node instanceof THREE.Mesh) parts.push({ mesh: node, foliage: /foliage/.test(node.name) || /foliage/.test(node.parent?.name ?? '') }); });
   let height = 0;
-  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3(), r = new THREE.Vector3();
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3(), r = new THREE.Vector3(), facet = new THREE.Vector3();
   for (const { mesh, foliage } of parts) {
     const source = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
     const geometry = source.index ? source.toNonIndexed() : source;
@@ -80,7 +90,11 @@ export function flattenWoody(scene: THREE.Object3D): WoodyAsset {
         height = Math.max(height, v.y);
         if (foliage) {
           r.subVectors(v, centre); r.y *= 1.6;
-          r.normalize().lerp(n, 1 - FOLIAGE_ROUNDNESS).normalize();
+          r.normalize();
+          // A loose leaf card has no inside; its facet always faces out.
+          facet.copy(n);
+          if (facet.dot(r) < 0) facet.negate();
+          r.lerp(facet, 1 - FOLIAGE_ROUNDNESS).normalize();
           normals.push(r.x, r.y, r.z);
         } else normals.push(n.x, n.y, n.z);
         const j = i + k;
