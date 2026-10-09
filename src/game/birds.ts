@@ -253,24 +253,37 @@ export function spawnBirds(cfg: SpawnConfig, rng: RNG = Math.random): Bird[] {
 }
 
 /**
+ * In the continuous field a covey whose runners have scattered rises in
+ * pieces: the bird that breaks takes up the covey-mates within this many
+ * property yards of it, chained bird to bird. A chukar that ran forty yards
+ * up the slope holds where it stopped and flushes on its own later.
+ */
+export const COVEY_BOND_YD = 25;
+
+/**
  * Flush a species-appropriate group. Covey birds launch together; solitary
  * birds such as pheasant, grouse, and woodcock only launch the trigger even
  * when setup happened to place a nearby pair in the same authored pocket.
+ * `bondYd` limits a covey to the members chained to the trigger within that
+ * reach (COVEY_BOND_YD in the continuous field); the rest stay hidden.
  * Returns the birds that took wing (always includes the trigger).
  */
-export function flushCovey(birds: Bird[], birdId: number): Bird[] {
+export function flushCovey(birds: Bird[], birdId: number, bondYd = Infinity): Bird[] {
   const trigger = birds.find((b) => b.id === birdId);
   if (!trigger) return [];
   const species = getSpecies(trigger.speciesId);
-  const flushed: Bird[] = [];
-  for (const b of birds) {
-    // A held single goes up alone, not with a covey-mate still sitting.
-    const sameGroup = species.flushAsCovey !== false && !trigger.heldSingle && !b.heldSingle && b.coveyId === trigger.coveyId;
-    if (b.state === 'hidden' && (b.id === trigger.id || sameGroup)) {
-      b.state = 'flushed';
-      flushed.push(b);
+  // A held single goes up alone, not with a covey-mate still sitting.
+  const mates = birds.filter((b) => b.state === 'hidden' && b.id !== trigger.id && species.flushAsCovey !== false
+    && !trigger.heldSingle && !b.heldSingle && b.coveyId === trigger.coveyId);
+  const rising = [trigger];
+  for (let i = 0; i < rising.length && mates.length > 0; i++) {
+    for (let j = mates.length - 1; j >= 0; j--) {
+      if (dist(mates[j].pos, rising[i].pos) <= bondYd) rising.push(...mates.splice(j, 1));
     }
   }
+  const ids = new Set(rising.map((b) => b.id));
+  const flushed = birds.filter((b) => ids.has(b.id) && b.state === 'hidden');
+  for (const b of flushed) b.state = 'flushed';
   return flushed;
 }
 
