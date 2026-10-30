@@ -66,7 +66,9 @@ export class GeneratedDogSystem implements Subsystem {
   init(ctx:Ctx){
     this.hunt=ctx.get<Hunt3DSystem>('hunt3d');const terrain=ctx.get<TerrainSystem>('terrain');
     const water=new ShallowWater(new LandscapeModel(this.hunt.areaConfig(),this.hunt.dropPoint().id));
-    this.motion=new GeneratedFieldMotion(ctx.quality,(x,z)=>terrain.heightAt(x,z),(x,z)=>water.depthAtWorld(x,z),this.coatId,this.look);ctx.scene.add(this.motion.asset.root);
+    // Paws plant on the terrain as it is drawn; the trunk reads the smooth heightfield.
+    const drawn=terrain.surfaceHeightAt?(x:number,z:number)=>terrain.surfaceHeightAt!(x,z):undefined;
+    this.motion=new GeneratedFieldMotion(ctx.quality,(x,z)=>terrain.heightAt(x,z),(x,z)=>water.depthAtWorld(x,z),this.coatId,this.look,drawn);ctx.scene.add(this.motion.asset.root);
     const scope=window as unknown as AuditScope;
     (scope.__generatedDogAudits??={})[this.id]=this.audit;
     if(this.slot===0)scope.__generatedDogAudit=this.audit;

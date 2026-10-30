@@ -91,3 +91,24 @@ describe('running turns', () => {
     }
   });
 });
+
+describe('ground contact', () => {
+  it('plants paws on the drawn surface where it departs from the smooth heightfield', () => {
+    // A coarse drawn surface: flat facets stepping 6 cm under a smooth slope.
+    const smooth = (x: number, z: number) => .2 * z + .02 * x;
+    const drawn = (x: number, z: number) => smooth(x, z) - .06 * (.5 + .5 * Math.sin(z * 2.1));
+    const motion = new GeneratedFieldMotion('lite', smooth, () => 0, 'liver-white', 'smooth', drawn);
+    let z = 0, planted = 0;
+    for (let f = 0; f < 240; f++) {
+      const moving = f < 180; if (moving) z += 2.2 / 60;
+      motion.update(0, z, 0, 1 / 60, moving, !moving);
+      for (const foot of motion.contactSnapshot()) if (foot.locked && foot.step === 0) {
+        planted++;
+        const [x, y, fz] = foot.actual;
+        expect(Math.abs(y - drawn(x, fz) - .023)).toBeLessThan(.0015);
+      }
+    }
+    expect(planted).toBeGreaterThan(400);
+    motion.dispose();
+  });
+});

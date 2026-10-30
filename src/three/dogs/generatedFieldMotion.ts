@@ -85,9 +85,14 @@ export class GeneratedFieldMotion {
   private transitionRaised=false;
   private transitionFree=[false,false,false,false];
   private pose: {node:THREE.Bone;previousPosition:THREE.Vector3;previousRotation:THREE.Quaternion;fromPosition:THREE.Vector3;fromRotation:THREE.Quaternion}[];
-  private groundNormal(x:number,z:number,out:THREE.Vector3) {const e=.04;return out.set(this.ground(x-e,z)-this.ground(x+e,z),2*e,this.ground(x,z-e)-this.ground(x,z+e)).normalize();}
+  private groundNormal(x:number,z:number,out:THREE.Vector3) {const e=.04;return out.set(this.contact(x-e,z)-this.contact(x+e,z),2*e,this.contact(x,z-e)-this.contact(x,z+e)).normalize();}
+  /** Where paws meet the ground: the drawn surface when the renderer knows
+   * it, which can sit centimetres off the smooth heightfield the trunk's
+   * posture reads between the terrain's vertices. */
+  private contact:(x:number,z:number)=>number;
   swimming=false;
-  constructor(detail:'high'|'lite',private ground:(x:number,z:number)=>number,private waterDepth:(x:number,z:number)=>number=()=>0,coatId:GeneratedCoatId='liver-white',look:GeneratedLook='smooth') {
+  constructor(detail:'high'|'lite',private ground:(x:number,z:number)=>number,private waterDepth:(x:number,z:number)=>number=()=>0,coatId:GeneratedCoatId='liver-white',look:GeneratedLook='smooth',contact?:(x:number,z:number)=>number) {
+    this.contact=contact??ground;
     this.asset=createGeneratedGsp(detail,true,coatId,look);
     this.breedMotion=getBreed(this.asset.root.userData.breedId).motion;
     this.vigor=this.breedVigor();
@@ -96,7 +101,7 @@ export class GeneratedFieldMotion {
     this.pose=Object.values(this.asset.joints).filter(node=>node!==this.asset.joints.body).map(node=>({node,previousPosition:node.position.clone(),previousRotation:node.quaternion.clone(),fromPosition:node.position.clone(),fromRotation:node.quaternion.clone()}));
   }
   update(x:number,z:number,yaw:number,dt:number,moving:boolean,point:boolean,retrieve?:GeneratedRetrievePose,field?:GeneratedFieldIntent,presentationSpeed?:number) {
-    const root=this.asset.root,ground=this.ground(x,z),distance=this.placed?Math.hypot(x-this.last.x,z-this.last.z):0;
+    const root=this.asset.root,ground=this.contact(x,z),distance=this.placed?Math.hypot(x-this.last.x,z-this.last.z):0;
     const depth=this.waterDepth(x,z);
     const wasSwimming=this.swimming;
     this.swimming=depth>(wasSwimming?.38:.48);
@@ -236,14 +241,14 @@ export class GeneratedFieldMotion {
       // The release can touch down before the upper-body crossfade finishes.
       // Hand it back to ground IK at contact, rather than letting a bank or
       // load response push the formerly raised paw through the terrain.
-      if(this.nominal.y<=this.ground(this.nominal.x,this.nominal.z)+.029) {
+      if(this.nominal.y<=this.contact(this.nominal.x,this.nominal.z)+.029) {
         this.transitionRaised=false;posedFoot=-1;
       }
     }
     const pivotEligible=!reset&&!moving&&!skidding&&!blending&&posedFoot<0&&action!=='pickup';
     if(pivotEligible)this.asset.paws.forEach((paw,i)=>paw.getWorldPosition(this.pivotNominal[i]));
     const plannedPivot=this.pivotSteps.update(this.feet,this.pivotNominal,x,z,yaw,signedTurnRate,dt,
-      pivotEligible,this.ground,()=>this.nextPlantId++);
+      pivotEligible,this.contact,()=>this.nextPlantId++);
     this.feet.forEach((foot,i)=>{
       if(plannedPivot){this.groundNormal(foot.target.x,foot.target.z,foot.normal);return;}
       this.asset.paws[i].getWorldPosition(this.nominal);
@@ -253,7 +258,7 @@ export class GeneratedFieldMotion {
         // the paws plant where they come to rest.
         const brace=(i<2?.12:.05)*Math.sin(Math.PI*slam!);
         foot.target.set(this.nominal.x+Math.sin(yaw)*brace,0,this.nominal.z+Math.cos(yaw)*brace);
-        foot.target.y=this.ground(foot.target.x,foot.target.z)+.023;
+        foot.target.y=this.contact(foot.target.x,foot.target.z)+.023;
         if(!foot.locked){foot.locked=true;foot.plantId=this.nextPlantId++;}
         foot.step=0;foot.initialized=true;
         this.groundNormal(foot.target.x,foot.target.z,foot.normal);return;
@@ -264,7 +269,7 @@ export class GeneratedFieldMotion {
         this.groundNormal(foot.target.x,foot.target.z,foot.normal);return;
       }
       const lift=.023+(contacts?.feet[i].lift??0)+leap;
-      const floor=this.ground(this.nominal.x,this.nominal.z)+.023;
+      const floor=this.contact(this.nominal.x,this.nominal.z)+.023;
       // A blended pose can still have an airborne paw when the new clip asks
       // for stance. Wait for touchdown before creating a world-space plant.
       const support=(!contacts||contacts.feet[i].contact!=='swing')&&!(blending&&this.transitionFree[i])
@@ -361,7 +366,7 @@ export class GeneratedFieldMotion {
     return this.feet.map((foot,i)=>{
       const actual=this.asset.paws[i].getWorldPosition(new THREE.Vector3());
       return {i,locked:foot.locked,step:foot.step,plantId:foot.plantId,target:foot.target.toArray(),actual:actual.toArray(),
-        groundGap:actual.y-this.ground(actual.x,actual.z)-.023,targetError:actual.distanceTo(foot.target)};
+        groundGap:actual.y-this.contact(actual.x,actual.z)-.023,targetError:actual.distanceTo(foot.target)};
     });
   }
   get moving(){return this.wasMoving;}
