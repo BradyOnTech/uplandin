@@ -46,7 +46,10 @@ kbd { font:11px/1.5 inherit; opacity:.8; padding:2px 5px; border:1px solid #fff3
 #hunt-beacon { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:9px; font-size:11px; line-height:1.4; letter-spacing:.07em; color:#d6ddc7ae; }
 .field-truck,.field-wind,.field-mark { display:inline-flex; align-items:center; gap:5px; min-width:0; white-space:nowrap; }
 .field-mark[hidden] { display:none; }
-.field-mark { color:#f0dfae; transition:opacity .6s; }
+/* The mark is the newest thing in the beacon: its own line, above truck and wind. */
+#hunt-beacon { flex-wrap:wrap; row-gap:3px; }
+.field-mark { order:-1; flex-basis:100%; color:#f0dfae; transition:opacity .6s; }
+body.touch-controls-active .field-mark { order:0; flex-basis:auto; }
 .field-mark .field-compass-arrow,.field-mark .field-compass-distance { color:#f4e2b2; }
 .field-compass-arrow { display:inline-block; flex:none; width:15px; text-align:center; font-size:17px; line-height:1; color:#e2e4cb; transform-origin:50% 50%; }
 .field-compass-distance { min-width:4.5ch; text-align:right; color:#e5e6d2; font-weight:600; letter-spacing:.015em; }
