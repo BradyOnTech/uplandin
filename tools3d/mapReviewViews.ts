@@ -72,5 +72,6 @@ function canyonVista(landscape: LandscapeModel, area: AreaConfig, best: { h: num
     brink = { x, y };
   }
   const far = Math.hypot(w.w, w.h);
-  return { id: 'vista', name: 'Canyon vista from the brink', at: [brink.x - ux * 4, brink.y - uy * 4], toward: [brink.x + ux * far, brink.y + uy * far], pitch: -8, lift: 1.5 };
+  // On the brink itself, standing on the rim's edge, looking down over it.
+  return { id: 'vista', name: 'Canyon vista from the brink', at: [brink.x, brink.y], toward: [brink.x + ux * far, brink.y + uy * far], pitch: -11, lift: 3 };
 }

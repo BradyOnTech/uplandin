@@ -228,9 +228,10 @@ export const REGION_ATMOSPHERE: Readonly<Record<string, RegionAtmosphere>> = {
     ground: { occlusion: .8, crest: .14, floor: .5, cloudCover: .3, cloudStrength: .4, cloudSize: 520 },
     byTime: {
     dawn: { sunward: .65, sunwardPower: 2.5, pool: pool(.0009, 26, .35, CANYON) },
-    morning: { sunward: .35, sunwardPower: 3, pool: pool(.0005, 30, .25, CANYON) },
-    noon: { sunward: .15, sunwardPower: 3, pool: pool(.0004, 32, .2, CANYON) },
-    evening: { sunward: .7, sunwardPower: 2.5, pool: pool(.0005, 30, .25, CANYON) },
+    // By day the canyon's air is dry: its floor and the far wall read through it.
+    morning: { sunward: .3, sunwardPower: 3, pool: pool(.0004, 30, .14, CANYON) },
+    noon: { sunward: .15, sunwardPower: 3, pool: pool(.0003, 32, .1, CANYON) },
+    evening: { sunward: .7, sunwardPower: 2.5, pool: pool(.0004, 30, .16, CANYON) },
     lastlight: { sunward: .55, sunwardPower: 2, pool: pool(.0006, 26, .28, CANYON) },
   } },
 };
