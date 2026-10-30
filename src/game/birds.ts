@@ -135,6 +135,10 @@ export const YOUNG_NERVE_MULT = 1.3; // a young bird sits longer
 export const YOUNG_FLIGHT_MULT = 0.9; // and flies slower when it finally goes
 
 let nextBirdId = 1;
+/** Every hunt in the game is a fresh page, its birds numbered from one. Tests
+ * that play several hunts in one process start each the same way, so no
+ * hunt's birds depend on how many birds the hunts before it stocked. */
+export function resetBirdIdsForTest(): void { nextBirdId = 1; }
 
 /** Scatter birds through the area's cover patches in coveys, species by weighted mix. */
 export function spawnBirds(cfg: SpawnConfig, rng: RNG = Math.random): Bird[] {
@@ -483,7 +487,7 @@ const SLOPE_RUN_BIAS = 0.55; // how strongly sloped-ground runners pull uphill
  * half, and so does a dog stood over birds it cannot reach. A dog that only
  * quarters near birds, without their scent, presses nothing.
  */
-const PRESS_REACH = 1.5;
+const PRESS_REACH = 2;
 const PRESS_HOLD_SHARE = .55;
 const PRESS_HOLD_GRACE_MS = 15_000;
 

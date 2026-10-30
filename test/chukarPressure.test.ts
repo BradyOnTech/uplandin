@@ -86,6 +86,18 @@ describe('a pressed chukar', () => {
     expect(flat.pressedMs).toBeUndefined();
   });
 
+  it('feels a dog working its scent from the rim seventy yards above', () => {
+    // The dog cannot get down to the covey; the birds do not wait for ever.
+    const sitter = chukar(13, { runs: false }), broke: number[] = [];
+    let at: number | null = null;
+    for (let tick = 1; tick <= 30 * 120 && at === null; tick++) {
+      updateBirds(1000 / 30, [sitter], { x: 500, y: 570 }, { worldScale: true, workedIds: [13], broke });
+      if (broke.includes(13)) at = tick / 30;
+    }
+    expect(at).not.toBeNull();
+    expect(at!).toBeLessThan(86);
+  });
+
   it('lets the clock run back down when the dog moves off', () => {
     const b = chukar(9);
     press(b, 20, 28);

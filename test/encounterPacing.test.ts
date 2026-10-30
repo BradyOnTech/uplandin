@@ -5,6 +5,7 @@ import { defaultQuickConfig, QUICK_KEY } from '../src/game/quick';
 import { LandscapeModel, PROPERTY_PX_TO_M as M } from '../src/game/landscape';
 import type { Ctx } from '../src/three/engine';
 import { Hunt3DSystem } from '../src/three/subsystems/hunt3d';
+import { resetBirdIdsForTest } from '../src/game/birds';
 
 const DT = 1000 / 30, WALK = 2.2;
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -17,6 +18,7 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
  * of the hunt: how often something happens and how the dog finds birds.
  */
 function hunt(areaId: string, seed: number, seconds: number, challenge = 'balanced') {
+  resetBirdIdsForTest();
   const quick = { ...defaultQuickConfig(), areaId, breedId: 'english-setter', level: 6, weather: 'mild' };
   vi.stubGlobal('localStorage', { getItem: (key: string) => key === QUICK_KEY ? JSON.stringify(quick) : null, setItem() {} });
   vi.stubGlobal('window', {});
