@@ -79,6 +79,8 @@ export interface AreaConfig {
   speciesMix: SpeciesShare[];
   /** Uphill direction (radians, screen coords) on sloped ground — the chukar rule. */
   slope?: number;
+  /** The hunt is a climb: grade slows the hunter and spends breath (climbing.ts). */
+  climbing?: boolean;
   /** Climate lean for the per-hunt condition roll (desert heat, high-country snow). */
   conditionBias?: Condition;
   /** Coveys a full 3D hunt stocks; bigger grounds carry more (default 10). */
@@ -640,6 +642,7 @@ export const AREAS: AreaConfig[] = [
       { speciesId: 'hun', weight: 0.2 },
     ],
     slope: -Math.PI / 2, // uphill is north — they run up-screen, fly down
+    climbing: true,
   },
   // — Sonoran Desert —
   {

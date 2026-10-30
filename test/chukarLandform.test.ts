@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { getArea } from '../src/game/areas';
+import { AREAS, getArea } from '../src/game/areas';
 import {
   CHUKAR_RIM_IDS, CHUKAR_RIVER_LEVEL, CHUKAR_WALL, chukarAnalyticHeight, chukarHeight, chukarRimBlockers, chukarRimModules,
   chukarSolidAt, chukarWallAt,
 } from '../src/game/chukarCanyon';
 import { CHUKAR_SPRING_SEAM, chukarGroundAt } from '../src/game/chukarHabitat';
 import { CHUKAR_HUNT_AREAS, CHUKAR_PLACES } from '../src/game/chukarRidge';
-import { HunterBreath, climbSpeedFactor } from '../src/game/climbing';
+import { HunterBreath, climbCosts, climbSpeedFactor } from '../src/game/climbing';
 import { createThreeHuntSetup } from '../src/game/gameplayMode';
 import { huntAreaAt, huntAreasFor } from '../src/game/huntAreas';
 import { derivedCoverRects, habitatClassAt, landDrivenAnchors, landHabitat } from '../src/game/landHabitat';
@@ -308,6 +308,13 @@ describe('Chukar Ridge climbing', () => {
     expect(breath.canRun()).toBe(false);
     for (let t = 0; t < 20; t++) breath.step(1, 0, false, false);
     expect(breath.winded()).toBe(false);
+  });
+
+  it('charges for the climb only where the ground was built as one', () => {
+    // Timberline Parks has an uphill for its runners, but no climb was
+    // designed into it: its walk stays free.
+    expect(getArea('timberline-parks').slope).toBeDefined();
+    expect(AREAS.filter(climbCosts).map(a => a.id)).toEqual(['chukar-ridge']);
   });
 
   it('puts the remembered places on their own ground', () => {

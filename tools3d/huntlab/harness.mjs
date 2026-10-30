@@ -152,6 +152,9 @@ export async function runHunt(o) {
   const objectives = coverObjectives(m, area).map(o => ({ ...o, world: landscape.propertyToWorld(o.x, o.y, { x: 0, z: 0 }), visited: false }));
   let objective = null, pointPlan = null;
   const uphill = area.slope;
+  // The climb costs the scripted hunter what it costs a player: on grounds
+  // built as a climb, or (older checkouts) any ground with an uphill.
+  const climbs = !!m.climbing?.climbSpeedFactor && (m.climbing.climbCosts ? m.climbing.climbCosts(area) : area.slope !== undefined);
   const shotRng = m.math.mulberry32((opts.seed ^ 0x5407) >>> 0);
 
   const res = { ...opts, search, wind: hunt.huntState().windStrength, condition: hunt.huntState().condition,
@@ -263,7 +266,7 @@ export async function runHunt(o) {
       if (Math.hypot(lookX, lookZ) > .5) camera.rotation.y = Math.atan2(-lookX, -lookZ);
       if (td > stop) {
         let speed = opts.speed;
-        if (m.climbing?.climbSpeedFactor) {
+        if (climbs) {
           landscape.surfaceAtWorld(cam.x, cam.z, sample);
           const along = (sample.gradeX * tx + sample.gradeZ * tz) / td;
           speed *= m.climbing.climbSpeedFactor(along, 0);
