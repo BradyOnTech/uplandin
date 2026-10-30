@@ -59,6 +59,42 @@ class PlantSurface {
     }
   }
 
+  /** One leafy lobe: a dark closed core, and leaf cards spread over its
+   * upper shell (Fibonacci directions), each tilted out from the surface so
+   * its tip breaks the outline. The core shows between cards as the
+   * crown's own depth and shade. */
+  leafyLobe(center:Point,radii:Point,cards:number,size:number,rng:()=>number,lite:boolean):void {
+    const [cx,cy,cz]=center,[rx,ry,rz]=radii,sides=lite?4:5,k=.62;
+    const ring=(phi:number,turn:number):Point[]=>Array.from({length:sides},(_,i)=>{
+      const a=i/sides*Math.PI*2+turn,w=Math.cos(phi)*(1+(rng()-.5)*.25);
+      return [cx+Math.sin(a)*rx*k*w,cy+Math.sin(phi)*ry*k,cz+Math.cos(a)*rz*k*w];
+    });
+    const lo=ring(-.35,0),hi=ring(.45,.4),bottom:Point=[cx,cy-ry*k,cz],top:Point=[cx,cy+ry*k*.95,cz];
+    for(let i=0;i<sides;i++){
+      const n=(i+1)%sides;
+      this.triangle(lo[n],lo[i],bottom,.5);
+      this.triangle(lo[i],lo[n],hi[n],.6);this.triangle(lo[i],hi[n],hi[i],.62);
+      this.triangle(hi[i],hi[n],top,.7);
+    }
+    const golden=Math.PI*(3-Math.sqrt(5));
+    for(let c=0;c<cards;c++){
+      // From the top down over four-fifths of the shell.
+      const u=1-(c+.5)/cards*1.6,ring=Math.sqrt(Math.max(0,1-u*u)),t=c*golden+rng()*.7;
+      const d=new THREE.Vector3(Math.sin(t)*ring,u,Math.cos(t)*ring);
+      const reach=.88+rng()*.18,p=new THREE.Vector3(cx+d.x*rx*reach,cy+d.y*ry*reach,cz+d.z*rz*reach);
+      const normal=new THREE.Vector3(d.x/rx,d.y/ry,d.z/rz).normalize();
+      const ref=Math.abs(normal.y)<.95?new THREE.Vector3(0,1,0):new THREE.Vector3(1,0,0);
+      const s1=normal.clone().cross(ref).normalize(),s2=normal.clone().cross(s1).normalize(),spin=rng()*Math.PI*2;
+      const lift=.4+rng()*.5,along=s1.multiplyScalar(Math.cos(spin)).addScaledVector(s2,Math.sin(spin)).multiplyScalar(Math.cos(lift)).addScaledVector(normal,Math.sin(lift)).normalize();
+      const across=normal.clone().cross(along).normalize(),len=size*(.75+rng()*.5),shade=(.84+.26*(u+1)/2)*(.93+rng()*.14);
+      const v=(a:THREE.Vector3):Point=>[a.x,a.y,a.z];
+      const tail=p.clone().addScaledVector(along,-len*.35),tip=p.clone().addScaledVector(along,len);
+      const left=p.clone().addScaledVector(across,len*.4),right=p.clone().addScaledVector(across,-len*.4);
+      if(lite){this.triangle(v(left),v(right),v(tip),shade);continue;}
+      this.triangle(v(tail),v(left),v(tip),shade);this.triangle(v(tail),v(tip),v(right),shade*.96);
+    }
+  }
+
   geometry(kind:string):THREE.BufferGeometry {
     const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(this.positions,3));
     g.setAttribute('color',new THREE.Float32BufferAttribute(this.colors,3));g.computeVertexNormals();g.computeBoundingSphere();
@@ -113,32 +149,42 @@ export function chukarGrassGeometry(lite:boolean):THREE.BufferGeometry {
   return surface.geometry('chukar-dry-bunchgrass');
 }
 
-/** Big sagebrush: a few gnarled grey stems leaning out from one root, and a
- * ragged, wider-than-tall crown of small flat-topped tufts at unequal
- * heights. Silver-grey foliage (the instance colour carries the tone), not a
- * rounded leafy head. Both tiers keep the same stems and the largest tufts. */
+/**
+ * Big sagebrush: a few gnarled, shredding grey trunks lean out from one
+ * root and fork into twigs; leaves cluster at the twig ends as small
+ * silver lobes, each a dark core dressed with leaf cards tilted out from
+ * it (the woody kit's leafy lobes), so the crown is a ragged, wider-than-
+ * tall silver mass with depth, never a grey stone. The base stays open:
+ * the trunks show beneath the lowest leaves. Vertex colour is light and
+ * shade only; the instance colour carries the silver tone. Lite keeps the
+ * same trunks and the biggest lobes, with single-triangle cards.
+ */
 export function chukarSageGeometry(lite:boolean):THREE.BufferGeometry {
   const surface=new PlantSurface(),rng=mulberry32(9961);
-  // Short gnarled stems show only at the foot; the crown sits on them.
-  for(let stem=0;stem<3;stem++){
-    const az=stem*2.18+rng()*.5,lean=.12+rng()*.08;
-    surface.branch([Math.sin(az)*.03,.012,Math.cos(az)*.03],[Math.sin(az)*lean,.3+rng()*.06,Math.cos(az)*lean],.032,lite);
+  const bark:Point=[1.06,1,.9];
+  // Gnarled trunks: two kinked segments each, then two twigs up into the crown.
+  // One twig of each trunk first: Lite keeps those, so it keeps the spread.
+  const tips:Point[][]=[[],[]];
+  for(let trunk=0;trunk<3;trunk++){
+    const az=trunk*2.18+rng()*.5,lean=.1+rng()*.08,kink=rng()-.5;
+    const root:Point=[Math.sin(az)*.03,.04,Math.cos(az)*.03];
+    const knee:Point=[Math.sin(az+kink*.6)*lean,.2+rng()*.05,Math.cos(az+kink*.6)*lean];
+    const crotch:Point=[Math.sin(az)*lean*1.9,.38+rng()*.07,Math.cos(az)*lean*1.9];
+    if(lite){surface.ribbon(root,crotch,.03,az+1.57,.5,bark);}
+    else{surface.branch(root,knee,.034,false);surface.branch(knee,crotch,.026,false);}
+    for(let twig=0;twig<2;twig++){
+      const a=az+(twig?.55:-.5)+(rng()-.5)*.3,reach=lean*1.9+.12+rng()*.14;
+      const tip:Point=[Math.sin(a)*reach,.56+rng()*.2,Math.cos(a)*reach];
+      // At a distance the lobes hide the twigs; Lite keeps only the trunks.
+      if(!lite)surface.ribbon(crotch,tip,.014,a+1.57,.52,bark);
+      tips[twig].push(tip);
+    }
   }
-  // A low, wider-than-tall mound of overlapping tufts, ragged on top: the
-  // big centre lumps first so Lite keeps the same outline in fewer pieces.
-  const tufts:{p:Point;r:number;h:number;a:number}[]=[];
-  for(let n=0;n<10;n++){
-    const a=n*2.399+rng()*.4,reach=n===0?0:.18+rng()*.3,high=n===0?.68:.22+rng()*.46;
-    tufts.push({p:[Math.sin(a)*reach,high,Math.cos(a)*reach*.9],r:(n===0?.34:.2+rng()*.11),h:.3+rng()*.14,a});
-  }
-  // Many small tufts make a soft, broken outline (foliage, not a stone);
-  // the lower ones sit in shadow under the crown.
-  tufts.sort((a,b)=>b.r-a.r);
-  tufts.forEach((t,i)=>{
-    if(lite&&i>=5)return;
-    surface.crown(t.p,t.r*(lite?1.3:1),t.h*(lite?1.15:1),t.a,true,(.66+t.p[1]*.32)*(.94+(i%3)*.04));
-  });
+  // Leaf lobes at the twig ends and one over the middle: the biggest
+  // first, so Lite keeps the same outline in fewer pieces.
+  const lobes=[{c:[0,.78,0] as Point,r:[.3,.17,.27] as Point},...tips.flat().map(t=>({c:[t[0]*1.08,t[1]+.04,t[2]*1.08] as Point,r:[.21+rng()*.06,.13+rng()*.04,.19+rng()*.05] as Point}))];
+  lobes.forEach((lobe,i)=>{if(lite&&i>=4)return;surface.leafyLobe(lobe.c,lobe.r,lite?5:9,lite?.15:.11,rng,lite);});
   // Broken basal litter gives the wood a root bed, not a floating canopy.
-  for(let leaf=0;leaf<4;leaf++)surface.leaf([0,.02,0],leaf*2.399+.4,.33+leaf*.035,.04,.57);
+  for(let leaf=0;leaf<(lite?2:4);leaf++)surface.leaf([0,.02,0],leaf*2.399+.4,.33+leaf*.035,.04,.57);
   return surface.geometry('chukar-silver-sage');
 }
