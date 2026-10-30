@@ -363,6 +363,56 @@ chukar-ridge west-track 90210 gsp-8 tactic: tracking 184s @416
   - The new entries hunt well: Rim Gate 141 s on the trails, Spring Creek 188 s.
 - **Cost.** Simulation time is about 0.11 ms a tick on average.
 
+## Lead review of milestone 1 (2026-10-30)
+
+Reviewed on `lane/landform` at `99b9275` (the lane's last code commit is `2e93877`), against the campaign head `b3c6c87`, before merging.
+
+**Checks.** tsc is clean, 2,063 tests pass in 248 files, and the production build passes. The merge into the campaign branch is clean: the lane already holds the campaign head, so the merged tree is the lane's tree.
+
+**Postcards.** `landform/chukar-ridge-m1-before-after.jpg` pairs the campaign head with the lane for each tier and hour (High morning, Lightweight morning, High evening): truck, talus, guzzler, seep-above, cairn and vista. `landform/chukar-ridge-m1-canyon-views.jpg` adds seven canyon views on High morning: Castle Rock, the rim overlook, Rim Gate, Sage Draw, the North Face, the River Breaks and the corral. No page errors.
+
+| View | High draws | High triangles | Lightweight draws | Lightweight triangles |
+| --- | --- | --- | --- | --- |
+| truck | 213 → 116 | 1.35M → 950k | 178 → 90 | 501k → 459k |
+| talus | 123 → 124 | 1.02M → 1.10M | 80 → 84 | 435k → 457k |
+| guzzler | 203 → 125 | 1.29M → 1.18M | 158 → 88 | 490k → 508k |
+| seep-above | 145 → 146 | 1.34M → 1.52M | 104 → 106 | 460k → 559k |
+| cairn | 148 → 115 | 1.26M → 1.15M | 100 → 79 | 439k → 483k |
+| vista | 121 → 73 | 1.19M → 1.39M | 78 → 43 | 401k → 477k |
+
+Draws fall in most views (the streamed tiles and the four-call rimrock); triangles rise by at most a fifth, and fall in some views. Lightweight runs 43–106 draws and 457–559k triangles against the old ridge's 78–178 and 401–501k. Nothing has been measured on a phone.
+
+**Hunt lab, re-run on the lane head.** The lane's own pacing run came before its last commits (the birds lane's planned lines merged in, and falls over the fence). Re-run with the same hunters and seeds over all four entries (216 hunts in 277 s; rows in `landform/pacing-chukar-m1-review.csv`):
+
+| group | n | 1st contact | 1st point | dry med | dry p90 | dry>3m | coveys | points | flushes | stuck retr | stuck states | long chases | in rock | climb m |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| chukar-ridge follow | 72 | 80 | 109 | 248 | 600 | 60% | 3.2 | 4.0 | 4.1 | 0 | 0 | 0 | 0 | 34 |
+| chukar-ridge tactic | 72 | 77 | 108 | 139 | 249 | 32% | 5.4 | 6.4 | 6.9 | 0 | 0 | 4 | 0 | 45 |
+| chukar-ridge trail | 72 | 61 | 83 | 132 | 211 | 18% | 5.1 | 6.2 | 6.7 | 0 | 0 | 4 | 0 | 33 |
+
+- **Better than the lane's run on every hunter.** The median longest dry spell is 248 s following the dog (378 in the lane's run, 492 on the old ridge), 139 s reading the cover (150, 246) and 132 s on the trails (151, 152). Coveys met rise to 3.2, 5.4 and 5.1.
+- **The fence fix holds.** No stuck retrieves, no stuck dogs, and no bird or fall in rock.
+- **Long chases.** Eight tracking spells over 75 s (five in the lane's run). Two are far too long for a game: 321 s (West Bench, setter, trail hunter) and 253 s (Rim Gate, GSP, reading the cover). Chukar do run uphill ahead of a roading dog, but not for four or five minutes.
+- **Weak entries, unchanged.** Following the dog from the West Bench, the median hunt meets no birds in ten minutes. From River Road following the dog, 89% of hunts have a dry spell over three minutes. Hunters who read the cover or walk the trails do well from every entry.
+
+**Browser hunts.** Two ordinary hunts in a desktop browser with `tools3d/playthrough.mjs`: automated play, `--uncapped`, not a measure of frame time.
+- **River Road, Lightweight.** Scent at 110 s, a point at 155 s, then the covey rise and a bird down. The retrieve came to hand at 183 s, and the HUD named Sage Draw underfoot. The tool then failed at its last step, clicking End hunt. The 2026-09-29 menu redesign moved End hunt into the pause menu, and the tool (last changed 2026-09-07) still looks for the old button. A Quail Fields control on the same tree failed the same way after a full hunt.
+- **Spring Creek, High.** A point at 60 s and the rise at 81 s, then a deliberate miss and four aimed misses. The bot walked straight in from below the covey, and the birds flew back past it at 2–7 m. The ground's hint is to come in from the high side, and a bot that walks in from below, then aims at birds passing at arm's length, is no test of the canyon. The same bot also missed all four shots at a rise on the old ridge (the campaign head, birds at 10–31 m).
+
+**Against the target.** The canyon reads. Three rim bands of columnar basalt with talus aprons stand over benches and cheat slopes. Castle Rock keeps a whole columnar crown. Spring Creek is a side canyon with a green seam, the north face sits in shade, and cattle trails stripe the slopes. In the evening the rims catch the sun over shaded draws. The rounded boulder blobs are gone. Ten named areas, four entries, birds placed by the land and the climb's cost are in. It is a large step past the old sidehill.
+
+**Carried forward:**
+- **Far country from inside the canyon** (Light lane and this lane's apron). It reads as flat haze bands. The river never glints in any view, and neither the rim overlook nor the vista shows the canyon below.
+- **Open slopes** (Cover lane). They read as smooth tan with sparse tufts on both tiers. The target's cheat slopes want density and mottling.
+- **Sage close up** (Cover lane's woody kit). It still reads as grey-green stone clusters.
+- **The River Road entry view.** It looks across the breaks to low, distant rims. The wall should loom from the truck.
+- **Long runner chases** (above). Cap a chukar's roading spell, or let the bird flush.
+- **Weak entries** (above). Following the dog from the West Bench and from River Road.
+- **Phone cost.** Lightweight is a little above the old ridge, and has not been measured on a phone.
+- **Climbing on Timberline Parks.** The climb's cost applies to any ground that has an uphill (`area.slope`), so it also applies to Timberline Parks, a ground outside the campaign. Keep it there or limit it to Chukar.
+- **The playthrough tool** (`tools3d/playthrough.mjs`). It can't end a hunt since the menu redesign. Point it at the pause menu's End hunt, and let its hunter come into a chukar point from above.
+- **For the light lane's merge.** Land-driven placement (`createThreeHuntSetup`) treats staged visits as frost and does not read `?weather=`, but the light lane's third milestone rolls a real day for those visits. The placement context should follow the same weather.
+
 ## Lane log
 
 - **2026-10-08.** Milestone 1 started from `3b518a2`. Hunt lab brought into the repo and the baseline recorded. Chukar Ridge rebuilt as a canyon:
@@ -371,3 +421,12 @@ chukar-ridge west-track 90210 gsp-8 tactic: tracking 184s @416
   - the river below;
   - the survey map;
   - views and invariant tests.
+- **2026-10-09.** Review fixes for milestone 1:
+  - 32 coveys, and steadier hunting on the bigger ground;
+  - Lightweight cost near the old ridge's;
+  - whole basalt crowns on Castle Rock and the mesas;
+  - a tool that lists where a view's triangles go;
+  - falls over the fence drop just inside it.
+
+  The lane stopped that afternoon with this log uncommitted.
+- **2026-10-30.** Log committed, reviewed by the lead (above), and merged into `campaign/world-birds`.
