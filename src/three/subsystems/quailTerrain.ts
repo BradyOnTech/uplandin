@@ -7,7 +7,7 @@ import type { Ctx } from '../engine';
 import { quailTrackDistanceAt } from './quailTracks';
 import { quailGrassClearingAt, quailGrassMassAt, quailGrassStockingAt, quailSouthRouteAt } from './quailVegetation';
 import { quailBurnAt, quailFeatureBare } from '../../game/quailFeatures';
-import { QUAIL_GROUND_DIVISIONS, quailGroundNearDistance, quailGroundTiles, quailGroundUsesNear } from './quailGroundGeometry';
+import { QUAIL_GROUND_DIVISIONS, drawnQuailGroundHeight, quailGroundNearDistance, quailGroundTiles, quailGroundUsesNear } from './quailGroundGeometry';
 
 export { QUAIL_TERRAIN_TILE } from './quailGroundGeometry';
 const PAINT = {
@@ -304,6 +304,11 @@ export class QuailTerrain {
       mesh.name = 'Quail distant prairie'; mesh.receiveShadow = true; this.horizon.push(mesh); ctx.scene.add(mesh);
     }
     this.update(ctx);
+  }
+
+  /** The drawn ground under a point, as a viewer at (viewX, viewZ) sees it. */
+  surfaceHeightAt(x: number, z: number, viewX: number, viewZ: number): number {
+    return drawnQuailGroundHeight(this.landscape, x, z, viewX, viewZ, this.nearDistance, () => QUAIL_GROUND_DIVISIONS);
   }
 
   update(ctx: Ctx): void {

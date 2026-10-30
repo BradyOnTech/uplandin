@@ -75,6 +75,19 @@ function triangleHeight(landscape: LandscapeModel, tile: QuailGroundTile, divisi
   const h = height(ix + 1, iz + 1); return h + (1 - u) * (height(ix, iz + 1) - h) + (1 - v) * (height(ix + 1, iz) - h);
 }
 
+const drawnScratch = { x: 0, y: 0 };
+/** The drawn tile surface under a world point as a viewer at (viewX, viewZ)
+ * sees it: the tile's near triangles inside the near range, its far ones
+ * (sunk by `farSink`) beyond. Where a paw visibly meets the ground; the
+ * analytic heightfield runs smooth between the drawn vertices. */
+export function drawnQuailGroundHeight(landscape: LandscapeModel, worldX: number, worldZ: number, viewX: number, viewZ: number,
+  nearDistance: number, divisions: (tile: QuailGroundTile) => { near: number; far: number }, farSink = 0): number {
+  const property = landscape.worldToProperty(worldX, worldZ, drawnScratch);
+  const tile = quailGroundTileAt(landscape, property.x, property.y);
+  const ground = sampleQuailGroundHeights(landscape, property.x, property.y, tile, divisions(tile));
+  return quailGroundUsesNear(ground.tileCenterX, ground.tileCenterZ, viewX, viewZ, nearDistance) ? ground.nearY : ground.farY - farSink;
+}
+
 export function sampleQuailGroundHeights(landscape: LandscapeModel, propertyX: number, propertyY: number, owner?: QuailGroundTile, divisions: {near:number;far:number} = QUAIL_GROUND_DIVISIONS): {
   nearY: number; farY: number; tileCenterX: number; tileCenterZ: number;
 } {
