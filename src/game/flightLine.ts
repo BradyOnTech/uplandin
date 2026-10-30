@@ -109,6 +109,9 @@ const WILD_SPEED = 1.08;
 const WILD_CURL = 1.5;
 /** A Hun covey circling back turns through this much (radians) before it sets down. */
 const CIRCLE_BACK_CURL = Math.PI * 1.15;
+/** A bird going in to land stays under this glide (rise over run) above
+ * its spot's ground, and may sink this fast (m/s) to hold it. */
+const LANDING_GLIDE = .3, LANDING_SINK_MAX = 4.5;
 /** Seconds of look-ahead along the line for rising ground. */
 const LOOK_AHEAD_S = [.35, .8] as const;
 /** No line passes nearer the hunter's eye than this (metres): a bird pouring
@@ -180,6 +183,10 @@ export function stepFlightLine(line: FlightLine, body: FlightBody, dt: number, g
     const blend = smooth((t - Math.max(line.landTurnS ?? LAND_TURN_S, line.curlStart)) / 1.4);
     heading += wrap(Math.atan2(dz, dx) - heading) * blend;
     speed = Math.min(speed, Math.max(3, distance * 1.8), distance / Math.max(dt, 1e-4));
+    // High over a spot low in a dip, it brakes so it can glide down into it
+    // at LANDING_SINK_MAX, rather than arrive over it and drop straight down.
+    const above = body.y - (ground(line.target.x, line.target.z) + .35);
+    if (above > 1 && above > LANDING_GLIDE * distance) speed = Math.min(speed, Math.max(3, distance * LANDING_SINK_MAX / above));
   }
   body.vxW = Math.cos(heading) * speed;
   body.vzW = Math.sin(heading) * speed;
@@ -206,8 +213,17 @@ export function stepFlightLine(line: FlightLine, body: FlightBody, dt: number, g
     desired = Math.max(held, ahead + clearance * .6);
     if (line.target) desired = Math.min(desired, ahead + clearance);
   }
+  if (line.target) {
+    // A glide slope into the spot: never higher over the spot's own ground
+    // than a shallow glide from where the bird is, so one bound for a spot
+    // low in a dip starts down early instead of arriving over it high and
+    // sinking straight down. It still clears the ground between.
+    const glide = ground(line.target.x, line.target.z) + .35 + LANDING_GLIDE * distance;
+    desired = Math.min(desired, Math.max(glide, ahead + .4));
+  }
   const climbMax = 5.5 + 3 * line.burst + (t < line.burstS ? 3 : 0);
-  const want = Math.max(-3.5, Math.min(climbMax, (desired - body.y) * 3.2)) * (body.y < desired ? line.climbMult : 1);
+  const sinkMax = line.target ? LANDING_SINK_MAX : 3.5;
+  const want = Math.max(-sinkMax, Math.min(climbMax, (desired - body.y) * 3.2)) * (body.y < desired ? line.climbMult : 1);
   body.vyW += (want - body.vyW) * (1 - Math.exp(-dt * 9));
 }
 

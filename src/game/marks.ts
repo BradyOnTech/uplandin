@@ -31,6 +31,11 @@ export interface HunterMark {
   toGround: boolean;
   /** A covey that came back round and set down together (a Hun circle-back). */
   covey: boolean;
+  /** Marked by its sail into a stand of cover, at the stand's edge where it
+   * went in: the follow-up is the dog working that edge. */
+  edge: boolean;
+  /** A pheasant's sex, when he saw it: a rooster or a hen. */
+  sex?: 'hen' | 'rooster';
   /** Hunt clock (ms) when he marked it, or last added a bird to it. */
   setMs: number;
 }
@@ -78,6 +83,29 @@ export function glideMark(at: { x: number; y: number; z: number }, vx: number, v
   return { x: at.x + vx / across * carry, z: at.z + vz / across * carry };
 }
 
+/** He marks a bird by its sail if he saw it gliding in this long before it went down. */
+export const MARK_SAIL_MS = 5000;
+
+/**
+ * Where a bird's line goes into a stand of cover: the point where the segment
+ * from `from` (where he saw it sailing) to `to` (where it went down, inside
+ * the stand) crosses the stand's edge, coming from his side. A stand is an
+ * axis-aligned rectangle, centre and half extents (world metres).
+ */
+export function edgeOfCover(from: { x: number; z: number }, to: { x: number; z: number },
+  stand: { cx: number; cz: number; hx: number; hz: number }): { x: number; z: number } {
+  const dx = to.x - from.x, dz = to.z - from.z;
+  let enter = -Infinity, exit = Infinity;
+  for (const [o, d, lo, hi] of [[from.x, dx, stand.cx - stand.hx, stand.cx + stand.hx], [from.z, dz, stand.cz - stand.hz, stand.cz + stand.hz]] as const) {
+    if (Math.abs(d) < 1e-9) { if (o < lo || o > hi) return { x: to.x, z: to.z }; continue; }
+    const a = (lo - o) / d, b = (hi - o) / d;
+    enter = Math.max(enter, Math.min(a, b)); exit = Math.min(exit, Math.max(a, b));
+  }
+  if (!Number.isFinite(enter) || enter > exit) return { x: to.x, z: to.z };
+  const t = Math.min(1, enter);
+  return { x: from.x + dx * t, z: from.z + dz * t };
+}
+
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 export class MarkBook {
@@ -90,17 +118,19 @@ export class MarkBook {
 
   /** He saw a bird go down here. It joins a mark close by, or makes a new one. */
   add(birdId: number, at: { x: number; z: number }, heading: number, speciesId: string, toGround: boolean, nowMs: number,
-    covey = false): HunterMark {
+    how: { covey?: boolean; edge?: boolean; sex?: 'hen' | 'rooster' } = {}): HunterMark {
     this.release(birdId);
+    const covey = !!how.covey, edge = !!how.edge;
     const near = this.list.find(mark => mark.speciesId === speciesId && Math.hypot(mark.x - at.x, mark.z - at.z) <= MARK_JOIN_M);
     if (near) {
       // The mark sits between the birds he saw go in there.
       const n = near.birdIds.length;
       near.x = (near.x * n + at.x) / (n + 1); near.z = (near.z * n + at.z) / (n + 1);
-      near.birdIds.push(birdId); near.toGround ||= toGround; near.covey ||= covey; near.setMs = nowMs; near.heading = heading;
+      near.birdIds.push(birdId); near.toGround ||= toGround; near.covey ||= covey; near.edge &&= edge; near.setMs = nowMs; near.heading = heading;
+      if (near.sex !== how.sex) near.sex = undefined;
       return near;
     }
-    const mark: HunterMark = { id: this.nextId++, x: at.x, z: at.z, heading, birdIds: [birdId], speciesId, toGround, covey, setMs: nowMs };
+    const mark: HunterMark = { id: this.nextId++, x: at.x, z: at.z, heading, birdIds: [birdId], speciesId, toGround, covey, edge, sex: how.sex, setMs: nowMs };
     this.list.push(mark);
     return mark;
   }

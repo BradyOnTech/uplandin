@@ -233,3 +233,21 @@ describe('constraints solved at launch', () => {
     for (const p of fly(line, 3, wall).filter(p => p.t > .4)) expect(height(p, wall)).toBeGreaterThan(.4);
   });
 });
+
+describe('a landing glides into its spot', () => {
+  it('starts down early for a spot low in a steep dip, never ending high over it and dropping straight down', () => {
+    // A 12 m deep pit with sides of 0.6, its floor at the bird's spot 70 m out.
+    const spot = { x: 0, z: 88 };
+    const pit = (x: number, z: number) => -Math.min(12, Math.max(0, 20 - Math.hypot(x - spot.x, z - spot.z)) * .6);
+    for (let seed = 1; seed <= 12; seed++) {
+      const line = plan('bobwhite', { ground: pit }, seed);
+      line.target = { ...spot };
+      const track = fly(line, 10, pit);
+      const over = track.findIndex(p => Math.hypot(p.x - spot.x, p.z - spot.z) < 3);
+      expect(over).toBeGreaterThan(0);
+      expect(height(track[over], pit)).toBeLessThan(2);
+      // While it is still well up it is still going somewhere: no hover-and-drop.
+      for (const p of track.slice(0, over)) if (height(p, pit) > 3) expect(Math.hypot(p.vxW, p.vzW)).toBeGreaterThan(2.5);
+    }
+  });
+});

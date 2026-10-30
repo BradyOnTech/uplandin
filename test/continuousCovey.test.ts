@@ -1,5 +1,6 @@
 import type { SlopeApproach } from '../src/game/fieldcraft';
-import { buildPheasantBody } from '../src/three/assets/pheasant';
+import { buildPheasantBody, pheasantWingbeat } from '../src/three/assets/pheasant';
+import { shownWingHz } from '../src/three/birdIdentity';
 import * as audio from '../src/audio';
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
@@ -135,7 +136,11 @@ describe('continuous Quail coveys', () => {
   it('releases the recovery fold when a pheasant glides or falls', () => {
     const f=fixture();f.add(1,1,4,0);f.birds[0].speciesId='ringneck';f.runtime.tickBirds(1000/30);
     const slot=f.runtime.slots[0];
-    Object.assign(slot,{body:new THREE.Mesh(),wingL:new THREE.Group(),wingR:new THREE.Group(),visualScale:1,airMs:80,wobblePh:2,gliding:false});
+    // A moment of the shown beat (birdIdentity.ts) with the wing in recovery.
+    const hz=shownWingHz(getSpecies('ringneck').flight.flapRate!),climb=getSpecies('ringneck').flight.climb;
+    let recoveryMs=0;
+    while(pheasantWingbeat(recoveryMs/1000,hz,climb,.7).recovery<=.99)recoveryMs++;
+    Object.assign(slot,{body:new THREE.Mesh(),wingL:new THREE.Group(),wingR:new THREE.Group(),visualScale:1,airMs:recoveryMs,wobblePh:2,gliding:false});
     const render=()=> (f.runtime as unknown as {update(ctx:unknown,dt:number):void}).update({},0);
     render();
     expect(slot.wingLMesh.morphTargetInfluences[0]).toBeGreaterThan(.99);
@@ -319,7 +324,7 @@ describe('continuous Quail coveys', () => {
         f.add(1,1,4,0); f.birds[0].speciesId='ringneck';f.birds[0].sex=sex;
         f.runtime.applySpeciesAppearance=(slot: any,species:any,sex:any)=>{slot.species=species;slot.sex=sex;};
         f.runtime.tickBirds(1000/30);
-        expect(sound).toHaveBeenLastCalledWith(Math.hypot(4,.2),sex==='rooster',expect.objectContaining({x:4,y:.2,z:0}),expect.objectContaining({flapRate:9,phaseOffset:0,seed:expect.any(Number)}));
+        expect(sound).toHaveBeenLastCalledWith(Math.hypot(4,.2),sex==='rooster',expect.objectContaining({x:4,y:.2,z:0}),expect.objectContaining({flapRate:shownWingHz(9),phaseOffset:0,seed:expect.any(Number)}));
         for(let i=0;i<10;i++)f.runtime.tickBirds(1000/30);
       }
       expect(sound).toHaveBeenCalledTimes(2);
@@ -417,7 +422,7 @@ describe('continuous Quail coveys', () => {
       const slot=f.runtime.slots[0];Object.assign(slot,{status:'waiting',delayMs:30,x:4,z:0});
       const camera=new THREE.PerspectiveCamera();camera.position.set(12,2,0);
       f.runtime.listener=camera;f.runtime.frozen=false;f.runtime.tickBirds(1000/30);
-      expect(sound).toHaveBeenLastCalledWith(Math.hypot(8,1.8),false,expect.objectContaining({x:-8,y:-1.8,z:0}),expect.objectContaining({flapRate:9}));
+      expect(sound).toHaveBeenLastCalledWith(Math.hypot(8,1.8),false,expect.objectContaining({x:-8,y:-1.8,z:0}),expect.objectContaining({flapRate:shownWingHz(9)}));
       Object.assign(slot,{status:'waiting',delayMs:30});camera.rotation.y=Math.PI/2;
       f.runtime.tickBirds(1000/30);
       expect(sound.mock.calls.at(-1)![2]!.x).toBeCloseTo(0,6);

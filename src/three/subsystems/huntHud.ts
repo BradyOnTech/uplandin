@@ -17,6 +17,19 @@ import type { GunSystem } from './gun';
 import type { Hunt3DSystem } from './hunt3d';
 import type { PlayerSystem } from './player';
 
+/** What a partner calls the bird he marked: one, and several. */
+function markNames(mark: HunterMark): [string, string] {
+  switch (mark.speciesId) {
+    case 'bobwhite': return ['Quail', 'quail'];
+    case 'ringneck': return mark.sex === 'hen' ? ['Hen', 'hens'] : mark.sex === 'rooster' ? ['Rooster', 'roosters'] : ['Pheasant', 'pheasants'];
+    case 'sharptail': return ['Sharptail', 'sharptails'];
+    case 'chukar': return ['Chukar', 'chukar'];
+    case 'hun': return ['Hun', 'Huns'];
+    case 'prairie-chicken': return ['Prairie chicken', 'prairie chickens'];
+    default: return ['Bird', 'birds'];
+  }
+}
+
 /** Touch hints name buttons; keyboard hints name keys. Safe without a DOM. */
 const touchControlsActive = () => typeof document !== 'undefined' && !!document.body?.classList.contains('touch-controls-active');
 
@@ -459,14 +472,15 @@ export class HuntHudSystem implements Subsystem {
       ctx.events.dispatchEvent(new Event('hunt-complete'));
     }
   }
-  /** A mark in words: how many went down, where, how far. */
+  /** A mark in words, as a partner would say it: the bird, how he marked
+   * it, where and how far ("Rooster marked into cover · 120 yd"). */
   private markCopy(ctx: Ctx, mark: HunterMark): string {
     const yards = Math.round(Math.hypot(mark.x - ctx.camera.position.x, mark.z - ctx.camera.position.z) / .9144);
     const at = this.hunt.worldToSim(mark.x, mark.z, { x: 0, y: 0 });
     const place = huntAreaAt(this.hunt.areaConfig(), at.x, at.y)?.name;
-    const n = mark.birdIds.length;
-    const who = mark.covey ? 'Covey' : n === 1 ? 'Bird' : `${n} birds`;
-    const how = mark.toGround ? 'marked down' : 'marked going in';
+    const n = mark.birdIds.length, [one, many] = markNames(mark);
+    const who = mark.covey ? `${one} covey` : n === 1 ? one : `${n} ${many}`;
+    const how = mark.toGround ? 'marked down' : mark.edge ? 'marked into cover' : 'marked going in';
     return `${who} ${how}${place ? ` in ${place}` : ''} · ${yards} yd`;
   }
 
