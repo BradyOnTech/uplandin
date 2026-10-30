@@ -311,3 +311,18 @@ Each sheet is a before block (the campaign head, from the baseline checkout on p
 - `src/three/subsystems/huntHud.ts` and `src/three/field.css`: the MARK beacon, the mark callout and the cast cue.
 - From the merged lane commit `b6b0ba3`, unchanged here: `src/audio.ts` (`playFall`), `src/game/huntSimulation.ts` (a single's flush distance, circle-back landings), `src/game/huntDoctrine.ts` (circle-back on the core grounds), `src/game/closeFlush.ts`, `src/three/subsystems/fieldAudio.ts` (singles call to their covey), `src/three/assets/birdLegs.ts` and `pheasant.ts` (a leg at a time).
 - New, in the lane: `src/game/marks.ts`, `test/hunterMarks.test.ts`, `test/chukarLines.test.ts`, `tools3d/falls-sheet.py`, `tools3d/rise-pairs-sheet.py`.
+
+### Lead review of milestone 3 (2026-10-30)
+
+Merged into `campaign/world-birds` as 27fa941. The merge with Cover milestone 2 was clean.
+
+**Checks:**
+- tsc is clean.
+- The full suite on the combined tree passes, 2,109 of 2,109, with a 30 s timeout.
+- The bird-variety Chukar case's 5 s timeout was load. It now has room (lead commit after 1824e30).
+
+**Evidence I looked at:**
+- **The Chukar approach sheet.** Level with the covey, the campaign head flew birds past at 0.7, 2.7 and 4.9 m. This build has none inside 9 m from below, level or above.
+- **The live HUD mark and cast.**
+
+**Decision (the lead's, for Brady to overrule):** a rooster is marked by its sail, at the stand edge where it went in. The follow-up is the dog working that edge.

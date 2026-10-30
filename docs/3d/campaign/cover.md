@@ -281,3 +281,25 @@ Everything else is the lane's own:
 - the woody kit (`tools3d/assets/woody-kit/`, `public/models/woody-kit/`, `assets/source/woody-kit/`);
 - `tools3d/cover-map.mjs` (new: the cover map in plan, with the land layers it reads) and `tools3d/cover-review.mjs` (a stand-in dog on builds without the kit's hooks, `--nodog`);
 - the tests `groundKitCoverMap`, `groundKitQuail` and `woodyKitAssets`.
+
+### Lead review of milestone 2 (2026-10-30)
+
+Merged into `campaign/world-birds` as acfa38c.
+
+**Checks:** tsc is clean, and 50 focused tests pass. The lane's full suite passes (2,075). After the Birds merge, the lead's run on the combined tree passes too (2,109). I looked at all seven sheets.
+
+**Met:** Quail Fields reads as the Rolling Red Plains:
+- red sandy loam showing between copper bunches;
+- plum covey headquarters;
+- creek timber and two-tracks;
+- no umbrella trees.
+
+Lightweight stays under 480k triangles in every view.
+
+**Fixed by the lead:** the dog ran through Quail's 436 kit trunks. They are now in its obstacles (b155c6f).
+
+**Carried into milestone 3:**
+- the near plum and the mid-distance mesquite: big readable shapes first;
+- the dog's low contrast against the dark plum masses.
+
+`?cover=legacy` and the old Quail field stay until Brady accepts.

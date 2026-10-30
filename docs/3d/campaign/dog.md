@@ -185,3 +185,18 @@ Eleven tests are new:
   - `test/generatedPivotSteps.test.ts` (a 20 s budget for its heavy stationary-turn case, which brushed the 5 s default on a loaded machine with or without these changes).
 - Tools: `tools3d/dog-trace.mjs`, `dog-motion-bench.mjs`, `dogMotionBench.ts`, `dog-motion-sheet.py`, `dog-field-check.mjs`, `dog-field-pixels.py` and `dog-motion-cost.mjs` (all new).
 - `src/game/dog.ts`: not touched.
+
+### Lead review of D1 (2026-10-30)
+
+Merged into `campaign/world-birds` as 1824e30.
+
+**The merge:** one conflict with Cover milestone 2, in `quailTerrain.ts`'s imports. I kept both sides.
+
+**Checks:**
+- tsc is clean.
+- 215 dog and terrain tests pass on the merge.
+- The lane's full suite passes 2,073 of 2,074. The one failure is the bird-variety timeout, a load artefact that the lead has since given room.
+
+**Evidence:** the gallop strips. The topline now gathers and stretches through the stride, and the bodies, coats and heads are unchanged.
+
+**Open:** the questions for Brady above stand. Each is a one-constant change once he answers.
