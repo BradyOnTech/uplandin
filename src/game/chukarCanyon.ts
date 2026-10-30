@@ -84,10 +84,15 @@ export const CHUKAR_DRAWS: readonly Draw[] = [
 ];
 
 interface CrestVertex { x: number; y: number; /** Lift, or a mesa's target wall coordinate. */ lift: number; half: number }
-interface Crest { id: string; line: FeatureLine<CrestVertex>; /** A mesa holds one level; a spur adds lift. */ mesa: boolean }
-const crest = (id: string, vertices: [number, number, number, number][], mesa = false): Crest => {
+interface Crest {
+  id: string; line: FeatureLine<CrestVertex>;
+  /** A mesa holds one level; a spur adds lift. */ mesa: boolean;
+  /** Yards round a spur's nose (its last vertex) where its rims never
+   * weather into gaps: a nose the eye is led to. */ wholeNose: number;
+}
+const crest = (id: string, vertices: [number, number, number, number][], mesa = false, wholeNose = 0): Crest => {
   const v = vertices.map(([x, y, lift, half]) => ({ x, y, lift, half }));
-  return { id, mesa, line: new FeatureLine(v, Math.max(...v.map(p => p.half)) + 4) };
+  return { id, mesa, wholeNose, line: new FeatureLine(v, Math.max(...v.map(p => p.half)) + 4) };
 };
 
 /** Spurs push the wall coordinate out along their crests, so rims wrap their
@@ -99,8 +104,10 @@ export const CHUKAR_CRESTS: readonly Crest[] = [
   crest('west-point', [[478, 380, 1335, 40], [470, 430, 1335, 46], [466, 470, 1335, 38]], true),
   // A basalt spur noses down the breaks to the river road, so from the truck
   // the canyon wall stands right over you: the lower rim wraps its nose a
-  // short walk up, the cheat face and the higher rims stack behind it.
-  crest('road-spur', [[515, 960, 120, 120], [505, 1120, 260, 125], [494, 1250, 340, 95]]),
+  // short walk up, the cheat face and the higher rims stack behind it. The
+  // truck looks straight at the nose, so the rim round it stays whole; up
+  // the spur it weathers like any other, so the way along the bench stays open.
+  crest('road-spur', [[515, 960, 120, 120], [505, 1120, 260, 125], [494, 1250, 340, 95]], false, 130),
   // East of Spring Creek the wall rises again as a long ridge; its flank
   // above the creek's lower reach is the shaded north face.
   crest('east-ridge', [[2400, 440, 140, 270], [2160, 730, 230, 290], [1960, 980, 260, 270], [1790, 1170, 210, 230], [1660, 1350, 110, 180]]),
@@ -145,6 +152,10 @@ export function chukarWallAt(x: number, y: number, out: ChukarWallSample): Chuka
   let s = baseWall(x, y);
   let lift = 0, crestAmount = 0, landmark = 0;
   for (const c of CHUKAR_CRESTS) {
+    if (c.wholeNose) {
+      const nose = c.line.vertices[c.line.vertices.length - 1];
+      landmark = Math.max(landmark, 1 - smoothstep(c.wholeNose * .8, c.wholeNose, Math.hypot(x - nose.x, y - nose.y)));
+    }
     if (!c.line.nearest(x, y, hit)) continue;
     const half = c.line.value(hit, 'half'), r = hit.distance / half;
     if (c.mesa && r < 1.6) landmark = Math.max(landmark, 1 - smoothstep(1.1, 1.6, r));

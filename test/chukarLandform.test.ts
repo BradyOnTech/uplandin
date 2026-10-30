@@ -142,6 +142,14 @@ describe('Chukar Ridge landform', () => {
     const centre = [-10, -5, 0, 5, 10].map(degrees => skyline(river.heading + degrees * Math.PI / 180));
     expect(Math.min(...centre)).toBeGreaterThan(20);
     expect(Math.max(...centre)).toBeGreaterThan(28);
+    // And it reads as basalt: the lower rim wraps the spur's nose whole, a
+    // short walk up, in the middle of the view. (While the rim there could
+    // weather away, no rimrock in the middle of the view was nearer than 180 yd.)
+    const rimrock = chukarRimModules().filter(m => {
+      const off = Math.atan2(m.y - river.position.y, m.x - river.position.x) - river.heading;
+      return Math.abs(Math.atan2(Math.sin(off), Math.cos(off))) <= 15 * Math.PI / 180 && Math.hypot(m.x - river.position.x, m.y - river.position.y) < 160;
+    });
+    expect(rimrock.length).toBeGreaterThan(15);
   });
 
   it('lets a hunter walk from every entry to every piece of cover', () => {
