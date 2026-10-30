@@ -11,7 +11,8 @@ import { bakeSkyOcclusion, setSkyMap, skyOcclusionTexture, writeGroundLight, typ
 import { VegetationWind } from './vegetationWind';
 import type { Condition } from '../../game/conditions';
 import type { Month } from '../../game/season';
-import { weatherLook, weatherSpec, writeFieldConditions } from '../fieldConditions';
+import type { WindStrength } from '../../game/wind';
+import { AUTHORED_WIND, seasonLook, weatherLook, weatherSpec, writeFieldConditions } from '../fieldConditions';
 import { createWeatherParticles, type WeatherParticles } from '../weatherParticles';
 import { snapShadowTarget } from '../shadowPlacement';
 import { createSharptailCloudAtlas, SHARPTAIL_CLOUD_ATLAS_GLSL } from './sharptailCloudAtlas';
@@ -639,6 +640,13 @@ function ringNoise(theta: number, freq: number, seed: number): number {
   return a + (b - a) * s;
 }
 
+/** What the sky reads of the hunt's day. */
+interface DayHunt {
+  condition?(): Condition;
+  month?(): Month;
+  huntState?(): { condition: Condition; windStrength: WindStrength };
+}
+
 export class SkySystem implements Subsystem {
   readonly id = 'sky';
   private dome!: THREE.Mesh;
@@ -680,8 +688,11 @@ export class SkySystem implements Subsystem {
   /** The day (fieldConditions.ts), read from the hunt on the first frame. */
   private condition: Condition = 'mild';
   private month: Month = 'October';
+  /** The hunt's wind as the sky reads it (0 calm to 1 strong). */
+  private windLevel = AUTHORED_WIND;
   private conditionsKnown = false;
   private particles: WeatherParticles | null = null;
+  private disposeReview: (() => void) | null = null;
   private readonly skyTint = new THREE.Color();
   private readonly particleLight = new THREE.Color();
   private readonly levelSun = { x: 1, z: 0 };
@@ -968,7 +979,7 @@ export class SkySystem implements Subsystem {
   }
 
   /** The hour's light under the day's weather. */
-  private hour(tod: TimeOfDay) { return weatherSpec(fieldTimeOfDay(this.areaId, tod), this.condition); }
+  private hour(tod: TimeOfDay) { return weatherSpec(fieldTimeOfDay(this.areaId, tod), this.condition, this.windLevel); }
 
   private apply(ctx: Ctx, tod: TimeOfDay): void {
     const spec = this.hour(tod);
@@ -1109,21 +1120,60 @@ export class SkySystem implements Subsystem {
       occlusion: Math.min(1, g.occlusion * (1 + overcast * .35)), crest: g.crest, floor: g.floor, cloudSize: g.cloudSize,
       // A full deck casts no cloud shadows.
       cloudCover: g.cloudCover * THREE.MathUtils.clamp(.55 + spec.cloudAmount, .55, 1.2) * (1 - overcast),
-      cloudStrength: g.cloudStrength * (.35 + .65 * sunUp),
+      // Broken cloud on a wild day casts harder shadows than a still day's.
+      cloudStrength: g.cloudStrength * (.35 + .65 * sunUp) * (1 + (this.windLevel - AUTHORED_WIND) * .6),
     }, this.drift);
   }
 
   /** Read the day from the hunt once it is ready, and dress the field. */
   private readConditions(ctx: Ctx): void {
     this.conditionsKnown = true;
-    let hunt: { condition?(): Condition; month?(): Month } | undefined;
-    try { hunt = ctx.get('hunt3d') as unknown as typeof hunt; } catch { hunt = undefined; }
+    let hunt: DayHunt | undefined;
+    try { hunt = ctx.get('hunt3d') as unknown as DayHunt; } catch { hunt = undefined; }
     if (typeof hunt?.condition !== 'function') return;
-    this.condition = hunt.condition();
-    this.month = hunt.month?.() ?? 'October';
+    this.dress(ctx, hunt.condition(), hunt.month?.() ?? 'October');
+    if (new URLSearchParams(location.search).has('capture')) this.installDayReview(ctx, hunt);
+  }
+
+  /** The hour's light under the day's weather, and the day's near weather. */
+  private dress(ctx: Ctx, condition: Condition, month: Month): void {
+    this.condition = condition;
+    this.month = month;
+    this.wind.update();
+    this.windLevel = this.wind.strength.value;
+    const season = seasonLook(this.areaId, month);
+    this.far?.setLeaves(season.leafGreen, season.leafFall);
     this.apply(ctx, ctx.timeOfDay);
-    this.particles = createWeatherParticles(this.condition, ctx.quality);
+    if (this.particles) { ctx.scene.remove(this.particles.points); this.particles.dispose(); }
+    this.particles = createWeatherParticles(condition, ctx.quality);
     ctx.scene.add(this.particles.points);
+  }
+
+  /** Capture-only review hooks (tools3d/weather-review.mjs): dress the same
+   * frozen moment for another day, and hide the birds for a with-and-without
+   * comparison. Systems that build once for the day (Cattail's frost and
+   * snow patches) keep the day the page loaded with. */
+  private installDayReview(ctx: Ctx, hunt: DayHunt): void {
+    const hidden = new Map<THREE.Object3D, boolean>();
+    const scope = window as unknown as { __fieldReview?: unknown };
+    scope.__fieldReview = {
+      day: () => ({ condition: this.condition, month: this.month }),
+      setDay: (condition: Condition, month: Month, wind?: WindStrength) => {
+        const state = hunt.huntState?.();
+        if (state) { state.condition = condition; if (wind) state.windStrength = wind; }
+        this.dress(ctx, condition, month);
+      },
+      setBirdsVisible: (visible: boolean) => {
+        if (visible) { for (const [object, was] of hidden) object.visible = was; hidden.clear(); return; }
+        if (hidden.size) return;
+        ctx.scene.traverse(object => {
+          const material = (object as THREE.Mesh).material;
+          if (!(object as THREE.Mesh).isMesh || !material || Array.isArray(material) || material.userData.fieldExempt !== 'bird') return;
+          hidden.set(object, object.visible); object.visible = false;
+        });
+      },
+    };
+    this.disposeReview = () => { if (scope.__fieldReview) delete scope.__fieldReview; };
   }
 
   /** The day on the ground, every frame: frost burns off and the wind's
@@ -1187,6 +1237,7 @@ export class SkySystem implements Subsystem {
   dispose(ctx: Ctx): void {
     if (this.far) { ctx.scene.remove(this.far.mesh); this.far.dispose(); this.far = null; }
     if (this.particles) { ctx.scene.remove(this.particles.points); this.particles.dispose(); this.particles = null; }
+    this.disposeReview?.(); this.disposeReview = null;
     this.skyMap?.dispose();
     this.skyMap = null;
     this.cloudAtlas?.dispose();

@@ -13,8 +13,8 @@ import { gradeUniforms } from './grade';
 
 /** Points per tier and kind: small, fixed caps. */
 export const WEATHER_PARTICLES: Readonly<Record<Quality, Readonly<Record<'rain' | 'snow' | 'chaff', number>>>> = {
-  high: { rain: 420, snow: 360, chaff: 70 },
-  lite: { rain: 220, snow: 190, chaff: 36 },
+  high: { rain: 900, snow: 520, chaff: 140 },
+  lite: { rain: 460, snow: 270, chaff: 72 },
 };
 /** The box round the hunter, metres. */
 const BOX = { x: 18, y: 10, z: 18 };
@@ -65,7 +65,7 @@ varying float vSeed;
 void main() {
   vec2 q = gl_PointCoord - .5;
   float a;
-  if (uKind < .5) a = (1.0 - smoothstep(.02, .07, abs(q.x))) * (1.0 - smoothstep(.3, .5, abs(q.y)));      // a streak
+  if (uKind < .5) a = (1.0 - smoothstep(.012, .045, abs(q.x))) * (1.0 - smoothstep(.25, .5, abs(q.y)));    // a fine streak
   else if (uKind < 1.5) a = 1.0 - smoothstep(.2, .5, length(q));                                            // a flake
   else a = (1.0 - smoothstep(.12, .3, abs(q.y + q.x * (vSeed - .5)))) * (1.0 - smoothstep(.25, .45, abs(q.x))); // a fleck
   a *= vFade * uOpacity;
@@ -102,8 +102,8 @@ export function createWeatherParticles(condition: Condition, quality: Quality, s
     uniforms: {
       uCamera: { value: new THREE.Vector3() }, uWind: { value: new THREE.Vector2(1, 0) }, uWindSpeed: { value: 0 },
       uTime: { value: 0 }, uKind: { value: kind === 'rain' ? 0 : kind === 'snow' ? 1 : 2 },
-      uSize: { value: kind === 'rain' ? 70 : kind === 'snow' ? 34 : 26 }, uBox: { value: new THREE.Vector3(BOX.x, BOX.y, BOX.z) },
-      uColor: { value: color.clone() }, uOpacity: { value: kind === 'rain' ? .45 : kind === 'snow' ? .9 : .85 },
+      uSize: { value: kind === 'rain' ? 90 : kind === 'snow' ? 34 : 30 }, uBox: { value: new THREE.Vector3(BOX.x, BOX.y, BOX.z) },
+      uColor: { value: color.clone() }, uOpacity: { value: kind === 'rain' ? .34 : kind === 'snow' ? .9 : .85 },
       ...gradeUniforms(),
     },
   });

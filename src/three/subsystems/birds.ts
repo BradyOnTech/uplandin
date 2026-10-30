@@ -30,6 +30,7 @@ import { huntingDoctrine } from '../../game/huntDoctrine';
 import type { Ctx, Subsystem } from '../engine';
 import { P, fieldTimeOfDay, type TimeOfDay } from '../palette';
 import type { Hunt3DSystem } from './hunt3d';
+import { exemptFromField } from '../fieldConditions';
 import type { TerrainSystem } from './terrain';
 
 /** Authored properties launch birds from their actual cover positions, under
@@ -510,7 +511,8 @@ export class BirdsSystem implements Subsystem {
     this.refinedQuail = this.hunt.areaConfig().id === 'quail-fields';
     this.viewHeight = () => ctx.renderer?.domElement?.clientHeight || 810;
 
-    this.mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    // Birds keep their own colours whatever the day (fieldConditions.ts).
+    this.mat = exemptFromField(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), 'bird');
     // Moment round, item 1: NO emissive, NO rim — the ember-speck read
     // was exactly the old glow kit. Bodies take the WORLD's light like
     // everything else: warm lift on sun-facing facets, shade facets

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { FIELD, FIELD_UNIFORM, frostBurn, installFieldConditions, seasonLook, weatherLook, weatherSpec, writeFieldConditions, type FieldState } from '../src/three/fieldConditions';
+import { crownColor, exemptFromField, FIELD, FIELD_EXEMPT, FIELD_UNIFORM, frostBurn, installFieldConditions, seasonLook, weatherLook, weatherSpec, writeFieldConditions, type FieldState } from '../src/three/fieldConditions';
 import { installGroundLight } from '../src/three/groundLight';
 import { installAtmosphere } from '../src/three/atmosphere';
 import { fieldTimeOfDay } from '../src/three/palette';
@@ -66,13 +66,40 @@ describe('the day on the ground', () => {
     expect(frostBurn('dawn', 6, 1e6)).toBe(1);
   });
 
-  it.each(GROUNDS)('turns %s through its season: green swales, colour, bleach, then winter', area => {
+  it.each(GROUNDS)('turns %s through its season: colour, bleach, then winter, and its trees from green to bare', area => {
     const looks = MONTHS.map(month => seasonLook(area, month));
-    expect(looks[0].swales).toBeGreaterThan(looks[1].swales);
     expect(looks[1].saturation).toBeGreaterThan(looks[2].saturation);
     expect(looks[2].bleach).toBeGreaterThan(looks[1].bleach);
     expect(looks[4].bleach).toBeGreaterThanOrEqual(looks[3].bleach);
     expect(looks[4].ice).toBeGreaterThanOrEqual(looks[3].ice);
+    expect(looks[0].leafGreen).toBeGreaterThan(looks[1].leafGreen);
+    expect(looks[3].leafFall).toBeGreaterThan(.8);
+    expect(looks[4].leafFall).toBeGreaterThanOrEqual(looks[3].leafFall);
+  });
+
+  it('greens the plains swales in September, while the canyon\'s cheat is the driest straw of the year', () => {
+    for (const area of GROUNDS.filter(id => id !== 'chukar-ridge')) {
+      expect(seasonLook(area, 'September').swales).toBeGreaterThan(seasonLook(area, 'October').swales);
+    }
+    const canyon = (month: Month) => seasonLook('chukar-ridge', month);
+    expect(canyon('September').swales).toBe(0);
+    expect(canyon('September').bleach).toBeGreaterThan(canyon('October').bleach);
+    // Cheatgrass greens after the November rains.
+    expect(canyon('November').tint[1]).toBeGreaterThan(canyon('October').tint[1]);
+  });
+
+  it('gives a crown summer green in September and bare grey twigs in winter, and leaves evergreens alone', () => {
+    const gold = () => new THREE.Color(0x9a8a3c), lum = (c: THREE.Color) => .2126 * c.r + .7152 * c.g + .0722 * c.b;
+    const october = gold(), september = crownColor(gold(), .6, 0), november = crownColor(gold(), 0, .5), january = crownColor(gold(), 0, 1);
+    expect(september.g / september.r).toBeGreaterThan(october.g / october.r);
+    expect(november.r / november.g).toBeGreaterThan(october.r / october.g);
+    const chroma = (c: THREE.Color) => Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b);
+    expect(chroma(january)).toBeLessThan(chroma(october) * .5);
+    expect(lum(january)).toBeLessThan(lum(october));
+    for (const evergreen of [0x3f4d3c, 0x2a3220]) {
+      const cedar = new THREE.Color(evergreen);
+      expect(crownColor(cedar.clone(), 0, 1).equals(cedar)).toBe(true);
+    }
   });
 
   it('keeps Southern Plains winters open and ices northern sloughs by December', () => {
@@ -98,9 +125,21 @@ describe('the day on the ground', () => {
       try {
         expect(p.points).toBeInstanceOf(THREE.Points);
         expect(p.count).toBe(WEATHER_PARTICLES[quality][p.kind]);
-        expect(p.count).toBeLessThanOrEqual(quality === 'high' ? 450 : 250);
+        expect(p.count).toBeLessThanOrEqual(quality === 'high' ? 1000 : 500);
         expect(p.kind).toBe(condition === 'rain' ? 'rain' : condition === 'snow' ? 'snow' : 'chaff');
       } finally { p.dispose(); }
     }
+  });
+
+  it('keeps the birds\' own colours on any day', () => {
+    const c = chunks(), shaders = lib();
+    installAtmosphere(c, shaders); installGroundLight(c, shaders); installFieldConditions(c, shaders);
+    // The weathering is compiled out of any material marked exempt.
+    expect(c.normal_fragment_maps).toContain(`!defined( ${FIELD_EXEMPT} )`);
+    const bird = exemptFromField(new THREE.MeshLambertMaterial({ vertexColors: true }), 'bird');
+    expect(bird.defines?.[FIELD_EXEMPT]).toBe('');
+    // Review tools find the birds by what they are, not by the exemption alone.
+    expect(bird.userData.fieldExempt).toBe('bird');
+    bird.dispose();
   });
 });
