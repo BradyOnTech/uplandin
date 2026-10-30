@@ -313,6 +313,8 @@ export async function runNormalGameplay(page, options = {}) {
     let firedMiss = false;
     let shotsAtBird = 0;
     let lastFireMs = 0;
+    /** Seconds from reading a bird to the click landing, measured per shot. */
+    let clickDelay = .12;
     let lastSampleMs = 0;
     let lastState = '';
     let pointWalkTarget = null;
@@ -441,26 +443,29 @@ export async function runNormalGameplay(page, options = {}) {
       }
       if (sawRise && firedMiss && flying.length > 0 && state.hunt.tally.downed === 0 &&
           state.gun.shells > 0 && now - lastFireMs > 350 && shotsAtBird < 4) {
-        // Track a real airborne target across two observations. Compensate
-        // for the read→mouse→click latency instead of shooting its stale
-        // location; no ray, bird state or outcome is changed by the harness.
+        // Lead a real airborne target by where it will be when the click
+        // lands: its own velocity (read-only telemetry; two observations on
+        // builds without it) times the harness's measured read→mouse→click
+        // delay. A fixed lead fell behind 16 m/s chukar. No ray, bird state
+        // or outcome is changed by the harness.
         const first = flying[0];
-        await sleep(30);
+        const readAt = Date.now();
+        if (!first.velocity) await sleep(30);
         const tracking = await page.evaluate(() => ({
           birds: window.__api3d.birds(), camera: window.__api3d.telemetry().camera,
         }));
         const bird = tracking.birds.find((candidate) => candidate.simId === first.simId && candidate.status === 'flying');
         if (!bird) continue;
         const elapsed = Math.max(.016, (bird.airMs - first.airMs) / 1000);
-        const lead = .075;
-        const target = { x: bird.x + (bird.x - first.x) / elapsed * lead,
-          y: bird.y + (bird.y - first.y) / elapsed * lead,
-          z: bird.z + (bird.z - first.z) / elapsed * lead };
+        const velocity = bird.velocity ?? { x: (bird.x - first.x) / elapsed, y: (bird.y - first.y) / elapsed, z: (bird.z - first.z) / elapsed };
+        const lead = clickDelay + 1 / 30;
+        const target = { x: bird.x + velocity.x * lead, y: bird.y + velocity.y * lead, z: bird.z + velocity.z * lead };
         const camera = tracking.camera;
         const dx = target.x - camera.x; const dz = target.z - camera.z;
         const aimPitch = deg(Math.atan2(target.y - camera.y, Math.hypot(dx, dz)));
         await look(deg(Math.atan2(-dx, -dz)), aimPitch, { telemetry: { camera } });
         await page.mouse.click(mouseX, mouseY, { button: 'left' });
+        clickDelay = clickDelay * .5 + Math.min(.4, (Date.now() - readAt) / 1000) * .5;
         shotsAtBird++; lastFireMs = now;
         await event('shot', await read());
       }
@@ -484,8 +489,15 @@ export async function runNormalGameplay(page, options = {}) {
         await page.keyboard.press('KeyR');
         if (opts.audio) await audioLifecycle(); else await sleep(2200);
         // Leave pointer lock using the browser API so the real DOM finish
-        // control is reachable, then click it as a player would.
+        // control is reachable, then click it as a player would. Since the
+        // field-book menus (2026-09-29) End hunt lives on the pause card,
+        // which the Pause control opens.
         await page.evaluate(() => document.exitPointerLock());
+        const endShown = 'document.getElementById("end-hunt")?.getClientRects().length > 0';
+        if (!await page.evaluate(endShown)) {
+          await page.click('#pause-hunt');
+          await page.waitForFunction(endShown, { timeout: 5000 });
+        }
         const finish = await page.$('#end-hunt');
         if (!finish) throw new Error('No finish-hunt control');
         await finish.click();
