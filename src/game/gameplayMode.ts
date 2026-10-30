@@ -18,12 +18,13 @@ import {
   educatedNerveMult,
   monthOf,
   openMix,
+  SEASON_WEEKS,
   seasonalBias,
   youngShare,
   type Month,
 } from './season';
 import { CONDITIONS, type Condition } from './conditions';
-import { createHunt, type HuntState } from './state';
+import { createHunt, rollHuntDay, type HuntState } from './state';
 import { LandscapeModel } from './landscape';
 import type { RNG } from './types';
 import { mulberry32 } from './math';
@@ -308,11 +309,20 @@ function createThreeHuntSetupUnchecked(
   const authoredEncounterRng = mulberry32(huntStreamSeed(seed, 0xa11c0a ^ dropSalt));
   const authoredBirdRng = mulberry32(huntStreamSeed(seed, 0xb17d7d ^ dropSalt));
   const timeOfDay = parseHuntTime(new URLSearchParams(search).get('tod'), resolvedArea.id);
-  // What land-driven placement may know before the hunt rolls its weather:
-  // the hour, the career week and any weather the player fixed.
-  const fixedWeather = launch?.kind === 'quick' ? (profile.quick ?? loadQuickConfig(storage)).weather : launch?.kind === 'career' ? 'random' : 'frost';
-  const placement = { timeOfDay, week: launch?.kind === 'career' ? loadCareer(storage).date.week : undefined,
-    condition: fixedWeather === 'random' ? undefined : fixedWeather as Condition };
+  const quick = launch?.kind === 'quick' ? profile.quick ?? loadQuickConfig(storage) : null;
+  const career = launch?.kind === 'career' ? loadCareer(storage) : null;
+  // The week the day belongs to: a link's ?month=, else the career's
+  // calendar. Quick and staged hunts are timeless (read as mid-October).
+  const week = monthOverride ? midWeekOf(monthOverride) : career?.date.week;
+  // Roll the day first, then place the birds for it: land-driven placement
+  // weighs each bird use by the weather the hunt actually gets.
+  const day = rollHuntDay(resolvedArea, environmentRng, {
+    wind: quick ? (quick.wind === 'random' ? undefined : quick.wind) : career ? undefined : 'breezy',
+    condition: weather ?? (quick && quick.weather !== 'random' ? quick.weather : undefined),
+    conditionBias: week === undefined ? undefined : seasonalBias(week, resolvedArea.conditionBias),
+  });
+  const month = monthOverride ?? (career ? monthOf(career.date.week) : 'October');
+  const placement = { timeOfDay, week, condition: day.condition };
   const challengeOptions = {
     timeOfDay,
     stockingMult: tuning.stocking, encounterNerveMult: tuning.nerve, mixedCoveys: true,
@@ -339,42 +349,46 @@ function createThreeHuntSetupUnchecked(
     }),
   };
 
-  if (launch?.kind === 'quick') {
-    const quick = profile.quick ?? loadQuickConfig(storage);
+  if (quick) {
     const area = resolveThreeHuntArea(search, storage);
     const hunt = createHunt(area, environmentRng, {
       ...challengeOptions,
-      wind: quick.wind === 'random' ? undefined : quick.wind,
+      wind: day.wind,
       gunId: quick.gunId,
-      condition: weather ?? (quick.weather === 'random' ? undefined : quick.weather),
+      condition: day.condition,
       dropPointId,
     });
     hunt.quick = quick;
     hunt.huntingMethod = quick.huntingMethod === 'goshawk' ? 'goshawk' : 'shotgun';
     if (isFalconryPractice(search)) stageFalconryPractice(hunt, seed!);
-    return { ...profile, launch, area, hunt, challenge, seed, breed: getBreed(profile.breedId), month: monthOverride ?? 'October' };
+    return { ...profile, launch, area, hunt, challenge, seed, breed: getBreed(profile.breedId), month };
   }
 
-  if (launch?.kind === 'career') {
-    const career = loadCareer(storage);
+  if (career) {
     const area = resolveThreeHuntArea(search, storage);
     const hunt = createHunt(area, environmentRng, {
       ...challengeOptions,
       gunId: career.hunter.shotgunId,
-      conditionBias: seasonalBias(career.date.week, area.conditionBias),
-      ...(weather ? { condition: weather } : {}),
+      wind: day.wind,
+      condition: day.condition,
       mix: openMix(area, career.date.week),
       youngShare: youngShare(career.date.week),
       educatedMult: educatedNerveMult(career.date.week),
       dropPointId,
     });
-    return { ...profile, launch, area, hunt, challenge, seed, breed: getBreed(profile.breedId), month: monthOverride ?? monthOf(career.date.week) };
+    return { ...profile, launch, area, hunt, challenge, seed, breed: getBreed(profile.breedId), month };
   }
 
   // Standalone, staged and capture visits roll a real day from the seed (so
   // reviews see real conditions), unless the link asks for one.
   const area = resolveThreeHuntArea(search, storage);
-  const hunt = createHunt(area, environmentRng, { ...challengeOptions, wind: 'breezy', condition: weather ?? undefined, dropPointId,
+  const hunt = createHunt(area, environmentRng, { ...challengeOptions, wind: day.wind, condition: day.condition, dropPointId,
     gunId: getGun(new URLSearchParams(search).get('gun') ?? '').id });
-  return { ...profile, launch, area, hunt, challenge, seed, breed: getBreed(profile.breedId), month: monthOverride ?? 'October' };
+  return { ...profile, launch, area, hunt, challenge, seed, breed: getBreed(profile.breedId), month };
+}
+
+/** The middle week of a season month, for a link's `?month=`. */
+function midWeekOf(month: Month): number {
+  const weeks = Array.from({ length: SEASON_WEEKS }, (_, week) => week).filter(week => monthOf(week) === month);
+  return weeks[weeks.length >> 1];
 }
