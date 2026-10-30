@@ -5,8 +5,9 @@
  * drop in, notes the spot against the land (the plum thicket, the cairn, the
  * bend of the draw) and walks there with the dog for the single. On a phone
  * a bird setting down 150 m off is a pixel or two, so the game keeps what his
- * eyes would have kept: the spot where he saw it go in, or where he lost it
- * going in behind cover, and which way it was flying. A mark fades from
+ * eyes would have kept: the spot where he saw it go in, or, if cover hid the
+ * last of it, where its glide was taking it, and which way it was flying. A
+ * mark fades from
  * memory after a few minutes; it is settled when its birds rise again (the
  * follow-up) or turn out not to be there.
  *
@@ -19,14 +20,14 @@ import { OPEN_COUNTRY_SINGLES } from './birds';
 
 export interface HunterMark {
   id: number;
-  /** World metres: where he saw it go down, or lost it going in. */
+  /** World metres: where he saw it go down, or where its glide was taking it when he lost it. */
   x: number; z: number;
   /** World bearing (atan2(z, x)) it was flying as it went in. */
   heading: number;
   /** The birds down there. */
   birdIds: number[];
   speciesId: string;
-  /** Watched all the way to the ground (else lost behind cover at the last). */
+  /** Watched all the way to the ground (else lost behind cover going in). */
   toGround: boolean;
   /** A covey that came back round and set down together (a Hun circle-back). */
   covey: boolean;
@@ -41,8 +42,12 @@ export const MARK_RANGE_M = 250;
 export const MARK_JOIN_M = 30;
 /** A mark he has not walked to fades from memory after this long. */
 export const MARK_MEMORY_MS = 240_000;
-/** He marked it if he saw it within this long of it touching down. */
-export const MARK_SIGHT_MS = 1500;
+/** He marked it if he saw it going in within this long of it touching down:
+ * a bobwhite seen to set its wings and drop behind a plum thicket is marked
+ * by its line and its glide, though the thicket hid the last of it. */
+export const MARK_SIGHT_MS = 2500;
+/** The farthest he carries a lost bird's glide on to where it went down (m). */
+export const MARK_GLIDE_M = 30;
 /** A cast this near the bearing of a mark (radians, about 25 degrees) goes to it. */
 export const MARK_CAST_CONE = 25 * Math.PI / 180;
 
@@ -58,6 +63,19 @@ export function landingHolds(speciesId: string, at: Vec2, bounds: Rect, patches:
   if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) return false;
   if (at.x < bounds.x || at.x > bounds.x + bounds.w || at.y < bounds.y || at.y > bounds.y + bounds.h) return false;
   return covey || OPEN_COUNTRY_SINGLES.has(speciesId) || patches.some(p => at.x >= p.x && at.x <= p.x + p.w && at.y >= p.y && at.y <= p.y + p.h);
+}
+
+/**
+ * Where a gliding bird he loses sight of is going down: carried on along its
+ * line by its height over the ground at the rate it was sinking, as an eye
+ * reads a glide, at most MARK_GLIDE_M; where it was if it was not sinking.
+ * `at` is its position (world metres), `ground` the ground under it.
+ */
+export function glideMark(at: { x: number; y: number; z: number }, vx: number, vy: number, vz: number, ground: number): { x: number; z: number } {
+  const across = Math.hypot(vx, vz), height = Math.max(0, at.y - ground);
+  if (vy >= -.2 || across < .5) return { x: at.x, z: at.z };
+  const carry = Math.min(MARK_GLIDE_M, height / -vy * across);
+  return { x: at.x + vx / across * carry, z: at.z + vz / across * carry };
 }
 
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));

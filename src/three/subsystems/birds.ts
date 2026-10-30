@@ -12,6 +12,7 @@ import { FeatherDrift, featherTones } from '../featherDrift';
 import { QuailFlushDebris } from '../quailFlushDebris';
 import { CoverEruption, type ImpactSurface } from '../coverEruption';
 import { BOUNCE_MAX_MPS, BOUNCE_MIN_MPS, BOUNCE_SHARE, COLLAPSE_MS, fallBall, fallWeight, featherPuffSize, impactSurface, strideLength } from '../fallPresentation';
+import { fallSoundDelay } from '../fallAudio';
 import { pheasantPondRadii } from '../../game/pheasantHabitat';
 import type { GroundSample } from '../../game/landscape';
 import * as THREE from 'three';
@@ -32,7 +33,7 @@ import { evadeGoshawk, type QuarryTarget } from '../../game/falconry';
 import { huntingDoctrine } from '../../game/huntDoctrine';
 import { HUNT_SHOT_RANGE } from '../../game/huntSimulation';
 import { ObstacleIndex } from '../../game/obstacleIndex';
-import { landingHolds, MARK_RANGE_M, MARK_SIGHT_MS, MarkBook, type HunterMark } from '../../game/marks';
+import { glideMark, landingHolds, MARK_RANGE_M, MARK_SIGHT_MS, MarkBook, type HunterMark } from '../../game/marks';
 import { quailPlumAt } from '../../game/quailComposition';
 import { quailCoverAt } from '../../game/quailLandscape';
 import type { Ctx, Subsystem } from '../engine';
@@ -325,10 +326,13 @@ interface Slot {
   stride?: number;
   /** A dead bird's first strike: it has bounced (or splashed) once. */
   struck?: boolean;
-  /** Where and when (field clock, ms) the hunter last had this bird in sight. */
-  sighted?: { ms: number; x: number; z: number };
+  /** Where and when (field clock, ms) the hunter last had this bird in sight,
+   * and where its glide was taking it (marks.ts glideMark). */
+  sighted?: { ms: number; x: number; z: number; goingX: number; goingZ: number };
   /** A Hun covey flying its loop back round to set down together. */
   circling?: boolean;
+  /** It rose as a relit single: its next escape is for good, never a mark. */
+  launchedSingle?: boolean;
   /** The wings as they were when the bird was hit: the collapse eases from them. */
   collapseFrom?: { left: THREE.Quaternion; right: THREE.Quaternion; ms: number };
   carryPose?: { elapsed: number; rotation: THREE.Quaternion };
@@ -494,6 +498,10 @@ export class BirdsSystem implements Subsystem {
   private readonly simPoint = { x: 0, y: 0 };
   /** Where the hunter watched misses go down (game/marks.ts). */
   private readonly markBook = new MarkBook();
+  /** Capture only: each hit's feather puff, a feather's size on screen. */
+  private readonly hitLog: { simId: number; fieldMs: number; rangeM: number; featherPx: number }[] = [];
+  /** Capture only: each shot bird's strike and when its thump would be heard. */
+  private readonly strikeLog: { simId: number; fieldMs: number; surface: ImpactSurface; rangeM: number; thumpDelayMs: number; x: number; z: number }[] = [];
   /** Field clock, ms: every tick, rise or not. */
   private fieldMs = 0;
   private readonly sightProbe = new THREE.Vector3();
@@ -692,6 +700,12 @@ export class BirdsSystem implements Subsystem {
         /** Where escaping birds set down, world metres, for the review's marks. */
         landings: () => this.slots.filter(slot => (slot.status === 'flying' || slot.status === 'departing') && slot.line?.target)
           .map(slot => ({ simId: slot.simId, x: slot.line!.target!.x, z: slot.line!.target!.z })),
+        /** Hits: the feather puff, each feather's size on screen. */
+        hits: () => this.hitLog.map(hit => ({ ...hit })),
+        /** Shot birds striking the ground, and when the thump would arrive. */
+        strikes: () => this.strikeLog.map(strike => ({ ...strike })),
+        /** The field clock (ms), the strike log's clock. */
+        fieldMs: () => this.fieldMs,
         /** The hunter's marks: where he watched misses go down. */
         marks: () => this.markBook.marks.map(mark => ({ ...mark, birdIds: [...mark.birdIds], freshness: this.markBook.freshness(mark, this.fieldMs) })),
         /** Rise review's shooting hunter: the capture never fires the real
@@ -1041,6 +1055,8 @@ export class BirdsSystem implements Subsystem {
       this.featherCol[j] = tone.r; this.featherCol[j + 1] = tone.g; this.featherCol[j + 2] = tone.b;
     }
     if (this.featherMat) this.featherMat.size = puff.size;
+    if (this.frozen) this.hitLog.push({ simId: slot.simId, fieldMs: Math.round(this.fieldMs), rangeM: +distance.toFixed(1),
+      featherPx: +(puff.size * this.viewHeight() / 2 / Math.max(1, distance)).toFixed(1) });
     this.featherMs = 0;
     if (this.featherPoints) this.featherPoints.visible = true;
     const position = this.featherGeo?.getAttribute('position') as THREE.BufferAttribute | undefined;
@@ -1210,7 +1226,10 @@ export class BirdsSystem implements Subsystem {
       // What the hunter sees of a bird going down, a few times a second: a
       // miss he watches go in is marked.
       const goingDown = s.line?.target ? Math.hypot(s.line.target.x - s.x, s.line.target.z - s.z) < 45 : s.y - g < 3 && s.airMs > LAND_MIN_AIR_MS;
-      if (goingDown && (this.fieldMs / dtMs | 0) % 2 === 0 && this.sees(s)) s.sighted = { ms: this.fieldMs, x: s.x, z: s.z };
+      if (goingDown && (this.fieldMs / dtMs | 0) % 2 === 0 && this.sees(s)) {
+        const going = glideMark(s, s.vxW, s.vyW, s.vzW, g);
+        s.sighted = { ms: this.fieldMs, x: s.x, z: s.z, goingX: going.x, goingZ: going.z };
+      }
       if (departing) {
         if (this.leftTheScreen(s, flight)) { s.status = 'done'; s.root.visible = false; }
         continue;
@@ -1595,6 +1614,7 @@ export class BirdsSystem implements Subsystem {
       ground: (x, z) => this.terrain.heightAt(x, z), cover: this.hunt.coverPatches?.() ?? [], rng,
     });
     slot.circling = !!slot.line.target && !!plan.circleBack && !sim.single;
+    slot.launchedSingle = !!sim.single;
     slot.sighted = undefined;
     slot.vxW = Math.cos(slot.line.bearing) * .5;
     slot.vzW = Math.sin(slot.line.bearing) * .5;
@@ -2103,33 +2123,46 @@ export class BirdsSystem implements Subsystem {
     let cover: { launchHeightAt?(x: number, z: number): number } | undefined;
     try { cover = this.coverCtx?.get('grass') as typeof cover; } catch { cover = undefined; }
     const area = this.hunt.areaConfig();
-    if (cover?.launchHeightAt) this.coverCrown = (x, z) => cover!.launchHeightAt!(x, z);
+    let crown: (x: number, z: number) => number;
+    if (cover?.launchHeightAt) crown = (x, z) => cover!.launchHeightAt!(x, z);
     else if (area.id === 'quail-fields' && this.hunt.worldToSim) {
-      this.coverCrown = (x, z) => {
+      crown = (x, z) => {
         const at = this.hunt.worldToSim(x, z, this.simPoint);
         const plum = quailPlumAt(at.x, at.y) * quailCoverAt(area, at.x, at.y);
         return plum > .35 ? 1.7 : plum > .15 ? 1 : .45;
       };
-    } else this.coverCrown = () => .4;
+    } else crown = () => .4;
+    // The cover never moves: remember it on a 2 m grid.
+    const memo = new Map<number, number>();
+    this.coverCrown = (x, z) => {
+      const key = Math.round(x / 2) * 65536 + Math.round(z / 2);
+      let height = memo.get(key);
+      if (height === undefined) {
+        if (memo.size > 200_000) memo.clear();
+        height = crown(Math.round(x / 2) * 2, Math.round(z / 2) * 2); memo.set(key, height);
+      }
+      return height;
+    };
     return this.coverCrown;
   }
 
   /**
    * A miss set down. If the hunter watched it go in, he marks it: where it
-   * touched down if he saw it to the ground, else where he lost it going in
-   * behind the cover; only a bird the field keeps there to hunt (marks.ts
-   * landingHolds), and never a relit single's last escape.
+   * touched down if he saw it to the ground, else where its glide was taking
+   * it when the cover hid it (marks.ts glideMark); only a bird the field keeps
+   * there to hunt (marks.ts landingHolds), and never a relit single's last
+   * escape.
    */
   private markLanding(slot: Slot, landing: { x: number; z: number }): void {
     const seen = slot.sighted;
-    if (!seen || this.fieldMs - seen.ms > MARK_SIGHT_MS) return;
-    const bird = this.hunt.huntState().birds.find(candidate => candidate.id === slot.simId);
-    if (!bird || bird.single) return;
+    // (A bird still gliding in may already be relit where it is going: the
+    // rise settles without waiting for birds out of the shot.)
+    if (!seen || this.fieldMs - seen.ms > MARK_SIGHT_MS || slot.launchedSingle) return;
     const area = this.hunt.areaConfig();
     const at = this.hunt.worldToSim?.(landing.x, landing.z, { x: 0, y: 0 });
     if (!at || !landingHolds(slot.species.id, at, area.world, area.patches, slot.circling)) return;
     const toGround = this.fieldMs - seen.ms <= 70;
-    const spot = toGround ? { x: slot.x, z: slot.z } : { x: seen.x, z: seen.z };
+    const spot = toGround ? { x: slot.x, z: slot.z } : { x: seen.goingX, z: seen.goingZ };
     const mark = this.markBook.add(slot.simId, spot, Math.atan2(slot.vzW, slot.vxW), slot.species.id, toGround, this.fieldMs, !!slot.circling);
     this.coverEvents?.dispatchEvent(new CustomEvent('hunt-mark', { detail: mark }));
   }
@@ -2227,10 +2260,15 @@ export class BirdsSystem implements Subsystem {
       this.coverEvents?.dispatchEvent(new CustomEvent('bird-cover-disturbance', { detail: {
         x: slot.x, z: slot.z, radius: surface === 'reeds' ? 1.6 : .8, intensity: surface === 'reeds' ? .8 : .4 } }));
     }
-    if (this.frozen) return;
     const offset = new THREE.Vector3(slot.x, slot.y, slot.z);
     if (this.listener) offset.sub(this.listener.position).applyQuaternion(this.listener.quaternion.clone().invert());
     else offset.sub(new THREE.Vector3(this.hunterX, 0, this.hunterZ));
+    if (this.frozen) {
+      // Capture: no sound, but the review reads when the thump would arrive.
+      this.strikeLog.push({ simId: slot.simId, fieldMs: Math.round(this.fieldMs), surface, rangeM: +offset.length().toFixed(1),
+        thumpDelayMs: Math.round(fallSoundDelay(offset.length()) * 1000), x: slot.x, z: slot.z });
+      return;
+    }
     playFall(surface, fallWeight(slot.species.id), offset.length(), offset, seed);
   }
 

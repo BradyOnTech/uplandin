@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { landingHolds, MARK_CAST_CONE, MARK_JOIN_M, MARK_MEMORY_MS, MarkBook, type HunterMark } from '../src/game/marks';
+import { glideMark, landingHolds, MARK_CAST_CONE, MARK_GLIDE_M, MARK_JOIN_M, MARK_MEMORY_MS, MarkBook, type HunterMark } from '../src/game/marks';
 import { getSpecies } from '../src/game/species';
 import { BirdsSystem } from '../src/three/subsystems/birds';
 import type { Ctx } from '../src/three/engine';
@@ -61,6 +61,15 @@ describe('the hunter\'s mark book', () => {
     expect(book.aimedAt({ x: 0, z: 0 }, Math.PI, 200)).toBeNull();
     // Standing on it, any facing means it.
     expect(book.aimedAt({ x: 58, z: 1 }, Math.PI, 200)).toBe(near);
+  });
+
+  it('carries a lost bird\'s glide on to where it was going down, as an eye reads it', () => {
+    // 2 m up, sinking 1 m/s at 10 m/s across: 20 m on.
+    expect(glideMark({ x: 0, y: 2, z: 0 }, 10, -1, 0, 0)).toEqual({ x: 20, z: 0 });
+    // Never farther than he could fairly judge.
+    expect(glideMark({ x: 0, y: 9, z: 0 }, 0, -1, 10, 0).z).toBeCloseTo(MARK_GLIDE_M, 9);
+    // Not sinking: where it was.
+    expect(glideMark({ x: 3, y: 2, z: 4 }, 10, .5, 0, 0)).toEqual({ x: 3, z: 4 });
   });
 
   it('marks only a bird the field keeps: inside the property, in cover unless it is a bird of open country', () => {
@@ -143,9 +152,10 @@ describe('the birds subsystem marks a miss the hunter watched go down', () => {
     expect(f.slot.status).toBe('done');
     expect(f.marks).toHaveLength(1);
     expect(f.marks[0].toGround).toBe(false);
-    // Where he lost it, short of where it touched down.
-    expect(f.marks[0].z).toBeLessThan(f.slot.z - .5);
-    expect(f.marks[0].z).toBeGreaterThan(44);
+    // Where its glide was taking it when he lost it: past where he lost it,
+    // near where it touched down.
+    expect(Math.abs(f.marks[0].z - f.slot.z)).toBeLessThan(2.5);
+    expect(f.marks[0].z).toBeGreaterThan(46);
   });
 
   it('never marks a bird the field will not keep there, nor a relit single', () => {
@@ -153,7 +163,7 @@ describe('the birds subsystem marks a miss the hunter watched go down', () => {
     outside.tick(4);
     expect(outside.marks).toHaveLength(0);
     const single = landing();
-    (single.simBirds[0] as { single?: boolean }).single = true;
+    Object.assign(single.slot, { launchedSingle: true });
     single.tick(4);
     expect(single.marks).toHaveLength(0);
   });

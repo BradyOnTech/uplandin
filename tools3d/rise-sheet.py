@@ -33,7 +33,8 @@ for rise in report['rises']:
 for area, rises in by_area.items():
     blocks = []
     for rise in rises:
-        frames = rise.get('frames') or []
+        # Frames taken for the falls (--shoot-at) go to tools3d/falls-sheet.py.
+        frames = [fr for fr in rise.get('frames') or [] if not fr.get('fall')]
         if not frames:
             continue
         th = round(TW * rise['height'] / rise['width'])
