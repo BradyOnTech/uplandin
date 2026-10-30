@@ -294,3 +294,17 @@ Grounds are named by id: `quail-fields` (Quail), `sharptail-prairie` (Sharptail)
 - `src/audio.ts`, `src/three/subsystems/fieldAudio.ts`: the field's beds and far sounds go to the worker (shared audio).
 - `tools3d/playthrough.mjs` (`--query`), `tools3d/postcards.sh` (the pinned day), `tools3d/mapReviewViews.ts` (the canyon vista): shared review tooling.
 - `test/fieldSoundscape.test.ts`: the ambience tests now wait for the beds to arrive.
+
+### Lead review of milestone 3 (2026-10-30)
+
+Merged into `campaign/world-birds` as 301c91a. It merged cleanly onto Cover milestone 2, Birds milestone 3 and Dog D1.
+
+**Checks:** tsc is clean, and the full suite on the combined tree passes, 2,163 of 2,163, with a 30 s timeout.
+
+**Evidence I looked at:**
+- **The Sharptail month strip.** The year turns visibly: green hollows in September, a bleached November, and in December and January snow by drift, with grass through it.
+- **The Chukar canyon sheet.** The vista now stands on the rim edge and looks into the gorge, and the far wall is cooler. Into the morning sun it still reads as a pale banded sheet.
+
+**Not verified:**
+- Nobody has heard the sound of place: headless Chrome's audio clock doesn't run here. Brady, or a headed browser with `tools3d/field-sound-review.mjs`, needs to listen.
+- Staged visits now roll a real day. The postcards are pinned to a clear October morning; other tools should pass `weather=` themselves.
