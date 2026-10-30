@@ -18,13 +18,13 @@ const bounds = { x: 0, y: 0, w: 400, h: 500 };
 const build = (habitat = [] as { x: number; y: number; w: number; h: number }[], routes = [] as { x: number; y: number }[][]) =>
   buildCoverMap({ bounds, heightAt: drawLand, habitat, routes, clearings: [], recipe: sharptailCoverRecipe([]), margin: 40 });
 const cellAt = (map: ReturnType<typeof build>, x: number, y: number): CoverCell =>
-  map.sample(x, y, { cls: Cover.short, density: 0, height: 0, tone: 0 });
+  map.sample(x, y, { cls: Cover.short, density: 0, height: 0, tone: 0, variant: 0 });
 
 describe('ground kit cover map', () => {
   it('reads the land: wet draw bottoms, a head where the draw begins', () => {
     const land = new LandAnalysis(-40, -40, 480, 580, drawLand);
-    const bottom = land.sample(200, 440, { height: 0, slope: 0, tpi: 0, relief: 0, wetness: 0, south: 0, west: 0, convergence: 0 });
-    const shoulder = land.sample(80, 440, { height: 0, slope: 0, tpi: 0, relief: 0, wetness: 0, south: 0, west: 0, convergence: 0 });
+    const bottom = land.sample(200, 440, { height: 0, slope: 0, tpi: 0, relief: 0, wetness: 0, south: 0, west: 0, convergence: 0, channel: 0 });
+    const shoulder = land.sample(80, 440, { height: 0, slope: 0, tpi: 0, relief: 0, wetness: 0, south: 0, west: 0, convergence: 0, channel: 0 });
     expect(bottom.wetness).toBeGreaterThan(shoulder.wetness + .3);
     expect(bottom.tpi).toBeLessThan(0);
     expect(shoulder.south).toBeGreaterThan(Math.abs(shoulder.west));
@@ -68,7 +68,7 @@ describe('ground kit cover map', () => {
 describe('Sharptail cover from its own land and habitat', () => {
   const landscape = new LandscapeModel(getArea('sharptail-prairie'));
   const map = coverMapFor(landscape)!;
-  const cell = { cls: Cover.short, density: 0, height: 0, tone: 0 } as CoverCell;
+  const cell = { cls: Cover.short, density: 0, height: 0, tone: 0, variant: 0 } as CoverCell;
 
   it('is a mosaic: mostly short shoulder grass, with crowns, swales and woody draw heads', () => {
     const share = map.classShare();

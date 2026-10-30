@@ -26,6 +26,9 @@ it.each(['pheasant-coverts', 'woodcock-bottoms', 'sharptail-prairie'])('still co
 });
 
 it.each(['pheasant-coverts', 'woodcock-bottoms', 'sharptail-prairie'])('releases a late texture without rebuilding a field that was already disposed', async (areaId) => {
+  // Sharptail loads its sward texture only on the legacy stack; the kit
+  // draws its own litter floor.
+  if (areaId === 'sharptail-prairie') vi.stubGlobal('location', { search: '?cover=legacy' });
   let resolve!: (texture: THREE.Texture<HTMLImageElement>) => void;
   vi.spyOn(THREE.TextureLoader.prototype, 'loadAsync').mockReturnValue(new Promise(r => { resolve = r; }));
   const { terrain, ctx } = fixture(areaId);
@@ -67,4 +70,12 @@ it('paints Sharptail from the ground kit cover map and releases its texture with
   terrain.dispose(ctx);
   expect(disposed).toHaveBeenCalledTimes(1);
   expect(ctx.scene.children).toHaveLength(0);
+});
+
+it('lets the ground kit draw Sharptail\'s floor without loading the sward texture', async () => {
+  const load = vi.spyOn(THREE.TextureLoader.prototype, 'loadAsync').mockResolvedValue(new THREE.Texture());
+  const { terrain, ctx } = fixture('sharptail-prairie');
+  await terrain.init(ctx);
+  expect(load).not.toHaveBeenCalled();
+  terrain.dispose(ctx);
 });

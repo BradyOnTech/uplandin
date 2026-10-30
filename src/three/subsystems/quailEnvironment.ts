@@ -22,6 +22,7 @@ import { VegetationWind, VEGETATION_GUST_GLSL, VEGETATION_INSTANCE_WIND_GLSL } f
 import { SolidShotGeometry } from '../solidShotGeometry';
 import { quailBurnAt, quailCreekDistance, quailFeatureBare } from '../../game/quailFeatures';
 import { buildQuailHistory } from './quailHistory';
+import { groundKitTrunks, type KitTrunk } from '../groundKit/groundKit';
 
 const TILE = 40; // yards; local batches remain independently culled.
 const COLOR = { straw: 0xb6a574, dry: 0x919273, sage: 0x435f43, sageLight: 0x64794b, bark: 0x615343, leaf: 0x506c4e, leafLight: 0x748158 };
@@ -95,12 +96,17 @@ export class QuailEnvironmentSystem implements Subsystem {
   private slopeRotation = new THREE.Quaternion(); private normal = new THREE.Vector3(); private up = new THREE.Vector3(0, 1, 0);
   private surface = { ...EMPTY_SURFACE }; private world = { x: 0, z: 0 };
   private treeKit?:QuailTreeKit;
-  constructor(private readonly landscape: LandscapeModel,private readonly loadTrees?:(quality:Ctx['quality'])=>Promise<QuailTreeKit>) {}
+  /** The kit's tree trunks, when the ground kit grows Quail's vegetation. */
+  private trunks: KitTrunk[] = [];
+  constructor(private readonly landscape: LandscapeModel,private readonly loadTrees?:(quality:Ctx['quality'])=>Promise<QuailTreeKit>,
+    private readonly options: { kit?: boolean } = {}) {}
 
   /** Tree trunks are solid, while the dog can work through the visual cover. */
   collisionCircles(): readonly CircleObstacle[] { return this.obstacles; }
 
-  blocksShot(origin: THREE.Vector3Like, target: THREE.Vector3Like): boolean { return this.shotSolids.blocks(origin, target); }
+  blocksShot(origin: THREE.Vector3Like, target: THREE.Vector3Like): boolean {
+    return this.shotSolids.blocks(origin, target) || trunksBlock(this.trunks, origin, target);
+  }
 
   private material(color: number, wind = false, fade = [-1, 0, 1000, 1100], grass = false): THREE.MeshLambertMaterial {
     const mat = new THREE.MeshLambertMaterial({ color, side: wind ? THREE.DoubleSide : THREE.FrontSide, vertexColors: wind });
@@ -228,6 +234,21 @@ export class QuailEnvironmentSystem implements Subsystem {
     this.obstacles.push(...quailGroundPropObstacles(this.landscape));
     this.root.name = 'Quail Fields'; ctx.scene.add(this.root);
     this.groundNearDistance = quailGroundNearDistance(ctx.quality);
+    if (this.options.kit) {
+      // The ground kit grows the grass, plum, shinnery, sage and trees from
+      // the cover map; their trunks stay solid to the hunter and to shot.
+      this.trunks = groundKitTrunks(this.landscape);
+      for (const trunk of this.trunks) this.obstacles.push({ x: trunk.x, z: trunk.z, radius: Math.max(.16, trunk.radius) });
+    } else this.buildVegetation(ctx);
+    this.buildTracks(ctx); this.buildFence();
+    buildQuailHistory({ landscape: this.landscape, quality: ctx.quality, castShadow: ctx.quality === 'high', obstacles: this.obstacles,
+      addSolid: mesh => this.shotSolids.add(mesh), keep: object => this.root.add(object),
+      own: resource => { if (resource instanceof THREE.BufferGeometry) this.geometries.add(resource); else this.materials.add(resource); } });
+    this.update(ctx);
+  }
+
+  /** The legacy field: tufted grass, sage, shrubs and the authored stands. */
+  private buildVegetation(ctx: Ctx): void {
     const leafDetail = ctx.quality === 'high' ? 'near' : 'mid';
     const short = quailGrassClumpGeometry(false, leafDetail); const tall = quailGrassClumpGeometry(true, leafDetail);
     const midGrass = quailGrassClumpGeometry(true, ctx.quality === 'high' ? 'mid' : 'far'); const shrub = quailShrubGeometry(); const sage = sageGeometry();
@@ -351,15 +372,10 @@ export class QuailEnvironmentSystem implements Subsystem {
         || (stand.x === 881 && stand.y === 242);
       this.treeStand(trees, stand, barkMat, canopyMat, n === 0 || routeGrove, routeGrove);
     }
-    this.buildTracks(ctx); this.buildFence();
-    buildQuailHistory({ landscape: this.landscape, quality: ctx.quality, castShadow: ctx.quality === 'high', obstacles: this.obstacles,
-      addSolid: mesh => this.shotSolids.add(mesh), keep: object => this.root.add(object),
-      own: resource => { if (resource instanceof THREE.BufferGeometry) this.geometries.add(resource); else this.materials.add(resource); } });
-    this.update(ctx);
   }
 
   private buildTracks(ctx: Ctx): void {
-    const geometry = buildQuailTrackGeometry(this.landscape);
+    const geometry = buildQuailTrackGeometry(this.landscape, this.options.kit ? 'red-plains' : 'field');
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, depthWrite: false,
       polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     applyQuailSurfaceDetail(mat, this.landscape);
@@ -394,4 +410,18 @@ export class QuailEnvironmentSystem implements Subsystem {
     for (const geometry of this.geometries) geometry.dispose(); for (const material of this.materials) material.dispose();
     this.root.clear(); this.batches.length = 0; this.obstacles.length = 0; this.geometries.clear(); this.materials.clear();
   }
+}
+
+/** A shot line through a kit tree's trunk, where the crown has not yet
+ * taken over. Trunks are thin, so the closest approach decides. */
+export function trunksBlock(trunks: readonly KitTrunk[], origin: THREE.Vector3Like, target: THREE.Vector3Like): boolean {
+  const dx = target.x - origin.x, dz = target.z - origin.z, length2 = dx * dx + dz * dz;
+  if (length2 < 1e-6) return false;
+  for (const trunk of trunks) {
+    const t = Math.max(0, Math.min(1, ((trunk.x - origin.x) * dx + (trunk.z - origin.z) * dz) / length2));
+    if (Math.hypot(origin.x + dx * t - trunk.x, origin.z + dz * t - trunk.z) > trunk.radius) continue;
+    const y = origin.y + (target.y - origin.y) * t;
+    if (y >= trunk.ground && y <= trunk.top) return true;
+  }
+  return false;
 }

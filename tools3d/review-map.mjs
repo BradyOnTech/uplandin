@@ -64,7 +64,7 @@ try {
     // or truck sequence must never leave the frame at another camera.
     await new Promise(done => setTimeout(done, 400));
     await page.evaluate(pose, view);
-    const render = await page.evaluate(() => { window.__api3d.renderOnce(); return window.__api3d.info(); });
+    const render = await page.evaluate(() => { window.__api3d.renderOnce(); return { ...window.__api3d.info(), kit: window.__groundKit?.stats?.() }; });
     const file = `${label}-${quality}-${tod}-${view.id}.png`;
     await page.screenshot({ path: `${out}/${file}` });
     report.frames.push({ view: view.id, name: view.name, file, render });

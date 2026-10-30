@@ -141,10 +141,25 @@ function groundKitSystems(landscape: LandscapeModel): Subsystem[] | null {
     new PropertyTrailsSystem(landscape), new PropertyHabitatSystem(landscape, { kitLowCover: true })];
 }
 
+/** Quail Fields on the kit: the cover map grows its grass, plum, shinnery,
+ * sage and trees; the environment keeps its tracks, fence, history and
+ * solid trunks. ?cover=legacy brings the old field grass, umbrella-crowned
+ * stands and hand-placed plum kit back for review. */
+function quailSystems(landscape: LandscapeModel): Subsystem[] {
+  const style = groundKitStyle(landscape.area.id);
+  if (style) {
+    const kit = new GroundKitSystem(landscape);
+    return [new QuailEnvironmentSystem(landscape, undefined, { kit: true }), kit, new KitReviewSystem(landscape, style, () => kit.stats()),
+      new QuailGroundPropsSystem(landscape)];
+  }
+  return [new QuailEnvironmentSystem(landscape, loadQuailTreeKit), new QuailKitSystem(landscape), new QuailGroundPropsSystem(landscape),
+    ...(groundKitLegacyReview(landscape.area.id) ? [new KitReviewSystem(landscape, 'legacy')] : [])];
+}
+
 const AREA_VISUALS: Readonly<Record<string, LandscapeVisualAdapter | undefined>> = {
   'sharptail-prairie': { create: (landscape) => ({ systems: groundKitSystems(landscape) ?? [new GrassSystem(landscape), new SharptailTurfSystem(landscape), new SharptailRanchSystem(landscape), new PropertyTrailsSystem(landscape), new PropertyHabitatSystem(landscape),
     ...(groundKitLegacyReview(landscape.area.id) ? [new KitReviewSystem(landscape, 'legacy')] : [])] }) },
-  'quail-fields': { create: (landscape) => ({ systems: [new QuailEnvironmentSystem(landscape, loadQuailTreeKit), new QuailKitSystem(landscape), new QuailGroundPropsSystem(landscape)] }) },
+  'quail-fields': { create: (landscape) => ({ systems: quailSystems(landscape) }) },
   'chukar-ridge': { create: (landscape) => ({ systems: [new ChukarEnvironmentSystem(landscape)] }) },
   'pheasant-coverts': PHEASANT_VISUALS,
   'hun-benches': HUN_VISUALS,

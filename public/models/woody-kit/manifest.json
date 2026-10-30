@@ -1,0 +1,305 @@
+{
+  "version": 1,
+  "units": "metres",
+  "source": "assets/source/woody-kit/woody-kit.blend",
+  "generator": "tools3d/assets/woody-kit/build.py",
+  "assets": [
+    {
+      "id": "buckbrush-high",
+      "species": "buckbrush",
+      "detail": "high",
+      "triangles": 261,
+      "height": 0.892,
+      "nominalHeight": 0.85,
+      "bytes": 25692
+    },
+    {
+      "id": "buckbrush-lite",
+      "species": "buckbrush",
+      "detail": "lite",
+      "triangles": 122,
+      "height": 0.911,
+      "nominalHeight": 0.85,
+      "bytes": 14816
+    },
+    {
+      "id": "buckbrush-far",
+      "species": "buckbrush",
+      "detail": "far",
+      "triangles": 24,
+      "height": 0.85,
+      "nominalHeight": 0.85,
+      "bytes": 3532
+    },
+    {
+      "id": "chokecherry-high",
+      "species": "chokecherry",
+      "detail": "high",
+      "triangles": 442,
+      "height": 2.771,
+      "nominalHeight": 2.7,
+      "bytes": 39724
+    },
+    {
+      "id": "chokecherry-lite",
+      "species": "chokecherry",
+      "detail": "lite",
+      "triangles": 151,
+      "height": 2.589,
+      "nominalHeight": 2.7,
+      "bytes": 17192
+    },
+    {
+      "id": "chokecherry-far",
+      "species": "chokecherry",
+      "detail": "far",
+      "triangles": 48,
+      "height": 2.625,
+      "nominalHeight": 2.7,
+      "bytes": 5852
+    },
+    {
+      "id": "buffaloberry-high",
+      "species": "buffaloberry",
+      "detail": "high",
+      "triangles": 366,
+      "height": 2.484,
+      "nominalHeight": 2.3,
+      "bytes": 33648
+    },
+    {
+      "id": "buffaloberry-lite",
+      "species": "buffaloberry",
+      "detail": "lite",
+      "triangles": 118,
+      "height": 2.268,
+      "nominalHeight": 2.3,
+      "bytes": 13940
+    },
+    {
+      "id": "buffaloberry-far",
+      "species": "buffaloberry",
+      "detail": "far",
+      "triangles": 48,
+      "height": 2.175,
+      "nominalHeight": 2.3,
+      "bytes": 5852
+    },
+    {
+      "id": "wild-rose-high",
+      "species": "wild-rose",
+      "detail": "high",
+      "triangles": 182,
+      "height": 0.752,
+      "nominalHeight": 0.7,
+      "bytes": 18752
+    },
+    {
+      "id": "wild-rose-lite",
+      "species": "wild-rose",
+      "detail": "lite",
+      "triangles": 75,
+      "height": 0.667,
+      "nominalHeight": 0.7,
+      "bytes": 9720
+    },
+    {
+      "id": "wild-rose-far",
+      "species": "wild-rose",
+      "detail": "far",
+      "triangles": 24,
+      "height": 0.612,
+      "nominalHeight": 0.7,
+      "bytes": 3532
+    },
+    {
+      "id": "sand-plum-high",
+      "species": "sand-plum",
+      "detail": "high",
+      "triangles": 666,
+      "height": 1.867,
+      "nominalHeight": 1.8,
+      "bytes": 58736
+    },
+    {
+      "id": "sand-plum-lite",
+      "species": "sand-plum",
+      "detail": "lite",
+      "triangles": 203,
+      "height": 1.782,
+      "nominalHeight": 1.8,
+      "bytes": 22656
+    },
+    {
+      "id": "sand-plum-far",
+      "species": "sand-plum",
+      "detail": "far",
+      "triangles": 28,
+      "height": 1.734,
+      "nominalHeight": 1.8,
+      "bytes": 3928
+    },
+    {
+      "id": "shinnery-high",
+      "species": "shinnery",
+      "detail": "high",
+      "triangles": 366,
+      "height": 1.12,
+      "nominalHeight": 1.0,
+      "bytes": 34892
+    },
+    {
+      "id": "shinnery-lite",
+      "species": "shinnery",
+      "detail": "lite",
+      "triangles": 135,
+      "height": 1.066,
+      "nominalHeight": 1.0,
+      "bytes": 16544
+    },
+    {
+      "id": "shinnery-far",
+      "species": "shinnery",
+      "detail": "far",
+      "triangles": 28,
+      "height": 1.0,
+      "nominalHeight": 1.0,
+      "bytes": 3924
+    },
+    {
+      "id": "sand-sage-high",
+      "species": "sand-sage",
+      "detail": "high",
+      "triangles": 203,
+      "height": 1.125,
+      "nominalHeight": 1.05,
+      "bytes": 20928
+    },
+    {
+      "id": "sand-sage-lite",
+      "species": "sand-sage",
+      "detail": "lite",
+      "triangles": 94,
+      "height": 1.015,
+      "nominalHeight": 1.05,
+      "bytes": 12088
+    },
+    {
+      "id": "sand-sage-far",
+      "species": "sand-sage",
+      "detail": "far",
+      "triangles": 28,
+      "height": 0.898,
+      "nominalHeight": 1.05,
+      "bytes": 3928
+    },
+    {
+      "id": "mesquite-high",
+      "species": "mesquite",
+      "detail": "high",
+      "triangles": 767,
+      "height": 3.627,
+      "nominalHeight": 3.6,
+      "bytes": 66144
+    },
+    {
+      "id": "mesquite-lite",
+      "species": "mesquite",
+      "detail": "lite",
+      "triangles": 294,
+      "height": 3.659,
+      "nominalHeight": 3.6,
+      "bytes": 29924
+    },
+    {
+      "id": "mesquite-far",
+      "species": "mesquite",
+      "detail": "far",
+      "triangles": 78,
+      "height": 3.408,
+      "nominalHeight": 3.6,
+      "bytes": 9352
+    },
+    {
+      "id": "hackberry-high",
+      "species": "hackberry",
+      "detail": "high",
+      "triangles": 473,
+      "height": 8.838,
+      "nominalHeight": 8.5,
+      "bytes": 42200
+    },
+    {
+      "id": "hackberry-lite",
+      "species": "hackberry",
+      "detail": "lite",
+      "triangles": 182,
+      "height": 7.793,
+      "nominalHeight": 8.5,
+      "bytes": 20392
+    },
+    {
+      "id": "hackberry-far",
+      "species": "hackberry",
+      "detail": "far",
+      "triangles": 74,
+      "height": 7.52,
+      "nominalHeight": 8.5,
+      "bytes": 8972
+    },
+    {
+      "id": "elm-high",
+      "species": "elm",
+      "detail": "high",
+      "triangles": 473,
+      "height": 11.233,
+      "nominalHeight": 11.0,
+      "bytes": 42136
+    },
+    {
+      "id": "elm-lite",
+      "species": "elm",
+      "detail": "lite",
+      "triangles": 182,
+      "height": 10.76,
+      "nominalHeight": 11.0,
+      "bytes": 20332
+    },
+    {
+      "id": "elm-far",
+      "species": "elm",
+      "detail": "far",
+      "triangles": 74,
+      "height": 10.528,
+      "nominalHeight": 11.0,
+      "bytes": 8924
+    },
+    {
+      "id": "cottonwood-high",
+      "species": "cottonwood",
+      "detail": "high",
+      "triangles": 473,
+      "height": 15.773,
+      "nominalHeight": 15.5,
+      "bytes": 42204
+    },
+    {
+      "id": "cottonwood-lite",
+      "species": "cottonwood",
+      "detail": "lite",
+      "triangles": 182,
+      "height": 15.319,
+      "nominalHeight": 15.5,
+      "bytes": 20396
+    },
+    {
+      "id": "cottonwood-far",
+      "species": "cottonwood",
+      "detail": "far",
+      "triangles": 74,
+      "height": 14.48,
+      "nominalHeight": 15.5,
+      "bytes": 8976
+    }
+  ]
+}

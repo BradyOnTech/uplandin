@@ -97,7 +97,7 @@ float propertyNoise(vec2 p) {
 // Broad surface variation supports the painted litter on northern prairie.
 // Keep fine procedural noise subdued; mipmapped art supplies nearby detail
 // without high-contrast subpixel noise in the long grazing-angle view.
-const propertySurfaceFragment = (prairie: boolean, filtered = prairie) => /* glsl */ `
+const propertySurfaceFragment = (prairie: boolean, filtered = prairie, dapple = true) => /* glsl */ `
 vec2 pNoise = ${filtered ? 'mat2(.8,-.6,.6,.8) * (vPropertyWorld.xz - uPropertyFloorOrigin)' : 'vPropertyWorld.xz'};
 float pFine = propertyNoise(pNoise * 0.62);
 float pMeso = propertyNoise(pNoise * 0.095 + vec2(19.0, 47.0));
@@ -124,9 +124,9 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uSunTint, min(pLobe * 0.52, 0.46));
 float pCool = uCoolK * (1.0 - min(pLobe * 2.2, 1.0));
 diffuseColor.rgb = mix(diffuseColor.rgb, uCoolTint, pCool * 0.72);
 
-float pCloud = ${prairie ? 'propertyNoise(pNoise * .012 + vec2(uCloudT * .05, uCloudT * .02))' : `sin(vPropertyWorld.x * 0.081 + uCloudT)
+${dapple ? `float pCloud = ${prairie ? 'propertyNoise(pNoise * .012 + vec2(uCloudT * .05, uCloudT * .02))' : `sin(vPropertyWorld.x * 0.081 + uCloudT)
   * sin(vPropertyWorld.z * 0.057 + 1.4 + uCloudT * 0.71)`};
-diffuseColor.rgb *= 1.0 - 0.16 * smoothstep(0.28, 0.78, pCloud) * uCloudShK;
+diffuseColor.rgb *= 1.0 - 0.16 * smoothstep(0.28, 0.78, pCloud) * uCloudShK;` : '// The ground light\'s wind-driven cloud shadows shade this ground.'}
 `;
 
 function hash(x: number, y: number, seed: number): number {
@@ -378,9 +378,10 @@ export class PropertyTerrain {
     // of its own bespoke prairie paint.
     const kit = groundKitStyle(landscape.area.id) !== null;
     const prairie = landscape.area.id === 'sharptail-prairie' && !kit;
-    // Sharptail's fine native sward detail serves both the bespoke paint and the kit.
-    const sward = landscape.area.id === 'sharptail-prairie';
-    const painted = landscape.area.id === 'pheasant-coverts' || wetSoil || prairie || kit;
+    // The kit draws its own litter floor; the fine sward texture rippled
+    // like sand under it at grazing angles.
+    const sward = prairie;
+    const painted = landscape.area.id === 'pheasant-coverts' || wetSoil || prairie;
     const woodland = landscape.area.id === 'grouse-woods';
     const farm = landscape.area.id === 'pheasant-coverts';
     const origin = landscape.propertyToWorld(0, 0, { x: 0, z: 0 });
@@ -409,7 +410,7 @@ export class PropertyTerrain {
         .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n\tvPropertyWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;');
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>\nuniform vec2 uPropertyFloorOrigin;\n' + (this.kit?.declarations ?? '') + propertySurfaceDeclarations(prairie || kit) + (farm ? PHEASANT_FARM_DECLARATIONS : '') + (painted ? '\nuniform sampler2D uPropertySoil; uniform float uPropertySoilStrength; uniform vec2 uPropertySoilOrigin;' : '') + (prairie ? '\nuniform sampler2D uPrairieSurfaceNormal; uniform sampler2D uPrairieBands;' : ''))
-        .replace('#include <color_fragment>', '#include <color_fragment>\n' + (this.kit?.fragment ?? '') + propertySurfaceFragment(prairie, prairie || kit) + (prairie ? SHARPTAIL_SURFACE_COLOR_FRAGMENT : '') + (painted ? `
+        .replace('#include <color_fragment>', '#include <color_fragment>\n' + (this.kit?.fragment ?? '') + propertySurfaceFragment(prairie, prairie || kit, !kit) + (prairie ? SHARPTAIL_SURFACE_COLOR_FRAGMENT : '') + (painted ? `
           vec2 soilUV = (vPropertyWorld.xz - uPropertySoilOrigin) / ${sward ? '1.6' : '4.8'};
           vec3 soilA = texture2D(uPropertySoil, soilUV).rgb;
           ${sward ? `
@@ -423,7 +424,7 @@ export class PropertyTerrain {
           float soilValue = dot(mix(soilA, soilB, .24), vec3(.2126,.7152,.0722));
           `}
           float soilDetail = clamp(soilValue / ${wetSoil ? ".052" : sward ? "0.1740556" : ".33"}, ${wetSoil ? ".78, 1.25" : sward ? ".60, 1.4" : ".55, 1.55"});
-          float soilFade = 1.0 - smoothstep(${kit ? '6.0, 34.0' : sward ? '30.0, 110.0' : '24.0, 90.0'}, distance(vPropertyWorld.xz, cameraPosition.xz));
+          float soilFade = 1.0 - smoothstep(${sward ? '30.0, 110.0' : '24.0, 90.0'}, distance(vPropertyWorld.xz, cameraPosition.xz));
           diffuseColor.rgb *= mix(1.0, soilDetail, soilFade * uPropertySoilStrength);
           ${prairie ? `
           // Stand-scale basal litter remains legible between middle-distance
@@ -457,8 +458,8 @@ export class PropertyTerrain {
     const wetSoil = this.landscape.area.id === 'woodcock-bottoms';
     this.kit = groundKitSurface(this.landscape, ctx.quality);
     const prairie = this.landscape.area.id === 'sharptail-prairie' && !this.kit;
-    const sward = this.landscape.area.id === 'sharptail-prairie';
-    if (this.landscape.area.id === 'pheasant-coverts' || wetSoil || prairie || this.kit) {
+    const sward = prairie;
+    if (this.landscape.area.id === 'pheasant-coverts' || wetSoil || prairie) {
       try {
         const texture = await new THREE.TextureLoader().loadAsync(`${import.meta.env.BASE_URL}textures/terrain/${wetSoil ? "wet-alder-painted" : sward ? "sharptail-sward-v2" : "prairie-painted"}.webp`);
         if (this.abort.signal.aborted) { texture.dispose(); return; }
@@ -469,9 +470,7 @@ export class PropertyTerrain {
         this.soil.value = texture;
         // Ground identity comes from broad habitat paint; keep the repeating
         // grit subordinate so the farm and open cut fields retain clear masses.
-        // The kit's near floor leans harder on the fine sward: it is the mat
-        // the garnish blades stand in.
-        this.soilStrength.value = wetSoil ? .32 : sward ? (this.kit ? .3 : .30) : .40;
+        this.soilStrength.value = wetSoil ? .32 : sward ? .30 : .40;
       } catch (error) {
         // The baked habitat paint remains usable if an optional art asset
         // cannot load; a missing texture must not prevent entering a hunt.
