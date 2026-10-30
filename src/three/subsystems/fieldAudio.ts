@@ -1,7 +1,11 @@
 import * as THREE from 'three';
 import type { Hunt3DSystem } from './hunt3d';
-import { playBirdCall, playBirdFlock, playDogBreath, playDogCollar, playDogMovement, playHeartbeat, playHullDrop, prepareBirdSounds,
-  prepareDogSounds, prepareStepSounds, setFieldTension, startFieldAmbience, type BirdSound, type DogCollarSound, type SoundDirection } from '../../audio';
+import { playBirdCall, playBirdFlock, playDogBreath, playDogCollar, playDogMovement, playFarSound, playHeartbeat, playHullDrop, prepareBirdSounds,
+  prepareDogSounds, prepareFarSounds, prepareStepSounds, setFieldTension, startFieldAmbience, type BirdSound, type DogCollarSound,
+  type SoundDirection } from '../../audio';
+import { FAR_SOUND_GAIN, farSoundWait, nextFarSound } from '../fieldSoundscape';
+import type { Condition } from '../../game/conditions';
+import type { Month } from '../../game/season';
 import { DogBreathing } from '../sound/dogSounds';
 import { hullSurface } from '../sound/gunFoley';
 import { AMBIENT_BIRD_GAIN, CoveyCalls, CoveyGathering, groundBirdWait, groundSpace, nextGroundBird, QUARRY_CALL_GAIN, QUARRY_VOICES,
@@ -22,6 +26,9 @@ export class FieldAudioSystem implements Subsystem {
   /** The land's own birds, and the quarry's voices (sound/fieldBirds.ts). */
   private readonly random: () => number;
   private nextBird = Infinity;
+  /** The working country beyond the property, on its own stream so the birds keep theirs. */
+  private readonly farRandom: () => number;
+  private nextFar = Infinity;
   private listenAgain = 0;
   private readonly gathering: CoveyGathering;
   private readonly coveyCalls: CoveyCalls;
@@ -50,6 +57,7 @@ export class FieldAudioSystem implements Subsystem {
     let seed = 0x7f4a7c15;
     for (const char of areaId ?? '') seed = Math.imul(seed ^ char.charCodeAt(0), 0x01000193) >>> 0;
     this.random = mulberry32(seed);
+    this.farRandom = mulberry32(seed ^ 0x5bd1e995);
     this.gathering = new CoveyGathering(this.random);
     this.coveyCalls = new CoveyCalls(this.random);
   }
@@ -78,8 +86,10 @@ export class FieldAudioSystem implements Subsystem {
     }, { signal });
     // The first bird calls a little sooner than the rest.
     this.nextBird = ctx.time + groundBirdWait(this.areaId, ctx.timeOfDay, this.random) * .5;
+    this.nextFar = ctx.time + farSoundWait(this.areaId, this.farRandom) * .4;
     if (!this.capture) {
       prepareBirdSounds(this.areaId, this.areaId ? getArea(this.areaId).speciesMix.map(share => share.speciesId) : []);
+      prepareFarSounds(this.areaId);
       prepareDogSounds(this.hunt.dogCount());
       prepareStepSounds();
     }
@@ -124,6 +134,7 @@ export class FieldAudioSystem implements Subsystem {
     const hunt = ctx.get<Hunt3DSystem>('hunt3d');
     this.ambience?.setWind?.(hunt.huntState().windStrength);
     this.ambience?.setHour?.(ctx.timeOfDay);
+    this.ambience?.setConditions?.(this.condition(hunt), this.month(hunt));
     const target = this.pointTension(ctx, hunt);
     this.tension += (target - this.tension) * Math.min(1, dt * (target > this.tension ? 1.5 : 4));
     this.applyTension();
@@ -156,8 +167,12 @@ export class FieldAudioSystem implements Subsystem {
     }
     // The land's birds hush while the hunter walks in on a point.
     if (ctx.time > this.nextBird) {
-      if (this.tension < .2) this.groundBird(ctx);
-      this.nextBird = ctx.time + groundBirdWait(this.areaId, ctx.timeOfDay, this.random);
+      if (this.tension < .2) this.groundBird(ctx, this.month(hunt));
+      this.nextBird = ctx.time + groundBirdWait(this.areaId, ctx.timeOfDay, this.random, this.month(hunt));
+    }
+    if (ctx.time > this.nextFar) {
+      if (this.tension < .2) this.farSound(ctx, hunt);
+      this.nextFar = ctx.time + farSoundWait(this.areaId, this.farRandom);
     }
     if (ctx.time >= this.listenAgain) { this.listenAgain = ctx.time + 1; this.quarryCall(ctx, hunt); }
   }
@@ -172,9 +187,21 @@ export class FieldAudioSystem implements Subsystem {
     for (const old of this.birdSounds) if (!old.active) this.birdSounds.delete(old);
     if (sound) this.birdSounds.add(sound);
   }
+  /** The day's weather and month, as the hunt was set up. */
+  private condition(hunt: Hunt3DSystem): Condition { return hunt.condition?.() ?? 'mild'; }
+  private month(hunt: Hunt3DSystem): Month { return hunt.month?.() ?? 'October'; }
+  /** A far sound from the working country: low on the horizon, never close. A
+   * strong wind or rain carries less of it to the hunter. */
+  private farSound(ctx: Ctx, hunt: Hunt3DSystem): void {
+    const pick = nextFarSound(this.areaId, ctx.timeOfDay, this.month(hunt), this.farRandom);
+    if (!pick) return;
+    const condition = this.condition(hunt), masked = (hunt.huntState().windStrength === 'strong' ? .6 : 1) * (condition === 'rain' ? .55 : condition === 'snow' ? .75 : 1);
+    this.keep(playFarSound(pick.sound.kind, { distance: pick.distance, direction: this.bearingDirection(pick.bearing, .01),
+      space: groundSpace(this.areaId), gain: pick.sound.gain * FAR_SOUND_GAIN * masked }));
+  }
   /** One of the land's own birds: from the cover around, or crossing the sky. */
-  private groundBird(ctx: Ctx): void {
-    const pick = nextGroundBird(this.areaId, ctx.timeOfDay, this.random);
+  private groundBird(ctx: Ctx, month: Month): void {
+    const pick = nextGroundBird(this.areaId, ctx.timeOfDay, this.random, month);
     if (!pick) return;
     const { bird } = pick, height = bird.overhead ? .45 + this.random() * .45 : .03;
     const turn = (this.random() < .5 ? -1 : 1) * (.7 + this.random() * .6);

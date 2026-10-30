@@ -1,6 +1,10 @@
 import { synthesizePheasantLaunch, PHEASANT_AUDIO_RATE, type PheasantLaunchVoice } from './three/pheasantFlushAudio';
 import { synthesizeBirdLaunch, synthesizeCoveyThunder, BIRD_FLUSH_AUDIO_RATE, type BirdLaunchVoice } from './three/speciesFlushAudio';
-import { fieldInsectSamples, fieldSoundscape, fieldWindSamples, HOUR_INSECTS, HOUR_WIND } from './three/fieldSoundscape';
+import { COVER_WEATHER, COVER_WIND, coverSound, dryerLevel, FAR_RATE, farSoundSamples, fieldCoverSamples, fieldInsectSamples, fieldSoundscape, fieldWeatherSamples,
+  fieldWindSamples, grainDryerSamples, GUST_BED, gustShare, HOUR_INSECTS, HOUR_WIND, insectShare, WEATHER_BEDS, workingLandscape,
+  type FarSoundKind } from './three/fieldSoundscape';
+import type { Condition } from './game/conditions';
+import type { Month } from './game/season';
 import type { TimeOfDay } from './three/palette';
 import type { WindStrength } from './game/wind';
 import { gunMechanism, type ShotgunActionCue, type ShotgunMechanism } from './three/shotgunActionTiming';
@@ -458,6 +462,32 @@ export function playBirdFlock(id: FlockId, placement: BirdPlacement, seed: numbe
   return birdSound(c, placement, FLOCKS[id].seconds + 1, parts);
 }
 
+/** Make a ground's far sounds ahead of need, in idle moments. */
+export function prepareFarSounds(areaId: string | undefined): void {
+  if (typeof AudioContext === 'undefined') return;
+  for (const kind of new Set((workingLandscape(areaId)?.sounds ?? []).map(sound => sound.kind))) {
+    for (let i = 0; i < FAR_VARIANTS; i++) warming.push(() => cached(`far|${kind}`, i, makeFar(kind)));
+  }
+  if (!warmingScheduled) { warmingScheduled = true; whenIdle(warmSome); }
+}
+const FAR_VARIANTS = 2;
+const makeFar = (kind: FarSoundKind): Make => seed => [farSoundSamples(kind, seed * 7919)];
+
+/** The working country beyond the property: a truck, cattle, a far train
+ * (fieldSoundscape.ts), placed and dulled by distance as a far bird is. */
+export function playFarSound(kind: FarSoundKind, placement: BirdPlacement): BirdSound | undefined {
+  const c = ready();
+  if (!c || !(placement.gain > 0)) return;
+  const [samples] = variant(`far|${kind}`, FAR_VARIANTS, makeFar(kind));
+  const route = birdRoute(c, placement, samples.length / FAR_RATE);
+  let active = true;
+  const source = playSamples(c, [samples], FAR_RATE, 1, route.input, () => { if (active) { active = false; route.release(); } });
+  return {
+    get active() { return active; },
+    stop() { if (!active) return; active = false; source.onended = null; source.stop(); source.disconnect(); route.release(); },
+  };
+}
+
 /** Woodcock wing twitter: rapid high chirps as it towers. */
 export function playTwitter(): void {
   for (let i = 0; i < 6; i++) {
@@ -694,6 +724,9 @@ export interface FieldAmbience {
   setTension?(tension: number): void;
   /** The wind and the evening's crickets follow the hour. */
   setHour?(hour: TimeOfDay): void;
+  /** The day's weather and the month: the cover's voice in the wind, rain or
+   * sleet, gusts, a grain dryer at harvest, the crickets' season. */
+  setConditions?(condition: Condition, month: Month): void;
   stop(): void;
 }
 
@@ -718,7 +751,33 @@ export function startFieldAmbience(areaId?: string): FieldAmbience | null {
     });
     // The evening's crickets, left and right, made only when the hour calls for them.
     let insects: { source: AudioBufferSourceNode; gain: GainNode; side: StereoPannerNode }[] = [];
-    const insectLevel = () => paused || hour === null ? 0 : INSECT_GAIN * profile.insects * HOUR_INSECTS[hour] * hush;
+    let season = 1;
+    const insectLevel = () => paused || hour === null ? 0 : INSECT_GAIN * profile.insects * HOUR_INSECTS[hour] * season * hush;
+    // The day's own layers, made once the hunt says what the day is: each a
+    // looped buffer with a level that follows the wind, the hour and the hush.
+    let condition: Condition | null = null, month: Month | null = null, day = 0;
+    let extras: { source: AudioBufferSourceNode; gain: GainNode; side: StereoPannerNode; level: () => number }[] = [];
+    // Each layer is made in its own idle moment, never all at once on a frame.
+    const extra = (make: () => Float32Array, rate: number, pan: number, level: () => number) => {
+      const generation = day;
+      warming.push(() => {
+        if (stopped || generation !== day) return;
+        const samples = make(), source = c.createBufferSource(), gain = c.createGain(), side = c.createStereoPanner();
+        source.buffer = c.createBuffer(1, samples.length, rate);
+        source.buffer.getChannelData(0).set(samples); source.loop = true;
+        side.pan.value = pan; gain.gain.setValueAtTime(0, c.currentTime);
+        source.connect(gain).connect(side).connect(output(c)); source.start();
+        extras.push({ source, gain, side, level });
+        gain.gain.setTargetAtTime(paused ? 0 : level(), c.currentTime, 1.5);
+      });
+    };
+    const setExtras = (seconds: number) => {
+      for (const layer of extras) layer.gain.gain.setTargetAtTime(paused ? 0 : layer.level(), c.currentTime, seconds);
+    };
+    const dropExtras = () => {
+      for (const layer of extras) { layer.source.stop(); layer.source.disconnect(); layer.gain.disconnect(); layer.side.disconnect(); }
+      extras = [];
+    };
     const setInsects = (seconds: number) => { for (const layer of insects) layer.gain.gain.setTargetAtTime(insectLevel(), c.currentTime, seconds); };
     let stopped = false;
     return {
@@ -726,12 +785,13 @@ export function startFieldAmbience(areaId?: string): FieldAmbience | null {
         if (stopped) return;
         paused = nextPaused;
         for (const layer of layers) layer.gain.gain.setTargetAtTime(paused ? 0 : windLevel(layer.volume), c.currentTime, paused ? .08 : .5);
-        setInsects(paused ? .08 : .5);
+        setInsects(paused ? .08 : .5); setExtras(paused ? .08 : .5);
       },
       setWind(strength) {
         if (stopped || strength === wind) return;
         wind = strength; windGain = strength === 'calm' ? .45 : strength === 'strong' ? 1 : .75;
         if (!paused) for (const layer of layers) layer.gain.gain.setTargetAtTime(windLevel(layer.volume), c.currentTime, 1.2);
+        if (!paused) setExtras(1.2);
       },
       setTension(tension) {
         const next = 1 - Math.max(0, Math.min(1, tension)) * .6;
@@ -741,6 +801,7 @@ export function startFieldAmbience(areaId?: string): FieldAmbience | null {
         hush = next;
         if (!paused) for (const layer of layers) layer.gain.gain.setTargetAtTime(windLevel(layer.volume), c.currentTime, rising ? .35 : .9);
         if (!paused) setInsects(rising ? .35 : .9);
+        if (!paused) setExtras(rising ? .35 : .9);
       },
       setHour(next) {
         if (stopped || next === hour) return;
@@ -758,10 +819,28 @@ export function startFieldAmbience(areaId?: string): FieldAmbience | null {
           });
         }
         setInsects(1.5);
+        if (!paused) setExtras(2);
+      },
+      setConditions(nextCondition, nextMonth) {
+        if (stopped || (nextCondition === condition && nextMonth === month)) return;
+        condition = nextCondition; month = nextMonth; season = insectShare(nextMonth, nextCondition);
+        dropExtras();
+        day++;
+        const weather = nextCondition, cover = coverSound(areaId), rate = INSECT_RATE, low = FAR_RATE;
+        // Rain keeps falling while the field hushes for a point: it only half hushes.
+        const weatherHush = () => 1 - (1 - hush) * .5;
+        if (cover) extra(() => fieldCoverSamples(rate, cover.voice, cover.seed), rate, 0, () => cover.gain * COVER_WIND[wind] * COVER_WEATHER[weather] * hourWind * hush);
+        extra(() => fieldWeatherSamples(low, GUST_BED), low, -.15, () => GUST_BED.gain * gustShare(weather, wind) * hourWind * hush);
+        for (const bed of WEATHER_BEDS[weather]) extra(() => fieldWeatherSamples(rate, bed), rate, .1, () => bed.gain * weatherHush());
+        const dryer = dryerLevel(areaId, nextMonth);
+        if (dryer > 0) extra(() => grainDryerSamples(low, 3301), low, .45, () => dryer * hush);
+        if (!warmingScheduled) { warmingScheduled = true; whenIdle(warmSome); }
+        setInsects(1.5);
       },
       stop() {
         if (stopped) return;
         stopped = true;
+        dropExtras();
         for (const layer of layers) { layer.source.stop(); layer.source.disconnect(); layer.filter.disconnect(); layer.gain.disconnect(); }
         for (const layer of insects) { layer.source.stop(); layer.source.disconnect(); layer.gain.disconnect(); layer.side.disconnect(); }
       },

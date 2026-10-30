@@ -136,3 +136,30 @@ it('follows the hour: the wind lays down at dusk, and the crickets start, made o
   bed.stop(); bed.stop();
   for (const source of nodes.filter(n => n.kind === 'source')) expect(source.stop).toHaveBeenCalledOnce();
 });
+
+it('makes the day\'s layers in idle moments, once per day, and lets them all go on stop', async () => {
+  vi.useFakeTimers();
+  try {
+    const nodes = fakeAudio(), audio = await import('../src/audio');
+    const bed = audio.startFieldAmbience('pheasant-coverts')!;
+    const before = nodes.filter(n => n.kind === 'source').length;
+    bed.setConditions!('rain', 'October');
+    // Nothing is made on the frame that asked.
+    expect(nodes.filter(n => n.kind === 'source')).toHaveLength(before);
+    await vi.runAllTimersAsync();
+    // The cattails' rattle, gusts, rain, and the harvest's grain dryer.
+    const day = nodes.filter(n => n.kind === 'source').slice(before);
+    expect(day).toHaveLength(4);
+    expect(day.every(source => source.loop)).toBe(true);
+    bed.setConditions!('rain', 'October'); await vi.runAllTimersAsync();
+    expect(nodes.filter(n => n.kind === 'source')).toHaveLength(before + 4);
+    // A January snow: no dryer, sleet instead of rain; the old day stops.
+    bed.setConditions!('snow', 'January'); await vi.runAllTimersAsync();
+    for (const source of day) expect(source.stop).toHaveBeenCalledOnce();
+    expect(nodes.filter(n => n.kind === 'source')).toHaveLength(before + 7);
+    // A day asked for then stopped before it was made is never made.
+    bed.setConditions!('mild', 'September'); bed.stop(); await vi.runAllTimersAsync();
+    expect(nodes.filter(n => n.kind === 'source')).toHaveLength(before + 7);
+    for (const source of nodes.filter(n => n.kind === 'source')) expect(source.stop).toHaveBeenCalledOnce();
+  } finally { vi.useRealTimers(); }
+});
