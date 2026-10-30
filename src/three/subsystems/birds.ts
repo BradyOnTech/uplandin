@@ -664,6 +664,14 @@ export class BirdsSystem implements Subsystem {
           hunterX: this.hunterX,
           hunterZ: this.hunterZ,
         }),
+        /** Rise review's handler: blow the whistle (cast, dead bird, whoa,
+         * release) toward where the camera looks, as the player would. */
+        command: (kind: 'cast' | 'dead' | 'whoa' | 'release') => {
+          ctx.events.dispatchEvent(Object.assign(new Event('hunt-action'), { detail: kind }));
+        },
+        /** Where escaping birds set down, world metres, for the review's marks. */
+        landings: () => this.slots.filter(slot => (slot.status === 'flying' || slot.status === 'departing') && slot.line?.target)
+          .map(slot => ({ simId: slot.simId, x: slot.line!.target!.x, z: slot.line!.target!.z })),
         /** Rise review's shooting hunter: the capture never fires the real
          * gun, so the tool reports a double's shells and reload here and the
          * wave rule reads them as it reads the gun (null restores the gun). */
