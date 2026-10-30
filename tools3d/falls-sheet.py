@@ -32,11 +32,17 @@ def screen_of(frame, sim_id):
     return None
 
 grounds = {}
+labels = []
 for label, path in runs:
+    if label not in labels:
+        labels.append(label)
     report = json.load(open(path))
     root = os.path.dirname(path)
     for rise in report['rises']:
         grounds.setdefault(rise['area'], []).append((label, root, rise))
+# One tier at a time (High first), and within it each label's runs in the order given.
+for area in grounds:
+    grounds[area].sort(key=lambda run: (-run[2]['width'], labels.index(run[0])))
 
 for area, rises in grounds.items():
     blocks = []
