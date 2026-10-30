@@ -222,6 +222,16 @@ describe('Chukar Ridge habitat from the land', () => {
       expect(open).toBeGreaterThanOrEqual(6);
     }
   });
+
+  it('keeps the cover a dog hunts off the fence, where no covey ever sits', () => {
+    // Coveys stay 70 yd inside the fence; a strip of cover by the fence
+    // would only draw the dog away from the birds at an entry.
+    const w = area.world;
+    for (const r of derivedCoverRects(area)) {
+      const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+      expect(Math.min(cx - w.x, cy - w.y, w.x + w.w - cx, w.y + w.h - cy)).toBeGreaterThan(50);
+    }
+  });
 });
 
 describe('Chukar Ridge birds live where the land says', () => {

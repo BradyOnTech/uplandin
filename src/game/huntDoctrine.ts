@@ -37,6 +37,10 @@ export interface HuntDoctrine {
   dogEdgeBias: number;
   /** How long the dog commits to a cover objective before moving on. */
   coverWorkMult: number;
+  /** Big grounds: with nothing left to check in range, the dog hunts on
+   * toward the next unchecked cover ahead within this many yards, the way
+   * a finished dog hunts to objectives, so it leads a hunter who follows it. */
+  dogObjectiveReach?: number;
   /** Search/track travel tempo in this habitat; retrieve pace stays shared. */
   dogPaceMult: number;
   /** How quickly a pointed bird becomes wild when the hunter crowds it. */
@@ -141,7 +145,7 @@ const DOCTRINES: Record<string, HuntDoctrine> = {
     description: 'Silver sage, broken rimrock, and a dog working the wind. Follow the benches to the high ground.',
     method: 'CONTOUR CLIMB · HIGH SIDE',
     tip: 'Use the benches to gain the high side before closing on your dog. Walk into the point; rushing uphill can send the covey over the ridge out of sight.',
-    guidance: 'Gain the high side. Walk into the point.', dogRangeMult: 1.18, dogEdgeBias: .08, coverWorkMult: .84, dogPaceMult: .92,
+    guidance: 'Gain the high side. Walk into the point.', dogRangeMult: 1.18, dogEdgeBias: .08, coverWorkMult: .84, dogObjectiveReach: 220, dogPaceMult: .92,
     pointNerveMult: 1.12, pointRadius: 18, hunterSpookRadius: 24, sprintNerveMult: 1.8, runnerStyle: 'chukar', circleBack: false, spatialEncounter: true,
     flight: { lateral: .62, climb: .42, carry: 1.28, wobble: .42 },
   },

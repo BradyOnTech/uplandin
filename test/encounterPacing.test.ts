@@ -48,7 +48,7 @@ function hunt(areaId: string, seed: number, seconds: number, challenge = 'balanc
     camera.position.z -= Math.cos(camera.rotation.y) * WALK / 30;
   };
 
-  const result = { points: 0, wild: 0, detections: [] as number[], straightness: [] as number[], flushes: [] as { yards: number; pointed: boolean }[] };
+  const result = { points: 0, wild: 0, detections: [] as number[], straightness: [] as { reach: number; ratio: number }[], flushes: [] as { yards: number; pointed: boolean }[] };
   const hidden = new Set(system.huntState().birds.filter(b => b.state === 'hidden').map(b => b.id));
   let stage = 'none', state = '', pathM = 0, from = { x: 0, z: 0 }, previous = system.dogWorld({ x: 0, z: 0 });
   for (let frame = 0; frame < seconds * 30; frame++) {
@@ -78,7 +78,8 @@ function hunt(areaId: string, seed: number, seconds: number, challenge = 'balanc
     }
     if (state !== 'pointing' && next.state === 'pointing') {
       result.points++;
-      result.straightness.push(Math.hypot(at.x - from.x, at.z - from.z) / Math.max(pathM, .01));
+      const reach = Math.hypot(at.x - from.x, at.z - from.z);
+      result.straightness.push({ reach, ratio: reach / Math.max(pathM, .01) });
     }
     const risen = system.huntState().birds.filter(b => hidden.has(b.id) && b.state !== 'hidden');
     if (risen.length) {
@@ -112,12 +113,15 @@ describe('encounter pacing on a balanced hunt', () => {
       expect(points / runs.reduce((sum, r) => sum + r.points + r.wild, 0)).toBeGreaterThan(.6);
       // Birds are winded at tens of yards, not a hundred...
       expect(median(runs.flatMap(r => r.detections))).toBeLessThan(45);
-      // ...and located by casting across the scent, not a straight line. Each
-      // hunt counts once: on Chukar's bigger ground one hunt can walk a trail
-      // past a covey sitting close to it and score six straight-in points,
-      // which outvoted the other five hunts' casting when points were pooled.
-      const hunts = runs.filter(r => r.straightness.length);
-      expect(median(hunts.map(r => median(r.straightness)))).toBeLessThan(.93);
+      // ...and located by casting across the scent, not a straight line. Only
+      // approaches long enough to need casting count, 15 m or more from the
+      // first scent to the point: a dog that winds a bird at its feet points
+      // it straight. Counting those, how many such points a few hunts
+      // happened to score swung the old median of per-hunt medians between
+      // 0.89 and 0.94 on Chukar for the same code.
+      const casts = runs.flatMap(r => r.straightness.filter(s => s.reach >= 15).map(s => s.ratio));
+      expect(casts.length).toBeGreaterThan(3);
+      expect(median(casts)).toBeLessThan(.93);
     }, 120_000);
 });
 
