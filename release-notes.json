@@ -2,6 +2,38 @@
   "about": "What changed in each release, newest first. Before pushing to main, run npm run release-notes: it adds the subjects of the player-facing commits since the last release. Edit the lines freely, then commit this file with the release.",
   "releases": [
     {
+      "date": "2026-10-30",
+      "through": "a2d273d",
+      "notes": [
+        "Dawn birds sit tight near the roost, and a low sun glares",
+        "Let a creeping pup be seen, and whoa'd, before it bumps the bird",
+        "Keep dog callouts off the dog they describe",
+        "Hold G to look closer at a distant dog",
+        "Put every dog in a blaze-orange field collar",
+        "Stop Quail and Chukar dogs circling cover they can never reach",
+        "Give phones the same colour as desktop, and fog that follows the sky",
+        "Bring back Duck Hunt waves: the covey thunders, three birds fly",
+        "Derive what grows where from the land itself",
+        "Fog the field in linear light so phones and desktop see the same air",
+        "Give each ground its own far air, a readable Sharptail evening and cold Cattail light",
+        "Put each region's own country on the horizon: no mountains on the plains",
+        "Keep dawn mist and canyon dusk in the low ground, and lay shelterbelts long and low",
+        "Grow Sharptail from the shared ground kit: knee-high shoulders, copper crowns, maroon swales",
+        "Close the tops of sward masses and thickets",
+        "Rebuild Chukar Ridge as a canyon you climb",
+        "Dome the core of a draw-head thicket so it never reads as a pit",
+        "Real far country with parallax, sky occlusion and wind-driven cloud shadows",
+        "Crisp Cattail days, cool Sharptail evening shade, last light without navy or mauve",
+        "Throw soft dust and straw over a flushing covey, sized to the covey",
+        "Fly every bird on one planned line, rise in short waves, and let misses be marked",
+        "Keep Chukar's hunting steady on the bigger ground",
+        "Keep sky occlusion gentle so draws read without turning gloomy",
+        "Keep Chukar's phone cost near the old ground's",
+        "Crown Castle Rock and the mesas with whole basalt rims",
+        "Drop a bird shot over the fence just inside it"
+      ]
+    },
+    {
       "date": "2026-10-04",
       "through": "c6047c4",
       "notes": [
