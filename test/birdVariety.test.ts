@@ -47,7 +47,9 @@ describe('mixed properties show their mix', () => {
     // The primary species still opens most days.
     expect(openingSecondary / N).toBeGreaterThan(.1);
     expect(openingSecondary / N).toBeLessThan(.5);
-  });
+    // Sixty set-ups of the bigger, land-placed Chukar canyon take about 4 s
+    // on a quiet machine and over 7 s when other jobs share it.
+  }, 30_000);
 
   it('keeps a big secondary covey from eating a small stocking', () => {
     for (let seed = 1; seed <= 30; seed++) {
