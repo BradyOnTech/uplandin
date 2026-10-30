@@ -42,8 +42,10 @@ describe('smooth English Setter', () => {
       // The forequarter and head rig are identical; only the loin length differs.
       for (const name of ['neck', 'head', 'jaw', 'front-left', 'front-left-lower', 'front-left-distal', 'front-left-paw'])
         expect(setter.joints[name].position.distanceTo(gsp.joints[name].position)).toBe(0);
-      expect(setter.joints['hind-left'].position.z).toBeLessThan(gsp.joints['hind-left'].position.z);
-      expect(gsp.joints['front-left'].position.z - gsp.joints['hind-left'].position.z).toBeLessThan(.48);
+      // The hips hang from the pelvis: compare where they stand, not their offsets.
+      const z = (dog: typeof gsp, name: string) => dog.joints[name].getWorldPosition(new THREE.Vector3()).z;
+      expect(z(setter, 'hind-left')).toBeLessThan(z(gsp, 'hind-left'));
+      expect(z(gsp, 'front-left') - z(gsp, 'hind-left')).toBeLessThan(.48);
     } finally { gsp.dispose(); setter.dispose(); }
   });
 

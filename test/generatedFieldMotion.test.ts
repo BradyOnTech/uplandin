@@ -221,9 +221,10 @@ it('supports the torso on uphill and downhill grades without exhausting leg reac
         if(foot.locked&&!foot.step)expect(Math.abs(foot.groundGap)).toBeLessThan(.0001);
       });
     }
-    // Uphill posture raises the chest along the grade. The folded foreleg
-    // remains an authored point rather than being dragged onto the ground.
-    expect(motion.asset.joints.body.rotation.x).toBeCloseTo(-Math.atan(slope),3);
+    // Uphill posture raises the chest along the grade; the stride's own
+    // rocking rides on it. The folded foreleg remains an authored point
+    // rather than being dragged onto the ground.
+    expect(motion.asset.joints.body.rotation.x+motion.trunk.pitch).toBeCloseTo(-Math.atan(slope),3);
     if(speed===0){
       expect(motion.feet[0].locked).toBe(false);expect(motion.feet.slice(1).every(f=>f.locked)).toBe(true);
       for(let frame=0;frame<30;frame++) {

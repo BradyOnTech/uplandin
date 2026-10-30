@@ -10,7 +10,7 @@ export const CHUKAR_GROUND_DETAIL = {
   lite: {near:32,far:12,range:125,horizonSpacing:28},
 } as const;
 import { buildQuailTerrainGeometry } from './quailTerrain';
-import { QUAIL_TERRAIN_TILE, quailGroundTiles, quailGroundUsesNear } from './quailGroundGeometry';
+import { QUAIL_TERRAIN_TILE, drawnQuailGroundHeight, quailGroundTiles, quailGroundUsesNear } from './quailGroundGeometry';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { chukarPlantGroupAt } from './chukarSurface';
 
@@ -222,6 +222,7 @@ export class ChukarTerrain {
   private distant:THREE.Mesh[]=[];
   private material=new THREE.MeshLambertMaterial({vertexColors:true});
   private nearDistance=170;
+  private detail:{near:number;far:number}=CHUKAR_GROUND_DETAIL.high;
   private texture?:THREE.Texture;
   private river?:THREE.Mesh;
   constructor(private landscape:LandscapeModel){}
@@ -229,7 +230,7 @@ export class ChukarTerrain {
     this.texture=await new THREE.TextureLoader().loadAsync(`${import.meta.env.BASE_URL}textures/terrain/chukar-dry-ground.webp`);
     this.texture.wrapS=this.texture.wrapT=THREE.RepeatWrapping;this.texture.anisotropy=4;
     applyScreeDetail(this.material,this.landscape,this.texture);
-    const detail=CHUKAR_GROUND_DETAIL[ctx.quality];
+    const detail=CHUKAR_GROUND_DETAIL[ctx.quality];this.detail=detail;
     this.nearDistance=detail.range;
     // Spend detail on nearby plant silhouettes. The footpath and plants use
     // these exact divisions and the same near-distance switch.
@@ -255,6 +256,10 @@ export class ChukarTerrain {
     }
     this.river=createChukarRiver(this.landscape);ctx.scene.add(this.river);
     this.update(ctx);
+  }
+  /** The drawn ground under a point, as a viewer at (viewX, viewZ) sees it. */
+  surfaceHeightAt(x:number,z:number,viewX:number,viewZ:number):number {
+    return drawnQuailGroundHeight(this.landscape,x,z,viewX,viewZ,this.nearDistance,()=>this.detail,FAR_SINK);
   }
   update(ctx:Ctx):void {
     for(const tile of this.tiles)tile.near.visible=quailGroundUsesNear(tile.x,tile.z,ctx.camera.position.x,ctx.camera.position.z,this.nearDistance);

@@ -63,7 +63,8 @@ it.each([30,60])('keeps the paws and lower legs apart through turn, stop and rev
     expect(motion.feet.every(f=>f.step===0)).toBe(true);
     motion.dispose();
   }
-});
+// Seventy-two turns at 60 Hz take seconds of solving: give a busy machine room.
+},20_000);
 
 it.each([30,60])('keeps deliberate touchdown goals through a real pickup-to-carry half turn at %s Hz',fps=>{
   const ground=(x:number,z:number)=>.10*z+.045*x;

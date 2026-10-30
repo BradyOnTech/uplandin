@@ -1,17 +1,26 @@
 import * as THREE from 'three';
 import { GeneratedEarGravity } from './generatedEarGravity';
-import { BOUND_STRIDE, boundStride, selectLocomotionGait, type LocomotionGait, type LocomotionSpeedThresholds } from './locomotion';
+import { BOUND_STRIDE, boundStride, selectLocomotionGait, type GallopLead, type LocomotionGait, type LocomotionSpeedThresholds } from './locomotion';
 import { createGeneratedGsp, GENERATED_STRIDE, type GeneratedCoatId, type GeneratedLook } from './generatedGsp';
 import { GeneratedScentMotion, fieldPerformance, type GeneratedFieldIntent } from './generatedScentMotion';
 import { GeneratedBodySupport } from './generatedBodySupport';
 import { GeneratedMouthMotion } from './generatedMouth';
 import { GeneratedPickupReach } from './generatedPickupReach';
 import { GeneratedPivotSteps } from './generatedPivotSteps';
+import { GeneratedGaitBody } from './generatedGaitBody';
+import { breedStrideScale } from './huntMotion';
+import { getBreed, type BreedMotion } from '../../game/breeds';
 
 /** Standing cover at least this tall (m) has a running dog leap through it. */
 const BOUND_COVER_M = .9;
 /** Below this pace (m/s) a dog pushes through cover rather than leaping it. */
 const BOUND_SPEED = 2.3;
+/** A turn this sharp (rad/s, filtered) puts a cantering or galloping dog on its inside lead. */
+const LEAD_TURN = .6;
+/** A stop shorter than this (s) keeps the stance it stopped on. */
+const BRACED_STOP_S = .8;
+/** How far the hips trail inside the chest round a curve: the chest-to-hip span (m). */
+const BEND_SPAN = .45;
 
 // Retain the generated dog's established pace centers, but require a real
 // acceleration/deceleration through a band before changing footfall law.
@@ -34,6 +43,16 @@ export class GeneratedFieldMotion {
   private nextPlantId=1;
   cycle=0;
   gait: LocomotionGait='walk';
+  /** The leading side at a canter or gallop, chosen at a stride boundary from the turn. */
+  lead: GallopLead='left';
+  private gaitBody=new GeneratedGaitBody();
+  private breedMotion: BreedMotion;
+  /** Each stride is a little longer or shorter, and rocks a little more or less, than the last. */
+  private strideVariation=1;
+  private vigor=1;
+  private seed=0x9e3779b9;
+  private turn=0;
+  private curve=0;
   clamped=0;
   private targets=this.feet.map(f=>f.target);
   private normals=this.feet.map(f=>f.normal);
@@ -62,22 +81,33 @@ export class GeneratedFieldMotion {
   private carryPresence=0;
   private deliverPresence=0;
   private presentClock=0;
+  private carryWag=0;
   private wasMoving=false;
+  /** Seconds since the dog last stopped travelling. */
+  private stillFor=0;
   private lastYaw=0;
   private transitionTime=.24;
   private transitionRaised=false;
   private transitionFree=[false,false,false,false];
   private pose: {node:THREE.Bone;previousPosition:THREE.Vector3;previousRotation:THREE.Quaternion;fromPosition:THREE.Vector3;fromRotation:THREE.Quaternion}[];
-  private groundNormal(x:number,z:number,out:THREE.Vector3) {const e=.04;return out.set(this.ground(x-e,z)-this.ground(x+e,z),2*e,this.ground(x,z-e)-this.ground(x,z+e)).normalize();}
+  private groundNormal(x:number,z:number,out:THREE.Vector3) {const e=.04;return out.set(this.contact(x-e,z)-this.contact(x+e,z),2*e,this.contact(x,z-e)-this.contact(x,z+e)).normalize();}
+  /** Where paws meet the ground: the drawn surface when the renderer knows
+   * it, which can sit centimetres off the smooth heightfield the trunk's
+   * posture reads between the terrain's vertices. */
+  private contact:(x:number,z:number)=>number;
   swimming=false;
-  constructor(detail:'high'|'lite',private ground:(x:number,z:number)=>number,private waterDepth:(x:number,z:number)=>number=()=>0,coatId:GeneratedCoatId='liver-white',look:GeneratedLook='smooth') {
+  constructor(detail:'high'|'lite',private ground:(x:number,z:number)=>number,private waterDepth:(x:number,z:number)=>number=()=>0,coatId:GeneratedCoatId='liver-white',look:GeneratedLook='smooth',contact?:(x:number,z:number)=>number) {
+    this.contact=contact??ground;
     this.asset=createGeneratedGsp(detail,true,coatId,look);
+    this.breedMotion=getBreed(this.asset.root.userData.breedId).motion;
+    this.scentMotion.setBreed(this.breedMotion);
+    this.vigor=this.breedVigor();
     // Torso support has its own continuous response; blending its solved
     // position a second time would accumulate the ribcage pivot offset.
     this.pose=Object.values(this.asset.joints).filter(node=>node!==this.asset.joints.body).map(node=>({node,previousPosition:node.position.clone(),previousRotation:node.quaternion.clone(),fromPosition:node.position.clone(),fromRotation:node.quaternion.clone()}));
   }
   update(x:number,z:number,yaw:number,dt:number,moving:boolean,point:boolean,retrieve?:GeneratedRetrievePose,field?:GeneratedFieldIntent,presentationSpeed?:number) {
-    const root=this.asset.root,ground=this.ground(x,z),distance=this.placed?Math.hypot(x-this.last.x,z-this.last.z):0;
+    const root=this.asset.root,ground=this.contact(x,z),distance=this.placed?Math.hypot(x-this.last.x,z-this.last.z):0;
     const depth=this.waterDepth(x,z);
     const wasSwimming=this.swimming;
     this.swimming=depth>(wasSwimming?.38:.48);
@@ -94,6 +124,7 @@ export class GeneratedFieldMotion {
       this.scentMotion.reset();
       this.pickupReach.reset();
       this.pivotSteps.reset();
+      this.gaitBody.reset();
       this.mouthMotion.update(this.asset.joints.jaw,retrieve?.stage==='carry'?retrieve:undefined,dt);
       this.earGravity.update(this.asset.joints,dt,!this.placed||!wasSwimming||distance>3);
       root.updateMatrixWorld(true);
@@ -105,6 +136,8 @@ export class GeneratedFieldMotion {
     const signedTurnRate=reset||dt<=0?0:Math.atan2(Math.sin(yaw-this.lastYaw),Math.cos(yaw-this.lastYaw))/dt;
     const turnRate=Math.abs(signedTurnRate);
     const pivoting=turnRate>1;
+    // The turn the body shows: filtered, so one snapshot's step cannot kink it.
+    this.turn=reset?0:THREE.MathUtils.lerp(this.turn,signedTurnRate,1-Math.exp(-Math.max(0,dt)/.15));
     const wasRaised=!this.wasMoving&&this.pawLift>0;
     const locking=!retrieve&&fieldPerformance(field)==='locking';
     // A slam: the dog came off a run straight into the lock. Head, neck and
@@ -140,7 +173,7 @@ export class GeneratedFieldMotion {
       const fallSlope=Math.atan2(-this.nominal.x*Math.sin(yaw)-this.nominal.z*Math.cos(yaw),this.nominal.y);
       this.pickupHeadPitch=THREE.MathUtils.clamp(-.10-fallSlope*.85,-.40,.18);
     } else if(this.pickupPresence<.001){this.pickupLean=0;this.pickupHeadPitch=.30;}
-    const previousGait=this.gait;
+    const previousGait=this.gait,previousLead=this.lead;
     let contacts: ReturnType<GeneratedFieldMotion['asset']['setLocomotion']>|undefined;
     // Running in standing cover taller than its back, a searching dog leaps
     // it: the bound shows its head and back over the tops.
@@ -148,7 +181,7 @@ export class GeneratedFieldMotion {
     const bounding=moving&&!retrieve&&field?.state==='quartering'&&cover>=BOUND_COVER_M&&(presentationSpeed??speed)>BOUND_SPEED;
     if(moving) {
       if(!this.wasMoving){this.gait=speed>4.3?'gallop':speed>2.5?'canter':speed>1.15?'trot':'walk';this.cycle=0;}
-      const previous=this.cycle,stride=this.gait==='bound'?this.boundStride:GENERATED_STRIDE[this.gait];
+      const previous=this.cycle,stride=this.gait==='bound'?this.boundStride:GENERATED_STRIDE[this.gait]*this.strideScale();
       this.cycle=(this.cycle+(reset?0:distance)/stride)%1;
       // Distance still advances the stride exactly. Only classification
       // uses the subsystem's filtered physical speed, at a stride boundary.
@@ -169,15 +202,20 @@ export class GeneratedFieldMotion {
             this.gait=next;
           }
         }
+        // Into a turn on the inside lead; the change is made in the air
+        // between strides, the way a dog swaps leads. A straight run keeps it.
+        if(this.turn>LEAD_TURN)this.lead='right';else if(this.turn<-LEAD_TURN)this.lead='left';
+        this.strideVariation=1+(this.random()-.5)*.06;
+        this.vigor=this.breedVigor()*(1+(this.random()-.5)*.24);
       }
-      contacts=this.asset.setLocomotion(this.gait,this.cycle,this.boundStride);
+      contacts=this.asset.setLocomotion(this.gait,this.cycle,this.boundStride,this.lead,this.strideScale());
     } else {
       const t=this.pointPresence;
       this.asset.setPose(t>0?'point':'stand',t*t*(3-2*t));
       if(this.pawLift<t)this.asset.liftPointingPaw(this.pawLift*this.pawLift*(3-2*this.pawLift));
     }
     if(reset)this.transitionTime=.24;
-    else if(moving!==this.wasMoving||(moving&&this.gait!==previousGait)) {
+    else if(moving!==this.wasMoving||(moving&&(this.gait!==previousGait||this.lead!==previousLead))) {
       this.transitionTime=0;this.transitionRaised=wasRaised;
       this.transitionFree=this.feet.map(f=>!f.locked);
       this.pose.forEach(p=>{p.fromPosition.copy(p.previousPosition);p.fromRotation.copy(p.previousRotation);});
@@ -209,14 +247,14 @@ export class GeneratedFieldMotion {
       // The release can touch down before the upper-body crossfade finishes.
       // Hand it back to ground IK at contact, rather than letting a bank or
       // load response push the formerly raised paw through the terrain.
-      if(this.nominal.y<=this.ground(this.nominal.x,this.nominal.z)+.029) {
+      if(this.nominal.y<=this.contact(this.nominal.x,this.nominal.z)+.029) {
         this.transitionRaised=false;posedFoot=-1;
       }
     }
     const pivotEligible=!reset&&!moving&&!skidding&&!blending&&posedFoot<0&&action!=='pickup';
     if(pivotEligible)this.asset.paws.forEach((paw,i)=>paw.getWorldPosition(this.pivotNominal[i]));
     const plannedPivot=this.pivotSteps.update(this.feet,this.pivotNominal,x,z,yaw,signedTurnRate,dt,
-      pivotEligible,this.ground,()=>this.nextPlantId++);
+      pivotEligible,this.contact,()=>this.nextPlantId++);
     this.feet.forEach((foot,i)=>{
       if(plannedPivot){this.groundNormal(foot.target.x,foot.target.z,foot.normal);return;}
       this.asset.paws[i].getWorldPosition(this.nominal);
@@ -226,7 +264,7 @@ export class GeneratedFieldMotion {
         // the paws plant where they come to rest.
         const brace=(i<2?.12:.05)*Math.sin(Math.PI*slam!);
         foot.target.set(this.nominal.x+Math.sin(yaw)*brace,0,this.nominal.z+Math.cos(yaw)*brace);
-        foot.target.y=this.ground(foot.target.x,foot.target.z)+.023;
+        foot.target.y=this.contact(foot.target.x,foot.target.z)+.023;
         if(!foot.locked){foot.locked=true;foot.plantId=this.nextPlantId++;}
         foot.step=0;foot.initialized=true;
         this.groundNormal(foot.target.x,foot.target.z,foot.normal);return;
@@ -237,7 +275,7 @@ export class GeneratedFieldMotion {
         this.groundNormal(foot.target.x,foot.target.z,foot.normal);return;
       }
       const lift=.023+(contacts?.feet[i].lift??0)+leap;
-      const floor=this.ground(this.nominal.x,this.nominal.z)+.023;
+      const floor=this.contact(this.nominal.x,this.nominal.z)+.023;
       // A blended pose can still have an airborne paw when the new clip asks
       // for stance. Wait for touchdown before creating a world-space plant.
       const support=(!contacts||contacts.feet[i].contact!=='swing')&&!(blending&&this.transitionFree[i])
@@ -256,7 +294,10 @@ export class GeneratedFieldMotion {
         const gap=Math.hypot(foot.target.x-this.nominal.x,foot.target.z-this.nominal.z);
         const stepping=this.feet.findIndex(f=>f.step>0);
         const canStep=stepping<0||(pivoting&&posedFoot<0&&stepping===3-i&&this.feet.filter(f=>f.step>0).length<2);
-        if(!foot.step&&gap>(pivoting?.07:moving?.22:.10)&&canStep) {foot.from.copy(foot.target);foot.goal.copy(this.nominal);foot.step=.000001;foot.plantId=this.nextPlantId++;}
+        // A dog that checks itself mid-run stands braced on the feet it
+        // stopped on; it squares up only if it stays stopped (or points).
+        const settle=moving?.22:this.stillFor<BRACED_STOP_S&&!point&&pointTarget===0?.30:.10;
+        if(!foot.step&&gap>(pivoting?.07:settle)&&canStep) {foot.from.copy(foot.target);foot.goal.copy(this.nominal);foot.step=.000001;foot.plantId=this.nextPlantId++;}
         if(foot.step>0) {
           foot.goal.copy(this.nominal);
           foot.goal.y=floor;
@@ -268,13 +309,25 @@ export class GeneratedFieldMotion {
       }
       this.groundNormal(foot.target.x,foot.target.z,foot.normal);
     });
+    // The stride's trunk: rock, rise and bend over the chosen contacts, and
+    // curve through the loin round a turn, the hips trailing inside the chest.
+    const curving=moving&&this.gait!=='bound'?this.turn/Math.max(1,speed):0;
+    this.curve=reset?curving:THREE.MathUtils.lerp(this.curve,curving,1-Math.exp(-Math.max(0,dt)/.12));
+    const bend=THREE.MathUtils.clamp(this.curve*BEND_SPAN,-.3,.3);
+    // Climbing or dropping off a steep face a dog shortens its action.
+    const gaitBody=this.gaitBody.update(this.gait,this.cycle,this.lead,this.vigor*(1-.5*this.bodySupport.grade),moving,dt,reset);
+    const gaitLift=this.gaitBody.apply(this.asset,-bend);
+    // The head holds the line of travel against the trunk's rocking, and
+    // looks round the turn it is making.
+    this.asset.joints.neck.rotation.x+=gaitBody.pitch*.5;
+    this.asset.joints.neck.rotation.y+=bend*.8;this.asset.joints.head.rotation.y+=bend*.4;
     // Shift the supported chest toward the fall before solving the legs.
     // The already chosen ground contacts stay put, letting elbows flex
     // instead of stretching the entire neck into a long rigid stalk.
     this.asset.joints.body.position.z+=this.pickupLean*this.pickupPresence;
     this.asset.joints.body.rotation.x+=.10*(this.pickupLean/.16)*this.pickupPresence;
     // Store the smoothed carriage only: the leap and crouch are re-applied.
-    this.bodyHeight=this.asset.fitBodyToFeet(this.targets,this.normals,posedFoot)-supportOffset-leap+crouch;
+    this.bodyHeight=this.asset.fitBodyToFeet(this.targets,this.normals,posedFoot)-supportOffset-leap-gaitLift+crouch;
     this.clamped=this.asset.solveWorldFeet(this.targets,this.normals,posedFoot);
     if(posedFoot>=0)this.asset.paws[posedFoot].getWorldPosition(this.feet[posedFoot].target);
     this.pose.forEach(p=>{p.previousPosition.copy(p.node.position);p.previousRotation.copy(p.node.quaternion);});
@@ -299,6 +352,12 @@ export class GeneratedFieldMotion {
     // Presenting lifts the head to the handler's hand, the tail going.
     neck.rotation.x += 1.25 * this.pickupPresence + .10 * this.carryPresence - .26 * this.deliverPresence;
     head.rotation.x += this.pickupHeadPitch * this.pickupPresence - .10 * this.carryPresence - .22 * this.deliverPresence;
+    // Coming back with a bird the tail rides up and swings, proud of it.
+    if (this.carryPresence > .001 && moving) {
+      this.carryWag += Math.max(0, dt) * 8.5;
+      this.asset.joints.tail.rotation.y += Math.sin(this.carryWag) * .2 * this.carryPresence;
+      this.asset.joints.tail.rotation.x += .1 * this.carryPresence;
+    }
     if (this.deliverPresence > .001) {
       this.presentClock += Math.max(0, dt);
       this.asset.joints.tail.rotation.y += Math.sin(this.presentClock * 9) * .30 * this.deliverPresence;
@@ -310,16 +369,24 @@ export class GeneratedFieldMotion {
     this.earGravity.update(this.asset.joints,dt,reset);
     root.updateMatrixWorld(true);
     this.wasMoving=moving;
+    this.stillFor=moving||reset?0:this.stillFor+Math.max(0,dt);
     this.lastYaw=yaw;
     this.last.set(x,ground,z);this.placed=true;
   }
+  /** The breed's own reach (a shorter-coupled griffon takes quicker strides) and this stride's variation. */
+  private strideScale(){return this.gait==='bound'?1:breedStrideScale(this.breedMotion,this.gait)*this.strideVariation;}
+  private breedVigor(){return .6+.4*this.breedMotion.verticalMotion;}
+  /** A small deterministic generator, so a replay strides the same way. */
+  private random(){this.seed=(this.seed+0x6d2b79f5)|0;let t=Math.imul(this.seed^(this.seed>>>15),1|this.seed);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;}
   contactSnapshot() {
     return this.feet.map((foot,i)=>{
       const actual=this.asset.paws[i].getWorldPosition(new THREE.Vector3());
       return {i,locked:foot.locked,step:foot.step,plantId:foot.plantId,target:foot.target.toArray(),actual:actual.toArray(),
-        groundGap:actual.y-this.ground(actual.x,actual.z)-.023,targetError:actual.distanceTo(foot.target)};
+        groundGap:actual.y-this.contact(actual.x,actual.z)-.023,targetError:actual.distanceTo(foot.target)};
     });
   }
   get moving(){return this.wasMoving;}
+  /** The stride's trunk motion this frame (read-only). */
+  get trunk(){return this.gaitBody.pose;}
   dispose(){this.asset.dispose();}
 }

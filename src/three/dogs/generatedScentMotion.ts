@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { DogScentStage, DogState } from '../../game/dog';
+import type { BreedMotion } from '../../game/breeds';
 import type { createGeneratedGsp } from './generatedGsp';
 
 /** Only information the shared dog already knows; no bird positions or outcome timers. */
@@ -50,10 +51,29 @@ export class GeneratedScentMotion {
   private yaw = 0;
   private tailPitch = 0;
   private tailYaw = 0;
+  /** A searching head mostly faces the wind, with now and then a quick look off to one side. */
+  private glance = 0;
+  private glanceIn = 0;
+  private wag = 0;
+  private seed = 0x2545f491;
+  private freedom = .7;
+  private tailAction = .65;
+
+  /** The breed's head freedom and tail action shape its search. */
+  setBreed(motion: Pick<BreedMotion, 'headFreedom' | 'tailAction'>) { this.freedom = motion.headFreedom; this.tailAction = motion.tailAction; }
 
   reset() {
     this.elapsed = this.neckPitch = this.headPitch = this.reach = this.height = this.yaw = this.tailPitch = this.tailYaw = 0;
+    this.glance = this.glanceIn = this.wag = 0;
     this.performance = 'neutral';
+  }
+
+  /** Deterministic, so a replayed hunt looks round the same way. */
+  private random() {
+    this.seed = (this.seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(this.seed ^ (this.seed >>> 15), 1 | this.seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
 
   update(asset: ReturnType<typeof createGeneratedGsp>, intent: GeneratedFieldIntent | undefined,
@@ -64,17 +84,27 @@ export class GeneratedScentMotion {
     const progress = THREE.MathUtils.clamp(intent?.scentProgress ?? 0, 0, 1);
     const bearing = THREE.MathUtils.clamp(intent?.intentYaw ?? 0, -.5, .5);
     let neckPitch = 0, headPitch = 0, reach = 0, height = 0, yaw = 0, tailPitch = 0, tailYaw = 0;
+    const seconds = Math.max(0, dt);
     switch (this.performance) {
       case 'search':
         // An open, mobile head checks across the cast. It leads the torso's
-        // actual turn, without inventing a target beyond the dog's knowledge.
+        // actual turn, without inventing a target beyond the dog's knowledge,
+        // and every so often snaps a look off to one side: never on a beat.
         neckPitch = -.10; headPitch = .035;
-        yaw = bearing * .7 + (moving ? Math.sin(this.elapsed * 1.65) * .10 : 0);
-        // A merry, busy tail while hunting: the first thing that changes on game.
+        if (moving && (this.glanceIn -= seconds) <= 0) {
+          const look = this.glance === 0 && this.random() < .55;
+          this.glance = look ? (this.random() < .5 ? -1 : 1) * (.16 + .2 * this.random()) * this.freedom / .7 : 0;
+          this.glanceIn = look ? .35 + .45 * this.random() : .8 + 1.9 * this.random();
+        }
+        yaw = bearing * .7 + (moving ? this.glance : 0);
+        // A merry, busy tail while hunting: the first thing that changes on
+        // game. Its beat and swing drift, and a busier breed wags faster.
         // Inside cover it rides high and cracks: the flag over the bluestem
         // is how the handler follows his dog.
+        this.wag += seconds * (5.6 + 4.5 * this.tailAction) * (1 + .18 * Math.sin(this.elapsed * .53 + 1.3));
         tailPitch = intent?.inCover ? .2 : .08;
-        tailYaw = moving ? Math.sin(this.elapsed * 6.2) * .24 + (intent?.inCover ? Math.sin(this.elapsed * 8) * .08 : 0) : 0;
+        tailYaw = moving ? Math.sin(this.wag) * (.2 + .08 * this.tailAction) * (.85 + .15 * Math.sin(this.elapsed * .37))
+          + (intent?.inCover ? Math.sin(this.elapsed * 8) * .08 : 0) : 0;
         break;
       case 'neutral':
         // Standing at heel or idle: soft breathing, an easy tail and a slow

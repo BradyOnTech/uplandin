@@ -54,7 +54,7 @@ describe('Wirehaired Pointing Griffon', () => {
       expect(Object.keys(griffon.joints)).toEqual(Object.keys(gsp.joints));
       for (const name of ['neck', 'head', 'jaw', 'front-left', 'front-left-lower', 'front-left-distal', 'front-left-paw'])
         expect(griffon.joints[name].position.distanceTo(gsp.joints[name].position)).toBe(0);
-      const hind = (dog: typeof gsp) => dog.joints['hind-left'].position.z;
+      const hind = (dog: typeof gsp) => dog.joints['hind-left'].getWorldPosition(new THREE.Vector3()).z;
       expect(hind(griffon)).toBeLessThan(hind(gsp));
       expect(hind(griffon)).toBeGreaterThan(hind(setter));
     } finally { gsp.dispose(); setter.dispose(); griffon.dispose(); }

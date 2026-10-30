@@ -5,7 +5,7 @@ import { PROPERTY_PX_TO_M, type GroundSample, type LandscapeModel } from '../../
 import type { Ctx, Quality } from '../engine';
 import { buildQuailTerrainGeometry } from './quailTerrain';
 import { buildSharptailHorizonGeometries } from './sharptailHorizonGeometry';
-import { quailGroundNearDistance, quailGroundTiles, quailGroundUsesNear } from './quailGroundGeometry';
+import { drawnQuailGroundHeight, quailGroundNearDistance, quailGroundTiles, quailGroundUsesNear, type QuailGroundTile } from './quailGroundGeometry';
 import { PHEASANT_MATERIALS, fieldTimeOfDay, type TimeOfDay } from '../palette';
 import { pheasantFields, pheasantNeighbourFields, pheasantPonds, samplePheasantHarvest, type PheasantHarvestSample } from './pheasantLandscape';
 import { createPheasantFarmPainter } from './pheasantFarmSurface';
@@ -331,6 +331,8 @@ function paintFor(property: LandscapeModel): Paint {
  * fields, so the authored world remains continuous while the camera travels. */
 export class PropertyTerrain {
   private tiles: { near: THREE.Mesh; far: THREE.Mesh; x: number; z: number }[] = [];
+  /** Each tile's grid, near and far, so a contact can find the triangles it is drawn with. */
+  private divisions = new Map<QuailGroundTile, { near: number; far: number }>();
   private horizon: THREE.Mesh[] = [];
   private material: THREE.MeshLambertMaterial;
   private paint: Paint;
@@ -507,8 +509,10 @@ export class PropertyTerrain {
       const farmTile = !!farmGround && farmGround.x < tile.x + tile.width && farmGround.x + farmGround.w > tile.x
         && farmGround.y < tile.y + tile.depth && farmGround.y + farmGround.h > tile.y;
       const nearDivisions = basinTile || farmTile ? (ctx.quality === 'high' ? 96 : 64) : (ctx.quality === 'high' ? 48 : 24);
+      const farDivisions = basinTile || farmTile ? 32 : 14;
+      this.divisions.set(tile, { near: nearDivisions, far: farDivisions });
       const near = new THREE.Mesh(buildQuailTerrainGeometry(this.landscape, tile.x, tile.y, tile.width, tile.depth, nearDivisions, this.paint), this.material);
-      const far = new THREE.Mesh(buildQuailTerrainGeometry(this.landscape, tile.x, tile.y, tile.width, tile.depth, basinTile || farmTile ? 32 : 14, this.paint), this.material);
+      const far = new THREE.Mesh(buildQuailTerrainGeometry(this.landscape, tile.x, tile.y, tile.width, tile.depth, farDivisions, this.paint), this.material);
       near.name = `${this.landscape.area.name} near terrain`;
       far.name = `${this.landscape.area.name} distant terrain`;
       near.receiveShadow = far.receiveShadow = true;
@@ -550,6 +554,12 @@ export class PropertyTerrain {
     this.light.uCoolK.value = spec.groundCoolK;
     this.light.uCloudShK.value = spec.cloudAmount
       * THREE.MathUtils.clamp((spec.sunElevation - 15) / 20, 0, 1);
+  }
+
+  /** The drawn ground under a point, as a viewer at (viewX, viewZ) sees it. */
+  surfaceHeightAt(x: number, z: number, viewX: number, viewZ: number): number {
+    return drawnQuailGroundHeight(this.landscape, x, z, viewX, viewZ, this.nearDistance,
+      tile => this.divisions.get(tile) ?? { near: 48, far: 14 });
   }
 
   update(ctx: Ctx): void {

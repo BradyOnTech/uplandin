@@ -235,6 +235,16 @@ export class TerrainSystem implements Subsystem {
     return this.landscape.heightAtWorld(x, z);
   }
 
+  private view = { x: 0, z: 0 };
+  /** Where a paw visibly meets the ground: the drawn terrain's own triangles
+   * under a point, as the camera currently draws them. heightAt() is the
+   * smooth heightfield those triangles sample. */
+  surfaceHeightAt(x: number, z: number): number {
+    const { x: viewX, z: viewZ } = this.view;
+    return this.chukar?.surfaceHeightAt(x, z, viewX, viewZ) ?? this.quail?.surfaceHeightAt(x, z, viewX, viewZ)
+      ?? this.property?.surfaceHeightAt(x, z, viewX, viewZ) ?? this.heightAt(x, z);
+  }
+
   init(ctx: Ctx): void | Promise<void> {
     if(this.landscape.area.id==='chukar-ridge'){
       this.chukar=new ChukarTerrain(this.landscape);return this.chukar.init(ctx);
@@ -532,6 +542,7 @@ export class TerrainSystem implements Subsystem {
 
   /** One uniform write per frame: the cloud-shade mask drifts with time. */
   update(ctx: Ctx): void {
+    this.view.x = ctx.camera.position.x; this.view.z = ctx.camera.position.z;
     this.quail?.update(ctx);
     this.chukar?.update(ctx);
     this.property?.update(ctx);
