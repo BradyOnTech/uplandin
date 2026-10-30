@@ -17,6 +17,8 @@
  * eight seconds at heel; --release-on-point <n> says "hunt on" three seconds
  * into the nth point, so the dog breaks and relocates. Both go in through the
  * simulation's ordinary input, as a player's whistle and command would.
+ * --brace <breed> hunts a second dog of that breed and records it too, as
+ * `brace` on every tick (the same fields), so honoring can be replayed.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -32,9 +34,21 @@ const opts = {
 };
 const recallAt = args.includes('--recall-at') ? Number(arg('--recall-at')) : null;
 const releaseOnPoint = args.includes('--release-on-point') ? Number(arg('--release-on-point')) : null;
+const brace = arg('--brace', null);
 const out = resolve(arg('--out', `/tmp/dog-audit/traces/${opts.area}-${opts.breed}${opts.level}-${opts.seed}.json`));
 
 const m = await load(process.env.HUNTLAB_ROOT);
+if (brace) {
+  // The hunt lab hunts one dog; hand the quick config a second as it is read.
+  let store = null;
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, get: () => store, set(value) {
+    store = { ...value, getItem(key) {
+      const raw = value.getItem(key);
+      if (key !== m.quick.QUICK_KEY || !raw) return raw;
+      return JSON.stringify({ ...JSON.parse(raw), breed2Id: brace });
+    } };
+  } });
+}
 // Hold on to the hunt's BirdsSystem so the trace can carry the bird a pickup
 // reaches for and the birds a marking dog watches, as the renderer reads them.
 const BirdsSystem = m.birds.BirdsSystem, init = BirdsSystem.prototype.init;
@@ -45,6 +59,21 @@ const ticks = [], script = [];
 let patched = false, recall = false, commands = [], points = 0, pointStart = null;
 let recalled = null, heelSince = null, castAgain = false, released = false;
 const v = new THREE.Vector3(), pos = { x: 0, z: 0 };
+/** The fields the bench replays, for the dog in a slot. */
+function record(hunt, dog, slot, s, hx, hz) {
+  const at = hunt.dogRenderWorld(1, { x: 0, z: 0 }, slot), birds = globalThis.__dogTraceBirds;
+  const reserved = dog.reservedRetrieveId?.() ?? null;
+  const reach = dog.state === 'retrieving' && dog.carryingBirdId === null && reserved !== null && birds?.groundedTarget(reserved, v) ? [r4(v.x), r4(v.y), r4(v.z)] : null;
+  const ids = dog.watchedBirdIds?.() ?? [];
+  const watch = dog.state === 'marking' && ids.length && birds?.markingTarget(ids, v) ? [r4(v.x), r4(v.y), r4(v.z)] : null;
+  return {
+    t: r4(s), x: r4(at.x), z: r4(at.z), heading: r4(hunt.dogRenderHeading(1, slot)), travel: r4(hunt.dogRenderTravelHeading(1, slot)),
+    state: dog.state, gait: dog.gait, scent: dog.scentStage, progress: r4(dog.scentProgress ?? 0),
+    waiting: !!dog.waitingForHandler, creeping: !!dog.creeping, slam: dog.slamProgress?.() == null ? null : r4(dog.slamProgress()),
+    carrying: dog.carryingBirdId, reserved, holdMs: Math.round(dog.retrieveHoldTimeMs?.() ?? 0),
+    hunter: [r4(hx), r4(hz)], reach, watch,
+  };
+}
 const result = await runHunt({ ...opts, onTick(s, hunt, dog) {
   if (!patched) {
     // The scripted handler speaks through the simulation's own input, once a tick.
@@ -74,18 +103,9 @@ const result = await runHunt({ ...opts, onTick(s, hunt, dog) {
     if (dog.state === 'heel') heelSince ??= s; else heelSince = null;
     if (heelSince !== null && s - heelSince > 8) { recall = true; castAgain = true; script.push({ t: s, event: 'cast-off' }); }
   }
-  const birds = globalThis.__dogTraceBirds;
-  const reserved = dog.reservedRetrieveId?.() ?? null;
-  const reach = dog.state === 'retrieving' && dog.carryingBirdId === null && reserved !== null && birds?.groundedTarget(reserved, v) ? [r4(v.x), r4(v.y), r4(v.z)] : null;
-  const ids = dog.watchedBirdIds?.() ?? [];
-  const watch = dog.state === 'marking' && ids.length && birds?.markingTarget(ids, v) ? [r4(v.x), r4(v.y), r4(v.z)] : null;
-  ticks.push({
-    t: r4(s), x: r4(pos.x), z: r4(pos.z), heading: r4(hunt.dogRenderHeading(1)), travel: r4(hunt.dogRenderTravelHeading(1)),
-    state: dog.state, gait: dog.gait, scent: dog.scentStage, progress: r4(dog.scentProgress ?? 0),
-    waiting: !!dog.waitingForHandler, creeping: !!dog.creeping, slam: dog.slamProgress?.() == null ? null : r4(dog.slamProgress()),
-    carrying: dog.carryingBirdId, reserved, holdMs: Math.round(dog.retrieveHoldTimeMs?.() ?? 0),
-    hunter: [r4(hx), r4(hz)], reach, watch,
-  });
+  const tick = record(hunt, dog, 0, s, hx, hz);
+  if (brace) tick.brace = record(hunt, hunt.dog(1), 1, s, hx, hz);
+  ticks.push(tick);
 } });
 await close();
 const area = m.areas.getArea(opts.area);
@@ -98,5 +118,6 @@ mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, JSON.stringify({ meta: { ...opts, recallAt, releaseOnPoint, script, points: result.points, retrieved: result.retrieved,
   states: result.states, evidence: 'Hunt-lab simulation trace (scripted hunter); bench input, not gameplay evidence' }, patches, ticks }));
 const counts = ticks.reduce((acc, t) => { acc[t.state] = (acc[t.state] ?? 0) + 1; return acc; }, {});
-console.log(JSON.stringify({ out, ticks: ticks.length, points: result.points, retrieved: result.retrieved, script, counts,
+const braceCounts = brace ? ticks.reduce((acc, t) => { acc[t.brace.state] = (acc[t.brace.state] ?? 0) + 1; return acc; }, {}) : null;
+console.log(JSON.stringify({ out, ticks: ticks.length, points: result.points, retrieved: result.retrieved, script, counts, braceCounts,
   creeping: ticks.filter(t => t.creeping).length, slams: ticks.filter(t => t.slam !== null).length }));

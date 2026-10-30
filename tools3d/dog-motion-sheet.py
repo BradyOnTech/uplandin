@@ -18,7 +18,8 @@ p.add_argument('--video', action='append', required=True, help='label=path, one 
 p.add_argument('--row', default='side')
 p.add_argument('--rows', default='side,eye,look')
 p.add_argument('--panel', default='640x360')
-p.add_argument('--start', type=float, required=True)
+p.add_argument('--start', type=float, default=0)
+p.add_argument('--times', default=None, help='comma list of seconds to sample instead of --start/--count/--step')
 p.add_argument('--count', type=int, default=10)
 p.add_argument('--step', type=int, default=1, help='frames between samples (30 fps)')
 p.add_argument('--fps', type=float, default=30)
@@ -41,6 +42,13 @@ NAMES = {'gsp': 'GSP', 'english-setter': 'Setter', 'griffon': 'Griffon'}
 
 def frames(path):
     tmp = tempfile.mkdtemp()
+    if a.times:
+        out = []
+        for k, t in enumerate(float(v) for v in a.times.split(',')):
+            f = os.path.join(tmp, f'{k:04d}.png')
+            subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-ss', f'{t:.3f}', '-i', path, '-frames:v', '1', f], check=True)
+            out.append(Image.open(f).convert('RGB'))
+        return out
     subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-ss', f'{a.start:.3f}', '-i', path,
                     '-frames:v', str(a.count * a.step), os.path.join(tmp, '%04d.png')], check=True)
     files = sorted(os.listdir(tmp))[::a.step][:a.count]
@@ -54,6 +62,7 @@ def dog_centre(panel):
     box = mask.getbbox()
     return ((box[0] + box[2]) // 2, (box[1] + box[3]) // 2) if box else (panel.width // 2, panel.height // 2)
 
+if a.times: a.count = len(a.times.split(','))
 groups = []
 for spec in a.video:
     label, path = spec.split('=', 1)
