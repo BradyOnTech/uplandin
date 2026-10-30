@@ -1,17 +1,24 @@
 import * as THREE from 'three';
 import { GeneratedEarGravity } from './generatedEarGravity';
-import { BOUND_STRIDE, boundStride, selectLocomotionGait, type LocomotionGait, type LocomotionSpeedThresholds } from './locomotion';
+import { BOUND_STRIDE, boundStride, selectLocomotionGait, type GallopLead, type LocomotionGait, type LocomotionSpeedThresholds } from './locomotion';
 import { createGeneratedGsp, GENERATED_STRIDE, type GeneratedCoatId, type GeneratedLook } from './generatedGsp';
 import { GeneratedScentMotion, fieldPerformance, type GeneratedFieldIntent } from './generatedScentMotion';
 import { GeneratedBodySupport } from './generatedBodySupport';
 import { GeneratedMouthMotion } from './generatedMouth';
 import { GeneratedPickupReach } from './generatedPickupReach';
 import { GeneratedPivotSteps } from './generatedPivotSteps';
+import { GeneratedGaitBody } from './generatedGaitBody';
+import { breedStrideScale } from './huntMotion';
+import { getBreed, type BreedMotion } from '../../game/breeds';
 
 /** Standing cover at least this tall (m) has a running dog leap through it. */
 const BOUND_COVER_M = .9;
 /** Below this pace (m/s) a dog pushes through cover rather than leaping it. */
 const BOUND_SPEED = 2.3;
+/** A turn this sharp (rad/s, filtered) puts a cantering or galloping dog on its inside lead. */
+const LEAD_TURN = .6;
+/** How far the hips trail inside the chest round a curve: the chest-to-hip span (m). */
+const BEND_SPAN = .45;
 
 // Retain the generated dog's established pace centers, but require a real
 // acceleration/deceleration through a band before changing footfall law.
@@ -34,6 +41,16 @@ export class GeneratedFieldMotion {
   private nextPlantId=1;
   cycle=0;
   gait: LocomotionGait='walk';
+  /** The leading side at a canter or gallop, chosen at a stride boundary from the turn. */
+  lead: GallopLead='left';
+  private gaitBody=new GeneratedGaitBody();
+  private breedMotion: BreedMotion;
+  /** Each stride is a little longer or shorter, and rocks a little more or less, than the last. */
+  private strideVariation=1;
+  private vigor=1;
+  private seed=0x9e3779b9;
+  private turn=0;
+  private curve=0;
   clamped=0;
   private targets=this.feet.map(f=>f.target);
   private normals=this.feet.map(f=>f.normal);
@@ -72,6 +89,8 @@ export class GeneratedFieldMotion {
   swimming=false;
   constructor(detail:'high'|'lite',private ground:(x:number,z:number)=>number,private waterDepth:(x:number,z:number)=>number=()=>0,coatId:GeneratedCoatId='liver-white',look:GeneratedLook='smooth') {
     this.asset=createGeneratedGsp(detail,true,coatId,look);
+    this.breedMotion=getBreed(this.asset.root.userData.breedId).motion;
+    this.vigor=this.breedVigor();
     // Torso support has its own continuous response; blending its solved
     // position a second time would accumulate the ribcage pivot offset.
     this.pose=Object.values(this.asset.joints).filter(node=>node!==this.asset.joints.body).map(node=>({node,previousPosition:node.position.clone(),previousRotation:node.quaternion.clone(),fromPosition:node.position.clone(),fromRotation:node.quaternion.clone()}));
@@ -94,6 +113,7 @@ export class GeneratedFieldMotion {
       this.scentMotion.reset();
       this.pickupReach.reset();
       this.pivotSteps.reset();
+      this.gaitBody.reset();
       this.mouthMotion.update(this.asset.joints.jaw,retrieve?.stage==='carry'?retrieve:undefined,dt);
       this.earGravity.update(this.asset.joints,dt,!this.placed||!wasSwimming||distance>3);
       root.updateMatrixWorld(true);
@@ -105,6 +125,8 @@ export class GeneratedFieldMotion {
     const signedTurnRate=reset||dt<=0?0:Math.atan2(Math.sin(yaw-this.lastYaw),Math.cos(yaw-this.lastYaw))/dt;
     const turnRate=Math.abs(signedTurnRate);
     const pivoting=turnRate>1;
+    // The turn the body shows: filtered, so one snapshot's step cannot kink it.
+    this.turn=reset?0:THREE.MathUtils.lerp(this.turn,signedTurnRate,1-Math.exp(-Math.max(0,dt)/.15));
     const wasRaised=!this.wasMoving&&this.pawLift>0;
     const locking=!retrieve&&fieldPerformance(field)==='locking';
     // A slam: the dog came off a run straight into the lock. Head, neck and
@@ -140,7 +162,7 @@ export class GeneratedFieldMotion {
       const fallSlope=Math.atan2(-this.nominal.x*Math.sin(yaw)-this.nominal.z*Math.cos(yaw),this.nominal.y);
       this.pickupHeadPitch=THREE.MathUtils.clamp(-.10-fallSlope*.85,-.40,.18);
     } else if(this.pickupPresence<.001){this.pickupLean=0;this.pickupHeadPitch=.30;}
-    const previousGait=this.gait;
+    const previousGait=this.gait,previousLead=this.lead;
     let contacts: ReturnType<GeneratedFieldMotion['asset']['setLocomotion']>|undefined;
     // Running in standing cover taller than its back, a searching dog leaps
     // it: the bound shows its head and back over the tops.
@@ -148,7 +170,7 @@ export class GeneratedFieldMotion {
     const bounding=moving&&!retrieve&&field?.state==='quartering'&&cover>=BOUND_COVER_M&&(presentationSpeed??speed)>BOUND_SPEED;
     if(moving) {
       if(!this.wasMoving){this.gait=speed>4.3?'gallop':speed>2.5?'canter':speed>1.15?'trot':'walk';this.cycle=0;}
-      const previous=this.cycle,stride=this.gait==='bound'?this.boundStride:GENERATED_STRIDE[this.gait];
+      const previous=this.cycle,stride=this.gait==='bound'?this.boundStride:GENERATED_STRIDE[this.gait]*this.strideScale();
       this.cycle=(this.cycle+(reset?0:distance)/stride)%1;
       // Distance still advances the stride exactly. Only classification
       // uses the subsystem's filtered physical speed, at a stride boundary.
@@ -169,15 +191,20 @@ export class GeneratedFieldMotion {
             this.gait=next;
           }
         }
+        // Into a turn on the inside lead; the change is made in the air
+        // between strides, the way a dog swaps leads. A straight run keeps it.
+        if(this.turn>LEAD_TURN)this.lead='right';else if(this.turn<-LEAD_TURN)this.lead='left';
+        this.strideVariation=1+(this.random()-.5)*.06;
+        this.vigor=this.breedVigor()*(1+(this.random()-.5)*.24);
       }
-      contacts=this.asset.setLocomotion(this.gait,this.cycle,this.boundStride);
+      contacts=this.asset.setLocomotion(this.gait,this.cycle,this.boundStride,this.lead,this.strideScale());
     } else {
       const t=this.pointPresence;
       this.asset.setPose(t>0?'point':'stand',t*t*(3-2*t));
       if(this.pawLift<t)this.asset.liftPointingPaw(this.pawLift*this.pawLift*(3-2*this.pawLift));
     }
     if(reset)this.transitionTime=.24;
-    else if(moving!==this.wasMoving||(moving&&this.gait!==previousGait)) {
+    else if(moving!==this.wasMoving||(moving&&(this.gait!==previousGait||this.lead!==previousLead))) {
       this.transitionTime=0;this.transitionRaised=wasRaised;
       this.transitionFree=this.feet.map(f=>!f.locked);
       this.pose.forEach(p=>{p.fromPosition.copy(p.previousPosition);p.fromRotation.copy(p.previousRotation);});
@@ -268,13 +295,25 @@ export class GeneratedFieldMotion {
       }
       this.groundNormal(foot.target.x,foot.target.z,foot.normal);
     });
+    // The stride's trunk: rock, rise and bend over the chosen contacts, and
+    // curve through the loin round a turn, the hips trailing inside the chest.
+    const curving=moving&&this.gait!=='bound'?this.turn/Math.max(1,speed):0;
+    this.curve=reset?curving:THREE.MathUtils.lerp(this.curve,curving,1-Math.exp(-Math.max(0,dt)/.12));
+    const bend=THREE.MathUtils.clamp(this.curve*BEND_SPAN,-.3,.3);
+    // Climbing or dropping off a steep face a dog shortens its action.
+    const gaitBody=this.gaitBody.update(this.gait,this.cycle,this.lead,this.vigor*(1-.5*this.bodySupport.grade),moving,dt,reset);
+    const gaitLift=this.gaitBody.apply(this.asset,-bend);
+    // The head holds the line of travel against the trunk's rocking, and
+    // looks round the turn it is making.
+    this.asset.joints.neck.rotation.x+=gaitBody.pitch*.5;
+    this.asset.joints.neck.rotation.y+=bend*.8;this.asset.joints.head.rotation.y+=bend*.4;
     // Shift the supported chest toward the fall before solving the legs.
     // The already chosen ground contacts stay put, letting elbows flex
     // instead of stretching the entire neck into a long rigid stalk.
     this.asset.joints.body.position.z+=this.pickupLean*this.pickupPresence;
     this.asset.joints.body.rotation.x+=.10*(this.pickupLean/.16)*this.pickupPresence;
     // Store the smoothed carriage only: the leap and crouch are re-applied.
-    this.bodyHeight=this.asset.fitBodyToFeet(this.targets,this.normals,posedFoot)-supportOffset-leap+crouch;
+    this.bodyHeight=this.asset.fitBodyToFeet(this.targets,this.normals,posedFoot)-supportOffset-leap-gaitLift+crouch;
     this.clamped=this.asset.solveWorldFeet(this.targets,this.normals,posedFoot);
     if(posedFoot>=0)this.asset.paws[posedFoot].getWorldPosition(this.feet[posedFoot].target);
     this.pose.forEach(p=>{p.previousPosition.copy(p.node.position);p.previousRotation.copy(p.node.quaternion);});
@@ -313,6 +352,11 @@ export class GeneratedFieldMotion {
     this.lastYaw=yaw;
     this.last.set(x,ground,z);this.placed=true;
   }
+  /** The breed's own reach (a shorter-coupled griffon takes quicker strides) and this stride's variation. */
+  private strideScale(){return this.gait==='bound'?1:breedStrideScale(this.breedMotion,this.gait)*this.strideVariation;}
+  private breedVigor(){return .6+.4*this.breedMotion.verticalMotion;}
+  /** A small deterministic generator, so a replay strides the same way. */
+  private random(){this.seed=(this.seed+0x6d2b79f5)|0;let t=Math.imul(this.seed^(this.seed>>>15),1|this.seed);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;}
   contactSnapshot() {
     return this.feet.map((foot,i)=>{
       const actual=this.asset.paws[i].getWorldPosition(new THREE.Vector3());
@@ -321,5 +365,7 @@ export class GeneratedFieldMotion {
     });
   }
   get moving(){return this.wasMoving;}
+  /** The stride's trunk motion this frame (read-only). */
+  get trunk(){return this.gaitBody.pose;}
   dispose(){this.asset.dispose();}
 }
