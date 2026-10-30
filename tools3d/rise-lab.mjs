@@ -58,8 +58,11 @@ function riseOnce(area, landscape, patches, covey, hunterWorld, rng, ground) {
   const hunterPos = landscape.worldToProperty(hunterWorld.x, hunterWorld.z, { x: 0, y: 0 });
   const eyeY = ground(hunterWorld.x, hunterWorld.z) + 1.62;
   const landings = [], escapes = [];
+  // One wind for the rise, drawn once, so a build that reads the hunt state
+  // more often still flies the same rises from the same approaches.
+  const wind = rng() * Math.PI * 2;
   runtime.hunt = {
-    areaConfig: () => area, huntState: () => ({ birds, hunterPos, wind: rng() * Math.PI * 2, windStrength: 'breezy' }),
+    areaConfig: () => area, huntState: () => ({ birds, hunterPos, wind, windStrength: 'breezy' }),
     simToWorld: (x, y, o) => landscape.propertyToWorld(x, y, o), coverPatches: () => patches,
     riseSlopeApproach: id => {
       const bird = birds.find(b => b.id === id);

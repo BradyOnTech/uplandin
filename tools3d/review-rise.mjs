@@ -105,7 +105,7 @@ try {
             const frame = await page.evaluate(() => window.__riseReview.frame());
             const file = `${area}-${size.id}-k${String(tick).padStart(4, '0')}.jpg`;
             await page.screenshot({ path: `${out}/${file}`, type: 'jpeg', quality: 88 });
-            record.frames.push({ t: t ?? +(tick / 30).toFixed(3), file, fall: fall ?? null, ...frame });
+            record.frames.push({ t: t ?? +(tick / 30).toFixed(3), file, fixed: t !== undefined, fall: fall ?? null, ...frame });
           }
           if (tick > lastFixed && hitsSeen.size >= shootAt.length && st.sky === 0 && st.queued === 0 && ![...due.keys()].some(k => k > tick)) break;
         }
