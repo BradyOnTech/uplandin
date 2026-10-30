@@ -143,3 +143,23 @@ it('uses four staggered gallop touchdowns and two airborne intervals per cycle',
   expect(starts).toBe(2);expect(touchdowns.map(v=>v.length)).toEqual([1,1,1,1]);
   expect(touchdowns[3][0]).toBe(0);expect(touchdowns[2][0]).toBeCloseTo(.08,2);expect(touchdowns[1][0]).toBeCloseTo(.5,2);expect(touchdowns[0][0]).toBeCloseTo(.58,2);dog.dispose();
 });
+
+describe('the loin on the skinned rig', () => {
+  it('bends the croup with the pelvis and leaves the ribcage on the body', () => {
+    const dog = createGeneratedGsp('lite', true);
+    try {
+      const position = dog.skin.geometry.getAttribute('position'), point = new THREE.Vector3();
+      const rest = Array.from({ length: position.count }, (_, i) => dog.skin.applyBoneTransform(i, point.fromBufferAttribute(position, i)).clone());
+      dog.joints.pelvis.rotation.x = -.2; dog.root.updateMatrixWorld(true); dog.skeleton.update();
+      let croup = 0, chest = 0;
+      for (let i = 0; i < position.count; i++) {
+        const moved = dog.skin.applyBoneTransform(i, point.fromBufferAttribute(position, i)).distanceTo(rest[i]);
+        const bind = new THREE.Vector3().fromBufferAttribute(position, i);
+        if (bind.z < -.25 && bind.y > .45) croup = Math.max(croup, moved);
+        if (bind.z > 0 && bind.z < .15 && bind.y > .4) chest = Math.max(chest, moved);
+      }
+      expect(croup).toBeGreaterThan(.02);
+      expect(chest).toBeLessThan(1e-6);
+    } finally { dog.dispose(); }
+  });
+});

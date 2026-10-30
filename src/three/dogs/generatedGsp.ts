@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { createGeneratedGriffonHead, createGeneratedGspHead, createGeneratedSetterHead } from './generatedGspHead';
-import { BOUND_STRIDE, createLocomotionPose, writeLocomotionPose, type LocomotionGait, type FootTuple } from './locomotion';
+import { BOUND_STRIDE, createLocomotionPose, writeLocomotionPose, type GallopLead, type LocomotionGait, type FootTuple } from './locomotion';
 import { createTwoBoneSolution, solveTwoBone } from './legIk';
 import { createCollarGeometry, createCollarMaterial, measureNeck } from './generatedCollar';
 import { germanShorthairedPointerAppearance, isGspCoatId, type GspCoatId } from './germanShorthairedPointer';
@@ -28,7 +28,9 @@ type Point = readonly [number, number, number];
 export const GENERATED_STRIDE_SCALE: Record<LocomotionGait,number> = {walk:.72,trot:.95,canter:.95,gallop:1,bound:1};
 /** Metres per cycle; a bound's stride is set per leap (this is its reference). */
 export const GENERATED_STRIDE: Record<LocomotionGait,number> = {walk:.72*.72,trot:.94*.95,canter:1.38*.95,gallop:1.9,bound:BOUND_STRIDE};
-const GENERATED_GALLOP_TOUCHDOWN: FootTuple<number> = [.58,.50,.08,0];
+/** Transverse gallop touchdowns (FL, FR, HL, HR) with the -x fore and hind
+ * leading ('left' in the shared sampler's naming), and its mirror. */
+const GENERATED_GALLOP_TOUCHDOWN: Record<GallopLead, FootTuple<number>> = { left: [.58,.50,.08,0], right: [.50,.58,0,.08] };
 const WHITE = 0xd1cdc1, LIVER = 0x51382e;
 /** Head-relative grip: the mandible moves around it, never drives the bird. */
 export const GENERATED_MOUTH_GRIP: Point = [0, -.065, .125];
@@ -260,6 +262,15 @@ float coatRim = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition))
 totalEmissiveRadiance += diffuseColor.rgb * coatRim * (0.16 + 0.1 * clamp(normal.y, 0.0, 1.0)) * vCoatOcclusion;`);
 }
 
+/** The loin's bend, in the body frame before the breed's back length is applied. */
+const LOIN_PIVOT: Point = [0, .58, -.13];
+
+/** Loin skin weight: the ribcage holds to its last rib, the croup and the
+ * hips follow the pelvis, and the flank between them shares the bend. */
+function loinSkinBlend(p: THREE.Vector3): number {
+  return THREE.MathUtils.smoothstep(-p.z, .07, .20);
+}
+
 /**
  * Neck skin weight: keep the sternum on the chest while the throat above it
  * follows the cervical column. The nape begins turning above the shoulder;
@@ -365,6 +376,13 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
   // GSP is barely longer than tall, a setter a little longer, and a Griffon
   // slightly longer than tall, with a moderate tuck-up.
   const rear = (z: number) => z < -.05 ? -.05 + (z + .05) * (setter ? .96 : griffon ? .945 : .915) : z;
+  // The loin: the hindquarters hang from a pelvis that bends against the
+  // ribcage here, high in the loin where the lumbar spine runs. It carries
+  // the gallop's gather and stretch, the walk's hip sway and the turn's
+  // curve. At rest it is the identity, so the bind pose is unchanged.
+  const pelvis = joint('pelvis', body, LOIN_PIVOT.map((v, i) => i === 2 ? rear(v) : v) as unknown as Point);
+  /** A point authored in body space, expressed under the pelvis. */
+  const underPelvis = (point: Point): Point => [point[0] - pelvis.position.x, point[1] - pelvis.position.y, point[2] - pelvis.position.z];
   const tuck = setter ? .092 : griffon ? .085 : .079;
   // The Griffon's harsh coat stands off the neck a little.
   const coatNeck = griffon ? 1.05 : 1;
@@ -402,7 +420,7 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
   headMesh.castShadow = true; headMesh.receiveShadow = true;
   headMesh.userData.headSkinJoints = [head, jaw, leftEar, rightEar];
   head.add(headMesh);
-  const tail = joint('tail', body, [0,.576,rear(-.366)]);
+  const tail = joint('tail', pelvis, underPelvis([0,.576,rear(-.366)]));
   if (setter) {
     // A long, tapering setter tail carried near the topline. Its underside
     // carries a flag of feathering that is longest through the middle third.
@@ -444,7 +462,7 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
   const paws: THREE.Bone[] = [];
   for (let i = 0; i < 4; i++) {
     const fore = i < 2, side = i % 2 ? 1 : -1, prefix = `${fore ? 'front' : 'hind'}-${side < 0 ? 'left' : 'right'}`;
-    const upper = joint(prefix, body, [side*.068,.515,fore ? .205 : rear(-.292)]);
+    const upper = fore ? joint(prefix, body, [side*.068,.515,.205]) : joint(prefix, pelvis, underPelvis([side*.068,.515,rear(-.292)]));
     const upperEnd: Point = [0,fore ? -.195 : -.205,fore ? -.055 : .090];
     const lowerEnd: Point = [0,fore ? -.25 : -.17,fore ? .062 : -.110];
     const distalEnd: Point = [0,fore ? -.048 : -.117,fore ? .012 : .016];
@@ -531,10 +549,15 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
         second = bones.indexOf(mesh.userData.neckJoint);
         blend = neckSkinBlend(p);
       }
+      if (owner === body && blend === 0) {
+        // Behind the last rib the trunk, and any coat on it, follows the pelvis.
+        second = bones.indexOf(pelvis);
+        blend = loinSkinBlend(p);
+      }
       if (chain && chainY) {
         // The shoulder/hip surface stays attached to the torso while the
         // limb swings beneath it; a rigid proximal cap pokes through the back.
-        first=bones.indexOf(body);second=bones.indexOf(chain[0]);
+        first=bones.indexOf(chain[0].parent as THREE.Bone);second=bones.indexOf(chain[0]);
         if(chain[0].name.startsWith('front-')) {
           // Gently favor the ribcage on the upper/rear scapular plane,
           // retaining humeral support across the breast when a foreleg folds.
@@ -636,15 +659,19 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
     const distal = paw.parent as THREE.Bone, lower = distal.parent as THREE.Bone, upper = lower.parent as THREE.Bone;
     return { paw,distal,lower,upper,
       upperLength:lower.position.length(),lowerLength:distal.position.length(),distalLength:paw.position.length(),
+      // Shoulder or hip height in the body frame, at rest (a hip hangs from the pelvis).
+      baseY:upper.position.y+(upper.parent===body?0:(upper.parent as THREE.Bone).position.y),
       upperAngle:Math.atan2(lower.position.z,-lower.position.y),lowerAngle:Math.atan2(distal.position.z,-distal.position.y),distalAngle:Math.atan2(paw.position.z,-paw.position.y),
       footZ:lower.position.z+distal.position.z+paw.position.z,
     };
   });
   /** Ground-relative targets; travel must advance by the returned stride per
-   * cycle. A bound may carry its own stride (m), set by the leap it makes. */
-  const setLocomotion = (gait: LocomotionGait, cycle: number, boundStride = BOUND_STRIDE) => {
+   * cycle. A bound may carry its own stride (m), set by the leap it makes;
+   * other gaits may lengthen or shorten theirs by `scale` (the breed's reach
+   * and the stride's own variation). Canter and gallop take a lead. */
+  const setLocomotion = (gait: LocomotionGait, cycle: number, boundStride = BOUND_STRIDE, lead: GallopLead = 'left', scale = 1) => {
     for (const {node,position,rotation} of rest) { node.position.copy(position); node.quaternion.copy(rotation); }
-    writeLocomotionPose(gait,cycle,'left',locomotion,gait==='bound'?boundStride/BOUND_STRIDE:1,gait==='gallop'?GENERATED_GALLOP_TOUCHDOWN:undefined);
+    writeLocomotionPose(gait,cycle,lead,locomotion,gait==='bound'?boundStride/BOUND_STRIDE:scale,gait==='gallop'?GENERATED_GALLOP_TOUCHDOWN[lead]:undefined);
     const strideScale=gait==='bound'?1:GENERATED_STRIDE_SCALE[gait];
     body.position.y = (gait==='walk'?-.035:gait==='gallop'||gait==='bound'?-.09:-.06) + locomotion.bodyY*.25;
     let clamped = 0;
@@ -652,7 +679,7 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
       const foot=locomotion.feet[i], footY=.023+foot.lift;
       const shoulderTravel=i<2?locomotion.scapulaZ[i]*strideScale:0;
       leg.upper.position.z+=shoulderTravel;
-      solveTwoBone(footY+leg.distalLength-leg.upper.position.y-body.position.y,leg.footZ+foot.z*strideScale-shoulderTravel,leg.upperLength,leg.lowerLength,i<2?-1:1,solution);
+      solveTwoBone(footY+leg.distalLength-leg.baseY-body.position.y,leg.footZ+foot.z*strideScale-shoulderTravel,leg.upperLength,leg.lowerLength,i<2?-1:1,solution);
       if(solution.clamped)clamped++;
       leg.upper.rotation.x=leg.upperAngle-solution.upper;
       leg.lower.rotation.x=leg.lowerAngle-solution.lowerAbsolute-leg.upper.rotation.x;
@@ -674,7 +701,7 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
       const phase = (cycle + [0, .5, .58, .08][i]) * Math.PI * 2;
       const reach = Math.sin(phase) * (i < 2 ? .105 : .075);
       const footY = .14 + (1 + Math.cos(phase)) * .055;
-      solveTwoBone(footY + leg.distalLength - leg.upper.position.y - body.position.y,
+      solveTwoBone(footY + leg.distalLength - leg.baseY - body.position.y,
         leg.footZ + reach, leg.upperLength, leg.lowerLength, i < 2 ? -1 : 1, solution);
       if (solution.clamped) clamped++;
       leg.upper.rotation.x = leg.upperAngle - solution.upper;
@@ -693,12 +720,13 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
   const up=new THREE.Vector3(0,1,0),forward=new THREE.Vector3(0,0,1);
   /** Targets and normals are world-space; all limb joints retain their authored lengths. */
   const solveWorldFeet=(targets: readonly THREE.Vector3[], normals: readonly THREE.Vector3[], posedFoot = -1)=>{
-    root.updateMatrixWorld(true);body.getWorldQuaternion(parentWorld);inverse.copy(parentWorld).invert();root.getWorldQuaternion(rootWorld);
+    root.updateMatrixWorld(true);root.getWorldQuaternion(rootWorld);
     let clamped=0;
     chains.forEach((leg,i)=>{
       if (i === posedFoot) return;
+      const parent=leg.upper.parent as THREE.Bone;parent.getWorldQuaternion(parentWorld);
       hip.copy(leg.upper.position);
-      wrist.copy(targets[i]).addScaledVector(normals[i],leg.distalLength);body.worldToLocal(wrist);
+      wrist.copy(targets[i]).addScaledVector(normals[i],leg.distalLength);parent.worldToLocal(wrist);
       direction.copy(wrist).sub(hip);const raw=direction.length();direction.normalize();
       const distance=THREE.MathUtils.clamp(raw,Math.abs(leg.upperLength-leg.lowerLength)+1e-5,leg.upperLength+leg.lowerLength-1e-5);
       if(Math.abs(distance-raw)>1e-5)clamped++;
