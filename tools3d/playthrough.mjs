@@ -257,6 +257,8 @@ export async function runNormalGameplay(page, options = {}) {
     if (opts.dog === 'generated') query.set('dog', 'generated');
     if (opts.challenge) query.set('challenge', opts.challenge);
     if (opts.seed !== undefined) query.set('seed', String(opts.seed));
+    // --query adds review switches, e.g. weather=rain&month=jan for the day.
+    for (const [key, value] of new URLSearchParams(opts.query ?? '')) query.set(key, value);
     if (opts.audio) audioCapture = await prepareBrowserAudioCapture(page);
     await page.goto(`${opts.url}/index3d.html?${query}`, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction('window.__ready3d === true && typeof window.__api3d?.telemetry === "function"', { timeout: 60000 });
@@ -588,7 +590,7 @@ async function main() {
       breed: get('--breed', 'gsp'), coat: get('--coat', 'liver-white'), tod: get('--tod', 'morning'), dog: get('--dog', 'existing'),
       quality: get('--quality', 'high'), out: resolve(get('--out', '/tmp/uplandin-playthrough')),
       challenge: get('--challenge', undefined),
-      seed: get('--seed', undefined),
+      seed: get('--seed', undefined), query: get('--query', ''),
       pointDistance: Number(get('--point-distance', '0')),
       until: get('--until', 'complete'), maxSeconds: Number(get('--seconds', '240')),
       width: Number(get('--width', '1920')), height: Number(get('--height', '1080')),
