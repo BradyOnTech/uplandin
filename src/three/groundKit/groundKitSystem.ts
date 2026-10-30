@@ -76,7 +76,7 @@ const WOODY_NEAR: Record<Quality, { band: KitBand; chunk: number; step: number }
 };
 const WOODY_FAR: Record<Quality, { band: KitBand; chunk: number; step: number }> = {
   high: { band: { in: [92, 96], out: [340, 420] }, chunk: 256, step: 2.1 },
-  lite: { band: { in: [46, 50], out: [210, 260] }, chunk: 256, step: 2.5 },
+  lite: { band: { in: [46, 50], out: [210, 260] }, chunk: 256, step: 2.8 },
 };
 /** Each plant hands from its near to its far detail at its own distance,
  * within this many metres of the band edge. */
