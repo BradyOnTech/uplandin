@@ -47,15 +47,19 @@ try {
   await page.waitForFunction(() => window.__ready3d === true && !!window.__api3d, { timeout: 240000, polling: 250 });
   await page.click('#enter-field');
   await page.waitForFunction(() => window.__api3d.telemetry().paused === false, { timeout: 20000, polling: 100 });
+  // The game's own unlock, in case the click left the context suspended.
+  report.audioReady = await page.evaluate(async () => (await import('/src/audio.ts')).audioReady());
   await capture.start();
   report.page = await page.evaluate(() => ({ hidden: document.hidden, visibility: document.visibilityState }));
   const t0 = Date.now();
   const phase = async (id, ms, step) => {
     const from = (Date.now() - t0) / 1000, until = Date.now() + ms;
     while (Date.now() < until) {
+      // A headless window can lose focus and pause the field; a player would walk back in.
+      if (await page.evaluate(() => window.__api3d.telemetry().paused)) { report.resumed = (report.resumed ?? 0) + 1; await page.click('#enter-field').catch(() => undefined); }
       if (step) await page.evaluate(step);
       const mix = (await capture.sample()).mix[0];
-      if (mix) report.peaks.push({ t: (Date.now() - t0) / 1000, phase: id, rms: mix.rms, peak: mix.peak });
+      if (mix) report.peaks.push({ t: (Date.now() - t0) / 1000, phase: id, rms: mix.rms, peak: mix.peak, state: mix.contextState });
       await sleep(100);
     }
     report.phases.push({ id, from, to: (Date.now() - t0) / 1000 });
@@ -68,7 +72,7 @@ try {
   await phase('field', 12000, follow);
   // Follow until the dog points (or give up after two minutes of hunting).
   let pointed = false;
-  for (const until = Date.now() + 180000; Date.now() < until && !pointed;) {
+  for (const until = Date.now() + 150000; Date.now() < until && !pointed;) {
     await phase('hunting', 1000, follow);
     pointed = await page.evaluate(() => window.__api3d.hunt().dog.state === 'pointing');
   }
