@@ -136,7 +136,11 @@ export const DEAD_SCENT_MULT = 0.3;
 export const CAST_COMMAND_MS = 25_000;
 const CAST_ARRIVE = 5;
 /** How hard an open cast leans to the next objective against the gun's line. */
-const OBJECTIVE_LEAN = .6;
+const OBJECTIVE_LEAN = 1.2;
+/** Yards of extra distance an objective costs per yard behind the gun, and
+ * per yard back toward the truck. */
+const OBJECTIVE_BEHIND = 1.5;
+const OBJECTIVE_INWARD = 1;
 /** How long a dog hunts dead where it was sent before giving up. */
 export const SEEK_COMMAND_MS = 22_000;
 /** How long a dog searches a marked fall that is no longer there (a runner). */
@@ -579,6 +583,8 @@ export class Dog {
   /** The next unchecked cover ahead, past range, that the open cast leans to. */
   private objective: { key: string; x: number; y: number } | null = null;
   private objectiveSearchMs = 0;
+  /** Where the hunter was when the dog first looked past its range: the truck. */
+  private huntOrigin: Vec2 | null = null;
 
   constructor(
     public pos: Vec2,
@@ -1847,17 +1853,25 @@ export class Dog {
   }
 
   /**
-   * The next unchecked cover ahead that lies past the dog's range: what an
-   * objective-hunting dog makes for once everything in range is checked. It
-   * is reachable habitat only, never a hidden bird, and is held until it is
-   * checked or comes into range. Grounds without an objective reach have none.
+   * The next unchecked cover past the dog's range: what an objective-hunting
+   * dog makes for once everything in range is checked. It is reachable
+   * habitat only, never a hidden bird, and is held until it is checked or
+   * comes into range. It lies ahead of the gun or level with him, or else
+   * further out from where the hunt began: a hunter who only follows the
+   * dog turns wherever the dog last went, so his line alone would let the
+   * pair drift back to the fence by the truck. Of those, the nearest wins,
+   * and one that leads out from the truck is favoured over one behind the
+   * gun. Grounds without an objective reach have none.
    */
   private nextObjective(env: DogEnv, anchor: Vec2, range: number, dtMs: number): Vec2 | null {
     const reach = this.doctrineFor(env).dogObjectiveReach ?? 0;
     if (reach <= range) return null;
-    // Out ahead of the gun, never level with him or back the way he came.
-    const ahead = (p: Vec2) => this.handlerHeading === null || !env.hunterPos
-      || (p.x - env.hunterPos.x) * Math.cos(this.handlerHeading) + (p.y - env.hunterPos.y) * Math.sin(this.handlerHeading) >= range * .25;
+    if (env.hunterPos) this.huntOrigin ??= { ...env.hunterPos };
+    const origin = this.huntOrigin, outFrom = origin ? dist(anchor, origin) : 0;
+    const forward = (p: Vec2) => this.handlerHeading === null || !env.hunterPos ? 0
+      : (p.x - env.hunterPos.x) * Math.cos(this.handlerHeading) + (p.y - env.hunterPos.y) * Math.sin(this.handlerHeading);
+    const outward = (p: Vec2) => origin ? dist(p, origin) - outFrom : 0;
+    const ahead = (p: Vec2) => forward(p) >= -range * .1 || outward(p) >= range * .5;
     const held = this.objective;
     if (held && !this.checkedLocalBeats.has(held.key) && ahead(held)) {
       const d = dist(held, anchor);
@@ -1886,7 +1900,8 @@ export class Dog {
           if (d < range - .5 || d > reach) continue;
           if (!ahead(center)) continue;
           const score = d + (env.trails?.length ? distanceToTrail(center, env.trails) * routeWeight : 0)
-            + (1 - (env.coverAffinity?.(center) ?? .5)) * habitatWeight;
+            + (1 - (env.coverAffinity?.(center) ?? .5)) * habitatWeight
+            + Math.max(0, -forward(center)) * OBJECTIVE_BEHIND + Math.max(0, -outward(center)) * OBJECTIVE_INWARD;
           if (score < bestScore) { bestScore = score; best = { key, ...center }; }
         }
       }
