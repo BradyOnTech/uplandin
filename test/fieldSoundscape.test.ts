@@ -71,9 +71,14 @@ function fakeAudio() {
 }
 
 it('bounds regional audio nodes, pauses without new loops and cleans each source once through mute and replay', async () => {
+  vi.useFakeTimers();
+  try {
   const nodes = fakeAudio();
   const audio = await import('../src/audio');
   const bed = audio.startFieldAmbience('chukar-ridge')!;
+  // The beds are made off the frame (sound/fieldSynth.ts) and fade in when ready.
+  expect(nodes.filter(n => n.kind === 'source')).toHaveLength(0);
+  await vi.runAllTimersAsync();
   const sources = nodes.filter(n => n.kind === 'source');
   // Two looping layers with their filters and gains, then the master, world bus and limiter.
   expect(sources).toHaveLength(2); expect(nodes).toHaveLength(9);
@@ -92,13 +97,17 @@ it('bounds regional audio nodes, pauses without new loops and cleans each source
   audio.setAudioEnabled(true); bed.stop(); bed.stop(); bed.setPaused(false);
   for (const source of sources) { expect(source.stop).toHaveBeenCalledOnce(); expect(source.disconnect).toHaveBeenCalledOnce(); }
   for (const filter of nodes.filter(n => n.kind === 'filter')) expect(filter.disconnect).toHaveBeenCalledOnce();
-  const next = audio.startFieldAmbience('sharptail-prairie')!; next.stop();
+  // A bed stopped before it was made is never made.
+  const next = audio.startFieldAmbience('sharptail-prairie')!; next.stop(); await vi.runAllTimersAsync();
   expect(nodes.filter(n => n.kind === 'source' && n.stop.mock.calls.length === 0)).toHaveLength(0);
+  } finally { vi.useRealTimers(); }
 });
 
 it('gives Cattail Coverts its own bed, and every footfall one short-lived source', async () => {
+  vi.useFakeTimers();
   const nodes = fakeAudio(), audio = await import('../src/audio');
   const coverts = audio.startFieldAmbience('pheasant-coverts')!;
+  await vi.runAllTimersAsync(); vi.useRealTimers();
   expect(nodes.filter(n => n.kind === 'source')).toHaveLength(2);
   expect(nodes.filter(n => n.kind === 'filter').map(n => n.frequency.value)).toEqual([290, 2300]);
   coverts.stop();
@@ -116,14 +125,19 @@ it('gives Cattail Coverts its own bed, and every footfall one short-lived source
 });
 
 it('follows the hour: the wind lays down at dusk, and the crickets start, made only when they are wanted', async () => {
+  vi.useFakeTimers();
+  try {
   const nodes = fakeAudio(), audio = await import('../src/audio');
   const bed = audio.startFieldAmbience('quail-fields')!;
   const windGains = nodes.filter(n => n.kind === 'gain');
-  bed.setHour!('morning');
+  bed.setHour!('morning'); await vi.runAllTimersAsync();
   expect(nodes.filter(n => n.kind === 'source')).toHaveLength(2);
   const morning = windGains[0].gain.setTargetAtTime.mock.lastCall[0];
   bed.setHour!('lastlight');
   expect(windGains[0].gain.setTargetAtTime.mock.lastCall[0]).toBeCloseTo(morning * HOUR_WIND.lastlight / HOUR_WIND.morning);
+  // The crickets are made off the frame too, and come in when ready.
+  expect(nodes.filter(n => n.kind === 'source')).toHaveLength(2);
+  await vi.runAllTimersAsync();
   const crickets = nodes.filter(n => n.kind === 'source').slice(2);
   expect(crickets).toHaveLength(2);
   expect(crickets.every(source => source.loop)).toBe(true);
@@ -131,18 +145,26 @@ it('follows the hour: the wind lays down at dusk, and the crickets start, made o
   const cricketGain = crickets[0].connect.mock.results[0].value;
   expect(cricketGain.gain.setTargetAtTime.mock.lastCall[0]).toBeGreaterThan(0);
   bed.setPaused(true); expect(cricketGain.gain.setTargetAtTime.mock.lastCall[0]).toBe(0);
-  bed.setPaused(false); bed.setHour!('evening'); bed.setHour!('evening');
+  bed.setPaused(false); bed.setHour!('evening'); bed.setHour!('evening'); await vi.runAllTimersAsync();
   expect(nodes.filter(n => n.kind === 'source')).toHaveLength(4);
   bed.stop(); bed.stop();
   for (const source of nodes.filter(n => n.kind === 'source')) expect(source.stop).toHaveBeenCalledOnce();
+  // A January evening is silent: its crickets are never made.
+  const winter = audio.startFieldAmbience('quail-fields')!, made = nodes.filter(n => n.kind === 'source').length;
+  winter.setConditions!('mild', 'January'); winter.setHour!('lastlight'); await vi.runAllTimersAsync();
+  expect(nodes.filter(n => n.kind === 'source' && n.loop).length - made).toBe(4); // wind beds, cover, gusts
+  winter.stop();
+  } finally { vi.useRealTimers(); }
 });
 
-it('makes the day\'s layers in idle moments, once per day, and lets them all go on stop', async () => {
+it('makes the day\'s layers off the frame, once per day, and lets them all go on stop', async () => {
   vi.useFakeTimers();
   try {
     const nodes = fakeAudio(), audio = await import('../src/audio');
     const bed = audio.startFieldAmbience('pheasant-coverts')!;
+    await vi.runAllTimersAsync();
     const before = nodes.filter(n => n.kind === 'source').length;
+    expect(before).toBe(2);
     bed.setConditions!('rain', 'October');
     // Nothing is made on the frame that asked.
     expect(nodes.filter(n => n.kind === 'source')).toHaveLength(before);

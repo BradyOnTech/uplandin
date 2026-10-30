@@ -133,8 +133,9 @@ export class FieldAudioSystem implements Subsystem {
     this.ambience ??= startFieldAmbience(this.areaId);
     const hunt = ctx.get<Hunt3DSystem>('hunt3d');
     this.ambience?.setWind?.(hunt.huntState().windStrength);
-    this.ambience?.setHour?.(ctx.timeOfDay);
+    // The day before the hour: a January evening never makes crickets.
     this.ambience?.setConditions?.(this.condition(hunt), this.month(hunt));
+    this.ambience?.setHour?.(ctx.timeOfDay);
     const target = this.pointTension(ctx, hunt);
     this.tension += (target - this.tension) * Math.min(1, dt * (target > this.tension ? 1.5 : 4));
     this.applyTension();
