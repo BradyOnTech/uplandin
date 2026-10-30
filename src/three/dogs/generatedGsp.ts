@@ -630,6 +630,10 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
     liftPaw(THREE.MathUtils.clamp(t, 0, 1));
     root.updateMatrixWorld(true); skeleton.update();
   };
+  // A setter holds a high, still flag on point, near twelve o'clock; the
+  // docked GSP tail stays firm just above the topline, and the Griffon's
+  // nearly level with it.
+  const pointTail = setter ? 1.2 : griffon ? .08 : .20;
   const setPose = (pose: 'stand' | 'point', presence = 1) => {
     for (const {node,position,rotation} of rest) { node.position.copy(position); node.quaternion.copy(rotation); }
     if (pose === 'point') {
@@ -647,10 +651,7 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
       // than stacking both paws under it. Slight asymmetry avoids a pose stamp.
       joints['hind-left'].rotation.x = .32 * t;
       joints['hind-right'].rotation.x = .22 * t;
-      // A setter holds a high, still flag on point, near twelve o'clock; the
-      // docked GSP tail stays firm just above the topline, and the Griffon's
-      // nearly level with it.
-      tail.rotation.x = (setter ? 1.2 : griffon ? .08 : .20) * t;
+      tail.rotation.x = pointTail * t;
     }
     root.updateMatrixWorld(true); skeleton.update(); if(!live){skin.computeBoundingBox(); skin.computeBoundingSphere();}
   };
@@ -772,7 +773,7 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
     body.position.y=Math.max(-.14,allowed);root.updateMatrixWorld(true);return body.position.y;
   };
   setPose('stand');
-  return { root, joints, paws, setPose, liftPointingPaw, setLocomotion, setSwimming, solveWorldFeet, fitBodyToFeet, reachSlack, material, skin, skeleton, collar,
+  return { root, joints, paws, setPose, liftPointingPaw, setLocomotion, setSwimming, solveWorldFeet, fitBodyToFeet, reachSlack, pointTail, material, skin, skeleton, collar,
     stats: { triangles: geometries.reduce((n,g) => n + g.getAttribute('position').count / 3,0), meshes: geometries.length, materials: 1, geometryBytes: geometries.reduce((n,g) => n + Object.values(g.attributes).reduce((s,a) => s + a.array.byteLength,0),0) },
     collarStats: { triangles: (collarGeometry.index?.count ?? 0) / 3, materials: 1 },
     dispose() { geometries.forEach(g => g.dispose()); material.dispose(); collarGeometry.dispose(); collarMaterial.dispose(); skeleton.dispose(); root.removeFromParent(); },

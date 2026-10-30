@@ -101,3 +101,21 @@ describe('stops and creeps', () => {
     expect(creep.cycles).toBeLessThan(plain.cycles);
   });
 });
+
+describe('the creep keeps the point', () => {
+  it('holds the breed\'s point flag high and still through a creep step', () => {
+    for (const coat of ['orange-belton', 'liver-roan', 'steel-gray'] as const) {
+      const motion = new GeneratedFieldMotion('lite', () => 0, () => 0, coat, coat === 'liver-roan' ? 'smooth' : 'faceted');
+      const field = { state: 'pointing' as const, scentStage: 'none' as const, scentProgress: 0, waitingForHandler: false, intentYaw: 0, creeping: true };
+      let z = 0;
+      const pitch: number[] = [], yaw: number[] = [];
+      for (let f = 0; f < 84; f++) {
+        z += 1.28 / 60; motion.update(0, z, 0, 1 / 60, true, false, undefined, field, 1.28);
+        if (f > 30) { pitch.push(motion.asset.joints.tail.rotation.x); yaw.push(motion.asset.joints.tail.rotation.y); }
+      }
+      for (const p of pitch) expect(p).toBeCloseTo(motion.asset.pointTail, 2);
+      expect(Math.max(...yaw.map(Math.abs))).toBeLessThan(.01);
+      motion.dispose();
+    }
+  });
+});

@@ -391,7 +391,7 @@ export class GeneratedFieldMotion {
     // Stride-coupled tail carriage: the tail counter-sways with each stride
     // and bounces with the trot's two-beat suspension. Only a travelling,
     // empty-mouthed dog; the point and carry keep their authored stillness.
-    const strideWeight=moving&&!point&&!retrieve?1:0;
+    const strideWeight=moving&&!point&&!retrieve&&!field?.creeping?1:0;
     this.tailStride=THREE.MathUtils.lerp(this.tailStride,strideWeight,reset?1:1-Math.exp(-Math.max(0,dt)*6));
     if(this.tailStride>.001){
       const setter=this.asset.root.userData.breedId==='english-setter';
@@ -399,6 +399,13 @@ export class GeneratedFieldMotion {
       const phase=this.cycle*Math.PI*2;
       this.asset.joints.tail.rotation.y+=Math.sin(phase)*sway*this.tailStride;
       this.asset.joints.tail.rotation.x+=Math.cos(phase*2)*sway*.35*this.tailStride;
+    }
+    // A creeping pup is still on its bird: it keeps its point's flag,
+    // exactly as the point carries it, high and still through the step.
+    if(this.creep>.001){
+      const {tail}=this.asset.joints;
+      tail.rotation.x=THREE.MathUtils.lerp(tail.rotation.x,this.asset.pointTail,this.creep);
+      tail.rotation.y*=1-this.creep;
     }
     // Retrieval is an upper-body layer. Foot targets and locomotion remain
     // authoritative below; entering a pickup never slides the planted paws.
