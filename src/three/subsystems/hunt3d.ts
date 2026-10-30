@@ -243,6 +243,8 @@ export class Hunt3DSystem implements Subsystem {
   private dogNames: string[] = [];
   private ctxRef: Ctx | null = null;
   private hasSolids = false;
+  /** The last cast went to a mark (birds.aimedMark), for its feedback. */
+  private castToMark = false;
   private runnerChecked = new Map<number, Vec2>();
 
   constructor(private readonly landscape: LandscapeModel) {}
@@ -623,8 +625,14 @@ export class Hunt3DSystem implements Subsystem {
     const cam = ctx.camera.position, dir = ctx.camera.getWorldDirection(this.lookDirection);
     let x = cam.x, z = cam.z;
     if (kind === 'cast') {
-      // "This way": as far as the hunter is looking, if he is looking at the
-      // ground he wants worked (a bird he marked down), else a fair cast out.
+      // "This way": to the bird he marked down, if he faces his mark; else as
+      // far as he is looking, if he is looking at the ground he wants worked,
+      // else a fair cast out.
+      let birds: { aimedMark?(x: number, z: number, facing: number, reach: number): { x: number; z: number } | null } | undefined;
+      try { birds = ctx.get<Subsystem & NonNullable<typeof birds>>('birds'); } catch { birds = undefined; }
+      const mark = birds?.aimedMark?.(cam.x, cam.z, Math.atan2(dir.z, dir.x), CAST_REACH_M) ?? null;
+      this.castToMark = !!mark;
+      if (mark) return { kind, target: this.worldToSim(mark.x, mark.z, { x: 0, y: 0 }) };
       const terrain = ctx.get<Subsystem & { heightAt(x: number, z: number): number }>('terrain');
       const flat = Math.hypot(dir.x, dir.z) || 1;
       let reach = CAST_DISTANCE_M;
@@ -699,7 +707,9 @@ export class Hunt3DSystem implements Subsystem {
   private recordEvents(events: readonly HuntSimulationEvent[]): void {
     for (const event of events) {
       if (event.type === 'command') {
-        this.say(dogCommandFeedback(event.kind, event.responses as CommandResponse[], this.simDogs.map(dog => dog.state), this.dogNames));
+        const said = dogCommandFeedback(event.kind, event.responses as CommandResponse[], this.simDogs.map(dog => dog.state), this.dogNames);
+        // A cast to his mark says where it went.
+        this.say(event.kind === 'cast' && this.castToMark ? said.replace(/ casts? out/, match => `${match.replace(' out', '')} to your mark`) : said);
         continue;
       }
       if (event.type === 'dog-note') {

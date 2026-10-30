@@ -32,6 +32,9 @@ import { evadeGoshawk, type QuarryTarget } from '../../game/falconry';
 import { huntingDoctrine } from '../../game/huntDoctrine';
 import { HUNT_SHOT_RANGE } from '../../game/huntSimulation';
 import { ObstacleIndex } from '../../game/obstacleIndex';
+import { landingHolds, MARK_RANGE_M, MARK_SIGHT_MS, MarkBook, type HunterMark } from '../../game/marks';
+import { quailPlumAt } from '../../game/quailComposition';
+import { quailCoverAt } from '../../game/quailLandscape';
 import type { Ctx, Subsystem } from '../engine';
 import { P, fieldTimeOfDay, type TimeOfDay } from '../palette';
 import type { Hunt3DSystem } from './hunt3d';
@@ -322,6 +325,10 @@ interface Slot {
   stride?: number;
   /** A dead bird's first strike: it has bounced (or splashed) once. */
   struck?: boolean;
+  /** Where and when (field clock, ms) the hunter last had this bird in sight. */
+  sighted?: { ms: number; x: number; z: number };
+  /** A Hun covey flying its loop back round to set down together. */
+  circling?: boolean;
   /** The wings as they were when the bird was hit: the collapse eases from them. */
   collapseFrom?: { left: THREE.Quaternion; right: THREE.Quaternion; ms: number };
   carryPose?: { elapsed: number; rotation: THREE.Quaternion };
@@ -485,6 +492,15 @@ export class BirdsSystem implements Subsystem {
   private landingObstacleIndex?: ObstacleIndex;
   private obstacleCtx?: Ctx;
   private readonly simPoint = { x: 0, y: 0 };
+  /** Where the hunter watched misses go down (game/marks.ts). */
+  private readonly markBook = new MarkBook();
+  /** Field clock, ms: every tick, rise or not. */
+  private fieldMs = 0;
+  private readonly sightProbe = new THREE.Vector3();
+  /** Crown of the standing cover over the ground at a world point (m): what
+   * hides a bird going in. Read lazily (the cover registers after the birds). */
+  private coverCrown?: (x: number, z: number) => number;
+  private coverCtx?: Ctx;
   /** Sky clock shared by every covey: the wave rule is global. */
   private skyMs = 0;
   private lastWaveMs = -Infinity;
@@ -536,6 +552,7 @@ export class BirdsSystem implements Subsystem {
     this.listener = ctx.camera;
     this.coverEvents = ctx.events;
     this.obstacleCtx = ctx;
+    this.coverCtx = ctx;
     const signal = this.lifetime.signal;
     ctx.events.addEventListener('pause', ((event: CustomEvent<boolean>) => {
       if (event.detail) this.stopLaunchSounds();
@@ -675,6 +692,8 @@ export class BirdsSystem implements Subsystem {
         /** Where escaping birds set down, world metres, for the review's marks. */
         landings: () => this.slots.filter(slot => (slot.status === 'flying' || slot.status === 'departing') && slot.line?.target)
           .map(slot => ({ simId: slot.simId, x: slot.line!.target!.x, z: slot.line!.target!.z })),
+        /** The hunter's marks: where he watched misses go down. */
+        marks: () => this.markBook.marks.map(mark => ({ ...mark, birdIds: [...mark.birdIds], freshness: this.markBook.freshness(mark, this.fieldMs) })),
         /** Rise review's shooting hunter: the capture never fires the real
          * gun, so the tool reports a double's shells and reload here and the
          * wave rule reads them as it reads the gun (null restores the gun). */
@@ -1046,6 +1065,7 @@ export class BirdsSystem implements Subsystem {
   private tickBirds(dtMs: number): void {
     const dt = dtMs / 1000;
     this.riseMs += dtMs;
+    this.fieldMs += dtMs;
 
     // 1. Detect newly flushed sim birds -> stage a rise (covey order).
     const simBirds = this.hunt.huntState().birds;
@@ -1054,6 +1074,8 @@ export class BirdsSystem implements Subsystem {
       if (bird.state === 'hidden') this.staged.delete(bird.id);
       if (bird.state !== 'flushed' || this.staged.has(bird.id)) continue;
       this.staged.add(bird.id);
+      // A marked bird rising again is the follow-up: its mark is settled.
+      this.markBook.release(bird.id);
       const covey = newCoveys.get(bird.coveyId) ?? [];
       covey.push(bird); newCoveys.set(bird.coveyId, covey);
     }
@@ -1181,9 +1203,14 @@ export class BirdsSystem implements Subsystem {
           s.status = 'done';
           s.root.visible = false;
           if (!departing) this.hunt.resolveBird(s.simId, 'escaped', { x: s.x, z: s.z });
+          this.markLanding(s, departing && s.line?.target ? s.line.target : s);
           continue;
         }
       }
+      // What the hunter sees of a bird going down, a few times a second: a
+      // miss he watches go in is marked.
+      const goingDown = s.line?.target ? Math.hypot(s.line.target.x - s.x, s.line.target.z - s.z) < 45 : s.y - g < 3 && s.airMs > LAND_MIN_AIR_MS;
+      if (goingDown && (this.fieldMs / dtMs | 0) % 2 === 0 && this.sees(s)) s.sighted = { ms: this.fieldMs, x: s.x, z: s.z };
       if (departing) {
         if (this.leftTheScreen(s, flight)) { s.status = 'done'; s.root.visible = false; }
         continue;
@@ -1213,6 +1240,12 @@ export class BirdsSystem implements Subsystem {
         this.riseActive = false; // the sky settled
         this.hunt.finishRise();
       }
+    }
+    // Between rises a mark keeps only birds still down where he saw them go:
+    // a miss the field did not keep, or one put up again, settles its mark.
+    if (!this.riseActive && this.markBook.marks.length && (this.fieldMs / dtMs | 0) % 15 === 0) {
+      this.markBook.prune(id => simBirds.find(bird => bird.id === id)?.state === 'hidden');
+      this.markBook.forget(this.fieldMs);
     }
 
     // 4. Debris clock.
@@ -1561,6 +1594,8 @@ export class BirdsSystem implements Subsystem {
       wild: !!sim.single, circleBack: plan.circleBack && !sim.single, landable: this.landable, fan: this.pourFan(speciesFlight, species),
       ground: (x, z) => this.terrain.heightAt(x, z), cover: this.hunt.coverPatches?.() ?? [], rng,
     });
+    slot.circling = !!slot.line.target && !!plan.circleBack && !sim.single;
+    slot.sighted = undefined;
     slot.vxW = Math.cos(slot.line.bearing) * .5;
     slot.vzW = Math.sin(slot.line.bearing) * .5;
     slot.vyW = 0;
@@ -1824,6 +1859,20 @@ export class BirdsSystem implements Subsystem {
     return this.riseActive;
   }
 
+  /** The hunter's marks: where he watched misses go down (game/marks.ts). */
+  marks(): readonly HunterMark[] { return this.markBook.marks; }
+
+  /** The mark he made last, and how sure of it he still is (1 fresh, 0 forgotten). */
+  latestMark(): { mark: HunterMark; freshness: number } | null {
+    const mark = this.markBook.latest();
+    return mark ? { mark, freshness: this.markBook.freshness(mark, this.fieldMs) } : null;
+  }
+
+  /** The mark a cast the way he faces (a world bearing) means, within `reach` metres. */
+  aimedMark(x: number, z: number, facing: number, reach: number): HunterMark | null {
+    return this.markBook.aimedAt({ x, z }, facing, reach);
+  }
+
   /** A marking dog's visual attention: prioritize its falling birds, otherwise
    * watch the airborne group. Writes into caller storage without allocations. */
   markingTarget(ids: readonly number[], out: THREE.Vector3): boolean {
@@ -2014,6 +2063,75 @@ export class BirdsSystem implements Subsystem {
     const target = THREE.MathUtils.clamp(-Math.atan2(Math.hypot(slot.vxW, slot.vzW) * turn, 9.81) * .65, -limit, limit);
     slot.bank = THREE.MathUtils.lerp(slot.bank ?? 0, target, 1 - Math.exp(-dt * 5));
     slot.bankYaw = yaw;
+  }
+
+  /**
+   * Is this bird in the hunter's sight? In his view (the screen, with the
+   * corner of his eye), within marking range, and not behind the land or the
+   * standing cover between him and it. Tiny on a phone or not: a hunter's
+   * eye follows a bird down far past what the screen can draw.
+   */
+  private sees(slot: Slot): boolean {
+    const camera = this.listener as THREE.PerspectiveCamera | undefined;
+    if (!camera?.isPerspectiveCamera) return false;
+    const eye = camera.position;
+    if (Math.hypot(slot.x - eye.x, slot.z - eye.z) > MARK_RANGE_M) return false;
+    const p = this.sightProbe.set(slot.x, slot.y, slot.z).project(camera);
+    if (p.z > 1 || p.z < -1 || Math.abs(p.x) > 1.1 || Math.abs(p.y) > 1.1) return false;
+    return this.clearSight(eye, slot.x, slot.y, slot.z);
+  }
+
+  /** Nothing between the eye and a point: not the land, and past the cover
+   * he stands in, not the crown of the standing cover. */
+  private clearSight(eye: THREE.Vector3Like, x: number, y: number, z: number): boolean {
+    const dx = x - eye.x, dy = y - eye.y, dz = z - eye.z, length = Math.hypot(dx, dz);
+    const crown = this.coverCrownAt();
+    for (let s = 2; s < length - .6; s += Math.max(1.2, length / 80)) {
+      const k = s / length, px = eye.x + dx * k, pz = eye.z + dz * k, py = eye.y + dy * k;
+      const ground = this.terrain.heightAt(px, pz);
+      if (py < ground) return false;
+      if (s > 6 && py < ground + crown(px, pz)) return false;
+    }
+    return true;
+  }
+
+  /** The standing cover's crown height sampler for this ground: the cover
+   * system's own where it has one; sand plum thickets on the Red Plains,
+   * from the same plum runs the thickets grow on; grass elsewhere. */
+  private coverCrownAt(): (x: number, z: number) => number {
+    if (this.coverCrown) return this.coverCrown;
+    let cover: { launchHeightAt?(x: number, z: number): number } | undefined;
+    try { cover = this.coverCtx?.get('grass') as typeof cover; } catch { cover = undefined; }
+    const area = this.hunt.areaConfig();
+    if (cover?.launchHeightAt) this.coverCrown = (x, z) => cover!.launchHeightAt!(x, z);
+    else if (area.id === 'quail-fields' && this.hunt.worldToSim) {
+      this.coverCrown = (x, z) => {
+        const at = this.hunt.worldToSim(x, z, this.simPoint);
+        const plum = quailPlumAt(at.x, at.y) * quailCoverAt(area, at.x, at.y);
+        return plum > .35 ? 1.7 : plum > .15 ? 1 : .45;
+      };
+    } else this.coverCrown = () => .4;
+    return this.coverCrown;
+  }
+
+  /**
+   * A miss set down. If the hunter watched it go in, he marks it: where it
+   * touched down if he saw it to the ground, else where he lost it going in
+   * behind the cover; only a bird the field keeps there to hunt (marks.ts
+   * landingHolds), and never a relit single's last escape.
+   */
+  private markLanding(slot: Slot, landing: { x: number; z: number }): void {
+    const seen = slot.sighted;
+    if (!seen || this.fieldMs - seen.ms > MARK_SIGHT_MS) return;
+    const bird = this.hunt.huntState().birds.find(candidate => candidate.id === slot.simId);
+    if (!bird || bird.single) return;
+    const area = this.hunt.areaConfig();
+    const at = this.hunt.worldToSim?.(landing.x, landing.z, { x: 0, y: 0 });
+    if (!at || !landingHolds(slot.species.id, at, area.world, area.patches, slot.circling)) return;
+    const toGround = this.fieldMs - seen.ms <= 70;
+    const spot = toGround ? { x: slot.x, z: slot.z } : { x: seen.x, z: seen.z };
+    const mark = this.markBook.add(slot.simId, spot, Math.atan2(slot.vzW, slot.vxW), slot.species.id, toGround, this.fieldMs, !!slot.circling);
+    this.coverEvents?.dispatchEvent(new CustomEvent('hunt-mark', { detail: mark }));
   }
 
   /**

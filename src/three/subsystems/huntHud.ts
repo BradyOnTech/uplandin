@@ -12,6 +12,7 @@ import { focusedFieldDog } from '../fieldDogFocus';
 import { dogRelativeBearing, dogWorkLabel, fieldCompassHeading, fieldSearchGuidance, pointApproachCue, pheasantPointGuidance, trackingApproachGuidance } from '../dogLocator';
 import type { Ctx, Subsystem } from '../engine';
 import type { BirdsSystem } from './birds';
+import type { HunterMark } from '../../game/marks';
 import type { GunSystem } from './gun';
 import type { Hunt3DSystem } from './hunt3d';
 import type { PlayerSystem } from './player';
@@ -42,6 +43,14 @@ export class HuntHudSystem implements Subsystem {
   private truckDistance: HTMLElement | null = null;
   private windDirection: HTMLElement | null = null;
   private windStrength: HTMLElement | null = null;
+  /** The hunter's latest mark: where he watched a miss go down. */
+  private mark: HTMLElement | null = null;
+  private markDirection: HTMLElement | null = null;
+  private markDistance: HTMLElement | null = null;
+  private lastMarkAngle = NaN;
+  private lastMarkText = '';
+  /** When the latest mark was made (field time), for the cast cue. */
+  private markedAt = -Infinity;
   private guidance: HTMLElement | null = null;
   private locator: HTMLElement | null = null;
   private dogDirection: HTMLElement | null = null;
@@ -148,7 +157,15 @@ export class HuntHudSystem implements Subsystem {
       this.windDirection.textContent = '↑'; this.windDirection.setAttribute('aria-hidden', 'true');
       this.windStrength = document.createElement('span');
       wind.append(windLabel, this.windDirection, this.windStrength);
-      this.beacon.replaceChildren(truck, wind);
+      // Where he saw a miss go down: an arrow and the yards, while he remembers it.
+      this.mark = document.createElement('span'); this.mark.className = 'field-mark'; this.mark.hidden = true;
+      this.mark.title = 'Where you marked a bird down';
+      const markLabel = document.createElement('span'); markLabel.textContent = 'MARK';
+      this.markDirection = document.createElement('span'); this.markDirection.className = 'field-compass-arrow';
+      this.markDirection.textContent = '↑'; this.markDirection.setAttribute('aria-hidden', 'true');
+      this.markDistance = document.createElement('span'); this.markDistance.className = 'field-compass-distance';
+      this.mark.append(markLabel, this.markDirection, this.markDistance);
+      this.beacon.replaceChildren(truck, this.mark, wind);
     }
     if (this.summary) this.summary.hidden = true;
     const options = { signal: this.abort.signal };
@@ -167,6 +184,15 @@ export class HuntHudSystem implements Subsystem {
       if (!this.summaryCopy) return;
       renderTailgatePhoto(this.summaryCopy, event.detail.full, tailgateFileName(this.hunt.areaConfig().id));
       this.summaryPager?.refresh();
+    }) as EventListener, options);
+    // He watched a miss go down: say so, the way a partner would.
+    ctx.events.addEventListener('hunt-mark', ((event: CustomEvent<HunterMark>) => {
+      if (!this.dogCallout || this.frozen || this.fieldTime < this.milestoneHeld) return;
+      this.dogCallout.textContent = this.markCopy(ctx, event.detail);
+      this.dogCallout.classList.remove('milestone');
+      this.dogCallout.hidden = false;
+      this.dogCalloutUntil = this.fieldTime + 3.2;
+      this.markedAt = this.fieldTime;
     }) as EventListener, options);
     ctx.events.addEventListener('hunt-milestone', ((event: CustomEvent<string>) => {
       if (!this.dogCallout || this.frozen) return;
@@ -328,6 +354,23 @@ export class HuntHudSystem implements Subsystem {
     if (this.windDirection && windAngle !== this.lastWindAngle) {
       this.windDirection.style.transform = `rotate(${windAngle}deg)`; this.lastWindAngle = windAngle;
     }
+    const latest = this.birds.latestMark?.() ?? null;
+    if (this.mark) {
+      if (this.mark.hidden === !!latest) this.mark.hidden = !latest;
+      if (latest) {
+        const mx = latest.mark.x - ctx.camera.position.x, mz = latest.mark.z - ctx.camera.position.z;
+        const markAngle = Math.round(dogRelativeBearing(mx, mz, yaw) * 180 / Math.PI);
+        if (this.markDirection && markAngle !== this.lastMarkAngle) {
+          this.markDirection.style.transform = `rotate(${markAngle}deg)`; this.lastMarkAngle = markAngle;
+        }
+        // A mark he has carried a while dims as it fades from memory.
+        const opacity = (.4 + .6 * latest.freshness).toFixed(2);
+        if (this.mark.style.opacity !== opacity) this.mark.style.opacity = opacity;
+        const markMeters = Math.hypot(mx, mz);
+        const markText = markMeters < 8 ? 'HERE' : `${Math.round(markMeters / .9144)} YD`;
+        if (this.markDistance && markText !== this.lastMarkText) { this.markDistance.textContent = markText; this.lastMarkText = markText; }
+      }
+    }
     if (this.fieldTime >= this.nextNavigationUpdate) {
       this.nextNavigationUpdate = this.fieldTime + .2;
       const compass = fieldCompassHeading(yaw);
@@ -359,9 +402,11 @@ export class HuntHudSystem implements Subsystem {
         else if (!rise && trackingGuidance) cue = trackingGuidance.detail;
         else if (!rise && trackedDog?.searchAreaChecked && (trackedDog.state === 'recalled' || trackedDog.state === 'heel'))
           cue = 'Nearby ground checked. Walk toward fresh cover to continue the search.';
+        else if (!rise && latest && this.fieldTime - this.markedAt < 30 && ['heel', 'quartering', 'recalled', 'whoa'].includes(trackedDog?.state ?? ''))
+          cue = touch ? 'Face your mark and send the dog: Dog ▸ This way.' : 'Face your mark and press C: the dog casts to it.';
         else if (!rise && trackedDog?.state === 'heel') cue = touch ? 'Whistle again, or Dog ▸ Hunt on, to send the dog hunting.' : 'Whistle again (or X) to send the dog hunting · C casts it the way you face.';
         else if (!rise && trackedDog?.state === 'pointing' && !trackedDog.steadied) cue = touch ? 'Whoa steadies the dog on point · Dog ▸ Hunt on sends it in to relocate.' : 'Z steadies the dog on point · X sends it in to relocate.';
-        if (!rise && trackedDog?.state === 'quartering') {
+        if (!rise && trackedDog?.state === 'quartering' && !(latest && this.fieldTime - this.markedAt < 30)) {
           if (this.fieldTime < 35) cue = fieldSearchGuidance(hunt.areaId);
           else if (truckMeters < 14) cue = `${this.hunt.dropPoint().name} · back at the truck`;
           else if (this.mainLandmark) {
@@ -414,6 +459,17 @@ export class HuntHudSystem implements Subsystem {
       ctx.events.dispatchEvent(new Event('hunt-complete'));
     }
   }
+  /** A mark in words: how many went down, where, how far. */
+  private markCopy(ctx: Ctx, mark: HunterMark): string {
+    const yards = Math.round(Math.hypot(mark.x - ctx.camera.position.x, mark.z - ctx.camera.position.z) / .9144);
+    const at = this.hunt.worldToSim(mark.x, mark.z, { x: 0, y: 0 });
+    const place = huntAreaAt(this.hunt.areaConfig(), at.x, at.y)?.name;
+    const n = mark.birdIds.length;
+    const who = mark.covey ? 'Covey' : n === 1 ? 'Bird' : `${n} birds`;
+    const how = mark.toGround ? 'marked down' : 'marked going in';
+    return `${who} ${how}${place ? ` in ${place}` : ''} · ${yards} yd`;
+  }
+
   dispose(): void {
     this.abort.abort();
     this.fieldIdentity?.remove(); this.fieldMethod?.remove(); this.guidance?.remove();
