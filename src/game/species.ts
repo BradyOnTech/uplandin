@@ -45,6 +45,9 @@ export interface RunnerBehavior {
   restMultiplier?: number;
   /** How strongly the bird adopts an authored route when one is nearby. */
   routeBias?: number;
+  /** Continuous field: ms of a hunting dog working close by that a hidden
+   * bird stands before it sits tight for good or flushes wild. */
+  pressLimitMs?: number;
 }
 
 export interface SpeciesConfig {
@@ -244,7 +247,9 @@ export const SPECIES: SpeciesConfig[] = [
     flightDirection: 'downhill',
     runnerChance: 0.8,
     runSpeedMult: 1.3, // uphill legs — they will outwalk you
-    runnerBehavior: { fleeRadius: 40, energyRate: 1.18, restMultiplier: .86, routeBias: .24 },
+    // They road uphill ahead of a dog, but not for minutes: pressed long
+    // enough, a covey sits tight or flushes.
+    runnerBehavior: { fleeRadius: 40, energyRate: 1.18, restMultiplier: .86, routeBias: .24, pressLimitMs: 60_000 },
     nerveMinMs: 2500,
     nerveMaxMs: 5000,
     // The downhill flush: fast, flat, and gone.

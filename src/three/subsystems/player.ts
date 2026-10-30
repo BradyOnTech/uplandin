@@ -11,7 +11,7 @@ import { ObstacleIndex } from '../../game/obstacleIndex';
 import { bindMouseLook } from '../mouseLook';
 import { touchMovement, touchSensitivity, opticalLookScale } from '../inputMode';
 import { stepLookCloser } from '../lookCloser';
-import { HunterBreath, climbSpeedFactor } from '../../game/climbing';
+import { HunterBreath, climbCosts, climbSpeedFactor } from '../../game/climbing';
 
 const WALK_SPEED = 2.2;
 const SPRINT_MULT = 1.9;
@@ -73,8 +73,8 @@ export class PlayerSystem implements Subsystem {
   }
   constructor(private readonly landscape?: LandscapeModel) {
     if (landscape) this.water = new ShallowWater(landscape);
-    // Grounds with an uphill (the chukar rule) charge for the climb.
-    this.climbs = landscape?.area.slope !== undefined;
+    // Grounds built as a climb (Chukar Ridge) charge for it.
+    this.climbs = !!landscape && climbCosts(landscape.area);
   }
 
   init(ctx: Ctx): void {

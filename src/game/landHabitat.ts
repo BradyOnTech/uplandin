@@ -172,6 +172,10 @@ const COVER_SHARE = .26;
 const RECT_BLOCK = 4;
 const RECT_MAX = 4;
 const RECT_SEAM = 1.5;
+/** Coveys keep this far (yards) inside the fence, so a flush or a runner's
+ * road never ends against the boundary. The cover view stops there too: a
+ * dog has no business hunting a strip by the fence no covey ever sits in. */
+const EDGE_CLEAR = 70;
 
 const rects = new Map<string, Rect[]>();
 /**
@@ -193,6 +197,8 @@ export function derivedCoverRects(area: Pick<AreaConfig, 'id'>): Rect[] {
       const ci = i * RECT_BLOCK + a, cj = j * RECT_BLOCK + b;
       if (ci >= h.cols || cj >= h.rows) continue;
       const k = cj * h.cols + ci; total++;
+      const x = h.world.x + (ci + .5) * h.cell, y = h.world.y + (cj + .5) * h.cell;
+      if (x < h.world.x + EDGE_CLEAR || y < h.world.y + EDGE_CLEAR || x > h.world.x + h.world.w - EDGE_CLEAR || y > h.world.y + h.world.h - EDGE_CLEAR) continue;
       if (h.open[k] && h.cover01[k] >= threshold) good++;
     }
     on[j * bc + i] = total > 0 && good * 2 > total ? 1 : 0;
@@ -260,9 +266,6 @@ const SECOND_REACH = 520;
 const ENTRY_FLATTEN = .3;
 /** Coveys favour ground a route passes within this many yards of. */
 const ROUTE_REACH = 110;
-/** Coveys keep this far (yards) inside the fence: a runner pressed against
- * a boundary slides along it for minutes instead of holding or flushing. */
-const EDGE_CLEAR = 70;
 /** A Loaded field's coveys thin out past this walking reach, yards. */
 const LOADED_REACH = 380;
 /** Yards of walking each metre of climb is worth. */

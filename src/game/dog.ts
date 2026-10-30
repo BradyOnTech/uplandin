@@ -135,6 +135,12 @@ export const DEAD_SCENT_MULT = 0.3;
 /** How long a "this way" cast keeps the dog working the chosen ground. */
 export const CAST_COMMAND_MS = 25_000;
 const CAST_ARRIVE = 5;
+/** How hard an open cast leans to the next objective against the gun's line. */
+const OBJECTIVE_LEAN = 1.2;
+/** Yards of extra distance an objective costs per yard behind the gun, and
+ * per yard back toward the truck. */
+const OBJECTIVE_BEHIND = 1.5;
+const OBJECTIVE_INWARD = 1;
 /** How long a dog hunts dead where it was sent before giving up. */
 export const SEEK_COMMAND_MS = 22_000;
 /** How long a dog searches a marked fall that is no longer there (a runner). */
@@ -529,6 +535,8 @@ export class Dog {
   private emptySearchMs = 0;
   /** A finite, scent-free local check has finished; this is not a point. */
   get searchAreaChecked(): boolean { return this.checkedSearchPosition !== null; }
+  /** The hidden bird whose scent the dog is working, while it works it. */
+  get workingBirdId(): number | null { return this.state === 'tracking' ? this.scentTargetId : null; }
   /** ms left of the first-scent freeze. */
   private scentStageMs = 0;
   private scentStageTotalMs = 0;
@@ -572,6 +580,11 @@ export class Dog {
   private creepLogged = false;
   /** Open-ground cast: which side of the handler's line the dog is casting to. */
   private castSide = 1;
+  /** The next unchecked cover ahead, past range, that the open cast leans to. */
+  private objective: { key: string; x: number; y: number } | null = null;
+  private objectiveSearchMs = 0;
+  /** Where the hunter was when the dog first looked past its range: the truck. */
+  private huntOrigin: Vec2 | null = null;
 
   constructor(
     public pos: Vec2,
@@ -1354,11 +1367,23 @@ export class Dog {
     const quarterAnchor = env.workAnchor ?? env.hunterPos;
     if (continuousSearch && quarterAnchor && this.handlerHeading !== null) {
       const range = this.effectiveRangeRadius(env);
-      const fx = Math.cos(this.handlerHeading), fy = Math.sin(this.handlerHeading);
+      let fx = Math.cos(this.handlerHeading), fy = Math.sin(this.handlerHeading);
+      // On a big ground the cast leans on toward the next cover ahead, so a
+      // hunter who only follows the dog is led to it rather than round the
+      // open ground by the truck. The sweep stays within range of the gun.
+      const objective = this.nextObjective(env, quarterAnchor, range, dtMs);
+      if (objective) {
+        const ox = objective.x - quarterAnchor.x, oy = objective.y - quarterAnchor.y, od = Math.hypot(ox, oy) || 1;
+        fx += ox / od * OBJECTIVE_LEAN; fy += oy / od * OBJECTIVE_LEAN;
+        const fl = Math.hypot(fx, fy) || 1;
+        fx /= fl; fy /= fl;
+      }
       const lateral = fx * (this.pos.y - quarterAnchor.y) - fy * (this.pos.x - quarterAnchor.x);
-      if (lateral * this.castSide > range * .62) this.castSide = -this.castSide;
-      const tx = quarterAnchor.x + fx * range * .5 - fy * this.castSide * range * .8;
-      const ty = quarterAnchor.y + fy * range * .5 + fx * this.castSide * range * .8;
+      // Leaning to an objective, the casts run further out and narrower.
+      const ahead = objective ? .7 : .5, wide = objective ? .6 : .8;
+      if (lateral * this.castSide > range * (objective ? .47 : .62)) this.castSide = -this.castSide;
+      const tx = quarterAnchor.x + fx * range * ahead - fy * this.castSide * range * wide;
+      const ty = quarterAnchor.y + fy * range * ahead + fx * this.castSide * range * wide;
       this.heading = turnToward(this.heading, Math.atan2(ty - this.pos.y, tx - this.pos.x), 2.4 * dt);
       this.steerOffEdges(dt);
       this.steerToAnchor(dt, quarterAnchor, range);
@@ -1825,6 +1850,73 @@ export class Dog {
       aim.y = aim.y * .52 + (rectCy(patch) + Math.sin(env.slopeAngle) * reach) * .48;
     }
     return aim;
+  }
+
+  /**
+   * The next unchecked cover past the dog's range: what an objective-hunting
+   * dog makes for once everything in range is checked. It is reachable
+   * habitat only, never a hidden bird, and is held until it is checked or
+   * comes into range. It lies ahead of the gun or level with him, or else
+   * further out from where the hunt began: a hunter who only follows the
+   * dog turns wherever the dog last went, so his line alone would let the
+   * pair drift back to the fence by the truck. Of those, the nearest wins,
+   * and one that leads out from the truck is favoured over one behind the
+   * gun. Grounds without an objective reach have none.
+   */
+  private nextObjective(env: DogEnv, anchor: Vec2, range: number, dtMs: number): Vec2 | null {
+    const reach = this.doctrineFor(env).dogObjectiveReach ?? 0;
+    if (reach <= range) return null;
+    if (env.hunterPos) this.huntOrigin ??= { ...env.hunterPos };
+    const origin = this.huntOrigin, outFrom = origin ? dist(anchor, origin) : 0;
+    const forward = (p: Vec2) => this.handlerHeading === null || !env.hunterPos ? 0
+      : (p.x - env.hunterPos.x) * Math.cos(this.handlerHeading) + (p.y - env.hunterPos.y) * Math.sin(this.handlerHeading);
+    const outward = (p: Vec2) => origin ? dist(p, origin) - outFrom : 0;
+    const ahead = (p: Vec2) => forward(p) >= -range * .1 || outward(p) >= range * .5;
+    const held = this.objective;
+    if (held && !this.checkedLocalBeats.has(held.key) && ahead(held)) {
+      const d = dist(held, anchor);
+      if (d <= reach && d >= range * .5) return held;
+    }
+    this.objective = null;
+    if ((this.objectiveSearchMs -= dtMs) > 0) return null;
+    this.objectiveSearchMs = 1000;
+    const { w: beatWidth, h: beatHeight } = this.localBeatSize(env);
+    const habitatWeight = this.localUplandSearch(env) === 'chukar' ? 38 : 22;
+    const routeWeight = this.localUplandSearch(env) === 'chukar' ? .74 : .38;
+    let best: { key: string; x: number; y: number } | null = null, bestScore = Infinity;
+    for (const patch of env.patches ?? []) {
+      const left = Math.max(patch.x, anchor.x - reach), right = Math.min(patch.x + patch.w, anchor.x + reach);
+      const top = Math.max(patch.y, anchor.y - reach), bottom = Math.min(patch.y + patch.h, anchor.y + reach);
+      if (left >= right || top >= bottom) continue;
+      for (let gx = Math.floor(left / beatWidth); gx <= Math.floor(right / beatWidth); gx++) {
+        for (let gy = Math.floor(top / beatHeight); gy <= Math.floor(bottom / beatHeight); gy++) {
+          const key = `${gx}:${gy}`;
+          if (this.checkedLocalBeats.has(key)) continue;
+          const x = Math.max(patch.x, gx * beatWidth), y = Math.max(patch.y, gy * beatHeight);
+          const w = Math.min(patch.x + patch.w, (gx + 1) * beatWidth) - x, h = Math.min(patch.y + patch.h, (gy + 1) * beatHeight) - y;
+          if (w < 1 || h < 1) continue;
+          const center = { x: x + w / 2, y: y + h / 2 }, d = dist(center, anchor);
+          // In range is the ordinary beat choice's; past the reach is too far.
+          if (d < range - .5 || d > reach) continue;
+          if (!ahead(center)) continue;
+          const score = d + (env.trails?.length ? distanceToTrail(center, env.trails) * routeWeight : 0)
+            + (1 - (env.coverAffinity?.(center) ?? .5)) * habitatWeight
+            + Math.max(0, -forward(center)) * OBJECTIVE_BEHIND + Math.max(0, -outward(center)) * OBJECTIVE_INWARD;
+          if (score < bestScore) { bestScore = score; best = { key, ...center }; }
+        }
+      }
+    }
+    this.objective = best;
+    return best;
+  }
+
+  /** The size of one local beat on this ground, yards. */
+  private localBeatSize(env: DogEnv): { w: number; h: number } {
+    const upland = this.localUplandSearch(env);
+    const beatSize = this.localPrairieSearch(env) ? PRAIRIE_COVER_BEAT : upland === 'quail' ? QUAIL_COVER_BEAT : LOCAL_COVER_BEAT;
+    if (upland !== 'chukar') return { w: beatSize, h: beatSize };
+    const uphillX = Math.abs(Math.cos(env.slopeAngle ?? -Math.PI / 2)) > Math.abs(Math.sin(env.slopeAngle ?? -Math.PI / 2));
+    return uphillX ? { w: CHUKAR_UPHILL_BEAT, h: CHUKAR_CONTOUR_BEAT } : { w: CHUKAR_CONTOUR_BEAT, h: CHUKAR_UPHILL_BEAT };
   }
 
   /** The current local beat is done with: worked through, or passed over. */
