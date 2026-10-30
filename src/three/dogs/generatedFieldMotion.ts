@@ -23,6 +23,12 @@ const HOLD_GAIT_S = .7;
 const HOLD_GAIT_FLOOR: Partial<Record<LocomotionGait, number>> = { gallop: 2.6, canter: 1.6 };
 /** The pace (m/s) a gait's reference stride belongs to; slower or faster, a gallop or canter shortens or lengthens. */
 const PACE_STRIDE: Partial<Record<LocomotionGait, number>> = { gallop: 5.2, canter: 3.6 };
+/** A dog pulled up from at least this pace (m/s) brakes onto its forehand. */
+const BRAKE_PACE = 3;
+/** How long the braking stop takes to rock back (s). */
+const BRAKE_S = .35;
+/** A creeping pup walks low on longer, slower strides. */
+const CREEP_STRIDE = 1.3, CREEP_CROUCH = .03;
 /** A stop shorter than this (s) keeps the stance it stopped on. */
 const BRACED_STOP_S = .8;
 /** How far the hips trail inside the chest round a curve: the chest-to-hip span (m). */
@@ -64,6 +70,12 @@ export class GeneratedFieldMotion {
   private slowFor=0;
   /** How much a gallop or canter has shortened or lengthened its stride with the pace. */
   private paceStride=1;
+  /** The last moving pace, and the braking stop it leaves (strength, seconds since). */
+  private lastPace=0;
+  private brake=0;
+  private brakeFor=BRAKE_S;
+  /** How far into a creep's crouch the pup is (0..1). */
+  private creep=0;
   clamped=0;
   private targets=this.feet.map(f=>f.target);
   private normals=this.feet.map(f=>f.normal);
@@ -256,10 +268,18 @@ export class GeneratedFieldMotion {
     this.asset.joints.body.position.y=this.bodyHeight+leap;
     // The skid throws the dog's weight onto its forehand: the chest drops and
     // the body tips nose-down, then rocks back as it stops.
-    const kick=skidding?Math.sin(Math.PI*Math.min(1,slam!/.7)):0;
+    // A dog pulled up from a run (at the fall, at hand, on a check) brakes
+    // onto its forehand and rocks back, as the slam's skid does.
+    if(!moving&&this.wasMoving&&!reset&&slam===null&&this.lastPace>BRAKE_PACE){this.brake=Math.min(1,this.lastPace/5.5);this.brakeFor=0;}
+    if(moving||reset)this.brakeFor=BRAKE_S;else this.brakeFor=Math.min(BRAKE_S,this.brakeFor+Math.max(0,dt));
+    const braking=this.brakeFor<BRAKE_S?this.brake*Math.sin(Math.PI*this.brakeFor/BRAKE_S):0;
+    const kick=skidding?Math.sin(Math.PI*Math.min(1,slam!/.7)):braking*.6;
     const leapPitch=moving&&this.gait==='bound'&&contacts?contacts.pitch*this.boundHeight/.45:0;
     const supportOffset=this.bodySupport.update(this.asset,this.ground,x,z,yaw,speed,signedTurnRate,dt,moving,reset,.12*kick+leapPitch);
-    const crouch=.035*kick;
+    // A creeping pup moves low and deliberate.
+    const creeping=moving&&!!field?.creeping;
+    this.creep=reset?(creeping?1:0):THREE.MathUtils.clamp(this.creep+(creeping?1:-1)*Math.max(0,dt)/.3,0,1);
+    const crouch=.035*kick+CREEP_CROUCH*this.creep;
     this.asset.joints.body.position.y-=crouch;
     root.updateMatrixWorld(true);
     // An airborne pointing paw carries the authored bend through entry and
@@ -404,12 +424,13 @@ export class GeneratedFieldMotion {
     this.earGravity.update(this.asset.joints,dt,reset);
     root.updateMatrixWorld(true);
     this.wasMoving=moving;
+    if(moving)this.lastPace=presentationSpeed??speed;
     this.stillFor=moving||reset?0:this.stillFor+Math.max(0,dt);
     this.lastYaw=yaw;
     this.last.set(x,ground,z);this.placed=true;
   }
   /** The breed's own reach (a shorter-coupled griffon takes quicker strides) and this stride's variation. */
-  private strideScale(){return this.gait==='bound'?1:breedStrideScale(this.breedMotion,this.gait)*this.strideVariation*this.paceStride;}
+  private strideScale(){return this.gait==='bound'?1:breedStrideScale(this.breedMotion,this.gait)*this.strideVariation*this.paceStride*(1+(CREEP_STRIDE-1)*this.creep);}
   private breedVigor(){return .6+.4*this.breedMotion.verticalMotion;}
   /** A small deterministic generator, so a replay strides the same way. */
   private random(){this.seed=(this.seed+0x6d2b79f5)|0;let t=Math.imul(this.seed^(this.seed>>>15),1|this.seed);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;}

@@ -17,6 +17,13 @@ import { installDogReview } from '../dogs/dogReview';
 
 type AuditScope = { __generatedDogAudit?: unknown; __generatedDogAudits?: Record<string, unknown> };
 
+/** Marking, the torso turns only once the birds are this far (rad) off its nose. */
+const MARK_FREE_YAW = .5;
+/** How quickly (rad/s) a marking dog turns where it stands. */
+const MARK_TURN_RATE = 2.6;
+/** A retrieving dog looks at the fall until it is this close (m). */
+const MARK_RELEASE_M = 2.5;
+
 /** Shared GSP presentation for either brace member; the hunt retains
  * authority over breed behavior, movement and bird ownership. */
 export class GeneratedDogSystem implements Subsystem {
@@ -33,6 +40,7 @@ export class GeneratedDogSystem implements Subsystem {
   private attention=new GeneratedAttention();
   private attentionTarget=new THREE.Vector3();
   private pickupTarget=new THREE.Vector3();
+  private markTarget=new THREE.Vector3();
   private arrival: { pose: HuntArrivalFrame['dog']; elapsed: number; dt: number } | null = null;
   private arrivalFeet = Array.from({ length: 4 }, () => new THREE.Vector3());
   private arrivalNormals = Array.from({ length: 4 }, () => new THREE.Vector3(0, 1, 0));
@@ -99,8 +107,19 @@ export class GeneratedDogSystem implements Subsystem {
     // spawn. That relocation is not a traveled stride or a speed sample.
     if(!this.placed||distance>3)this.speed=0;
     else if(dt>0)this.speed=THREE.MathUtils.lerp(this.speed,distance/dt,1-Math.exp(-dt*12));
+    const practice = this.hunt.training ? ctx.get<TrainingGroundSystem>('training-ground') : undefined;
+    const watching=dog.state==='marking' && (ctx.get<BirdsSystem>('birds').markingTarget(dog.watchedBirdIds(),this.attentionTarget)
+      || dog.watchedBirdIds().some(id=>practice?.target(id,this.attentionTarget)));
     const intentHeading=this.hunt.dogRenderHeading(ctx.fixedAlpha,this.slot);
     this.heading=dogTorsoHeading(dog,this.speed,this.hunt.dogRenderTravelHeading(ctx.fixedAlpha,this.slot),intentHeading,this.heading,dt,!this.placed||distance>3);
+    if(watching&&dt>0) {
+      // Marking, a steady dog turns where it stands to keep the birds and
+      // the fall in front of it; its head covers the last few degrees.
+      const bearing=Math.atan2(this.attentionTarget.z-this.position.z,this.attentionTarget.x-this.position.x);
+      const off=Math.atan2(Math.sin(bearing-this.heading),Math.cos(bearing-this.heading));
+      const excess=Math.sign(off)*Math.max(0,Math.abs(off)-MARK_FREE_YAW);
+      this.heading+=THREE.MathUtils.clamp(excess,-MARK_TURN_RATE*dt,MARK_TURN_RATE*dt);
+    }
     this.field.state=dog.state;this.field.scentStage=dog.scentStage;this.field.scentProgress=dog.scentProgress??0;
     this.field.waitingForHandler=dog.waitingForHandler??false;
     const creeping=dog.state==='pointing'&&(dog.creeping??false);
@@ -122,14 +141,17 @@ export class GeneratedDogSystem implements Subsystem {
       : undefined;
     // Only settle into pickup once the simulation has reached the actual fall.
     const retrievePose = retrieve?.stage === 'pickup' && dog.gait !== 'still' ? undefined : retrieve;
-    const practice = this.hunt.training ? ctx.get<TrainingGroundSystem>('training-ground') : undefined;
     if(retrievePose?.stage==='pickup'&&retrieveId!=null&&(ctx.get<BirdsSystem>('birds').groundedTarget?.(retrieveId,this.pickupTarget)||practice?.target(retrieveId,this.pickupTarget)))
       retrievePose.target=this.pickupTarget;
     this.motion.update(this.position.x,this.position.z,Math.PI/2-this.heading,dt,dog.gait!=='still'&&this.speed>.06&&!point,point,retrievePose,this.field,this.speed);
     this.auditFrame++;
-    const watching=dog.state==='marking' && (ctx.get<BirdsSystem>('birds').markingTarget(dog.watchedBirdIds(),this.attentionTarget)
-      || dog.watchedBirdIds().some(id=>practice?.target(id,this.attentionTarget)));
-    this.attention.update(this.motion.asset,watching?this.attentionTarget:null,dt);
+    // Running out to a fall, a dog has its eyes on the mark until it is near
+    // enough to put its nose down; the pickup's own reach takes the head then.
+    let focus=watching?this.attentionTarget:null;
+    if(!focus&&dog.state==='retrieving'&&dog.carryingBirdId===null&&retrieveId!=null&&dog.gait!=='still'
+      &&(ctx.get<BirdsSystem>('birds').groundedTarget?.(retrieveId,this.markTarget)||practice?.target(retrieveId,this.markTarget))
+      &&Math.hypot(this.markTarget.x-this.position.x,this.markTarget.z-this.position.z)>MARK_RELEASE_M)focus=this.markTarget;
+    this.attention.update(this.motion.asset,focus,dt);
     this.previous.x=this.position.x;this.previous.z=this.position.z;this.placed=true;
   }
   private updateArrival(): void {
