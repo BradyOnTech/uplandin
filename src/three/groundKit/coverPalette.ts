@@ -68,6 +68,74 @@ export const CATTAIL_PALETTE: CoverPalette = {
   [Cover.water]: [{ a: 0x4d6a72, b: 0x4d6a72, floor: 0x4d6a72 }],
 };
 
+/**
+ * Quail Fields, the Rolling Red Plains in late autumn: copper little
+ * bluestem and tawny sideoats over red sandy loam, silvered where sand sage
+ * grows through; dark plum thickets and olive-russet shinnery; the creek
+ * timber gone gold. Floors are the soil a hunter sees between plants: red
+ * sand under the bunches, leaf litter under the brush and timber.
+ */
+export const QUAIL_PALETTE: CoverPalette = {
+  [Cover.bare]: [
+    // Red sandy loam: two-tracks, blowouts, the truck yard.
+    { a: 0xa67a5e, b: 0xae8466, floor: 0x9c7056 },
+    // Gullied red clay on the cut banks.
+    { a: 0x925440, b: 0x9a5e46, floor: 0x8a503c },
+    // The creek's pale sand bed.
+    { a: 0xc2ac88, b: 0xbaa480, floor: 0xb8a07e },
+  ],
+  [Cover.short]: [
+    // Little bluestem: cured copper.
+    { a: 0x9c6c4a, b: 0xa67c56, floor: 0x8e6a54 },
+    // Sideoats grama and blue grama: tawny straw.
+    { a: 0xa6916c, b: 0x9c8866, floor: 0x8c6c56 },
+    // Sand sage through the bunches: silver-green over copper.
+    { a: 0x96947c, b: 0x9e9880, floor: 0x927058 },
+    // This spring's burn: black stubble, the first green.
+    { a: 0x3c3530, b: 0x4c4a36, floor: 0x3a322c },
+  ],
+  [Cover.crown]: [
+    // Sand bluestem thin on the sandy crowns.
+    { a: 0xa07052, b: 0xaa7e5c, floor: 0x9e7258 },
+    // A blowout: red sand with a few dropseed bunches.
+    { a: 0xa87c60, b: 0xb08668, floor: 0xa2765a },
+  ],
+  [Cover.swale]: [
+    // Indiangrass and switchgrass in the bottoms: gold and bronze.
+    { a: 0xa6864e, b: 0x9a7e4e, floor: 0x7a5a3e },
+    // Ragweed and wheatgrass in the wettest bottoms.
+    { a: 0x8c8664, b: 0x86795a, floor: 0x6e5840 },
+  ],
+  [Cover.stand]: [
+    // Rank little bluestem round the plum: deeper copper.
+    { a: 0x9c6c4a, b: 0xa67a54, floor: 0x82604a },
+    { a: 0x928e78, b: 0x968c74, floor: 0x846450 },
+  ],
+  [Cover.shrub]: [
+    // Sand plum thickets in October: dark red-brown, a little orange.
+    { a: 0x6a4430, b: 0x784e34, floor: 0x6a4834 },
+    // Shinnery oak mottes: olive and russet.
+    { a: 0x5e5634, b: 0x6c5836, floor: 0x6c5038 },
+  ],
+  [Cover.tree]: [
+    // Creek timber from afar: gold over olive shade.
+    { a: 0x7a6c3c, b: 0x847440, floor: 0x5e4a36 },
+  ],
+  [Cover.water]: [{ a: 0x5a6a62, b: 0x5a6a62, floor: 0x5a6a62 }],
+};
+
+/** How a ground's palette reads at a distance and between plants. */
+export interface PaletteStyle {
+  /** How far thin cover's far colour leans to its floor (soil showing
+   * between bunches), 0..1 at zero density. */
+  soilShow: number;
+  /** Floors from the palette's floor swatches (a per-cell floor field)
+   * rather than the canopy sunk into litter. */
+  floors: boolean;
+}
+
+export const DEFAULT_PALETTE_STYLE: PaletteStyle = { soilShow: 0, floors: false };
+
 /** Linear-space swatch colours, built once per palette. */
 export class PaletteColors {
   private readonly swatches: { a: THREE.Color; b: THREE.Color; floor: THREE.Color }[][] = [];
@@ -105,30 +173,71 @@ const FEATHER_CELLS = 2;
  * exactly the colour already painted beneath it.
  */
 export class CoverColorField {
+  /** The colour mass as it reads from afar (linear): canopy, with soil
+   * between thin cover where the palette style shows it. */
   readonly rgb: Float32Array;
+  /** The plants' own canopy colour, where it differs from the far colour. */
+  readonly plants?: Float32Array;
+  /** The floor between plants (linear), when the palette style has floors. */
+  readonly floor?: Float32Array;
 
-  constructor(readonly map: CoverMap, palette: CoverPalette) {
-    const colors = new PaletteColors(palette), color = new THREE.Color(), n = map.cols * map.rows;
+  constructor(readonly map: CoverMap, palette: CoverPalette, style: PaletteStyle = DEFAULT_PALETTE_STYLE) {
+    const colors = new PaletteColors(palette), color = new THREE.Color(), soil = new THREE.Color(), n = map.cols * map.rows;
     let rgb: Float32Array = new Float32Array(n * 3);
+    let floor: Float32Array | undefined = style.floors ? new Float32Array(n * 3) : undefined;
+    let plants: Float32Array | undefined = style.soilShow > 0 ? new Float32Array(n * 3) : undefined;
     for (let i = 0; i < n; i++) {
-      const cls = map.cls[i] as CoverClass, density = map.density[i] / 255;
-      colors.canopy(cls, map.tone[i] / 255, color, map.variant[i]);
+      const cls = map.cls[i] as CoverClass, density = map.density[i] / 255, variant = map.variant[i], tone = map.tone[i] / 255;
+      colors.canopy(cls, tone, color, variant);
+      colors.floorOf(cls, soil, variant);
       // A sward seen from afar mixes lit tops with the shade between
       // plants: thinner cover shows more of its own floor.
-      if (cls !== Cover.water) color.multiplyScalar(.86 + density * .14);
+      if (cls !== Cover.water) {
+        color.multiplyScalar(.86 + density * .14);
+        if (plants) { plants[i * 3] = color.r; plants[i * 3 + 1] = color.g; plants[i * 3 + 2] = color.b; }
+        if (style.soilShow > 0) color.lerp(soil, style.soilShow * (1 - density));
+      } else if (plants) { plants[i * 3] = color.r; plants[i * 3 + 1] = color.g; plants[i * 3 + 2] = color.b; }
       rgb[i * 3] = color.r; rgb[i * 3 + 1] = color.g; rgb[i * 3 + 2] = color.b;
+      if (floor) {
+        // Colony tone breaks the floor a little too: a damper hollow, a
+        // drift of litter.
+        soil.multiplyScalar(.94 + tone * .1);
+        floor[i * 3] = soil.r; floor[i * 3 + 1] = soil.g; floor[i * 3 + 2] = soil.b;
+      }
     }
-    for (let pass = 0; pass < 2; pass++) rgb = blur(rgb, map.cols, map.rows, FEATHER_CELLS);
+    for (let pass = 0; pass < 2; pass++) {
+      rgb = blur(rgb, map.cols, map.rows, FEATHER_CELLS);
+      if (floor) floor = blur(floor, map.cols, map.rows, FEATHER_CELLS);
+      if (plants) plants = blur(plants, map.cols, map.rows, FEATHER_CELLS);
+    }
     this.rgb = rgb;
+    this.floor = floor;
+    this.plants = plants;
+  }
+
+  /** Bilinear plant canopy colour at a property position (linear): the
+   * colour field without the soil the far band shows between plants. */
+  plantSample(x: number, y: number, out: THREE.Color): THREE.Color {
+    return this.lookup(this.plants ?? this.rgb, x, y, out);
   }
 
   /** Bilinear canopy colour at a property position (linear). */
   sample(x: number, y: number, out: THREE.Color): THREE.Color {
+    return this.lookup(this.rgb, x, y, out);
+  }
+
+  /** Bilinear floor colour at a property position (linear); the canopy
+   * where the palette style has no floors. */
+  floorSample(x: number, y: number, out: THREE.Color): THREE.Color {
+    return this.lookup(this.floor ?? this.rgb, x, y, out);
+  }
+
+  private lookup(f: Float32Array, x: number, y: number, out: THREE.Color): THREE.Color {
     const { map } = this;
     const gx = Math.min(map.cols - 1.001, Math.max(0, (x - map.x0) / map.cell - .5));
     const gy = Math.min(map.rows - 1.001, Math.max(0, (y - map.y0) / map.cell - .5));
     const ix = Math.floor(gx), iy = Math.floor(gy), tx = gx - ix, ty = gy - iy;
-    const i = (iy * map.cols + ix) * 3, c = map.cols * 3, f = this.rgb;
+    const i = (iy * map.cols + ix) * 3, c = map.cols * 3;
     const at = (k: number) => (f[i + k] + (f[i + 3 + k] - f[i + k]) * tx) * (1 - ty) + (f[i + c + k] + (f[i + c + 3 + k] - f[i + c + k]) * tx) * ty;
     return out.setRGB(at(0), at(1), at(2));
   }

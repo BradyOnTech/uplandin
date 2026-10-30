@@ -2,11 +2,14 @@ import * as THREE from 'three';
 import type { LandscapeModel } from '../../game/landscape';
 import type { Ctx, Quality, Subsystem } from '../engine';
 import { VegetationWind } from '../subsystems/vegetationWind';
-import { quailGroundTileAt, sampleQuailGroundHeights } from '../subsystems/quailGroundGeometry';
-import { Cover, coverHash, coverNoise, coverSmooth, type CoverClass, type CoverMap } from './coverMap';
+import { QUAIL_GROUND_DIVISIONS, quailGroundTileAt, sampleQuailGroundHeights } from '../subsystems/quailGroundGeometry';
+import { Cover, coverHash, coverNoise, coverSmooth, type CoverClass, type CoverMap, type CoverSiteIndex } from './coverMap';
 import { coverCell, coverMapFor } from './coverRecipes';
 import type { CoverColorField } from './coverPalette';
-import { groundKitColors, groundKitStyle, groundKitSurface, groundKitTallCoverOpen, groundKitWoody, type CoverStyle, type WoodyGroup } from './groundKit';
+import {
+  groundKitColors, groundKitSites, groundKitStyle, groundKitSurface, groundKitTallCoverOpen, groundKitWoody, siteWoody,
+  type CoverStyle, type GroundWoody,
+} from './groundKit';
 import { InstanceSink, KitLayer, MergedSink, kitVegetationMaterial, type KitBand } from './kitLayer';
 import { kitCulmGeometry, kitMassGeometry, kitMatGeometry, kitStandGeometry, kitTuftGeometry } from './kitGeometry';
 import { loadWoodyKit, woodyKey, type WoodyDetail, type WoodyKit, type WoodySpecies } from './woodyKit';
@@ -33,6 +36,8 @@ interface LayerTuning {
 }
 
 const TERRAIN_DIVISIONS: Record<Quality, { near: number; far: number }> = { high: { near: 48, far: 14 }, lite: { near: 24, far: 14 } };
+/** Quail Fields keeps its own terrain, one grid on both tiers. */
+const terrainDivisions = (areaId: string, quality: Quality) => areaId === 'quail-fields' ? QUAIL_GROUND_DIVISIONS : TERRAIN_DIVISIONS[quality];
 
 /** Garnish blades round the hunter and dog. Lightweight reaches a little
  * further so the masses grow out of blades rather than bare litter. */
@@ -67,20 +72,75 @@ const MASSES_TALL: Record<Quality, LayerTuning> = {
 const SHORT_CLASSES: readonly CoverClass[] = [Cover.short, Cover.crown, Cover.bare];
 const TALL_CLASSES: readonly CoverClass[] = [Cover.swale, Cover.stand];
 
-/** Woody plants from the shared kit: near detail to ~100 m (High) or ~70 m
+/** One distance tier of woody plants: a detail, its band, its chunk and
+ * its planting lattice. `spread` widens each plant's footprint where a
+ * far tier plants a wider lattice, so a thicket keeps its cover. */
+interface WoodyTier { detail: WoodyDetail; band: KitBand; chunk: number; step: number; spread?: number }
+
+/** Woody plants from the shared kit: near detail to ~100 m (High) or ~50 m
  * (Lightweight), then the far detail, dithering across, to the horizon
  * band. All species merge into one mesh per chunk. */
-const WOODY_NEAR: Record<Quality, { band: KitBand; chunk: number; step: number }> = {
-  high: { band: { in: [0, 0], out: [92, 96] }, chunk: 64, step: 2.1 },
-  lite: { band: { in: [0, 0], out: [46, 50] }, chunk: 64, step: 2.5 },
+const WOODY_TIERS: Record<Quality, readonly WoodyTier[]> = {
+  high: [
+    { detail: 'high', band: { in: [0, 0], out: [92, 96] }, chunk: 64, step: 2.1 },
+    { detail: 'far', band: { in: [92, 96], out: [340, 420] }, chunk: 256, step: 2.1 },
+  ],
+  lite: [
+    { detail: 'lite', band: { in: [0, 0], out: [46, 50] }, chunk: 64, step: 2.5 },
+    { detail: 'far', band: { in: [46, 50], out: [210, 260] }, chunk: 256, step: 2.8 },
+  ],
 };
-const WOODY_FAR: Record<Quality, { band: KitBand; chunk: number; step: number }> = {
-  high: { band: { in: [92, 96], out: [340, 420] }, chunk: 256, step: 2.1 },
-  lite: { band: { in: [46, 50], out: [210, 260] }, chunk: 256, step: 2.8 },
+
+/** Quail's covey headquarters are whole clusters of thickets: High hands
+ * its near plum to the lite detail at ~28 m and to broad far mounds on a
+ * wider lattice past ~100 m, in chunks sized to each band, so the brush
+ * that reads from across the property costs a fraction of the near
+ * detail. */
+const QUAIL_WOODY_TIERS: Record<Quality, readonly WoodyTier[]> = {
+  high: [
+    { detail: 'high', band: { in: [0, 0], out: [26, 30] }, chunk: 32, step: 2.7, spread: 1.1 },
+    { detail: 'lite', band: { in: [26, 30], out: [96, 102] }, chunk: 96, step: 2.7, spread: 1.1 },
+    { detail: 'far', band: { in: [96, 102], out: [360, 430] }, chunk: 384, step: 4.0, spread: 1.55 },
+  ],
+  lite: [
+    { detail: 'lite', band: { in: [0, 0], out: [38, 42] }, chunk: 32, step: 3.0, spread: 1.1 },
+    { detail: 'far', band: { in: [38, 42], out: [190, 230] }, chunk: 256, step: 4.6, spread: 1.6 },
+  ],
+};
+
+const woodyTiers = (areaId: string, quality: Quality) => (areaId === 'quail-fields' ? QUAIL_WOODY_TIERS : WOODY_TIERS)[quality];
+
+/** Trees carry far past the brush: a creek's timber and the scattered
+ * mesquite are the horizon's landmarks. Their far detail runs to the edge
+ * of the ground's own land, in large chunks. */
+const TREES_FAR: Record<Quality, { out: readonly [number, number]; chunk: number }> = {
+  high: { out: [820, 900], chunk: 1024 },
+  lite: { out: [420, 470], chunk: 1024 },
 };
 /** Each plant hands from its near to its far detail at its own distance,
  * within this many metres of the band edge. */
 const WOODY_HANDOVER_JITTER = 10;
+
+/** How a ground's near grass gathers: the garnish's tussock bunching, and
+ * the share of the basal mat kept. Quail's bunchgrass stands in tussocks
+ * with red sand between them, near the boots as well as at 10-40 m. */
+interface GrassStyle {
+  garnishBunching: Record<Quality, number>;
+  /** Share of the basal mat kept, per tier. */
+  mat: Record<Quality, number>;
+  /** Seed culms over the near bunches (High only). */
+  culms: boolean;
+  /** Per-layer tuning by tier, where a ground trades a little streaming
+   * granularity for fewer draws (chunk) or plants its masses wider (step). */
+  tune?: Partial<Record<'mat' | 'garnish' | 'short' | 'tall', Partial<Record<Quality, Partial<Pick<LayerTuning, 'chunk' | 'step'>>>>>>;
+}
+const DEFAULT_GRASS_STYLE: GrassStyle = { garnishBunching: { high: .15, lite: .7 }, mat: { high: 1, lite: 1 }, culms: true };
+const GRASS_STYLES: Readonly<Record<string, GrassStyle | undefined>> = {
+  // Quail spends its draws on the brush and trees: no seed culms, a sparse
+  // mat, and the grass in larger chunks.
+  'quail-fields': { garnishBunching: { high: .55, lite: .7 }, mat: { high: .6, lite: .45 }, culms: false,
+    tune: { mat: { high: { chunk: 32 } }, garnish: { high: { chunk: 24 } }, short: { high: { chunk: 48 }, lite: { step: 2.05 } }, tall: { high: { chunk: 56 } } } },
+};
 
 /** Tussocks: the size (yards) of the bunch field that gathers grass into
  * clumps with gaps of litter between them, at 10-40 m. */
@@ -141,44 +201,67 @@ export class GroundKitSystem implements Subsystem {
     if (this.style === 'masses') {
       // Blue grama and buffalograss: a continuous short turf the bunches
       // stand in, so the near ground reads as sward, not bare litter.
-      add('Kit basal mat', MAT[q], kitMatGeometry(q === 'lite' ? 4 : 6), true, .1, .1, (...a) => this.fillGrass(...a));
+      const grass = GRASS_STYLES[this.landscape.area.id] ?? DEFAULT_GRASS_STYLE;
+      const tuned = (tuning: LayerTuning, layer: keyof NonNullable<GrassStyle['tune']>): LayerTuning => ({ ...tuning, ...grass.tune?.[layer]?.[q] });
+      add('Kit basal mat', { ...tuned(MAT[q], 'mat'), keep: MAT[q].keep * grass.mat[q] }, kitMatGeometry(q === 'lite' ? 4 : 6), true, .1, .1,
+        (...a) => this.fillGrass(...a));
       // Near blades lean into the tussocks but still fill the gaps; masses
       // gather fully, so the shoulder reads as bunches at 10-40 m.
       // Lightweight's fewer tufts gather into bunches with litter between,
       // so its near ground reads as tussocks rather than an even stipple.
-      add('Kit garnish', GARNISH[q], kitTuftGeometry(q === 'lite' ? 6 : 11), true, .18, .22, (...a) => this.fillGrass(...a, undefined, false, q === 'lite' ? .7 : .15));
+      add('Kit garnish', tuned(GARNISH[q], 'garnish'), kitTuftGeometry(q === 'lite' ? 6 : 11), true, .18, .22, (...a) => this.fillGrass(...a, undefined, false, grass.garnishBunching[q]));
       // Seed culms are a High-tier grace note; phones spend the draw elsewhere.
-      if (q === 'high') add('Kit seed culms', CULMS.high, kitCulmGeometry(3), true, .3, .25, (...a) => this.fillGrass(...a, undefined, true, 1));
-      add('Kit short masses', MASSES_SHORT[q], kitMassGeometry(q === 'lite' ? 5 : 6), true, .06, .18, (...a) => this.fillGrass(...a, SHORT_CLASSES, false, 1));
+      if (q === 'high' && grass.culms) add('Kit seed culms', CULMS.high, kitCulmGeometry(3), true, .3, .25, (...a) => this.fillGrass(...a, undefined, true, 1));
+      add('Kit short masses', tuned(MASSES_SHORT[q], 'short'), kitMassGeometry(q === 'lite' ? 5 : 6), true, .06, .18, (...a) => this.fillGrass(...a, SHORT_CLASSES, false, 1));
       const open = groundKitTallCoverOpen(this.landscape.area.id);
-      add('Kit tall masses', MASSES_TALL[q], open ? kitStandGeometry(q === 'lite' ? 9 : 14, q === 'lite' ? 11 : 16) : kitMassGeometry(q === 'lite' ? 6 : 7, 0x3a56),
+      add('Kit tall masses', tuned(MASSES_TALL[q], 'tall'), open ? kitStandGeometry(q === 'lite' ? 9 : 14, q === 'lite' ? 11 : 16) : kitMassGeometry(q === 'lite' ? 6 : 7, 0x3a56),
         true, .06, .18, (...a) => this.fillGrass(...a, TALL_CLASSES));
     }
     await this.addWoody(ctx);
     this.update(ctx);
   }
 
-  /** The ground's woody groups from the shared kit, near and far. A ground
-   * whose kit cannot load still hunts; it simply has no brush. */
+  /** The ground's woody plants from the shared kit, near and far: thickets
+   * where the map says shrub, lone plants at the recipe's sites, and trees
+   * carried far past the brush. A ground whose kit cannot load still hunts;
+   * it simply has no brush. */
   private async addWoody(ctx: Ctx): Promise<void> {
-    const groups = groundKitWoody(this.landscape.area.id);
-    if (!groups) return;
-    const species = [...new Set(Object.values(groups).flatMap(group => group.map(entry => entry.species)))];
-    const near: WoodyDetail = ctx.quality === 'lite' ? 'lite' : 'high';
+    const woody = groundKitWoody(this.landscape.area.id);
+    if (!woody) return;
+    const all = [...Object.values(woody.shrubs), ...Object.values(woody.sites ?? {})];
+    const species = [...new Set(all.flatMap(group => group.map(entry => entry.species)))];
+    const tiers = woodyTiers(this.landscape.area.id, ctx.quality);
     try {
-      this.woody = await loadWoodyKit(species, [near, 'far']);
+      this.woody = await loadWoodyKit(species, [...new Set<WoodyDetail>([...tiers.map(tier => tier.detail), 'far'])]);
     } catch (error) {
       console.warn(`${this.landscape.area.name} woody kit unavailable; brush omitted.`, error);
       return;
     }
     for (const asset of this.woody.values()) this.owned.push(asset.geometry);
-    for (const [label, tuning, detail] of [['near', WOODY_NEAR[ctx.quality], near], ['far', WOODY_FAR[ctx.quality], 'far']] as const) {
-      const material = kitVegetationMaterial({ band: tuning.band, wind: this.wind, clock: this.clock, sway: .02, sheen: .05, upNormals: true,
-        merged: true, nearDither: label === 'far', handoverJitter: WOODY_HANDOVER_JITTER,
-        jitter: label === 'near' ? WOODY_HANDOVER_JITTER : (tuning.band.out[1] - tuning.band.out[0]) * .5 });
+    const sites = groundKitSites(this.landscape), trees = new Set(woody.trees ?? []);
+    const layer = (name: string, band: KitBand, chunk: number, nearDither: boolean, jitter: number,
+      fill: (x0: number, y0: number, size: number, sink: MergedSink) => void) => {
+      const material = kitVegetationMaterial({ band, wind: this.wind, clock: this.clock, sway: .02, sheen: .05, upNormals: true,
+        merged: true, nearDither, handoverJitter: WOODY_HANDOVER_JITTER, jitter });
       this.owned.push(material);
-      this.layers.push(new KitLayer(this.landscape, { name: `Kit woody ${label}`, chunkYards: tuning.chunk, range: tuning.band.out[1] + 4, material,
-        fillMerged: (x0, y0, size, sink) => this.fillWoody(x0, y0, size, sink, groups, detail, tuning.step) }));
+      this.layers.push(new KitLayer(this.landscape, { name, chunkYards: chunk, range: band.out[1] + 4, material, fillMerged: fill }));
+    };
+    tiers.forEach((tier, i) => {
+      const last = i === tiers.length - 1;
+      // Each tier hands over to the next at a few metres' jitter; the last
+      // dithers out across its whole far band.
+      layer(`Kit woody ${tier.detail}`, tier.band, tier.chunk, i > 0, last ? (tier.band.out[1] - tier.band.out[0]) * .5 : WOODY_HANDOVER_JITTER,
+        (x0, y0, size, sink) => {
+          this.fillWoody(x0, y0, size, sink, woody, tier.detail, tier.step, tier.spread ?? 1);
+          // Trees leave the brush's last tier for their own, longer one; far
+          // away, every other lone shrub is enough.
+          this.fillSites(x0, y0, size, sink, woody, sites, tier.detail, group => !last || !trees.has(group), last ? .5 : 1);
+        });
+    });
+    if (trees.size) {
+      const handover = tiers[tiers.length - 1].band.in, far = TREES_FAR[ctx.quality];
+      layer('Kit trees far', { in: handover, out: far.out }, far.chunk, true, (far.out[1] - far.out[0]) * .5,
+        (x0, y0, size, sink) => this.fillSites(x0, y0, size, sink, woody, sites, 'far', group => trees.has(group)));
     }
   }
 
@@ -218,7 +301,7 @@ export class GroundKitSystem implements Subsystem {
    * never floats over a coarse far tile. */
   private chunkGround(x0: number, y0: number, size: number): (x: number, y: number) => number {
     const step = 4, n = Math.ceil(size / step) + 1, grid = new Float32Array(n * n), area = this.landscape.area.world;
-    const divisions = TERRAIN_DIVISIONS[this.quality];
+    const divisions = terrainDivisions(this.landscape.area.id, this.quality);
     for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
       const px = Math.min(area.x + area.w, Math.max(area.x, x0 + i * step)), py = Math.min(area.y + area.h, Math.max(area.y, y0 + j * step));
       const tile = quailGroundTileAt(this.landscape, px, py);
@@ -292,7 +375,7 @@ export class GroundKitSystem implements Subsystem {
       this.matrix.compose(this.position, this.rotation, this.scale);
       // Colour from the feathered field, sampled a few yards off so
       // community edges break up plant by plant instead of on a line.
-      this.field.sample(x + (coverHash(ix, iy, salt + 8) - .5) * 7, y + (coverHash(ix, iy, salt + 9) - .5) * 7, this.color);
+      this.field.plantSample(x + (coverHash(ix, iy, salt + 8) - .5) * 7, y + (coverHash(ix, iy, salt + 9) - .5) * 7, this.color);
       this.color.multiplyScalar(.88 + coverHash(ix, iy, salt + 7) * .22);
       // Ripe heads bleach toward pale straw and silver.
       if (culms) this.color.lerp(this.paleHead, .35);
@@ -302,9 +385,9 @@ export class GroundKitSystem implements Subsystem {
 
   /** Woody plants where the map says shrub, the species drawn from the
    * cell's woody group (thicket, buckbrush, rose...), merged per chunk. */
-  private fillWoody(x0: number, y0: number, size: number, sink: MergedSink, groups: Readonly<Record<number, readonly WoodyGroup[]>>,
-    detail: WoodyDetail, step: number): void {
+  private fillWoody(x0: number, y0: number, size: number, sink: MergedSink, woody: GroundWoody, detail: WoodyDetail, step: number, spread = 1): void {
     if (!this.woody) return;
+    const groups = woody.shrubs;
     const ground = this.chunkGround(x0, y0, size);
     for (const [ix, iy] of lattice(x0, y0, size, step)) {
       const x = (ix + .15 + coverHash(ix, iy, 61) * .7) * step, y = (iy + .15 + coverHash(ix, iy, 62) * .7) * step;
@@ -322,10 +405,38 @@ export class GroundKitSystem implements Subsystem {
       this.position.set(this.world.x, ground(x, y) - .06, this.world.z);
       this.rotation.setFromAxisAngle(this.up, coverHash(ix, iy, 66) * Math.PI * 2);
       const aspect = .85 + coverHash(ix, iy, 67) * .35;
-      this.scale.set(h * aspect, h, h * (.85 + coverHash(ix, iy, 68) * .35));
+      this.scale.set(h * aspect * spread, h, h * (.85 + coverHash(ix, iy, 68) * .35) * spread);
       this.matrix.compose(this.position, this.rotation, this.scale);
       this.color.setRGB(1, 1, 1).multiplyScalar(.88 + coverHash(ix, iy, 69) * .22);
       sink.push(asset.geometry, this.matrix, this.color, h);
+    }
+  }
+
+  /** Lone plants at the recipe's sites inside one chunk: brush on the
+   * ground, trees also in the margin past the fence, so the creek's timber
+   * and the pasture's mesquite run on to the horizon. */
+  private fillSites(x0: number, y0: number, size: number, sink: MergedSink, woody: GroundWoody, sites: CoverSiteIndex, detail: WoodyDetail,
+    keep: (group: number) => boolean, share = 1): void {
+    if (!this.woody || !woody.sites) return;
+    const trees = new Set(woody.trees ?? []);
+    const ground = this.chunkGround(x0, y0, size);
+    for (const site of sites.within(x0, y0, size)) {
+      if (!keep(site.group) || (!trees.has(site.group) && !this.inside(site.x, site.y))) continue;
+      if (share < 1 && !trees.has(site.group) && coverHash(Math.round(site.x * 8), Math.round(site.y * 8), 411) > share) continue;
+      const plant = siteWoody(site, woody);
+      if (!plant) continue;
+      const asset = this.woody.get(woodyKey(plant.species, detail));
+      if (!asset) continue;
+      this.landscape.propertyToWorld(site.x, site.y, this.world);
+      // Past the fence the ground is the coarse horizon strip: sink a tree
+      // a little into it rather than let it float.
+      const y = this.inside(site.x, site.y) ? ground(site.x, site.y) - .08 : this.landscape.heightAtProperty(site.x, site.y) - .35;
+      this.position.set(this.world.x, y, this.world.z);
+      this.rotation.setFromAxisAngle(this.up, plant.yaw);
+      this.scale.set(plant.height * plant.aspect, plant.height, plant.height * plant.depth);
+      this.matrix.compose(this.position, this.rotation, this.scale);
+      this.color.setRGB(1, 1, 1).multiplyScalar(plant.shade);
+      sink.push(asset.geometry, this.matrix, this.color, plant.height);
     }
   }
 }

@@ -98,15 +98,22 @@ export function quailJunctionWearAt(area: AreaConfig, x: number, y: number): num
   return wear;
 }
 
+/** Track colours: the old field's tan, or the Red Plains' ruts of pale
+ * pinkish sand ground out of the red loam, with cured grass in the median. */
+const TRACK_PALETTES = {
+  field: { dryWheel: 0xb1986d, compacted: 0x92794f, wheelHighlight: 0xb8a078, dampEarth: 0x766c4d, lowGrowth: 0x85835a, dryMedian: 0xa5986b, verge: 0x9c8c62 },
+  'red-plains': { dryWheel: 0xb59a80, compacted: 0x9a785e, wheelHighlight: 0xbea48a, dampEarth: 0x7e6452, lowGrowth: 0x8e7c5a, dryMedian: 0xa48a6c, verge: 0x9a7e64 },
+} as const;
+
 /** One terrain-following mesh contains continuous ruts and their shared aprons.
  * Branch ribbons fade under a single worn surface instead of ending abruptly. */
-export function buildQuailTrackGeometry(landscape: LandscapeModel): THREE.BufferGeometry {
+export function buildQuailTrackGeometry(landscape: LandscapeModel, palette: keyof typeof TRACK_PALETTES = 'field'): THREE.BufferGeometry {
   const positions: number[] = [], colors: number[] = [], indices: number[] = [];
-  const world = { x: 0, z: 0 }, color = new THREE.Color();
-  const dryWheel = new THREE.Color(0xb1986d), compacted = new THREE.Color(0x92794f);
-  const wheelHighlight = new THREE.Color(0xb8a078);
-  const dampEarth = new THREE.Color(0x766c4d), lowGrowth = new THREE.Color(0x85835a);
-  const dryMedian = new THREE.Color(0xa5986b), verge = new THREE.Color(0x9c8c62);
+  const world = { x: 0, z: 0 }, color = new THREE.Color(), paint = TRACK_PALETTES[palette];
+  const dryWheel = new THREE.Color(paint.dryWheel), compacted = new THREE.Color(paint.compacted);
+  const wheelHighlight = new THREE.Color(paint.wheelHighlight);
+  const dampEarth = new THREE.Color(paint.dampEarth), lowGrowth = new THREE.Color(paint.lowGrowth);
+  const dryMedian = new THREE.Color(paint.dryMedian), verge = new THREE.Color(paint.verge);
   const network = quailTrackNetwork(landscape.area);
   const offsets = [-1.9, -1.3, -1.08, -.94, -.52, -.4, -.34, 0, .34, .4, .52, .94, 1.08, 1.3, 1.9];
   const opacity = [0, .10, .60, 1, .95, .7, .8, 1, .8, .7, .95, 1, .60, .10, 0];

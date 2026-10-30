@@ -8,6 +8,7 @@ import { quailTrackDistanceAt } from './quailTracks';
 import { quailGrassClearingAt, quailGrassMassAt, quailGrassStockingAt, quailSouthRouteAt } from './quailVegetation';
 import { quailBurnAt, quailFeatureBare } from '../../game/quailFeatures';
 import { QUAIL_GROUND_DIVISIONS, quailGroundNearDistance, quailGroundTiles, quailGroundUsesNear } from './quailGroundGeometry';
+import { groundKitPaint, groundKitStyle, groundKitSurface, type GroundKitSurface } from '../groundKit/groundKit';
 
 export { QUAIL_TERRAIN_TILE } from './quailGroundGeometry';
 const PAINT = {
@@ -138,23 +139,34 @@ export function buildQuailTerrainGeometry(
   return geometry;
 }
 
-/** Quiet matte soil detail, shared by ground and trail in property coordinates. */
+/** Quiet matte soil detail, shared by ground and trail in property coordinates.
+ * With `kit`, the ground takes the shared ground kit's far band: the cover
+ * map's floor near the hunter and its canopy colour with distance, with this
+ * soil detail laid over it; the old field's thatch mat and tints stand down. */
 export function applyQuailSurfaceDetail(material: THREE.MeshLambertMaterial, landscape: LandscapeModel, fieldGround = false,
-  painted?: { texture: {value:THREE.Texture|null}; strength:{value:number} }): void {
-    material.customProgramCacheKey=()=>`field-surface-v4-${fieldGround?'field':'track'}-${painted?'painted':'procedural'}`;
+  painted?: { texture: {value:THREE.Texture|null}; strength:{value:number} }, kit?: GroundKitSurface): void {
+    material.customProgramCacheKey=()=>`field-surface-v4-${fieldGround?'field':'track'}-${painted?'painted':'procedural'}-kit${kit ? kit.fragment.length : 0}`;
     const origin = landscape.worldToProperty(0, 0, { x: 0, y: 0 });
+    const floorOrigin = landscape.propertyToWorld(0, 0, { x: 0, z: 0 });
     material.onBeforeCompile = (shader) => {
       shader.uniforms.uFieldGround = { value: fieldGround ? 1 : 0 };
       shader.uniforms.uPropertyOrigin = { value: new THREE.Vector2(origin.x, origin.y) };
       if(painted){shader.uniforms.uPaintedSoil=painted.texture;shader.uniforms.uPaintedSoilK=painted.strength;}
+      if (kit) {
+        Object.assign(shader.uniforms, kit.uniforms);
+        shader.uniforms.uPropertyFloorOrigin = { value: new THREE.Vector2(floorOrigin.x, floorOrigin.z) };
+      }
       shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>
         varying vec2 vQuailGround;
+        ${kit ? 'varying vec3 vPropertyWorld;' : ''}
         ${fieldGround ? 'attribute float quailThatch; varying float vQuailThatch;' : ''}`)
         .replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
         vQuailGround = (modelMatrix * vec4(transformed, 1.0)).xz;
+        ${kit ? 'vPropertyWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;' : ''}
         ${fieldGround ? 'vQuailThatch = quailThatch;' : ''}`);
       shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
         varying vec2 vQuailGround;
+        ${kit ? `varying vec3 vPropertyWorld;\nuniform vec2 uPropertyFloorOrigin;\n${kit.declarations}` : ''}
         ${fieldGround ? 'varying float vQuailThatch;' : ''}
         uniform vec2 uPropertyOrigin;
         uniform float uFieldGround;
@@ -167,6 +179,7 @@ export function applyQuailSurfaceDetail(material: THREE.MeshLambertMaterial, lan
         float quailNoise(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
           return mix(mix(quailHash(i), quailHash(i + vec2(1.0, 0.0)), f.x), mix(quailHash(i + vec2(0.0, 1.0)), quailHash(i + vec2(1.0, 1.0)), f.x), f.y); }
       `).replace('#include <color_fragment>', `#include <color_fragment>
+        ${kit ? kit.fragment : ''}
         vec2 p = vQuailGround / 0.9144 + uPropertyOrigin;
         // Equal-axis samples avoid the repeated horizontal ripples of the
         // previous stretched noise. Rotation breaks alignment with tile edges.
@@ -274,21 +287,28 @@ export class QuailTerrain {
   private nearDistance = quailGroundNearDistance('high');
   private painted={texture:{value:null as THREE.Texture|null},strength:{value:0}};
 
-  constructor(private readonly landscape: LandscapeModel) {
-    applyQuailSurfaceDetail(this.material, landscape, true, this.painted);
-  }
+  constructor(private readonly landscape: LandscapeModel) {}
 
   async init(ctx: Ctx): Promise<void> {
+    // On the shared ground kit, the cover map paints the ground to the
+    // horizon on both tiers; the old field's own paint and mat stand down.
+    const kit = groundKitStyle(this.landscape.area.id) ? groundKitSurface(this.landscape, ctx.quality) : undefined;
+    const kitPaint = kit ? groundKitPaint(this.landscape) : undefined;
+    const paint: typeof paintQuailGround = kitPaint ? (l, x, y, out) => kitPaint(x, y, out) ? out : paintQuailGround(l, x, y, out) : paintQuailGround;
+    const thatch = kit ? undefined : quailThatchAt;
+    applyQuailSurfaceDetail(this.material, this.landscape, !kit, this.painted, kit);
     this.painted.texture.value=await new THREE.TextureLoader().loadAsync(`${import.meta.env.BASE_URL}textures/terrain/prairie-painted.webp`);
     const texture=this.painted.texture.value;
     texture.wrapS=texture.wrapT=THREE.RepeatWrapping;texture.colorSpace=THREE.SRGBColorSpace;
-    texture.anisotropy=ctx.quality==='high'?4:2;texture.needsUpdate=true;this.painted.strength.value=.72;
+    // The painted litter is grass thatch; on the kit's red sand it is only
+    // a little grain.
+    texture.anisotropy=ctx.quality==='high'?4:2;texture.needsUpdate=true;this.painted.strength.value=kit ? .3 : .72;
     this.nearDistance = quailGroundNearDistance(ctx.quality);
     const bounds = this.landscape.area.world;
     for (const tile of quailGroundTiles(this.landscape)) {
         const { x: px, y: py, width: w, depth: h } = tile;
-        const near = new THREE.Mesh(buildQuailTerrainGeometry(this.landscape, px, py, w, h, QUAIL_GROUND_DIVISIONS.near, paintQuailGround, quailThatchAt), this.material);
-        const far = new THREE.Mesh(buildQuailTerrainGeometry(this.landscape, px, py, w, h, QUAIL_GROUND_DIVISIONS.far, paintQuailGround, quailThatchAt), this.material);
+        const near = new THREE.Mesh(buildQuailTerrainGeometry(this.landscape, px, py, w, h, QUAIL_GROUND_DIVISIONS.near, paint, thatch), this.material);
+        const far = new THREE.Mesh(buildQuailTerrainGeometry(this.landscape, px, py, w, h, QUAIL_GROUND_DIVISIONS.far, paint, thatch), this.material);
         near.name = `Quail terrain ${px},${py} near`; far.name = `Quail terrain ${px},${py} far`;
         near.receiveShadow = true; far.receiveShadow = true;
         this.tiles.push({ near, far, x: tile.centerX, z: tile.centerZ }); ctx.scene.add(near, far);
@@ -300,7 +320,10 @@ export class QuailTerrain {
       [-margin, bounds.h, bounds.w + margin * 2, margin],
       [-margin, 0, margin, bounds.h], [bounds.w, 0, margin, bounds.h],
     ]) {
-      const mesh = new THREE.Mesh(buildQuailTerrainGeometry(this.landscape, x, y, w, h, 96, paintQuailGround, quailThatchAt), this.material);
+      // On the kit the cover map carries the horizon's colour; phones take
+      // a coarser strip for it.
+      const divisions = kit && ctx.quality === 'lite' ? 64 : 96;
+      const mesh = new THREE.Mesh(buildQuailTerrainGeometry(this.landscape, x, y, w, h, divisions, paint, thatch), this.material);
       mesh.name = 'Quail distant prairie'; mesh.receiveShadow = true; this.horizon.push(mesh); ctx.scene.add(mesh);
     }
     this.update(ctx);
