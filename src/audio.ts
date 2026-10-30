@@ -8,6 +8,7 @@ import { REPORT_RATE, synthesizeReport } from './three/sound/gunReport';
 import { FOLEY_RATE, foleyCueNames, hullSurface, synthesizeActionCue, synthesizeHullDrop, type HullSurface } from './three/sound/gunFoley';
 import type { DogCollarCue } from './three/dogCollarAudio';
 import { airCutoff, BIRD_RATE, type BirdSpace } from './three/sound/birdVoice';
+import { FALL_AUDIO_RATE, fallSoundDelay, synthesizeFall, type FallSurface } from './three/fallAudio';
 import { flockCalls, FLOCKS, synthesizeBirdCall, type BirdCallId, type FlockId } from './three/sound/birdCalls';
 import { callsOnFlush, groundCalls, groundSpace, QUARRY_VOICES } from './three/sound/fieldBirds';
 import { bellPitch, BREATH_RATE, DOG_SOUND_RATE, synthesizeBell, synthesizePant, synthesizeSniffs, synthesizeWhistle, WHISTLES,
@@ -251,6 +252,18 @@ export function playPoint(): void {
 export function playThud(): void {
   tone(160, 0, 0.18, { type: 'triangle', volume: 0.5, slideTo: 55 });
   noise(0, 0.08, 500, 150, 0.3);
+}
+
+/** A shot bird reaching the ground where it fell: heard late at range (sound
+ * comes back at 343 m/s), dulled and quietened by the distance, from its
+ * direction. `surface` picks the thump, the swish of reeds or the splash. */
+export function playFall(surface: FallSurface, weight: number, distanceM: number, source: SoundDirection, seed = 1): void {
+  const c = ready();
+  if (!c) return;
+  const distance = Number.isFinite(distanceM) ? Math.max(0, distanceM) : 0;
+  const samples = synthesizeFall(surface, weight, seed);
+  const route = birdRoute(c, { distance, direction: source, space: 'open', gain: .9 }, samples.length / FALL_AUDIO_RATE);
+  playSamples(c, [samples], FALL_AUDIO_RATE, 1, route.input, route.release, fallSoundDelay(distance));
 }
 
 /** Retrieve pickup blip. */

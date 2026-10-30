@@ -91,7 +91,7 @@ try {
       record.render = await page.evaluate(() => window.__api3d.info());
       summary.rises.push(record);
       const f = record.final;
-      console.log(`  in play max ${f.maxInPlay}, inside 40 m max ${f.maxHolding ?? '-'}, visible max ${f.maxVisible}, birds ${f.birds.length}, ` +
+      console.log(`  in play max ${f.maxInPlay}, inside 40 m max ${f.maxHolding ?? '-'}, inside 55 m max ${f.maxInSky ?? '-'}, visible max ${f.maxVisible}, birds ${f.birds.length}, ` +
         `min separation ${f.minSeparationDeg?.toFixed(1) ?? '-'} deg, shot window ${f.shotWindow ? `min ${f.shotWindow.minDeg.toFixed(1)} / median ${f.shotWindow.medianDeg.toFixed(1)} deg, ${(f.shotWindow.share5Deg * 100).toFixed(0)}% >= 5 deg` : '-'}, sky-backed first second ${(f.skyShareFirstSecond * 100).toFixed(0)}%, ` +
         `lines ${JSON.stringify(f.lines)}, rise length ${f.riseLengthS?.toFixed(1) ?? '-'} s (settled ${f.riseOverS?.toFixed(1) ?? '-'} s), waves at ${f.waveTimesS.join("/")} s, shots ${f.shots.length} (${f.shots.filter(s => s.hit).length} hit), ` +
         `exits ${JSON.stringify(f.birds.reduce((n, b) => ({ ...n, [b.exit]: (n[b.exit] ?? 0) + 1 }), {}))}, ${record.render.calls} draws`);
@@ -197,7 +197,7 @@ function runHuntToPoint(maxTicks, wantSpecies, shoot) {
 
   function installReview(hunter, origin) {
     const tracks = new Map();
-    let tick = 0, maxInPlay = 0, maxVisible = 0, maxHolding = 0, minSeparation = Infinity, riseOver = null, envelopeClear = null;
+    let tick = 0, maxInPlay = 0, maxVisible = 0, maxHolding = 0, maxInSky = 0, minSeparation = Infinity, riseOver = null, envelopeClear = null;
     // Shooting hunter (--shoot): a double, fired and reloaded on a fixed rhythm.
     const RELOAD_TICKS = Math.round((0.55 + 2 * 0.38) * 30);
     const gun = { shells: 2, capacity: 2, reloading: false };
@@ -290,6 +290,7 @@ function runHuntToPoint(maxTicks, wantSpecies, shoot) {
       // bird is still inside effective range (40 m) of where he stands.
       const holding = m.sky.birds.filter(b => (b.status === 'flying' || b.status === 'waiting') && Math.hypot(b.x - hunter.x, b.z - hunter.z) <= 40).length;
       maxHolding = Math.max(maxHolding, holding);
+      maxInSky = Math.max(maxInSky, m.sky.birds.filter(b => (b.status === 'flying' || b.status === 'waiting' || b.status === 'departing') && Math.hypot(b.x - hunter.x, b.z - hunter.z) <= 55).length);
       if (holding || m.queued > 0) envelopeClear = null; else envelopeClear ??= tick / 30;
       for (const b of m.sky.birds) {
         if (tracks.has(b.simId)) continue;
@@ -330,7 +331,7 @@ function runHuntToPoint(maxTicks, wantSpecies, shoot) {
         const lines = {};
         for (const b of birds) if (b.line) lines[b.line] = (lines[b.line] ?? 0) + 1;
         const shot = [...shotSeparations].sort((a, b) => a - b);
-        return { maxInPlay, maxVisible, maxHolding, minSeparationDeg: Number.isFinite(minSeparation) ? minSeparation : null,
+        return { maxInPlay, maxVisible, maxHolding, maxInSky, minSeparationDeg: Number.isFinite(minSeparation) ? minSeparation : null,
           riseLengthS: envelopeClear, waveTimesS: [...waves.values()].map(w => +(w.tick / 30).toFixed(2)), shots,
           shotWindow: shot.length ? { minDeg: shot[0], medianDeg: shot[shot.length >> 1], share5Deg: shot.filter(d => d >= 5).length / shot.length, ticks: shot.length } : null,
           skyShareFirstSecond: first.length ? first.filter(Boolean).length / first.length : 0,

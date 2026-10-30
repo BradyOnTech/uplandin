@@ -88,7 +88,7 @@ const DOCTRINES: Record<string, HuntDoctrine> = {
     method: 'COVEY EDGE · HOLD AND WALK IN',
     tip: 'Follow the dog along the plum edges. Let the covey gather before you step into the rise.',
     guidance: 'Follow your dog along the plum edges.', dogRangeMult: 1.04, dogEdgeBias: 0.04, coverWorkMult: 1.14, dogPaceMult: 1,
-    pointNerveMult: 1, pointRadius: 22, hunterSpookRadius: 28, sprintNerveMult: 1.55, runnerStyle: 'default', circleBack: false, spatialEncounter: true,
+    pointNerveMult: 1, pointRadius: 22, hunterSpookRadius: 28, sprintNerveMult: 1.55, runnerStyle: 'default', circleBack: true, spatialEncounter: true,
     flight: { lateral: .88, climb: 1.08, carry: .92, wobble: 1.1 },
   },
   'pheasant-coverts': {
@@ -97,7 +97,7 @@ const DOCTRINES: Record<string, HuntDoctrine> = {
     method: 'COVER EDGE · READ AND RELOCATE',
     tip: 'Close the gap along dry cover while the dog tracks a runner. Slow to a walk when it points, and identify the rooster before firing.',
     guidance: 'Read the runner. Cut the next hedge and let your dog close the edge.', dogRangeMult: .88, dogEdgeBias: .2, coverWorkMult: .74, dogPaceMult: 1.15,
-    pointNerveMult: .84, pointRadius: 16, hunterSpookRadius: 38, sprintNerveMult: 2.05, runnerStyle: 'pheasant', circleBack: false, spatialEncounter: true,
+    pointNerveMult: .84, pointRadius: 16, hunterSpookRadius: 38, sprintNerveMult: 2.05, runnerStyle: 'pheasant', circleBack: true, spatialEncounter: true,
     flight: { lateral: .7, climb: .78, carry: 1.08, wobble: .55 },
   },
   'sharptail-prairie': {
@@ -106,7 +106,7 @@ const DOCTRINES: Record<string, HuntDoctrine> = {
     method: 'WIND LANE · LONG CAST',
     tip: 'Keep the dog moving through the wind lanes. Save your approach for the covey edge, not the open center.',
     guidance: 'Use the wind lanes and let the dog range across the open.', dogRangeMult: 1.28, dogEdgeBias: -.03, coverWorkMult: .72, dogPaceMult: 1.05,
-    pointNerveMult: 1.18, pointRadius: 25, hunterSpookRadius: 24, sprintNerveMult: 1.75, runnerStyle: 'default', circleBack: false, spatialEncounter: true,
+    pointNerveMult: 1.18, pointRadius: 25, hunterSpookRadius: 24, sprintNerveMult: 1.75, runnerStyle: 'default', circleBack: true, spatialEncounter: true,
     flight: { lateral: 1.22, climb: .82, carry: 1.15, wobble: .72 },
   },
   'grouse-woods': {
@@ -142,7 +142,7 @@ const DOCTRINES: Record<string, HuntDoctrine> = {
     method: 'CONTOUR CLIMB · HIGH SIDE',
     tip: 'Use the benches to gain the high side before closing on your dog. Walk into the point; rushing uphill can send the covey over the ridge out of sight.',
     guidance: 'Gain the high side. Walk into the point.', dogRangeMult: 1.18, dogEdgeBias: .08, coverWorkMult: .84, dogPaceMult: .92,
-    pointNerveMult: 1.12, pointRadius: 18, hunterSpookRadius: 24, sprintNerveMult: 1.8, runnerStyle: 'chukar', circleBack: false, spatialEncounter: true,
+    pointNerveMult: 1.12, pointRadius: 18, hunterSpookRadius: 24, sprintNerveMult: 1.8, runnerStyle: 'chukar', circleBack: true, spatialEncounter: true,
     flight: { lateral: .62, climb: .42, carry: 1.28, wobble: .42 },
   },
   'desert-washes': {

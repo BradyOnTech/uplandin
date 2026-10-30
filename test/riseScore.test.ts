@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mulberry32 } from '../src/game/math';
 import {
-  BELOW_CONTOUR, GUN_PATIENCE_MS, holdsSky, inTheShot, laneLift, lanesOffTheHill, planRise, RISE_RANGE_M, riseScoreFor, SKY_MAX, SLEEPER_MIN_MS,
+  BELOW_CONTOUR, countsAgainstCap, GUN_PATIENCE_MS, holdsSky, inTheShot, LEAVING_RANGE_M, laneLift, lanesOffTheHill, planRise, RISE_RANGE_M, riseScoreFor, SKY_MAX, SLEEPER_MIN_MS,
   WAVE_MAX_GAP_MS, waveLanes, waveMayRise,
   type RiseGun, type SkyClock,
 } from '../src/game/riseScore';
@@ -66,6 +66,14 @@ describe('which birds hold the sky', () => {
     expect(inTheShot({ ...live, rangeM: RISE_RANGE_M + .5 })).toBe(false);
     expect(inTheShot({ ...live, status: 'departing' })).toBe(false);
   });
+
+  it('counts a leaving bird against the three until it is 55 m off, so the sky never shows six', () => {
+    expect(countsAgainstCap({ status: 'flying', rangeM: 25 })).toBe(true);
+    expect(countsAgainstCap({ status: 'flying', rangeM: RISE_RANGE_M + 8 })).toBe(true);
+    expect(countsAgainstCap({ status: 'departing', rangeM: LEAVING_RANGE_M - .5 })).toBe(true);
+    expect(countsAgainstCap({ status: 'departing', rangeM: LEAVING_RANGE_M + .5 })).toBe(false);
+    expect(countsAgainstCap({ status: 'falling', rangeM: 20 })).toBe(false);
+  });
 });
 
 describe('when the next wave may rise', () => {
@@ -78,11 +86,11 @@ describe('when the next wave may rise', () => {
     expect(waveMayRise(wave(1), sharptail, sky({ inPlay: 3, clearSinceMs: null }), false)).toBe(false);
   });
 
-  it('lets the clock run on a wave that has had its seconds, but never crowds the shot past three', () => {
+  it('lets the clock run on a wave that has had its seconds, but never crowds the sky past three', () => {
     // The last wave no longer holds the sky, but one of its birds is still in range.
-    expect(waveMayRise(wave(3), bobwhite, sky({ inPlay: 0, inShot: 1, clearSinceMs: 9_500 }), false)).toBe(false);
-    expect(waveMayRise(wave(2), bobwhite, sky({ inPlay: 0, inShot: 1, clearSinceMs: 9_500 }), false)).toBe(true);
-    expect(waveMayRise(wave(3), bobwhite, sky({ inPlay: 0, inShot: 0, clearSinceMs: 9_500 }), false)).toBe(true);
+    expect(waveMayRise(wave(3), bobwhite, sky({ inPlay: 0, inSky: 1, clearSinceMs: 9_500 }), false)).toBe(false);
+    expect(waveMayRise(wave(2), bobwhite, sky({ inPlay: 0, inSky: 1, clearSinceMs: 9_500 }), false)).toBe(true);
+    expect(waveMayRise(wave(3), bobwhite, sky({ inPlay: 0, inSky: 0, clearSinceMs: 9_500 }), false)).toBe(true);
   });
 
   it('lets a covey wave rise once the sky has cleared for its breath', () => {
