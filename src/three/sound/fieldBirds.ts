@@ -1,4 +1,5 @@
 import type { TimeOfDay } from '../palette';
+import type { Month } from '../../game/season';
 import type { BirdCallId, FlockId } from './birdCalls';
 import type { BirdSpace } from './birdVoice';
 
@@ -22,6 +23,8 @@ export type GroundBird = GroundCall & {
   readonly overhead?: boolean;
   /** How much it calls at each hour; 1 where unnamed. */
   readonly hours?: Partial<Record<TimeOfDay, number>>;
+  /** How much it is about in each month; 1 where unnamed, 0 when it has gone south. */
+  readonly months?: Partial<Record<Month, number>>;
 };
 export interface GroundBirds {
   readonly space: BirdSpace;
@@ -38,21 +41,35 @@ export const QUARRY_CALL_GAIN = .2;
 /** Birds sing most at first light and least at midday. */
 export const BIRD_ACTIVITY: Readonly<Record<TimeOfDay, number>> = { dawn: 1.6, morning: 1.15, noon: .55, evening: .9, lastlight: .7 };
 
+/** The season's comings and goings, shared by the grounds that have them. */
+const CRANE_PASSAGE: Partial<Record<Month, number>> = { September: .5, October: 1.8, November: .6, December: 0, January: 0 };
+const GOOSE_PASSAGE: Partial<Record<Month, number>> = { September: .4, October: 1.6, November: 1.4, December: .6, January: .3 };
+/** Red-winged blackbirds crowd the cattails early, then go. */
+const BLACKBIRD_SEASON: Partial<Record<Month, number>> = { September: 1.8, October: 1, November: .25, December: .03, January: 0 };
+/** Northern meadowlarks leave the Dakotas by November; larks stay all winter. */
+const MEADOWLARK_NORTH: Partial<Record<Month, number>> = { September: 1.3, October: .8, November: .15, December: 0, January: 0 };
+const LARK_WINTER: Partial<Record<Month, number>> = { November: 1.3, December: 1.8, January: 2 };
+/** Ducks leave a slough once it freezes. */
+const OPEN_WATER: Partial<Record<Month, number>> = { November: .7, December: .15, January: .05 };
+
 export const GROUND_BIRDS: Readonly<Record<string, GroundBirds>> = {
   // A prairie-pothole farm: blackbirds in the cattails, ducks on the slough,
   // chickadees in the shelterbelt, geese going over, a rooster off the place.
   'pheasant-coverts': { space: 'marsh', interval: 17, birds: [
-    { flock: 'blackbirds', weight: 3, distance: [45, 150], gain: .55 },
-    { call: 'mallard', weight: 1.5, distance: [90, 260], gain: .7 },
+    { flock: 'blackbirds', weight: 3, distance: [45, 150], gain: .55, months: BLACKBIRD_SEASON },
+    { call: 'mallard', weight: 1.5, distance: [90, 260], gain: .7, months: OPEN_WATER },
     { call: 'chickadee', weight: 1.5, distance: [30, 90], gain: .4, hours: { noon: .6, lastlight: .3 } },
-    { flock: 'geese', weight: 1.1, distance: [140, 320], gain: 1.3, overhead: true, hours: { dawn: 1.6, noon: .4, evening: 1.3, lastlight: 1.6 } },
+    { flock: 'geese', weight: 1.1, distance: [140, 320], gain: 1.3, overhead: true, hours: { dawn: 1.6, noon: .4, evening: 1.3, lastlight: 1.6 },
+      months: GOOSE_PASSAGE },
+    { flock: 'cranes', weight: .45, distance: [300, 650], gain: 1.6, overhead: true, hours: { noon: .7 }, months: CRANE_PASSAGE },
     { call: 'rooster-crow', weight: .5, distance: [500, 800], gain: .9, hours: { dawn: 2.2, morning: .8, noon: .1, evening: .9, lastlight: 1.6 } },
   ] },
   // Open northern grassland: meadowlarks and larks, cranes high overhead.
   'sharptail-prairie': { space: 'open', interval: 21, birds: [
-    { call: 'meadowlark', weight: 3, distance: [60, 230], gain: .6, hours: { dawn: 1.5, noon: .5, lastlight: .5 } },
-    { call: 'horned-lark', weight: 2, distance: [20, 80], gain: .35 },
-    { flock: 'cranes', weight: 1, distance: [280, 620], gain: 1.6, overhead: true, hours: { noon: .7 } },
+    { call: 'meadowlark', weight: 3, distance: [60, 230], gain: .6, hours: { dawn: 1.5, noon: .5, lastlight: .5 }, months: MEADOWLARK_NORTH },
+    { call: 'horned-lark', weight: 2, distance: [20, 80], gain: .35, months: LARK_WINTER },
+    { flock: 'cranes', weight: 1, distance: [280, 620], gain: 1.6, overhead: true, hours: { noon: .7 }, months: CRANE_PASSAGE },
+    { flock: 'geese', weight: .6, distance: [200, 420], gain: 1.3, overhead: true, hours: { dawn: 1.5, noon: .4, lastlight: 1.4 }, months: GOOSE_PASSAGE },
     { call: 'redtail', weight: .6, distance: [150, 420], gain: 1, overhead: true, hours: { dawn: .2, noon: 1.4 } },
   ] },
   // Southern plains: cardinals and doves in the plum and creek timber.
@@ -83,22 +100,33 @@ export interface GroundBirdCall {
   readonly seed: number;
 }
 
-/** The next of the land's birds to call, chosen for the hour. */
-export function nextGroundBird(areaId: string | undefined, hour: TimeOfDay, random: () => number): GroundBirdCall | null {
+/** The next of the land's birds to call, chosen for the hour and the month. */
+export function nextGroundBird(areaId: string | undefined, hour: TimeOfDay, random: () => number, month: Month = 'October'): GroundBirdCall | null {
   const ground = areaId ? GROUND_BIRDS[areaId] : undefined;
   if (!ground) return null;
-  const weights = ground.birds.map(bird => bird.weight * (bird.hours?.[hour] ?? 1));
-  let pick = random() * weights.reduce((sum, weight) => sum + weight, 0);
+  const weights = ground.birds.map(bird => bird.weight * (bird.hours?.[hour] ?? 1) * (bird.months?.[month] ?? 1));
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  if (!(total > 0)) return null;
+  let pick = random() * total;
   const index = Math.max(0, weights.findIndex(weight => (pick -= weight) < 0));
   const bird = ground.birds[index];
   return { bird, distance: bird.distance[0] + (bird.distance[1] - bird.distance[0]) * random(),
     bearing: random() * Math.PI * 2, seed: 1 + Math.floor(random() * 1e6) };
 }
 
-/** Seconds until the land's next bird calls: quick at first light, long at midday. */
-export function groundBirdWait(areaId: string | undefined, hour: TimeOfDay, random: () => number): number {
+/** How busy a ground's birds are in a month against October: a September
+ * slough loud with blackbirds, a January prairie with only the larks. */
+export function seasonActivity(areaId: string | undefined, month: Month): number {
+  const birds = (areaId && GROUND_BIRDS[areaId]?.birds) || [];
+  const total = (m: Month) => birds.reduce((sum, bird) => sum + bird.weight * (bird.months?.[m] ?? 1), 0);
+  const october = total('October');
+  return october > 0 ? Math.max(.4, Math.min(1.6, total(month) / october)) : 1;
+}
+
+/** Seconds until the land's next bird calls: quick at first light, long at midday, longer in the dead of winter. */
+export function groundBirdWait(areaId: string | undefined, hour: TimeOfDay, random: () => number, month: Month = 'October'): number {
   const ground = areaId ? GROUND_BIRDS[areaId] : undefined;
-  return ground ? ground.interval / (BIRD_ACTIVITY[hour] ?? 1) * (.45 + random() * 1.1) : Infinity;
+  return ground ? ground.interval / ((BIRD_ACTIVITY[hour] ?? 1) * seasonActivity(areaId, month)) * (.45 + random() * 1.1) : Infinity;
 }
 
 /** What the quarry says, and when. */
