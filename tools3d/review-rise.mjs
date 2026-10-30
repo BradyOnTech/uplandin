@@ -130,7 +130,9 @@ try {
         `exits ${JSON.stringify(f.birds.reduce((n, b) => ({ ...n, [b.exit]: (n[b.exit] ?? 0) + 1 }), {}))}, ${record.render.calls} draws`);
       for (const fall of f.falls ?? []) console.log(`  fall: hit at ${fall.rangeM} m${fall.featherPx !== undefined ? `, feathers ${fall.featherPx} px` : ''}, ` +
         `struck ${fall.strikeAfterS ?? '-'} s later at ${fall.strikeRangeM ?? '-'} m${fall.surface ? ` (${fall.surface})` : ''}${fall.thumpDelayMs !== undefined ? `, thump heard ${fall.thumpDelayMs} ms after it lands` : ''}`);
-      if (f.closestPassM !== undefined) console.log(`  closest pass of any line to the hunter: ${f.closestPassM} m (approach ${hunt.approach ?? '-'}, ${hunt.slopeApproach ?? '-'})`);
+      if (f.closestPassM !== undefined) console.log(`  closest any line came to the hunter: ${f.closestPassM} m (nearest a bird rose ${f.roseNearestM} m); ` +
+        `fly-bys (back nearer than it rose, inside 9 m): ${f.flyBys.length ? f.flyBys.map(b => `${b.roseAtM}->${b.nearestM} m`).join(', ') : 'none'}; ` +
+        `hunter ${hunt.hunterAboveCoveyM ?? '-'} m above the covey (approach ${hunt.approach ?? '-'}, ${hunt.slopeApproach ?? '-'})`);
       if (errors.length) console.error(`  page errors: ${errors.join(' | ')}`);
       await page.close();
     }
@@ -393,9 +395,14 @@ function runHuntToPoint(maxTicks, wantSpecies, shoot, shootAt = [], approach = '
         track.last = { status: b.status, airMs: Math.round(b.airMs), rangeM: Math.hypot(b.x - hunter.x, b.z - hunter.z), heightM: b.y - heightAt(b.x, b.z), target: b.target, tick, x: b.x, z: b.z };
       }
       for (const b of m.sky.birds) {
-        // How near any line comes to the hunter's eye (3D), after its first third of a second.
-        if ((b.status === 'flying' || b.status === 'departing') && b.airMs > 300) closestPass = Math.min(closestPass, Math.hypot(b.x - m.e.x, b.y - m.e.y, b.z - m.e.z));
+        // How near any line comes to the hunter's eye (3D) after its first
+        // third of a second, and whether it came back nearer than it rose.
         const track = tracks.get(b.simId);
+        if (track && (b.status === 'flying' || b.status === 'departing')) {
+          const range = Math.hypot(b.x - m.e.x, b.y - m.e.y, b.z - m.e.z);
+          track.roseAt ??= range;
+          if (b.airMs > 300) { track.nearest = Math.min(track.nearest ?? Infinity, range); closestPass = Math.min(closestPass, range); }
+        }
         if (track && b.status === 'falling') track.fell = true;
       }
       // Shot birds striking the ground: the birds' own log where the build
@@ -454,7 +461,11 @@ function runHuntToPoint(maxTicks, wantSpecies, shoot, shootAt = [], approach = '
           return { ...hit, strikeAfterS: strike ? +((strike.tick - hit.tick) / 30).toFixed(2) : null, strikeRangeM: strike?.rangeM ?? null,
             surface: strike?.surface, thumpDelayMs: strike?.thumpDelayMs };
         });
-        return { falls, closestPassM: Number.isFinite(closestPass) ? +closestPass.toFixed(1) : null,
+        // A fly-by: a line that came back nearer the eye than it rose, inside 9 m.
+        const flyBys = birds.filter(b => Number.isFinite(b.nearest) && b.nearest < Math.min(9, b.roseAt - .5))
+          .map(b => ({ simId: b.simId, roseAtM: +b.roseAt.toFixed(1), nearestM: +b.nearest.toFixed(1) }));
+        return { falls, flyBys, closestPassM: Number.isFinite(closestPass) ? +closestPass.toFixed(1) : null,
+          roseNearestM: birds.length ? +Math.min(...birds.map(b => b.roseAt ?? Infinity)).toFixed(1) : null,
           maxInPlay, maxVisible, maxHolding, maxInSky, minSeparationDeg: Number.isFinite(minSeparation) ? minSeparation : null,
           riseLengthS: envelopeClear, waveTimesS: [...waves.values()].map(w => +(w.tick / 30).toFixed(2)), shots,
           shotWindow: shot.length ? { minDeg: shot[0], medianDeg: shot[shot.length >> 1], share5Deg: shot.filter(d => d >= 5).length / shot.length, ticks: shot.length } : null,

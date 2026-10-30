@@ -187,12 +187,12 @@ export class HuntHudSystem implements Subsystem {
     }) as EventListener, options);
     // He watched a miss go down: say so, the way a partner would.
     ctx.events.addEventListener('hunt-mark', ((event: CustomEvent<HunterMark>) => {
+      this.markedAt = this.fieldTime;
       if (!this.dogCallout || this.frozen || this.fieldTime < this.milestoneHeld) return;
       this.dogCallout.textContent = this.markCopy(ctx, event.detail);
       this.dogCallout.classList.remove('milestone');
       this.dogCallout.hidden = false;
       this.dogCalloutUntil = this.fieldTime + 3.2;
-      this.markedAt = this.fieldTime;
     }) as EventListener, options);
     ctx.events.addEventListener('hunt-milestone', ((event: CustomEvent<string>) => {
       if (!this.dogCallout || this.frozen) return;

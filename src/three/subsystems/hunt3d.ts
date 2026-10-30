@@ -792,10 +792,14 @@ export class Hunt3DSystem implements Subsystem {
       const nx = this.hunt.hunterPos.x + (dx / d) * stepPx;
       const ny = this.hunt.hunterPos.y + (dy / d) * stepPx;
       // Move the camera (the mapped hunter); tick() reads it back into
-      // hunterPos — the exact FieldScene consumption order still runs.
+      // hunterPos — the exact FieldScene consumption order still runs. His
+      // eye keeps its height over the ground: on a canyon the walk-in climbs
+      // or drops metres, and the birds plan their lines from that eye.
       this.simToWorld(nx, ny, this.coordWorld);
+      const ground = this.landscape.heightAtWorld(ctx.camera.position.x, ctx.camera.position.z);
       ctx.camera.position.x = this.coordWorld.x;
       ctx.camera.position.z = this.coordWorld.z;
+      ctx.camera.position.y += this.landscape.heightAtWorld(this.coordWorld.x, this.coordWorld.z) - ground;
       this.tick(ctx, 1000 / 30);
       if (this.lastFlush !== previousFlush) return this.lastFlush;
       if (pointingDog.state !== 'pointing' || bird.state !== 'hidden') return null;
