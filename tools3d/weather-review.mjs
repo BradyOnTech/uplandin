@@ -128,7 +128,8 @@ try {
     // Chrome on this Mac: comparable between days and builds, not a phone.
     const view = reviewViews.find(v => v.id === views[0]);
     await posed(view);
-    for (const day of days(WEATHERS)) {
+    // --reverse measures the days in reverse order, to tell drift (heat, load) from the day's own cost.
+    for (const day of days(args.includes('--reverse') ? [...WEATHERS].reverse() : WEATHERS)) {
       if (report.hook) await setDay(day);
       const cost = await page.evaluate(frames => {
         const gl = document.querySelector('canvas').getContext('webgl2'), px = new Uint8Array(4), ms = [];

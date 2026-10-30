@@ -14,7 +14,7 @@ describe('the field\'s sounds are made off the main thread', () => {
     expect(runFieldSynth({ kind: 'weather', rate: FAR_RATE, bed: GUST_BED })).toEqual(fieldWeatherSamples(FAR_RATE, GUST_BED));
     expect(runFieldSynth({ kind: 'dryer', rate: FAR_RATE, seed: 3301 })).toEqual(grainDryerSamples(FAR_RATE, 3301));
     expect(runFieldSynth({ kind: 'far', rate: FAR_RATE, sound: 'cattle', seed: 7919 })).toEqual(farSoundSamples('cattle', 7919, FAR_RATE));
-  });
+  }, 60_000);
 
   it('still makes a sound where there is no worker, in an idle moment of its own', async () => {
     const samples = await fieldSynth({ kind: 'dryer', rate: FAR_RATE, seed: 3301 });

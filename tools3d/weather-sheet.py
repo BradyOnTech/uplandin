@@ -36,6 +36,13 @@ def subject(r, f, without):
     ys, xs = np.nonzero(mask)
     return {'px': n, 'step': step, 'box': [int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1]}
 
+def inside(box, size):
+    """Slide a crop window to lie within the frame (no black bars)."""
+    x0, y0, x1, y1 = box; w, h = x1 - x0, y1 - y0; W, H = size
+    w, h = min(w, W), min(h, H)
+    x0 = min(max(0, x0), W - w); y0 = min(max(0, y0), H - h)
+    return (x0, y0, x0 + w, y0 + h)
+
 def save(sheet, path):
     for q in (84, 78, 72, 66, 60, 54):
         sheet.save(path, quality=q, optimize=True)
@@ -119,7 +126,7 @@ def readability(base, aft):
             d.text((x + 4, y + 2), day + (f"  {m['px']} px  step {m['step']:.3f}" if m else ''), fill=(235, 235, 235))
             if not (r and f): continue
             img = Image.open(os.path.join(r['dir'], f['file'])).convert('RGB')
-            sheet.paste((img.crop(box) if box else img).resize((W, H), Image.LANCZOS), (x, y + 16))
+            sheet.paste((img.crop(inside(box, img.size)) if box else img).resize((W, H), Image.LANCZOS), (x, y + 16))
     save(sheet, os.path.join(outdir, f'{area}-m3-readability.jpg'))
     return metrics
 
