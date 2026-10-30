@@ -31,6 +31,7 @@ import { countsAgainstCap, holdsSky, inTheShot, laneLift, RISE_RANGE_M, lanesOff
 import { evadeGoshawk, type QuarryTarget } from '../../game/falconry';
 import { huntingDoctrine } from '../../game/huntDoctrine';
 import { HUNT_SHOT_RANGE } from '../../game/huntSimulation';
+import { ObstacleIndex } from '../../game/obstacleIndex';
 import type { Ctx, Subsystem } from '../engine';
 import { P, fieldTimeOfDay, type TimeOfDay } from '../palette';
 import type { Hunt3DSystem } from './hunt3d';
@@ -479,7 +480,7 @@ export class BirdsSystem implements Subsystem {
    * covey's planned waves (game/riseScore.ts) and how many have risen. */
   private rises: { speciesId: string; waves: RiseWave[]; next: number; circleBack?: boolean; curl?: number }[] = [];
   /** Rock, trees, buildings and ponds the hunter and dog respect: no miss sets down in them. */
-  private landingObstacleList?: readonly { x: number; z: number; radius: number }[];
+  private landingObstacleIndex?: ObstacleIndex;
   private obstacleCtx?: Ctx;
   private readonly simPoint = { x: 0, y: 0 };
   /** Sky clock shared by every covey: the wave rule is global. */
@@ -2008,24 +2009,30 @@ export class BirdsSystem implements Subsystem {
       if (at.x < world.x + LANDING_MARGIN_PX || at.x > world.x + world.w - LANDING_MARGIN_PX
         || at.y < world.y + LANDING_MARGIN_PX || at.y > world.y + world.h - LANDING_MARGIN_PX) return false;
     }
-    for (const circle of this.landingObstacles()) {
-      if ((x - circle.x) ** 2 + (z - circle.z) ** 2 < (circle.radius + LANDING_CLEARANCE_M) ** 2) return false;
+    // The canyon's rimrock, from the land itself (so a headless hunt knows it too).
+    if (this.hunt.rockAtWorld?.(x, z)) return false;
+    for (const circle of this.landingObstacles().nearby(x, z, LANDING_CLEARANCE_M)) {
+      if ((x - circle.x) ** 2 + (z - circle.y) ** 2 < (circle.radius + LANDING_CLEARANCE_M) ** 2) return false;
     }
     const h = (dx: number, dz: number) => this.terrain.heightAt(x + dx, z + dz);
     if (Math.hypot(h(1, 0) - h(-1, 0), h(0, 1) - h(0, -1)) / 2 > LANDING_GRADE) return false;
     return this.fallSurface(x, z) !== 'water';
   };
 
-  private landingObstacles(): readonly { x: number; z: number; radius: number }[] {
-    if (this.landingObstacleList?.length) return this.landingObstacleList;
-    const circles: { x: number; z: number; radius: number }[] = [];
+  /** Every collision circle a landing keeps clear of, indexed (world x, z as
+   * x, y): the canyon alone has some 1,400 rim blocks. */
+  private landingObstacles(): ObstacleIndex {
+    if (this.landingObstacleIndex) return this.landingObstacleIndex;
+    const circles: { x: number; y: number; radius: number }[] = [];
     for (const id of LANDING_OBSTACLE_SOURCES) {
       let provider: { collisionCircles?: () => readonly { x: number; z: number; radius: number }[] } | undefined;
       try { provider = this.obstacleCtx?.get(id) as typeof provider; } catch { continue; }
-      for (const circle of provider?.collisionCircles?.() ?? []) circles.push(circle);
+      for (const circle of provider?.collisionCircles?.() ?? []) circles.push({ x: circle.x, y: circle.z, radius: circle.radius });
     }
-    this.landingObstacleList = circles;
-    return circles;
+    const index = new ObstacleIndex(circles, 16);
+    // Kept once the world has built its obstacles; asked again until then.
+    if (circles.length) this.landingObstacleIndex = index;
+    return index;
   }
 
   /** The wings as the shot found them: the fold eases in from here. */

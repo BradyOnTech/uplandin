@@ -143,6 +143,8 @@ export function liveDogBreedId(search: string): string {
 const CAST_DISTANCE_M = 30;
 /** A cast reaches as far as the hunter looks at the ground, to this far: a marked bird down across the draw. */
 const CAST_REACH_M = 200;
+/** A miss sets down at least this far (yd) from the rimrock: a dog's reach. */
+const ROCK_MARGIN_YD = 1.6;
 /** "Dead bird" reaches this far along the look ray. */
 const DEAD_BIRD_REACH_M = 70;
 /** A fall lands at least this far (yd) inside the fence: past the dog's own
@@ -797,6 +799,8 @@ export class Hunt3DSystem implements Subsystem {
   /** Resolve a 3D presentation outcome through the shared simulation. */
   resolveBird(birdId: number, outcome: 'downed' | 'escaped', landing?: { x: number; z: number }, options: { wounded?: boolean } = {}): boolean {
     const position = landing ? this.worldToSim(landing.x, landing.z, { x: 0, y: 0 }) : undefined;
+    // A miss that sets down against the rimrock sits beside it, where the dog can reach it.
+    if (position && this.hasSolids) this.landscape.openPropertyNear(position.x, position.y, position);
     const resolved = this.simulation.resolveBird(birdId, outcome, position, options);
     if (resolved && outcome === 'downed' && isSpatialEncounterArea(this.area.id)) this.simulation.bird(birdId)!.fallPending = true;
     if (resolved && outcome === 'downed') this.announceBag(birdId);
@@ -990,6 +994,13 @@ export class Hunt3DSystem implements Subsystem {
 
   /** Career dogs by name; Quick dogs by breed. */
   dogName(slot = 0): string { return this.dogNames[slot] ?? 'Dog'; }
+
+  /** Is this world point in the rimrock, or too tight against it for a dog? */
+  rockAtWorld(x: number, z: number): boolean {
+    if (!this.hasSolids) return false;
+    const at = this.worldToSim(x, z, { x: 0, y: 0 });
+    return this.landscape.solidAtProperty(at.x, at.y, ROCK_MARGIN_YD);
+  }
 
   /** The ground under a world point (moisture, vegetation, rock): what a
    * falling bird strikes and where a miss may set down. */
