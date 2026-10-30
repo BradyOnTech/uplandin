@@ -2,7 +2,7 @@ import type { SlopeApproach } from '../../game/fieldcraft';
 import { isFalconryPractice, FALCONRY_PRACTICE } from '../../game/falconryPractice';
 import { huntStreamSeed, parseHuntSeed } from '../../game/huntSeed';
 import { birdFlightExpired } from '../../game/birdFlightLifetime';
-import { lineFamilyFor, planFlightLine, stepFlightLine, type FlightLine } from '../../game/flightLine';
+import { fallLine, lineFamilyFor, PASS_CLEAR_M, planFlightLine, stepFlightLine, type FlightLine } from '../../game/flightLine';
 import { buildPheasantBody, buildPheasantLegs, buildPheasantWing, buildPheasantTail, pheasantLegTuck, pheasantTailFan, posePheasantFoldedWings, pheasantWingbeat } from '../assets/pheasant';
 import { buildBirdLegs } from '../assets/birdLegs';
 import { quailLaunchDelay } from '../quailPresentation';
@@ -10,7 +10,11 @@ import { flyingBirdScale, type BirdSizeMode } from '../birdScale';
 import { chooseHitReaction, createHitReaction, featherCount, stepHitReaction, tumbleRate, type HitReaction, type HitReactionKind, type HitShot } from '../hitReactions';
 import { FeatherDrift, featherTones } from '../featherDrift';
 import { QuailFlushDebris } from '../quailFlushDebris';
-import { CoverEruption } from '../coverEruption';
+import { CoverEruption, type ImpactSurface } from '../coverEruption';
+import { BOUNCE_MAX_MPS, BOUNCE_MIN_MPS, BOUNCE_SHARE, COLLAPSE_MS, fallBall, fallWeight, featherPuffSize, impactSurface, strideLength } from '../fallPresentation';
+import { fallSoundDelay } from '../fallAudio';
+import { pheasantPondRadii } from '../../game/pheasantHabitat';
+import type { GroundSample } from '../../game/landscape';
 import * as THREE from 'three';
 import { buildBobwhiteBody, buildBobwhiteWing, poseBobwhiteFoldedWings } from '../assets/bobwhite';
 import { buildSharptailBody, buildSharptailWing, poseSharptailFoldedWings } from '../assets/sharptail';
@@ -20,13 +24,18 @@ import { buildPrairieChickenBody, buildPrairieChickenWing, posePrairieChickenFol
 import { sharptailLaunchDelay, sharptailWingbeat } from '../sharptailPresentation';
 import { addCarriedBirdPoses, poseCarriedBird, restingBirdScale } from '../carriedBirdPresentation';
 import { dogRendererId } from '../dogs/rendererId';
-import { playThud, playPheasantFlush, playBirdFlush, playCoveyThunder, type PheasantFlushSound } from '../../audio';
+import { playFall, playPheasantFlush, playBirdFlush, playCoveyThunder, type PheasantFlushSound } from '../../audio';
 import { mulberry32 } from '../../game/math';
 import { getSpecies, SPECIES, TRAINING_SPECIES, type SpeciesConfig } from '../../game/species';
 import { CLOSE_FLUSH_THRESHOLD, closeFlushIntensity } from '../../game/closeFlush';
-import { holdsSky, inTheShot, laneLift, lanesOffTheHill, planRise, riseScoreFor, waveLanes, waveMayRise, type RiseGun, type RiseWave, type WaveLane } from '../../game/riseScore';
+import { BELOW_CONTOUR, countsAgainstCap, holdsSky, inTheShot, laneLift, RISE_RANGE_M, lanesClearOfTheGun, lanesOffTheHill, planRise, riseScoreFor, waveLanes, waveMayRise, type RiseGun, type RiseWave, type WaveLane } from '../../game/riseScore';
 import { evadeGoshawk, type QuarryTarget } from '../../game/falconry';
 import { huntingDoctrine } from '../../game/huntDoctrine';
+import { HUNT_SHOT_RANGE } from '../../game/huntSimulation';
+import { ObstacleIndex } from '../../game/obstacleIndex';
+import { glideMark, landingHolds, MARK_RANGE_M, MARK_SIGHT_MS, MarkBook, type HunterMark } from '../../game/marks';
+import { quailPlumAt } from '../../game/quailComposition';
+import { quailCoverAt } from '../../game/quailLandscape';
 import type { Ctx, Subsystem } from '../engine';
 import { P, fieldTimeOfDay, type TimeOfDay } from '../palette';
 import type { Hunt3DSystem } from './hunt3d';
@@ -161,6 +170,8 @@ const LAND_MIN_AIR_MS = 1200;
  * lone bird or a pair's bird may go straight away anyway. */
 const STRAIGHTAWAY_LIMIT = 28 * Math.PI / 180;
 const STRAIGHTAWAY_SHARE = .3;
+/** Out of the shot (past 40 m) a bird lines out at this share of its line's pace. */
+const LEAVING_SPEED_MULT = 1.2;
 /** A popcorn single reads where the birds in the shot are heading this far
  * down their lines (about a second of flight) to break away from them. */
 const SIDE_LOOK_M = 15;
@@ -175,6 +186,18 @@ const DEPART_MIN_PX = 2;
 /** Pool = the airborne budget: three live birds, leaving birds still on
  * their way off-screen or into cover, and shot birds lying for the dog. */
 const POOL = 14;
+
+/** Feathers in the hit's puff. */
+const FEATHER_PUFF = 20;
+
+/** A miss sets down at least this far inside the property line (property px)... */
+const LANDING_MARGIN_PX = 10;
+/** ...this far clear of any rock, tree, building or pond edge (metres)... */
+const LANDING_CLEARANCE_M = 1.5;
+/** ...and on ground no steeper than this (rise over run, about 35 degrees). */
+const LANDING_GRADE = .7;
+/** Subsystems whose collision circles a landing keeps clear of. */
+const LANDING_OBSTACLE_SOURCES = ['landmarks', 'flora', 'chukar-environment', 'property-habitat', 'sharptail-ranch', 'quail-environment', 'woodcock-wet-bottoms'] as const;
 
 /** A folded bird's tumble, 540 deg/s. */
 const TUMBLE_RAD_PER_S = (540 * Math.PI) / 180;
@@ -238,6 +261,7 @@ interface SimLaunchBird {
   state?: string;
   young?: boolean;
   single?: boolean;
+  circled?: boolean;
   speciesId: string;
   sex?: 'hen' | 'rooster';
 }
@@ -251,6 +275,8 @@ interface FlightContext {
   hunterX: number; hunterZ: number; rng: () => number;
   /** Actual rise classification, frozen before a queued bird launches. */
   slopeApproach?: SlopeApproach | null;
+  /** The fall line under the covey (world bearing), for birds that pour downhill. */
+  downhill?: number;
 }
 
 interface Slot {
@@ -296,6 +322,19 @@ interface Slot {
   /** A wounded bird on the ground, running from the dog. */
   running?: boolean;
   runYaw?: number;
+  /** A runner's stride phase, radians, advanced by the ground it covers. */
+  stride?: number;
+  /** A dead bird's first strike: it has bounced (or splashed) once. */
+  struck?: boolean;
+  /** Where and when (field clock, ms) the hunter last had this bird in sight,
+   * and where its glide was taking it (marks.ts glideMark). */
+  sighted?: { ms: number; x: number; z: number; goingX: number; goingZ: number };
+  /** A Hun covey flying its loop back round to set down together. */
+  circling?: boolean;
+  /** It rose as a relit single: its next escape is for good, never a mark. */
+  launchedSingle?: boolean;
+  /** The wings as they were when the bird was hit: the collapse eases from them. */
+  collapseFrom?: { left: THREE.Quaternion; right: THREE.Quaternion; ms: number };
   carryPose?: { elapsed: number; rotation: THREE.Quaternion };
   /** Taken from the dog: the bird follows the hunter's grip until stowed. */
   inHand?: { position: THREE.Vector3; quaternion: THREE.Quaternion; blend: number };
@@ -313,6 +352,8 @@ interface Slot {
   tailMesh?: THREE.Mesh;
   /** Pheasant legs: hanging on the jump, tucked aft in flight. */
   legMesh?: THREE.Mesh;
+  /** A runner's far leg, so its legs can stride in turn. */
+  legMeshR?: THREE.Mesh;
   visualScale: number;
   spanM: number;
 }
@@ -320,6 +361,9 @@ interface Slot {
 interface BirdGeometrySet {
   tail?: THREE.BufferGeometry;
   legs?: THREE.BufferGeometry;
+  /** Each leg on its own, for a runner's stride. */
+  legL?: THREE.BufferGeometry;
+  legR?: THREE.BufferGeometry;
   body: THREE.BufferGeometry;
   wingL: THREE.BufferGeometry;
   wingR: THREE.BufferGeometry;
@@ -447,7 +491,24 @@ export class BirdsSystem implements Subsystem {
   private riseMs = 0;
   /** Spatial rises still holding birds in the cover, in flush order: each
    * covey's planned waves (game/riseScore.ts) and how many have risen. */
-  private rises: { speciesId: string; waves: RiseWave[]; next: number }[] = [];
+  private rises: { speciesId: string; waves: RiseWave[]; next: number; circleBack?: boolean; curl?: number }[] = [];
+  /** Rock, trees, buildings and ponds the hunter and dog respect: no miss sets down in them. */
+  private landingObstacleIndex?: ObstacleIndex;
+  private obstacleCtx?: Ctx;
+  private readonly simPoint = { x: 0, y: 0 };
+  /** Where the hunter watched misses go down (game/marks.ts). */
+  private readonly markBook = new MarkBook();
+  /** Capture only: each hit's feather puff, a feather's size on screen. */
+  private readonly hitLog: { simId: number; fieldMs: number; rangeM: number; featherPx: number }[] = [];
+  /** Capture only: each shot bird's strike and when its thump would be heard. */
+  private readonly strikeLog: { simId: number; fieldMs: number; surface: ImpactSurface; rangeM: number; thumpDelayMs: number; x: number; z: number }[] = [];
+  /** Field clock, ms: every tick, rise or not. */
+  private fieldMs = 0;
+  private readonly sightProbe = new THREE.Vector3();
+  /** Crown of the standing cover over the ground at a world point (m): what
+   * hides a bird going in. Read lazily (the cover registers after the birds). */
+  private coverCrown?: (x: number, z: number) => number;
+  private coverCtx?: Ctx;
   /** Sky clock shared by every covey: the wave rule is global. */
   private skyMs = 0;
   private lastWaveMs = -Infinity;
@@ -466,6 +527,9 @@ export class BirdsSystem implements Subsystem {
   private lastFlinchMs = -Infinity;
   /** The screen a leaving bird must drive off (its height in px). */
   private viewHeight = () => 810;
+  private ponds?: { x: number; z: number; rx: number; rz: number }[];
+  private readonly groundSample: GroundSample = { height: 0, slope: 0, gradeX: 0, gradeZ: 0, rockiness: 0, vegetation: 0, moisture: 0 };
+  private readonly collapseTo = new THREE.Quaternion();
   private departProbe = new THREE.Vector3();
   private departAxis = new THREE.Vector3();
   private departMatrix = new THREE.Matrix4();
@@ -475,8 +539,9 @@ export class BirdsSystem implements Subsystem {
   private featherGeo?: THREE.BufferGeometry;
   private featherMat?: THREE.PointsMaterial;
   private featherPoints?: THREE.Points;
-  private featherPos = new Float32Array(14 * 3);
-  private featherVel = new Float32Array(14 * 3);
+  private featherPos = new Float32Array(FEATHER_PUFF * 3);
+  private featherVel = new Float32Array(FEATHER_PUFF * 3);
+  private featherCol = new Float32Array(FEATHER_PUFF * 3);
   private featherMs = -1;
   /** Body feathers that drift down after a hit and lie where they land. */
   private loose?: FeatherDrift;
@@ -494,6 +559,8 @@ export class BirdsSystem implements Subsystem {
       ? huntStreamSeed(parseHuntSeed(location.search) ?? FALCONRY_PRACTICE.seed, RISE_SEED) : RISE_SEED;
     this.listener = ctx.camera;
     this.coverEvents = ctx.events;
+    this.obstacleCtx = ctx;
+    this.coverCtx = ctx;
     const signal = this.lifetime.signal;
     ctx.events.addEventListener('pause', ((event: CustomEvent<boolean>) => {
       if (event.detail) this.stopLaunchSounds();
@@ -625,6 +692,22 @@ export class BirdsSystem implements Subsystem {
           hunterX: this.hunterX,
           hunterZ: this.hunterZ,
         }),
+        /** Rise review's handler: blow the whistle (cast, dead bird, whoa,
+         * release) toward where the camera looks, as the player would. */
+        command: (kind: 'cast' | 'dead' | 'whoa' | 'release') => {
+          ctx.events.dispatchEvent(Object.assign(new Event('hunt-action'), { detail: kind }));
+        },
+        /** Where escaping birds set down, world metres, for the review's marks. */
+        landings: () => this.slots.filter(slot => (slot.status === 'flying' || slot.status === 'departing') && slot.line?.target)
+          .map(slot => ({ simId: slot.simId, x: slot.line!.target!.x, z: slot.line!.target!.z })),
+        /** Hits: the feather puff, each feather's size on screen. */
+        hits: () => this.hitLog.map(hit => ({ ...hit })),
+        /** Shot birds striking the ground, and when the thump would arrive. */
+        strikes: () => this.strikeLog.map(strike => ({ ...strike })),
+        /** The field clock (ms), the strike log's clock. */
+        fieldMs: () => this.fieldMs,
+        /** The hunter's marks: where he watched misses go down. */
+        marks: () => this.markBook.marks.map(mark => ({ ...mark, birdIds: [...mark.birdIds], freshness: this.markBook.freshness(mark, this.fieldMs) })),
         /** Rise review's shooting hunter: the capture never fires the real
          * gun, so the tool reports a double's shells and reload here and the
          * wave rule reads them as it reads the gun (null restores the gun). */
@@ -738,13 +821,15 @@ export class BirdsSystem implements Subsystem {
     const wingL = wing(-1), wingR = wing(1);
     const tailGeo = species.id === 'ringneck' ? buildPheasantTail(hen) : undefined;
     const legsGeo = species.id === 'ringneck' ? buildPheasantLegs(hen) : buildBirdLegs(species.id);
+    const legSide = (side: -1 | 1) => species.id === 'ringneck' ? buildPheasantLegs(hen, [side]) : buildBirdLegs(species.id, [side]);
+    const legL = legSide(-1), legR = legSide(1);
     addCarriedBirdPoses(body, wingL, wingR, species.id);
     if (tailGeo) this.geos.push(tailGeo);
-    if (legsGeo) this.geos.push(legsGeo);
+    if (legsGeo) this.geos.push(legsGeo, legL, legR);
     this.geos.push(body, wingL, wingR);
     wingR.computeBoundingBox();
     const spanM = 2 * (0.03 * shape.bodyWidth + wingR.boundingBox!.max.x);
-    this.speciesGeos.set(`${species.id}${hen ? ':hen' : ''}`, { body, wingL, wingR, tail: tailGeo, legs: legsGeo, shape, spanM });
+    this.speciesGeos.set(`${species.id}${hen ? ':hen' : ''}`, { body, wingL, wingR, tail: tailGeo, legs: legsGeo, legL, legR, shape, spanM });
   }
 
   private applySpeciesAppearance(
@@ -776,7 +861,16 @@ export class BirdsSystem implements Subsystem {
       slot.legMesh.geometry = geometry.legs;
       slot.legMesh.visible = true;
       slot.legMesh.rotation.set(pheasantLegTuck(0), 0, 0);
-    } else if (slot.legMesh) slot.legMesh.visible = false;
+      if (!slot.legMeshR) {
+        slot.legMeshR = new THREE.Mesh(geometry.legR ?? geometry.legs, this.mat!);
+        slot.root.add(slot.legMeshR);
+      }
+      slot.legMeshR.position.set(0, hips[0], hips[1]);
+      slot.legMeshR.visible = false;
+    } else {
+      if (slot.legMesh) slot.legMesh.visible = false;
+      if (slot.legMeshR) slot.legMeshR.visible = false;
+    }
     slot.species = species;
     slot.sex = sex;
     slot.body.geometry = geometry.body;
@@ -915,8 +1009,9 @@ export class BirdsSystem implements Subsystem {
   private buildFeathers(ctx: Ctx): void {
     this.featherGeo = new THREE.BufferGeometry();
     this.featherGeo.setAttribute('position', new THREE.BufferAttribute(this.featherPos, 3));
+    this.featherGeo.setAttribute('color', new THREE.BufferAttribute(this.featherCol, 3));
     this.featherMat = new THREE.PointsMaterial({
-      color: P.strawPale,
+      vertexColors: true,
       size: 0.085,
       sizeAttenuation: true,
       transparent: true,
@@ -938,22 +1033,36 @@ export class BirdsSystem implements Subsystem {
     ctx.scene.add(this.featherPoints);
   }
 
-  private burstFeathers(slot: Slot): void {
-    for (let i = 0; i < this.featherPos.length / 3; i++) {
+  /** The hit's puff of feathers: the species' own body colours, sized for
+   * the range the way the bird is, so it reads as far off as the bird does. */
+  private burstFeathers(slot: Slot, rng: () => number): void {
+    const camera = this.listener?.position;
+    const distance = camera ? Math.hypot(slot.x - camera.x, slot.y - camera.y, slot.z - camera.z) : 25;
+    const enlarge = this.flightScale(slot.species.id, slot) / restingBirdScale(birdFamilyFor(slot.species.id));
+    const puff = featherPuffSize(distance, enlarge, this.viewHeight());
+    const tones = featherTones(slot.species.id, slot.sex);
+    for (let i = 0; i < FEATHER_PUFF; i++) {
       const j = i * 3;
       this.featherPos[j] = slot.x;
       this.featherPos[j + 1] = slot.y;
       this.featherPos[j + 2] = slot.z;
-      const azimuth = this.riseRng() * Math.PI * 2;
-      const speed = 0.7 + this.riseRng() * 1.8;
-      this.featherVel[j] = Math.cos(azimuth) * speed;
-      this.featherVel[j + 1] = 0.5 + this.riseRng() * 1.7;
-      this.featherVel[j + 2] = Math.sin(azimuth) * speed;
+      const azimuth = rng() * Math.PI * 2;
+      const speed = (0.7 + rng() * 1.8) * puff.spread;
+      this.featherVel[j] = Math.cos(azimuth) * speed + slot.vxW * .25;
+      this.featherVel[j + 1] = (0.5 + rng() * 1.7) * puff.spread;
+      this.featherVel[j + 2] = Math.sin(azimuth) * speed + slot.vzW * .25;
+      const tone = tones[i % tones.length];
+      this.featherCol[j] = tone.r; this.featherCol[j + 1] = tone.g; this.featherCol[j + 2] = tone.b;
     }
+    if (this.featherMat) this.featherMat.size = puff.size;
+    if (this.frozen) this.hitLog.push({ simId: slot.simId, fieldMs: Math.round(this.fieldMs), rangeM: +distance.toFixed(1),
+      featherPx: +(puff.size * this.viewHeight() / 2 / Math.max(1, distance)).toFixed(1) });
     this.featherMs = 0;
     if (this.featherPoints) this.featherPoints.visible = true;
     const position = this.featherGeo?.getAttribute('position') as THREE.BufferAttribute | undefined;
     if (position) position.needsUpdate = true;
+    const color = this.featherGeo?.getAttribute('color') as THREE.BufferAttribute | undefined;
+    if (color) color.needsUpdate = true;
   }
 
   /* ----------------------------- sim tick ---------------------------- */
@@ -972,6 +1081,7 @@ export class BirdsSystem implements Subsystem {
   private tickBirds(dtMs: number): void {
     const dt = dtMs / 1000;
     this.riseMs += dtMs;
+    this.fieldMs += dtMs;
 
     // 1. Detect newly flushed sim birds -> stage a rise (covey order).
     const simBirds = this.hunt.huntState().birds;
@@ -980,6 +1090,8 @@ export class BirdsSystem implements Subsystem {
       if (bird.state === 'hidden') this.staged.delete(bird.id);
       if (bird.state !== 'flushed' || this.staged.has(bird.id)) continue;
       this.staged.add(bird.id);
+      // A marked bird rising again is the follow-up: its mark is settled.
+      this.markBook.release(bird.id);
       const covey = newCoveys.get(bird.coveyId) ?? [];
       covey.push(bird); newCoveys.set(bird.coveyId, covey);
     }
@@ -987,14 +1099,14 @@ export class BirdsSystem implements Subsystem {
       for (const covey of newCoveys.values()) {
         this.stageRise(covey);
         const flight: FlightContext = { escX:this.escX,escZ:this.escZ,rightX:this.rightX,rightZ:this.rightZ,
-          hunterX:this.hunterX,hunterZ:this.hunterZ,rng:this.riseRng };
+          hunterX:this.hunterX,hunterZ:this.hunterZ,rng:this.riseRng, downhill: this.fallLineUnder(covey) };
         // The bird nearest the hunter's boots goes first; the rest wait their wave.
         const boots = this.hunt.huntState().hunterPos;
         const speciesId = this.riseSpecies(covey);
         const waves = planRise(covey.map(bird => ({ id: bird.id, distance: Math.hypot(bird.pos.x - boots.x, bird.pos.y - boots.y) })),
           speciesId, this.riseRng);
         for (const bird of covey) this.pendingFlights.set(bird.id, { ...flight, slopeApproach: this.hunt.riseSlopeApproach(bird.id) });
-        this.rises.push({ speciesId, waves, next: 0 });
+        this.rises.push({ speciesId, waves, next: 0, circleBack: this.circlesBack(covey, speciesId) });
         this.erupt(covey, new Set(waves[0]?.ids ?? []), speciesId);
       }
     }
@@ -1019,6 +1131,8 @@ export class BirdsSystem implements Subsystem {
           const dx = this.crippleWorld.x - s.x, dz = this.crippleWorld.z - s.z;
           s.running = (bird.woundRunMs ?? 0) > 0 && dx * dx + dz * dz > 1e-6;
           if (s.running) s.runYaw = Math.atan2(dx, dz);
+          // Its legs keep pace with the ground it covers: a stride, not a slide.
+          s.stride = ((s.stride ?? 0) + Math.hypot(dx, dz) / strideLength(s.species.id) * Math.PI) % (Math.PI * 2);
           s.x = this.crippleWorld.x; s.z = this.crippleWorld.z;
           s.y = this.terrain.heightAt(s.x, s.z) + .06;
         }
@@ -1043,11 +1157,24 @@ export class BirdsSystem implements Subsystem {
           if (held && reaction.collapsed) {
             s.gliding = false;
             s.fallPose = { startMs: s.airMs + dtMs, rotation: s.root.rotation.clone() };
+            this.beginCollapse(s);
           }
         }
         s.airMs += dtMs;
         const g = this.terrain.heightAt(s.x, s.z);
         if (s.y <= g + 0.06) {
+          const surface = this.fallSurface(s.x, s.z), strike = -s.vyW;
+          const dead = !s.reaction || s.reaction.kind === 'fold' || !!s.reaction.collapsed;
+          if (!s.struck) this.strike(s, surface);
+          if (!s.struck && dead && surface === 'ground' && strike > BOUNCE_MIN_MPS) {
+            // Dead weight on hard ground: it bounces once, then lies still.
+            s.struck = true;
+            s.y = g + .07;
+            s.vyW = Math.min(BOUNCE_MAX_MPS, strike * BOUNCE_SHARE);
+            s.vxW *= .45; s.vzW *= .45;
+            continue;
+          }
+          s.struck = true;
           s.y = g + 0.06;
           s.status = 'grounded';
           s.gliding = false;
@@ -1056,7 +1183,6 @@ export class BirdsSystem implements Subsystem {
           s.fallPose ??= { startMs: s.airMs, rotation: s.root.rotation.clone() };
           s.fallPose.groundedMs = 0;
           this.hunt.recordFallWorld(s.simId, s.x, s.z);
-          playThud();
         }
         continue;
       }
@@ -1067,7 +1193,16 @@ export class BirdsSystem implements Subsystem {
       if (departing) s.departureMs = (s.departureMs ?? 0) + dtMs;
       s.airMs += dtMs;
       const flight = s.flight!;
-      if (s.line) stepFlightLine(s.line, s, dt, (x, z) => this.terrain.heightAt(x, z));
+      if (s.line) {
+        stepFlightLine(s.line, s, dt, (x, z) => this.terrain.heightAt(x, z));
+        // Out of the shot a bird stops dodging and lines out at its full pace,
+        // so it is past the leaving range and off the cap sooner; a bird easing
+        // into its landing keeps the pace its line gives it.
+        const out = THREE.MathUtils.smoothstep(Math.hypot(s.x - flight.hunterX, s.z - flight.hunterZ), RISE_RANGE_M, RISE_RANGE_M + 12);
+        const into = s.line.target ? THREE.MathUtils.clamp((Math.hypot(s.line.target.x - s.x, s.line.target.z - s.z) - 12) / 20, 0, 1) : 1;
+        const boost = 1 + (LEAVING_SPEED_MULT - 1) * out * into;
+        s.vxW *= boost; s.vzW *= boost;
+      }
       const hawk = this.hunt.falconry;
       if (!departing && hawk?.targetId === s.simId && (hawk.phase === 'launching' || hawk.phase === 'chasing')) evadeGoshawk(s, s.simId, hawk.position);
       this.updateBank(s, dt);
@@ -1084,8 +1219,16 @@ export class BirdsSystem implements Subsystem {
           s.status = 'done';
           s.root.visible = false;
           if (!departing) this.hunt.resolveBird(s.simId, 'escaped', { x: s.x, z: s.z });
+          this.markLanding(s, departing && s.line?.target ? s.line.target : s);
           continue;
         }
+      }
+      // What the hunter sees of a bird going down, a few times a second: a
+      // miss he watches go in is marked.
+      const goingDown = s.line?.target ? Math.hypot(s.line.target.x - s.x, s.line.target.z - s.z) < 45 : s.y - g < 3 && s.airMs > LAND_MIN_AIR_MS;
+      if (goingDown && (this.fieldMs / dtMs | 0) % 2 === 0 && this.sees(s)) {
+        const going = glideMark(s, s.vxW, s.vyW, s.vzW, g);
+        s.sighted = { ms: this.fieldMs, x: s.x, z: s.z, goingX: going.x, goingZ: going.z };
       }
       if (departing) {
         if (this.leftTheScreen(s, flight)) { s.status = 'done'; s.root.visible = false; }
@@ -1116,6 +1259,12 @@ export class BirdsSystem implements Subsystem {
         this.riseActive = false; // the sky settled
         this.hunt.finishRise();
       }
+    }
+    // Between rises a mark keeps only birds still down where he saw them go:
+    // a miss the field did not keep, or one put up again, settles its mark.
+    if (!this.riseActive && this.markBook.marks.length && (this.fieldMs / dtMs | 0) % 15 === 0) {
+      this.markBook.prune(id => simBirds.find(bird => bird.id === id)?.state === 'hidden');
+      this.markBook.forget(this.fieldMs);
     }
 
     // 4. Debris clock.
@@ -1199,10 +1348,10 @@ export class BirdsSystem implements Subsystem {
    */
   private flightContextForSpecies(base: FlightContext, species: SpeciesConfig): FlightContext {
     if (species.flightDirection !== 'downhill') return base;
-    const slope = this.hunt.areaConfig().slope;
-    if (slope === undefined) return base;
-    const downhillX = -Math.cos(slope);
-    const downhillZ = -Math.sin(slope);
+    const downhill = this.downhillOf(base);
+    if (downhill === undefined) return base;
+    const downhillX = Math.cos(downhill);
+    const downhillZ = Math.sin(downhill);
     const escapeX = base.escX * 0.52 + downhillX * 0.48;
     const escapeZ = base.escZ * 0.52 + downhillZ * 0.48;
     const length = Math.hypot(escapeX, escapeZ) || 1;
@@ -1217,6 +1366,25 @@ export class BirdsSystem implements Subsystem {
     };
   }
 
+  /**
+   * Where the ground falls away under a covey that pours downhill: the land's
+   * own fall line (into the draw, off the spur), read wider on a flat bench,
+   * on a ground with an uphill at all. Undefined for any other covey.
+   */
+  private fallLineUnder(covey: readonly SimLaunchBird[]): number | undefined {
+    if (this.hunt.areaConfig().slope === undefined) return undefined;
+    if (!covey.some(bird => getSpecies(bird.speciesId).flightDirection === 'downhill')) return undefined;
+    const ground = (x: number, z: number) => this.terrain.heightAt(x, z);
+    return (fallLine(this.originX, this.originZ, ground) ?? fallLine(this.originX, this.originZ, ground, [40, 70]))?.bearing;
+  }
+
+  /** The way down for a downhill flier: the covey's fall line, else the ground's. */
+  private downhillOf(flight: FlightContext): number | undefined {
+    if (flight.downhill !== undefined) return flight.downhill;
+    const slope = this.hunt.areaConfig().slope;
+    return slope === undefined ? undefined : slope + Math.PI;
+  }
+
   /** The species a covey's rise follows: most of its birds. A bycatch bird
    * sharing the group still flies its own way inside that score. */
   private riseSpecies(covey: readonly { id: number; speciesId: string }[]): string {
@@ -1229,19 +1397,19 @@ export class BirdsSystem implements Subsystem {
 
   /** Birds holding the sky against the next wave (game/riseScore.ts holdsSky):
    * live, inside effective range of where the hunter stands now, and within
-   * their wave's few seconds; and every live target in the shot (inTheShot),
-   * which the cap counts whatever its wave's clock. */
-  private birdsInTheSky(): { holding: number; inShot: number } {
+   * their wave's few seconds; and every bird the cap counts (countsAgainstCap:
+   * live targets and leaving birds not yet 55 m off), whatever their clocks. */
+  private birdsInTheSky(): { holding: number; inSky: number } {
     const boots = this.hunt.huntState().hunterPos;
     const gun = this.hunt.simToWorld(boots.x, boots.y, { x: 0, z: 0 });
-    let holding = 0, inShot = 0;
+    let holding = 0, inSky = 0;
     for (const slot of this.slots) {
       const bird = { status: slot.status, rangeM: Math.hypot(slot.x - gun.x, slot.z - gun.z),
         sinceLaunchMs: this.skyMs - (slot.launchedSkyMs ?? -Infinity) };
-      if (inTheShot(bird)) inShot++;
+      if (countsAgainstCap(bird)) inSky++;
       if (holdsSky(bird)) holding++;
     }
-    return { holding, inShot };
+    return { holding, inSky };
   }
 
   /** The gun as the sky reads it; a fixture or tool without one reads loaded. */
@@ -1262,7 +1430,7 @@ export class BirdsSystem implements Subsystem {
     this.skyMs += dtMs;
     // Only a covey still in the cover cares when the sky cleared.
     if (this.rises.length === 0) { this.skyClearSinceMs = null; return; }
-    let { holding: inPlay, inShot } = this.birdsInTheSky();
+    let { holding: inPlay, inSky } = this.birdsInTheSky();
     if (inPlay > 0) this.skyClearSinceMs = null;
     else this.skyClearSinceMs ??= this.skyMs;
     const gun = this.riseGun();
@@ -1270,7 +1438,7 @@ export class BirdsSystem implements Subsystem {
       const score = riseScoreFor(rise.speciesId);
       while (rise.next < rise.waves.length) {
         const wave = rise.waves[rise.next];
-        const sky = { nowMs: this.skyMs, inPlay, inShot, lastWaveMs: this.lastWaveMs, clearSinceMs: this.skyClearSinceMs, gun };
+        const sky = { nowMs: this.skyMs, inPlay, inSky, lastWaveMs: this.lastWaveMs, clearSinceMs: this.skyClearSinceMs, gun };
         if (!waveMayRise(wave, score, sky, rise.next === 0)) break;
         // A queued bird can only leave the queue by rising (or by the hunt
         // ending around it); wave-mates wait together for room in the pool.
@@ -1285,17 +1453,17 @@ export class BirdsSystem implements Subsystem {
         const close = Math.max(...live.map(id => this.closenessOf(simBirds.find(bird => bird.id === id)!)));
         const lanes = this.laneByBird(live, simBirds, this.planLanes(live, simBirds, score.laneStep * (1 + CLOSE_FAN_WIDEN * close)));
         const straight = this.straightaways(live, lanes);
-        // A Hun covey curves as a bunch.
-        const curlSign = rise.speciesId === 'hun' ? (this.riseRng() < .5 ? -1 : 1) : undefined;
+        // A Hun covey curves as a bunch (and loops round together when it circles back).
+        const curlSign = rise.speciesId === 'hun' ? (rise.circleBack ? rise.curl ??= (this.riseRng() < .5 ? -1 : 1) : (this.riseRng() < .5 ? -1 : 1)) : undefined;
         live.forEach((id, k) => {
           const slot = this.slots.find(candidate => candidate.status === 'idle' || candidate.status === 'done')
             ?? this.slots.find(candidate => candidate.status === 'departing')!;
           const lane = score.laneStep > 0 ? lanes.get(id) : undefined;
           this.launchBird(slot, simBirds.find(bird => bird.id === id)!, k, live.length, lane, doctrine,
-            { curlSign, minOffSight: straight.has(id) ? undefined : STRAIGHTAWAY_LIMIT });
+            { curlSign, minOffSight: straight.has(id) || rise.circleBack ? undefined : STRAIGHTAWAY_LIMIT, circleBack: rise.circleBack });
         });
         for (const slot of this.slots) if (live.includes(slot.simId) && (slot.status === 'waiting' || slot.status === 'flying')) slot.launchedSkyMs = this.skyMs;
-        inPlay += live.length; inShot += live.length;
+        inPlay += live.length; inSky += live.length;
         this.lastWaveMs = this.skyMs;
         this.skyClearSinceMs = null;
         this.gunEmptied = false;
@@ -1313,9 +1481,16 @@ export class BirdsSystem implements Subsystem {
     const base = this.pendingFlights.get(ids[0]);
     if (!lead || !base) return waveLanes(ids.length, step, this.riseRng);
     const species = getSpecies(lead.speciesId), flight = this.flightContextForSpecies(base, species);
-    const slope = this.hunt.areaConfig().slope;
-    if (species.flightDirection === 'downhill' && slope !== undefined) {
-      return lanesOffTheHill(waveLanes(ids.length, step, this.riseRng), Math.atan2(flight.escZ, flight.escX), slope);
+    const downhill = this.downhillOf(flight);
+    if (species.flightDirection === 'downhill' && downhill !== undefined) {
+      const uphill = downhill + Math.PI, escape = Math.atan2(flight.escZ, flight.escX);
+      const poured = lanesOffTheHill(waveLanes(ids.length, step, this.riseRng), escape, uphill);
+      // With the hunter below the covey the wave swings wide of him, down and across.
+      const boots = this.hunt.huntState().hunterPos;
+      const gun = this.hunt.simToWorld(boots.x, boots.y, { x: 0, z: 0 });
+      this.hunt.simToWorld(lead.pos.x, lead.pos.y, this.w2);
+      return lanesClearOfTheGun(poured, escape, uphill, Math.atan2(gun.z - this.w2.z, gun.x - this.w2.x),
+        Math.hypot(gun.x - this.w2.x, gun.z - this.w2.z), PASS_CLEAR_M, this.riseRng() < .5 ? -1 : 1);
     }
     return waveLanes(ids.length, step, this.riseRng, this.escapeOffSight(ids, simBirds, flight), this.sideInTheShot(ids, simBirds));
   }
@@ -1400,7 +1575,7 @@ export class BirdsSystem implements Subsystem {
    * clock; `lane` is its wave lane, `plan` its wave's line constraints.
    */
   private launchBird(slot: Slot, sim: SimLaunchBird, index: number, waveN: number, lane: WaveLane | undefined,
-    doctrine: ReturnType<typeof huntingDoctrine>, plan: { minOffSight?: number; curlSign?: number } = {}): void {
+    doctrine: ReturnType<typeof huntingDoctrine>, plan: { minOffSight?: number; curlSign?: number; circleBack?: boolean } = {}): void {
     const id = sim.id;
     slot.launchSound?.stop();
     slot.launchSound = undefined;
@@ -1435,8 +1610,12 @@ export class BirdsSystem implements Subsystem {
       young: !!sim.young, doctrine: doctrine.flight,
       slope: species.flightDirection === 'downhill' ? speciesFlight.slopeApproach ?? null : null,
       curlSign: plan.curlSign, minOffSight: plan.minOffSight, lean: lane ? Math.sign(lane.offset) : undefined, mayLand: !sim.single,
+      wild: !!sim.single, circleBack: plan.circleBack && !sim.single, landable: this.landable, fan: this.pourFan(speciesFlight, species),
       ground: (x, z) => this.terrain.heightAt(x, z), cover: this.hunt.coverPatches?.() ?? [], rng,
     });
+    slot.circling = !!slot.line.target && !!plan.circleBack && !sim.single;
+    slot.launchedSingle = !!sim.single;
+    slot.sighted = undefined;
     slot.vxW = Math.cos(slot.line.bearing) * .5;
     slot.vzW = Math.sin(slot.line.bearing) * .5;
     slot.vyW = 0;
@@ -1457,6 +1636,12 @@ export class BirdsSystem implements Subsystem {
     slot.status = waiting ? 'waiting' : 'flying';
     slot.root.visible = !waiting;
     if (!waiting) this.disturbLaunchCover(slot);
+  }
+
+  /** A downhill flier's lines stay on or below the contour of its fall line. */
+  private pourFan(flight: FlightContext, species: SpeciesConfig): { centre: number; half: number } | undefined {
+    const downhill = species.flightDirection === 'downhill' ? this.downhillOf(flight) : undefined;
+    return downhill === undefined ? undefined : { centre: downhill, half: Math.PI / 2 - BELOW_CONTOUR };
   }
 
   /** A bird out of the shot has driven off the screen: out of the camera's
@@ -1608,8 +1793,9 @@ export class BirdsSystem implements Subsystem {
           if (kind === 'fold') s.fallPose = { startMs: s.airMs, rotation: s.root.rotation.clone() };
           this.loose?.emit(s, { x: s.vxW, y: s.vyW, z: s.vzW }, featherCount(kind, shot?.offset ?? 0),
             featherTones(s.species.id, s.sex), rng);
+          if (kind === 'fold') this.beginCollapse(s);
+          this.burstFeathers(s, rng);
         }
-        this.burstFeathers(s);
         return true;
       }
     }
@@ -1668,9 +1854,10 @@ export class BirdsSystem implements Subsystem {
     s.reaction.collapsed = true;
     s.gliding = false;
     s.fallPose = { startMs: s.airMs, rotation: s.root.rotation.clone() };
+    this.beginCollapse(s);
     const rng = mulberry32((this.riseSeed ^ Math.imul(s.simId + 7, 0x9e3779b1) ^ Math.imul(this.riseSeq + 3, 0x85ebca6b)) >>> 0);
     this.loose?.emit(s, { x: s.vxW, y: s.vyW, z: s.vzW }, featherCount('fold', shot?.offset ?? 0), featherTones(s.species.id, s.sex), rng);
-    this.burstFeathers(s);
+    this.burstFeathers(s, rng);
     return true;
   }
 
@@ -1690,6 +1877,20 @@ export class BirdsSystem implements Subsystem {
 
   isRiseActive(): boolean {
     return this.riseActive;
+  }
+
+  /** The hunter's marks: where he watched misses go down (game/marks.ts). */
+  marks(): readonly HunterMark[] { return this.markBook.marks; }
+
+  /** The mark he made last, and how sure of it he still is (1 fresh, 0 forgotten). */
+  latestMark(): { mark: HunterMark; freshness: number } | null {
+    const mark = this.markBook.latest();
+    return mark ? { mark, freshness: this.markBook.freshness(mark, this.fieldMs) } : null;
+  }
+
+  /** The mark a cast the way he faces (a world bearing) means, within `reach` metres. */
+  aimedMark(x: number, z: number, facing: number, reach: number): HunterMark | null {
+    return this.markBook.aimedAt({ x, z }, facing, reach);
   }
 
   /** A marking dog's visual attention: prioritize its falling birds, otherwise
@@ -1884,6 +2085,193 @@ export class BirdsSystem implements Subsystem {
     slot.bankYaw = yaw;
   }
 
+  /**
+   * Is this bird in the hunter's sight? In his view (the screen, with the
+   * corner of his eye), within marking range, and not behind the land or the
+   * standing cover between him and it. Tiny on a phone or not: a hunter's
+   * eye follows a bird down far past what the screen can draw.
+   */
+  private sees(slot: Slot): boolean {
+    const camera = this.listener as THREE.PerspectiveCamera | undefined;
+    if (!camera?.isPerspectiveCamera) return false;
+    const eye = camera.position;
+    if (Math.hypot(slot.x - eye.x, slot.z - eye.z) > MARK_RANGE_M) return false;
+    const p = this.sightProbe.set(slot.x, slot.y, slot.z).project(camera);
+    if (p.z > 1 || p.z < -1 || Math.abs(p.x) > 1.1 || Math.abs(p.y) > 1.1) return false;
+    return this.clearSight(eye, slot.x, slot.y, slot.z);
+  }
+
+  /** Nothing between the eye and a point: not the land, and past the cover
+   * he stands in, not the crown of the standing cover. */
+  private clearSight(eye: THREE.Vector3Like, x: number, y: number, z: number): boolean {
+    const dx = x - eye.x, dy = y - eye.y, dz = z - eye.z, length = Math.hypot(dx, dz);
+    const crown = this.coverCrownAt();
+    for (let s = 2; s < length - .6; s += Math.max(1.2, length / 80)) {
+      const k = s / length, px = eye.x + dx * k, pz = eye.z + dz * k, py = eye.y + dy * k;
+      const ground = this.terrain.heightAt(px, pz);
+      if (py < ground) return false;
+      if (s > 6 && py < ground + crown(px, pz)) return false;
+    }
+    return true;
+  }
+
+  /** The standing cover's crown height sampler for this ground: the cover
+   * system's own where it has one; sand plum thickets on the Red Plains,
+   * from the same plum runs the thickets grow on; grass elsewhere. */
+  private coverCrownAt(): (x: number, z: number) => number {
+    if (this.coverCrown) return this.coverCrown;
+    let cover: { launchHeightAt?(x: number, z: number): number } | undefined;
+    try { cover = this.coverCtx?.get('grass') as typeof cover; } catch { cover = undefined; }
+    const area = this.hunt.areaConfig();
+    let crown: (x: number, z: number) => number;
+    if (cover?.launchHeightAt) crown = (x, z) => cover!.launchHeightAt!(x, z);
+    else if (area.id === 'quail-fields' && this.hunt.worldToSim) {
+      crown = (x, z) => {
+        const at = this.hunt.worldToSim(x, z, this.simPoint);
+        const plum = quailPlumAt(at.x, at.y) * quailCoverAt(area, at.x, at.y);
+        return plum > .35 ? 1.7 : plum > .15 ? 1 : .45;
+      };
+    } else crown = () => .4;
+    // The cover never moves: remember it on a 2 m grid.
+    const memo = new Map<number, number>();
+    this.coverCrown = (x, z) => {
+      const key = Math.round(x / 2) * 65536 + Math.round(z / 2);
+      let height = memo.get(key);
+      if (height === undefined) {
+        if (memo.size > 200_000) memo.clear();
+        height = crown(Math.round(x / 2) * 2, Math.round(z / 2) * 2); memo.set(key, height);
+      }
+      return height;
+    };
+    return this.coverCrown;
+  }
+
+  /**
+   * A miss set down. If the hunter watched it go in, he marks it: where it
+   * touched down if he saw it to the ground, else where its glide was taking
+   * it when the cover hid it (marks.ts glideMark); only a bird the field keeps
+   * there to hunt (marks.ts landingHolds), and never a relit single's last
+   * escape.
+   */
+  private markLanding(slot: Slot, landing: { x: number; z: number }): void {
+    const seen = slot.sighted;
+    // (A bird still gliding in may already be relit where it is going: the
+    // rise settles without waiting for birds out of the shot.)
+    if (!seen || this.fieldMs - seen.ms > MARK_SIGHT_MS || slot.launchedSingle) return;
+    const area = this.hunt.areaConfig();
+    const at = this.hunt.worldToSim?.(landing.x, landing.z, { x: 0, y: 0 });
+    if (!at || !landingHolds(slot.species.id, at, area.world, area.patches, slot.circling)) return;
+    const toGround = this.fieldMs - seen.ms <= 70;
+    const spot = toGround ? { x: slot.x, z: slot.z } : { x: seen.goingX, z: seen.goingZ };
+    const mark = this.markBook.add(slot.simId, spot, Math.atan2(slot.vzW, slot.vxW), slot.species.id, toGround, this.fieldMs, !!slot.circling);
+    this.coverEvents?.dispatchEvent(new CustomEvent('hunt-mark', { detail: mark }));
+  }
+
+  /**
+   * Does this Hun covey circle back? The simulation's rule (game/huntSimulation
+   * finishRise): a Hun covey that flushed wild, beyond the gun, on a ground
+   * whose doctrine allows it. The presentation flies the loop and sets it down.
+   */
+  private circlesBack(covey: readonly SimLaunchBird[], speciesId: string): boolean {
+    if (speciesId !== 'hun' || !huntingDoctrine(this.hunt.areaConfig().id).circleBack) return false;
+    if (!covey.every(bird => bird.speciesId === 'hun' && !bird.single && !bird.circled)) return false;
+    const info = this.hunt.lastFlushInfo?.();
+    const boots = this.hunt.huntState().hunterPos;
+    const distance = info && covey.some(bird => info.ids.includes(bird.id)) ? info.distPx
+      : Math.min(...covey.map(bird => Math.hypot(bird.pos.x - boots.x, bird.pos.y - boots.y)));
+    return distance > HUNT_SHOT_RANGE;
+  }
+
+  /**
+   * Where a miss may set down: inside the property with room to spare, clear
+   * of rock, trees, buildings and ponds (every collision circle the hunter
+   * and dog respect), on ground a dog can climb, and dry.
+   */
+  private readonly landable = (x: number, z: number): boolean => {
+    const world = this.hunt.areaConfig().world;
+    if (world && this.hunt.worldToSim) {
+      const at = this.hunt.worldToSim(x, z, this.simPoint);
+      if (at.x < world.x + LANDING_MARGIN_PX || at.x > world.x + world.w - LANDING_MARGIN_PX
+        || at.y < world.y + LANDING_MARGIN_PX || at.y > world.y + world.h - LANDING_MARGIN_PX) return false;
+    }
+    // The canyon's rimrock, from the land itself (so a headless hunt knows it too).
+    if (this.hunt.rockAtWorld?.(x, z)) return false;
+    for (const circle of this.landingObstacles().nearby(x, z, LANDING_CLEARANCE_M)) {
+      if ((x - circle.x) ** 2 + (z - circle.y) ** 2 < (circle.radius + LANDING_CLEARANCE_M) ** 2) return false;
+    }
+    const h = (dx: number, dz: number) => this.terrain.heightAt(x + dx, z + dz);
+    if (Math.hypot(h(1, 0) - h(-1, 0), h(0, 1) - h(0, -1)) / 2 > LANDING_GRADE) return false;
+    return this.fallSurface(x, z) !== 'water';
+  };
+
+  /** Every collision circle a landing keeps clear of, indexed (world x, z as
+   * x, y): the canyon alone has some 1,400 rim blocks. */
+  private landingObstacles(): ObstacleIndex {
+    if (this.landingObstacleIndex) return this.landingObstacleIndex;
+    const circles: { x: number; y: number; radius: number }[] = [];
+    for (const id of LANDING_OBSTACLE_SOURCES) {
+      let provider: { collisionCircles?: () => readonly { x: number; z: number; radius: number }[] } | undefined;
+      try { provider = this.obstacleCtx?.get(id) as typeof provider; } catch { continue; }
+      for (const circle of provider?.collisionCircles?.() ?? []) circles.push({ x: circle.x, y: circle.z, radius: circle.radius });
+    }
+    const index = new ObstacleIndex(circles, 16);
+    // Kept once the world has built its obstacles; asked again until then.
+    if (circles.length) this.landingObstacleIndex = index;
+    return index;
+  }
+
+  /** The wings as the shot found them: the fold eases in from here. */
+  private beginCollapse(slot: Slot): void {
+    if (!slot.wingL || !slot.wingR) return;
+    slot.collapseFrom = { left: slot.wingL.quaternion.clone(), right: slot.wingR.quaternion.clone(), ms: slot.airMs };
+  }
+
+  /** What a falling bird strikes here: water, cattails and heavy reeds, or ground. */
+  private fallSurface(x: number, z: number): ImpactSurface {
+    for (const pond of this.ponds ?? (this.ponds = this.findPonds())) {
+      if (((x - pond.x) / pond.rx) ** 2 + ((z - pond.z) / pond.rz) ** 2 <= 1) return 'water';
+    }
+    const ground = this.hunt.surfaceAtWorld?.(x, z, this.groundSample);
+    return impactSurface(0, ground);
+  }
+
+  /** Standing water a bird can fall into, world metres (the Cattail Coverts' sloughs). */
+  private findPonds(): { x: number; z: number; rx: number; rz: number }[] {
+    const area = this.hunt.areaConfig();
+    if (area.id !== 'pheasant-coverts') return [];
+    return (area.landmarks ?? []).filter(landmark => landmark.kind === 'pond').map(landmark => {
+      const at = this.hunt.simToWorld(landmark.position.x, landmark.position.y, { x: 0, z: 0 });
+      const { rx, rz } = pheasantPondRadii(landmark.id);
+      return { x: at.x, z: at.z, rx: rx * .92, rz: rz * .92 };
+    });
+  }
+
+  /**
+   * A shot bird striking the ground: dust and stems off open ground, seed
+   * fluff out of cattails, water thrown up, sized for the range as the bird
+   * is; and its thump (or swish, or splash) heard late at range, from where
+   * it fell.
+   */
+  private strike(slot: Slot, surface: ImpactSurface): void {
+    const enlarge = this.flightScale(slot.species.id, slot) / restingBirdScale(birdFamilyFor(slot.species.id));
+    const seed = (Math.imul(slot.simId + 1, 0x9e3779b1) ^ Math.imul(this.riseSeq + 7, 0x85ebca6b)) >>> 0;
+    this.eruption?.impact({ x: slot.x, z: slot.z }, surface, enlarge, seed);
+    if (surface !== 'water') {
+      this.coverEvents?.dispatchEvent(new CustomEvent('bird-cover-disturbance', { detail: {
+        x: slot.x, z: slot.z, radius: surface === 'reeds' ? 1.6 : .8, intensity: surface === 'reeds' ? .8 : .4 } }));
+    }
+    const offset = new THREE.Vector3(slot.x, slot.y, slot.z);
+    if (this.listener) offset.sub(this.listener.position).applyQuaternion(this.listener.quaternion.clone().invert());
+    else offset.sub(new THREE.Vector3(this.hunterX, 0, this.hunterZ));
+    if (this.frozen) {
+      // Capture: no sound, but the review reads when the thump would arrive.
+      this.strikeLog.push({ simId: slot.simId, fieldMs: Math.round(this.fieldMs), surface, rangeM: +offset.length().toFixed(1),
+        thumpDelayMs: Math.round(fallSoundDelay(offset.length()) * 1000), x: slot.x, z: slot.z });
+      return;
+    }
+    playFall(surface, fallWeight(slot.species.id), offset.length(), offset, seed);
+  }
+
   /** Dead weight tumbling from the pose it folded in. */
   private poseFalling(slot: Slot): void {
     const fall = slot.fallPose!;
@@ -1963,6 +2351,7 @@ export class BirdsSystem implements Subsystem {
       const visible = s.status === 'flying' || s.status === 'departing' || s.status === 'falling' || s.status === 'grounded';
       s.root.visible = visible;
       if (!visible) continue;
+      s.body.scale.set(1, 1, 1);
       if (s.species.id === 'ringneck' && s.body.morphTargetInfluences) {
         s.body.morphTargetInfluences[0] = s.status === 'grounded' ? s.running ? 0 : 1
           : s.status === 'falling' ? THREE.MathUtils.smoothstep(s.airMs - (s.fallPose?.startMs ?? s.airMs), 0, 300) : 0;
@@ -2055,11 +2444,25 @@ export class BirdsSystem implements Subsystem {
           : holding ? .12 : s.status === 'falling' ? .5 : s.status === 'grounded' && s.running ? 0 : 1.3;
       }
       if (s.status === 'grounded' && s.running) {
-        // Head down, running low for the nearest cover.
-        s.root.rotation.set(.12, s.runYaw ?? 0, 0, 'YXZ');
-        s.root.position.y += Math.abs(Math.sin(ctx.time * 14)) * .03;
+        // Head down, running low for the nearest cover: the legs stride in
+        // turn and the body bobs and rocks with every step.
+        const stride = s.stride ?? 0, step = Math.sin(stride);
+        s.root.rotation.set(.14 + .05 * Math.sin(stride * 2), s.runYaw ?? 0, .06 * step, 'YXZ');
+        s.root.position.y += Math.abs(Math.cos(stride)) * .018 * s.visualScale;
         this.foldWings(s);
+        const geometry = this.speciesGeos.get(`${s.species.id}${s.sex === 'hen' ? ':hen' : ''}`) ?? this.speciesGeos.get(s.species.id);
+        if (s.legMesh && s.legMeshR && geometry?.legL && geometry.legR) {
+          s.legMesh.geometry = geometry.legL; s.legMeshR.geometry = geometry.legR;
+          s.legMesh.visible = s.legMeshR.visible = true;
+          s.legMesh.rotation.set(.75 * step, 0, 0); s.legMeshR.rotation.set(-.75 * step, 0, 0);
+        }
         continue;
+      }
+      if (s.legMeshR?.visible) {
+        // Standing or carried again: both legs back on the one mesh.
+        s.legMeshR.visible = false;
+        const geometry = this.speciesGeos.get(`${s.species.id}${s.sex === 'hen' ? ':hen' : ''}`) ?? this.speciesGeos.get(s.species.id);
+        if (s.legMesh && geometry?.legs) s.legMesh.geometry = geometry.legs;
       }
       if (s.status === 'grounded') {
         // Folded bird remains marked in the grass until the dog picks it up.
@@ -2076,10 +2479,19 @@ export class BirdsSystem implements Subsystem {
         continue;
       }
       if (s.status === 'falling' && !holding) {
-        // Folded frame: wings pinned to the body, tumbling — dead weight.
+        // Folded frame: the wings collapse in from where they were when the
+        // shot took it, and it tumbles as a ball: dead weight.
         if (s.fallPose) this.poseFalling(s);
         else s.root.rotation.set(s.airMs * 0.001 * TUMBLE_RAD_PER_S, s.root.rotation.y, 0.5);
         this.foldWings(s);
+        const collapse = s.collapseFrom ? THREE.MathUtils.smoothstep(s.airMs - s.collapseFrom.ms, 0, COLLAPSE_MS) : 1;
+        if (s.collapseFrom && collapse < 1) {
+          this.collapseTo.copy(s.wingL.quaternion); s.wingL.quaternion.copy(s.collapseFrom.left).slerp(this.collapseTo, collapse);
+          this.collapseTo.copy(s.wingR.quaternion); s.wingR.quaternion.copy(s.collapseFrom.right).slerp(this.collapseTo, collapse);
+        }
+        // The body balls up; the bird's own scale (and so its hit centre) is untouched.
+        const ball = fallBall(collapse);
+        s.body.scale.set(ball.x, ball.y, ball.z);
         continue;
       }
       // A towering or sailing bird still flies: it takes the flight pose

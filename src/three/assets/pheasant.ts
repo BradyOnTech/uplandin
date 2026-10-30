@@ -246,9 +246,10 @@ export function buildPheasantWing(side:-1|1,hen=false):THREE.BufferGeometry {
 
 /** Both legs hanging from the hip line (the mesh origin): grey shanks with
  * three forward toes and a hind toe. Rotate about X to tuck them aft. */
-export function buildPheasantLegs(hen=false):THREE.BufferGeometry {
+/** Both legs, or one (a runner strides them in turn). */
+export function buildPheasantLegs(hen=false, sides: readonly (-1|1)[] = [-1,1]):THREE.BufferGeometry {
   const tone = palette(hen).legs, parts:THREE.BufferGeometry[]=[];
-  for (const side of [-1,1]) {
+  for (const side of sides) {
     const x=side*.012;
     parts.push(paint(new THREE.CylinderGeometry(.0028,.0023,.05,5).translate(x,-.025,0),tone));
     for (const yaw of [-.45,0,.45]) {

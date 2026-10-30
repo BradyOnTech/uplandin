@@ -61,10 +61,11 @@ function paint(geometry: THREE.BufferGeometry, hex: number): THREE.BufferGeometr
   return flat;
 }
 
-/** Both legs: shank, three forward toes and a hind toe, in one geometry. */
-export function buildBirdLegs(speciesId: string): THREE.BufferGeometry {
+/** Both legs (or one, for a runner's stride): shank, three forward toes and a
+ * hind toe, in one geometry. */
+export function buildBirdLegs(speciesId: string, sides: readonly (-1 | 1)[] = [-1, 1]): THREE.BufferGeometry {
   const spec = birdLegSpec(speciesId), parts: THREE.BufferGeometry[] = [];
-  for (const side of [-1, 1]) {
+  for (const side of sides) {
     const x = side * spec.spread;
     if (spec.feathered !== undefined) {
       // A feathered sleeve to the toes over a slimmer bare shank.

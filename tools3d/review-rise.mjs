@@ -48,7 +48,15 @@ const maxHuntTicks = Number(arg('--max-ticks', '36000'));
  * 0.75 s after it rises (a hit) and at a wave-mate 0.5 s later (a miss),
  * then reloads (0.55 s + 0.38 s a shell). The capture never fires the real
  * gun: the shells go to the wave rule through the birds' capture audit. */
-const shoot = args.includes('--shoot');
+const shoot = args.includes('--shoot') || args.includes('--shoot-at');
+/** --shoot-at 15,30,45: each wave's hit waits until its first bird is this
+ * far out (m), one range per wave in turn, so falls are seen near and far;
+ * the miss goes at a wave-mate half a second after it. Frames are also taken
+ * just after every hit (+0.07, +0.17, +0.3 s) and at every strike (+0, +0.1 s). */
+const shootAt = arg('--shoot-at', '').split(',').filter(Boolean).map(Number);
+/** --approach below|level|above: on a point the hunter first steps round to
+ * that side of the covey on its fall line, 24 m out, then walks in. */
+const approach = arg('--approach', '');
 mkdirSync(out, { recursive: true });
 
 const { server } = await startServer(url);
@@ -68,7 +76,7 @@ try {
       const query = new URLSearchParams({ area, quality: size.quality, tod, seed: String(seed), capture: '1' });
       await page.goto(`${url}/index3d.html?${query}`, { waitUntil: 'load', timeout: 180000 });
       await page.waitForFunction(() => window.__ready3d === true && !!window.__api3d && !!window.__riseAudit, { timeout: 240000, polling: 250 });
-      const hunt = await page.evaluate(runHuntToPoint, maxHuntTicks, speciesFor[area] ?? null, shoot);
+      const hunt = await page.evaluate(runHuntToPoint, maxHuntTicks, speciesFor[area] ?? null, shoot, shootAt, approach);
       const record = { area, seed, size: size.id, width: size.width, height: size.height, quality: size.quality, hunt, frames: [], errors };
       if (!hunt.ok) {
         console.error(`${area} ${size.id}: ${hunt.why}`);
@@ -76,7 +84,32 @@ try {
       }
       console.log(`${area} ${size.id}: ${hunt.speciesId} point after ${hunt.huntSeconds.toFixed(0)} s (passed over ${hunt.passedOver.length}), covey ${hunt.coveySize}, flushed ${hunt.flushed.length}, walk-in ${hunt.walkInM.toFixed(1)} m`);
       let elapsed = 0;
-      for (const t of times) {
+      if (shootAt.length) {
+        // Tick by tick, so frames land at fixed moments after each hit and strike.
+        const fixed = new Map(times.map(t => [Math.round(t * 30), t]));
+        const due = new Map(), hitsSeen = new Set(), strikesSeen = new Set();
+        const lastFixed = Math.max(...fixed.keys());
+        for (let tick = 1; tick <= Math.round(settleSeconds * 30); tick++) {
+          const st = await page.evaluate(() => window.__riseReview.stepLight(1));
+          elapsed = tick / 30;
+          for (const hit of st.hits) if (!hitsSeen.has(hit.simId)) {
+            hitsSeen.add(hit.simId);
+            for (const [k, label] of [[2, '+0.07 s'], [5, '+0.17 s'], [9, '+0.3 s']]) due.set(tick + k, { ...hit, phase: label, n: hitsSeen.size });
+          }
+          for (const strike of st.strikes) if (!strikesSeen.has(strike.simId)) {
+            strikesSeen.add(strike.simId);
+            due.set(tick, { ...strike, phase: 'strike' }); due.set(tick + 3, { ...strike, phase: 'strike +0.1 s' });
+          }
+          const fall = due.get(tick), t = fixed.get(tick);
+          if (fall || t !== undefined) {
+            const frame = await page.evaluate(() => window.__riseReview.frame());
+            const file = `${area}-${size.id}-k${String(tick).padStart(4, '0')}.jpg`;
+            await page.screenshot({ path: `${out}/${file}`, type: 'jpeg', quality: 88 });
+            record.frames.push({ t: t ?? +(tick / 30).toFixed(3), file, fixed: t !== undefined, fall: fall ?? null, ...frame });
+          }
+          if (tick > lastFixed && hitsSeen.size >= shootAt.length && st.sky === 0 && st.queued === 0 && ![...due.keys()].some(k => k > tick)) break;
+        }
+      } else for (const t of times) {
         const ticks = Math.max(0, Math.round((t - elapsed) * 30));
         const frame = await page.evaluate(stepAndMeasure, ticks);
         elapsed += ticks / 30;
@@ -91,10 +124,15 @@ try {
       record.render = await page.evaluate(() => window.__api3d.info());
       summary.rises.push(record);
       const f = record.final;
-      console.log(`  in play max ${f.maxInPlay}, inside 40 m max ${f.maxHolding ?? '-'}, visible max ${f.maxVisible}, birds ${f.birds.length}, ` +
+      console.log(`  in play max ${f.maxInPlay}, inside 40 m max ${f.maxHolding ?? '-'}, inside 55 m max ${f.maxInSky ?? '-'}, visible max ${f.maxVisible}, birds ${f.birds.length}, ` +
         `min separation ${f.minSeparationDeg?.toFixed(1) ?? '-'} deg, shot window ${f.shotWindow ? `min ${f.shotWindow.minDeg.toFixed(1)} / median ${f.shotWindow.medianDeg.toFixed(1)} deg, ${(f.shotWindow.share5Deg * 100).toFixed(0)}% >= 5 deg` : '-'}, sky-backed first second ${(f.skyShareFirstSecond * 100).toFixed(0)}%, ` +
         `lines ${JSON.stringify(f.lines)}, rise length ${f.riseLengthS?.toFixed(1) ?? '-'} s (settled ${f.riseOverS?.toFixed(1) ?? '-'} s), waves at ${f.waveTimesS.join("/")} s, shots ${f.shots.length} (${f.shots.filter(s => s.hit).length} hit), ` +
         `exits ${JSON.stringify(f.birds.reduce((n, b) => ({ ...n, [b.exit]: (n[b.exit] ?? 0) + 1 }), {}))}, ${record.render.calls} draws`);
+      for (const fall of f.falls ?? []) console.log(`  fall: hit at ${fall.rangeM} m${fall.featherPx !== undefined ? `, feathers ${fall.featherPx} px` : ''}, ` +
+        `struck ${fall.strikeAfterS ?? '-'} s later at ${fall.strikeRangeM ?? '-'} m${fall.surface ? ` (${fall.surface})` : ''}${fall.thumpDelayMs !== undefined ? `, thump heard ${fall.thumpDelayMs} ms after it lands` : ''}`);
+      if (f.closestPassM !== undefined) console.log(`  closest any line came to the hunter: ${f.closestPassM} m (nearest a bird rose ${f.roseNearestM} m); ` +
+        `fly-bys (back nearer than it rose, inside 9 m): ${f.flyBys.length ? f.flyBys.map(b => `${b.roseAtM}->${b.nearestM} m`).join(', ') : 'none'}; ` +
+        `hunter ${hunt.hunterAboveCoveyM ?? '-'} m above the covey (approach ${hunt.approach ?? '-'}, ${hunt.slopeApproach ?? '-'})`);
       if (errors.length) console.error(`  page errors: ${errors.join(' | ')}`);
       await page.close();
     }
@@ -113,7 +151,7 @@ process.stdout.write(sheet.stdout); process.stderr.write(sheet.stderr);
 /** Hunt the cover, patch to nearest patch, until the dog holds a point on
  * the ground's own bird; then walk in and flush. The dog quarters ahead of
  * the walking hunter, as it does in play. */
-function runHuntToPoint(maxTicks, wantSpecies, shoot) {
+function runHuntToPoint(maxTicks, wantSpecies, shoot, shootAt = [], approach = '') {
   const api = window.__api3d;
   // The field is stepped by hand; the live frame loop must not move the camera.
   api.pause(true);
@@ -168,6 +206,8 @@ function runHuntToPoint(maxTicks, wantSpecies, shoot) {
         const pointed = api.telemetry().pointedBird;
         const bird = window.__riseAudit.pointedBird();
         const coveySize = window.__riseAudit.pointedCoveySize();
+        let placed = null;
+        if (approach && (!wantSpecies || bird?.speciesId === wantSpecies)) placed = stepRound(pointed, approach);
         const before = api.hunt().hunter;
         const flush = api.triggerFlush();
         if (!flush) { stable = 0; continue; }
@@ -188,21 +228,56 @@ function runHuntToPoint(maxTicks, wantSpecies, shoot) {
         const yaw = Math.atan2(-(look.x - hunter.x), -(look.z - hunter.z)) * 180 / Math.PI;
         api.setPose(hunter.x, hunter.z, yaw, 4);
         installReview(hunter, look);
+        const ground = (x, z) => window.__dogAudit ? window.__dogAudit.heightAt(x, z) : 0;
+        const rise = window.__riseAudit.sky().birds.find(b => flush.ids.includes(b.simId));
         return { ok: true, huntSeconds: ticks / 30, speciesId: bird?.speciesId, sex: bird?.sex, coveySize, flushed: flush.ids,
-          walkInM: Math.hypot(hunter.x - before.x, hunter.z - before.z), pointed, look, hunter, yawDeg: yaw, passedOver, dog: api.hunt().dog };
+          walkInM: Math.hypot(hunter.x - before.x, hunter.z - before.z), pointed, look, hunter, yawDeg: yaw, passedOver, dog: api.hunt().dog,
+          approach: placed?.approach, placedAt: placed, hunterAboveCoveyM: +(ground(hunter.x, hunter.z) - ground(pointed.x, pointed.z)).toFixed(1),
+          slopeApproach: window.__api3d.birds?.()?.find?.(b => b.simId === rise?.simId)?.slopeApproach ?? null };
       }
     } else { lastX = null; stable = 0; }
   }
   return { ok: false, why: `no point on ${wantSpecies ?? 'any bird'} in ${maxTicks} ticks`, passedOver, dog: api.hunt().dog };
 
+  /** Step round to one side of the covey on its fall line before walking in:
+   * below it, above it, or level with it along the contour, 24 m out (nearer
+   * or farther if a rim lies between), facing it. */
+  function stepRound(covey, side) {
+    const ground = (x, z) => window.__dogAudit ? window.__dogAudit.heightAt(x, z) : 0;
+    let gx = 0, gz = 0;
+    for (const r of [10, 22]) for (let k = 0; k < 16; k++) {
+      const a = k / 16 * Math.PI * 2, drop = (ground(covey.x, covey.z) - ground(covey.x + Math.cos(a) * r, covey.z + Math.sin(a) * r)) / r;
+      gx += Math.cos(a) * drop; gz += Math.sin(a) * drop;
+    }
+    const down = Math.atan2(gz, gx), h = api.hunt().hunter;
+    const levelSide = Math.sign(Math.cos(down + Math.PI / 2) * (h.x - covey.x) + Math.sin(down + Math.PI / 2) * (h.z - covey.z)) || 1;
+    const bearing = side === 'below' ? down : side === 'above' ? down + Math.PI : down + levelSide * Math.PI / 2;
+    for (const range of [24, 20, 28, 16, 32]) {
+      const x = covey.x + Math.cos(bearing) * range, z = covey.z + Math.sin(bearing) * range;
+      // No cliff between him and the covey: the ground never steps 1.5 m in 2 m.
+      let clear = true;
+      for (let s = 0; s < range; s += 2) {
+        const k0 = s / range, k1 = Math.min(1, (s + 2) / range);
+        if (Math.abs(ground(x + (covey.x - x) * k1, z + (covey.z - z) * k1) - ground(x + (covey.x - x) * k0, z + (covey.z - z) * k0)) > 1.5) { clear = false; break; }
+      }
+      if (!clear) continue;
+      api.setPose(x, z, Math.atan2(-(covey.x - x), -(covey.z - z)) * 180 / Math.PI, 0);
+      api.stepSim(1);
+      return { approach: side, x, z, rangeM: range, downhillDeg: Math.round(down * 180 / Math.PI) };
+    }
+    return { approach: `${side} (no clear spot)` };
+  }
+
   function installReview(hunter, origin) {
     const tracks = new Map();
-    let tick = 0, maxInPlay = 0, maxVisible = 0, maxHolding = 0, minSeparation = Infinity, riseOver = null, envelopeClear = null;
+    let tick = 0, maxInPlay = 0, maxVisible = 0, maxHolding = 0, maxInSky = 0, minSeparation = Infinity, riseOver = null, envelopeClear = null;
     // Shooting hunter (--shoot): a double, fired and reloaded on a fixed rhythm.
     const RELOAD_TICKS = Math.round((0.55 + 2 * 0.38) * 30);
     const gun = { shells: 2, capacity: 2, reloading: false };
     let reloadAt = null, reloadedAt = null;
-    const shots = [], waves = new Map();
+    const shots = [], waves = new Map(), strikes = [];
+    let closestPass = Infinity;
+    const fieldMs0 = window.__riseAudit.strikes && window.__riseAudit.fieldMs ? window.__riseAudit.fieldMs() : null;
     if (shoot) window.__riseAudit.gun(gun);
     const fire = (target, hit) => {
       if (gun.reloading || gun.shells <= 0) return;
@@ -217,9 +292,21 @@ function runHuntToPoint(maxTicks, wantSpecies, shoot) {
       if (!shoot) return;
       if (reloadAt !== null && tick >= reloadAt) { gun.reloading = true; reloadAt = null; reloadedAt = tick + RELOAD_TICKS; }
       if (reloadedAt !== null && tick >= reloadedAt) { gun.reloading = false; gun.shells = gun.capacity; reloadedAt = null; }
+      let index = 0;
       for (const wave of waves.values()) {
-        if (!wave.first && tick >= wave.tick + 23) { wave.first = true; fire(wave.ids[0], true); }
-        if (!wave.second && tick >= wave.tick + 38) { wave.second = true; if (wave.ids[1] !== undefined) fire(wave.ids[1], false); }
+        const at = shootAt.length ? shootAt[index % shootAt.length] : null;
+        index++;
+        if (at === null) {
+          if (!wave.first && tick >= wave.tick + 23) { wave.first = true; fire(wave.ids[0], true); }
+          if (!wave.second && tick >= wave.tick + 38) { wave.second = true; if (wave.ids[1] !== undefined) fire(wave.ids[1], false); }
+          continue;
+        }
+        // The hit waits for its range; the miss follows half a second later.
+        if (!wave.first) {
+          const bird = window.__riseAudit.sky().birds.find(b => b.simId === wave.ids[0]);
+          if (!bird || bird.status !== 'flying') { if (tick > wave.tick + 30 * 8) wave.first = true; continue; }
+          if (tick >= wave.tick + 12 && Math.hypot(bird.x - hunter.x, bird.z - hunter.z) >= at) { wave.first = true; wave.hitTick = tick; fire(wave.ids[0], true); }
+        } else if (!wave.second && wave.hitTick !== undefined && tick >= wave.hitTick + 15) { wave.second = true; if (wave.ids[1] !== undefined) fire(wave.ids[1], false); }
       }
     };
     const shotSeparations = [];
@@ -290,6 +377,7 @@ function runHuntToPoint(maxTicks, wantSpecies, shoot) {
       // bird is still inside effective range (40 m) of where he stands.
       const holding = m.sky.birds.filter(b => (b.status === 'flying' || b.status === 'waiting') && Math.hypot(b.x - hunter.x, b.z - hunter.z) <= 40).length;
       maxHolding = Math.max(maxHolding, holding);
+      maxInSky = Math.max(maxInSky, m.sky.birds.filter(b => (b.status === 'flying' || b.status === 'waiting' || b.status === 'departing') && Math.hypot(b.x - hunter.x, b.z - hunter.z) <= 55).length);
       if (holding || m.queued > 0) envelopeClear = null; else envelopeClear ??= tick / 30;
       for (const b of m.sky.birds) {
         if (tracks.has(b.simId)) continue;
@@ -304,9 +392,32 @@ function runHuntToPoint(maxTicks, wantSpecies, shoot) {
         if (b.status === 'flying' && track.line === null && b.airMs >= 800) track.line = lineOf(m.e, b);
         const shown = m.birds.find(x => x.simId === b.simId);
         if (shown && track.spanAt1s === null && b.airMs >= 1000) track.spanAt1s = shown.spanPx;
-        track.last = { status: b.status, airMs: Math.round(b.airMs), rangeM: Math.hypot(b.x - hunter.x, b.z - hunter.z), heightM: b.y - heightAt(b.x, b.z), target: b.target, tick };
+        track.last = { status: b.status, airMs: Math.round(b.airMs), rangeM: Math.hypot(b.x - hunter.x, b.z - hunter.z), heightM: b.y - heightAt(b.x, b.z), target: b.target, tick, x: b.x, z: b.z };
+      }
+      for (const b of m.sky.birds) {
+        // How near any line comes to the hunter's eye (3D) after its first
+        // third of a second, and whether it came back nearer than it rose.
+        const track = tracks.get(b.simId);
+        if (track && (b.status === 'flying' || b.status === 'departing')) {
+          const range = Math.hypot(b.x - m.e.x, b.y - m.e.y, b.z - m.e.z);
+          track.roseAt ??= range;
+          if (b.airMs > 300) { track.nearest = Math.min(track.nearest ?? Infinity, range); closestPass = Math.min(closestPass, range); }
+        }
+        if (track && b.status === 'falling') track.fell = true;
+      }
+      // Shot birds striking the ground: the birds' own log where the build
+      // keeps one (the first strike, with its thump's delay), else a falling
+      // bird gone from the sky.
+      const logged = fieldMs0 !== null ? window.__riseAudit.strikes() : null;
+      if (logged) for (const x of logged) {
+        if (x.fieldMs < fieldMs0 || strikes.some(seen => seen.simId === x.simId)) continue;
+        strikes.push({ simId: x.simId, tick: Math.round((x.fieldMs - fieldMs0) / (1000 / 30)), rangeM: x.rangeM, surface: x.surface, thumpDelayMs: x.thumpDelayMs, x: x.x, z: x.z });
       }
       for (const track of tracks.values()) {
+        if (!logged && track.fell && !track.struck && !m.sky.birds.some(b => b.simId === track.simId && b.status === 'falling')) {
+          track.struck = true;
+          strikes.push({ simId: track.simId, tick, rangeM: +Math.hypot(track.last.x - hunter.x, track.last.z - hunter.z).toFixed(1), x: track.last.x, z: track.last.z });
+        }
         if (track.gone || m.sky.birds.some(b => b.simId === track.simId)) continue;
         track.gone = tick / 30;
         const l = track.last;
@@ -315,12 +426,27 @@ function runHuntToPoint(maxTicks, wantSpecies, shoot) {
       }
       return m;
     };
+    const hitsLogged = () => {
+      const logged = window.__riseAudit.hits?.() ?? [];
+      return shots.filter(shot => shot.hit).map(shot => ({ simId: shot.target, tick: Math.round(shot.t * 30), rangeM: shot.rangeM,
+        featherPx: logged.find(x => x.simId === shot.target)?.featherPx }));
+    };
     window.__riseReview = {
       step(ticks) { for (let i = 0; i < ticks; i++) { api.stepSim(1); tick++; observe(); shooter(); } },
+      /** One step, and what has happened: hits, strikes, birds still up or queued. */
+      stepLight(ticks) {
+        this.step(ticks);
+        const sky = window.__riseAudit.sky();
+        return { tick, hits: hitsLogged(), strikes, sky: sky.birds.filter(b => b.status === 'flying' || b.status === 'falling' || b.status === 'waiting').length, queued: sky.queued };
+      },
       frame() {
         api.renderOnce();
         const m = measure(true);
-        return { tick, inPlay: m.inPlay, visible: m.visible, onScreen: m.birds.filter(b => b.screen?.onScreen && b.spanPx >= 2).length, queued: m.queued, minPairDeg: m.minPairDeg === null ? null : +m.minPairDeg.toFixed(1),
+        const struck = strikes.map(st => {
+          const p = window.__dogAudit ? window.__dogAudit.project(st.x, heightAt(st.x, st.z) + .1, st.z) : null;
+          return { simId: st.simId, screen: p ? { x: Math.round(p.x), y: Math.round(p.y) } : null };
+        });
+        return { tick, struck, inPlay: m.inPlay, visible: m.visible, onScreen: m.birds.filter(b => b.screen?.onScreen && b.spanPx >= 2).length, queued: m.queued, minPairDeg: m.minPairDeg === null ? null : +m.minPairDeg.toFixed(1),
           minShotDeg: m.minShotDeg === null ? null : +m.minShotDeg.toFixed(1),
           birds: m.birds, camera: { yawDeg: m.e.yawDeg, pitchDeg: m.e.pitchDeg, fov: m.e.fov }, dog: api.hunt().dog.state, render: api.info() };
       },
@@ -330,7 +456,17 @@ function runHuntToPoint(maxTicks, wantSpecies, shoot) {
         const lines = {};
         for (const b of birds) if (b.line) lines[b.line] = (lines[b.line] ?? 0) + 1;
         const shot = [...shotSeparations].sort((a, b) => a - b);
-        return { maxInPlay, maxVisible, maxHolding, minSeparationDeg: Number.isFinite(minSeparation) ? minSeparation : null,
+        const falls = hitsLogged().map(hit => {
+          const strike = strikes.find(x => x.simId === hit.simId);
+          return { ...hit, strikeAfterS: strike ? +((strike.tick - hit.tick) / 30).toFixed(2) : null, strikeRangeM: strike?.rangeM ?? null,
+            surface: strike?.surface, thumpDelayMs: strike?.thumpDelayMs };
+        });
+        // A fly-by: a line that came back nearer the eye than it rose, inside 9 m.
+        const flyBys = birds.filter(b => Number.isFinite(b.nearest) && b.nearest < Math.min(9, b.roseAt - .5))
+          .map(b => ({ simId: b.simId, roseAtM: +b.roseAt.toFixed(1), nearestM: +b.nearest.toFixed(1) }));
+        return { falls, flyBys, closestPassM: Number.isFinite(closestPass) ? +closestPass.toFixed(1) : null,
+          roseNearestM: birds.length ? +Math.min(...birds.map(b => b.roseAt ?? Infinity)).toFixed(1) : null,
+          maxInPlay, maxVisible, maxHolding, maxInSky, minSeparationDeg: Number.isFinite(minSeparation) ? minSeparation : null,
           riseLengthS: envelopeClear, waveTimesS: [...waves.values()].map(w => +(w.tick / 30).toFixed(2)), shots,
           shotWindow: shot.length ? { minDeg: shot[0], medianDeg: shot[shot.length >> 1], share5Deg: shot.filter(d => d >= 5).length / shot.length, ticks: shot.length } : null,
           skyShareFirstSecond: first.length ? first.filter(Boolean).length / first.length : 0,

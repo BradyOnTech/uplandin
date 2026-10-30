@@ -71,6 +71,10 @@ export function heldSingles(speciesId: string, coveySize: number, roll: number, 
 /** A held single goes up when the hunter comes within this many yards. */
 export const HELD_SINGLE_FLUSH_RADIUS = 6;
 
+/** A relit single, marked down and walked up, holds to the boot: it flushes
+ * at this share of the distance its covey would have, close and hard. */
+export const SINGLE_FLUSH_RADIUS_MULT = .6;
+
 /**
  * Pheasants rarely sit alone in good cover. When one rooster or hen goes,
  * another bird holding nearby may break a second or two later, just as the

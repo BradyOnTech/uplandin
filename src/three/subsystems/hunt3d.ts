@@ -32,7 +32,7 @@ import {
   type HuntSimulationEvent,
 } from '../../game/huntSimulation';
 import { dist, mulberry32 } from '../../game/math';
-import { LandscapeModel, PROPERTY_PX_TO_M } from '../../game/landscape';
+import { LandscapeModel, PROPERTY_PX_TO_M, type GroundSample } from '../../game/landscape';
 import type { HuntState } from '../../game/state';
 import type { HuntTime } from '../../game/timeOfDay';
 import type { Vec2 } from '../../game/types';
@@ -141,6 +141,10 @@ export function liveDogBreedId(search: string): string {
 }
 /** "This way" sends the dog this far out along the hunter's facing. */
 const CAST_DISTANCE_M = 30;
+/** A cast reaches as far as the hunter looks at the ground, to this far: a marked bird down across the draw. */
+const CAST_REACH_M = 200;
+/** A miss sets down at least this far (yd) from the rimrock: a dog's reach. */
+const ROCK_MARGIN_YD = 1.6;
 /** "Dead bird" reaches this far along the look ray. */
 const DEAD_BIRD_REACH_M = 70;
 /** A fall lands at least this far (yd) inside the fence: past the dog's own
@@ -239,6 +243,8 @@ export class Hunt3DSystem implements Subsystem {
   private dogNames: string[] = [];
   private ctxRef: Ctx | null = null;
   private hasSolids = false;
+  /** The last cast went to a mark (birds.aimedMark), for its feedback. */
+  private castToMark = false;
   private runnerChecked = new Map<number, Vec2>();
 
   constructor(private readonly landscape: LandscapeModel) {}
@@ -619,8 +625,21 @@ export class Hunt3DSystem implements Subsystem {
     const cam = ctx.camera.position, dir = ctx.camera.getWorldDirection(this.lookDirection);
     let x = cam.x, z = cam.z;
     if (kind === 'cast') {
+      // "This way": to the bird he marked down, if he faces his mark; else as
+      // far as he is looking, if he is looking at the ground he wants worked,
+      // else a fair cast out.
+      let birds: { aimedMark?(x: number, z: number, facing: number, reach: number): { x: number; z: number } | null } | undefined;
+      try { birds = ctx.get<Subsystem & NonNullable<typeof birds>>('birds'); } catch { birds = undefined; }
+      const mark = birds?.aimedMark?.(cam.x, cam.z, Math.atan2(dir.z, dir.x), CAST_REACH_M) ?? null;
+      this.castToMark = !!mark;
+      if (mark) return { kind, target: this.worldToSim(mark.x, mark.z, { x: 0, y: 0 }) };
+      const terrain = ctx.get<Subsystem & { heightAt(x: number, z: number): number }>('terrain');
       const flat = Math.hypot(dir.x, dir.z) || 1;
-      x += dir.x / flat * CAST_DISTANCE_M; z += dir.z / flat * CAST_DISTANCE_M;
+      let reach = CAST_DISTANCE_M;
+      if (dir.y < 0) for (let t = CAST_DISTANCE_M; t <= CAST_REACH_M; t += 1) {
+        if (cam.y + dir.y * t <= terrain.heightAt(cam.x + dir.x * t, cam.z + dir.z * t)) { reach = Math.hypot(dir.x * t, dir.z * t); break; }
+      }
+      x += dir.x / flat * reach; z += dir.z / flat * reach;
     } else {
       // March the look ray until it meets the ground; looking up sends the
       // dog a fair distance out along the line instead.
@@ -688,7 +707,9 @@ export class Hunt3DSystem implements Subsystem {
   private recordEvents(events: readonly HuntSimulationEvent[]): void {
     for (const event of events) {
       if (event.type === 'command') {
-        this.say(dogCommandFeedback(event.kind, event.responses as CommandResponse[], this.simDogs.map(dog => dog.state), this.dogNames));
+        const said = dogCommandFeedback(event.kind, event.responses as CommandResponse[], this.simDogs.map(dog => dog.state), this.dogNames);
+        // A cast to his mark says where it went.
+        this.say(event.kind === 'cast' && this.castToMark ? said.replace(/ casts? out/, match => `${match.replace(' out', '')} to your mark`) : said);
         continue;
       }
       if (event.type === 'dog-note') {
@@ -771,10 +792,14 @@ export class Hunt3DSystem implements Subsystem {
       const nx = this.hunt.hunterPos.x + (dx / d) * stepPx;
       const ny = this.hunt.hunterPos.y + (dy / d) * stepPx;
       // Move the camera (the mapped hunter); tick() reads it back into
-      // hunterPos — the exact FieldScene consumption order still runs.
+      // hunterPos — the exact FieldScene consumption order still runs. His
+      // eye keeps its height over the ground: on a canyon the walk-in climbs
+      // or drops metres, and the birds plan their lines from that eye.
       this.simToWorld(nx, ny, this.coordWorld);
+      const ground = this.landscape.heightAtWorld(ctx.camera.position.x, ctx.camera.position.z);
       ctx.camera.position.x = this.coordWorld.x;
       ctx.camera.position.z = this.coordWorld.z;
+      ctx.camera.position.y += this.landscape.heightAtWorld(this.coordWorld.x, this.coordWorld.z) - ground;
       this.tick(ctx, 1000 / 30);
       if (this.lastFlush !== previousFlush) return this.lastFlush;
       if (pointingDog.state !== 'pointing' || bird.state !== 'hidden') return null;
@@ -788,6 +813,8 @@ export class Hunt3DSystem implements Subsystem {
   /** Resolve a 3D presentation outcome through the shared simulation. */
   resolveBird(birdId: number, outcome: 'downed' | 'escaped', landing?: { x: number; z: number }, options: { wounded?: boolean } = {}): boolean {
     const position = landing ? this.worldToSim(landing.x, landing.z, { x: 0, y: 0 }) : undefined;
+    // A miss that sets down against the rimrock sits beside it, where the dog can reach it.
+    if (position && this.hasSolids) this.landscape.openPropertyNear(position.x, position.y, position);
     const resolved = this.simulation.resolveBird(birdId, outcome, position, options);
     if (resolved && outcome === 'downed' && isSpatialEncounterArea(this.area.id)) this.simulation.bird(birdId)!.fallPending = true;
     if (resolved && outcome === 'downed') this.announceBag(birdId);
@@ -981,6 +1008,19 @@ export class Hunt3DSystem implements Subsystem {
 
   /** Career dogs by name; Quick dogs by breed. */
   dogName(slot = 0): string { return this.dogNames[slot] ?? 'Dog'; }
+
+  /** Is this world point in the rimrock, or too tight against it for a dog? */
+  rockAtWorld(x: number, z: number): boolean {
+    if (!this.hasSolids) return false;
+    const at = this.worldToSim(x, z, { x: 0, y: 0 });
+    return this.landscape.solidAtProperty(at.x, at.y, ROCK_MARGIN_YD);
+  }
+
+  /** The ground under a world point (moisture, vegetation, rock): what a
+   * falling bird strikes and where a miss may set down. */
+  surfaceAtWorld(x: number, z: number, out: GroundSample): GroundSample {
+    return this.landscape.surfaceAtWorld(x, z, out);
+  }
 
   /** Every cover patch of the covert, in world meters (axis-aligned). */
   coverPatches(): readonly WorldPatch[] {

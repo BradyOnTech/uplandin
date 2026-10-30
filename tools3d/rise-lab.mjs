@@ -12,8 +12,11 @@
  * crossing < 115), sky-backing through each bird's first second (terrain
  * only), the least separation between live birds in the shot window, the
  * rise's length with no shot fired (until nothing is queued and no live bird
- * is inside 40 m), the most live birds ever inside 40 m at once, and how
- * the birds that got away left.
+ * is inside 40 m), the most live birds ever inside 40 m at once, how
+ * the birds that got away left, and how near any line came to the hunter's
+ * eye (3D, after its first 0.3 s), with chukar by where he stood (above,
+ * level or below the covey) and how many poured a metre or more down the
+ * hill by 2.5 s. --root runs another checkout (a baseline) through the same lab.
  */
 import { createServer } from 'vite';
 import * as THREE from 'three';
@@ -24,8 +27,11 @@ const arg = (key, fallback) => args.includes(key) ? args[args.indexOf(key) + 1] 
 const hunts = Number(arg('--hunts', '6')), coveysPerHunt = Number(arg('--coveys', '6'));
 const out = arg('--out', '/tmp/uplandin-rise/lab.json');
 const grounds = arg('--areas', 'quail-fields,sharptail-prairie,pheasant-coverts,chukar-ridge').split(',');
+const root = arg('--root', process.cwd());
 
-const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom', logLevel: 'error' });
+const vite = await createServer({ root, configFile: false, cacheDir: '/tmp/uplandin-rise/.vite-cache', server: { middlewareMode: true, hmr: false, watch: null },
+  appType: 'custom', logLevel: 'error', optimizeDeps: { noDiscovery: true, include: [] },
+  define: { __UPLANDIN_BUILD__: JSON.stringify({ version: 'riselab', commit: 'riselab', releases: [] }) } });
 const load = path => vite.ssrLoadModule(path);
 const { BirdsSystem } = await load('/src/three/subsystems/birds.ts');
 const { getArea } = await load('/src/game/areas.ts');
@@ -33,7 +39,7 @@ const { LandscapeModel } = await load('/src/game/landscape.ts');
 const { createHunt } = await load('/src/game/state.ts');
 const { mulberry32 } = await load('/src/game/math.ts');
 const { PROPERTY_PX_TO_M } = await load('/src/game/worldUnits.ts');
-const { holdsSky, inTheShot } = await load('/src/game/riseScore.ts');
+const { holdsSky, inTheShot, countsAgainstCap } = await load('/src/game/riseScore.ts');
 const { skyBehind } = await load('/src/game/flightLine.ts');
 
 const lineOf = (eye, b) => {
@@ -52,8 +58,11 @@ function riseOnce(area, landscape, patches, covey, hunterWorld, rng, ground) {
   const hunterPos = landscape.worldToProperty(hunterWorld.x, hunterWorld.z, { x: 0, y: 0 });
   const eyeY = ground(hunterWorld.x, hunterWorld.z) + 1.62;
   const landings = [], escapes = [];
+  // One wind for the rise, drawn once, so a build that reads the hunt state
+  // more often still flies the same rises from the same approaches.
+  const wind = rng() * Math.PI * 2;
   runtime.hunt = {
-    areaConfig: () => area, huntState: () => ({ birds, hunterPos, wind: rng() * Math.PI * 2, windStrength: 'breezy' }),
+    areaConfig: () => area, huntState: () => ({ birds, hunterPos, wind, windStrength: 'breezy' }),
     simToWorld: (x, y, o) => landscape.propertyToWorld(x, y, o), coverPatches: () => patches,
     riseSlopeApproach: id => {
       const bird = birds.find(b => b.id === id);
@@ -75,7 +84,8 @@ function riseOnce(area, landscape, patches, covey, hunterWorld, rng, ground) {
   runtime.buildPool({ scene: new THREE.Scene() });
   const eye = camera.position;
   const tracks = new Map();
-  let over = null, minShot = Infinity, maxInShot = 0;
+  let over = null, minShot = Infinity, maxInShot = 0, maxInSky = 0;
+  const approach = runtime.hunt.riseSlopeApproach(covey[0].id);
   const shotTicks = [];
   for (let tick = 1; tick <= 30 * 24; tick++) {
     runtime.tickBirds(1000 / 30);
@@ -83,9 +93,15 @@ function riseOnce(area, landscape, patches, covey, hunterWorld, rng, ground) {
     for (const s of runtime.slots) {
       if (s.status !== 'flying' && s.status !== 'departing' && s.status !== 'waiting') continue;
       let t = tracks.get(s.simId);
-      if (!t) { t = { species: s.species.id, sky: [], line: null, exit: null, target: !!s.line?.target }; tracks.set(s.simId, t); }
+      if (!t) { t = { species: s.species.id, sky: [], line: null, exit: null, target: !!s.line?.target, pass: Infinity, rose: null, dropAt25: null }; tracks.set(s.simId, t); }
       if (s.status === 'flying' && s.airMs <= 1000) t.sky.push(skyBehind(eye, s, ground));
       if (s.status === 'flying' && !t.line && s.airMs >= 800) t.line = lineOf(eye, s);
+      if (s.status !== 'waiting') {
+        t.rose ??= ground(s.x, s.z);
+        t.roseAt ??= Math.hypot(s.x - eye.x, s.y - eye.y, s.z - eye.z);
+        if (s.airMs > 300) t.pass = Math.min(t.pass, Math.hypot(s.x - eye.x, s.y - eye.y, s.z - eye.z));
+        if (t.dropAt25 === null && s.airMs >= 2500) t.dropAt25 = t.rose - ground(s.x, s.z);
+      }
     }
     const inWindow = live.filter(s => s.airMs >= 500 && s.airMs <= 2500);
     let tickMin = Infinity;
@@ -94,13 +110,14 @@ function riseOnce(area, landscape, patches, covey, hunterWorld, rng, ground) {
     const holding = runtime.slots.filter(s => holdsSky({ status: s.status, rangeM: Math.hypot(s.x - eye.x, s.z - eye.z),
       sinceLaunchMs: runtime.skyMs - (s.launchedSkyMs ?? -Infinity) })).length;
     maxInShot = Math.max(maxInShot, runtime.slots.filter(s => inTheShot({ status: s.status, rangeM: Math.hypot(s.x - eye.x, s.z - eye.z) })).length);
+    if (countsAgainstCap) maxInSky = Math.max(maxInSky, runtime.slots.filter(s => countsAgainstCap({ status: s.status, rangeM: Math.hypot(s.x - eye.x, s.z - eye.z) })).length);
     const queued = runtime.rises.reduce((n, r) => n + r.waves.slice(r.next).reduce((m, w) => m + w.ids.length, 0), 0);
     if (over === null && holding === 0 && queued === 0 && tick > 3) over = tick / 30;
     if (over !== null && runtime.slots.every(s => !['flying', 'waiting', 'departing', 'falling'].includes(s.status))) break;
   }
   system.dispose({ scene: new THREE.Scene() });
-  return { birds: covey.length, species: covey[0].speciesId, over, maxInShot, shotTicks, minShot: Number.isFinite(minShot) ? minShot : null,
-    tracks: [...tracks.values()], landed: landings.length, droveOff: escapes.length };
+  return { birds: covey.length, species: covey[0].speciesId, over, maxInShot, maxInSky, shotTicks, minShot: Number.isFinite(minShot) ? minShot : null,
+    tracks: [...tracks.values()].map(t => ({ ...t, approach })), landed: landings.length, droveOff: escapes.length };
 }
 
 const report = { hunts, coveysPerHunt, grounds: {} };
@@ -129,7 +146,7 @@ for (const id of grounds) {
   const bySize = (lo, hi) => lengths.filter(r => r.birds >= lo && r.birds <= hi).map(r => r.over).sort((a, b) => a - b);
   const median = values => values.length ? values[values.length >> 1] : null;
   const summary = {
-    rises: rises.length, birds: tracks.length, maxInShot: Math.max(...rises.map(r => r.maxInShot)),
+    rises: rises.length, birds: tracks.length, maxInShot: Math.max(...rises.map(r => r.maxInShot)), maxInSky: Math.max(...rises.map(r => r.maxInSky)),
     straightawayShare: (lines.straightaway ?? 0) / classified, lines,
     skyBackedFirstSecond: sky.length ? sky.filter(Boolean).length / sky.length : 0,
     shotWindowSeparation: { min: seps[0] ?? null, median: median(seps), p10: seps[Math.floor(seps.length * .1)] ?? null },
@@ -140,12 +157,29 @@ for (const id of grounds) {
       bySize: { '1-3': median(bySize(1, 3)), '4-7': median(bySize(4, 7)), '8+': median(bySize(8, 99)) } },
     escapes: { landedInCover: rises.reduce((s, r) => s + r.landed, 0), droveOff: rises.reduce((s, r) => s + r.droveOff, 0) },
     species: Object.fromEntries([...new Set(rises.map(r => r.species))].map(s => [s, rises.filter(r => r.species === s).length])),
+    // How near the lines came to the hunter's eye, and (downhill fliers) by
+    // where he stood. A fly-by came back nearer than it rose, inside 9 m.
+    closestPass: (() => {
+      const flyBy = t => Number.isFinite(t.pass) && t.roseAt !== undefined && t.pass < Math.min(9, t.roseAt - .5);
+      const passes = tracks.map(t => t.pass).filter(Number.isFinite).sort((a, b) => a - b);
+      const by = {};
+      for (const side of ['above', 'level', 'below']) {
+        const own = tracks.filter(t => t.species === 'chukar' && t.approach === side);
+        if (!own.length) continue;
+        const p = own.map(t => t.pass).filter(Number.isFinite).sort((a, b) => a - b), drops = own.filter(t => t.dropAt25 !== null);
+        by[side] = { birds: own.length, min: +(p[0] ?? NaN).toFixed(1), under9: p.filter(v => v < 9).length, under5: p.filter(v => v < 5).length,
+          flyBys: own.filter(flyBy).length, poured: drops.length ? +(drops.filter(t => t.dropAt25 >= 1).length / drops.length).toFixed(2) : null };
+      }
+      return { min: +(passes[0] ?? NaN).toFixed(1), p5: +(passes[Math.floor(passes.length * .05)] ?? NaN).toFixed(1),
+        under9: passes.filter(v => v < 9).length, under5: passes.filter(v => v < 5).length, flyBys: tracks.filter(flyBy).length, chukarByApproach: by };
+    })(),
   };
   report.grounds[id] = summary;
-  console.log(`${id}: ${summary.rises} rises, ${summary.birds} birds; most in the shot ${summary.maxInShot}; straightaways ${(summary.straightawayShare * 100).toFixed(0)}% ${JSON.stringify(lines)}; ` +
+  console.log(`${id}: ${summary.rises} rises, ${summary.birds} birds; most in the shot ${summary.maxInShot}, inside 55 m ${summary.maxInSky}; straightaways ${(summary.straightawayShare * 100).toFixed(0)}% ${JSON.stringify(lines)}; ` +
     `sky-backed first second ${(summary.skyBackedFirstSecond * 100).toFixed(0)}%; shot window: closest pair median ${summary.shotWindowTicks.median?.toFixed(1)} deg over ${summary.shotWindowTicks.ticks} ticks, ${((summary.shotWindowTicks.share5Deg ?? 0) * 100).toFixed(0)}% >= 5 deg, least per rise median ${summary.shotWindowSeparation.median?.toFixed(1)} deg; ` +
     `rise length median ${summary.riseLengthS.median?.toFixed(1)} s, max ${summary.riseLengthS.max.toFixed(1)} s ${JSON.stringify(summary.riseLengthS.bySize)}; ` +
-    `escapes landed ${summary.escapes.landedInCover} / drove off ${summary.escapes.droveOff}; species ${JSON.stringify(summary.species)}`);
+    `escapes landed ${summary.escapes.landedInCover} / drove off ${summary.escapes.droveOff}; species ${JSON.stringify(summary.species)}; ` +
+    `closest pass ${JSON.stringify(summary.closestPass)}`);
 }
 writeFileSync(out, JSON.stringify(report, null, 2));
 await vite.close();

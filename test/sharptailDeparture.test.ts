@@ -61,9 +61,11 @@ describe('every escaping bird leaves honestly', () => {
     for (let tick = 0; tick < 12; tick++) {
       expected.airMs += 1000 / 30;
       stepFlightLine(f.slot.line, expected, 1 / 30, () => 0);
+      // Out past 40 m it lines out at its leaving pace, on the same heading.
+      expected.vxW *= 1.2; expected.vzW *= 1.2;
       expected.x += expected.vxW / 30; expected.y += expected.vyW / 30; expected.z += expected.vzW / 30;
       f.internal.tickBirds(1000 / 30);
-      expect([f.slot.x, f.slot.y, f.slot.z]).toEqual([expected.x, expected.y, expected.z]);
+      for (const [got, want] of [[f.slot.x, expected.x], [f.slot.y, expected.y], [f.slot.z, expected.z]]) expect(got).toBeCloseTo(want, 9);
     }
     expect(f.resolveBird).toHaveBeenCalledTimes(1);
     expect(f.hunt.finishRise).toHaveBeenCalledTimes(1);

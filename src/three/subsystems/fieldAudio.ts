@@ -189,7 +189,8 @@ export class FieldAudioSystem implements Subsystem {
     for (const bird of hunt.huntState().birds) {
       if (bird.state !== 'hidden' || !QUARRY_VOICES[bird.speciesId]) continue;
       hunt.simToWorld(bird.pos.x, bird.pos.y, this.birdPosition);
-      const heard = { id: bird.id, coveyId: bird.coveyId, speciesId: bird.speciesId, x: this.birdPosition.x, z: this.birdPosition.z,
+      // Singles gather as the covey they were scattered from, each calling from where it went down.
+      const heard = { id: bird.id, coveyId: bird.single ? bird.scatteredFrom ?? bird.coveyId : bird.coveyId, speciesId: bird.speciesId, x: this.birdPosition.x, z: this.birdPosition.z,
         distance: Math.hypot(this.birdPosition.x - camera.x, this.birdPosition.z - camera.z) };
       if (bird.single || bird.heldSingle) singles.push(heard);
       else if (!coveys.has(bird.coveyId)) coveys.set(bird.coveyId, heard);

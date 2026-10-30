@@ -31,11 +31,21 @@ export const SKY_MAX = 3;
 export const RISE_RANGE_M = 40;
 /** A wave holds the sky this long at most; then the next may rise. */
 export const WAVE_MAX_GAP_MS = 2000;
+/** A bird leaving the shot still counts against the cap until it is this far
+ * from the hunter, metres, so the sky never shows six. */
+export const LEAVING_RANGE_M = 55;
 
 /** Is this bird a live target in the shot: launching or flying, inside
  * effective range? No more than SKY_MAX ever are, whatever their waves' clocks. */
 export function inTheShot(bird: { status: string; rangeM: number }): boolean {
   return (bird.status === 'waiting' || bird.status === 'flying') && bird.rangeM <= RISE_RANGE_M;
+}
+
+/** Does this bird count against the cap: a live target in the shot, or a bird
+ * leaving it (out of range, or already credited out and flying on) that is
+ * not yet LEAVING_RANGE_M off? Never more than SKY_MAX do at once. */
+export function countsAgainstCap(bird: { status: string; rangeM: number }): boolean {
+  return (bird.status === 'waiting' || bird.status === 'flying' || bird.status === 'departing') && bird.rangeM <= LEAVING_RANGE_M;
 }
 
 /** Does this bird still hold the sky against the next wave? A bird that is
@@ -143,10 +153,10 @@ export interface SkyClock {
   nowMs: number;
   /** Birds holding the sky (holdsSky), across every covey: they set the clock. */
   inPlay: number;
-  /** Live targets in the shot (inTheShot), across every covey: they set the
-   * cap. A bird whose wave has had its time still counts here until it is
-   * down or out of range. Absent: the same as `inPlay`. */
-  inShot?: number;
+  /** Birds counting against the cap (countsAgainstCap), across every covey:
+   * live targets, and leaving birds not yet LEAVING_RANGE_M off, whatever
+   * their waves' clocks. Absent: the same as `inPlay`. */
+  inSky?: number;
   /** When the most recent wave of any covey rose (-Infinity before one). */
   lastWaveMs: number;
   /** When the sky last cleared (no bird holding it), or null while one does. */
@@ -159,7 +169,7 @@ export interface SkyClock {
  * the eruption whenever it fits under the cap.
  */
 export function waveMayRise(wave: RiseWave, score: RiseScore, sky: SkyClock, first: boolean): boolean {
-  if (Math.max(sky.inPlay, sky.inShot ?? 0) + wave.ids.length > SKY_MAX) return false;
+  if (Math.max(sky.inPlay, sky.inSky ?? 0) + wave.ids.length > SKY_MAX) return false;
   if (first) return true;
   const gun = sky.gun;
   const gunEmpty = !!gun && (gun.loaded <= 0 || gun.reloading);
@@ -266,6 +276,45 @@ export function lanesOffTheHill(lanes: readonly WaveLane[], escape: number, uphi
   const fromUphill = lanes.map(lane => Math.abs(centre) + side * (lane.offset - mean));
   const turn = Math.max(0, Math.PI / 2 + BELOW_CONTOUR - Math.min(...fromUphill));
   return lanes.map(lane => ({ ...lane, offset: lane.offset + side * turn }));
+}
+
+/** A lane's bearing off the line to the gun (radians) that passes `passM`
+ * wide of a hunter `rangeM` off, with a little to spare. */
+export function laneClearAngle(rangeM: number, passM: number): number {
+  return Math.asin(Math.min(1, passM / Math.max(passM, rangeM))) + .12;
+}
+
+/**
+ * A downhill flier's wave with the hunter below it: the birds pour down and
+ * across, swinging wide of him rather than back past his face. The wave
+ * turns, together, to the side of the gun it already leans to until every
+ * lane keeps laneClearAngle off the bearing to the gun; where the slope
+ * leaves no room for that above the contour line BELOW_CONTOUR under it, the
+ * lanes close up toward the contour instead. `escape`, `uphill` and `gun`
+ * (from the covey to the hunter) are world bearings; `lean` picks the side
+ * when the hunter is straight below. Lanes already clear are left alone.
+ */
+export function lanesClearOfTheGun(lanes: readonly WaveLane[], escape: number, uphill: number, gun: number,
+  rangeM: number, passM: number, lean = 1): WaveLane[] {
+  const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+  const down = uphill + Math.PI, edge = Math.PI / 2 - BELOW_CONTOUR, clear = laneClearAngle(rangeM, passM);
+  const g = wrap(gun - down);
+  const at = lanes.map(lane => wrap(escape + lane.offset - down));
+  if (at.every(a => Math.abs(wrap(a - g)) >= clear)) return lanes.map(lane => ({ ...lane }));
+  const mean = Math.atan2(at.reduce((sum, a) => sum + Math.sin(a), 0), at.reduce((sum, a) => sum + Math.cos(a), 0));
+  const side = Math.sign(wrap(mean - g)) || Math.sign(lean) || 1;
+  // Measured toward that side from the fall line: lanes must lie in [from, edge].
+  const u = at.map(a => side * a), from = side * g + clear;
+  const low = Math.min(...u), high = Math.max(...u);
+  const shift = Math.max(0, from - low);
+  const span = high - low;
+  // Turn the whole wave if the slope allows; else close it up between the
+  // gun and the contour; a hunter too close for even that gets the lanes
+  // hugging the contour (each bird's own line then bears off him: flightLine).
+  const placed = high + shift <= edge ? u.map(x => x + shift)
+    : from <= edge ? u.map(x => from + (span > 1e-9 ? (x - low) / span : .5) * (edge - from))
+    : u.map(x => edge - (high - x) * .25);
+  return lanes.map((lane, i) => ({ ...lane, offset: wrap(down + side * placed[i] - escape) }));
 }
 
 export interface WaveLane {

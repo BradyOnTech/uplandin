@@ -3,7 +3,7 @@ import { getArea } from '../src/game/areas';
 import type { Bird } from '../src/game/birds';
 import { getBreed } from '../src/game/breeds';
 import {
-  CLOSE_FLUSH_THRESHOLD, closeFlushIntensity, coveyRoll, heldSingles, HELD_SINGLE_FLUSH_RADIUS, SECOND_BIRD,
+  CLOSE_FLUSH_THRESHOLD, closeFlushIntensity, coveyRoll, heldSingles, HELD_SINGLE_FLUSH_RADIUS, SECOND_BIRD, SINGLE_FLUSH_RADIUS_MULT,
   tightCovey, tightCoveyRadius, tightCoveyShare,
 } from '../src/game/closeFlush';
 import { Dog } from '../src/game/dog';
@@ -53,6 +53,21 @@ describe('the close flush', () => {
     const covey = [bird(5, 2, 'chukar', 0, 0, { approachRoll: .4 }), bird(3, 2, 'chukar', 1, 0, { approachRoll: .9 })];
     expect(coveyRoll(covey, 2)).toBe(coveyRoll([...covey].reverse(), 2));
     expect(coveyRoll(covey, 2)).not.toBe(.9);
+  });
+
+  it('lets the hunter walk right in on a marked single, which goes close and hard', () => {
+    const flushDistance = (single: boolean) => {
+      const one = bird(950, single ? -950 : 60, 'chukar', 300, 300, { approachRoll: .6, single, scatteredFrom: single ? 60 : undefined });
+      const f = simulation('chukar-ridge', [one], { x: 260, y: 300 }, 950);
+      for (let step = 0; step < 160; step++) {
+        const hunter = { x: 260 + step * .25, y: 300 };
+        if (f.sim.update(1000 / 30, { hunterPos: hunter }).some(event => event.type === 'covey-flushed')) return 300 - hunter.x;
+      }
+      return Infinity;
+    };
+    const covey = flushDistance(false), single = flushDistance(true);
+    expect(Number.isFinite(single)).toBe(true);
+    expect(single).toBeCloseTo(covey * SINGLE_FLUSH_RADIUS_MULT, 0);
   });
 
   it('walks right in on a tight covey before it goes', () => {

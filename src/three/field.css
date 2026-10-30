@@ -44,7 +44,13 @@ kbd { font:11px/1.5 inherit; opacity:.8; padding:2px 5px; border:1px solid #fff3
 #dog-locator.on-point #dog-status { font-weight:700; }
 #dog-locator.on-point #dog-direction { color:#f6d999; }
 #hunt-beacon { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:9px; font-size:11px; line-height:1.4; letter-spacing:.07em; color:#d6ddc7ae; }
-.field-truck,.field-wind { display:inline-flex; align-items:center; gap:5px; min-width:0; white-space:nowrap; }
+.field-truck,.field-wind,.field-mark { display:inline-flex; align-items:center; gap:5px; min-width:0; white-space:nowrap; }
+.field-mark[hidden] { display:none; }
+/* The mark is the newest thing in the beacon: its own line, above truck and wind. */
+#hunt-beacon { flex-wrap:wrap; row-gap:3px; }
+.field-mark { order:-1; flex-basis:100%; color:#f0dfae; transition:opacity .6s; }
+body.touch-controls-active .field-mark { order:0; flex-basis:auto; }
+.field-mark .field-compass-arrow,.field-mark .field-compass-distance { color:#f4e2b2; }
 .field-compass-arrow { display:inline-block; flex:none; width:15px; text-align:center; font-size:17px; line-height:1; color:#e2e4cb; transform-origin:50% 50%; }
 .field-compass-distance { min-width:4.5ch; text-align:right; color:#e5e6d2; font-weight:600; letter-spacing:.015em; }
 #field-guidance { margin-top:9px; max-width:100%; color:#d6ddc7b3; font-size:13px; line-height:1.4; text-wrap:pretty; }
@@ -216,7 +222,7 @@ body.touch-controls-active .touch-instructions { display:block; }
 body.touch-controls-active #hunt-hud { left:max(12px,env(safe-area-inset-left)); top:max(12px,env(safe-area-inset-top)); width:288px; max-width:calc(100vw - 104px); padding:11px 12px 10px; }
 body.touch-controls-active #pause-hunt { top:max(12px,env(safe-area-inset-top)); right:max(12px,env(safe-area-inset-right)); padding-inline:13px; }
 body.touch-controls-active #field-map-toggle { top:max(64px,calc(env(safe-area-inset-top) + 52px)); right:max(12px,env(safe-area-inset-right)); padding-inline:12px; }
-@media (max-width:420px) { #hunt-hud { left:max(10px,env(safe-area-inset-left)); max-width:calc(100vw - 98px); padding:10px 11px; } #field-identity { gap:7px; } .field-property-name { font-size:15px; } .field-property-entry { font-size:10px; letter-spacing:.09em; } #field-heading { font-size:12px; } #hunt-tally { font-size:12px; } #hunt-phase { font-size:12px; letter-spacing:.04em; } #dog-locator { grid-template-columns:22px minmax(0,1fr) auto; gap:6px; padding:7px 6px; font-size:11px; } #dog-direction { width:22px; font-size:23px; } #dog-distance { font-size:12px; } #hunt-beacon { gap:6px; font-size:10px; letter-spacing:.025em; } .field-truck,.field-wind { gap:3px; } #field-guidance { font-size:12px; } }
+@media (max-width:420px) { #hunt-hud { left:max(10px,env(safe-area-inset-left)); max-width:calc(100vw - 98px); padding:10px 11px; } #field-identity { gap:7px; } .field-property-name { font-size:15px; } .field-property-entry { font-size:10px; letter-spacing:.09em; } #field-heading { font-size:12px; } #hunt-tally { font-size:12px; } #hunt-phase { font-size:12px; letter-spacing:.04em; } #dog-locator { grid-template-columns:22px minmax(0,1fr) auto; gap:6px; padding:7px 6px; font-size:11px; } #dog-direction { width:22px; font-size:23px; } #dog-distance { font-size:12px; } #hunt-beacon { gap:6px; font-size:10px; letter-spacing:.025em; } .field-truck,.field-wind,.field-mark { gap:3px; } #field-guidance { font-size:12px; } }
 @media (max-height:550px) { #hunt-hud { top:max(10px,env(safe-area-inset-top)); padding-block:9px; } #field-identity { padding-bottom:7px; } .field-property-entry { display:none; } .field-property-name { font-size:15px; } #hunt-tally { margin-top:7px; font-size:12px; } #hunt-phase { margin-top:5px; font-size:12px; } #dog-locator { min-height:35px; margin-top:6px; padding-block:5px; } #hunt-beacon { margin-top:6px; } #field-guidance { display:none; } }
 @media (max-height:550px) { #field-overlay { padding:15px 25px; align-items:start; } .field-card { padding:18px 24px; width:440px; } h1 { font-size:32px; margin:10px 0; } .field-divider { margin:12px 0; } #field-description { display:none; } .field-tip { margin:10px 0; } #field-options { margin-bottom:10px; } #enter-field { margin:6px 0 12px; min-height:44px; } }
 @media (prefers-reduced-motion:reduce) { button { transition:none; } }

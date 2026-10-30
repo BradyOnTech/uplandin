@@ -4,7 +4,7 @@ import * as audio from '../src/audio';
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { BirdsSystem, pickBirdAlongRay } from '../src/three/subsystems/birds';
-import { GUN_PATIENCE_MS, holdsSky, SLEEPER_MIN_MS } from '../src/game/riseScore';
+import { countsAgainstCap, GUN_PATIENCE_MS, holdsSky, SLEEPER_MIN_MS } from '../src/game/riseScore';
 import type { Bird } from '../src/game/birds';
 import { getSpecies } from '../src/game/species';
 import { getArea } from '../src/game/areas';
@@ -597,12 +597,13 @@ describe('continuous Quail coveys', () => {
 
 
 describe('Chukar launch slope in world flight', () => {
-  const flight = (slope: SlopeApproach | null, species = 'chukar', area = 'chukar-ridge') => {
+  const flight = (slope: SlopeApproach | null, species = 'chukar', area = 'chukar-ridge', drivesOff = true) => {
     const f = fixture(area);
     f.add(1, 1, 12, 4); f.birds[0].speciesId = species; f.slopes.set(1, slope);
     // A line that drives off: the slope rule scales the pace of one line (a
     // miss setting down eases its own speed into its spot).
-    (f.birds[0] as { single?: boolean }).single = true;
+    // (A relit single is the one bird that never sets down again, and flies a little wilder.)
+    if (drivesOff) (f.birds[0] as { single?: boolean }).single = true;
     f.runtime.tickBirds(1000 / 30);
     return f;
   };
@@ -616,18 +617,20 @@ describe('Chukar launch slope in world flight', () => {
       expect([f.runtime.slots[0].x, f.runtime.slots[0].z, f.runtime.slots[0].delayMs]).toEqual([12, 4, level.runtime.slots[0].delayMs]);
       expect(f.runtime.slots[0].line.bearing).toBe(level.runtime.slots[0].line.bearing);
     }
-    for (let tick = 1; tick <= 75; tick++) {
+    // Inside the shot: past 40 m every bird lines out at its leaving pace.
+    const inShot = () => [above, level, below].every(f => Math.hypot(f.runtime.slots[0].x, f.runtime.slots[0].z) < 39);
+    for (let tick = 1; tick <= 75 && inShot(); tick++) {
       for (const f of [above, level, below, absent]) f.runtime.tickBirds(1000 / 30);
+      if (!inShot()) break;
       const a = velocity(above), l = velocity(level), b = velocity(below);
       expect(velocity(absent)).toEqual(l);
       for (const index of [0, 2]) { expect(a[index]).toBeCloseTo(l[index] * .82, 10); expect(b[index]).toBeCloseTo(l[index] * 1.15, 10); }
     }
-    expect(above.runtime.slots[0].x - 12).toBeCloseTo((level.runtime.slots[0].x - 12) * .82, 10);
-    expect(below.runtime.slots[0].z - 4).toBeCloseTo((level.runtime.slots[0].z - 4) * 1.15, 10);
+    expect(Math.hypot(below.runtime.slots[0].x, below.runtime.slots[0].z)).toBeGreaterThan(30);
   });
 
   it('keeps the relative reward on the speed cap: 15.17, 18.5 and 21.275 m/s', () => {
-    const variants = [flight('above'), flight('level'), flight('below')];
+    const variants = [flight('above', 'chukar', 'chukar-ridge', false), flight('level', 'chukar', 'chukar-ridge', false), flight('below', 'chukar', 'chukar-ridge', false)];
     variants.forEach((f, i) => expect(f.runtime.slots[0].line.speed).toBeCloseTo(18.5 * [.82, 1, 1.15][i], 10));
   });
 
@@ -696,20 +699,24 @@ describe('Duck Hunt rules the sky', () => {
     expect(f.finishRise).toHaveBeenCalled();
   });
 
-  it('gets a twelve-bird covey through its waves inside nine seconds without a shot, a sleeper soon after', () => {
+  it('gets a twelve-bird covey through its waves without a shot, never more than three in the sky, a sleeper soon after', () => {
     const f = fixture();
     for (let i = 0; i < 12; i++) f.add(i + 1, 1, 18 + (i % 4) * .6, (Math.floor(i / 4) - 1) * .8);
     let waves: number | null = null, over: number | null = null;
     for (let tick = 1; tick <= 30 * 20; tick++) {
       f.runtime.tickBirds(1000 / 30);
       expect(holding(f).length).toBeLessThanOrEqual(3);
+      // Leaving birds count until they are 55 m off: the sky never shows six.
+      expect(f.runtime.slots.filter(s => countsAgainstCap({ status: s.status, rangeM: Math.hypot(s.x, s.z) })).length).toBeLessThanOrEqual(3);
       const left = rises(f)[0]?.waves.slice(rises(f)[0].next) ?? [];
       const clear = holding(f).length === 0;
       if (waves === null && clear && left.every(wave => wave.sleeper)) waves = tick / 30;
       if (over === null && clear && left.length === 0) over = tick / 30;
     }
     expect(waves).not.toBeNull(); expect(over).not.toBeNull();
-    expect(waves!).toBeLessThan(9);
+    // This fixture's flat-ground bobwhite fly about 15 m/s; the rise lab puts
+    // 8-plus-bird rises on the real grounds at 9-10 s.
+    expect(waves!).toBeLessThan(12.5);
     expect(over! - waves!).toBeLessThan(3);
   });
 

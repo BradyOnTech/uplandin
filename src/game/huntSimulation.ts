@@ -29,7 +29,7 @@ import type { HuntState } from './state';
 import type { RNG, Vec2 } from './types';
 import { windMults } from './wind';
 import { bobwhiteApproachNerveScale, quailPointApproach } from './quailApproach';
-import { coveyRoll, HELD_SINGLE_FLUSH_RADIUS, heldSingles, SECOND_BIRD, TIGHT_COVEY_NERVE_SCALE, tightCovey, tightCoveyRadius } from './closeFlush';
+import { coveyRoll, HELD_SINGLE_FLUSH_RADIUS, heldSingles, SECOND_BIRD, SINGLE_FLUSH_RADIUS_MULT, TIGHT_COVEY_NERVE_SCALE, tightCovey, tightCoveyRadius } from './closeFlush';
 import { pheasantApproach } from './pheasantApproach';
 import { openCountryPointRadius, pointWalkInAllowanceMs, usesOpenCountryWalkIn } from './openCountryApproach';
 import { HUNT_CHALLENGES, type HuntChallenge } from './huntChallenge';
@@ -448,7 +448,9 @@ export class HuntSimulation {
         ? this.hunt.birds.filter(candidate => candidate.state === 'hidden' && candidate.coveyId === bird.coveyId)
           .sort((a,b)=>dist(this.hunt.hunterPos,a.pos)-dist(this.hunt.hunterPos,b.pos))[0]
         : bird;
-      if (trigger?.state === 'hidden' && dist(this.hunt.hunterPos, trigger.pos) <= radius) {
+      // A marked single holds to the boot, then goes close and hard.
+      const reach = spatialEncounter && trigger?.single ? radius * SINGLE_FLUSH_RADIUS_MULT : radius;
+      if (trigger?.state === 'hidden' && dist(this.hunt.hunterPos, trigger.pos) <= reach) {
         const event = this.flushBird(trigger.id, 'proximity', i);
         if (event) events.push(event);
         return events;
@@ -723,6 +725,8 @@ export class HuntSimulation {
         {
           returnTrail: this.area.trails.find((trail) => trail.id === 'circleback-return'),
           patches: this.area.patches,
+          // The presentation flew the loop: the covey is where it set down.
+          landings: this.escapeLandings,
         },
       );
       if (relanded.length > 0) {
