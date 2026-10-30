@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { riverMaterial } from '../riverLight';
 import { CHUKAR_RIVER_HALF_WIDTH, CHUKAR_RIVER_LEVEL, chukarRiverY } from '../../game/chukarCanyon';
 import { chukarGroundAt, type ChukarGround } from '../../game/chukarHabitat';
 import { valueNoise } from '../../game/featureLandform';
@@ -202,8 +203,8 @@ export function createChukarRiver(landscape:LandscapeModel):THREE.Mesh {
   }
   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
   geometry.setIndex(indices);geometry.computeVertexNormals();geometry.computeBoundingSphere();
-  const material=new THREE.MeshPhongMaterial({color:0x4d6b74,specular:0xd8e0dc,shininess:70,emissive:0x1e2a2e,emissiveIntensity:.5});
-  const mesh=new THREE.Mesh(geometry,material);mesh.name='Chukar river far below';mesh.receiveShadow=true;
+  // The light on the water is the light lane's (riverLight.ts): it catches the sky.
+  const mesh=new THREE.Mesh(geometry,riverMaterial());mesh.name='Chukar river far below';mesh.receiveShadow=true;
   return mesh;
 }
 

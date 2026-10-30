@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mulberry32 } from '../game/math';
 import type { LandscapeModel } from '../game/landscape';
 import { FAR_COUNTRY_M, TERRAIN_APRON_M, type HorizonLand } from './horizon';
+import { crownColor } from './fieldConditions';
 
 /**
  * The far country: real terrain, with real parallax, from the edge of the
@@ -98,6 +99,8 @@ class Geometry {
   readonly normal: number[] = [];
   readonly color: number[] = [];
   readonly widen: number[] = [];
+  /** Vertex ranges of tree crowns, which keep the leaf year (setLeaves). */
+  readonly leaves: [number, number][] = [];
   private readonly c = new THREE.Color();
   vertex(x: number, y: number, z: number, nx: number, ny: number, nz: number, rgb: THREE.Color, wx = 0, wy = 0, wz = 0): void {
     this.position.push(x, y, z); this.normal.push(nx, ny, nz); this.color.push(rgb.r, rgb.g, rgb.b); this.widen.push(wx, wy, wz);
@@ -116,6 +119,7 @@ class Geometry {
 
 /** A rounded tree mass: a five-sided bipyramid with its crown off centre. */
 function crown(g: Geometry, rng: () => number, x: number, ground: number, z: number, radius: number, height: number, hex: number): void {
+  const start = g.count;
   const top = { x: x + (rng() - .5) * radius * .5, y: ground + height, z: z + (rng() - .5) * radius * .5 };
   const foot = { x, y: ground - 1, z };
   const turn = rng() * Math.PI * 2, mid = ground + height * (.38 + rng() * .14);
@@ -128,6 +132,7 @@ function crown(g: Geometry, rng: () => number, x: number, ground: number, z: num
     g.tri(a, b, top, hex, 1);
     g.tri(b, a, foot, hex, .8);
   }
+  g.leaves.push([start, g.count]);
 }
 
 /** A row of tree masses with a broken, crowned top: uneven heights and the
@@ -376,6 +381,8 @@ const REGIONS: Readonly<Record<string, (p: Place) => Region>> = {
 export interface FarTerrain {
   mesh: THREE.Mesh;
   triangles: number;
+  /** Dress the far tree rows for the month: summer green, russet or bare. */
+  setLeaves(green: number, fall: number): void;
   dispose(): void;
 }
 
@@ -481,8 +488,22 @@ export function buildFarTerrain(landscape: Pick<LandscapeModel, 'worldBounds' | 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = `${landscape.area.name} far country`;
   mesh.matrixAutoUpdate = false;
+  // The crowns as built (October's): the leaf year recolours from these.
+  const colours = geometry.getAttribute('color') as THREE.BufferAttribute;
+  const october = g.leaves.map(([from, to]) => Float32Array.from(g.color.slice(from * 3, to * 3)));
+  const leaf = new THREE.Color();
   return {
     mesh, triangles: g.count / 3,
+    setLeaves(green, fall) {
+      g.leaves.forEach(([from, to], n) => {
+        for (let v = from; v < to; v++) {
+          const k = (v - from) * 3;
+          crownColor(leaf.setRGB(october[n][k], october[n][k + 1], october[n][k + 2]), green, fall);
+          colours.setXYZ(v, leaf.r, leaf.g, leaf.b);
+        }
+      });
+      colours.needsUpdate = true;
+    },
     dispose: () => { geometry.dispose(); material.dispose(); },
   };
 }

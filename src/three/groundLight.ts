@@ -106,8 +106,11 @@ export function setSkyMap(map: THREE.Texture,
 }
 
 export interface SkyOcclusion {
-  /** RGBA bytes, row-major from the map's origin: R sky openness, G crest. */
+  /** RGBA bytes, row-major from the map's origin: R sky openness, G crest,
+   * B ground height between `minHeight` and `maxHeight`. */
   data: Uint8Array;
+  minHeight: number;
+  maxHeight: number;
   width: number;
   height: number;
   origin: { x: number; z: number };
@@ -135,6 +138,9 @@ export function bakeSkyOcclusion(heightAt: (x: number, z: number) => number,
     h[j * width + i] = heightAt(bounds.minX + i * step, bounds.minZ + j * step);
   }
   const at = (i: number, j: number) => h[Math.min(height - 1, Math.max(0, j)) * width + Math.min(width - 1, Math.max(0, i))];
+  let minHeight = Infinity, maxHeight = -Infinity;
+  for (const v of h) { if (v < minHeight) minHeight = v; if (v > maxHeight) maxHeight = v; }
+  const span = Math.max(1e-3, maxHeight - minHeight);
   const dirs = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]] as const;
   const reach = [1, 2, 3, 5, 8].map(r => Math.max(1, Math.round(r * 12 / step)));
   const data = new Uint8Array(width * height * 4);
@@ -154,9 +160,10 @@ export function bakeSkyOcclusion(heightAt: (x: number, z: number) => number,
     const open = Math.max(0, 1 - gain * closed / dirs.length);
     const crest = Math.max(-1, Math.min(1, (h0 - around / Math.max(1, count)) / 4));
     const k = (j * width + i) * 4;
-    data[k] = Math.round(open * 255); data[k + 1] = Math.round((crest * .5 + .5) * 255); data[k + 3] = 255;
+    data[k] = Math.round(open * 255); data[k + 1] = Math.round((crest * .5 + .5) * 255);
+    data[k + 2] = Math.round((h0 - minHeight) / span * 255); data[k + 3] = 255;
   }
-  return { data, width, height, origin: { x: bounds.minX, z: bounds.minZ }, size: { x: (width - 1) * step, z: (height - 1) * step } };
+  return { data, width, height, minHeight, maxHeight, origin: { x: bounds.minX, z: bounds.minZ }, size: { x: (width - 1) * step, z: (height - 1) * step } };
 }
 
 /** The bake as a filtered texture, sampled at texel centres over its rect. */

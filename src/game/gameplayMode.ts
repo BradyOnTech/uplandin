@@ -16,14 +16,17 @@ import { loadQuickConfig, normalizeQuickConfig, type QuickConfig } from './quick
 import {
   ageMult,
   educatedNerveMult,
+  monthOf,
   openMix,
+  SEASON_WEEKS,
   seasonalBias,
   youngShare,
+  type Month,
 } from './season';
-import { createHunt, type HuntState } from './state';
+import { CONDITIONS, type Condition } from './conditions';
+import { createHunt, rollHuntDay, type HuntState } from './state';
 import { LandscapeModel } from './landscape';
 import type { RNG } from './types';
-import type { Condition } from './conditions';
 import { mulberry32 } from './math';
 import { huntStreamSeed, parseHuntSeed } from './huntSeed';
 import { QUAIL_FIELD_BIRD_COUNT, quailEncounterAnchors } from './quailEncounters';
@@ -205,6 +208,26 @@ export interface ThreeHuntSetup extends ThreeHuntProfile {
   area: AreaConfig;
   hunt: HuntState;
   breed: BreedConfig;
+  /** The month the field is dressed for: the career's calendar, or the
+   * link's `?month=`, or October (the season's colour peak). */
+  month: Month;
+}
+
+const MONTHS: readonly Month[] = ['September', 'October', 'November', 'December', 'January'];
+const MONTH_NUMBERS: Readonly<Record<string, Month>> = { 9: 'September', 10: 'October', 11: 'November', 12: 'December', 1: 'January' };
+
+/** A link's `?weather=` (any condition), or null: lets review tools ask for
+ * any day on any launch. */
+export function parseWeatherOverride(search: string): Condition | null {
+  const value = new URLSearchParams(search).get('weather')?.toLowerCase();
+  return CONDITIONS.includes(value as Condition) ? value as Condition : null;
+}
+
+/** A link's `?month=` (a season month by name, short name or number), or null. */
+export function parseMonthOverride(search: string): Month | null {
+  const value = new URLSearchParams(search).get('month')?.trim().toLowerCase();
+  if (!value) return null;
+  return MONTH_NUMBERS[value] ?? MONTHS.find(month => month.toLowerCase() === value || month.toLowerCase().slice(0, 3) === value) ?? null;
 }
 
 export function resolveThreeHuntChallenge(search: string, storage: StorageLike | null = defaultStorage()): HuntChallenge {
@@ -263,13 +286,15 @@ function createThreeHuntSetupUnchecked(
   const tuning = HUNT_CHALLENGES[challenge];
   const resolvedArea = resolveThreeHuntArea(search, storage);
   const training = parseTraining(search);
+  const weather = parseWeatherOverride(search), monthOverride = parseMonthOverride(search);
   if (training) {
     const stage = trainingStage(resolvedArea, training, 0);
-    const hunt = createHunt(resolvedArea, mulberry32(training.seed), { dropPointId, wind: training.wind, condition: 'frost' });
+    // A drill runs in neutral air unless a link asks for a day.
+    const hunt = createHunt(resolvedArea, mulberry32(training.seed), { dropPointId, wind: training.wind, condition: weather ?? 'mild' });
     hunt.birds = stage.birds; hunt.hunterPos = stage.hunter; hunt.dogsPos = stage.dogs;
     hunt.wind = -Math.PI / 2 + Math.PI; hunt.windStrength = training.wind; hunt.preserve = true;
     if (profile.quick) hunt.quick = profile.quick;
-    return { ...profile, launch, area: resolvedArea, hunt, challenge: 'balanced', seed: training.seed, breed: getBreed(profile.breedId) };
+    return { ...profile, launch, area: resolvedArea, hunt, challenge: 'balanced', seed: training.seed, breed: getBreed(profile.breedId), month: monthOverride ?? 'October' };
   }
   const isQuail = resolvedArea.id === 'quail-fields';
   const seed = parseHuntSeed(search) ?? Math.floor(rng() * 0x100000000);
@@ -284,11 +309,20 @@ function createThreeHuntSetupUnchecked(
   const authoredEncounterRng = mulberry32(huntStreamSeed(seed, 0xa11c0a ^ dropSalt));
   const authoredBirdRng = mulberry32(huntStreamSeed(seed, 0xb17d7d ^ dropSalt));
   const timeOfDay = parseHuntTime(new URLSearchParams(search).get('tod'), resolvedArea.id);
-  // What land-driven placement may know before the hunt rolls its weather:
-  // the hour, the career week and any weather the player fixed.
-  const fixedWeather = launch?.kind === 'quick' ? (profile.quick ?? loadQuickConfig(storage)).weather : launch?.kind === 'career' ? 'random' : 'frost';
-  const placement = { timeOfDay, week: launch?.kind === 'career' ? loadCareer(storage).date.week : undefined,
-    condition: fixedWeather === 'random' ? undefined : fixedWeather as Condition };
+  const quick = launch?.kind === 'quick' ? profile.quick ?? loadQuickConfig(storage) : null;
+  const career = launch?.kind === 'career' ? loadCareer(storage) : null;
+  // The week the day belongs to: a link's ?month=, else the career's
+  // calendar. Quick and staged hunts are timeless (read as mid-October).
+  const week = monthOverride ? midWeekOf(monthOverride) : career?.date.week;
+  // Roll the day first, then place the birds for it: land-driven placement
+  // weighs each bird use by the weather the hunt actually gets.
+  const day = rollHuntDay(resolvedArea, environmentRng, {
+    wind: quick ? (quick.wind === 'random' ? undefined : quick.wind) : career ? undefined : 'breezy',
+    condition: weather ?? (quick && quick.weather !== 'random' ? quick.weather : undefined),
+    conditionBias: week === undefined ? undefined : seasonalBias(week, resolvedArea.conditionBias),
+  });
+  const month = monthOverride ?? (career ? monthOf(career.date.week) : 'October');
+  const placement = { timeOfDay, week, condition: day.condition };
   const challengeOptions = {
     timeOfDay,
     stockingMult: tuning.stocking, encounterNerveMult: tuning.nerve, mixedCoveys: true,
@@ -315,40 +349,46 @@ function createThreeHuntSetupUnchecked(
     }),
   };
 
-  if (launch?.kind === 'quick') {
-    const quick = profile.quick ?? loadQuickConfig(storage);
+  if (quick) {
     const area = resolveThreeHuntArea(search, storage);
     const hunt = createHunt(area, environmentRng, {
       ...challengeOptions,
-      wind: quick.wind === 'random' ? undefined : quick.wind,
+      wind: day.wind,
       gunId: quick.gunId,
-      condition: quick.weather === 'random' ? undefined : quick.weather,
+      condition: day.condition,
       dropPointId,
     });
     hunt.quick = quick;
     hunt.huntingMethod = quick.huntingMethod === 'goshawk' ? 'goshawk' : 'shotgun';
     if (isFalconryPractice(search)) stageFalconryPractice(hunt, seed!);
-    return { ...profile, launch, area, hunt, challenge, seed, breed: getBreed(profile.breedId) };
+    return { ...profile, launch, area, hunt, challenge, seed, breed: getBreed(profile.breedId), month };
   }
 
-  if (launch?.kind === 'career') {
-    const career = loadCareer(storage);
+  if (career) {
     const area = resolveThreeHuntArea(search, storage);
     const hunt = createHunt(area, environmentRng, {
       ...challengeOptions,
       gunId: career.hunter.shotgunId,
-      conditionBias: seasonalBias(career.date.week, area.conditionBias),
+      wind: day.wind,
+      condition: day.condition,
       mix: openMix(area, career.date.week),
       youngShare: youngShare(career.date.week),
       educatedMult: educatedNerveMult(career.date.week),
       dropPointId,
     });
-    return { ...profile, launch, area, hunt, challenge, seed, breed: getBreed(profile.breedId) };
+    return { ...profile, launch, area, hunt, challenge, seed, breed: getBreed(profile.breedId), month };
   }
 
-  // Standalone visits use a consistent climate while the seed varies the hunt.
+  // Standalone, staged and capture visits roll a real day from the seed (so
+  // reviews see real conditions), unless the link asks for one.
   const area = resolveThreeHuntArea(search, storage);
-  const hunt = createHunt(area, environmentRng, { ...challengeOptions, wind: 'breezy', condition: 'frost', dropPointId,
+  const hunt = createHunt(area, environmentRng, { ...challengeOptions, wind: day.wind, condition: day.condition, dropPointId,
     gunId: getGun(new URLSearchParams(search).get('gun') ?? '').id });
-  return { ...profile, launch, area, hunt, challenge, seed, breed: getBreed(profile.breedId) };
+  return { ...profile, launch, area, hunt, challenge, seed, breed: getBreed(profile.breedId), month };
+}
+
+/** The middle week of a season month, for a link's `?month=`. */
+function midWeekOf(month: Month): number {
+  const weeks = Array.from({ length: SEASON_WEEKS }, (_, week) => week).filter(week => monthOf(week) === month);
+  return weeks[weeks.length >> 1];
 }

@@ -285,7 +285,8 @@ describe('Hunt3DSystem live start', () => {
   });
 
   it.each([undefined, REVIEW_HUNT_SEED, 1184004868, 41])('lets a walking player naturally reach a complete scent-to-point sequence on seed %s', seed => {
-    vi.stubGlobal('location', { search: `?breed=english-setter${seed === undefined ? '' : `&seed=${seed}`}` });
+    // Calibrated on a frost morning, which staged visits used to force.
+    vi.stubGlobal('location', { search: `?breed=english-setter&weather=frost${seed === undefined ? '' : `&seed=${seed}`}` });
     const ctx = liveCtx();
     const hunt = liveHunt();
     hunt.init(ctx);

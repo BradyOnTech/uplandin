@@ -92,3 +92,20 @@ describe('fog driven from the sky', () => {
     expect(regionAtmosphere(ground).byTime.noon.sunward).toBeLessThan(regionAtmosphere(ground).byTime.evening.sunward / 2);
   });
 });
+
+describe('the far air cools', () => {
+  it('steps each far band bluer at the fog\'s own value, most in the canyon and not at all off the core grounds', () => {
+    const lum = (r: number, g: number, b: number) => .2126 * r + .7152 * g + .0722 * b;
+    for (const ground of GROUNDS) {
+      const spec = fieldTimeOfDay(ground, 'morning'), values = new Float32Array(ATMOSPHERE.length);
+      writeAtmosphere(spec, regionAtmosphere(ground), 'morning', sunOf('morning', ground), 0, values);
+      const fog = new THREE.Color(spec.fogColor), cool = [values[16], values[17], values[18]];
+      expect(lum(cool[0], cool[1], cool[2])).toBeCloseTo(lum(fog.r, fog.g, fog.b), 4);
+      // Cooler: bluer against red than the fog it replaces.
+      expect(cool[2] / cool[0]).toBeGreaterThan(fog.b / fog.r);
+      expect(values[19]).toBeGreaterThan(0);
+    }
+    expect(regionAtmosphere('chukar-ridge').cool).toBe(Math.max(...GROUNDS.map(ground => regionAtmosphere(ground).cool)));
+    expect(regionAtmosphere('timberline-parks').cool).toBe(0);
+  });
+});
