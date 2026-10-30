@@ -2,12 +2,12 @@ import type { SlopeApproach } from '../../game/fieldcraft';
 import { isFalconryPractice, FALCONRY_PRACTICE } from '../../game/falconryPractice';
 import { huntStreamSeed, parseHuntSeed } from '../../game/huntSeed';
 import { birdFlightExpired } from '../../game/birdFlightLifetime';
-import { fallLine, lineFamilyFor, PASS_CLEAR_M, planFlightLine, stepFlightLine, type FlightLine } from '../../game/flightLine';
+import { fallLine, lineFamilyFor, PASS_CLEAR_M, planFlightLine, skyBehind, stepFlightLine, type FlightLine } from '../../game/flightLine';
 import { buildPheasantBody, buildPheasantLegs, buildPheasantWing, buildPheasantTail, pheasantLegTuck, pheasantTailFan, posePheasantFoldedWings, pheasantWingbeat } from '../assets/pheasant';
 import { buildBirdLegs } from '../assets/birdLegs';
 import { quailLaunchDelay } from '../quailPresentation';
 import { flyingBirdScale, type BirdSizeMode } from '../birdScale';
-import { identityBoost, shownWingHz } from '../birdIdentity';
+import { identityBoost, SIGHT_FLOOR_PX, shownWingHz } from '../birdIdentity';
 import { chooseHitReaction, createHitReaction, featherCount, stepHitReaction, tumbleRate, type HitReaction, type HitReactionKind, type HitShot } from '../hitReactions';
 import { FeatherDrift, featherTones } from '../featherDrift';
 import { QuailFlushDebris } from '../quailFlushDebris';
@@ -36,6 +36,9 @@ import { HUNT_SHOT_RANGE } from '../../game/huntSimulation';
 import { ObstacleIndex } from '../../game/obstacleIndex';
 import { edgeOfCover, glideMark, landingHolds, MARK_RANGE_M, MARK_SAIL_MS, MARK_SIGHT_MS, MarkBook, type HunterMark } from '../../game/marks';
 import { quailPlumAt } from '../../game/quailComposition';
+import { SIGHT_COVER_M, SightingClock, sightingHolds, sightingKind, type SightingCandidate, type SightingKind } from '../../game/sightings';
+import { habitatClassAt } from '../../game/landHabitat';
+import { GroundSign, type SignCovey } from '../groundSign';
 import { quailCoverAt } from '../../game/quailLandscape';
 import type { Ctx, Subsystem } from '../engine';
 import { P, fieldTimeOfDay, type TimeOfDay } from '../palette';
@@ -191,6 +194,14 @@ const POOL = 14;
 /** Feathers in the hit's puff. */
 const FEATHER_PUFF = 20;
 
+/** Birds before the flush (game/sightings.ts): at most this many on the ground at once... */
+const SIGHT_POOL = 4;
+/** ...of these species, looked for within this range (m) every half second. */
+const SIGHT_SPECIES: ReadonlySet<string> = new Set(['ringneck', 'chukar', 'sharptail']);
+const SIGHT_LOOK_M = 190;
+/** Open ground for chukar to be seen running on: the cheat and bunchgrass slopes, bare ground, talus. */
+const CHUKAR_OPEN: ReadonlySet<string> = new Set(['cheat', 'bunchgrass', 'bare', 'talus']);
+
 /** A miss sets down at least this far inside the property line (property px)... */
 const LANDING_MARGIN_PX = 10;
 /** ...this far clear of any rock, tree, building or pond edge (metres)... */
@@ -258,6 +269,7 @@ export function pickBirdAlongRay(
 /** The simulation's view of a bird about to rise. */
 interface SimLaunchBird {
   id: number;
+  coveyId?: number;
   pos: { x: number; y: number };
   state?: string;
   young?: boolean;
@@ -503,6 +515,17 @@ export class BirdsSystem implements Subsystem {
   private readonly simPoint = { x: 0, y: 0 };
   /** Where the hunter watched misses go down (game/marks.ts). */
   private readonly markBook = new MarkBook();
+  /** Birds before the flush: a small pool of their own, never the rise's. */
+  private readonly sightSlots: Slot[] = [];
+  private readonly sightClock = new SightingClock();
+  private readonly sightShown = new Map<number, Slot>();
+  private readonly sightPrev = new Map<number, { x: number; z: number; ground: number }>();
+  private readonly sightProbe2 = { x: 0, z: 0 };
+  private tod: TimeOfDay = 'morning';
+  /** Sign on the ground near some coveys (groundSign.ts), laid on the first tick. */
+  private sign?: GroundSign;
+  private signLaid = false;
+  private sceneRef?: THREE.Scene;
   /** Capture only: each hit's feather puff, a feather's size on screen. */
   private readonly hitLog: { simId: number; fieldMs: number; rangeM: number; featherPx: number }[] = [];
   /** Capture only: each shot bird's strike and when its thump would be heard. */
@@ -566,6 +589,7 @@ export class BirdsSystem implements Subsystem {
     this.coverEvents = ctx.events;
     this.obstacleCtx = ctx;
     this.coverCtx = ctx;
+    this.sceneRef = ctx.scene;
     const signal = this.lifetime.signal;
     ctx.events.addEventListener('pause', ((event: CustomEvent<boolean>) => {
       if (event.detail) this.stopLaunchSounds();
@@ -609,6 +633,7 @@ export class BirdsSystem implements Subsystem {
         );
     };
     const applyTod = (tod: TimeOfDay): void => {
+      this.tod = tod;
       const spec = fieldTimeOfDay(this.hunt.huntState().areaId,tod);
       const silh = spec.grassLumCap < 1;
       const lowSun = THREE.MathUtils.clamp(1 - (spec.sunElevation - 2) / 13, 0, 1);
@@ -711,6 +736,9 @@ export class BirdsSystem implements Subsystem {
         strikes: () => this.strikeLog.map(strike => ({ ...strike })),
         /** The field clock (ms), the strike log's clock. */
         fieldMs: () => this.fieldMs,
+        /** Sign on the ground (where, what), and birds before the flush now shown. */
+        sign: () => this.sign?.spots.map(spot => ({ ...spot })) ?? [],
+        sightings: () => this.sightings(),
         /** The hunter's marks: where he watched misses go down. */
         marks: () => this.markBook.marks.map(mark => ({ ...mark, birdIds: [...mark.birdIds], freshness: this.markBook.freshness(mark, this.fieldMs) })),
         /** Rise review's shooting hunter: the capture never fires the real
@@ -754,7 +782,7 @@ export class BirdsSystem implements Subsystem {
     this.buildSpeciesGeometry(getSpecies('ringneck'), true);
     const fallback = this.speciesGeos.get('bobwhite')!;
 
-    for (let i = 0; i < POOL; i++) {
+    const makeSlot = (): Slot => {
       const root = new THREE.Group();
       const body = new THREE.Mesh(fallback.body, this.mat!);
       body.castShadow = false;
@@ -776,7 +804,7 @@ export class BirdsSystem implements Subsystem {
       root.scale.setScalar(RISE_SCALE);
       root.visible = false;
       ctx.scene.add(root);
-      this.slots.push({
+      return {
         status: 'idle',
         simId: -1,
         species: getSpecies('bobwhite'),
@@ -799,8 +827,10 @@ export class BirdsSystem implements Subsystem {
         wingR,
         visualScale: 1,
         spanM: SPAN_M,
-      });
-    }
+      };
+    };
+    for (let i = 0; i < POOL; i++) this.slots.push(makeSlot());
+    for (let i = 0; i < SIGHT_POOL; i++) this.sightSlots.push(makeSlot());
   }
 
   private buildSpeciesGeometry(species: SpeciesConfig, hen: boolean): void {
@@ -1087,6 +1117,7 @@ export class BirdsSystem implements Subsystem {
     const dt = dtMs / 1000;
     this.riseMs += dtMs;
     this.fieldMs += dtMs;
+    if (!this.signLaid) this.laySign();
 
     // 1. Detect newly flushed sim birds -> stage a rise (covey order).
     const simBirds = this.hunt.huntState().birds;
@@ -1308,6 +1339,9 @@ export class BirdsSystem implements Subsystem {
         if (this.featherPoints) this.featherPoints.visible = false;
       }
     }
+
+    // 5. Birds before the flush.
+    this.stepSightings(simBirds, dtMs);
   }
 
   /** A covey just blew: a fresh per-rise stream, the covey's centroid and
@@ -1918,6 +1952,12 @@ export class BirdsSystem implements Subsystem {
   /** The hunter's marks: where he watched misses go down (game/marks.ts). */
   marks(): readonly HunterMark[] { return this.markBook.marks; }
 
+  /** Birds before the flush now on the ground in view (world metres), and how many this hunt. */
+  sightings(): { kind: SightingKind | null; shown: number; birds: { simId: number; speciesId: string; x: number; y: number; z: number }[] } {
+    return { kind: this.sightClock.current?.kind ?? null, shown: this.sightClock.count,
+      birds: [...this.sightShown.values()].map(s => ({ simId: s.simId, speciesId: s.species.id, x: s.x, y: s.y, z: s.z })) };
+  }
+
   /** The mark he made last, and how sure of it he still is (1 fresh, 0 forgotten). */
   latestMark(): { mark: HunterMark; freshness: number } | null {
     const mark = this.markBook.latest();
@@ -2183,6 +2223,170 @@ export class BirdsSystem implements Subsystem {
   }
 
   /**
+   * Birds before the flush (game/sightings.ts). Shown birds follow their
+   * hidden birds over the ground every tick, striding as they go; every half
+   * second the shown ones are checked (still in sight, still out of cover)
+   * and, when the clock allows, the birds in reach are looked over for a new
+   * sighting: one group at a time, rare by design.
+   */
+  private stepSightings(simBirds: readonly SimLaunchBird[], dtMs: number): void {
+    for (const [id, slot] of this.sightShown) {
+      const bird = simBirds.find(candidate => candidate.id === id);
+      if (!bird || bird.state !== 'hidden') { this.hideSighting(id); continue; }
+      this.hunt.simToWorld(bird.pos.x, bird.pos.y, this.w2);
+      const dx = this.w2.x - slot.x, dz = this.w2.z - slot.z, d = Math.hypot(dx, dz);
+      slot.running = d > 1e-3 && this.sightClock.current?.kind !== 'skyline';
+      if (slot.running) { slot.runYaw = Math.atan2(dx, dz); slot.stride = ((slot.stride ?? 0) + d / strideLength(slot.species.id) * Math.PI) % (Math.PI * 2); }
+      slot.x = this.w2.x; slot.z = this.w2.z; slot.y = this.drawnGround(slot.x, slot.z) + .02;
+    }
+    if (this.sightClock.current && this.sightShown.size === 0) this.sightClock.end(this.fieldMs);
+    if ((this.fieldMs / dtMs | 0) % 15 !== 0) return;
+    const camera = this.listener as THREE.PerspectiveCamera | undefined;
+    if (!camera?.isPerspectiveCamera) return;
+    const eye = camera.position, hunterGround = this.terrain.heightAt(eye.x, eye.z), dawn = this.tod === 'dawn';
+    const candidates = new Map<number, SightingCandidate>();
+    for (const bird of simBirds) {
+      if (bird.state !== 'hidden' || !SIGHT_SPECIES.has(bird.speciesId)) continue;
+      this.hunt.simToWorld(bird.pos.x, bird.pos.y, this.sightProbe2);
+      const range = Math.hypot(this.sightProbe2.x - eye.x, this.sightProbe2.z - eye.z);
+      if (range > SIGHT_LOOK_M) { this.sightPrev.delete(bird.id); continue; }
+      candidates.set(bird.id, this.sightingCandidate(bird, this.sightProbe2.x, this.sightProbe2.z, range, eye, hunterGround));
+    }
+    const active = this.sightClock.current;
+    if (active) {
+      for (const id of [...this.sightShown.keys()]) {
+        const seen = candidates.get(id);
+        if (!seen || !sightingHolds(seen, active.kind)) this.hideSighting(id);
+      }
+      if (this.sightShown.size === 0 || this.sightClock.expired(this.fieldMs)) {
+        for (const id of [...this.sightShown.keys()]) this.hideSighting(id);
+        this.sightClock.end(this.fieldMs);
+      }
+      return;
+    }
+    if (this.riseActive || !this.sightClock.mayBegin(this.fieldMs)) return;
+    const ordered = [...candidates.values()].sort((a, b) => a.range - b.range);
+    for (const first of ordered) {
+      const kind = sightingKind(first, dawn);
+      if (!kind) continue;
+      // The group: this bird and any of its covey that read the same way.
+      const group = ordered.filter(bird => bird.coveyId === first.coveyId && sightingKind(bird, dawn) === kind).slice(0, SIGHT_POOL);
+      for (const bird of group) this.showSighting(simBirds.find(candidate => candidate.id === bird.id)!, bird, kind);
+      this.sightClock.begin(kind, first.coveyId, this.fieldMs);
+      return;
+    }
+  }
+
+  /** What the hunter could know of a hidden bird for a sighting, and how it moved since the last look. */
+  private sightingCandidate(bird: SimLaunchBird, x: number, z: number, range: number, eye: THREE.Vector3, hunterGround: number): SightingCandidate {
+    const ground = this.drawnGround(x, z), prev = this.sightPrev.get(bird.id);
+    this.sightPrev.set(bird.id, { x, z, ground });
+    const area = this.hunt.areaConfig();
+    const crown = this.coverCrownAt()(x, z);
+    const habitat = area.id === 'chukar-ridge' ? habitatClassAt(area, bird.pos.x, bird.pos.y) : null;
+    const open = habitat ? CHUKAR_OPEN.has(habitat) : crown < SIGHT_COVER_M;
+    let trackM = Infinity;
+    for (const trail of area.trails ?? []) for (let i = 1; i < trail.points.length; i++) {
+      const a = trail.points[i - 1], b = trail.points[i], abx = b.x - a.x, aby = b.y - a.y, l2 = abx * abx + aby * aby || 1;
+      const t = Math.max(0, Math.min(1, ((bird.pos.x - a.x) * abx + (bird.pos.y - a.y) * aby) / l2));
+      trackM = Math.min(trackM, Math.hypot(bird.pos.x - a.x - abx * t, bird.pos.y - a.y - aby * t) * .9144);
+    }
+    const head = ground + .35;
+    const p = this.sightProbe.set(x, head, z).project(this.listener as THREE.PerspectiveCamera);
+    const inView = p.z < 1 && p.z > -1 && Math.abs(p.x) < 1 && Math.abs(p.y) < 1;
+    const ring = [0, 1, 2, 3, 4, 5, 6, 7].filter(k => this.terrain.heightAt(x + Math.cos(k * Math.PI / 4) * 20, z + Math.sin(k * Math.PI / 4) * 20) < ground - .5).length;
+    return { id: bird.id, coveyId: bird.coveyId ?? bird.id, speciesId: bird.speciesId, sex: bird.sex, x, z, ground,
+      moved: prev ? Math.hypot(x - prev.x, z - prev.z) : 0, climbed: prev ? ground - prev.ground : 0,
+      range, hunterGround, crown, open, trackM,
+      inSight: inView && this.clearSight(eye, x, head, z),
+      skyBehind: skyBehind(eye, { x, y: head, z }, (gx, gz) => this.terrain.heightAt(gx, gz)), onCrest: ring >= 6 };
+  }
+
+  private showSighting(bird: SimLaunchBird, seen: SightingCandidate, kind: SightingKind): void {
+    const slot = this.sightSlots.find(candidate => !candidate.root.visible);
+    if (!slot) return;
+    this.applySpeciesAppearance(slot, getSpecies(bird.speciesId), bird.sex);
+    slot.simId = bird.id; slot.status = 'grounded';
+    slot.x = seen.x; slot.z = seen.z; slot.y = seen.ground + .02;
+    slot.running = kind !== 'skyline'; slot.stride = 0;
+    // A crest bird looks out over the country; a runner faces where it goes.
+    slot.runYaw = kind === 'skyline' ? Math.atan2(slot.x - (this.listener?.position.x ?? 0), slot.z - (this.listener?.position.z ?? 0)) + (bird.id % 5 - 2) * .5 : slot.runYaw ?? 0;
+    slot.root.visible = true;
+    this.sightShown.set(bird.id, slot);
+  }
+
+  private hideSighting(id: number): void {
+    const slot = this.sightShown.get(id);
+    if (slot) { slot.root.visible = false; slot.status = 'idle'; slot.running = false; }
+    this.sightShown.delete(id);
+  }
+
+  /** Sign on the ground near some coveys, where they are, on open ground
+   * only (groundSign.ts). Laid once the cover is up, on the first tick. */
+  private laySign(): void {
+    this.signLaid = true;
+    if (!this.sceneRef || this.hunt.training || !this.hunt.coverPatches) return;
+    const area = this.hunt.areaConfig(), byCovey = new Map<number, SimLaunchBird[]>();
+    for (const bird of this.hunt.huntState().birds) if (bird.state === 'hidden') byCovey.set(bird.coveyId, [...(byCovey.get(bird.coveyId) ?? []), bird]);
+    const coveys: SignCovey[] = [];
+    for (const covey of byCovey.values()) {
+      const x = covey.reduce((sum, b) => sum + b.pos.x, 0) / covey.length, y = covey.reduce((sum, b) => sum + b.pos.y, 0) / covey.length;
+      const world = this.hunt.simToWorld(x, y, { x: 0, z: 0 });
+      let track: SignCovey['track'];
+      if (covey[0].speciesId === 'ringneck') {
+        let best = 25 / .9144;
+        for (const trail of area.trails ?? []) for (let i = 1; i < trail.points.length; i++) {
+          const a = trail.points[i - 1], b = trail.points[i], abx = b.x - a.x, aby = b.y - a.y, l2 = abx * abx + aby * aby || 1;
+          const t = Math.max(0, Math.min(1, ((x - a.x) * abx + (y - a.y) * aby) / l2)), px = a.x + abx * t, py = a.y + aby * t;
+          const d = Math.hypot(x - px, y - py);
+          if (d < best) { best = d; const w = this.hunt.simToWorld(px, py, { x: 0, z: 0 }); track = { x: w.x, z: w.z, heading: Math.atan2(aby, abx) }; }
+        }
+      }
+      coveys.push({ speciesId: covey[0].speciesId, sex: covey.find(b => b.sex === 'rooster') ? 'rooster' : covey[0].sex, x: world.x, z: world.z, track });
+    }
+    const crown = this.coverCrownAt();
+    const open = (x: number, z: number) => {
+      if (crown(x, z) >= .5) return false;
+      if (area.id !== 'chukar-ridge' || !this.hunt.worldToSim) return true;
+      const at = this.hunt.worldToSim(x, z, this.simPoint);
+      return CHUKAR_OPEN.has(habitatClassAt(area, at.x, at.y) ?? '');
+    };
+    this.sign = new GroundSign(coveys, this.riseSeed, (x, z) => this.terrain.heightAt(x, z), open);
+    this.sceneRef.add(this.sign.mesh);
+  }
+
+  /** A shown ground bird, posed: running with its legs in stride, or standing up on a crest. */
+  private poseSighting(slot: Slot, camera: THREE.Vector3 | undefined): void {
+    slot.root.position.set(slot.x, slot.y, slot.z);
+    const range = camera ? Math.hypot(slot.x - camera.x, slot.y - camera.y, slot.z - camera.z) : 0;
+    const reference = this.speciesGeos.get('bobwhite')?.spanM;
+    const fov = (this.listener as THREE.PerspectiveCamera | undefined)?.fov ?? 70;
+    // Seen far off on the ground it is drawn large enough to read, as a flying bird is.
+    const boost = reference && range > 0 ? Math.max(1, SIGHT_FLOOR_PX / (reference * restingBirdScale('quail') * this.viewHeight()
+      / (2 * Math.tan(fov * Math.PI / 360) * range))) : 1;
+    slot.root.scale.setScalar(restingBirdScale(birdFamilyFor(slot.species.id)) * slot.visualScale * boost);
+    if (slot.running) { this.poseRunner(slot); return; }
+    slot.root.rotation.set(-.3, slot.runYaw ?? 0, 0, 'YXZ');
+    this.foldWings(slot);
+    if (slot.legMeshR) slot.legMeshR.visible = false;
+    if (slot.legMesh) { slot.legMesh.visible = true; slot.legMesh.rotation.set(.3, 0, 0); }
+  }
+
+  /** A bird on the ground running: head down, low, its legs striding in turn, body bobbing and rocking. */
+  private poseRunner(s: Slot): void {
+    const stride = s.stride ?? 0, step = Math.sin(stride);
+    s.root.rotation.set(.14 + .05 * Math.sin(stride * 2), s.runYaw ?? 0, .06 * step, 'YXZ');
+    s.root.position.y += Math.abs(Math.cos(stride)) * .018 * s.visualScale;
+    this.foldWings(s);
+    const geometry = this.speciesGeos.get(`${s.species.id}${s.sex === 'hen' ? ':hen' : ''}`) ?? this.speciesGeos.get(s.species.id);
+    if (s.legMesh && s.legMeshR && geometry?.legL && geometry.legR) {
+      s.legMesh.geometry = geometry.legL; s.legMeshR.geometry = geometry.legR;
+      s.legMesh.visible = s.legMeshR.visible = true;
+      s.legMesh.rotation.set(.75 * step, 0, 0); s.legMeshR.rotation.set(-.75 * step, 0, 0);
+    }
+  }
+
+  /**
    * A miss set down. If the hunter watched it go in, he marks it: where it
    * touched down if he saw it to the ground, else where its glide was taking
    * it when the cover hid it (marks.ts glideMark); only a bird the field keeps
@@ -2378,6 +2582,7 @@ export class BirdsSystem implements Subsystem {
     this.launchCover?.render();
     this.eruption?.render();
     this.renderedPhase = this.flightPresentationPhase(ctx.fixedAlpha);
+    for (const s of this.sightSlots) if (s.root.visible) this.poseSighting(s, ctx.camera?.position ?? this.listener?.position);
     const simBirds = this.hunt.huntState().birds;
     for (let i = 0; i < POOL; i++) {
       const s = this.slots[i];
@@ -2495,18 +2700,8 @@ export class BirdsSystem implements Subsystem {
           : holding ? .12 : s.status === 'falling' ? .5 : s.status === 'grounded' && s.running ? 0 : 1.3;
       }
       if (s.status === 'grounded' && s.running) {
-        // Head down, running low for the nearest cover: the legs stride in
-        // turn and the body bobs and rocks with every step.
-        const stride = s.stride ?? 0, step = Math.sin(stride);
-        s.root.rotation.set(.14 + .05 * Math.sin(stride * 2), s.runYaw ?? 0, .06 * step, 'YXZ');
-        s.root.position.y += Math.abs(Math.cos(stride)) * .018 * s.visualScale;
-        this.foldWings(s);
-        const geometry = this.speciesGeos.get(`${s.species.id}${s.sex === 'hen' ? ':hen' : ''}`) ?? this.speciesGeos.get(s.species.id);
-        if (s.legMesh && s.legMeshR && geometry?.legL && geometry.legR) {
-          s.legMesh.geometry = geometry.legL; s.legMeshR.geometry = geometry.legR;
-          s.legMesh.visible = s.legMeshR.visible = true;
-          s.legMesh.rotation.set(.75 * step, 0, 0); s.legMeshR.rotation.set(-.75 * step, 0, 0);
-        }
+        // Head down, running low for the nearest cover.
+        this.poseRunner(s);
         continue;
       }
       if (s.legMeshR?.visible) {
@@ -2616,7 +2811,9 @@ export class BirdsSystem implements Subsystem {
     this.eruption = undefined;
     this.launchCover = undefined;
     for (const s of this.slots) ctx.scene.remove(s.root);
-    this.slots.length = 0;
+    for (const s of this.sightSlots) ctx.scene.remove(s.root);
+    this.slots.length = 0; this.sightSlots.length = 0; this.sightShown.clear();
+    if (this.sign) { ctx.scene.remove(this.sign.mesh); this.sign.dispose(); this.sign = undefined; }
     this.shotSamples.length = 0;
     if (this.featherPoints) ctx.scene.remove(this.featherPoints);
     this.loose?.dispose();

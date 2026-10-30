@@ -36,6 +36,11 @@ export function shownWingHz(flapRate: number): number {
 
 /** The smallest core bird's span on screen, at least, within range (CSS px). */
 export const ID_SPAN_PX = 12;
+/** A bird seen on the ground before the flush (a rooster on a two-track,
+ * chukar running above, sharptails on a crest) is drawn at least this big,
+ * measured the same way on a bobwhite folded on the ground, out to the 170 m
+ * a sighting is seen at, so a sighting is never a speck. */
+export const SIGHT_FLOOR_PX = 8;
 /** The floor ramps in between these ranges (m)... */
 const FLOOR_FROM_M = 15, FLOOR_FULL_M = 28;
 /** ...holds to this one, and eases off past it, as (hold / d) ^ FLOOR_FALL... */
