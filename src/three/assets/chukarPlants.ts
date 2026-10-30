@@ -63,8 +63,8 @@ class PlantSurface {
    * upper shell (Fibonacci directions), each tilted out from the surface so
    * its tip breaks the outline. The core shows between cards as the
    * crown's own depth and shade. */
-  leafyLobe(center:Point,radii:Point,cards:number,size:number,rng:()=>number,lite:boolean):void {
-    const [cx,cy,cz]=center,[rx,ry,rz]=radii,sides=lite?4:5,k=.62;
+  leafyLobe(center:Point,radii:Point,cards:number,size:number,rng:()=>number,lite:boolean,core=.62):void {
+    const [cx,cy,cz]=center,[rx,ry,rz]=radii,sides=lite?4:5,k=core;
     const ring=(phi:number,turn:number):Point[]=>Array.from({length:sides},(_,i)=>{
       const a=i/sides*Math.PI*2+turn,w=Math.cos(phi)*(1+(rng()-.5)*.25);
       return [cx+Math.sin(a)*rx*k*w,cy+Math.sin(phi)*ry*k,cz+Math.cos(a)*rz*k*w];
@@ -151,11 +151,11 @@ export function chukarGrassGeometry(lite:boolean):THREE.BufferGeometry {
 
 /**
  * Big sagebrush: a few gnarled, shredding grey trunks lean out from one
- * root and fork into twigs; leaves cluster at the twig ends as small
- * silver lobes, each a dark core dressed with leaf cards tilted out from
- * it (the woody kit's leafy lobes), so the crown is a ragged, wider-than-
- * tall silver mass with depth, never a grey stone. The base stays open:
- * the trunks show beneath the lowest leaves. Vertex colour is light and
+ * root and fork into twigs; leaves cluster at the twig ends as silver
+ * lobes, each a core dressed with leaf cards tilted out from it (the woody
+ * kit's leafy lobes), so the crown is a low, ragged, wider-than-tall silver
+ * mass with depth, never a grey stone and never a little tree. The base
+ * stays open: the trunks' feet show beneath the lowest leaves. Vertex colour is light and
  * shade only; the instance colour carries the silver tone. Lite keeps the
  * same trunks and the biggest lobes, with single-triangle cards.
  */
@@ -168,13 +168,13 @@ export function chukarSageGeometry(lite:boolean):THREE.BufferGeometry {
   for(let trunk=0;trunk<3;trunk++){
     const az=trunk*2.18+rng()*.5,lean=.1+rng()*.08,kink=rng()-.5;
     const root:Point=[Math.sin(az)*.03,.04,Math.cos(az)*.03];
-    const knee:Point=[Math.sin(az+kink*.6)*lean,.2+rng()*.05,Math.cos(az+kink*.6)*lean];
-    const crotch:Point=[Math.sin(az)*lean*1.9,.38+rng()*.07,Math.cos(az)*lean*1.9];
+    const knee:Point=[Math.sin(az+kink*.6)*lean,.15+rng()*.04,Math.cos(az+kink*.6)*lean];
+    const crotch:Point=[Math.sin(az)*lean*1.9,.28+rng()*.06,Math.cos(az)*lean*1.9];
     if(lite){surface.ribbon(root,crotch,.03,az+1.57,.5,bark);}
     else{surface.branch(root,knee,.034,false);surface.branch(knee,crotch,.026,false);}
     for(let twig=0;twig<2;twig++){
-      const a=az+(twig?.55:-.5)+(rng()-.5)*.3,reach=lean*1.9+.12+rng()*.14;
-      const tip:Point=[Math.sin(a)*reach,.56+rng()*.2,Math.cos(a)*reach];
+      const a=az+(twig?.55:-.5)+(rng()-.5)*.3,reach=lean*1.9+.18+rng()*.16;
+      const tip:Point=[Math.sin(a)*reach,.46+rng()*.16,Math.cos(a)*reach];
       // At a distance the lobes hide the twigs; Lite keeps only the trunks.
       if(!lite)surface.ribbon(crotch,tip,.014,a+1.57,.52,bark);
       tips[twig].push(tip);
@@ -182,8 +182,11 @@ export function chukarSageGeometry(lite:boolean):THREE.BufferGeometry {
   }
   // Leaf lobes at the twig ends and one over the middle: the biggest
   // first, so Lite keeps the same outline in fewer pieces.
-  const lobes=[{c:[0,.78,0] as Point,r:[.3,.17,.27] as Point},...tips.flat().map(t=>({c:[t[0]*1.08,t[1]+.04,t[2]*1.08] as Point,r:[.21+rng()*.06,.13+rng()*.04,.19+rng()*.05] as Point}))];
-  lobes.forEach((lobe,i)=>{if(lite&&i>=4)return;surface.leafyLobe(lobe.c,lobe.r,lite?5:9,lite?.15:.11,rng,lite);});
+  // A low, rounded crown: the side lobes come down to the knees, so only
+  // the trunks' feet show beneath; full cores give the bush its silver
+  // mass at a distance.
+  const lobes=[{c:[0,.7,0] as Point,r:[.36,.2,.32] as Point},...tips.flat().map(t=>({c:[t[0]*1.12,t[1]+.02,t[2]*1.12] as Point,r:[.25+rng()*.06,.16+rng()*.04,.23+rng()*.05] as Point}))];
+  lobes.forEach((lobe,i)=>{if(lite&&i>=4)return;surface.leafyLobe(lobe.c,lobe.r,lite?5:9,lite?.17:.11,rng,lite,.8);});
   // Broken basal litter gives the wood a root bed, not a floating canopy.
   for(let leaf=0;leaf<(lite?2:4);leaf++)surface.leaf([0,.02,0],leaf*2.399+.4,.33+leaf*.035,.04,.57);
   return surface.geometry('chukar-silver-sage');
