@@ -6,7 +6,9 @@
  * report from the game's own gun. Levels per phase come from the decoded
  * recording; full-scale samples and the analyser's peaks show clipping.
  * Staged poses and a direct report call: level evidence, not a playtest or
- * a listening verdict. Wrap in tools3d/heavy.sh.
+ * a listening verdict. Needs a machine whose browser audio clock runs (on a
+ * Mac with the display asleep, headless Chrome's does not). Wrap in
+ * tools3d/heavy.sh.
  *
  *   node tools3d/field-sound-review.mjs --area quail-fields --query "weather=rain&month=oct" --url http://localhost:4612 --uncapped
  */
@@ -67,7 +69,11 @@ try {
   // The hunter follows the dog at a walk's distance while it works.
   const follow = () => {
     const h = window.__api3d.hunt(), dx = h.dog.x - h.hunter.x, dz = h.dog.z - h.hunter.z, d = Math.hypot(dx, dz);
-    if (d > 28) window.__api3d.setPose(h.hunter.x + dx / d * .25, h.hunter.z + dz / d * .25, Math.atan2(-dx, -dz) * 180 / Math.PI, 0);
+    // The dog waits at heel until the hunter steps off from the truck.
+    if (h.dog.state === 'heel') {
+      const yaw = window.__api3d.telemetry().camera.yawDeg * Math.PI / 180;
+      window.__api3d.setPose(h.hunter.x - Math.sin(yaw) * .25, h.hunter.z - Math.cos(yaw) * .25, yaw * 180 / Math.PI, 0);
+    } else if (d > 28) window.__api3d.setPose(h.hunter.x + dx / d * .25, h.hunter.z + dz / d * .25, Math.atan2(-dx, -dz) * 180 / Math.PI, 0);
   };
   await phase('field', 12000, follow);
   // Follow until the dog points (or give up after two minutes of hunting).
