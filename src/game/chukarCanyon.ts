@@ -97,6 +97,10 @@ export const CHUKAR_CRESTS: readonly Crest[] = [
   // Promontories hold their bench out over the slope below, rims on three sides.
   crest('castle-point', [[1006, 690, 1000, 56], [996, 745, 1000, 62], [984, 790, 1000, 48]], true),
   crest('west-point', [[478, 380, 1335, 40], [470, 430, 1335, 46], [466, 470, 1335, 38]], true),
+  // A basalt spur noses down the breaks to the river road, so from the truck
+  // the canyon wall stands right over you: the lower rim wraps its nose a
+  // short walk up, the cheat face and the higher rims stack behind it.
+  crest('road-spur', [[515, 960, 120, 120], [505, 1120, 260, 125], [494, 1250, 340, 95]]),
   // East of Spring Creek the wall rises again as a long ridge; its flank
   // above the creek's lower reach is the shaded north face.
   crest('east-ridge', [[2400, 440, 140, 270], [2160, 730, 230, 290], [1960, 980, 260, 270], [1790, 1170, 210, 230], [1660, 1350, 110, 180]]),

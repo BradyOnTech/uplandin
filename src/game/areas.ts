@@ -348,13 +348,10 @@ function hunGeography(w: number, h: number) {
  * truck entries around its edge and trails planned over the land. */
 function chukarGeography() {
   return {
-    // Each truck faces up its own trail, the way the hunt sets off.
-    dropPoints: CHUKAR_ENTRIES.map((entry): DropPoint => {
-      const route = CHUKAR_TRAILS.find(t => t.points[0].x === entry.position.x && t.points[0].y === entry.position.y);
-      const toward = route?.points[1] ?? entry.toward;
-      return { id: entry.id, name: entry.name, position: entry.position,
-        heading: Math.atan2(toward.y - entry.position.y, toward.x - entry.position.x), safetyRadius: 48, landmarkId: `${entry.id}-gate` };
-    }),
+    // Each truck faces the way its entry was authored to open: the wall
+    // from the bottom, down into the canyon from the top.
+    dropPoints: CHUKAR_ENTRIES.map((entry): DropPoint => ({ id: entry.id, name: entry.name, position: entry.position,
+      heading: Math.atan2(entry.toward.y - entry.position.y, entry.toward.x - entry.position.x), safetyRadius: 48, landmarkId: `${entry.id}-gate` })),
     landmarks: [
       ...CHUKAR_ENTRIES.map((entry): AreaLandmark => ({ id: `${entry.id}-gate`, name: entry.name, kind: 'gate', position: { ...entry.position } })),
       ...CHUKAR_HUNT_AREAS.map((area): AreaLandmark => ({ id: area.id, name: area.landmark.name, kind: 'fence', position: area.landmark.position })),

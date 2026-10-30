@@ -24,7 +24,8 @@ describe('authored habitat contracts', () => {
     const shoreY = pond.position.y + (pheasantPondRadii(pond.id).rz * 1.15 + 5) / PROPERTY_PX_TO_M + 8;
     expect(pheasantCoverAt(area, pond.position.x, shoreY)).toBe(true);
   });
-  it.each(['chukar-ridge', 'woodcock-bottoms', 'pheasant-coverts'])('faces each %s entry along its first authored route segment', areaId => {
+  // Chukar Ridge's trucks face their authored opening views instead (chukarLandform.test.ts).
+  it.each(['woodcock-bottoms', 'pheasant-coverts'])('faces each %s entry along its first authored route segment', areaId => {
     const area = getArea(areaId);
     for (const drop of area.dropPoints) {
       const route = area.trails.find(t => t.points[0].x === drop.position.x && t.points[0].y === drop.position.y)!;

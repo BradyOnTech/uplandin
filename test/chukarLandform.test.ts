@@ -5,7 +5,7 @@ import {
   chukarSolidAt, chukarWallAt,
 } from '../src/game/chukarCanyon';
 import { CHUKAR_SPRING_SEAM, chukarGroundAt } from '../src/game/chukarHabitat';
-import { CHUKAR_HUNT_AREAS, CHUKAR_PLACES } from '../src/game/chukarRidge';
+import { CHUKAR_ENTRIES, CHUKAR_HUNT_AREAS, CHUKAR_PLACES } from '../src/game/chukarRidge';
 import { HunterBreath, climbCosts, climbSpeedFactor } from '../src/game/climbing';
 import { createThreeHuntSetup } from '../src/game/gameplayMode';
 import { huntAreaAt, huntAreasFor } from '../src/game/huntAreas';
@@ -120,6 +120,28 @@ describe('Chukar Ridge landform', () => {
       }
     }
     expect(nodes.length).toBeGreaterThan(100);
+  });
+
+  it('opens every entry on its authored view, the River Road truck under the canyon wall', () => {
+    for (const entry of CHUKAR_ENTRIES) {
+      const drop = area.dropPoints.find(d => d.id === entry.id)!, dx = entry.toward.x - drop.position.x, dy = entry.toward.y - drop.position.y;
+      expect((Math.cos(drop.heading) * dx + Math.sin(drop.heading) * dy) / Math.hypot(dx, dy), entry.id).toBeCloseTo(1);
+    }
+    // From the bottom the wall stands over the truck: across the middle of
+    // the view the skyline is well above the eye, not low rims far off.
+    const river = area.dropPoints.find(d => d.id === 'south-gate')!, eye = chukarHeight(river.position.x, river.position.y) + 1.62;
+    const skyline = (bearing: number) => {
+      let best = -90;
+      for (let d = 10; d <= 1600; d += 8) {
+        const h = chukarHeight(river.position.x + Math.cos(bearing) * d, river.position.y + Math.sin(bearing) * d);
+        best = Math.max(best, Math.atan2(h - eye, d * PROPERTY_PX_TO_M) * 180 / Math.PI);
+      }
+      return best;
+    };
+    // (Before the spur it was 11 to 14 degrees everywhere.)
+    const centre = [-10, -5, 0, 5, 10].map(degrees => skyline(river.heading + degrees * Math.PI / 180));
+    expect(Math.min(...centre)).toBeGreaterThan(20);
+    expect(Math.max(...centre)).toBeGreaterThan(28);
   });
 
   it('lets a hunter walk from every entry to every piece of cover', () => {
