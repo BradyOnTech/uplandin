@@ -1260,6 +1260,12 @@ export class BirdsSystem implements Subsystem {
       if (quiet) {
         this.riseActive = false; // the sky settled
         this.hunt.finishRise();
+        // The settled rise put its survivors down again (relit, or a Hun
+        // covey circled back). One of them flushing before this system next
+        // looks is a new rise, not the old one: a covey that circled back
+        // beside the dog on a canyon slope flushed again at once and, still
+        // marked staged, was never flown, so the dog marked it for minutes.
+        for (const bird of simBirds) if (bird.state !== 'flushed') this.staged.delete(bird.id);
       }
     }
     // Between rises a mark keeps only birds still down where he saw them go:
