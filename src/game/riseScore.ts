@@ -278,6 +278,45 @@ export function lanesOffTheHill(lanes: readonly WaveLane[], escape: number, uphi
   return lanes.map(lane => ({ ...lane, offset: lane.offset + side * turn }));
 }
 
+/** A lane's bearing off the line to the gun (radians) that passes `passM`
+ * wide of a hunter `rangeM` off, with a little to spare. */
+export function laneClearAngle(rangeM: number, passM: number): number {
+  return Math.asin(Math.min(1, passM / Math.max(passM, rangeM))) + .12;
+}
+
+/**
+ * A downhill flier's wave with the hunter below it: the birds pour down and
+ * across, swinging wide of him rather than back past his face. The wave
+ * turns, together, to the side of the gun it already leans to until every
+ * lane keeps laneClearAngle off the bearing to the gun; where the slope
+ * leaves no room for that above the contour line BELOW_CONTOUR under it, the
+ * lanes close up toward the contour instead. `escape`, `uphill` and `gun`
+ * (from the covey to the hunter) are world bearings; `lean` picks the side
+ * when the hunter is straight below. Lanes already clear are left alone.
+ */
+export function lanesClearOfTheGun(lanes: readonly WaveLane[], escape: number, uphill: number, gun: number,
+  rangeM: number, passM: number, lean = 1): WaveLane[] {
+  const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+  const down = uphill + Math.PI, edge = Math.PI / 2 - BELOW_CONTOUR, clear = laneClearAngle(rangeM, passM);
+  const g = wrap(gun - down);
+  const at = lanes.map(lane => wrap(escape + lane.offset - down));
+  if (at.every(a => Math.abs(wrap(a - g)) >= clear)) return lanes.map(lane => ({ ...lane }));
+  const mean = Math.atan2(at.reduce((sum, a) => sum + Math.sin(a), 0), at.reduce((sum, a) => sum + Math.cos(a), 0));
+  const side = Math.sign(wrap(mean - g)) || Math.sign(lean) || 1;
+  // Measured toward that side from the fall line: lanes must lie in [from, edge].
+  const u = at.map(a => side * a), from = side * g + clear;
+  const low = Math.min(...u), high = Math.max(...u);
+  const shift = Math.max(0, from - low);
+  const span = high - low;
+  // Turn the whole wave if the slope allows; else close it up between the
+  // gun and the contour; a hunter too close for even that gets the lanes
+  // hugging the contour (each bird's own line then bears off him: flightLine).
+  const placed = high + shift <= edge ? u.map(x => x + shift)
+    : from <= edge ? u.map(x => from + (span > 1e-9 ? (x - low) / span : .5) * (edge - from))
+    : u.map(x => edge - (high - x) * .25);
+  return lanes.map((lane, i) => ({ ...lane, offset: wrap(down + side * placed[i] - escape) }));
+}
+
 export interface WaveLane {
   /** Bearing off the covey's escape line, radians. */
   offset: number;

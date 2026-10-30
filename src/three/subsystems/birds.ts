@@ -2,7 +2,7 @@ import type { SlopeApproach } from '../../game/fieldcraft';
 import { isFalconryPractice, FALCONRY_PRACTICE } from '../../game/falconryPractice';
 import { huntStreamSeed, parseHuntSeed } from '../../game/huntSeed';
 import { birdFlightExpired } from '../../game/birdFlightLifetime';
-import { lineFamilyFor, planFlightLine, stepFlightLine, type FlightLine } from '../../game/flightLine';
+import { fallLine, lineFamilyFor, PASS_CLEAR_M, planFlightLine, stepFlightLine, type FlightLine } from '../../game/flightLine';
 import { buildPheasantBody, buildPheasantLegs, buildPheasantWing, buildPheasantTail, pheasantLegTuck, pheasantTailFan, posePheasantFoldedWings, pheasantWingbeat } from '../assets/pheasant';
 import { buildBirdLegs } from '../assets/birdLegs';
 import { quailLaunchDelay } from '../quailPresentation';
@@ -27,7 +27,7 @@ import { playFall, playPheasantFlush, playBirdFlush, playCoveyThunder, type Phea
 import { mulberry32 } from '../../game/math';
 import { getSpecies, SPECIES, TRAINING_SPECIES, type SpeciesConfig } from '../../game/species';
 import { CLOSE_FLUSH_THRESHOLD, closeFlushIntensity } from '../../game/closeFlush';
-import { countsAgainstCap, holdsSky, inTheShot, laneLift, RISE_RANGE_M, lanesOffTheHill, planRise, riseScoreFor, waveLanes, waveMayRise, type RiseGun, type RiseWave, type WaveLane } from '../../game/riseScore';
+import { BELOW_CONTOUR, countsAgainstCap, holdsSky, inTheShot, laneLift, RISE_RANGE_M, lanesClearOfTheGun, lanesOffTheHill, planRise, riseScoreFor, waveLanes, waveMayRise, type RiseGun, type RiseWave, type WaveLane } from '../../game/riseScore';
 import { evadeGoshawk, type QuarryTarget } from '../../game/falconry';
 import { huntingDoctrine } from '../../game/huntDoctrine';
 import { HUNT_SHOT_RANGE } from '../../game/huntSimulation';
@@ -271,6 +271,8 @@ interface FlightContext {
   hunterX: number; hunterZ: number; rng: () => number;
   /** Actual rise classification, frozen before a queued bird launches. */
   slopeApproach?: SlopeApproach | null;
+  /** The fall line under the covey (world bearing), for birds that pour downhill. */
+  downhill?: number;
 }
 
 interface Slot {
@@ -1059,7 +1061,7 @@ export class BirdsSystem implements Subsystem {
       for (const covey of newCoveys.values()) {
         this.stageRise(covey);
         const flight: FlightContext = { escX:this.escX,escZ:this.escZ,rightX:this.rightX,rightZ:this.rightZ,
-          hunterX:this.hunterX,hunterZ:this.hunterZ,rng:this.riseRng };
+          hunterX:this.hunterX,hunterZ:this.hunterZ,rng:this.riseRng, downhill: this.fallLineUnder(covey) };
         // The bird nearest the hunter's boots goes first; the rest wait their wave.
         const boots = this.hunt.huntState().hunterPos;
         const speciesId = this.riseSpecies(covey);
@@ -1294,10 +1296,10 @@ export class BirdsSystem implements Subsystem {
    */
   private flightContextForSpecies(base: FlightContext, species: SpeciesConfig): FlightContext {
     if (species.flightDirection !== 'downhill') return base;
-    const slope = this.hunt.areaConfig().slope;
-    if (slope === undefined) return base;
-    const downhillX = -Math.cos(slope);
-    const downhillZ = -Math.sin(slope);
+    const downhill = this.downhillOf(base);
+    if (downhill === undefined) return base;
+    const downhillX = Math.cos(downhill);
+    const downhillZ = Math.sin(downhill);
     const escapeX = base.escX * 0.52 + downhillX * 0.48;
     const escapeZ = base.escZ * 0.52 + downhillZ * 0.48;
     const length = Math.hypot(escapeX, escapeZ) || 1;
@@ -1310,6 +1312,25 @@ export class BirdsSystem implements Subsystem {
       rightX: -escZ,
       rightZ: escX,
     };
+  }
+
+  /**
+   * Where the ground falls away under a covey that pours downhill: the land's
+   * own fall line (into the draw, off the spur), read wider on a flat bench,
+   * on a ground with an uphill at all. Undefined for any other covey.
+   */
+  private fallLineUnder(covey: readonly SimLaunchBird[]): number | undefined {
+    if (this.hunt.areaConfig().slope === undefined) return undefined;
+    if (!covey.some(bird => getSpecies(bird.speciesId).flightDirection === 'downhill')) return undefined;
+    const ground = (x: number, z: number) => this.terrain.heightAt(x, z);
+    return (fallLine(this.originX, this.originZ, ground) ?? fallLine(this.originX, this.originZ, ground, [40, 70]))?.bearing;
+  }
+
+  /** The way down for a downhill flier: the covey's fall line, else the ground's. */
+  private downhillOf(flight: FlightContext): number | undefined {
+    if (flight.downhill !== undefined) return flight.downhill;
+    const slope = this.hunt.areaConfig().slope;
+    return slope === undefined ? undefined : slope + Math.PI;
   }
 
   /** The species a covey's rise follows: most of its birds. A bycatch bird
@@ -1408,9 +1429,16 @@ export class BirdsSystem implements Subsystem {
     const base = this.pendingFlights.get(ids[0]);
     if (!lead || !base) return waveLanes(ids.length, step, this.riseRng);
     const species = getSpecies(lead.speciesId), flight = this.flightContextForSpecies(base, species);
-    const slope = this.hunt.areaConfig().slope;
-    if (species.flightDirection === 'downhill' && slope !== undefined) {
-      return lanesOffTheHill(waveLanes(ids.length, step, this.riseRng), Math.atan2(flight.escZ, flight.escX), slope);
+    const downhill = this.downhillOf(flight);
+    if (species.flightDirection === 'downhill' && downhill !== undefined) {
+      const uphill = downhill + Math.PI, escape = Math.atan2(flight.escZ, flight.escX);
+      const poured = lanesOffTheHill(waveLanes(ids.length, step, this.riseRng), escape, uphill);
+      // With the hunter below the covey the wave swings wide of him, down and across.
+      const boots = this.hunt.huntState().hunterPos;
+      const gun = this.hunt.simToWorld(boots.x, boots.y, { x: 0, z: 0 });
+      this.hunt.simToWorld(lead.pos.x, lead.pos.y, this.w2);
+      return lanesClearOfTheGun(poured, escape, uphill, Math.atan2(gun.z - this.w2.z, gun.x - this.w2.x),
+        Math.hypot(gun.x - this.w2.x, gun.z - this.w2.z), PASS_CLEAR_M, this.riseRng() < .5 ? -1 : 1);
     }
     return waveLanes(ids.length, step, this.riseRng, this.escapeOffSight(ids, simBirds, flight), this.sideInTheShot(ids, simBirds));
   }
@@ -1530,7 +1558,7 @@ export class BirdsSystem implements Subsystem {
       young: !!sim.young, doctrine: doctrine.flight,
       slope: species.flightDirection === 'downhill' ? speciesFlight.slopeApproach ?? null : null,
       curlSign: plan.curlSign, minOffSight: plan.minOffSight, lean: lane ? Math.sign(lane.offset) : undefined, mayLand: !sim.single,
-      wild: !!sim.single, circleBack: plan.circleBack && !sim.single, landable: this.landable,
+      wild: !!sim.single, circleBack: plan.circleBack && !sim.single, landable: this.landable, fan: this.pourFan(speciesFlight, species),
       ground: (x, z) => this.terrain.heightAt(x, z), cover: this.hunt.coverPatches?.() ?? [], rng,
     });
     slot.vxW = Math.cos(slot.line.bearing) * .5;
@@ -1553,6 +1581,12 @@ export class BirdsSystem implements Subsystem {
     slot.status = waiting ? 'waiting' : 'flying';
     slot.root.visible = !waiting;
     if (!waiting) this.disturbLaunchCover(slot);
+  }
+
+  /** A downhill flier's lines stay on or below the contour of its fall line. */
+  private pourFan(flight: FlightContext, species: SpeciesConfig): { centre: number; half: number } | undefined {
+    const downhill = species.flightDirection === 'downhill' ? this.downhillOf(flight) : undefined;
+    return downhill === undefined ? undefined : { centre: downhill, half: Math.PI / 2 - BELOW_CONTOUR };
   }
 
   /** A bird out of the shot has driven off the screen: out of the camera's
