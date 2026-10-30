@@ -19,9 +19,11 @@ export function mapReviewViews(area: AreaConfig): MapReviewView[] {
 /**
  * Long views for judging light, haze and the far country. They are found
  * from the landform, not placed: `vista` stands on the property's highest
- * ground and looks out over its nearest edge into the country beyond;
- * `crest` stands on the same high ground and looks back across the length
- * of the property. A resized or reshaped ground moves them with it.
+ * ground and looks out over its nearest edge into the country beyond (on a
+ * canyon, from the brink of the high ground down into the canyon toward its
+ * lowest ground); `crest` stands on the same high ground and looks back
+ * across the length of the property. A resized or reshaped ground moves
+ * them with it.
  */
 export function longViews(area: AreaConfig): MapReviewView[] {
   const landscape = new LandscapeModel(area), w = area.world;
@@ -39,8 +41,37 @@ export function longViews(area: AreaConfig): MapReviewView[] {
   const across = Math.hypot(cx - best.x, cy - best.y) > 1 ? [cx - best.x, cy - best.y] : [w.w, 0];
   const far = Math.hypot(w.w, w.h);
   const length = Math.hypot(across[0], across[1]);
+  const vista = canyonVista(landscape, area, best) ??
+    { id: 'vista', name: 'High-ground vista', at: [best.x, best.y], toward: [best.x + ox * far, best.y + oy * far], pitch: -2, lift: 1.5 };
   return [
-    { id: 'vista', name: 'High-ground vista', at: [best.x, best.y], toward: [best.x + ox * far, best.y + oy * far], pitch: -2, lift: 1.5 },
+    vista,
     { id: 'crest', name: 'Crest, looking across', at: [best.x, best.y], toward: [best.x + across[0] / length * far, best.y + across[1] / length * far], pitch: -3, lift: 1.5 },
   ];
+}
+
+/** On a canyon (the land falls more than 100 m from the high ground to the
+ * fence), the vista looks down into it: from the brink, where the high
+ * ground first breaks away, toward the lowest ground at the fence. */
+function canyonVista(landscape: LandscapeModel, area: AreaConfig, best: { h: number; x: number; y: number }): MapReviewView | null {
+  const w = area.world;
+  let low = { h: Infinity, x: 0, y: 0 };
+  for (let i = 0; i <= 64; i++) {
+    const t = i / 64;
+    for (const [x, y] of [[w.x + w.w * t, w.y], [w.x + w.w * t, w.y + w.h], [w.x, w.y + w.h * t], [w.x + w.w, w.y + w.h * t]]) {
+      const h = landscape.heightAtProperty(x, y);
+      if (h < low.h) low = { h, x, y };
+    }
+  }
+  if (best.h - low.h < 100) return null;
+  const d = Math.hypot(low.x - best.x, low.y - best.y), ux = (low.x - best.x) / d, uy = (low.y - best.y) / d;
+  let brink = { x: best.x, y: best.y };
+  for (let s = 0; s < d - 16; s += 4) {
+    const x = best.x + ux * s, y = best.y + uy * s;
+    // The brink: the ground 16 yd on falls away by more than 6 m.
+    if (landscape.heightAtProperty(x, y) - landscape.heightAtProperty(x + ux * 16, y + uy * 16) > 6) break;
+    brink = { x, y };
+  }
+  const far = Math.hypot(w.w, w.h);
+  // On the brink itself, standing on the rim's edge, looking down over it.
+  return { id: 'vista', name: 'Canyon vista from the brink', at: [brink.x, brink.y], toward: [brink.x + ux * far, brink.y + uy * far], pitch: -11, lift: 3 };
 }

@@ -77,6 +77,14 @@ export function createPrairieWater(): PrairieWater {
           water += uSunColor * (pow(toSun, 260.0) * 5.0 + pow(toSun, 30.0) * .18) * step(0.0, uSunDir.y);
           // A wet, lighter rim where the water thins over the mud.
           water = mix(water, uShallow * 1.35 * lit + sky * .15, smoothstep(.88, .975, shore) * .45);
+          #ifdef UPLAND_FIELD_LIT
+          // Ice by the month (fieldConditions.ts): a skim from the margins
+          // in November, closed over by December, snow-covered on a snow day.
+          float iceShare = uplandField[1].z;
+          float iceCover = iceShare > 0.0 ? smoothstep(1.0 - iceShare, 1.0 - iceShare + .12, shore) : 0.0;
+          vec3 iceColor = mix(vec3(.5, .56, .6), vec3(.82, .85, .89), uplandField[1].w) * lit + sky * .12;
+          water = mix(water, iceColor, iceCover);
+          #endif
           outgoingLight = water;
           diffuseColor.a = 1.0 - smoothstep(.965, 1.0, shore);
         }

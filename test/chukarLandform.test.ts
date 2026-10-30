@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { getArea } from '../src/game/areas';
+import { AREAS, getArea } from '../src/game/areas';
 import {
   CHUKAR_RIM_IDS, CHUKAR_RIVER_LEVEL, CHUKAR_WALL, chukarAnalyticHeight, chukarHeight, chukarRimBlockers, chukarRimModules,
   chukarSolidAt, chukarWallAt,
 } from '../src/game/chukarCanyon';
 import { CHUKAR_SPRING_SEAM, chukarGroundAt } from '../src/game/chukarHabitat';
-import { CHUKAR_HUNT_AREAS, CHUKAR_PLACES } from '../src/game/chukarRidge';
-import { HunterBreath, climbSpeedFactor } from '../src/game/climbing';
+import { CHUKAR_ENTRIES, CHUKAR_HUNT_AREAS, CHUKAR_PLACES } from '../src/game/chukarRidge';
+import { HunterBreath, climbCosts, climbSpeedFactor } from '../src/game/climbing';
 import { createThreeHuntSetup } from '../src/game/gameplayMode';
 import { huntAreaAt, huntAreasFor } from '../src/game/huntAreas';
 import { derivedCoverRects, habitatClassAt, landDrivenAnchors, landHabitat } from '../src/game/landHabitat';
@@ -122,6 +122,36 @@ describe('Chukar Ridge landform', () => {
     expect(nodes.length).toBeGreaterThan(100);
   });
 
+  it('opens every entry on its authored view, the River Road truck under the canyon wall', () => {
+    for (const entry of CHUKAR_ENTRIES) {
+      const drop = area.dropPoints.find(d => d.id === entry.id)!, dx = entry.toward.x - drop.position.x, dy = entry.toward.y - drop.position.y;
+      expect((Math.cos(drop.heading) * dx + Math.sin(drop.heading) * dy) / Math.hypot(dx, dy), entry.id).toBeCloseTo(1);
+    }
+    // From the bottom the wall stands over the truck: across the middle of
+    // the view the skyline is well above the eye, not low rims far off.
+    const river = area.dropPoints.find(d => d.id === 'south-gate')!, eye = chukarHeight(river.position.x, river.position.y) + 1.62;
+    const skyline = (bearing: number) => {
+      let best = -90;
+      for (let d = 10; d <= 1600; d += 8) {
+        const h = chukarHeight(river.position.x + Math.cos(bearing) * d, river.position.y + Math.sin(bearing) * d);
+        best = Math.max(best, Math.atan2(h - eye, d * PROPERTY_PX_TO_M) * 180 / Math.PI);
+      }
+      return best;
+    };
+    // (Before the spur it was 11 to 14 degrees everywhere.)
+    const centre = [-10, -5, 0, 5, 10].map(degrees => skyline(river.heading + degrees * Math.PI / 180));
+    expect(Math.min(...centre)).toBeGreaterThan(20);
+    expect(Math.max(...centre)).toBeGreaterThan(28);
+    // And it reads as basalt: the lower rim wraps the spur's nose whole, a
+    // short walk up, in the middle of the view. (While the rim there could
+    // weather away, no rimrock in the middle of the view was nearer than 180 yd.)
+    const rimrock = chukarRimModules().filter(m => {
+      const off = Math.atan2(m.y - river.position.y, m.x - river.position.x) - river.heading;
+      return Math.abs(Math.atan2(Math.sin(off), Math.cos(off))) <= 15 * Math.PI / 180 && Math.hypot(m.x - river.position.x, m.y - river.position.y) < 160;
+    });
+    expect(rimrock.length).toBeGreaterThan(15);
+  });
+
   it('lets a hunter walk from every entry to every piece of cover', () => {
     const rects = derivedCoverRects(area);
     expect(rects.length).toBeGreaterThan(20);
@@ -222,6 +252,16 @@ describe('Chukar Ridge habitat from the land', () => {
       expect(open).toBeGreaterThanOrEqual(6);
     }
   });
+
+  it('keeps the cover a dog hunts off the fence, where no covey ever sits', () => {
+    // Coveys stay 70 yd inside the fence; a strip of cover by the fence
+    // would only draw the dog away from the birds at an entry.
+    const w = area.world;
+    for (const r of derivedCoverRects(area)) {
+      const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+      expect(Math.min(cx - w.x, cy - w.y, w.x + w.w - cx, w.y + w.h - cy)).toBeGreaterThan(50);
+    }
+  });
 });
 
 describe('Chukar Ridge birds live where the land says', () => {
@@ -298,6 +338,13 @@ describe('Chukar Ridge climbing', () => {
     expect(breath.canRun()).toBe(false);
     for (let t = 0; t < 20; t++) breath.step(1, 0, false, false);
     expect(breath.winded()).toBe(false);
+  });
+
+  it('charges for the climb only where the ground was built as one', () => {
+    // Timberline Parks has an uphill for its runners, but no climb was
+    // designed into it: its walk stays free.
+    expect(getArea('timberline-parks').slope).toBeDefined();
+    expect(AREAS.filter(climbCosts).map(a => a.id)).toEqual(['chukar-ridge']);
   });
 
   it('puts the remembered places on their own ground', () => {

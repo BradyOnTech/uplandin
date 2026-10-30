@@ -53,6 +53,10 @@ export interface Bird {
   woundRunMs?: number;
   /** A dog searched for it and gave up; only scent can find it now. */
   lost?: boolean;
+  /** Continuous field: ms a hunting dog has worked close to this hidden bird. */
+  pressedMs?: number;
+  /** Pressed past its limit, it stopped running and sits tight for the dog. */
+  pressHold?: boolean;
 }
 
 const COVEY_JITTER = 10; // fallback when a future species omits its spread
@@ -137,6 +141,10 @@ export const YOUNG_NERVE_MULT = 1.3; // a young bird sits longer
 export const YOUNG_FLIGHT_MULT = 0.9; // and flies slower when it finally goes
 
 let nextBirdId = 1;
+/** Every hunt in the game is a fresh page, its birds numbered from one. Tests
+ * that play several hunts in one process start each the same way, so no
+ * hunt's birds depend on how many birds the hunts before it stocked. */
+export function resetBirdIdsForTest(): void { nextBirdId = 1; }
 
 /** Scatter birds through the area's cover patches in coveys, species by weighted mix. */
 export function spawnBirds(cfg: SpawnConfig, rng: RNG = Math.random): Bird[] {
@@ -467,9 +475,68 @@ export interface RunnerEnv {
   trails?: readonly AreaTrail[];
   /** Local blocking pressure for continuous pheasant encounters, in property yards. */
   hunterPos?: Vec2;
+  /** Birds whose scent the lead dog is working: their coveys feel the pressure. */
+  workedIds?: readonly number[];
+  /** Birds a dog is pointing: their coveys answer to the point's nerve instead. */
+  pointedIds?: readonly number[];
+  /** Out: hidden birds that have stood all the pressure they will and flush. */
+  broke?: number[];
 }
 
 const SLOPE_RUN_BIAS = 0.55; // how strongly sloped-ground runners pull uphill
+
+/**
+ * A pressed bird stands only so much. While the lead dog works the scent of
+ * a covey, every bird of it within this many flee radii of the dog is
+ * pressed and its clock runs; it runs back down while it is not. Ordinary
+ * scent work finishes well inside the limit. Past it a runner either sits
+ * tight where it is, so the dog can pin it, or flushes wild; a bird still
+ * unpointed a little later flushes. So a road ends inside a minute and a
+ * half, and so does a dog stood over birds it cannot reach. A dog that only
+ * quarters near birds, without their scent, presses nothing.
+ */
+const PRESS_REACH = 2;
+const PRESS_HOLD_SHARE = .55;
+const PRESS_HOLD_GRACE_MS = 15_000;
+
+/** A stable per-bird roll in [0, 1) that still differs between hunts. */
+function pressRoll(b: Bird): number {
+  const h = (Math.imul(b.id + 17, 2654435761) >>> 0) / 0xffffffff;
+  const r = (b.approachRoll ?? .5) * 7.31 + h;
+  return r - Math.floor(r);
+}
+
+function applyPressure(dtMs: number, birds: Bird[], dogPos: Vec2, env: RunnerEnv): void {
+  if (!env.worldScale || !env.broke) return;
+  const coveysOf = (ids: readonly number[] | undefined) => {
+    const out = new Set<number>();
+    for (const id of ids ?? []) {
+      const bird = birds.find(candidate => candidate.id === id);
+      if (bird) out.add(bird.coveyId);
+    }
+    return out;
+  };
+  const pointedCoveys = coveysOf(env.pointedIds), workedCoveys = coveysOf(env.workedIds);
+  for (const b of birds) {
+    if (b.state !== 'hidden' || b.heldSingle || pointedCoveys.has(b.coveyId)) continue;
+    const runner = getSpecies(b.speciesId).runnerBehavior;
+    const limit = runner?.pressLimitMs;
+    if (!limit) continue;
+    const reach = (runner.fleeRadius ?? RUNNER_FLEE_RADIUS) * PRESS_REACH;
+    const pressed = workedCoveys.has(b.coveyId) && dist(b.pos, dogPos) <= reach;
+    b.pressedMs = Math.max(0, (b.pressedMs ?? 0) + (pressed ? dtMs : -dtMs));
+    const roll = pressRoll(b), budget = limit * (.85 + .3 * roll);
+    if (b.pressedMs < budget) continue;
+    if (!b.pressHold && b.runs && (roll * 13.7) % 1 < PRESS_HOLD_SHARE) {
+      // It quits the road and sits: a sitter's nerve, for the dog to pin.
+      b.pressHold = true; b.runs = false; b.restingMs = 0;
+      b.nerveMs /= RUNNER_NERVE_FACTOR;
+      continue;
+    }
+    if (b.pressHold && b.pressedMs < budget + PRESS_HOLD_GRACE_MS) continue;
+    if (!env.broke.includes(b.id)) env.broke.push(b.id);
+  }
+}
 
 function inAnyPatch(p: Vec2, patches: Rect[]): boolean {
   return patches.some((r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h);
@@ -510,6 +577,7 @@ function nearestTrailDirection(point: Vec2, trails: readonly AreaTrail[]): Vec2 
 export function updateBirds(dtMs: number, birds: Bird[], dogPos: Vec2, env: RunnerEnv = {}): void {
   const bounds = env.bounds ?? FIELD_BOUNDS;
   const dt = dtMs / 1000;
+  applyPressure(dtMs, birds, dogPos, env);
   for (const b of birds) {
     if (b.state !== 'hidden' || !b.runs) continue;
     const species = getSpecies(b.speciesId);

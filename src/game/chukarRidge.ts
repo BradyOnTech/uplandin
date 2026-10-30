@@ -19,7 +19,8 @@ export interface ChukarEntry { id: string; name: string; position: Vec2; /** Whe
 /** Four truck entries around the edge: the bottom, the west bench, the top
  * and the side canyon's mouth. The first two keep their old ids. */
 export const CHUKAR_ENTRIES: readonly ChukarEntry[] = [
-  { id: 'south-gate', name: 'River Road', position: { x: 470, y: 1385 }, toward: { x: 540, y: 1200 } },
+  // River Road faces the spur that noses down to it: the canyon wall first.
+  { id: 'south-gate', name: 'River Road', position: { x: 470, y: 1385 }, toward: { x: 520, y: 1150 } },
   { id: 'west-track', name: 'West Bench', position: { x: 22, y: 1000 }, toward: { x: 150, y: 950 } },
   { id: 'rim-track', name: 'Rim Gate', position: { x: 1350, y: 15 }, toward: { x: 1250, y: 200 } },
   { id: 'creek-mouth', name: 'Spring Creek', position: { x: 1200, y: 1385 }, toward: { x: 1250, y: 1200 } },
@@ -117,7 +118,7 @@ registerHuntAreas('chukar-ridge', () => {
  * where they must, around the rimrock) and baked into chukarTrails.ts.
  */
 export const CHUKAR_TRAIL_WAYPOINTS: readonly { id: string; points: Vec2[] }[] = [
-  { id: 'river-road-climb', points: [CHUKAR_ENTRIES[0].position, { x: 540, y: 1200 }, { x: 612, y: 1050 }, { x: 642, y: 900 }, { x: 668, y: 790 }, { x: 700, y: 600 }, { x: 722, y: 430 }, { x: 745, y: 250 }] },
+  { id: 'river-road-climb', points: [CHUKAR_ENTRIES[0].position, { x: 605, y: 1215 }, { x: 612, y: 1050 }, { x: 642, y: 900 }, { x: 668, y: 790 }, { x: 700, y: 600 }, { x: 722, y: 430 }, { x: 745, y: 250 }] },
   { id: 'west-bench-trail', points: [CHUKAR_ENTRIES[1].position, { x: 150, y: 950 }, { x: 280, y: 860 }, { x: 460, y: 905 }, { x: 642, y: 900 }] },
   { id: 'high-bench-trail', points: [{ x: 700, y: 600 }, { x: 560, y: 600 }, { x: 420, y: 560 }] },
   { id: 'castle-trail', points: [{ x: 700, y: 600 }, { x: 880, y: 590 }, { x: 990, y: 720 }, { x: 1180, y: 660 }] },

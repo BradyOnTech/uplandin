@@ -593,15 +593,17 @@ const CHUKAR_TOD = Object.fromEntries((Object.keys(BASE_QUAIL_TOD) as TimeOfDay[
   ...BASE_QUAIL_TOD[tod],
   ...(tod==='morning'||tod==='noon'?{
     skyTop:0x416c87,skyMid:0x94b1be,skyHorizon:0xd6d7c8,
-    fogColor:0x99aab5,fogDensity:.0008,sunColor:0xffead0,
-    sunAzimuth:tod==='morning'?45:28,fillColor:0xb1c7d4,fillIntensity:.44,ambientGround:0x948367,ambientIntensity:1.04,
+    // Dry canyon air, and a shade side lit mostly by the sky: the rims catch
+    // the sun while the north faces across the river sit in cool shade.
+    fogColor:0x99aab5,fogDensity:.0004,sunColor:0xffead0,
+    sunAzimuth:tod==='morning'?45:28,fillColor:0xb1c7d4,fillIntensity:.3,ambientGround:0x948367,ambientIntensity:.96,
     exposure:1.04,
     ridge:0x6c675d,ridgeFar:0x8fa6b8,landform:0x80796b,cloudAmount:.23,hotStrength:.26,glowStrength:.34,
     floraWarm:.24,floraCool:.35,
   }:tod==='lastlight'?{fogDensity:.0012,fogColor:0x878c9c,ridge:0x4a4248,ridgeFar:0x7a8196,
     // Dusk in the canyon: cheat still reads gold-grey under a cold sky.
     ambientIntensity:.95,exposure:1.14,groundCoolTint:0x6e7078,groundCoolK:.14,grassHaze:0x66666a,grassShadow:0xa4a6b0,grassLumCap:1}
-    :{fogDensity:.001,fogColor:0x929aa6,ridge:0x6a5a52,ridgeFar:0x8b98ad}),
+    :{fogDensity:.00055,fogColor:0x929aa6,ridge:0x6a5a52,ridgeFar:0x8b98ad}),
 }])) as Record<TimeOfDay,TodSpec>;
 
 // Prairie pothole light: a cooler sky and a low, damp horizon keep the

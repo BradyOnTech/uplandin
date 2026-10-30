@@ -5,6 +5,15 @@
  * and breath comes back on the level or standing still.
  */
 
+/**
+ * Whether a ground charges for the climb. Only grounds built for it do:
+ * Chukar Ridge's canyon wall, with its benches, rim breaks and switchback
+ * trails. An uphill alone (Timberline Parks' runners) is not a climb.
+ */
+export function climbCosts(area: { climbing?: boolean }): boolean {
+  return area.climbing === true;
+}
+
 /** Uphill: speed falls with grade; a trail takes some of the sting out. */
 const UPHILL_LINEAR = 1.6;
 const UPHILL_SQUARE = 2.5;

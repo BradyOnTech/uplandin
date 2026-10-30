@@ -43,6 +43,7 @@ import { quailCoverAt } from '../../game/quailLandscape';
 import type { Ctx, Subsystem } from '../engine';
 import { P, fieldTimeOfDay, type TimeOfDay } from '../palette';
 import type { Hunt3DSystem } from './hunt3d';
+import { exemptFromField } from '../fieldConditions';
 import type { TerrainSystem } from './terrain';
 
 /** Authored properties launch birds from their actual cover positions, under
@@ -606,7 +607,8 @@ export class BirdsSystem implements Subsystem {
     this.refinedQuail = this.hunt.areaConfig().id === 'quail-fields';
     this.viewHeight = () => ctx.renderer?.domElement?.clientHeight || 810;
 
-    this.mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    // Birds keep their own colours whatever the day (fieldConditions.ts).
+    this.mat = exemptFromField(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), 'bird');
     // Moment round, item 1: NO emissive, NO rim — the ember-speck read
     // was exactly the old glow kit. Bodies take the WORLD's light like
     // everything else: warm lift on sun-facing facets, shade facets
@@ -1304,6 +1306,12 @@ export class BirdsSystem implements Subsystem {
       if (quiet) {
         this.riseActive = false; // the sky settled
         this.hunt.finishRise();
+        // The settled rise put its survivors down again (relit, or a Hun
+        // covey circled back). One of them flushing before this system next
+        // looks is a new rise, not the old one: a covey that circled back
+        // beside the dog on a canyon slope flushed again at once and, still
+        // marked staged, was never flown, so the dog marked it for minutes.
+        for (const bird of simBirds) if (bird.state !== 'flushed') this.staged.delete(bird.id);
       }
     }
     // Between rises a mark keeps only birds still down where he saw them go:

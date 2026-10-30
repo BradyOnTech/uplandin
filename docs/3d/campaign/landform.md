@@ -35,7 +35,7 @@ Sizes are in yards (one property pixel is one yard). Bird uses are roost, feed, 
 - Rim Gate (north): starts on top, for hunting down ("get above them").
 - Spring Creek (south-east): the side canyon's mouth.
 
-**Routes:** eight trails, planned over the land by `tools3d/bake-chukar-trails.mjs` (contours where possible, switchbacks where needed, never through rock):
+**Routes:** eight trails, planned over the land by `tools3d/bake-trails.mjs chukar-ridge` (contours where possible, switchbacks where needed, never through rock):
 - River Road climb, up Sage Draw through all three rims to the flat.
 - West Bench trail.
 - High Bench and Castle trails along the benches.
@@ -174,13 +174,13 @@ Each 8 yd cell carries a land suitability for each bird use. Habitat is queryabl
 5. **The second covey** lies within 520 yd further along the way out.
 6. **The rest** are a weighted draw with 64 yd spacing.
 
-Coveys stay 70 yd inside the fence, because a runner pressed against a boundary roads along it for minutes. They also stay a dog's reach (4.5 yd) clear of rock. A Loaded field packs coveys into the good cover within a walk of the entry.
+Coveys stay 70 yd inside the fence, because a runner pressed against a boundary roads along it for minutes, and the derived cover view stops there too, so a dog never spends the first minutes of a hunt on a strip by the fence no covey can sit in. They also stay a dog's reach (4.5 yd) clear of rock. A Loaded field packs coveys into the good cover within a walk of the entry.
 
 Chukar stocks 32 coveys (`AreaConfig.coveyTarget`), which keeps the old ground's bird density on the bigger one.
 
 ### Climbing
 
-`src/game/climbing.ts`. On grounds with an uphill (the chukar rule), the hunter's walk slows with the grade along the line of travel:
+`src/game/climbing.ts`. On a ground built as a climb (`AreaConfig.climbing`, set only on Chukar Ridge), the hunter's walk slows with the grade along the line of travel:
 - 0.84× on a 10% grade, 0.55× on 30%, 0.45× on 40%;
 - a trail takes a third of the grade's sting;
 - steep descents are careful.
@@ -413,6 +413,163 @@ Draws fall in most views (the streamed tiles and the four-call rimrock); triangl
 - **The playthrough tool** (`tools3d/playthrough.mjs`). It can't end a hunt since the menu redesign. Point it at the pause menu's End hunt, and let its hunter come into a chukar point from above.
 - **For the light lane's merge.** Land-driven placement (`createThreeHuntSetup`) treats staged visits as frost and does not read `?weather=`, but the light lane's third milestone rolls a real day for those visits. The placement context should follow the same weather.
 
+## Chukar fixes (2026-10-30)
+
+Four fixes from the lead's review of milestone 1, with the hunt lab re-run over all four entries before and after. The work is on `feat/landform-chukar-sharptail`, from the campaign head `957f40a`.
+
+### What changed
+
+**Runner chases end inside about a minute and a half** (`src/game/birds.ts`, `species.ts`, `huntSimulation.ts`). The review's two worst "chases" were two different things:
+- **253 s, a real road.** A chukar kept about 40 yd ahead of the dog for four minutes. A winded runner rested two seconds and set off again on full legs, with no limit.
+- **321 s, no road at all.** A covey sat on the talus under the lower rim. The dog above it flipped between two birds of the covey 363 times, restarting its scent check each time, and never closed.
+
+One rule now ends both. A chukar has a pressure clock:
+- It runs while the lead dog works its covey's scent within two flee radii (80 yd), and runs back down while it doesn't. Ordinary scent work finishes well inside the limit.
+- Past 51–69 s (seeded per bird), a runner either sits tight where it is with a sitter's nerve, so the dog can pin it, or flushes wild.
+- A bird that sat and is still unpointed 15 s later flushes.
+- A dog that only quarters near birds, without their scent, presses nothing.
+
+Only chukar carry the limit (`RunnerBehavior.pressLimitMs`), and only in the continuous 3D field.
+
+**A hunter who only follows the dog finds birds from every entry** (`src/game/dog.ts`, `huntDoctrine.ts`, `landHabitat.ts`). From the West Bench and the River Road, the dog spent the hunt by the fence. It checked cover strips there that no covey is ever placed in (coveys keep 70 yd inside the fence). Then it swept the open ground round a hunter who faced it, so the pair drifted along the fence. Two changes:
+- **Fence margin.** The derived cover the dog hunts stops where the coveys do, 70 yd inside the fence.
+- **Leading to cover.** On the big rebuilt grounds (`HuntDoctrine.dogObjectiveReach`: Chukar now, Sharptail next), the dog leads when nothing in range is left to check. Its open cast leans (1.2 against the gun's own line) toward the nearest unchecked cover that is ahead of the gun or level with it, or that leads further out from where the hunt began. Cover behind the gun, or back toward the truck, costs more.
+
+A finished dog hunts to objectives this way. A hunter walking their own line still keeps the dog in front of them; the quartering test is unchanged. Nothing about hidden birds is read.
+
+**The canyon wall looms from the River Road truck** (`src/game/chukarCanyon.ts`, `chukarRidge.ts`, `areas.ts`). A basalt spur now noses down the breaks between the west gully and Sage Draw. Its lower rim wraps the nose about 110 yd up from the truck, and the cheat face and the higher rims stack behind it. At first the rim-weathering noise slumped that rim exactly where the truck looks, and the spur read as a bare sand dome. So a spur's nose can now be kept whole, as the named promontories are; this one's is, within 130 yd. Further up, the spur's rim weathers like any other, as it did before, so the trails across the bench keep their lines. (Kept whole all along the spur, the rim sent the West Bench trail round the spur's north end.)
+- **Truck headings.** Each truck now faces the way its entry was authored to open (`ChukarEntry.toward`, which the code had used only as a fallback). The River Road truck faces the spur, and Rim Gate looks down into the canyon.
+- **Trails.** The River Road climb's waypoint by the spur moves to the Sage Draw floor. The trails are re-planned with `tools3d/bake-trails.mjs chukar-ridge`, which replaces `bake-chukar-trails.mjs` and serves any rebuilt ground. Four of the eight trails move where the land changed: the River Road climb, the Breaks Road, the West Bench trail and the Castle trail.
+
+**The climb costs only on Chukar Ridge** (`src/game/climbing.ts`, `areas.ts`, `src/three/subsystems/player.ts`). A ground now opts in (`AreaConfig.climbing`), and only Chukar Ridge does. Timberline Parks keeps its `slope`, so its runners still go uphill, but it has no climb cost. I found no reason to keep the cost there:
+- the ground is outside the campaign;
+- its grades were never designed for a climb, and its trails were not planned over the land;
+- the breath tuning was made for Chukar's 225 m wall.
+
+The hunt lab's hunter now pays the climb where a player does; it had paid it on every ground. On an older checkout it falls back to that checkout's rule.
+
+**Tests.** Test hunts now start their bird ids at one (`resetBirdIdsForTest`). Before, a seeded hunt's birds depended on which tests had run earlier in the same worker.
+
+### Numbers
+
+**Hunt lab.** The same 216 hunts as the review: four entries × three hunters × 18 (six seeds, three dogs), ten minutes each in a breeze and frost. Before is the campaign head `957f40a`, which matches the review run hunt for hunt (`landform/pacing-chukar-m1-review.csv`). After is `9114c50` (`landform/pacing-chukar-fixes-after.csv`). Each cell reads before → after. Two earlier after runs, on `8cebadc` (the spur's rim weathered) and `abd039f` (its rim whole all along), are quoted in the self-assessment for the spread.
+
+| Hunter | 1st contact s | 1st point s | dry median s | dry p90 s | dry > 3 min | coveys met | points | long chases |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Following the dog | 80 → 82 | 109 → 116 | 248 → 152 | 600 → 312 | 60% → 44% | 3.2 → 4.9 | 4.0 → 5.8 | 0 → 0 |
+| Reading the cover | 77 → 96 | 108 → 132 | 139 → 156 | 249 → 240 | 32% → 33% | 5.4 → 5.8 | 6.4 → 6.5 | 4 → 0 |
+| Walking the trails | 61 → 65 | 83 → 88 | 132 → 140 | 211 → 237 | 18% → 19% | 5.1 → 5.2 | 6.2 → 6.7 | 4 → 1 |
+
+By entry:
+
+| Entry, hunter | 1st contact s | dry median s | dry > 3 min | coveys met | long chases |
+| --- | --- | --- | --- | --- | --- |
+| River Road, following the dog | 77 → 80 | 428 → 124 | 89% → 39% | 1.8 → 5.5 | 0 → 0 |
+| River Road, reading the cover | 65 → 141 | 161 → 146 | 44% → 28% | 5.4 → 6.0 | 2 → 0 |
+| River Road, walking the trails | 51 → 65 | 170 → 140 | 44% → 22% | 3.6 → 5.8 | 2 → 0 |
+| West Bench, following the dog | 600 → 184 | 600 → 247 | 83% → 67% | 1.9 → 3.5 | 0 → 0 |
+| West Bench, reading the cover | 134 → 139 | 138 → 182 | 11% → 50% | 6.5 → 4.1 | 1 → 0 |
+| West Bench, walking the trails | 69 → 70 | 115 → 168 | 22% → 39% | 6.3 → 4.0 | 1 → 1 |
+| Rim Gate, following the dog | 67 → 41 | 173 → 132 | 39% → 33% | 5.1 → 5.1 | 0 → 0 |
+| Rim Gate, reading the cover | 70 → 42 | 218 → 153 | 61% → 22% | 4.3 → 7.3 | 1 → 0 |
+| Rim Gate, walking the trails | 65 → 39 | 112 → 116 | 6% → 6% | 5.7 → 5.4 | 1 → 0 |
+| Spring Creek, following the dog | 98 → 94 | 117 → 132 | 28% → 39% | 4.0 → 5.4 | 0 → 0 |
+| Spring Creek, reading the cover | 68 → 87 | 113 → 162 | 11% → 33% | 5.6 → 6.0 | 0 → 0 |
+| Spring Creek, walking the trails | 72 → 89 | 132 → 149 | 0% → 11% | 4.9 → 5.6 | 0 → 0 |
+
+**Long chases** (tracking spells over 75 s): 8 → 1 in 216 hunts. The one left is 78 s, at the West Bench (seed 48291, GSP, trail hunter), and it is no road (see the self-assessment). No stuck retrieves or stuck dogs, before or after, and no bird or fall in rock.
+
+**The River Road view**, measured from the review's truck view over the authored land:
+
+| | Before | After |
+| --- | --- | --- |
+| Skyline across the middle of the view (±10°) | 12–14° above the eye | 34–37° |
+| Nearest rimrock | 397 yd | 93 yd, wrapping the spur's nose |
+| High: draws, triangles | 116, 950k | 132, 976k |
+| Lightweight: draws, triangles | 90, 459k | 102, 465k |
+
+### Evidence
+
+- **River Road truck view.** `landform/chukar-river-road-before-after.jpg`: the truck view before and after, High and Lightweight, morning.
+- **Pacing rows.** `landform/pacing-chukar-fixes-after.csv`; the before rows are the review's.
+- **Tests:**
+  - `test/chukarPressure.test.ts`, seven tests:
+    - every road ends between 45 and 90 s, sitting tight or flushing;
+    - a bird that sits gets a sitter's nerve, and a point has its own;
+    - only a dog working the covey's scent presses it, and only in the open field;
+    - a dog on the rim 70 yd above presses it;
+    - the clock runs back down when the dog moves off;
+    - other species keep their own temperament.
+  - `test/followTheDog.test.ts`: a hunter who only follows the dog meets birds from each of the four entries.
+  - `test/chukarLandform.test.ts`: every truck faces its authored view; the River Road skyline, with rimrock in the middle of the view; cover off the fence margin; the climb's cost only where a ground opts in.
+  - `test/encounterPacing.test.ts`: the casting check, over approaches of 15 m and more.
+- **Full suite.** On `9114c50`: tsc is clean, and all 2,076 tests in 250 files pass.
+
+### Self-assessment
+
+- **Chases: done.** In the final run only one tracking spell passes 75 s, at 78 s, and it is no road. A trail hunter walked on past a chukar that never moved, and the dog held the scent about 50 s until the hunter came back. The review run had eight spells over 75 s, up to 321 s. Across the three after runs made during the work (one per land version), one spell passed 90 s: the Hun covey above a rim (open issues).
+- **Following the dog: much better, though the West Bench is still the weakest entry.**
+  - Following the dog, the median hunt's longest dry spell falls from 248 to 152 s, and coveys met rise from 3.2 to 4.9.
+  - From the River Road, hunts with a dry spell over three minutes fall from 89% to 39% (22% in both earlier runs).
+  - From the West Bench, the median hunt now meets its first birds at 184 s, where before it met none in ten minutes. But two hunts in three there still have a dry spell over three minutes, and I haven't found why. The West Bench truck has cover within 50 yd, and twice as much within 200 yd as the River Road truck.
+- **The other hunters: about where they were.** Reading the cover and walking the trails, coveys met and points are at or above the review run's in all three after runs. The dry-spell medians sit either side of it: reading the cover 139 s against 111, 140 and 156 s; on the trails 132 s against 122, 119 and 140 s. At the West Bench these hunters met fewer coveys in all three runs (reading the cover, 6.5 against 5.6, 5.4 and 4.1). With only six covey placements per entry I can't yet tell that from chance, so a check on twelve new seeds is queued.
+- **The lab's noise.** Any change to the land redraws every hunt's covey placement. So the same hunter at the same entry moves by about 15 points between runs of 18 hunts, even far from the change. Treat the per-entry numbers here as indications, not measurements; the per-hunter ones, over 72 hunts each, are steadier.
+- **The River Road view: it looms, and reads as basalt.** The spur stands 34–37° above the eye, with a columnar crown 93 yd off. It reads as a butte in front of the wall rather than the wall itself: from the truck, the spur hides the bench and the higher rims behind it.
+- **The climb: done.** Only Chukar Ridge charges for it, and nothing else changes.
+
+### Open issues
+
+- **A dog that can't close on a covey above a rim** (dog behaviour). The rule above ends this loop for chukar only. In one of the three after runs, one 104 s spell was a Hun covey on the rim flat, 14 m above a dog on the upper talus, about 66 yd off. The dog caught the edge of its scent, lost it, then caught a covey-mate's. Each switch between covey-mates restarts the check from the start, so it never closed: from second 496 to the end of the hunt. The fix belongs in the dog's scent work rather than in the land:
+  - a switch to a covey-mate should keep the approach going;
+  - or the lost-scent check should be bounded across the covey.
+
+  Giving Huns the pressure limit would also end it, but would change their temperament on every ground.
+- **The West Bench, reading the cover and walking the trails.** These hunters met fewer coveys there in all three after runs. A run on twelve new seeds, before and after, is queued to tell a real loss from placement luck.
+- **The hunt lab's per-entry cells.** At six covey placements per entry, a change anywhere on the land moves them by about 15 points. Conclusions per entry want more seeds than the standard set.
+- **The spur's lower slope** (Cover lane). It reads as smooth tan with terracettes and sparse tufts, the open-slopes point carried from milestone 1.
+- **Phone cost.** The River Road view costs a dozen more draws on both tiers (rimrock on the spur). Still not measured on a phone.
+
+### Files touched outside the lane
+
+- **Birds:** `src/game/birds.ts` (the pressure clock, `resetBirdIdsForTest`), `src/game/species.ts` (`RunnerBehavior.pressLimitMs`, set on chukar).
+- **The dog:** `src/game/dog.ts` (the objective cast, `workingBirdId`), `src/game/huntDoctrine.ts` (`dogObjectiveReach`).
+- **The hunt:** `src/game/huntSimulation.ts` (passes the worked and pointed coveys to the birds, and flushes a bird that breaks).
+- **The player:** `src/three/subsystems/player.ts` (`climbCosts`).
+- **Hunt lab:** `tools3d/huntlab/harness.mjs` (the climb rule).
+- **Tests outside the lane's own:**
+  - `test/encounterPacing.test.ts`: the casting check, and bird ids from one per hunt;
+  - `test/propertyHabitatContract.test.ts`: Chukar's trucks leave the check that an entry faces along its first route segment, since they now face their authored views (checked in `chukarLandform.test.ts`);
+  - `test/birdVariety.test.ts`: longer timeouts under load.
+
+### Lead review of the Chukar fixes (2026-10-30)
+
+Merged into `campaign/world-birds` as fd7dd26, on top of Cover milestone 2, Birds milestone 3, Dog D1 and Light milestone 3.
+
+**Conflicts:**
+- Chukar Ridge's doctrine keeps this lane's `dogObjectiveReach: 220` and the Birds lane's `circleBack: true`.
+- The bird-variety test keeps one note for the timeout both sides gave it.
+
+**Checks:** tsc is clean, and the full suite on the merged tree passes, 2,176 of 2,176.
+
+**The River Road truck view:** the spur's basalt crown now looms over the cattle-trail contours. That is the first impression the target asked for.
+
+**Hunt lab on the merged tree** (216 hunts, all four entries):
+
+| group | 1st contact | dry med | dry p90 | dry>3m | coveys | stuck retr | stuck states | long chases | in rock |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| follow | 82 | 134 | 328 | 38% | 5.3 | 0 | 2 | 0 | 0 |
+| tactic | 96 | 141 | 259 | 25% | 5.8 | 0 | 0 | 0 | 0 |
+| trail | 65 | 123 | 279 | 18% | 5.3 | 0 | 1 | 0 | 0 |
+
+**Bug found and fixed:** the three stuck states were the dog marking a covey for 278–484 s. The cause was the Birds lane's Hun circle-back combined with this canyon:
+- the wall rose under a circling covey and set it down 2–3 s into its loop, beside the dog;
+- the dog flushed it again in the next simulation tick;
+- the birds still held it as staged, so the re-flush was never flown.
+
+The lead fixed it in `birds.ts`, with a regression test (6475aa3). The landing beside the dog is the Birds lane's to fix in milestone 4.
+
+**Still open:** West Bench is still the weakest entry for a hunter who follows the dog (61% of hunts with a dry spell over 3 minutes). The Hun scent loop is logged as open.
+
 ## Lane log
 
 - **2026-10-08.** Milestone 1 started from `3b518a2`. Hunt lab brought into the repo and the baseline recorded. Chukar Ridge rebuilt as a canyon:
@@ -430,3 +587,4 @@ Draws fall in most views (the streamed tiles and the four-call rimrock); triangl
 
   The lane stopped that afternoon with this log uncommitted.
 - **2026-10-30.** Log committed, reviewed by the lead (above), and merged into `campaign/world-birds`.
+- **2026-10-30.** Chukar fixes (above): runner chases bounded, the dog leads a following hunter to cover, the River Road spur, and the climb on Chukar only. The hunt lab was re-run before and after, and the full suite passes.

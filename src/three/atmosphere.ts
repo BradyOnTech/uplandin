@@ -33,12 +33,12 @@ import type { TimeOfDay, TodSpec } from './palette';
  */
 
 export const FOG_UNIFORM = 'uplandFog';
-const SLOTS = 4;
+const SLOTS = 5;
 /**
  * Slot layout (vec4 each): 0 sunward colour, sunward strength; 1 sun's flat
  * direction (x, z), lobe power; 2 pool floor (world y), 1 / layer depth,
  * density per metre at the floor, most it hides; 3 pool colour, 1 - most
- * the distance fog hides.
+ * the distance fog hides; 4 the far air's cooler colour, how far it cools.
  */
 export const ATMOSPHERE = new Float32Array(SLOTS * 4);
 
@@ -82,18 +82,35 @@ const FOG_APPLY = `
 		float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
 	#endif
 	gl_FragColor.rgb = mix( gl_FragColor.rgb, ${FOG_UNIFORM}[3].rgb, uplandPooledFog( vFogRay, fogDistance ) );
-	gl_FragColor.rgb = mix( gl_FragColor.rgb, uplandFogTint( fogLinear, vFogRay / max( fogDistance, 1e-4 ) ), fogFactor );`;
+	// Aerial perspective: each band of far country is cooler as well as paler.
+	vec3 fogTint = uplandFogTint( fogLinear, vFogRay / max( fogDistance, 1e-4 ) );
+	fogTint = mix( fogTint, ${FOG_UNIFORM}[4].rgb, ${FOG_UNIFORM}[4].a * smoothstep( 600.0, 4500.0, fogDistance ) );
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, fogTint, fogFactor );`;
 const STOCK_TONE_MAPPING = '#if defined( TONE_MAPPING )\n\tgl_FragColor.rgb = toneMapping( gl_FragColor.rgb );\n#endif';
 
 const CHUNKS = {
-  fog_pars_vertex: '#ifdef USE_FOG\n\tvarying float vFogDepth;\n\tvarying vec3 vFogRay;\n#endif',
+  fog_pars_vertex: '#ifdef USE_FOG\n\tvarying float vFogDepth;\n\tvarying vec3 vFogRay;\n\tvarying float vUplandSurface;\n#endif',
   // The world-space ray from the camera: the view-space position rotated
-  // back by the view matrix (a rigid transform, so its transpose).
-  fog_vertex: '#ifdef USE_FOG\n\tvFogDepth = - mvPosition.z;\n\tvFogRay = ( vec4( mvPosition.xyz, 0.0 ) * viewMatrix ).xyz;\n#endif',
+  // back by the view matrix (a rigid transform, so its transpose). Skinned
+  // meshes (the dog) are not ground surfaces for the field's weather.
+  fog_vertex: `#ifdef USE_FOG
+	vFogDepth = - mvPosition.z;
+	vFogRay = ( vec4( mvPosition.xyz, 0.0 ) * viewMatrix ).xyz;
+	// What kind of surface weathers here: 0 the skinned dog (never), 1 the
+	// ground and built things, 2 instanced plants (grass, cover, shrubs).
+	#if defined( USE_SKINNING )
+		vUplandSurface = 0.0;
+	#elif defined( USE_INSTANCING )
+		vUplandSurface = 2.0;
+	#else
+		vUplandSurface = 1.0;
+	#endif
+#endif`,
   fog_pars_fragment: `#ifdef USE_FOG
 	uniform vec3 fogColor;
 	varying float vFogDepth;
 	varying vec3 vFogRay;
+	varying float vUplandSurface;
 	#ifdef FOG_EXP2
 		uniform float fogDensity;
 	#else
@@ -157,6 +174,9 @@ export interface RegionAtmosphere {
    * carries over it. Cloud cover scales with the hour's sky cover, and
    * the shadows fade as the sun drops. */
   ground: { occlusion: number; crest: number; floor: number; cloudCover: number; cloudStrength: number; cloudSize: number };
+  /** How far the air cools toward the hour's mid-sky colour by the
+   * farthest country (0 to 1): bands beyond bands step back bluer. */
+  cool: number;
   byTime: Record<TimeOfDay, AtmosphereHour>;
 }
 
@@ -169,7 +189,7 @@ const CANYON: Rgb = [.86, .96, 1.08];
 export const REGION_ATMOSPHERE: Readonly<Record<string, RegionAtmosphere>> = {
   // Cool, clear high-plains air: the least haze of any ground, a thin mist
   // in the coulee bottoms at the ends of the day.
-  'sharptail-prairie': { floor: .08, distance: .93,
+  'sharptail-prairie': { floor: .08, distance: .93, cool: .35,
     // Big sky: cloud shadows race across the swells; coulees sit dark.
     ground: { occlusion: .7, crest: .14, floor: .58, cloudCover: .42, cloudStrength: .5, cloudSize: 420 },
     byTime: {
@@ -181,7 +201,7 @@ export const REGION_ATMOSPHERE: Readonly<Record<string, RegionAtmosphere>> = {
   } },
   // Warm, dusty Red Plains air with haze lying in the creek bottom: a thin
   // layer on the lowest ground, not a sheet over the rolling uplands.
-  'quail-fields': { floor: .03, distance: .9,
+  'quail-fields': { floor: .03, distance: .9, cool: .2,
     ground: { occlusion: .65, crest: .12, floor: .6, cloudCover: .32, cloudStrength: .4, cloudSize: 380 },
     byTime: {
     dawn: { sunward: .7, sunwardPower: 2, pool: pool(.001, 4, .35, MIST) },
@@ -192,7 +212,7 @@ export const REGION_ATMOSPHERE: Readonly<Record<string, RegionAtmosphere>> = {
   } },
   // Prairie potholes: dawn fog lies in the sloughs and burns off by mid
   // morning; cold blue air the rest of the day.
-  'pheasant-coverts': { floor: .15, distance: .92,
+  'pheasant-coverts': { floor: .15, distance: .92, cool: .3,
     ground: { occlusion: .65, crest: .1, floor: .6, cloudCover: .36, cloudStrength: .45, cloudSize: 460 },
     byTime: {
     dawn: { sunward: .6, sunwardPower: 2.5, pool: pool(.0028, 3.5, .7, MIST) },
@@ -203,19 +223,20 @@ export const REGION_ATMOSPHERE: Readonly<Record<string, RegionAtmosphere>> = {
   } },
   // A canyon: cool haze fills the depths, so every bench and ridge below
   // the hunter steps back in a bluer band.
-  'chukar-ridge': { floor: .02, distance: .9,
+  'chukar-ridge': { floor: .02, distance: .9, cool: .55,
     // The canyon floor and north faces sit in deep sky shade.
     ground: { occlusion: .8, crest: .14, floor: .5, cloudCover: .3, cloudStrength: .4, cloudSize: 520 },
     byTime: {
     dawn: { sunward: .65, sunwardPower: 2.5, pool: pool(.0009, 26, .35, CANYON) },
-    morning: { sunward: .35, sunwardPower: 3, pool: pool(.0005, 30, .25, CANYON) },
-    noon: { sunward: .15, sunwardPower: 3, pool: pool(.0004, 32, .2, CANYON) },
-    evening: { sunward: .7, sunwardPower: 2.5, pool: pool(.0005, 30, .25, CANYON) },
+    // By day the canyon's air is dry: its floor and the far wall read through it.
+    morning: { sunward: .3, sunwardPower: 3, pool: pool(.0004, 30, .14, CANYON) },
+    noon: { sunward: .15, sunwardPower: 3, pool: pool(.0003, 32, .1, CANYON) },
+    evening: { sunward: .7, sunwardPower: 2.5, pool: pool(.0004, 30, .16, CANYON) },
     lastlight: { sunward: .55, sunwardPower: 2, pool: pool(.0006, 26, .28, CANYON) },
   } },
 };
 
-const PLAINS: RegionAtmosphere = { floor: .1, distance: 1,
+const PLAINS: RegionAtmosphere = { floor: .1, distance: 1, cool: 0,
   ground: { occlusion: .8, crest: .1, floor: .5, cloudCover: 0, cloudStrength: 0, cloudSize: 400 },
   byTime: {
   dawn: { sunward: .6, sunwardPower: 2.5, pool: pool(0, 1, 0) },
@@ -263,6 +284,11 @@ export function writeAtmosphere(spec: TodSpec, region: RegionAtmosphere, tod: Ti
   // Mist is a little paler than the far land, never white.
   scratch.setHex(spec.fogColor).lerp(hot.setHex(spec.skyHorizon), .2);
   out[12] = scratch.r * p.tint[0]; out[13] = scratch.g * p.tint[1]; out[14] = scratch.b * p.tint[2]; out[15] = 1 - region.distance;
+  // The far air takes the sky's own colour at the fog's own value: the blue
+  // of the air between the hunter and the farthest country.
+  scratch.setHex(spec.skyMid);
+  scratch.multiplyScalar(value(fog) / Math.max(1e-4, value(scratch)));
+  out[16] = scratch.r; out[17] = scratch.g; out[18] = scratch.b; out[19] = region.cool;
 }
 
 /** The distance fog's curve in JavaScript: the share of a surface `metres`

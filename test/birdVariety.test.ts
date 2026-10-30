@@ -30,7 +30,8 @@ describe('bird placement varies between hunts', () => {
     const spread = openings.reduce((sum, p) => sum + Math.hypot(p.x - mx, p.y - my), 0) / openings.length;
     expect(cells.size).toBeGreaterThanOrEqual(10);
     expect(spread).toBeGreaterThan(28);
-  });
+    // Forty whole hunt setups: room for a busy machine.
+  }, 30_000);
 });
 
 describe('mixed properties show their mix', () => {
@@ -47,7 +48,9 @@ describe('mixed properties show their mix', () => {
     // The primary species still opens most days.
     expect(openingSecondary / N).toBeGreaterThan(.1);
     expect(openingSecondary / N).toBeLessThan(.5);
-  });
+    // Sixty whole hunt set-ups of the bigger, land-placed Chukar canyon take
+    // about 4 s on a quiet machine and over 7 s when other jobs share it.
+  }, 30_000);
 
   it('keeps a big secondary covey from eating a small stocking', () => {
     for (let seed = 1; seed <= 30; seed++) {

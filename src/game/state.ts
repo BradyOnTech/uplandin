@@ -122,10 +122,21 @@ export interface HuntOptions {
   mixedCoveys?: boolean;
 }
 
+/** The hunt's day: the wind's strength, then the condition, rolled from the
+ * hunt's stream in that order. A fixed one is kept and rolls nothing, so a
+ * caller can roll the day first (to place birds for it) and pass it in. */
+export function rollHuntDay(
+  area: AreaConfig,
+  rng: RNG,
+  opts: Pick<HuntOptions, 'wind' | 'condition' | 'conditionBias'> = {},
+): { wind: WindStrength; condition: Condition } {
+  const wind = opts.wind ?? rollWindStrength(rng);
+  return { wind, condition: opts.condition ?? rollCondition(rng, opts.conditionBias ?? area.conditionBias) };
+}
+
 export function createHunt(area: AreaConfig, rng: RNG = Math.random, opts: HuntOptions = {}): HuntState {
   const w = area.world;
-  const windStrength = opts.wind ?? rollWindStrength(rng);
-  const condition = opts.condition ?? rollCondition(rng, opts.conditionBias ?? area.conditionBias);
+  const { wind: windStrength, condition } = rollHuntDay(area, rng, opts);
   const drop = getDropPoint(area, opts.dropPointId);
   const side = { x: -Math.sin(drop.heading), y: Math.cos(drop.heading) };
   const forward = { x: Math.cos(drop.heading), y: Math.sin(drop.heading) };
