@@ -159,3 +159,89 @@ describe('search carriage', () => {
     dog.dispose();
   });
 });
+
+describe('pace through a cast', () => {
+  /** Run straight at a pace profile (m/s over seconds) and report the gaits shown after `from` s. */
+  function run(profile: (t: number) => number, seconds: number, from: number) {
+    const motion = new GeneratedFieldMotion('lite', () => 0);
+    let z = 0, filtered = 0;
+    const gaits = new Set<string>();
+    for (let f = 0; f < seconds * 60; f++) {
+      const t = f / 60, v = profile(t);
+      // The subsystem hands the renderer its filtered speed.
+      filtered += (v - filtered) * (1 - Math.exp(-12 / 60));
+      z += v / 60;
+      motion.update(0, z, 0, 1 / 60, true, false, undefined, undefined, filtered);
+      if (t >= from) gaits.add(motion.gait);
+    }
+    motion.dispose();
+    return gaits;
+  }
+
+  it('keeps galloping through a cast-end turn, and drops a gait only when the pace stays down', () => {
+    // A turn that slows the dog to 3.4 m/s for half a second.
+    expect([...run(t => t > 3 && t < 3.5 ? 3.4 : 5.2, 5, 2)]).toEqual(['gallop']);
+    // The same pace held: it settles into a canter.
+    expect(run(t => t > 3 ? 3.4 : 5.2, 6, 5).has('canter')).toBe(true);
+    // Really slowing: down through the canter at once.
+    expect(run(t => t > 3 ? 1.6 : 5.2, 4.2, 3.9).has('gallop')).toBe(false);
+  });
+});
+
+describe('the gallop in the air', () => {
+  it('lets its swinging paws ride the trunk without ever passing below the ground', () => {
+    // The ride lowers a swinging paw while the trunk dips; it must stop at the ground.
+    for (const slope of [0, .3, -.3]) {
+      const motion = new GeneratedFieldMotion('lite', (_x, z) => slope * z);
+      let z = 0, swinging = 0;
+      for (let f = 0; f < 360; f++) {
+        z += 5.5 / 60; motion.update(0, z, 0, 1 / 60, true, false, undefined, undefined, 5.5);
+        if (f < 60) continue;
+        for (const foot of motion.contactSnapshot()) if (!foot.locked) { swinging++; expect(foot.groundGap).toBeGreaterThan(-.001); }
+      }
+      expect(swinging).toBeGreaterThan(300);
+      motion.dispose();
+    }
+  });
+});
+
+describe('paws out of reach', () => {
+  /** Largest movement of a planted, non-stepping paw between frames. */
+  function worstDrag(motion: GeneratedFieldMotion, frames: number, step: (f: number) => void) {
+    const previous = motion.feet.map(() => new THREE.Vector3()), held = [false, false, false, false];
+    let worst = 0;
+    for (let f = 0; f < frames; f++) {
+      step(f);
+      motion.feet.forEach((foot, i) => {
+        const actual = motion.asset.paws[i].getWorldPosition(new THREE.Vector3());
+        if (foot.locked && foot.step === 0 && held[i]) worst = Math.max(worst, Math.hypot(actual.x - previous[i].x, actual.z - previous[i].z));
+        held[i] = foot.locked && foot.step === 0; previous[i].copy(actual);
+      });
+    }
+    return worst;
+  }
+
+  it('picks a paw up rather than dragging it when a pup breaks off point at a run', () => {
+    const motion = new GeneratedFieldMotion('lite', () => 0);
+    for (let f = 0; f < 120; f++) motion.update(0, 0, 0, 1 / 60, false, true);
+    let z = 0, v = 0;
+    const worst = worstDrag(motion, 120, () => {
+      v = Math.min(4.9, v + 12 / 60); z += v / 60;
+      motion.update(0, z, 0, 1 / 60, true, false, undefined, undefined, v);
+    });
+    expect(worst).toBeLessThan(.004);
+    motion.dispose();
+  });
+
+  it('picks a paw up rather than dragging it when a bound through tall cover comes out into a gallop', () => {
+    const motion = new GeneratedFieldMotion('lite', () => 0);
+    let z = 0;
+    const field = (cover: number) => ({ state: 'quartering' as const, scentStage: 'none' as const, scentProgress: 0, waitingForHandler: false, intentYaw: 0, coverHeight: cover });
+    const worst = worstDrag(motion, 900, () => {
+      z += 4.6 / 60;
+      motion.update(0, z, 0, 1 / 60, true, false, undefined, field(z > 8 && z < 42 ? 1.5 : 0), 4.6);
+    });
+    expect(worst).toBeLessThan(.004);
+    motion.dispose();
+  });
+});

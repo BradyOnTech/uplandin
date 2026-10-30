@@ -748,6 +748,13 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
     root.updateMatrixWorld(true);skeleton.update();if(!live){skin.computeBoundingBox();skin.computeBoundingSphere();}
     return clamped;
   };
+  /** Reach a leg has left (m) to a world-space paw target and its ground
+   * normal; negative when the paw cannot get there from where the body is. */
+  const reachSlack=(i:number,target:THREE.Vector3,normal:THREE.Vector3)=>{
+    const leg=chains[i];root.updateMatrixWorld(true);
+    wrist.copy(target).addScaledVector(normal,leg.distalLength);leg.upper.getWorldPosition(hip);
+    return leg.upperLength+leg.lowerLength-wrist.distanceTo(hip);
+  };
   /** Lower the supported body only as far as required by finite limb reach. */
   const fitBodyToFeet=(targets:readonly THREE.Vector3[],normals:readonly THREE.Vector3[],posedFoot = -1)=>{
     root.updateMatrixWorld(true);let allowed=body.position.y;
@@ -765,7 +772,7 @@ export function createGeneratedGsp(detail: 'high' | 'lite' = 'high', live = fals
     body.position.y=Math.max(-.14,allowed);root.updateMatrixWorld(true);return body.position.y;
   };
   setPose('stand');
-  return { root, joints, paws, setPose, liftPointingPaw, setLocomotion, setSwimming, solveWorldFeet, fitBodyToFeet, material, skin, skeleton, collar,
+  return { root, joints, paws, setPose, liftPointingPaw, setLocomotion, setSwimming, solveWorldFeet, fitBodyToFeet, reachSlack, material, skin, skeleton, collar,
     stats: { triangles: geometries.reduce((n,g) => n + g.getAttribute('position').count / 3,0), meshes: geometries.length, materials: 1, geometryBytes: geometries.reduce((n,g) => n + Object.values(g.attributes).reduce((s,a) => s + a.array.byteLength,0),0) },
     collarStats: { triangles: (collarGeometry.index?.count ?? 0) / 3, materials: 1 },
     dispose() { geometries.forEach(g => g.dispose()); material.dispose(); collarGeometry.dispose(); collarMaterial.dispose(); skeleton.dispose(); root.removeFromParent(); },
