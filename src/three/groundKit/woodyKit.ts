@@ -29,7 +29,8 @@ export type WoodyKit = Map<string, WoodyAsset>;
 export const woodyKey = (species: WoodySpecies, detail: WoodyDetail): string => `${species}-${detail}`;
 
 /** How far foliage normals lean from their facet toward the crown's own
- * roundness (0 = faceted, 1 = a smooth ball). */
+ * roundness (0 = faceted, 1 = a smooth ball). Lobe cores exported as their
+ * own 'foliage-core' mesh are fully round. */
 const FOLIAGE_ROUNDNESS = .6;
 
 export async function loadWoodyKit(species: readonly WoodySpecies[], details: readonly WoodyDetail[]): Promise<WoodyKit> {
@@ -68,11 +69,17 @@ export async function loadWoodyKit(species: readonly WoodySpecies[], details: re
 export function flattenWoody(scene: THREE.Object3D): WoodyAsset {
   scene.updateMatrixWorld(true);
   const positions: number[] = [], normals: number[] = [], colors: number[] = [];
-  const parts: { mesh: THREE.Mesh; foliage: boolean }[] = [];
-  scene.traverse(node => { if (node instanceof THREE.Mesh) parts.push({ mesh: node, foliage: /foliage/.test(node.name) || /foliage/.test(node.parent?.name ?? '') }); });
+  const parts: { mesh: THREE.Mesh; foliage: boolean; core: boolean }[] = [];
+  scene.traverse(node => {
+    if (node instanceof THREE.Mesh) parts.push({ mesh: node, foliage: /foliage/.test(node.name) || /foliage/.test(node.parent?.name ?? ''),
+      core: /foliage-core/.test(node.name) });
+  });
   let height = 0;
   const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3(), r = new THREE.Vector3(), facet = new THREE.Vector3();
-  for (const { mesh, foliage } of parts) {
+  for (const { mesh, foliage, core } of parts) {
+    // A crown's lobe cores (and a far detail's masses) are its shade, not
+    // its surface: fully round, so they never light up as faceted stone.
+    const roundness = core ? 1 : FOLIAGE_ROUNDNESS;
     const source = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
     const geometry = source.index ? source.toNonIndexed() : source;
     if (geometry !== source) source.dispose();
@@ -94,7 +101,7 @@ export function flattenWoody(scene: THREE.Object3D): WoodyAsset {
           // A loose leaf card has no inside; its facet always faces out.
           facet.copy(n);
           if (facet.dot(r) < 0) facet.negate();
-          r.lerp(facet, 1 - FOLIAGE_ROUNDNESS).normalize();
+          r.lerp(facet, 1 - roundness).normalize();
           normals.push(r.x, r.y, r.z);
         } else normals.push(n.x, n.y, n.z);
         const j = i + k;

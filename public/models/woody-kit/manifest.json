@@ -116,190 +116,190 @@
       "id": "sand-plum-high",
       "species": "sand-plum",
       "detail": "high",
-      "triangles": 375,
-      "height": 1.837,
-      "nominalHeight": 1.75,
-      "bytes": 33800
+      "triangles": 666,
+      "height": 1.867,
+      "nominalHeight": 1.8,
+      "bytes": 58736
     },
     {
       "id": "sand-plum-lite",
       "species": "sand-plum",
       "detail": "lite",
-      "triangles": 139,
-      "height": 1.786,
-      "nominalHeight": 1.75,
-      "bytes": 15676
+      "triangles": 203,
+      "height": 1.782,
+      "nominalHeight": 1.8,
+      "bytes": 22656
     },
     {
       "id": "sand-plum-far",
       "species": "sand-plum",
       "detail": "far",
-      "triangles": 48,
-      "height": 1.694,
-      "nominalHeight": 1.75,
-      "bytes": 5840
+      "triangles": 28,
+      "height": 1.734,
+      "nominalHeight": 1.8,
+      "bytes": 3928
     },
     {
       "id": "shinnery-high",
       "species": "shinnery",
       "detail": "high",
-      "triangles": 342,
-      "height": 1.075,
+      "triangles": 366,
+      "height": 1.12,
       "nominalHeight": 1.0,
-      "bytes": 31824
+      "bytes": 34892
     },
     {
       "id": "shinnery-lite",
       "species": "shinnery",
       "detail": "lite",
-      "triangles": 118,
-      "height": 1.017,
+      "triangles": 135,
+      "height": 1.066,
       "nominalHeight": 1.0,
-      "bytes": 14064
+      "bytes": 16544
     },
     {
       "id": "shinnery-far",
       "species": "shinnery",
       "detail": "far",
-      "triangles": 24,
-      "height": 0.963,
+      "triangles": 28,
+      "height": 1.0,
       "nominalHeight": 1.0,
-      "bytes": 3528
+      "bytes": 3924
     },
     {
       "id": "sand-sage-high",
       "species": "sand-sage",
       "detail": "high",
-      "triangles": 186,
-      "height": 1.042,
-      "nominalHeight": 1.0,
-      "bytes": 18656
+      "triangles": 203,
+      "height": 1.125,
+      "nominalHeight": 1.05,
+      "bytes": 20928
     },
     {
       "id": "sand-sage-lite",
       "species": "sand-sage",
       "detail": "lite",
-      "triangles": 86,
-      "height": 0.927,
-      "nominalHeight": 1.0,
-      "bytes": 10564
+      "triangles": 94,
+      "height": 1.015,
+      "nominalHeight": 1.05,
+      "bytes": 12088
     },
     {
       "id": "sand-sage-far",
       "species": "sand-sage",
       "detail": "far",
-      "triangles": 24,
-      "height": 0.877,
-      "nominalHeight": 1.0,
-      "bytes": 3536
+      "triangles": 28,
+      "height": 0.898,
+      "nominalHeight": 1.05,
+      "bytes": 3928
     },
     {
       "id": "mesquite-high",
       "species": "mesquite",
       "detail": "high",
-      "triangles": 539,
-      "height": 3.739,
+      "triangles": 767,
+      "height": 3.627,
       "nominalHeight": 3.6,
-      "bytes": 46872
+      "bytes": 66144
     },
     {
       "id": "mesquite-lite",
       "species": "mesquite",
       "detail": "lite",
-      "triangles": 198,
-      "height": 3.672,
+      "triangles": 294,
+      "height": 3.659,
       "nominalHeight": 3.6,
-      "bytes": 20664
+      "bytes": 29924
     },
     {
       "id": "mesquite-far",
       "species": "mesquite",
       "detail": "far",
-      "triangles": 55,
-      "height": 3.735,
+      "triangles": 78,
+      "height": 3.408,
       "nominalHeight": 3.6,
-      "bytes": 7204
+      "bytes": 9352
     },
     {
       "id": "hackberry-high",
       "species": "hackberry",
       "detail": "high",
-      "triangles": 332,
-      "height": 8.929,
-      "nominalHeight": 8.4,
-      "bytes": 29952
+      "triangles": 473,
+      "height": 8.838,
+      "nominalHeight": 8.5,
+      "bytes": 42200
     },
     {
       "id": "hackberry-lite",
       "species": "hackberry",
       "detail": "lite",
-      "triangles": 130,
-      "height": 8.926,
-      "nominalHeight": 8.4,
-      "bytes": 14332
+      "triangles": 182,
+      "height": 7.793,
+      "nominalHeight": 8.5,
+      "bytes": 20392
     },
     {
       "id": "hackberry-far",
       "species": "hackberry",
       "detail": "far",
-      "triangles": 55,
-      "height": 8.3,
-      "nominalHeight": 8.4,
-      "bytes": 7216
+      "triangles": 74,
+      "height": 7.52,
+      "nominalHeight": 8.5,
+      "bytes": 8972
     },
     {
       "id": "elm-high",
       "species": "elm",
       "detail": "high",
-      "triangles": 332,
-      "height": 11.562,
-      "nominalHeight": 10.8,
-      "bytes": 29920
+      "triangles": 473,
+      "height": 11.233,
+      "nominalHeight": 11.0,
+      "bytes": 42136
     },
     {
       "id": "elm-lite",
       "species": "elm",
       "detail": "lite",
-      "triangles": 130,
-      "height": 11.389,
-      "nominalHeight": 10.8,
-      "bytes": 14296
+      "triangles": 182,
+      "height": 10.76,
+      "nominalHeight": 11.0,
+      "bytes": 20332
     },
     {
       "id": "elm-far",
       "species": "elm",
       "detail": "far",
-      "triangles": 55,
-      "height": 11.108,
-      "nominalHeight": 10.8,
-      "bytes": 7168
+      "triangles": 74,
+      "height": 10.528,
+      "nominalHeight": 11.0,
+      "bytes": 8924
     },
     {
       "id": "cottonwood-high",
       "species": "cottonwood",
       "detail": "high",
-      "triangles": 401,
-      "height": 16.587,
-      "nominalHeight": 15.0,
-      "bytes": 35736
+      "triangles": 473,
+      "height": 15.773,
+      "nominalHeight": 15.5,
+      "bytes": 42204
     },
     {
       "id": "cottonwood-lite",
       "species": "cottonwood",
       "detail": "lite",
-      "triangles": 170,
-      "height": 16.651,
-      "nominalHeight": 15.0,
-      "bytes": 18180
+      "triangles": 182,
+      "height": 15.319,
+      "nominalHeight": 15.5,
+      "bytes": 20396
     },
     {
       "id": "cottonwood-far",
       "species": "cottonwood",
       "detail": "far",
-      "triangles": 79,
-      "height": 15.488,
-      "nominalHeight": 15.0,
-      "bytes": 9520
+      "triangles": 74,
+      "height": 14.48,
+      "nominalHeight": 15.5,
+      "bytes": 8976
     }
   ]
 }

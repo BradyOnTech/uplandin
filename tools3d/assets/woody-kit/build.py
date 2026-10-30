@@ -47,9 +47,12 @@ material.node_tree.links.new(paint.outputs['Color'], bsdf.inputs['Base Color'])
 
 class Part:
     """Faces with a colour each, built into one mesh. Foliage parts also
-    keep their lobes, from which the far detail is made."""
-    def __init__(self):
+    keep their lobes, from which the far detail is made, and may send their
+    lobe cores to a `cores` part of their own: exported as a 'foliage-core'
+    mesh, which the runtime shades fully round, as the crown's soft shade."""
+    def __init__(self, cores=False):
         self.v, self.f, self.c, self.lobes = [], [], [], []
+        self.cores = Part() if cores else None
     def face(self, idx, color):
         self.f.append(tuple(idx)); self.c.append(color)
 
@@ -121,7 +124,7 @@ def lobe(part, center, radii, palette, rng, cards, size, core_sides=5, diamond=T
     cx, cy, cz = center; rx, ry, rz = radii
     part.lobes.append((center, radii, palette[0]))
     if core_sides:
-        blob(part, center, (rx * core_scale, ry * core_scale, rz * core_scale * .95), shade(palette[0], core), rng, sides=core_sides, rings=3, ragged=.24, light=(.75, 1.0))
+        blob(part.cores or part, center, (rx * core_scale, ry * core_scale, rz * core_scale * .95), shade(palette[0], core), rng, sides=core_sides, rings=3, ragged=.24, light=(.75, 1.0))
     reach_down = 2.0 if underside else 1.6
     for k in range(cards):
         z = 1 - (k + .5) / cards * reach_down
@@ -167,15 +170,17 @@ def berries(part, center, spread, color, rng, n):
 
 def crown(leaf, lobes, palette, rng, hi, per_lobe=(16, 10), size=.6, **kw):
     """Lobes as (x, y, z, rx, ry, rz); lite keeps the first ones. Card size
-    scales with each lobe; lite cards are single triangles."""
+    scales with each lobe; lite cards are single triangles. `core` is the
+    core's shade, `lite_size` scales Lite's cards."""
     tilt = kw.get('tilt', (.3, .75))
     for i, (x, y, z, rx, ry, rz) in enumerate(lobes):
         cols = palette[i % len(palette):] + palette[:i % len(palette)]
         # Lite's fewer, single-triangle cards lie closer to the core: tilted
         # as far as High's they read as shards round a bare frame.
-        lobe(leaf, (x, y, z), (rx, ry, rz), cols, rng, per_lobe[0] if hi else per_lobe[1], size * min(rx, ry, rz * 1.4) * (1 if hi else 1.15),
+        lobe(leaf, (x, y, z), (rx, ry, rz), cols, rng, per_lobe[0] if hi else per_lobe[1],
+             size * min(rx, ry, rz * 1.4) * (1 if hi else kw.get('lite_size', 1.15)),
              core_sides=kw.get('core_sides', 5 if hi else 4), diamond=hi, underside=kw.get('underside', False),
-             tilt=tilt if hi else (tilt[0] * .5, tilt[1] * .6), core_scale=kw.get('core_scale', .74 if hi else .8))
+             tilt=tilt if hi else (tilt[0] * .5, tilt[1] * .6), core=kw.get('core', .62), core_scale=kw.get('core_scale', .74 if hi else .8))
 
 # ---------------------------------------------------------------------------
 # Species. Each returns (wood, foliage) Parts for a detail level.
@@ -244,104 +249,145 @@ def wild_rose(detail, rng):
     if hi: berries(leaf, (0, 0, .5), .6, linear(0xc02a22), rng, 6)
     return wood, leaf
 
+BARK_PLUM = linear(0x5e4034); BARK_MESQUITE = linear(0x46382f); BARK_PALE = linear(0x80786c)
+
 def sand_plum(detail, rng):
-    """Sand plum thicket: dense, flat-topped crown over a skirt of bare
-    stems, open at ground level where a covey loafs."""
-    wood, leaf = Part(), Part()
+    """Sand plum: a low, dense, rounded mound of zigzag twigs and autumn
+    leaves (rust, orange, maroon, a little dull gold), half again as wide as
+    it is tall. Its many thin suckering stems are bare in the bottom fifth,
+    where a covey loafs in the shade: open at ground level, closed above."""
+    wood, leaf = Part(), Part(cores=True)
     hi = detail == 'high'
-    palette = [linear(0x6a5a2c), linear(0x7a5530), linear(0x5e5a30), linear(0x86602e)]
-    for i in range(9 if hi else 5):
-        a = i * 2.39996 + rng.random() * .3; r = .15 + (i % 3) * .35
-        top = (math.cos(a) * (r + .25), math.sin(a) * (r + .25), .9 + rng.random() * .25)
-        stem(wood, (math.cos(a) * r, math.sin(a) * r, 0), top, .035, .02, BARK_DARK, 3)
-    lobes = [(0, 0, 1.3, .9, .8, .34), (.75, .3, 1.2, .6, .55, .3), (-.7, .25, 1.22, .6, .55, .3), (.15, -.75, 1.15, .6, .55, .28),
-             (-.3, .6, 1.42, .55, .5, .26), (.45, -.3, 1.5, .45, .45, .22)]
-    crown(leaf, lobes if hi else lobes[:4], palette, rng, hi, size=.75, tilt=(.15, .55))
+    palette = [linear(0xae6a42), linear(0xbe8444), linear(0x9a4c3e), linear(0xb6924a), linear(0xa66c3c)]
+    stem_bark = linear(0x76604e)
+    for i in range(18 if hi else 9):
+        a = i * 2.39996 + rng.random() * .5; r0 = .05 + rng.random() * .7; lean = .2 + rng.random() * .3
+        top = (math.cos(a) * (r0 + lean), math.sin(a) * (r0 + lean), .55 + rng.random() * .3)
+        stem(wood, (math.cos(a) * r0, math.sin(a) * r0, -.02), top, .022, .011, stem_bark, 3)
+    lobes = [(0, 0, 1.2, 1.0, .92, .5),
+             (.9, .2, .82, .64, .58, .44), (-.85, .32, .84, .64, .58, .44), (.18, -.9, .8, .62, .56, .42),
+             (-.5, -.7, .88, .6, .54, .42), (.5, .78, .9, .58, .52, .42), (.12, .1, 1.5, .62, .56, .3),
+             (.72, -.55, 1.08, .52, .48, .38), (-.78, -.2, 1.12, .52, .48, .38)]
+    # Many small cards lying close over a big, lit core: a dense mound with
+    # a twiggy edge, not a cloud of shards.
+    crown(leaf, lobes if hi else lobes[:5], palette, rng, hi, per_lobe=(20, 12), size=.42, tilt=(.2, .55), core_scale=.86, core=.6,
+          lite_size=1.0)
     return wood, leaf
 
 def shinnery(detail, rng):
-    """Shinnery oak motte: a knee-to-waist colony of leathery dark olive
-    and russet oak, a broad lumpy mound."""
-    wood, leaf = Part(), Part()
+    """Shinnery oak: a knee-to-waist colony of leathery olive and russet
+    oak, leafy right down to the sand: a broad, lumpy, low mound."""
+    wood, leaf = Part(), Part(cores=True)
     hi = detail == 'high'
-    palette = [linear(0x4e4a2c), linear(0x6a4e2c), linear(0x5a522e), linear(0x74562e)]
+    palette = [linear(0x66603a), linear(0x7c5e34), linear(0x6e663a), linear(0x86683a), linear(0x5c5836)]
     n = 8 if hi else 5
     lobes = []
     for i in range(n):
-        a = i * 2.39996; r = .15 + (i / n) * 1.0
-        lobes.append((math.cos(a) * r, math.sin(a) * r, .42 + rng.random() * .15, .5 + rng.random() * .15, .45, .32 + rng.random() * .1))
-    crown(leaf, lobes, palette, rng, hi, per_lobe=(11, 7), size=.6, underside=True)
+        a = i * 2.39996; r = .1 + (i / n) * 1.0
+        lobes.append((math.cos(a) * r, math.sin(a) * r, .4 + rng.random() * .14, .52 + rng.random() * .12, .46, .34 + rng.random() * .08))
+    lobes.append((.05, .02, .74, .46, .42, .24))
+    crown(leaf, lobes, palette, rng, hi, per_lobe=(10, 6), size=.6, underside=True, tilt=(.35, .85), core_scale=.8)
     for i in range(6 if hi else 3):
-        a = rng.random() * math.tau; r = rng.random() * 1.0
-        spray(wood, (math.cos(a) * r, math.sin(a) * r, .2), (math.cos(a) * r * 1.1, math.sin(a) * r * 1.1, .85 + rng.random() * .25), .025, BARK_DARK)
+        a = rng.random() * math.tau; r = rng.random() * .9
+        spray(wood, (math.cos(a) * r, math.sin(a) * r, .3), (math.cos(a) * r * 1.1, math.sin(a) * r * 1.1, .9 + rng.random() * .2), .022, BARK_DARK)
     return wood, leaf
 
 def sand_sage(detail, rng):
-    """Sand sagebrush: an airy, feathery silver-green shrub of fine sprays
-    rising from a few woody stems."""
-    wood, leaf = Part(), Part()
+    """Sand sagebrush: an airy, rounded clump of fine silver-green sprays on
+    a few grey woody stems; the sand shows through its base."""
+    wood, leaf = Part(), Part(cores=True)
     hi = detail == 'high'
-    palette = [linear(0x9aa38c), linear(0x8c967e), linear(0xa6ab94)]
-    for i in range(4 if hi else 2):
-        a = i * 1.6
-        stem(wood, (0, 0, 0), (math.cos(a) * .25, math.sin(a) * .25, .45), .03, .015, BARK_GREY, 3)
-    lobes = [(.12, .05, .6, .3, .28, .24), (-.15, .12, .62, .28, .26, .22), (0, -.16, .56, .28, .26, .22), (.05, .02, .8, .22, .2, .16)]
-    crown(leaf, lobes if hi else lobes[:3], palette, rng, hi, per_lobe=(8, 6), size=.6, tilt=(.6, 1.1))
-    for i in range(14 if hi else 6):
-        a = rng.random() * math.tau; r = .25 + rng.random() * .3
-        spray(leaf, (math.cos(a) * r * .5, math.sin(a) * r * .5, .45), (math.cos(a) * (r + .2), math.sin(a) * (r + .2), .75 + rng.random() * .25), .05, palette[i % 3])
+    palette = [linear(0xa2a88e), linear(0x909a80), linear(0xb0b29a), linear(0x989a7c)]
+    for i in range(5 if hi else 3):
+        a = i * 1.3 + rng.random() * .4
+        stem(wood, (math.cos(a) * .05, math.sin(a) * .05, 0), (math.cos(a) * .3, math.sin(a) * .3, .42), .025, .012, BARK_GREY, 3)
+    lobes = [(.14, .06, .62, .34, .3, .26), (-.16, .14, .64, .32, .3, .24), (0, -.18, .58, .32, .3, .24), (.04, .02, .86, .26, .24, .18)]
+    crown(leaf, lobes if hi else lobes[:3], palette, rng, hi, per_lobe=(9, 6), size=.55, tilt=(.6, 1.1), core_scale=.6)
+    for i in range(16 if hi else 7):
+        a = rng.random() * math.tau; r = .2 + rng.random() * .3
+        spray(leaf, (math.cos(a) * r * .4, math.sin(a) * r * .4, .35), (math.cos(a) * (r + .25), math.sin(a) * (r + .25), .72 + rng.random() * .3), .035, palette[i % 4])
     return wood, leaf
 
 def tree(detail, rng, height, trunk_r, limbs, lobes, palette, bark, fine=False):
-    wood, leaf = Part(), Part()
+    wood, leaf = Part(), Part(cores=True)
     hi = detail == 'high'
+    # The far detail redraws the trunk and main limbs from these.
+    wood.limbs, wood.bark = [], bark
     for (a0, a1, r0, r1) in limbs:
         stem(wood, a0, a1, r0 * trunk_r, r1 * trunk_r, bark, 5 if hi else 4)
+        wood.limbs.append((a0, a1, r0 * trunk_r, r1 * trunk_r))
     keep = lobes if hi else lobes[:max(3, len(lobes) * 2 // 3)]
     # A fine crown (mesquite) is many small flat-lying cards; a broadleaf
     # crown fewer, bigger ones.
-    crown(leaf, keep, palette, rng, hi, per_lobe=(20, 12) if fine else (16, 10), size=.45 if fine else .6,
-          tilt=(.1, .45) if fine else (.3, .8), core_sides=6 if hi else 5)
+    # Leaves are small beside any crown: big cards on a big tree read as
+    # shards.
+    crown(leaf, keep, palette, rng, hi, per_lobe=(16, 9) if fine else (22, 13), size=.26 if fine else .3,
+          tilt=(.25, .7) if fine else (.3, .8), core_sides=5 if fine else (6 if hi else 5), core_scale=.86 if fine else .8,
+          lite_size=1.0)
     return wood, leaf
 
 def mesquite(detail, rng):
-    """Honey mesquite: low and spreading, several leaning trunks, a fine
-    open grey-green crown in flat layers. Never an umbrella on one pole."""
-    limbs = [((0, 0, 0), (1.2, .3, 1.9), 1, .55), ((0, 0, 0), (-1.0, .6, 1.7), .9, .5), ((0, 0, 0), (.2, -1.1, 1.8), .85, .5),
-             ((1.2, .3, 1.9), (2.0, .2, 2.7), .5, .3), ((-1.0, .6, 1.7), (-1.9, 1.0, 2.4), .45, .28), ((.2, -1.1, 1.8), (.4, -2.0, 2.5), .45, .28),
-             ((.6, .1, 1.2), (.1, .3, 2.9), .5, .3)]
-    lobes = [(1.7, .3, 2.9, 1.1, .9, .38), (-1.6, .9, 2.7, 1.0, .9, .36), (.4, -1.8, 2.75, 1.0, .85, .34), (0, .2, 3.25, 1.2, 1.1, .4),
-             (1.0, -.9, 3.1, .8, .7, .3), (-.8, -.6, 3.0, .85, .75, .3), (.6, 1.4, 3.05, .8, .7, .3)]
-    palette = [linear(0x7d8566), linear(0x6f7a5c), linear(0x88896c)]
-    return tree(detail, rng, 4, .16, limbs, lobes, palette, BARK_DARK, fine=True)
+    """Honey mesquite: low and spreading. Four or five dark trunks lean out
+    from the ground and fork, one limb rising, one reaching out; the crown
+    is one fine, open, grey-green dome of feathery leaves that droops to
+    knee height at its edges, wider than it is tall. Never a crown held up
+    on one pole, never flat layers on stalks."""
+    hi = detail == 'high'
+    n = 5 if hi else 4
+    trunks, branches, lobes = [], [], []
+    for i in range(n):
+        a = i * math.tau / n + rng.random() * .6
+        lean = .45 + rng.random() * .3; length = 1.3 + rng.random() * .4
+        base = (math.cos(a) * .12, math.sin(a) * .12, 0)
+        reach = .12 + math.sin(lean) * length
+        mid = (math.cos(a) * reach, math.sin(a) * reach, math.cos(lean) * length)
+        up = (mid[0] * .8, mid[1] * .8, mid[2] + 1.1 + rng.random() * .3)
+        out = (mid[0] * 1.5, mid[1] * 1.5, mid[2] + .1)
+        # Trunks first: the far detail keeps them.
+        trunks.append((base, mid, 1, .7)); branches += [(mid, up, .65, .35), (mid, out, .55, .3)]
+        # The dome over the rising limb, and the skirt drooping from the reach.
+        lobes.append((up[0], up[1], up[2] - .05, 1.2, 1.1, .8))
+        lobes.append((out[0] * 1.05, out[1] * 1.05, out[2] - .35, 1.0, .9, .7))
+    lobes.insert(0, (0, 0, 2.7, 1.8, 1.6, .95))
+    palette = [linear(0x8a9670), linear(0x98a07a), linear(0xa6a87a), linear(0x7e8a68)]
+    return tree(detail, rng, 3.6, .16, trunks + branches, lobes, palette, BARK_MESQUITE, fine=True)
 
 def hackberry(detail, rng):
-    """Hackberry: one stout grey trunk and a rounded crown going yellow."""
-    limbs = [((0, 0, 0), (0, 0, 3.0), 1, .7), ((0, 0, 2.6), (1.4, .4, 5.0), .55, .3), ((0, 0, 2.7), (-1.2, .6, 5.2), .55, .3), ((0, 0, 2.8), (.2, -1.3, 5.4), .5, .3)]
-    lobes = [(0, 0, 6.0, 2.6, 2.4, 2.0), (1.6, .5, 5.2, 1.6, 1.4, 1.3), (-1.5, .6, 5.3, 1.6, 1.4, 1.3), (.2, -1.6, 5.4, 1.5, 1.4, 1.3), (0, .3, 7.4, 1.6, 1.5, 1.0)]
-    palette = [linear(0x8a8a40), linear(0x7a7a3c), linear(0x969046)]
-    return tree(detail, rng, 8, .26, limbs, lobes, palette, BARK_GREY)
+    """Hackberry: a short, stout grey trunk forking low into a few spreading
+    limbs under a broad, rounded, ragged crown that comes down to a third of
+    the tree's height and is going yellow."""
+    limbs = [((0, 0, 0), (.1, 0, 2.3), 1, .8), ((.1, 0, 2.0), (2.2, .6, 4.6), .6, .3), ((.1, 0, 2.1), (-2.0, 1.0, 4.8), .6, .3),
+             ((.1, 0, 2.2), (.4, -2.2, 5.0), .55, .3), ((.1, 0, 2.3), (-.3, -.2, 6.4), .5, .28)]
+    lobes = [(0, 0, 5.6, 2.9, 2.7, 2.0), (2.7, .6, 4.3, 1.8, 1.6, 1.4), (-2.6, 1.1, 4.4, 1.8, 1.6, 1.4), (.5, -2.6, 4.5, 1.7, 1.6, 1.35),
+             (-1.4, -1.8, 4.9, 1.5, 1.4, 1.2), (.3, .3, 7.3, 1.9, 1.8, 1.2)]
+    palette = [linear(0x9c9248), linear(0x8c8a46), linear(0xaa9c4e), linear(0x84803e)]
+    return tree(detail, rng, 8.5, .3, limbs, lobes, palette, BARK_PALE)
 
 def elm(detail, rng):
-    """American elm: a trunk forking low into a vase of rising limbs under
-    a broad, arching yellow crown."""
-    limbs = [((0, 0, 0), (0, 0, 3.2), 1, .75), ((0, 0, 3.0), (2.0, .4, 7.5), .6, .35), ((0, 0, 3.0), (-1.8, .8, 7.6), .6, .35), ((0, 0, 3.1), (.3, -2.0, 7.8), .55, .32)]
-    lobes = [(0, 0, 9.0, 3.4, 3.2, 1.8), (2.4, .5, 8.0, 2.0, 1.8, 1.4), (-2.2, .9, 8.1, 2.0, 1.8, 1.4), (.4, -2.4, 8.2, 1.9, 1.8, 1.4), (0, .4, 10.2, 2.2, 2.0, 1.0)]
-    palette = [linear(0xa08a3c), linear(0x928240), linear(0xa89444)]
-    return tree(detail, rng, 10.5, .32, limbs, lobes, palette, BARK_GREY)
+    """American elm: a trunk forking at a quarter of its height into a vase
+    of rising limbs, under a broad, arching yellow crown whose edges droop."""
+    limbs = [((0, 0, 0), (0, 0, 2.8), 1, .78), ((0, 0, 2.6), (2.6, .5, 7.2), .6, .32), ((0, 0, 2.6), (-2.4, 1.1, 7.4), .6, .32),
+             ((0, 0, 2.7), (.5, -2.6, 7.6), .55, .3), ((0, 0, 2.8), (-.6, -.4, 8.4), .5, .28)]
+    lobes = [(0, 0, 8.8, 3.8, 3.6, 1.8), (3.2, .6, 7.0, 2.2, 2.0, 1.6), (-3.0, 1.2, 7.1, 2.2, 2.0, 1.6), (.6, -3.2, 7.2, 2.1, 2.0, 1.5),
+             (4.4, -.6, 5.6, 1.4, 1.3, 1.2), (-.2, .3, 10.2, 2.2, 2.0, 1.0)]
+    palette = [linear(0xa8964a), linear(0x9a8c48), linear(0xb4a050), linear(0x8e8842)]
+    return tree(detail, rng, 11, .36, limbs, lobes, palette, BARK_GREY)
 
 def cottonwood(detail, rng):
-    """Plains cottonwood: a massive furrowed trunk and a huge, irregular
-    crown of golden October leaves along the creek."""
-    limbs = [((0, 0, 0), (0, 0, 4.5), 1, .7), ((0, 0, 4.0), (3.0, .6, 9.0), .6, .35), ((0, 0, 4.2), (-2.6, 1.2, 9.5), .6, .35), ((0, 0, 4.4), (.6, -3.0, 10.0), .55, .32), ((0, 0, 4.5), (.2, .4, 11.5), .5, .3)]
-    lobes = [(0, 0, 12.0, 4.4, 4.0, 3.0), (3.4, .8, 10.0, 2.8, 2.5, 2.2), (-3.0, 1.4, 10.4, 2.8, 2.5, 2.2), (.8, -3.4, 10.6, 2.6, 2.5, 2.1), (-.6, -.4, 14.0, 2.6, 2.4, 1.6), (2.0, 2.2, 12.6, 2.0, 1.8, 1.5)]
-    palette = [linear(0xb89a3a), linear(0xa88c38), linear(0xc4a444)]
-    return tree(detail, rng, 15, .5, limbs, lobes, palette, BARK_GREY)
+    """Plains cottonwood: a massive, pale, furrowed trunk, leaning a little,
+    forking into a few huge limbs under an enormous, irregular, open crown
+    gone gold; the creek's landmark."""
+    limbs = [((0, 0, 0), (.4, 0, 4.2), 1, .75), ((.4, 0, 3.8), (3.6, .8, 9.0), .62, .34), ((.4, 0, 4.0), (-2.8, 1.6, 9.6), .6, .34),
+             ((.4, 0, 4.1), (1.0, -3.2, 10.0), .55, .32), ((.4, 0, 4.2), (.2, .4, 12.0), .5, .3)]
+    lobes = [(.2, 0, 11.6, 4.6, 4.2, 3.0), (4.0, .9, 9.4, 3.0, 2.7, 2.4), (-3.4, 1.8, 9.9, 3.0, 2.7, 2.3), (1.2, -3.8, 10.2, 2.8, 2.6, 2.2),
+             (-.6, -.4, 14.0, 2.8, 2.6, 1.7), (5.2, -.8, 7.4, 1.8, 1.6, 1.4)]
+    palette = [linear(0xc0a040), linear(0xb09038), linear(0xcaa848), linear(0xa08a3a)]
+    return tree(detail, rng, 15.5, .6, limbs, lobes, palette, BARK_PALE)
 
 SPECIES = {
     'buckbrush': (buckbrush, .85), 'chokecherry': (chokecherry, 2.7), 'buffaloberry': (buffaloberry, 2.3), 'wild-rose': (wild_rose, .7),
-    'sand-plum': (sand_plum, 1.75), 'shinnery': (shinnery, 1.0), 'sand-sage': (sand_sage, 1.0),
-    'mesquite': (mesquite, 3.6), 'hackberry': (hackberry, 8.4), 'elm': (elm, 10.8), 'cottonwood': (cottonwood, 15.0),
+    'sand-plum': (sand_plum, 1.8), 'shinnery': (shinnery, 1.0), 'sand-sage': (sand_sage, 1.05),
+    'mesquite': (mesquite, 3.6), 'hackberry': (hackberry, 8.5), 'elm': (elm, 11.0), 'cottonwood': (cottonwood, 15.5),
 }
 
 def far_version(wood, leaf, nominal):
@@ -368,6 +414,76 @@ def far_version(wood, leaf, nominal):
             stem(fwood, (0, 0, 0), (0, 0, base + .4), .025 * top + .05, .012 * top + .03, BARK_GREY, 3)
     return fwood, fleaf
 
+def lobe_colour(lobes):
+    return tuple(sum(l[2][k] for l in lobes) / len(lobes) for k in range(3)) if lobes else (.5, .5, .5)
+
+def far_mound(wood, leaf, nominal, open_base=False, tone=.9):
+    """A Red Plains thicket's distance version: one closed, rounded mass over
+    all its foliage, rooted in the ground. Where the near detail is open at
+    the base, the mass's underside falls into deep shade instead: stilts at
+    a distance read as a table."""
+    fwood, fleaf = Part(), Part()
+    rng = random.Random(7)
+    lobes = leaf.lobes
+    lo = [min(c[k] - r[k] for c, r, _ in lobes) for k in range(3)]
+    hi = [max(c[k] + r[k] for c, r, _ in lobes) for k in range(3)]
+    # A flattened underside (blob's `flat`) set just into the ground and a
+    # rounded top at the foliage's height.
+    flat, top, sink = .35, hi[2] * 1.02, .03
+    rz = (top + sink) / (2 - flat * 1.5)
+    centre = ((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, rz * (1 - flat) - sink)
+    radii = ((hi[0] - lo[0]) / 2 * .9, (hi[1] - lo[1]) / 2 * .9, rz)
+    blob(fleaf, centre, radii, shade(lobe_colour(lobes), tone), rng, sides=7, rings=3, ragged=.14, flat=flat,
+         light=(.38, 1.0) if open_base else (.62, 1.0))
+    return fwood, fleaf
+
+def far_mesquite(wood, leaf, nominal):
+    """Mesquite's distance version: one low dome over all its foliage, from
+    the drooping skirt to the top, with two skirts breaking its outline and
+    the trunks' feet beneath: a broad, low tree, never a lid on stalks."""
+    fwood, fleaf = Part(), Part()
+    rng = random.Random(7)
+    lobes = leaf.lobes
+    lo = [min(c[k] - r[k] for c, r, _ in lobes) for k in range(3)]
+    hi = [max(c[k] + r[k] for c, r, _ in lobes) for k in range(3)]
+    colour = shade(lobe_colour(lobes), .9)
+    # The dome comes down nearly as low as the skirts: at a distance a
+    # mesquite is a broad, low mass, its trunks only a dark foot beneath.
+    bottom = lo[2] + (hi[2] - lo[2]) * .06
+    blob(fleaf, ((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (bottom + hi[2]) / 2), ((hi[0] - lo[0]) / 2 * .82, (hi[1] - lo[1]) / 2 * .82, (hi[2] - bottom) / 2),
+         colour, rng, sides=6, rings=3, ragged=.2, flat=.3, light=(.6, 1.0))
+    for (c, r, col) in lobes[2:6:2]:
+        blob(fleaf, c, (r[0] * .9, r[1] * .9, r[2] * .9), shade(col, .88), rng, sides=5, rings=3, ragged=.22, light=(.6, 1.0))
+    for part in wood.limbs[:2]:
+        a, b, r0, r1 = part
+        stem(fwood, a, (a[0] + (b[0] - a[0]) * .6, a[1] + (b[1] - a[1]) * .6, a[2] + (b[2] - a[2]) * .6), r0, r1, wood.bark, 3)
+    return fwood, fleaf
+
+def far_tree(wood, leaf, nominal, limbs=2, masses=3, pick=None):
+    """A Red Plains tree's distance version: its trunk and main limbs as
+    prisms, and its biggest lobes (or the ones `pick` names) each as one
+    ragged mass, so the crown keeps its own low, broad, uneven outline at a
+    distance instead of becoming one ball on a pole."""
+    fwood, fleaf = Part(), Part()
+    rng = random.Random(7)
+    lobes = [leaf.lobes[i] for i in pick if i < len(leaf.lobes)] if pick else \
+        sorted(leaf.lobes, key=lambda l: -(l[1][0] * l[1][1] * l[1][2]))[:masses]
+    for (c, r, colour) in lobes:
+        blob(fleaf, c, (r[0] * .94, r[1] * .94, r[2] * .96), shade(colour, .92), rng, sides=5, rings=3, ragged=.22, light=(.68, 1.0))
+    for part in wood.limbs[:limbs]:
+        a, b, r0, r1 = part
+        stem(fwood, a, b, r0, r1, wood.bark, 3)
+    return fwood, fleaf
+
+FAR = {
+    # From afar a covey's plum is a dark, warm mass, never orange pebbles.
+    'sand-plum': lambda w, l, n: far_mound(w, l, n, open_base=True, tone=.7),
+    'shinnery': lambda w, l, n: far_mound(w, l, n),
+    'sand-sage': lambda w, l, n: far_mound(w, l, n, open_base=True),
+    'mesquite': far_mesquite,
+    'hackberry': far_tree, 'elm': far_tree, 'cottonwood': far_tree,
+}
+
 def build(name, part, label):
     data = bpy.data.meshes.new(label)
     data.from_pydata(part.v, [], part.f)
@@ -393,13 +509,16 @@ for name, (make, nominal) in SPECIES.items():
     for detail in ('high', 'lite', 'far'):
         seed = sum(ord(ch) for ch in name) * 31
         if detail == 'far':
-            wood, leaf = far_version(*make('lite', random.Random(seed)), nominal)
+            wood, leaf = FAR.get(name, far_version)(*make('lite', random.Random(seed)), nominal)
         else:
             wood, leaf = make(detail, random.Random(seed))
         root = bpy.data.objects.new(f'{name}-{detail}', None)
         bpy.context.collection.objects.link(root)
         parts = []
-        for part, kind in ((wood, 'wood'), (leaf, 'foliage')):
+        # Far details of the Red Plains species are all soft mass.
+        parts_of = [(wood, 'wood'), (leaf, 'foliage-core' if detail == 'far' and name in FAR else 'foliage')]
+        if leaf.cores: parts_of.append((leaf.cores, 'foliage-core'))
+        for part, kind in parts_of:
             if not part.f: continue
             obj = build(name, part, f'{name}-{detail} / {kind}')
             obj.parent = root; parts.append(obj)
