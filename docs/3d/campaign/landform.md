@@ -541,6 +541,35 @@ By entry:
   - `test/propertyHabitatContract.test.ts`: Chukar's trucks leave the check that an entry faces along its first route segment, since they now face their authored views (checked in `chukarLandform.test.ts`);
   - `test/birdVariety.test.ts`: longer timeouts under load.
 
+### Lead review of the Chukar fixes (2026-10-30)
+
+Merged into `campaign/world-birds` as fd7dd26, on top of Cover milestone 2, Birds milestone 3, Dog D1 and Light milestone 3.
+
+**Conflicts:**
+- Chukar Ridge's doctrine keeps this lane's `dogObjectiveReach: 220` and the Birds lane's `circleBack: true`.
+- The bird-variety test keeps one note for the timeout both sides gave it.
+
+**Checks:** tsc is clean, and the full suite on the merged tree passes, 2,176 of 2,176.
+
+**The River Road truck view:** the spur's basalt crown now looms over the cattle-trail contours. That is the first impression the target asked for.
+
+**Hunt lab on the merged tree** (216 hunts, all four entries):
+
+| group | 1st contact | dry med | dry p90 | dry>3m | coveys | stuck retr | stuck states | long chases | in rock |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| follow | 82 | 134 | 328 | 38% | 5.3 | 0 | 2 | 0 | 0 |
+| tactic | 96 | 141 | 259 | 25% | 5.8 | 0 | 0 | 0 | 0 |
+| trail | 65 | 123 | 279 | 18% | 5.3 | 0 | 1 | 0 | 0 |
+
+**Bug found and fixed:** the three stuck states were the dog marking a covey for 278–484 s. The cause was the Birds lane's Hun circle-back combined with this canyon:
+- the wall rose under a circling covey and set it down 2–3 s into its loop, beside the dog;
+- the dog flushed it again in the next simulation tick;
+- the birds still held it as staged, so the re-flush was never flown.
+
+The lead fixed it in `birds.ts`, with a regression test (6475aa3). The landing beside the dog is the Birds lane's to fix in milestone 4.
+
+**Still open:** West Bench is still the weakest entry for a hunter who follows the dog (61% of hunts with a dry spell over 3 minutes). The Hun scent loop is logged as open.
+
 ## Lane log
 
 - **2026-10-08.** Milestone 1 started from `3b518a2`. Hunt lab brought into the repo and the baseline recorded. Chukar Ridge rebuilt as a canyon:
