@@ -263,7 +263,19 @@ Each sheet is a before block (the campaign head, from the baseline checkout on p
 - **Falls close up**, both tiers: `birds/quail-fields-falls-m3-before-after.jpg`, `birds/sharptail-prairie-falls-m3-before-after.jpg`, `birds/pheasant-coverts-falls-m3-before-after.jpg`, `birds/chukar-ridge-falls-m3-before-after.jpg`. Each row is one hit at about 15, 30 or 45 m. Its crops, 11% of the screen's height, are taken at +0.07, +0.17 and +0.3 s, at the strike and 0.1 s later, enlarged with square pixels. On Pheasant Coverts one rooster rises at the point, so its after-block takes each range from its own run.
 - **The rise with shooting**, both tiers, 0.5–4 s, birds ringed (cyan against the sky, orange against the land, grey falling): `birds/quail-fields-rise-shooting-m3-before-after.jpg`, `birds/sharptail-prairie-rise-shooting-m3-before-after.jpg`.
 - **Chukar line choice**, the hunter below, level with and above the covey, High: `birds/chukar-ridge-approach-m3-before-after.jpg`.
-- Regenerable runs on this machine: the captures in `/tmp/uplandin-rise/m3a-*` (after) and `m3b-*` (before); the rise lab in `/tmp/uplandin-rise/lab-m3-after2.json` and `lab-m3-before2.json`; the mark lab in `/tmp/uplandin-marks/after-b.json` and `before.json`.
+- **The marks in the live HUD**, Quail Fields, High, after only (the campaign head has no marks): `birds/quail-fields-mark-hud-m3.jpg`, from `tools3d/review-marks.mjs` and `tools3d/marks-sheet.py`. It shows three frames.
+  - A bobwhite the hunter watched go in behind sand plum: "Bird marked going in · 94 yd", and MARK ↗ 94 YD on its own line above TRUCK and WIND.
+  - The hunter turned to the mark by the beacon's arrow (MARK ↑).
+  - After C: "This way · GSP casts to your mark", with the dog running out.
+  The page is ordinary (no capture flag), stepped by hand, so HUD text that refreshes on the HUD's own clock (the heading, the truck's yards, the guidance line) is stale in the first two frames. The MARK, its arrow and the callouts are live.
+- Regenerable runs on this machine: the captures in `/tmp/uplandin-rise/m3a-*` (after) and `m3b-*` (before); the rise lab in `/tmp/uplandin-rise/lab-m3-after2.json` and `lab-m3-before2.json`; the mark lab in `/tmp/uplandin-marks/after-b.json` and `before.json`; the HUD frames in `/tmp/uplandin-marks/hud5`.
+
+### Tests
+
+- 2,097 tests in 252 files. The merged tree started from 2,079 in 250; 18 are new (`test/chukarLines.test.ts` 6, `test/hunterMarks.test.ts` 12). tsc is clean.
+- The last full run (`tools3d/heavy.sh npx vitest run --maxWorkers=2`, load average about 9 from the other lanes) passed 2,096.
+- The one failure is the 5 s timeout of `test/birdVariety.test.ts` "chukar-ridge puts a secondary species in the first coveys of almost every hunt". Run on its own it takes 7.15 s here and 7.05 s on the campaign head under the same load, so it is the machine, not this branch. It passed on its own earlier in the day, with the machine quieter.
+- Earlier full runs under heavier load (averages of 30–50) timed out up to 15 tests that build whole grounds. Each of those files passed on its own.
 
 ### Self-assessment against the target
 
@@ -283,7 +295,7 @@ Each sheet is a before block (the campaign head, from the baseline checkout on p
 - **Chukar set down less often in the rise lab** (49 of 108 against 64), not explained yet. It is not the gun check or the 35° rule, and the planner on its own chooses as many landings as before. The likely cause is the straighter pour down the real fall line, where the ground falls away out of the hunter's sight. Whole hunts barely notice it (7.2 misses a hunt seen to set down, against 7.8).
 - **A bird can reach its landing spot high above it and sink almost straight down.** In a Quail Fields playthrough a bobwhite was last seen 14 m over the spot where it then set down, with no speed across the ground, sinking. A landing line only starts down 22 m short of its spot, and sinks at most 3.5 m/s, so a bird that comes to a spot low in a dip finishes its descent over it. Start the descent earlier when the bird is high above its spot (a glide slope). This is from M2's flight lines and was not changed here.
 - **The second act does not shorten the dry spells.** In the lab the longest dry spell is set by the hunter's search between coveys, not by the follow-up. A follow-up is a reward inside a hunt, not a pacing fix.
-- **Phone layout not captured.** The MARK beacon sits beside WIND on touch (TRUCK is hidden there) and hides with the beacon when the gun is raised. Screenshots in mobile emulation crash the tab under the uncapped flags, so this is verified by the stylesheet only.
+- **Phone layout not captured.** On desktop the MARK is seen live, on its own line. On touch it sits beside WIND (TRUCK is hidden there) and hides with the beacon when the gun is raised. Screenshots in mobile emulation crash the tab under the uncapped flags, so the phone layout is verified by the stylesheet only.
 - **A Lightweight capture tab died twice** (Chukar Ridge in the first falls run, "execution context was destroyed"; Pheasant Coverts at 30 m, "navigating frame was detached"). Both ran clean on another try. It is the known risk of phone emulation under the uncapped flags, but worth watching on a phone.
 - **Look closer narrows what he marks.** Marking reads the camera's view, so with the 30° look-closer view held, a bird going down outside it is not marked. A hunter's eye would still catch it.
 - Still open from M2 and M1: leaving birds on screen (now capped at three inside 55 m), Chukar sky-backing when walking the rim, thunder frame time on a real phone, and the scattered-covey pacing sweep.
