@@ -55,6 +55,10 @@ const WET_FULL_CELLS = 900;
 const PIT_FILL_METRES = .3;
 /** Wetness at which gathered water makes a draw bottom. */
 const CHANNEL_WETNESS = .6;
+/** Wetness of a channel proper: the creek and the big draws feeding it. */
+const CHANNEL_CORE_WETNESS = .82;
+/** Channel distance is measured out to this reach (yards). */
+const CHANNEL_REACH_YARDS = 64;
 /** Rise over run below which a channel top is a basin floor, not a head. */
 const HEAD_MIN_SLOPE = .018;
 /** Draw heads closer than this are one head. */
@@ -82,10 +86,24 @@ export interface LandSample {
   west: number;
   /** Contour convergence, 0..1: where slopes fold in toward a draw. */
   convergence: number;
+  /** Yards to the nearest channel (the creek and its big draws), capped
+   * at 64: the creek's own corridor, wider than the flow line itself. */
+  channel: number;
+}
+
+/** Ground features the landform carries at a finer grain than the land
+ * analysis sees: a creek's bed, a burn, a disked firebreak. 0..1 each. */
+export interface CoverFeatures {
+  /** 1 across a creek's bed, falling to 0 over its cut bank. */
+  bed: number;
+  /** 1 in the black of a burn. */
+  burn: number;
+  /** How bare the ground is for any reason (bed, burn, firebreak...). */
+  bare: number;
 }
 
 /** Everything a recipe sees at one cover cell. */
-export interface CoverSample extends LandSample {
+export interface CoverSample extends LandSample, CoverFeatures {
   /** Yards to the nearest habitat patch (capped at its reach); negative inside one. */
   habitat: number;
   /** Yards to the nearest route centreline. */
@@ -113,9 +131,30 @@ export interface CoverCell {
 /** Communities a class can hold. */
 export const COVER_VARIANTS = 4;
 
+/** A woody plant that stands on its own rather than in a thicket: a
+ * mesquite in the pasture, a cottonwood on the creek, a sand sage on the
+ * sandhill. `group` keys the ground's woody groups for sites. */
+export interface CoverSite { x: number; y: number; group: number }
+
+/**
+ * Sites on a jittered lattice of `step` yards: each lattice point is offered
+ * to `place` with its own random draw `r` in [0, 1), and becomes a site of
+ * the returned group (or nothing for -1). Sites of an earlier lattice keep
+ * `clearance` yards of room from later ones (a sage never grows inside a
+ * mesquite's crown).
+ */
+export interface CoverSiteLattice {
+  step: number;
+  salt: number;
+  clearance?: number;
+  place(x: number, y: number, sample: CoverSample, cell: CoverCell, r: number): number;
+}
+
 /** A ground's rules: land, habitat and layout in, cover out. */
 export interface CoverRecipe {
   classify(x: number, y: number, sample: CoverSample, out: CoverCell): void;
+  /** Lone woody plants, read from the same land after classification. */
+  sites?: readonly CoverSiteLattice[];
 }
 
 /** A clearing kept open round a working place, in yards. */
@@ -130,6 +169,8 @@ export interface CoverMapSource {
   routes: readonly (readonly CoverPoint[])[];
   clearings: readonly CoverClearing[];
   recipe: CoverRecipe;
+  /** The ground's fine features (creek bed, burn...), when it has any. */
+  features?(x: number, y: number, out: CoverFeatures): void;
   margin?: number;
   /** Cell and landform sample size, yards (a coarse far map uses larger). */
   cell?: number;
@@ -174,8 +215,29 @@ export class LandAnalysis {
     // Hollows are places, not contour lines: blur the fold into blobs about
     // the size of a woody draw head before anything is classified on it.
     const convergence = this.blur(this.blur(this.convergence(height), 2), 2);
-    this.fields = [height, slope, tpi, relief, wetness, south, west, convergence];
+    this.fields = [height, slope, tpi, relief, wetness, south, west, convergence, this.channelDistance(wetness)];
     this.heads = this.drawHeads(height, wetness);
+  }
+
+  /** Yards from each cell to the nearest channel cell, by a two-pass
+   * chamfer transform, capped at the reach. */
+  private channelDistance(wetness: Float32Array): Float32Array {
+    const { cols, rows, step } = this, out = new Float32Array(cols * rows);
+    for (let i = 0; i < out.length; i++) out[i] = wetness[i] >= CHANNEL_CORE_WETNESS ? 0 : CHANNEL_REACH_YARDS;
+    const d1 = step, d2 = step * Math.SQRT2;
+    const relax = (i: number, j: number, d: number) => { if (out[j] + d < out[i]) out[i] = out[j] + d; };
+    for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+      const i = y * cols + x;
+      if (x > 0) relax(i, i - 1, d1);
+      if (y > 0) { relax(i, i - cols, d1); if (x > 0) relax(i, i - cols - 1, d2); if (x < cols - 1) relax(i, i - cols + 1, d2); }
+    }
+    for (let y = rows - 1; y >= 0; y--) for (let x = cols - 1; x >= 0; x--) {
+      const i = y * cols + x;
+      if (x < cols - 1) relax(i, i + 1, d1);
+      if (y < rows - 1) { relax(i, i + cols, d1); if (x < cols - 1) relax(i, i + cols + 1, d2); if (x > 0) relax(i, i + cols - 1, d2); }
+    }
+    for (let i = 0; i < out.length; i++) out[i] = Math.min(CHANNEL_REACH_YARDS, out[i]);
+    return out;
   }
 
   /** The top of every draw: a channel cell with no higher channel cell
@@ -353,7 +415,7 @@ export class LandAnalysis {
     const f = this.fields;
     const lerp = (a: Float32Array) => (a[i] + (a[i + 1] - a[i]) * tx) * (1 - ty) + (a[i + c] + (a[i + c + 1] - a[i + c]) * tx) * ty;
     out.height = lerp(f[0]); out.slope = lerp(f[1]); out.tpi = lerp(f[2]); out.relief = lerp(f[3]);
-    out.wetness = lerp(f[4]); out.south = lerp(f[5]); out.west = lerp(f[6]); out.convergence = lerp(f[7]);
+    out.wetness = lerp(f[4]); out.south = lerp(f[5]); out.west = lerp(f[6]); out.convergence = lerp(f[7]); out.channel = lerp(f[8]);
     return out;
   }
 }
@@ -373,6 +435,8 @@ export class CoverMap {
   readonly height: Uint8Array;
   readonly tone: Uint8Array;
   readonly variant: Uint8Array;
+  /** Lone woody plants (the recipe's site lattices), in placement order. */
+  readonly sites: CoverSite[] = [];
 
   constructor(bounds: CoverRect, margin: number, cell = COVER_CELL_YARDS) {
     this.cell = cell;
@@ -425,6 +489,31 @@ export class CoverMap {
       }
     }
     return counts.map(count => count / Math.max(1, total));
+  }
+}
+
+/** The recipe's sites bucketed on a coarse grid, for chunk fills. */
+export class CoverSiteIndex {
+  private readonly buckets = new Map<number, CoverSite[]>();
+  private static readonly SIZE = 64;
+
+  constructor(sites: readonly CoverSite[]) {
+    for (const site of sites) {
+      const key = CoverSiteIndex.key(Math.floor(site.x / CoverSiteIndex.SIZE), Math.floor(site.y / CoverSiteIndex.SIZE));
+      (this.buckets.get(key) ?? this.buckets.set(key, []).get(key)!).push(site);
+    }
+  }
+
+  private static key(bx: number, by: number): number { return (bx + 4096) * 8192 + by + 4096; }
+
+  /** Sites whose roots lie in [x0, x0 + size) x [y0, y0 + size). */
+  *within(x0: number, y0: number, size: number): Generator<CoverSite> {
+    const S = CoverSiteIndex.SIZE;
+    for (let by = Math.floor(y0 / S); by <= Math.floor((y0 + size) / S); by++) for (let bx = Math.floor(x0 / S); bx <= Math.floor((x0 + size) / S); bx++) {
+      for (const site of this.buckets.get(CoverSiteIndex.key(bx, by)) ?? []) {
+        if (site.x >= x0 && site.x < x0 + size && site.y >= y0 && site.y < y0 + size) yield site;
+      }
+    }
   }
 }
 
@@ -485,25 +574,63 @@ export function buildCoverMap(source: CoverMapSource): CoverMap {
       if (d < habitat[i]) habitat[i] = d;
     }
   }
-  const sample: CoverSample = { height: 0, slope: 0, tpi: 0, relief: 0, wetness: 0, south: 0, west: 0, convergence: 0, habitat: 0, route: 0, clearing: 0, head: 0 };
+  const sample: CoverSample = { height: 0, slope: 0, tpi: 0, relief: 0, wetness: 0, south: 0, west: 0, convergence: 0, channel: 0,
+    habitat: 0, route: 0, clearing: 0, head: 0, bed: 0, burn: 0, bare: 0 };
   const cell: CoverCell = { cls: Cover.short, density: 0, height: 0, tone: 0, variant: 0 };
+  // Everything a recipe sees at a point, from the stamped fields of the
+  // cell it falls in and the land sampled at the point itself.
+  const read = (x: number, y: number, i: number) => {
+    land.sample(x, y, sample);
+    sample.habitat = habitat[i];
+    sample.route = route[i];
+    let clearing = 0;
+    for (const place of source.clearings) {
+      const d = Math.hypot(x - place.x, y - place.y);
+      if (d < place.radius) clearing = Math.max(clearing, 1 - Math.max(0, d - place.radius * .6) / (place.radius * .4));
+    }
+    sample.clearing = clearing;
+    sample.head = head[i];
+    sample.bed = 0; sample.burn = 0; sample.bare = 0;
+    source.features?.(x, y, sample);
+  };
   for (let r = 0; r < map.rows; r++) {
     const y = map.y0 + (r + .5) * map.cell;
     for (let c = 0; c < map.cols; c++) {
       const x = map.x0 + (c + .5) * map.cell, i = r * map.cols + c;
-      land.sample(x, y, sample);
-      sample.habitat = habitat[i];
-      sample.route = route[i];
-      let clearing = 0;
-      for (const place of source.clearings) {
-        const d = Math.hypot(x - place.x, y - place.y);
-        if (d < place.radius) clearing = Math.max(clearing, 1 - Math.max(0, d - place.radius * .6) / (place.radius * .4));
-      }
-      sample.clearing = clearing;
-      sample.head = head[i];
+      read(x, y, i);
       cell.cls = Cover.short; cell.density = 0; cell.height = 0; cell.tone = 0; cell.variant = 0;
       source.recipe.classify(x, y, sample, cell);
       map.write(i, cell);
+    }
+  }
+  // Lone woody plants, lattice by lattice, each offered the land and the
+  // cover already classified where it would stand.
+  const taken = new Map<number, CoverSite[]>(), bucket = 16, key = (x: number, y: number) => Math.floor(x / bucket) * 65536 + Math.floor(y / bucket);
+  for (const lattice of source.recipe.sites ?? []) {
+    const { step, salt } = lattice, clearance = lattice.clearance ?? 0;
+    const placed: CoverSite[] = [];
+    for (let iy = Math.ceil(map.y0 / step); iy * step < map.y0 + map.rows * map.cell; iy++) {
+      for (let ix = Math.ceil(map.x0 / step); ix * step < map.x0 + map.cols * map.cell; ix++) {
+        const x = (ix + .15 + coverHash(ix, iy, salt) * .7) * step, y = (iy + .15 + coverHash(ix, iy, salt + 1) * .7) * step;
+        const i = map.index(x, y);
+        read(x, y, i);
+        map.sample(x, y, cell);
+        const group = lattice.place(x, y, sample, cell, coverHash(ix, iy, salt + 2));
+        if (group < 0) continue;
+        if (clearance > 0) {
+          let crowded = false;
+          for (let by = Math.floor((y - clearance) / bucket); by <= Math.floor((y + clearance) / bucket) && !crowded; by++)
+            for (let bx = Math.floor((x - clearance) / bucket); bx <= Math.floor((x + clearance) / bucket) && !crowded; bx++)
+              crowded = (taken.get(bx * 65536 + by) ?? []).some(site => Math.hypot(site.x - x, site.y - y) < clearance);
+          if (crowded) continue;
+        }
+        placed.push({ x, y, group });
+      }
+    }
+    for (const site of placed) {
+      map.sites.push(site);
+      const k = key(site.x, site.y);
+      (taken.get(k) ?? taken.set(k, []).get(k)!).push(site);
     }
   }
   return map;

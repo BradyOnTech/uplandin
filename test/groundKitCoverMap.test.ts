@@ -23,8 +23,8 @@ const cellAt = (map: ReturnType<typeof build>, x: number, y: number): CoverCell 
 describe('ground kit cover map', () => {
   it('reads the land: wet draw bottoms, a head where the draw begins', () => {
     const land = new LandAnalysis(-40, -40, 480, 580, drawLand);
-    const bottom = land.sample(200, 440, { height: 0, slope: 0, tpi: 0, relief: 0, wetness: 0, south: 0, west: 0, convergence: 0 });
-    const shoulder = land.sample(80, 440, { height: 0, slope: 0, tpi: 0, relief: 0, wetness: 0, south: 0, west: 0, convergence: 0 });
+    const bottom = land.sample(200, 440, { height: 0, slope: 0, tpi: 0, relief: 0, wetness: 0, south: 0, west: 0, convergence: 0, channel: 0 });
+    const shoulder = land.sample(80, 440, { height: 0, slope: 0, tpi: 0, relief: 0, wetness: 0, south: 0, west: 0, convergence: 0, channel: 0 });
     expect(bottom.wetness).toBeGreaterThan(shoulder.wetness + .3);
     expect(bottom.tpi).toBeLessThan(0);
     expect(shoulder.south).toBeGreaterThan(Math.abs(shoulder.west));
