@@ -3,65 +3,94 @@ import { COVER_CLASS_COUNT, Cover, type CoverClass, type CoverMap } from './cove
 
 /**
  * Each ground's species palette for the shared kit: what each cover class
- * looks like as a colour mass. `a` and `b` are the two ends of a class's
- * colony variation (the cover map's tone); `floor` is the litter beneath
- * the plants, seen between near bunches before the masses close up.
- * Colours are albedo; the scene's light and grade do the rest.
+ * looks like as a colour mass, one swatch per plant community (the cover
+ * map's variant). `a` and `b` are the two ends of a community's colony
+ * variation (the cover map's tone); `floor` is its litter, seen between
+ * near bunches before the masses close up. Colours are albedo; the scene's
+ * light and grade do the rest.
  */
 export interface CoverSwatch { a: number; b: number; floor: number }
-export type CoverPalette = Readonly<Record<CoverClass, CoverSwatch>>;
+export type CoverPalette = Readonly<Record<CoverClass, readonly CoverSwatch[]>>;
 
 export const SHARPTAIL_PALETTE: CoverPalette = {
-  [Cover.bare]: { a: 0x9d947e, b: 0x978e78, floor: 0x8d856f },
-  // Tawny western wheatgrass to silvered needle-and-thread.
-  [Cover.short]: { a: 0x9f9079, b: 0x9a998b, floor: 0x7f7656 },
-  // Copper little bluestem.
-  [Cover.crown]: { a: 0x9c7a60, b: 0xa48a70, floor: 0x7d6046 },
-  // Maroon big bluestem.
-  [Cover.swale]: { a: 0x7a5a50, b: 0x86705e, floor: 0x55433a },
-  // Rank mixed stand, bronze.
-  [Cover.stand]: { a: 0x947f68, b: 0x9a8c76, floor: 0x665441 },
-  // Buckbrush purple-brown to chokecherry red; buffaloberry greys the edge.
-  [Cover.shrub]: { a: 0x5f4b46, b: 0x6c4139, floor: 0x45372e },
-  [Cover.tree]: { a: 0x5c5a44, b: 0x666049, floor: 0x55543f },
-  [Cover.water]: { a: 0x4d6a72, b: 0x4d6a72, floor: 0x4d6a72 },
+  [Cover.bare]: [{ a: 0x9d947e, b: 0x978e78, floor: 0x8d856f }],
+  [Cover.short]: [
+    // Needle-and-thread: silvered awns over pale straw.
+    { a: 0xb2ad97, b: 0xa7a58f, floor: 0x857b62 },
+    // Western wheatgrass: tawny to blue-grey.
+    { a: 0x9f8a68, b: 0x8f9483, floor: 0x7a6e56 },
+    // Little bluestem creeping down a dry knob: copper.
+    { a: 0xa06f4f, b: 0xaa8059, floor: 0x7a5c46 },
+    // Fringed sage and late forbs: green-grey with dull gold.
+    { a: 0x8c967c, b: 0x9e9670, floor: 0x6e6c56 },
+  ],
+  [Cover.crown]: [
+    { a: 0xa06c4b, b: 0xab7c56, floor: 0x7b5a44 },
+    { a: 0xb2ac95, b: 0xa9a48c, floor: 0x847a60 },
+    { a: 0x8c967c, b: 0x9e9670, floor: 0x6e6c56 },
+  ],
+  [Cover.swale]: [
+    // Big bluestem: maroon and bronze.
+    { a: 0x7a4f47, b: 0x86604e, floor: 0x54413a },
+    // The wettest bottoms: olive-tan lowland grass.
+    { a: 0x8a7c5c, b: 0x7f7a60, floor: 0x5a5342 },
+  ],
+  // Rank stands: the shoulder communities grown taller, a little deeper
+  // in tone, so bird cover reads as denser prairie, not a painted block.
+  [Cover.stand]: [
+    { a: 0xa49f88, b: 0x9b9881, floor: 0x7a7058 },
+    { a: 0x937e5f, b: 0x858a7a, floor: 0x6e634e },
+    { a: 0x946649, b: 0x9d7553, floor: 0x6e533f },
+    { a: 0x825a4a, b: 0x8e6a52, floor: 0x5a4538 },
+  ],
+  [Cover.shrub]: [
+    // Thicket, buckbrush, rose: the far band's colour for each woody group.
+    { a: 0x5a3c36, b: 0x64463c, floor: 0x45372e },
+    { a: 0x6e4c46, b: 0x765446, floor: 0x55433a },
+    { a: 0x86523a, b: 0x7c5a3e, floor: 0x5e4a3a },
+  ],
+  [Cover.tree]: [{ a: 0x5c5a44, b: 0x666049, floor: 0x55543f }],
+  [Cover.water]: [{ a: 0x4d6a72, b: 0x4d6a72, floor: 0x4d6a72 }],
 };
 
 /** Cattail Coverts cover blocks: pale cured CRP and cattail brown. Classes
  * the kit does not draw there keep a neutral swatch (never sampled). */
 export const CATTAIL_PALETTE: CoverPalette = {
-  [Cover.bare]: { a: 0xa09479, b: 0xa09479, floor: 0x8d826a },
-  [Cover.short]: { a: 0xa69a7a, b: 0xa69a7a, floor: 0x847a60 },
-  [Cover.crown]: { a: 0xa69a7a, b: 0xa69a7a, floor: 0x847a60 },
+  [Cover.bare]: [{ a: 0xa09479, b: 0xa09479, floor: 0x8d826a }],
+  [Cover.short]: [{ a: 0xa69a7a, b: 0xa69a7a, floor: 0x847a60 }],
+  [Cover.crown]: [{ a: 0xa69a7a, b: 0xa69a7a, floor: 0x847a60 }],
   // Cattail: brown heads over olive-tan leaves.
-  [Cover.swale]: { a: 0x8f7c5c, b: 0x7f7055, floor: 0x5a5140 },
+  [Cover.swale]: [{ a: 0x8f7c5c, b: 0x7f7055, floor: 0x5a5140 }],
   // CRP switchgrass and big bluestem, cured pale.
-  [Cover.stand]: { a: 0xb6a47f, b: 0xa79370, floor: 0x6f644b },
-  [Cover.shrub]: { a: 0x5a4a3c, b: 0x5a4a3c, floor: 0x45392f },
-  [Cover.tree]: { a: 0x5c5a44, b: 0x5c5a44, floor: 0x55543f },
-  [Cover.water]: { a: 0x4d6a72, b: 0x4d6a72, floor: 0x4d6a72 },
+  [Cover.stand]: [{ a: 0xb6a47f, b: 0xa79370, floor: 0x6f644b }],
+  [Cover.shrub]: [{ a: 0x5a4a3c, b: 0x5a4a3c, floor: 0x45392f }],
+  [Cover.tree]: [{ a: 0x5c5a44, b: 0x5c5a44, floor: 0x55543f }],
+  [Cover.water]: [{ a: 0x4d6a72, b: 0x4d6a72, floor: 0x4d6a72 }],
 };
 
 /** Linear-space swatch colours, built once per palette. */
 export class PaletteColors {
-  private readonly a: THREE.Color[] = [];
-  private readonly b: THREE.Color[] = [];
-  private readonly floor: THREE.Color[] = [];
+  private readonly swatches: { a: THREE.Color; b: THREE.Color; floor: THREE.Color }[][] = [];
 
   constructor(readonly palette: CoverPalette) {
     for (let i = 0; i < COVER_CLASS_COUNT; i++) {
-      const swatch = palette[i as CoverClass];
-      this.a.push(new THREE.Color(swatch.a)); this.b.push(new THREE.Color(swatch.b)); this.floor.push(new THREE.Color(swatch.floor));
+      this.swatches.push(palette[i as CoverClass].map(swatch => ({ a: new THREE.Color(swatch.a), b: new THREE.Color(swatch.b), floor: new THREE.Color(swatch.floor) })));
     }
   }
 
-  /** Canopy colour of a class at a colony tone. */
-  canopy(cls: CoverClass, tone: number, out: THREE.Color): THREE.Color {
-    return out.copy(this.a[cls]).lerp(this.b[cls], tone);
+  private swatch(cls: CoverClass, variant: number) {
+    const list = this.swatches[cls];
+    return list[Math.min(list.length - 1, Math.max(0, variant))];
   }
 
-  floorOf(cls: CoverClass, out: THREE.Color): THREE.Color {
-    return out.copy(this.floor[cls]);
+  /** Canopy colour of a class's community at a colony tone. */
+  canopy(cls: CoverClass, tone: number, out: THREE.Color, variant = 0): THREE.Color {
+    const swatch = this.swatch(cls, variant);
+    return out.copy(swatch.a).lerp(swatch.b, tone);
+  }
+
+  floorOf(cls: CoverClass, out: THREE.Color, variant = 0): THREE.Color {
+    return out.copy(this.swatch(cls, variant).floor);
   }
 }
 
@@ -83,7 +112,7 @@ export class CoverColorField {
     let rgb: Float32Array = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
       const cls = map.cls[i] as CoverClass, density = map.density[i] / 255;
-      colors.canopy(cls, map.tone[i] / 255, color);
+      colors.canopy(cls, map.tone[i] / 255, color, map.variant[i]);
       // A sward seen from afar mixes lit tops with the shade between
       // plants: thinner cover shows more of its own floor.
       if (cls !== Cover.water) color.multiplyScalar(.86 + density * .14);

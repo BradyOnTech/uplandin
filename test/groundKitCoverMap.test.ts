@@ -18,7 +18,7 @@ const bounds = { x: 0, y: 0, w: 400, h: 500 };
 const build = (habitat = [] as { x: number; y: number; w: number; h: number }[], routes = [] as { x: number; y: number }[][]) =>
   buildCoverMap({ bounds, heightAt: drawLand, habitat, routes, clearings: [], recipe: sharptailCoverRecipe([]), margin: 40 });
 const cellAt = (map: ReturnType<typeof build>, x: number, y: number): CoverCell =>
-  map.sample(x, y, { cls: Cover.short, density: 0, height: 0, tone: 0 });
+  map.sample(x, y, { cls: Cover.short, density: 0, height: 0, tone: 0, variant: 0 });
 
 describe('ground kit cover map', () => {
   it('reads the land: wet draw bottoms, a head where the draw begins', () => {
@@ -68,7 +68,7 @@ describe('ground kit cover map', () => {
 describe('Sharptail cover from its own land and habitat', () => {
   const landscape = new LandscapeModel(getArea('sharptail-prairie'));
   const map = coverMapFor(landscape)!;
-  const cell = { cls: Cover.short, density: 0, height: 0, tone: 0 } as CoverCell;
+  const cell = { cls: Cover.short, density: 0, height: 0, tone: 0, variant: 0 } as CoverCell;
 
   it('is a mosaic: mostly short shoulder grass, with crowns, swales and woody draw heads', () => {
     const share = map.classShare();

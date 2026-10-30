@@ -27,7 +27,10 @@ export interface CoverSurfaceUniforms {
 }
 
 /** Darkness of the floor beneath a full canopy, near the hunter. */
-const FLOOR_SHADE = .8;
+const FLOOR_SHADE = .74;
+/** How far the floor leans toward cured litter (warm grey-brown thatch). */
+const LITTER_MIX = .42;
+const LITTER = new THREE.Color(0x6e6452);
 
 export function coverSurfaceTexture(field: CoverColorField): THREE.DataTexture {
   const { map } = field, color = new THREE.Color();
@@ -70,6 +73,22 @@ uniform float uKitTime;
 uniform vec2 uKitWind;
 uniform float uKitWindStrength;
 ${KIT_SHEEN_GLSL}
+float coverThatchHash(vec2 p) {
+  uvec2 cell = uvec2(ivec2(floor(p)) + 65536);
+  uint h = (cell.x * 374761393u) ^ (cell.y * 668265263u);
+  h = (h ^ (h >> 13u)) * 1274126177u;
+  return float(h ^ (h >> 16u)) / 4294967295.0;
+}
+/** Cured litter: short strands lying every which way, one per cell, the
+ * strand's lit body over the shaded gaps between. 0 gap .. 1 strand. */
+float coverThatchStrands(vec2 p) {
+  vec2 cell = floor(p), local = fract(p) - .5;
+  // Wind-laid: most strands lie roughly one way, a few cross them.
+  float seed = coverThatchHash(cell), angle = .6 + (seed - .5) * (seed > .8 ? 6.2832 : 1.6);
+  vec2 axis = vec2(cos(angle), sin(angle));
+  float along = dot(local, axis), across = dot(local, vec2(-axis.y, axis.x));
+  return smoothstep(.2, .02, abs(across)) * smoothstep(.62, .2, abs(along)) * (.5 + .5 * coverThatchHash(cell + 17.0));
+}
 `;
 
 /**
@@ -85,7 +104,18 @@ vec2 coverEdge = min(coverUV, 1.0 - coverUV);
 float coverInside = smoothstep(0.0, .04, min(coverEdge.x, coverEdge.y));
 float coverDistance = distance(vPropertyWorld.xz, cameraPosition.xz);
 float coverCanopy = smoothstep(uCoverBand.x, uCoverBand.y, coverDistance);
-vec3 coverFloor = coverTexel.rgb * mix(1.0, ${FLOOR_SHADE.toFixed(2)}, coverTexel.a);
+// Under the grass near the hunter: cured litter and thatch, the plants'
+// own colour sunk toward a warm grey-brown, broken at two small scales.
+// Each scale fades as it shrinks below a pixel, so it never ripples.
+vec3 coverFloor = mix(coverTexel.rgb * mix(1.0, ${FLOOR_SHADE.toFixed(2)}, coverTexel.a), vec3(${LITTER.r.toFixed(4)}, ${LITTER.g.toFixed(4)}, ${LITTER.b.toFixed(4)}), ${LITTER_MIX.toFixed(2)} * coverTexel.a);
+vec2 thatchWorld = vPropertyWorld.xz * mat2(.8, -.6, .6, .8);
+float thatchSpan = max(fwidth(thatchWorld).x, fwidth(thatchWorld).y);
+// Two interleaved strand grids (about 0.3 m strands) fade out as a strand
+// shrinks toward a pixel, so the floor never ripples at grazing angles.
+float thatchFine = max(coverThatchStrands(thatchWorld * 4.4), coverThatchStrands(thatchWorld * 4.4 + vec2(.5, .27)))
+  * .6 + coverThatchStrands(thatchWorld * 2.1 + vec2(.21, .73)) * .4;
+float thatch = (thatchFine - .3) * (1.0 - smoothstep(.025, .09, thatchSpan));
+coverFloor *= 1.0 + thatch * .16;
 vec3 coverColor = mix(coverFloor, coverTexel.rgb, coverCanopy);
 // The wind's sheen rolls across the far sward as well as the near plants.
 coverColor *= 1.0 + kitSheen(vPropertyWorld.xz, uKitWind, uKitWindStrength, uKitTime) * .10 * coverCanopy * coverTexel.a;

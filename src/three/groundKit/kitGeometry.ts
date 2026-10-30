@@ -36,8 +36,10 @@ export function kitTuftGeometry(blades = 9, seed = 0x7af7): THREE.BufferGeometry
     const outer = i / Math.max(1, blades - 1);
     const yaw = i * 2.39996 + rng() * .5;
     const ox = Math.cos(yaw), oz = Math.sin(yaw), sx = -oz, sz = ox;
-    const root = .04 + rng() * .1, height = .72 + rng() * .3 - outer * .22;
-    const width = .04 + rng() * .02, arc = .2 + outer * .55 + rng() * .2;
+    // A vase: blades rise from a broad crown and only the outer ones arch
+    // over at the tip. Wide-flung blades read as a starfish, not a bunch.
+    const root = .06 + rng() * .16, height = .76 + rng() * .28 - outer * .2;
+    const width = .055 + rng() * .03, arc = .08 + outer * .32 + rng() * .12;
     // Three nodes along an arc: stiff at the root, bending through the top.
     const nodes = [0, .5, .82, 1].map(t => {
       const bend = arc * t * t;
@@ -138,12 +140,14 @@ export function kitMassGeometry(sides = 7, seed = 0x3a55): THREE.BufferGeometry 
   for (let i = 0; i < sides; i++) {
     const j = (i + 1) % sides;
     tri(base[i], .74, base[j], .74, rim[j], .84); tri(base[i], .74, rim[j], .84, rim[i], .84);
-    tri(rim[i], .84, rim[j], .84, heart, .8);
+    // The cap sits in the bunch's own shade: from a crest a mass reads as
+    // a tussock's dark heart under its blades, not as a lit pad.
+    tri(rim[i], .8, rim[j], .8, heart, .66);
   }
   // Rings of narrow leaning blades break the top edge into grass: the outer
   // ring fountains past the skirt, the inner rings stand taller. Narrow and
   // tall, so even a wide, short mass keeps a grass silhouette.
-  const rings = [{ n: sides * 2, r: .84, lean: .26, h: .86 }, { n: sides + 2, r: .52, lean: .16, h: 1.0 }, { n: Math.max(4, sides - 2), r: .22, lean: .08, h: 1.1 }];
+  const rings = [{ n: sides * 2, r: .84, lean: .26, h: .86 }, { n: sides + 4, r: .52, lean: .16, h: 1.0 }, { n: sides, r: .24, lean: .08, h: 1.1 }];
   for (const ring of rings) for (let k = 0; k < ring.n; k++) {
     const a = (k / ring.n) * Math.PI * 2 + (rng() - .5) * .5;
     const r = ring.r * (.85 + rng() * .25), width = .045 + rng() * .02;
@@ -183,42 +187,4 @@ export function kitStandGeometry(stems = 14, heads = 16, seed = 0x57a4): THREE.B
       [cx * (r + lean), tip, cz * (r + lean)], 1.08 + rng() * .06);
   }
   return finish(positions, normals, colors, 'kit-stand');
-}
-
-/**
- * A woody clump: buckbrush, chokecherry, buffaloberry, plum. Built the way
- * the sward masses are, because that reads as growth: a low solid core
- * under rings of broad twiggy sprays, fanning out and up into a ragged
- * crown, mottled spray by spray. Taller, darker and coarser than grass, so
- * a thicket reads as brush from the crest and up close, never as a stone.
- */
-export function kitShrubGeometry(sides = 8, sprays = 48, seed = 0x5b0b): THREE.BufferGeometry {
-  const rng = mulberry32(seed);
-  const positions: number[] = [], normals: number[] = [], colors: number[] = [];
-  const push = (x: number, y: number, z: number, shade: number) => { positions.push(x, y, z); normals.push(0, 1, 0); colors.push(shade, shade, shade); };
-  const base: [number, number][] = [], rim: [number, number, number][] = [];
-  for (let i = 0; i < sides; i++) {
-    // The core narrows upward into a dome: a flared core read as a bowl.
-    const a = (i / sides) * Math.PI * 2, r0 = .62 + rng() * .1, r1 = .5 + rng() * .1;
-    base.push([Math.cos(a) * r0, Math.sin(a) * r0]);
-    rim.push([Math.cos(a) * r1, .42 + rng() * .08, Math.sin(a) * r1]);
-  }
-  for (let i = 0; i < sides; i++) {
-    const j = (i + 1) % sides;
-    push(base[i][0], -.04, base[i][1], .5); push(base[j][0], -.04, base[j][1], .5); push(rim[j][0], rim[j][1], rim[j][2], .7);
-    push(base[i][0], -.04, base[i][1], .5); push(rim[j][0], rim[j][1], rim[j][2], .7); push(rim[i][0], rim[i][1], rim[i][2], .7);
-    // A lit domed top, so the core never reads as a pit from above.
-    push(rim[i][0], rim[i][1], rim[i][2], .7); push(rim[j][0], rim[j][1], rim[j][2], .7); push(0, .74, 0, .86);
-  }
-  // Sprays: outer ones fan low and wide, inner ones stand tall.
-  for (let k = 0; k < sprays; k++) {
-    const t = k / sprays, a = k * 2.39996 + rng() * .4, inner = 1 - t;
-    const r = .12 + t * .62, lean = .08 + t * .26, h = .8 + inner * .28 + rng() * .14;
-    const w = .05 + rng() * .035, y0 = .22 + rng() * .14;
-    const cx = Math.cos(a), cz = Math.sin(a), sx = -cz, sz = cx;
-    const tone = .78 + rng() * .4;
-    push(cx * r - sx * w, y0, cz * r - sz * w, .55 * tone); push(cx * r + sx * w, y0, cz * r + sz * w, .55 * tone);
-    push(cx * (r + lean) + sx * (rng() - .5) * .12, h, cz * (r + lean) + sz * (rng() - .5) * .12, .9 * tone);
-  }
-  return finish(positions, normals, colors, 'kit-shrub');
 }

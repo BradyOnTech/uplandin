@@ -2,7 +2,8 @@ import type * as THREE from 'three';
 import type { AreaConfig } from '../../game/areas';
 import type { LandscapeModel } from '../../game/landscape';
 import type { Quality } from '../engine';
-import { coverMapFor, farCoverMapFor, hasCoverRecipe } from './coverRecipes';
+import { coverMapFor, farCoverMapFor, hasCoverRecipe, SHARPTAIL_COMMUNITY } from './coverRecipes';
+import type { WoodySpecies } from './woodyKit';
 import { CATTAIL_PALETTE, CoverColorField, SHARPTAIL_PALETTE, type CoverPalette } from './coverPalette';
 import { COVER_SURFACE_DECLARATIONS, COVER_SURFACE_FRAGMENT, coverSurfaceUniforms, type CoverSurfaceUniforms } from './coverSurface';
 
@@ -50,6 +51,38 @@ export function groundKitStyle(areaId: string, requested = requestedStyle()): Co
 /** Tall cover open at dog height (chest-high stands), or solid masses. */
 export function groundKitTallCoverOpen(areaId: string): boolean {
   return areaId === 'pheasant-coverts';
+}
+
+/** One species in a woody group: its share and its height range (m). */
+export interface WoodyGroup { species: WoodySpecies; weight: number; height: readonly [number, number] }
+
+/**
+ * Each ground's woody groups, keyed by the shrub class's variant in its
+ * cover recipe. Sharptail: chokecherry and buffaloberry thickets skirted
+ * with buckbrush at the heads of draws; buckbrush colonies with a little
+ * rose on the lee slopes and in side hollows; wild rose and snowberry on
+ * the fence line.
+ */
+const WOODY: Readonly<Record<string, Readonly<Record<number, readonly WoodyGroup[]>> | undefined>> = {
+  'sharptail-prairie': {
+    [SHARPTAIL_COMMUNITY.shrub.thicket]: [
+      { species: 'chokecherry', weight: .42, height: [1.9, 3.1] },
+      { species: 'buffaloberry', weight: .33, height: [1.6, 2.7] },
+      { species: 'buckbrush', weight: .25, height: [.6, 1.0] },
+    ],
+    [SHARPTAIL_COMMUNITY.shrub.buckbrush]: [
+      { species: 'buckbrush', weight: .85, height: [.55, 1.0] },
+      { species: 'wild-rose', weight: .15, height: [.4, .7] },
+    ],
+    [SHARPTAIL_COMMUNITY.shrub.rose]: [
+      { species: 'wild-rose', weight: .6, height: [.4, .75] },
+      { species: 'buckbrush', weight: .4, height: [.5, .9] },
+    ],
+  },
+};
+
+export function groundKitWoody(areaId: string): Readonly<Record<number, readonly WoodyGroup[]>> | undefined {
+  return WOODY[areaId];
 }
 
 export function groundKitPalette(areaId: string): CoverPalette | undefined {
