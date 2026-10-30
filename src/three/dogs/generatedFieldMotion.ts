@@ -17,6 +17,8 @@ const BOUND_COVER_M = .9;
 const BOUND_SPEED = 2.3;
 /** A turn this sharp (rad/s, filtered) puts a cantering or galloping dog on its inside lead. */
 const LEAD_TURN = .6;
+/** A stop shorter than this (s) keeps the stance it stopped on. */
+const BRACED_STOP_S = .8;
 /** How far the hips trail inside the chest round a curve: the chest-to-hip span (m). */
 const BEND_SPAN = .45;
 
@@ -79,7 +81,10 @@ export class GeneratedFieldMotion {
   private carryPresence=0;
   private deliverPresence=0;
   private presentClock=0;
+  private carryWag=0;
   private wasMoving=false;
+  /** Seconds since the dog last stopped travelling. */
+  private stillFor=0;
   private lastYaw=0;
   private transitionTime=.24;
   private transitionRaised=false;
@@ -95,6 +100,7 @@ export class GeneratedFieldMotion {
     this.contact=contact??ground;
     this.asset=createGeneratedGsp(detail,true,coatId,look);
     this.breedMotion=getBreed(this.asset.root.userData.breedId).motion;
+    this.scentMotion.setBreed(this.breedMotion);
     this.vigor=this.breedVigor();
     // Torso support has its own continuous response; blending its solved
     // position a second time would accumulate the ribcage pivot offset.
@@ -288,7 +294,10 @@ export class GeneratedFieldMotion {
         const gap=Math.hypot(foot.target.x-this.nominal.x,foot.target.z-this.nominal.z);
         const stepping=this.feet.findIndex(f=>f.step>0);
         const canStep=stepping<0||(pivoting&&posedFoot<0&&stepping===3-i&&this.feet.filter(f=>f.step>0).length<2);
-        if(!foot.step&&gap>(pivoting?.07:moving?.22:.10)&&canStep) {foot.from.copy(foot.target);foot.goal.copy(this.nominal);foot.step=.000001;foot.plantId=this.nextPlantId++;}
+        // A dog that checks itself mid-run stands braced on the feet it
+        // stopped on; it squares up only if it stays stopped (or points).
+        const settle=moving?.22:this.stillFor<BRACED_STOP_S&&!point&&pointTarget===0?.30:.10;
+        if(!foot.step&&gap>(pivoting?.07:settle)&&canStep) {foot.from.copy(foot.target);foot.goal.copy(this.nominal);foot.step=.000001;foot.plantId=this.nextPlantId++;}
         if(foot.step>0) {
           foot.goal.copy(this.nominal);
           foot.goal.y=floor;
@@ -343,6 +352,12 @@ export class GeneratedFieldMotion {
     // Presenting lifts the head to the handler's hand, the tail going.
     neck.rotation.x += 1.25 * this.pickupPresence + .10 * this.carryPresence - .26 * this.deliverPresence;
     head.rotation.x += this.pickupHeadPitch * this.pickupPresence - .10 * this.carryPresence - .22 * this.deliverPresence;
+    // Coming back with a bird the tail rides up and swings, proud of it.
+    if (this.carryPresence > .001 && moving) {
+      this.carryWag += Math.max(0, dt) * 8.5;
+      this.asset.joints.tail.rotation.y += Math.sin(this.carryWag) * .2 * this.carryPresence;
+      this.asset.joints.tail.rotation.x += .1 * this.carryPresence;
+    }
     if (this.deliverPresence > .001) {
       this.presentClock += Math.max(0, dt);
       this.asset.joints.tail.rotation.y += Math.sin(this.presentClock * 9) * .30 * this.deliverPresence;
@@ -354,6 +369,7 @@ export class GeneratedFieldMotion {
     this.earGravity.update(this.asset.joints,dt,reset);
     root.updateMatrixWorld(true);
     this.wasMoving=moving;
+    this.stillFor=moving||reset?0:this.stillFor+Math.max(0,dt);
     this.lastYaw=yaw;
     this.last.set(x,ground,z);this.placed=true;
   }

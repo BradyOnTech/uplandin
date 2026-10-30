@@ -112,3 +112,50 @@ describe('ground contact', () => {
     motion.dispose();
   });
 });
+
+describe('stopping to check', () => {
+  it('stands braced on the feet it stopped on, and squares up only if it stays', () => {
+    const motion = new GeneratedFieldMotion('lite', () => 0);
+    let z = 0, steps = 0;
+    const stepping = () => motion.feet.filter(foot => foot.step > 0).length;
+    for (let f = 0; f < 150; f++) { z += 5.5 / 60; motion.update(0, z, 0, 1 / 60, true, false, undefined, undefined, 5.5); }
+    // A third of a second's check, as the scent beat makes it.
+    let was = 0;
+    for (let f = 0; f < 20; f++) {
+      motion.update(0, z, 0, 1 / 60, false, false);
+      const now = stepping(); if (now > was) steps += now - was; was = now;
+    }
+    expect(steps).toBeLessThanOrEqual(1);
+    // Kept standing, it squares its stance up.
+    for (let f = 0; f < 150; f++) motion.update(0, z, 0, 1 / 60, false, false);
+    expect(motion.clamped).toBe(0);
+    for (const foot of motion.contactSnapshot()) expect(foot.locked).toBe(true);
+    motion.dispose();
+  });
+});
+
+describe('search carriage', () => {
+  it('glances off to either side at irregular moments and wags on a drifting beat', async () => {
+    const { GeneratedScentMotion } = await import('../src/three/dogs/generatedScentMotion');
+    const { createGeneratedGsp } = await import('../src/three/dogs/generatedGsp');
+    const dog = createGeneratedGsp('lite', true), motion = new GeneratedScentMotion();
+    motion.setBreed({ headFreedom: .7, tailAction: .65 });
+    const intent = { state: 'quartering' as const, scentStage: 'none' as const, scentProgress: 0, waitingForHandler: false, intentYaw: 0 };
+    const yaws: number[] = [], crossings: number[] = [];
+    let lastTail = 0;
+    for (let f = 0; f < 60 * 20; f++) {
+      dog.setPose('stand');
+      motion.update(dog, intent, true, 0, 1 / 60, false);
+      yaws.push(dog.joints.neck.rotation.y);
+      const tail = dog.joints.tail.rotation.y;
+      if (lastTail < 0 && tail >= 0) crossings.push(f / 60);
+      lastTail = tail;
+    }
+    expect(Math.max(...yaws)).toBeGreaterThan(.08);
+    expect(Math.min(...yaws)).toBeLessThan(-.08);
+    const beats = crossings.slice(1).map((t, i) => t - crossings[i]);
+    const mean = beats.reduce((a, b) => a + b, 0) / beats.length;
+    expect(Math.max(...beats) - Math.min(...beats)).toBeGreaterThan(mean * .15);
+    dog.dispose();
+  });
+});
