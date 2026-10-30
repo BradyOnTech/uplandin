@@ -1,3 +1,4 @@
+import type * as THREE from 'three';
 import { TrainingGroundSystem } from './subsystems/trainingGround';
 import { frameTailgate, stageTailgate } from './tailgatePhoto';
 import { huntAssists, onHuntAssists } from './assistsRuntime';
@@ -237,6 +238,9 @@ declare global {
       setPose(x: number, z: number, yawDeg: number, pitchDeg?: number, lift?: number): void;
       renderOnce(): void;
       info(): { calls: number; triangles: number };
+      /** Review tooling: the live scene and camera (tools3d/scene-cost.mjs). */
+      scene(): THREE.Scene;
+      camera(): THREE.Camera;
       /** Advance the (capture-frozen) sim by exact 30 Hz ticks. */
       stepSim(ticks: number): void;
       /**
@@ -301,6 +305,8 @@ engine.start(fieldInterface.loading).then((started) => {
     setTod: (t) => engine.setTimeOfDay(t),
     setPose: (x, z, yaw, pitch, lift) => engine.ctx.get<PlayerSystem>('player').setPose(engine.ctx, x, z, yaw, pitch, lift),
     renderOnce: () => engine.renderOnce(),
+    scene: () => engine.ctx.scene,
+    camera: () => engine.ctx.camera,
     info: () => ({
       calls: engine.ctx.renderer.info.render.calls,
       triangles: engine.ctx.renderer.info.render.triangles,

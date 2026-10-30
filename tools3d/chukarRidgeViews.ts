@@ -1,19 +1,29 @@
 import type { AreaConfig } from '../src/game/areas';
-import { CHUKAR_GUZZLER, CHUKAR_JUNIPER_SNAG, CHUKAR_SEEP, CHUKAR_SHEEP_CAIRN, CHUKAR_TALUS_FANS } from '../src/game/chukarFeatures';
+import { CHUKAR_GUZZLER, CHUKAR_SPRING_SEAM } from '../src/game/chukarHabitat';
+import { CHUKAR_PLACES } from '../src/game/chukarRidge';
 import type { MapReviewView } from './cattailCovertsViews';
 
-/** Chukar Ridge review locations for its remembered places. */
+/** Chukar Ridge review locations: the entries, the named hunt areas and the
+ * canyon views. The first five keep the postcard ids used since the
+ * baseline so before/after sheets line up. */
 export function chukarRidgeViews(area: AreaConfig): MapReviewView[] {
   const v = (id: string, name: string, from: { x: number; y: number }, to: { x: number; y: number }, pitch: number, lift?: number): MapReviewView =>
     ({ id, name, at: [from.x, from.y], toward: [to.x, to.y], pitch, lift });
-  const drop = area.dropPoints[0].position, seep = CHUKAR_SEEP[2], fan = CHUKAR_TALUS_FANS[2];
+  const drop = (id: string) => area.dropPoints.find(d => d.id === id)?.position ?? area.dropPoints[0].position;
+  const river = drop('south-gate'), rim = drop('rim-track'), spring = CHUKAR_SPRING_SEAM[0], seamFoot = CHUKAR_SPRING_SEAM.at(-1)!;
   return [
-    v('truck', 'Truck', { x: drop.x, y: drop.y - 8 }, { x: drop.x + 20, y: drop.y - 180 }, 2),
-    v('seep', 'Spring seep', { x: seep.x - 38, y: seep.y + 6 }, seep, -6),
-    v('cairn', 'Sheepherder cairn', { x: CHUKAR_SHEEP_CAIRN.x - 4, y: CHUKAR_SHEEP_CAIRN.y + 7 }, CHUKAR_SHEEP_CAIRN, 6),
-    v('talus', 'Talus fan', { x: fan.toe.x + 20, y: fan.toe.y + 22 }, fan.apex, 6),
-    v('guzzler', 'Guzzler', { x: CHUKAR_GUZZLER.x - 12, y: CHUKAR_GUZZLER.y + 14 }, CHUKAR_GUZZLER, -10, 1),
-    v('snag', 'Juniper snag', { x: CHUKAR_JUNIPER_SNAG.x + 6, y: CHUKAR_JUNIPER_SNAG.y + 16 }, CHUKAR_JUNIPER_SNAG, 10),
-    v('seep-above', 'Seep from the shoulder', { x: CHUKAR_JUNIPER_SNAG.x - 10, y: CHUKAR_JUNIPER_SNAG.y - 22 }, seep, -6),
+    v('truck', 'River Road entry, up the wall', { x: river.x + 9, y: river.y - 16 }, { x: 640, y: 900 }, 5),
+    v('talus', 'Lower rim and its talus apron', { x: 1004, y: 1090 }, { x: 1000, y: 1030 }, 13),
+    v('guzzler', 'West Bench guzzler', { x: CHUKAR_GUZZLER.x - 12, y: CHUKAR_GUZZLER.y + 14 }, CHUKAR_GUZZLER, -10, 1),
+    v('seep-above', 'Spring seam from the rim', { x: spring.x + 18, y: spring.y - 46 }, seamFoot, -14, 1.5),
+    v('cairn', "High Bench, sheepherder's cairn", { x: CHUKAR_PLACES.cairn.x - 4, y: CHUKAR_PLACES.cairn.y + 9 }, CHUKAR_PLACES.cairn, 6),
+    v('castle', 'Castle Rock from the cheat face', { x: 1030, y: 900 }, CHUKAR_PLACES.castleRock, 14),
+    v('rim-overlook', 'From the upper rim, across the canyon', { x: 1010, y: 320 }, { x: 980, y: 1650 }, -9),
+    v('rim-gate', 'Rim Gate entry, across the flat', { x: rim.x, y: rim.y + 8 }, { x: 1200, y: 420 }, -2),
+    v('sage-draw', 'Up Sage Draw', { x: 628, y: 1010 }, { x: 700, y: 560 }, 7),
+    v('north-face', 'North Face above Spring Creek', { x: 1610, y: 830 }, CHUKAR_PLACES.splitRock, 9),
+    v('breaks', 'River Breaks, down to the river', { x: 720, y: 1240 }, { x: 820, y: 1660 }, -7),
+    v('corral', 'Line camp corral on the Rim Flat', { x: CHUKAR_PLACES.corral.x + 20, y: CHUKAR_PLACES.corral.y + 18 }, CHUKAR_PLACES.corral, -3),
+    v('chimney', 'Cabin chimney in the breaks', { x: CHUKAR_PLACES.chimney.x - 14, y: CHUKAR_PLACES.chimney.y + 12 }, CHUKAR_PLACES.chimney, 3),
   ];
 }

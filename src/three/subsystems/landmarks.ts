@@ -95,7 +95,8 @@ export class LandmarksSystem implements Subsystem {
     }
     const entrances = deriveQuailEntrances(hunt.areaConfig());
     for (const landmark of hunt.areaConfig().landmarks) {
-      if(hunt.areaConfig().id==='chukar-ridge'&&['lower-sage-bench','split-shoulder','rim-overlook'].includes(landmark.id))continue;
+      // Chukar Ridge's named places are built by its own environment.
+      if(hunt.areaConfig().id==='chukar-ridge'&&landmark.kind!=='gate')continue;
       // Bespoke scenery systems own these compositions. Do not stack the
       // generic landmark primitives on top of their authored wetland, fence,
       // or alder-bottom structures.

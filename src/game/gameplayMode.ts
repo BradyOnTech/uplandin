@@ -21,7 +21,9 @@ import {
   youngShare,
 } from './season';
 import { createHunt, type HuntState } from './state';
+import { LandscapeModel } from './landscape';
 import type { RNG } from './types';
+import type { Condition } from './conditions';
 import { mulberry32 } from './math';
 import { huntStreamSeed, parseHuntSeed } from './huntSeed';
 import { QUAIL_FIELD_BIRD_COUNT, quailEncounterAnchors } from './quailEncounters';
@@ -241,6 +243,19 @@ export function createThreeHuntSetup(
   rng: RNG = Math.random,
   storage: StorageLike | null = defaultStorage(),
 ): ThreeHuntSetup {
+  const setup = createThreeHuntSetupUnchecked(search, rng, storage);
+  // No covey member starts inside solid rock: a bird scattered onto the
+  // rimrock settles at the nearest open ground.
+  const landscape = new LandscapeModel(setup.area);
+  if (landscape.solidBlockers().length) for (const bird of setup.hunt.birds) landscape.openPropertyNear(bird.pos.x, bird.pos.y, bird.pos);
+  return setup;
+}
+
+function createThreeHuntSetupUnchecked(
+  search: string,
+  rng: RNG,
+  storage: StorageLike | null,
+): ThreeHuntSetup {
   const launch = parseHuntLaunch(search);
   const profile = resolveThreeHuntProfile(search, storage);
   const dropPointId = parseDropPointId(search);
@@ -264,11 +279,18 @@ export function createThreeHuntSetup(
   // player revisits the same drop. The two drop entries get different, but
   // repeatable, cover ordering. An explicit replay seed varies both streams
   // without changing the property terrain or the authored placement rules.
-  const dropSalt = dropPointId === 'west-track' ? 0x4a9f : 0x17c3;
+  const dropSalt = dropPointId === 'west-track' ? 0x4a9f : !dropPointId || dropPointId === 'south-gate' ? 0x17c3
+    : [...dropPointId].reduce((h, c) => Math.imul(h ^ c.charCodeAt(0), 0x01000193) >>> 0, 0x811c9dc5) & 0xffff;
   const authoredEncounterRng = mulberry32(huntStreamSeed(seed, 0xa11c0a ^ dropSalt));
   const authoredBirdRng = mulberry32(huntStreamSeed(seed, 0xb17d7d ^ dropSalt));
+  const timeOfDay = parseHuntTime(new URLSearchParams(search).get('tod'), resolvedArea.id);
+  // What land-driven placement may know before the hunt rolls its weather:
+  // the hour, the career week and any weather the player fixed.
+  const fixedWeather = launch?.kind === 'quick' ? (profile.quick ?? loadQuickConfig(storage)).weather : launch?.kind === 'career' ? 'random' : 'frost';
+  const placement = { timeOfDay, week: launch?.kind === 'career' ? loadCareer(storage).date.week : undefined,
+    condition: fixedWeather === 'random' ? undefined : fixedWeather as Condition };
   const challengeOptions = {
-    timeOfDay: parseHuntTime(new URLSearchParams(search).get('tod'), resolvedArea.id),
+    timeOfDay,
     stockingMult: tuning.stocking, encounterNerveMult: tuning.nerve, mixedCoveys: true,
     ...(!isQuail ? {
       // Quail keeps its seeded calibration below. Other 3D properties use
@@ -279,13 +301,13 @@ export function createThreeHuntSetup(
       // Hun covey. A full 3D property needs more than one opportunity even
       // after an opening covey escapes. Weights are shares of birds, so the
       // harmonic mean matches spawnBirds' covey-weight conversion.
-      birdCount: Math.max(areaBirdCount(resolvedArea), Math.round(FIELD_COVEY_TARGET *
+      birdCount: Math.max(areaBirdCount(resolvedArea), Math.round((resolvedArea.coveyTarget ?? FIELD_COVEY_TARGET) *
         resolvedArea.speciesMix.reduce((sum, entry) => sum + entry.weight, 0) /
         resolvedArea.speciesMix.reduce((sum, entry) => {
           const species = getSpecies(entry.speciesId);
           return sum + entry.weight / ((species.coveyMin + species.coveyMax) / 2);
         }, 0))),
-      coveyAnchors: authoredEncounterAnchors(resolvedArea, dropPointId, authoredEncounterRng, tuning.spacing),
+      coveyAnchors: authoredEncounterAnchors(resolvedArea, dropPointId, authoredEncounterRng, tuning.spacing, placement),
     } : {
       birdCount: QUAIL_FIELD_BIRD_COUNT,
       birdRng: mulberry32(huntStreamSeed(seed!, 0xb17d)),

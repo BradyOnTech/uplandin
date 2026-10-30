@@ -9,7 +9,9 @@ import { PROPERTY_PX_TO_M } from '../src/game/worldUnits';
 const DT = 1000 / 30;
 function edgeSearch(areaId: string, seed = 42, windAngle = 0) {
   const area = getArea(areaId);
-  const patch = area.patches[areaId === 'quail-fields' ? 9 : 27];
+  // Chukar's cover is derived from the land: take a long contour strip
+  // rather than whichever rectangle happens to carry a given index.
+  const patch = areaId === 'quail-fields' ? area.patches[9] : area.patches.find(p => p.w >= 100 && p.h >= 24 && p.h <= 96)!;
   const hunter = { x: patch.x - 8, y: patch.y + patch.h / 2 };
   const dog = new Dog({ ...hunter }, { breed: getBreed('gsp'), level: 8 }, mulberry32(seed), area.world);
   const env: DogEnv = { huntAreaId: area.id, hunterPos: hunter, workAnchor: { ...hunter },

@@ -3,6 +3,7 @@ import { LandscapeModel, type GroundSample } from './landscape';
 import { dist } from './math';
 import type { RNG, Vec2 } from './types';
 import { huntHabitatAffinity, huntingDoctrine } from './huntDoctrine';
+import { landDrivenAnchors, landHabitat, type PlacementContext } from './landHabitat';
 
 /**
  * A small amount of authored structure makes the larger properties read as
@@ -110,7 +111,12 @@ export function authoredEncounterAnchors(
   rng: RNG = Math.random,
   /** Below 1 packs coveys closer together (a Loaded field). */
   spacingScale = 1,
+  /** Hour, week and weather for grounds whose birds live by the land. */
+  context: PlacementContext = {},
 ): Vec2[] {
+  // Grounds rebuilt from the land place birds by habitat, not in rings
+  // out from the truck (landHabitat.ts).
+  if (landHabitat(area)) return landDrivenAnchors(area, getDropPoint(area, dropId), rng, context, spacingScale);
   if (area.patches.length === 0 || area.trails.length === 0) return [];
 
   const drop = getDropPoint(area, dropId);

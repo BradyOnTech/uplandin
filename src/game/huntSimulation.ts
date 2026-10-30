@@ -80,6 +80,7 @@ export type HuntSimulationEvent =
 
 export interface HuntDogMotion {
   obstacles?: DogEnv['obstacles'];
+  navigate?: DogEnv['navigate'];
   movementScale?: number;
   /** Convert the short-session work clock without changing scent/point clocks. */
   effortScale?: number;
@@ -267,6 +268,7 @@ export class HuntSimulation {
         pointRelocationRange: spatialEncounter && huntStyle === 'pheasant' ? 3 / PROPERTY_PX_TO_M : undefined,
         workAnchor: motion?.workAnchor,
         obstacles: motion?.obstacles,
+        navigate: motion?.navigate,
       };
       dog.update(dtMs, this.hunt.birds, env);
       this.hunt.dogsPos[i] = { ...dog.pos };

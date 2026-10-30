@@ -376,6 +376,9 @@ export interface DogEnv {
   recallArriveRange?: number;
   heelFollowRange?: number;
   obstacles?: readonly DogObstacle[];
+  /** Where to steer for now on the way to a point, round long solid rock
+   * (a canyon's rims). Absent where the land has none: steer straight. */
+  navigate?: (from: Vec2, to: Vec2) => Vec2;
   hunterPos?: Vec2;
   /** Presentation-space pace multiplier; AI clocks still advance in real time. */
   movementScale?: number;
@@ -993,7 +996,8 @@ export class Dog {
       }
       if (!this.seekArrived) {
         this.gait = 'run';
-        this.heading = turnToward(this.heading, Math.atan2(target.y - this.pos.y, target.x - this.pos.x), 5 * dt);
+        const toward = env.navigate ? env.navigate(this.pos, target) : target;
+        this.heading = turnToward(this.heading, Math.atan2(toward.y - this.pos.y, toward.x - this.pos.x), 5 * dt);
         this.advance(this.heading, Math.min(dist(this.pos, target), this.trackSpeed * movementDt));
         return;
       }
@@ -1047,7 +1051,8 @@ export class Dog {
       this.state = 'tracking';
       this.work(dtMs * (env.drainMult ?? 1));
       const style = scentApproachStyle(this.profile.breed, this.skill('scent'));
-      const direct = Math.atan2(bird.pos.y - this.pos.y, bird.pos.x - this.pos.x);
+      const toward = env.navigate ? env.navigate(this.pos, bird.pos) : bird.pos;
+      const direct = Math.atan2(toward.y - this.pos.y, toward.x - this.pos.x);
       const birdDistance = dist(this.pos, bird.pos);
       if (fieldScent) {
         // Only a source still inside the live wind cone updates this sample.
@@ -1683,12 +1688,17 @@ export class Dog {
     // Beside him and a little ahead: from there the line to the spot is clear.
     this.deliveryWaypoint.x = hunter.x + (px * side * 1.3 + fx / length * .9) * DELIVERY_CLEARANCE;
     this.deliveryWaypoint.y = hunter.y + (py * side * 1.3 + fy / length * .9) * DELIVERY_CLEARANCE;
+    // Already beside him (tight ground by a rim can leave the line to the
+    // spot brushing his legs from there): go straight to the spot.
+    if (dist(this.pos, this.deliveryWaypoint) < DELIVERY_CLEARANCE * .6) return spot;
     return this.deliveryWaypoint;
   }
 
   /** Advance without crossing the distance where the dog must settle. */
   private advanceRetrieve(target: Vec2, range: number, requested: number, dt: number, env: DogEnv): void {
-    const desired = Math.atan2(target.y - this.pos.y, target.x - this.pos.x);
+    // Round the rock to a fall or the handler on the far side of a rim.
+    const toward = env.navigate ? env.navigate(this.pos, target) : target;
+    const desired = Math.atan2(toward.y - this.pos.y, toward.x - this.pos.x);
     this.heading = turnToward(this.heading, desired, (env.retrieveTurnRate ?? Infinity) * dt);
     const alignment = Math.cos(desired - this.heading);
     // Turn before travelling after pickup; don't skate backwards through a U-turn.
