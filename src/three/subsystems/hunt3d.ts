@@ -8,6 +8,7 @@ import { isFalconryPractice, FALCONRY_PRACTICE } from '../../game/falconryPracti
 import { GoshawkFlight } from '../../game/falconry';
 import { ShallowWater } from '../../game/shallowWater';
 import { quailGroundPropObstacles } from './quailGroundProps';
+import { groundKitTrunks } from '../groundKit/groundKit';
 import { LandformNav } from '../../game/landformNav';
 import { getDropPoint, type AreaConfig, type DropPoint } from '../../game/areas';
 import { playWhistle } from '../../audio';
@@ -330,7 +331,9 @@ export class Hunt3DSystem implements Subsystem {
       ready: false,
     }));
     this.pacePhases = this.simDogs.map(() => 0);
-    const propObstacles = [...quailGroundPropObstacles(this.landscape).map(o => {
+    // Props and the ground kit's tree trunks stop the dog as they stop the
+    // hunter: a dog runs round a mesquite or a creek cottonwood, not through it.
+    const propObstacles = [...[...quailGroundPropObstacles(this.landscape), ...groundKitTrunks(this.landscape)].map(o => {
       const p = this.landscape.worldToProperty(o.x,o.z,{x:0,y:0});
       return {x:p.x,y:p.y,radius:o.radius / PROPERTY_PX_TO_M};
     }), ...this.landscape.solidBlockers()];
