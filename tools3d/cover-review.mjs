@@ -46,6 +46,22 @@ try {
     const query = new URLSearchParams({ area, drop: 'south-gate', quality, tod, dog: 'generated', seed: '7701', capture: '1', cover: style });
     await page.goto(`${url}/index3d.html?${query}`, { waitUntil: 'load', timeout: 120000 });
     await page.waitForFunction(() => window.__ready3d === true && !!window.__api3d, { timeout: 240000, polling: 250 });
+    // A build without the kit's review hooks on this ground (a baseline
+    // checkout) gets the same stand-in: the real generated GSP on point.
+    await page.evaluate(async (id, quality) => {
+      if (window.__groundKit) return;
+      const { getArea } = await import('/src/game/areas.ts');
+      const { LandscapeModel } = await import('/src/game/landscape.ts');
+      const { createGeneratedGsp } = await import('/src/three/dogs/generatedGsp.ts');
+      const landscape = new LandscapeModel(getArea(id)), asset = createGeneratedGsp(quality, false, 'liver-white');
+      asset.setPose('point', 1); asset.liftPointingPaw(1);
+      window.__api3d.scene().add(asset.root);
+      window.__groundKit = {
+        style: 'stand-in', stats: () => [],
+        placeDog: (x, z, yaw) => { asset.root.position.set(x, landscape.heightAtWorld(x, z), z); asset.root.rotation.set(0, yaw * Math.PI / 180, 0); asset.root.visible = true; },
+        hideDog: () => { asset.root.visible = false; },
+      };
+    }, area, quality);
     const poses = await page.evaluate(async (id, spot, toward, distances, pitch) => {
       const { getArea } = await import('/src/game/areas.ts');
       const { LandscapeModel } = await import('/src/game/landscape.ts');
