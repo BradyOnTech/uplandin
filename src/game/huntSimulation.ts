@@ -199,7 +199,11 @@ export class HuntSimulation {
     }
     if (spatialEncounter) this.stepCripples(dtMs, input.hunterPos);
 
+    const broke: number[] = [];
     updateBirds(dtMs, this.hunt.birds, leadDog.pos, {
+      workedIds: leadDog.workingBirdId !== null ? [leadDog.workingBirdId] : [],
+      pointedIds: this.dogs.flatMap(dog => dog.state === 'pointing' && dog.pointedBirdId !== null ? [dog.pointedBirdId] : []),
+      broke,
       worldScale: spatialEncounter,
       bounds: this.area.world,
       patches: this.area.patches,
@@ -213,6 +217,11 @@ export class HuntSimulation {
       runnerStyle: doctrine.runnerStyle,
       hunterPos: spatialEncounter ? input.hunterPos : undefined,
     });
+    // A bird that has stood all the pressure it will goes up wild.
+    for (const id of broke) {
+      const event = this.flushBird(id, 'spook', null);
+      if (event) { events.push(event); return events; }
+    }
 
     const wind = windMults(this.hunt.windStrength);
     const weather = conditionMults(this.hunt.condition);

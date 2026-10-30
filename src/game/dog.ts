@@ -529,6 +529,8 @@ export class Dog {
   private emptySearchMs = 0;
   /** A finite, scent-free local check has finished; this is not a point. */
   get searchAreaChecked(): boolean { return this.checkedSearchPosition !== null; }
+  /** The hidden bird whose scent the dog is working, while it works it. */
+  get workingBirdId(): number | null { return this.state === 'tracking' ? this.scentTargetId : null; }
   /** ms left of the first-scent freeze. */
   private scentStageMs = 0;
   private scentStageTotalMs = 0;
