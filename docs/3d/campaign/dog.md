@@ -200,3 +200,35 @@ Merged into `campaign/world-birds` as 1824e30.
 **Evidence:** the gallop strips. The topline now gathers and stretches through the stride, and the bodies, coats and heads are unchanged.
 
 **Open:** the questions for Brady above stand. Each is a one-constant change once he answers.
+
+## Milestone D2: the work a hunter watches (2026-10-30, merged 2026-11-06)
+
+The lane's session ended before it wrote this log. The work is four commits on `feat/dog-locomotion-audit`; the commit messages carry the detail.
+
+- **`52ce5d5`: the gallop holds through a turn.**
+  - A gallop or canter steps down only if the slower pace lasts 0.7 s or drops below a floor, and the stride shortens with the pace. The dog no longer drops to a canter at every cast-end reversal.
+  - Swinging paws ride the trunk's rise and fall.
+  - A paw the leg can no longer reach is picked up and set down instead of dragged. Before, the bound out of tall cover dragged one 2.8 cm.
+- **`dab677c`: marking, braking and the creep.**
+  - **Marking:** the dog snaps its head up at the flush, keeps its weight forward and its tail up and still, and turns where it stands. It turns once the birds are 0.5 rad off its nose, at 2.6 rad/s, with the head covering the rest.
+  - **Running out to a fall:** it keeps its eyes on the mark until 2.5 m out.
+  - **Pulled up from a run:** it brakes onto its forehand and rocks back.
+  - **A creeping pup** walks low on longer strides.
+- **`2e4aaba`: a pup's creep keeps the breed's point tail,** exactly as the point carries it. The GSP's point tail is as authored; the values only moved into a shared `pointTail`.
+- **`bb529e6`: bench tools.** The bench can replay a brace and has a view from the hunter's eye.
+
+### Lead review (2026-11-06)
+
+Merged with no conflicts onto Birds M4.
+
+**Checks** (on the combined tree):
+- tsc is clean.
+- The full suite passes: 2,202 of 2,202, including the new `generatedDogWork` and `generatedGaitBody` tests.
+- **Hunt lab, Chukar, 216 hunts.** It is unchanged against `a8aded8`, as expected: the motion is presentation only and the simulation is untouched.
+
+**Out-of-bounds check:**
+- The dogs' bodies are unchanged.
+- The GSP point tail value (0.20) is unchanged.
+- Nothing touches the pup scent range or cast hints.
+
+**Still open:** Brady's six motion questions above, and a natural-input playthrough on the new motion.

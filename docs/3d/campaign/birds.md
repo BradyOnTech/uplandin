@@ -326,3 +326,77 @@ Merged into `campaign/world-birds` as 27fa941. The merge with Cover milestone 2 
 - **The live HUD mark and cast.**
 
 **Decision (the lead's, for Brady to overrule):** a rooster is marked by its sail, at the stand edge where it went in. The follow-up is the dog working that edge.
+
+## Milestone 4: knowing the bird, birds before the flush, marks by the sail (2026-10-30, merged 2026-11-06)
+
+The lane's session ended before it wrote this log. The work is two commits on `feat/birds-marks-second-act`: `58f7df6` and `4644b50`, and the commit messages carry the detail. This section is the lead's summary and review.
+
+### What changed
+
+- **Knowing the bird on a phone** (`src/three/birdIdentity.ts`).
+  - Shown wingbeats are capped at 7.5 a second, four frames a beat at 30 fps. A bobwhite's real 18 Hz beat aliased into strobe. The species keep their order, with the rooster slowest and the bobwhite fastest.
+  - The whirr still plays at the real rate. A rooster's claps follow the beat on screen.
+  - On a small screen a flying bird is drawn large enough that a bobwhite as far off would span 12 px. The boost ramps in from 15 m, holds to 45 m and is gone by 120 m. It is one factor for every species, and the shot never sees it.
+- **Landings glide in** (`flightLine.ts`). A bird bound for a spot low in a dip stays under a 0.3 glide slope and brakes when high over the spot. This closes the M3 open issue of a bobwhite 14 m over its spot sinking straight down.
+- **Marks by the sail** (`marks.ts`, `edgeOfCover`). If the hunter saw a bird sailing for its spot in its last 5 s, it is marked even when cover hid the drop or the bird left the screen.
+  - Into a stand of cover, the mark is the stand's edge where the bird's line went in, and the follow-up is the dog working that edge.
+  - The callout names the bird: "Rooster marked into cover".
+- **Grounded birds lie on the ground as it is drawn** (`surfaceHeightAt`), as do runners, loose feathers and puffs.
+- **Birds before the flush** (`src/game/sightings.ts`, 4 slots of their own):
+  - a rooster on the move on a two-track;
+  - chukar running uphill above the hunter on open slope;
+  - sharptails on a crest against the dawn sky.
+
+  These are the real hidden birds, never inside cover, and rare: one group at a time, 45 s apart, five a hunt at most.
+- **Sign on the ground** (`src/three/groundSign.ts`, one instanced draw), near about 45% of the coveys and on open ground only: roost rings, rooster tracks across a two-track, chukar droppings, a dusting bowl, now and then a feather.
+
+### Lead review (2026-11-06)
+
+Merged as a fast-forward: the lane had already merged the campaign head `a8aded8` in `30d02e5`.
+
+**Checks** (on the tree combined with Dog D2):
+- tsc is clean.
+- The full suite passes: 2,202 of 2,202 in 268 files.
+
+**Evidence I looked at:**
+- **Hunt lab, Chukar, all four entries, 216 hunts, against `a8aded8`.** It is unchanged within noise:
+  - dry spell median 133 / 141 / 121 s against 133 / 141 / 123 s for follow / tactic / trail;
+  - delivered 1,557 against 1,564;
+  - no stuck states, long chases or birds in rock either side.
+- **Identity sheet** (`tools3d/review-identity.mjs`, 844×390 Lightweight). Sizes on screen, before → after:
+
+  | Bird | 30 m | 40 m | 55 m |
+  |---|---|---|---|
+  | Bobwhite | 8 → 12 px | 7 → 12 px | 5 → 11 px |
+  | Sharptail | 14 → 21 px | 12 → 20 px | 9 → 18 px |
+  | Chukar | 12 → 17 px | 10 → 17 px | 7 → 15 px |
+  | Hun | 11 → 17 px | 10 → 16 px | 7 → 14 px |
+
+  The wingbeat now reads across consecutive frames. The species keep their order of size.
+
+**Open:**
+- **The review tool misses two birds.**
+  - It never frames the pheasant: the crops show a tree, and its reported size is negative, both before and after.
+  - The bobwhite's 55 m crop misses the bird.
+
+  These are bugs in the capture tool, not in the game.
+- **Not seen in play yet:**
+  - the sightings and the ground sign (no capture exists);
+  - the sail mark in a real cattail stand.
+
+  They need a natural-input pass.
+- **The identity boost only applies at `size: life`/`readable`.** At `true` size, birds stay true. That is intended.
+
+### Lead verification of the re-flush and dog-tree fixes (2026-11-06)
+
+Each fix was checked with a paired hunt lab: `a8aded8` against the same tree with `6475aa3` (a re-flushed covey flies again) and `b155c6f` (the dog avoids the kit's trunks) reverted.
+
+- **Chukar, all four entries, 216 hunts.**
+  - Without the fixes, three dogs stood marking for 352, 278 and 484 s (south-gate 48291 GSP-8 follow, rim-track 1184004868 pup follow, creek-mouth 90210 pup trail).
+  - With them, there are none.
+  - Delivered rose from 1,548 to 1,564, and the follow hunter's dry spell p90 fell from 328 to 312 s.
+- **Quail, both entries, 108 hunts.** The dog running round the 436 kit trunks is neutral:
+  - pacing is within a hunt or two;
+  - the same four long points as before (hunter-side, pre-existing);
+  - nothing stuck in timber.
+- **The full suite on `a8aded8`:** 2,177 of 2,177.
