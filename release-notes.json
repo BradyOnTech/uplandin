@@ -2,6 +2,35 @@
   "about": "What changed in each release, newest first. Before pushing to main, run npm run release-notes: it adds the subjects of the player-facing commits since the last release. Edit the lines freely, then commit this file with the release.",
   "releases": [
     {
+      "date": "2026-11-06",
+      "through": "8a2eb4f",
+      "notes": [
+        "Grow Quail Fields as Rolling Red Plains rangeland: red soil, copper bunchgrass, sand plum thickets and creek timber",
+        "Grow brush and trees from a shared woody kit of leafy lobes instead of faceted balls",
+        "Patch Sharptail prairie at every scale and grow its draws from the woody kit",
+        "Grow Chukar's big sage on gnarled trunks instead of grey stone clusters",
+        "Turn each ground through its year: green September hollows to January snow, rain, and frost that burns off",
+        "Give each ground the sound of its day: weather, the cover's voice and the season's birds",
+        "Let Chukar's river catch the sky, and give the canyon clearer air, cooler shade and a wall over the River Road",
+        "Let falls read at range, with a feather puff and a thump that arrives late",
+        "Mark a miss you watched go down, and press C to cast the dog to the mark",
+        "Mark a rooster by his sail into cover, and work the edge where he went in",
+        "Know the bird on a phone: readable size at range and a wingbeat you can see",
+        "Glide birds down into their landings instead of dropping them straight in",
+        "See birds before the flush, now and then: a rooster crossing the two-track, chukar running uphill, sharptails on a dawn skyline",
+        "Find sign on the ground near some coveys: roost rings, tracks, dusting bowls, a feather",
+        "Pour chukar down the canyon's own fall line, never back past the gun",
+        "End a chukar runner chase inside a minute and a half, and let the dog lead a hunter who follows it toward cover",
+        "Charge for the climb only on Chukar Ridge",
+        "Fly a covey again when it flushes the instant it lands, so the dog is never left marking an empty canyon",
+        "Stop the dog running through Quail's trees",
+        "Give the dog a loin: the back flexes through the stride and the dog leans into turns",
+        "Plant the dog's paws on the ground as it is drawn, hold the gallop through a turn, and never drag a paw",
+        "Mark the birds and the fall like a dog, brake at the bird, and keep the flag up through a pup's creep",
+        "Check, glance and wag like a dog, not a metronome"
+      ]
+    },
+    {
       "date": "2026-10-30",
       "through": "a2d273d",
       "notes": [
