@@ -21,7 +21,7 @@ export interface GeneratedFieldIntent {
   creeping?: boolean;
 }
 
-export type GeneratedFieldPerformance = 'neutral' | 'search' | 'checking' | 'locating' | 'stalking' | 'locking' | 'point' | 'waiting';
+export type GeneratedFieldPerformance = 'neutral' | 'search' | 'checking' | 'locating' | 'stalking' | 'locking' | 'point' | 'waiting' | 'marking';
 
 export function fieldPerformance(intent: GeneratedFieldIntent | undefined): GeneratedFieldPerformance {
   if (!intent) return 'neutral';
@@ -30,6 +30,7 @@ export function fieldPerformance(intent: GeneratedFieldIntent | undefined): Gene
   if (intent.state === 'pointing' && intent.creeping) return 'stalking';
   if (intent.state === 'pointing' || intent.state === 'honoring') return 'point';
   if (intent.state === 'whoa') return 'waiting';
+  if (intent.state === 'marking') return 'marking';
   if (intent.state === 'seeking') return 'stalking';
   if (intent.state === 'tracking') {
     // Range holds keep their scent stage, but must never lift a pointing paw
@@ -138,13 +139,21 @@ export class GeneratedScentMotion {
         reach = .05; height = -.04;
         yaw = bearing * .8; tailPitch = .32;
         break;
+      case 'marking':
+        // The birds are up and the gun has spoken: head up and keen after
+        // them and the fall, the weight a little forward, the tail up and
+        // still but for a tremble. Never the idle sway of a dog at heel.
+        neckPitch = -.16; headPitch = .04; height = .016; reach = .02;
+        tailPitch = .26; tailYaw = Math.sin(this.elapsed * 23) * .025;
+        break;
       case 'waiting':
         // Four feet down, alert to the scent. This is neither idle nor a point.
         neckPitch = -.12; headPitch = .09; height = .012; reach = .018;
         yaw = bearing; tailPitch = -.06;
         break;
     }
-    const blend = reset ? 1 : 1 - Math.exp(-Math.max(0, dt) * (this.performance === 'checking' ? 18 : 11));
+    // First scent and the flush both snap the head up.
+    const blend = reset ? 1 : 1 - Math.exp(-Math.max(0, dt) * (this.performance === 'checking' || this.performance === 'marking' ? 18 : 11));
     this.neckPitch = THREE.MathUtils.lerp(this.neckPitch, neckPitch, blend);
     this.headPitch = THREE.MathUtils.lerp(this.headPitch, headPitch, blend);
     this.reach = THREE.MathUtils.lerp(this.reach, reach, blend);

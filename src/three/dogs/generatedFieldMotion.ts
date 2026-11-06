@@ -17,11 +17,24 @@ const BOUND_COVER_M = .9;
 const BOUND_SPEED = 2.3;
 /** A turn this sharp (rad/s, filtered) puts a cantering or galloping dog on its inside lead. */
 const LEAD_TURN = .6;
+/** A gallop or canter holds through a slower patch this long (s), a cast's turn, before it drops a gait. */
+const HOLD_GAIT_S = .7;
+/** Below this pace (m/s) a gallop or canter drops a gait at once: the dog really has slowed. */
+const HOLD_GAIT_FLOOR: Partial<Record<LocomotionGait, number>> = { gallop: 2.6, canter: 1.6 };
+/** The pace (m/s) a gait's reference stride belongs to; slower or faster, a gallop or canter shortens or lengthens. */
+const PACE_STRIDE: Partial<Record<LocomotionGait, number>> = { gallop: 5.2, canter: 3.6 };
+/** A dog pulled up from at least this pace (m/s) brakes onto its forehand. */
+const BRAKE_PACE = 3;
+/** How long the braking stop takes to rock back (s). */
+const BRAKE_S = .35;
+/** A creeping pup walks low on longer, slower strides. */
+const CREEP_STRIDE = 1.3, CREEP_CROUCH = .03;
 /** A stop shorter than this (s) keeps the stance it stopped on. */
 const BRACED_STOP_S = .8;
 /** How far the hips trail inside the chest round a curve: the chest-to-hip span (m). */
 const BEND_SPAN = .45;
 
+const GAIT_RANK: Record<LocomotionGait, number> = { walk: 0, trot: 1, canter: 2, gallop: 3, bound: 3 };
 // Retain the generated dog's established pace centers, but require a real
 // acceleration/deceleration through a band before changing footfall law.
 const GENERATED_GAIT_SPEEDS: LocomotionSpeedThresholds = {
@@ -53,6 +66,16 @@ export class GeneratedFieldMotion {
   private seed=0x9e3779b9;
   private turn=0;
   private curve=0;
+  /** Seconds the pace has run below the present gait's step-down speed. */
+  private slowFor=0;
+  /** How much a gallop or canter has shortened or lengthened its stride with the pace. */
+  private paceStride=1;
+  /** The last moving pace, and the braking stop it leaves (strength, seconds since). */
+  private lastPace=0;
+  private brake=0;
+  private brakeFor=BRAKE_S;
+  /** How far into a creep's crouch the pup is (0..1). */
+  private creep=0;
   clamped=0;
   private targets=this.feet.map(f=>f.target);
   private normals=this.feet.map(f=>f.normal);
@@ -60,6 +83,8 @@ export class GeneratedFieldMotion {
   private last=new THREE.Vector3();
   private nominal=new THREE.Vector3();
   private pivotNominal=Array.from({length:4},()=>new THREE.Vector3());
+  /** Where each paw's stride would put it this frame, on the ground. */
+  private reachGoals=Array.from({length:4},()=>new THREE.Vector3());
   private pivotSteps=new GeneratedPivotSteps();
   private bodyHeight=0;
   private pointPresence=0;
@@ -181,6 +206,12 @@ export class GeneratedFieldMotion {
     const bounding=moving&&!retrieve&&field?.state==='quartering'&&cover>=BOUND_COVER_M&&(presentationSpeed??speed)>BOUND_SPEED;
     if(moving) {
       if(!this.wasMoving){this.gait=speed>4.3?'gallop':speed>2.5?'canter':speed>1.15?'trot':'walk';this.cycle=0;}
+      // A running dog keeps its cadence and shortens or lengthens its stride
+      // with the pace, so a gallop slowed through a turn still looks quick.
+      const pace=presentationSpeed??speed,reference=PACE_STRIDE[this.gait];
+      this.paceStride=reference?THREE.MathUtils.clamp(Math.sqrt(pace/reference),.8,1.1):1;
+      const down=this.gait==='gallop'?GENERATED_GAIT_SPEEDS.gallopToCanter:this.gait==='canter'?GENERATED_GAIT_SPEEDS.canterToTrot:0;
+      this.slowFor=pace<down?this.slowFor+Math.max(0,dt):0;
       const previous=this.cycle,stride=this.gait==='bound'?this.boundStride:GENERATED_STRIDE[this.gait]*this.strideScale();
       this.cycle=(this.cycle+(reset?0:distance)/stride)%1;
       // Distance still advances the stride exactly. Only classification
@@ -197,9 +228,13 @@ export class GeneratedFieldMotion {
           // to a large pace change, rather than inserting entire walk/trot
           // strides at running speed. Small variations settle in the band.
           for(let pass=0;pass<3;pass++) {
-            const next=selectLocomotionGait(presentationSpeed??speed,this.gait,GENERATED_GAIT_SPEEDS);
+            const next=selectLocomotionGait(pace,this.gait,GENERATED_GAIT_SPEEDS);
             if(next===this.gait)break;
-            this.gait=next;
+            // A gallop or canter carries on through a cast's turn; it drops a
+            // gait only when the pace stays down, or falls right away.
+            const floor=HOLD_GAIT_FLOOR[this.gait];
+            if(floor!==undefined&&GAIT_RANK[next]<GAIT_RANK[this.gait]&&this.slowFor<HOLD_GAIT_S&&pace>floor)break;
+            this.gait=next;this.slowFor=0;
           }
         }
         // Into a turn on the inside lead; the change is made in the air
@@ -233,10 +268,18 @@ export class GeneratedFieldMotion {
     this.asset.joints.body.position.y=this.bodyHeight+leap;
     // The skid throws the dog's weight onto its forehand: the chest drops and
     // the body tips nose-down, then rocks back as it stops.
-    const kick=skidding?Math.sin(Math.PI*Math.min(1,slam!/.7)):0;
+    // A dog pulled up from a run (at the fall, at hand, on a check) brakes
+    // onto its forehand and rocks back, as the slam's skid does.
+    if(!moving&&this.wasMoving&&!reset&&slam===null&&this.lastPace>BRAKE_PACE){this.brake=Math.min(1,this.lastPace/5.5);this.brakeFor=0;}
+    if(moving||reset)this.brakeFor=BRAKE_S;else this.brakeFor=Math.min(BRAKE_S,this.brakeFor+Math.max(0,dt));
+    const braking=this.brakeFor<BRAKE_S?this.brake*Math.sin(Math.PI*this.brakeFor/BRAKE_S):0;
+    const kick=skidding?Math.sin(Math.PI*Math.min(1,slam!/.7)):braking*.6;
     const leapPitch=moving&&this.gait==='bound'&&contacts?contacts.pitch*this.boundHeight/.45:0;
     const supportOffset=this.bodySupport.update(this.asset,this.ground,x,z,yaw,speed,signedTurnRate,dt,moving,reset,.12*kick+leapPitch);
-    const crouch=.035*kick;
+    // A creeping pup moves low and deliberate.
+    const creeping=moving&&!!field?.creeping;
+    this.creep=reset?(creeping?1:0):THREE.MathUtils.clamp(this.creep+(creeping?1:-1)*Math.max(0,dt)/.3,0,1);
+    const crouch=.035*kick+CREEP_CROUCH*this.creep;
     this.asset.joints.body.position.y-=crouch;
     root.updateMatrixWorld(true);
     // An airborne pointing paw carries the authored bend through entry and
@@ -255,6 +298,8 @@ export class GeneratedFieldMotion {
     if(pivotEligible)this.asset.paws.forEach((paw,i)=>paw.getWorldPosition(this.pivotNominal[i]));
     const plannedPivot=this.pivotSteps.update(this.feet,this.pivotNominal,x,z,yaw,signedTurnRate,dt,
       pivotEligible,this.contact,()=>this.nextPlantId++);
+    // Climbing or dropping off a steep face a dog shortens its action.
+    const gaitBody=this.gaitBody.update(this.gait,this.cycle,this.lead,this.vigor*(1-.5*this.bodySupport.grade),moving,dt,reset);
     this.feet.forEach((foot,i)=>{
       if(plannedPivot){this.groundNormal(foot.target.x,foot.target.z,foot.normal);return;}
       this.asset.paws[i].getWorldPosition(this.nominal);
@@ -280,7 +325,10 @@ export class GeneratedFieldMotion {
       // for stance. Wait for touchdown before creating a world-space plant.
       const support=(!contacts||contacts.feet[i].contact!=='swing')&&!(blending&&this.transitionFree[i])
         &&(foot.locked||!blending||this.nominal.y<=floor+.001);
-      this.nominal.y=blending?Math.max(floor,this.nominal.y):floor+lift-.023;
+      // A paw in the air rides the trunk's rise and fall through the stride,
+      // so the legs stay folded in a flight instead of reaching for the ground.
+      const ride=contacts&&contacts.feet[i].contact==='swing'?gaitBody.heave*Math.sin(Math.PI*contacts.feet[i].swing):0;
+      this.nominal.y=blending?Math.max(floor,this.nominal.y):Math.max(floor,floor+lift-.023+ride);
       if(!foot.initialized){foot.target.copy(this.nominal);foot.initialized=true;}
       if(!support) {
         foot.locked=false;foot.step=0;
@@ -291,6 +339,7 @@ export class GeneratedFieldMotion {
           foot.target.y=floor;
           foot.locked=true;foot.plantId=this.nextPlantId++;
         }
+        this.reachGoals[i].copy(this.nominal);this.reachGoals[i].y=floor;
         const gap=Math.hypot(foot.target.x-this.nominal.x,foot.target.z-this.nominal.z);
         const stepping=this.feet.findIndex(f=>f.step>0);
         const canStep=stepping<0||(pivoting&&posedFoot<0&&stepping===3-i&&this.feet.filter(f=>f.step>0).length<2);
@@ -314,8 +363,6 @@ export class GeneratedFieldMotion {
     const curving=moving&&this.gait!=='bound'?this.turn/Math.max(1,speed):0;
     this.curve=reset?curving:THREE.MathUtils.lerp(this.curve,curving,1-Math.exp(-Math.max(0,dt)/.12));
     const bend=THREE.MathUtils.clamp(this.curve*BEND_SPAN,-.3,.3);
-    // Climbing or dropping off a steep face a dog shortens its action.
-    const gaitBody=this.gaitBody.update(this.gait,this.cycle,this.lead,this.vigor*(1-.5*this.bodySupport.grade),moving,dt,reset);
     const gaitLift=this.gaitBody.apply(this.asset,-bend);
     // The head holds the line of travel against the trunk's rocking, and
     // looks round the turn it is making.
@@ -328,6 +375,14 @@ export class GeneratedFieldMotion {
     this.asset.joints.body.rotation.x+=.10*(this.pickupLean/.16)*this.pickupPresence;
     // Store the smoothed carriage only: the leap and crouch are re-applied.
     this.bodyHeight=this.asset.fitBodyToFeet(this.targets,this.normals,posedFoot)-supportOffset-leap-gaitLift+crouch;
+    // A planted paw the leg can no longer reach (a gait change out of tall
+    // cover, a break off point) is picked up and put down again, not dragged.
+    if(moving&&!skidding)this.feet.forEach((foot,i)=>{
+      if(i===posedFoot||!foot.locked||foot.step>0||this.asset.reachSlack(i,foot.target,foot.normal)>=0)return;
+      foot.from.copy(foot.target);foot.goal.copy(this.reachGoals[i]);foot.step=Math.max(.000001,Math.max(0,dt)/.18);foot.plantId=this.nextPlantId++;
+      const t=foot.step*foot.step*(3-2*foot.step);
+      foot.target.lerpVectors(foot.from,foot.goal,t);foot.target.y+=Math.sin(foot.step*Math.PI)*.045;
+    });
     this.clamped=this.asset.solveWorldFeet(this.targets,this.normals,posedFoot);
     if(posedFoot>=0)this.asset.paws[posedFoot].getWorldPosition(this.feet[posedFoot].target);
     this.pose.forEach(p=>{p.previousPosition.copy(p.node.position);p.previousRotation.copy(p.node.quaternion);});
@@ -336,7 +391,7 @@ export class GeneratedFieldMotion {
     // Stride-coupled tail carriage: the tail counter-sways with each stride
     // and bounces with the trot's two-beat suspension. Only a travelling,
     // empty-mouthed dog; the point and carry keep their authored stillness.
-    const strideWeight=moving&&!point&&!retrieve?1:0;
+    const strideWeight=moving&&!point&&!retrieve&&!field?.creeping?1:0;
     this.tailStride=THREE.MathUtils.lerp(this.tailStride,strideWeight,reset?1:1-Math.exp(-Math.max(0,dt)*6));
     if(this.tailStride>.001){
       const setter=this.asset.root.userData.breedId==='english-setter';
@@ -344,6 +399,13 @@ export class GeneratedFieldMotion {
       const phase=this.cycle*Math.PI*2;
       this.asset.joints.tail.rotation.y+=Math.sin(phase)*sway*this.tailStride;
       this.asset.joints.tail.rotation.x+=Math.cos(phase*2)*sway*.35*this.tailStride;
+    }
+    // A creeping pup is still on its bird: it keeps its point's flag,
+    // exactly as the point carries it, high and still through the step.
+    if(this.creep>.001){
+      const {tail}=this.asset.joints;
+      tail.rotation.x=THREE.MathUtils.lerp(tail.rotation.x,this.asset.pointTail,this.creep);
+      tail.rotation.y*=1-this.creep;
     }
     // Retrieval is an upper-body layer. Foot targets and locomotion remain
     // authoritative below; entering a pickup never slides the planted paws.
@@ -369,12 +431,13 @@ export class GeneratedFieldMotion {
     this.earGravity.update(this.asset.joints,dt,reset);
     root.updateMatrixWorld(true);
     this.wasMoving=moving;
+    if(moving)this.lastPace=presentationSpeed??speed;
     this.stillFor=moving||reset?0:this.stillFor+Math.max(0,dt);
     this.lastYaw=yaw;
     this.last.set(x,ground,z);this.placed=true;
   }
   /** The breed's own reach (a shorter-coupled griffon takes quicker strides) and this stride's variation. */
-  private strideScale(){return this.gait==='bound'?1:breedStrideScale(this.breedMotion,this.gait)*this.strideVariation;}
+  private strideScale(){return this.gait==='bound'?1:breedStrideScale(this.breedMotion,this.gait)*this.strideVariation*this.paceStride*(1+(CREEP_STRIDE-1)*this.creep);}
   private breedVigor(){return .6+.4*this.breedMotion.verticalMotion;}
   /** A small deterministic generator, so a replay strides the same way. */
   private random(){this.seed=(this.seed+0x6d2b79f5)|0;let t=Math.imul(this.seed^(this.seed>>>15),1|this.seed);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;}

@@ -22,6 +22,9 @@
  *
  * Staged review evidence only: the simulation is replaced by its recorded
  * output and the ground is a plain gridded copy of the game's triangulation.
+ * <trace>/brace:<t0>-<t1> replays a brace trace's second dog (tools3d/
+ * dog-trace.mjs --brace), with the lead dog beside it; the watch view follows
+ * the dog from the hunter's eye, zoomed to about three metres round it.
  */
 import { build } from 'esbuild';
 import { createServer } from 'node:http';
@@ -125,10 +128,15 @@ const SYNTHETIC = { paces, turns, slam, bound, sidehill };
 const segments = arg('--segments', 'paces').split(',').map(spec => {
   const [name, source] = spec.includes('=') ? spec.split('=') : [spec, spec];
   if (SYNTHETIC[source]) return { name, ...SYNTHETIC[source]() };
-  const [key, window] = source.split(':'), [t0, t1] = window.split('-').map(Number);
-  const trace = traces[key];
+  const [from, window] = source.split(':'), [t0, t1] = window.split('-').map(Number);
+  // <trace>/brace replays a brace hunt's second dog, with the lead dog beside it.
+  const [key, which] = from.split('/'), trace = traces[key];
   if (!trace) throw new Error(`No trace ${key}; pass --trace`);
-  return { name, ground: 'chukar', patches: trace.patches, ticks: trace.ticks.filter(t => t.t >= t0 && t.t <= t1) };
+  const span = trace.ticks.filter(t => t.t >= t0 && t.t <= t1);
+  if (which === 'brace') return { name, ground: 'chukar', patches: trace.patches, ticks: span.map(t => t.brace), companion: span.map(({ brace, ...lead }) => lead) };
+  // <trace>/lead replays a brace hunt's lead dog with the second dog beside it.
+  if (which === 'lead') return { name, ground: 'chukar', patches: trace.patches, ticks: span.map(({ brace, ...lead }) => lead), companion: span.map(t => t.brace) };
+  return { name, ground: 'chukar', patches: trace.patches, ticks: span };
 });
 
 // ---- bundle the browser half against the chosen checkout ----

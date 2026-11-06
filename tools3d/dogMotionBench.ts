@@ -27,6 +27,8 @@ interface Segment {
   name: string; ticks: Tick[]; ground: 'chukar' | 'flat' | 'slope';
   slope?: number; cover?: { height: number; z0: number; z1: number };
   side?: 'left' | 'heading'; patches?: { cx: number; cz: number; hx: number; hz: number }[];
+  /** A second dog in the same scene (a brace partner), tick for tick with the subject. */
+  companion?: Tick[];
 }
 interface Config {
   quality: 'high' | 'lite'; breeds: string[]; views: string[]; fps: number; segments: Segment[];
@@ -44,6 +46,8 @@ const COATS: Record<string, { coat: string; look: 'smooth' | 'faceted' }> = {
 const CHUKAR_DIVISIONS = { high: 48, lite: 32 } as const;
 const VIEW_ROWS: Record<string, { fov: number; full?: [number, number] }> = {
   side: { fov: 30 }, eye: { fov: 70, full: [1920, 1080] }, look: { fov: 30, full: [1920, 1080] },
+  // From the hunter's own eye, zoomed so about three metres round the dog fill the frame at any range.
+  watch: { fov: 0 },
 };
 
 const area = getArea('chukar-ridge');
@@ -110,9 +114,11 @@ function groundFor(segment: Segment, quality: 'high' | 'lite'): { meshes: THREE.
 interface Panel {
   breed: string; scene: THREE.Scene; system: GeneratedDogSystem; ctx: Ctx; sun: THREE.DirectionalLight;
   view: Tick; prev: Tick; alpha: number;
+  companion?: { system: GeneratedDogSystem; ctx: Ctx };
 }
+type Clock = { tick: Tick; prev: Tick; alpha: number };
 
-function makePanel(breed: string, segment: Segment, ground: ReturnType<typeof groundFor>, quality: 'high' | 'lite', clock: { tick: Tick; prev: Tick; alpha: number }): Panel {
+function makePanel(breed: string, segment: Segment, ground: ReturnType<typeof groundFor>, quality: 'high' | 'lite', clock: Clock, partner?: Clock): Panel {
   const scene = new THREE.Scene();
   const spec = fieldTimeOfDay('chukar-ridge', 'morning');
   scene.background = new THREE.Color(spec.skyHorizon);
@@ -130,6 +136,15 @@ function makePanel(breed: string, segment: Segment, ground: ReturnType<typeof gr
   scene.add(sun, sun.target, fill, hemi);
   for (const mesh of ground.meshes) scene.add(mesh.clone());
   const { coat, look } = COATS[breed];
+  const { system, ctx } = makeDog(scene, coat, look, 0, clock, segment, ground, quality);
+  // The brace partner hunts beside the subject: a GSP in every panel.
+  const companion = partner ? makeDog(scene, COATS.gsp.coat, COATS.gsp.look, 1, partner, segment, ground, quality) : undefined;
+  return { breed, scene, system, ctx, sun, view: clock.tick, prev: clock.prev, alpha: 0, companion };
+}
+
+/** One runtime dog renderer in a scene, driven by a replay clock in place of the hunt. */
+function makeDog(scene: THREE.Scene, coat: string, look: 'smooth' | 'faceted', slot: number, clock: Clock, segment: Segment,
+  ground: ReturnType<typeof groundFor>, quality: 'high' | 'lite') {
   const dogView = {
     get state() { return clock.tick.state; }, get gait() { return clock.tick.gait; },
     get scentStage() { return clock.tick.scent; }, get scentProgress() { return clock.tick.progress; },
@@ -161,9 +176,9 @@ function makePanel(breed: string, segment: Segment, ground: ReturnType<typeof gr
   const camera = new THREE.PerspectiveCamera(30, 1, .05, 2000);
   const ctx = { scene, camera, quality, timeOfDay: 'morning', time: 0, fixedAlpha: 1, paused: false, events: new EventTarget(),
     rng: Math.random, get: (id: string) => { if (id in systems) return systems[id]; throw new Error(`bench has no ${id}`); } } as unknown as Ctx;
-  const system = new GeneratedDogSystem(coat as never, 0, look);
+  const system = new GeneratedDogSystem(coat as never, slot, look);
   system.init(ctx);
-  return { breed, scene, system, ctx, sun, view: clock.tick, prev: clock.prev, alpha: 0 };
+  return { system, ctx };
 }
 
 /** Joints and contacts the driver turns into the motion numbers. */
@@ -207,8 +222,9 @@ async function run(): Promise<void> {
     gl: info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER) };
   for (const segment of config.segments) {
     const ground = groundFor(segment, config.quality);
-    const clock = { tick: segment.ticks[0], prev: segment.ticks[0], alpha: 1 };
-    const panels = config.breeds.map(breed => makePanel(breed, segment, ground, config.quality, clock));
+    const clock: Clock = { tick: segment.ticks[0], prev: segment.ticks[0], alpha: 1 };
+    const partner: Clock | undefined = segment.companion ? { tick: segment.companion[0], prev: segment.companion[0], alpha: 1 } : undefined;
+    const panels = config.breeds.map(breed => makePanel(breed, segment, ground, config.quality, clock, partner));
     const samples: Record<string, ReturnType<typeof sample>[]> = Object.fromEntries(config.breeds.map(b => [b, []]));
     // Smoothed camera rigs, shared by every panel so the breeds stay matched.
     const smooth = { x: segment.ticks[0].x, z: segment.ticks[0].z, heading: segment.ticks[0].heading, look: new THREE.Vector3() };
@@ -220,6 +236,13 @@ async function run(): Promise<void> {
       const t = t0 + frame * dt, u = (t - t0) * 30, index = Math.min(segment.ticks.length - 1, Math.floor(u) + 1);
       clock.prev = segment.ticks[index - 1] ?? segment.ticks[0]; clock.tick = segment.ticks[index];
       clock.alpha = index >= segment.ticks.length - 1 && u >= segment.ticks.length - 1 ? 1 : u - Math.floor(u);
+      if (partner && segment.companion) {
+        partner.prev = segment.companion[index - 1] ?? segment.companion[0]; partner.tick = segment.companion[index]; partner.alpha = clock.alpha;
+        for (const panel of panels) if (panel.companion) {
+          panel.companion.ctx.time = t; (panel.companion.ctx as { fixedAlpha: number }).fixedAlpha = clock.alpha;
+          panel.companion.system.update(panel.companion.ctx, frame === 0 ? 0 : dt);
+        }
+      }
       for (const panel of panels) {
         panel.ctx.time = t; (panel.ctx as { fixedAlpha: number }).fixedAlpha = clock.alpha;
         const start = performance.now();
@@ -243,6 +266,13 @@ async function run(): Promise<void> {
           camera.position.set(cx, Math.max(gy + .62, ground.height(cx, cz) + .45), cz);
           camera.lookAt(smooth.x, gy + .36, smooth.z);
           camera.fov = spec.fov; camera.aspect = pw / row.h; camera.clearViewOffset();
+        } else if (row.view === 'watch') {
+          const [hx, hz] = clock.tick.hunter, eye = ground.height(hx, hz) + 1.7;
+          const range = Math.max(1, Math.hypot(smooth.x - hx, smooth.z - hz, gy + .35 - eye));
+          camera.position.set(hx, eye, hz);
+          camera.lookAt(smooth.x, gy + .35, smooth.z);
+          camera.fov = THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(2 * Math.atan(1.5 / range)), 6, 70);
+          camera.aspect = pw / row.h; camera.clearViewOffset();
         } else {
           const [hx, hz] = clock.tick.hunter;
           camera.position.set(hx, ground.height(hx, hz) + 1.7, hz);
@@ -270,7 +300,10 @@ async function run(): Promise<void> {
       if (frame % 300 === 0) window.benchProgress = `${segment.name} ${frame}/${frames}`;
     }
     (result.segments as unknown[]).push({ name: segment.name, t0, t1, frames: saved, rows, samples });
-    for (const panel of panels) (panel.system as unknown as { dispose(): void }).dispose();
+    for (const panel of panels) {
+      (panel.system as unknown as { dispose(): void }).dispose();
+      (panel.companion?.system as unknown as { dispose(): void } | undefined)?.dispose();
+    }
     for (const mesh of ground.meshes) mesh.geometry.dispose();
   }
   window.benchDone = result;
